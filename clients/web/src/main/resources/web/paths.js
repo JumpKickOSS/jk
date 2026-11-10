@@ -1,48 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-// Workspace paths as the files pane sees them: which extension is which language, which files the
-// Preview button may open, and how a markdown-relative href or a build diagnostic's file resolves
+// Workspace paths as the files pane sees them: which files the Preview button may open, whether a
+// language the engine named can be edited, and how a markdown-relative href or a build diagnostic's file resolves
 // to a path under the project checkout. Pure string work — no DOM, no network.
 
-/** Server vocabulary too — WorkspaceFileAccess.LANG_BY_EXT gates which files are servable. */
-const LANG_BY_EXT = {
-  '.java': 'java',
-  '.kt': 'kotlin',
-  '.kts': 'kotlin',
-  '.groovy': 'groovy',
-  '.scala': 'scala',
-  '.sc': 'scala',
-  '.toml': 'toml',
-  '.xml': 'xml',
-  '.yaml': 'yaml',
-  '.yml': 'yaml',
-  '.json': 'json',
-  '.jsonl': 'json',
-  '.sql': 'sql',
-  '.properties': 'properties',
-  '.sh': 'shell',
-  '.bash': 'shell',
-  '.zsh': 'shell',
-  '.md': 'markdown',
-  '.markdown': 'markdown',
-  '.mmd': 'mermaid',
-  '.mermaid': 'mermaid',
-  '.dot': 'graphviz',
-  '.gv': 'graphviz',
-  '.adoc': 'asciidoc',
-  '.asciidoc': 'asciidoc',
-  '.d2': 'd2',
-  '.png': 'image',
-  '.jpg': 'image',
-  '.jpeg': 'image',
-  '.gif': 'image',
-  '.webp': 'image',
-  '.ico': 'image',
-  '.svg': 'image',
-  '.bmp': 'image',
-  '.avif': 'image',
-};
-
-/** Extensions the Preview button may open (client-side; server allow-list must match). */
+/** Extensions the Preview button may open. */
 const PREVIEW_KINDS = {
   '.md': 'markdown',
   '.markdown': 'markdown',
@@ -81,7 +42,7 @@ export function isImagePath(path) {
 }
 
 export function isTextWritableLang(lang) {
-  return !!lang && lang !== 'image';
+  return !!lang && lang !== 'image' && lang !== 'binary';
 }
 
 /** Final path segment for the open-file tab label (full path stays on the tooltip). */
@@ -200,6 +161,15 @@ export function sanitizeDiagramSvg(purify, svg) {
   });
 }
 
+/** Why the files pane cannot show a file: the read's `{ status, error }` in plain words. */
+export function loadErrorMessage(e) {
+  if (e && e.status === 415) return 'Binary file: there is no text to show';
+  if (e && e.status === 413) return 'Too large to show (over 1 MiB)';
+  if (e && e.status === 404) return 'This file is not there any more';
+  if (e && e.error) return String(e.error);
+  return e && e.status ? 'HTTP ' + e.status : 'Failed to load file';
+}
+
 /** Human-readable save failure (network / auth / concurrency). */
 export function saveErrorMessage(e) {
   if (!e) return 'Failed to save file';
@@ -220,14 +190,6 @@ export function saveErrorMessage(e) {
   }
   if (e.error) return String(e.error);
   return 'Save failed (HTTP ' + e.status + ')';
-}
-
-export function langFromPath(path) {
-  const name = String(path || '').split('/').pop() || '';
-  const lower = name.toLowerCase();
-  const dot = lower.lastIndexOf('.');
-  if (dot < 0) return null;
-  return LANG_BY_EXT[lower.slice(dot)] || null;
 }
 
 export function posixJoin(...parts) {

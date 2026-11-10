@@ -4,16 +4,9 @@
 // live in paths.js, route.js, tree.js, monaco.js and preview.js.
 
 import { canHighlight, copyText, ensureMonaco, lineDecorations, viewerOptions } from './monaco.js';
-import {
-  baseFileName,
-  isImagePath,
-  isPreviewable,
-  isTextWritableLang,
-  langFromPath,
-  saveErrorMessage,
-} from './paths.js';
+import { baseFileName, isImagePath, isPreviewable, isTextWritableLang, loadErrorMessage, saveErrorMessage } from './paths.js';
 import { previewMethods } from './preview.js';
-import { ancestorDirs, buildFileTree, defaultFilePath, plainRows, visibleRows } from './tree.js';
+import { ROW_HEIGHT, defaultFilePath, dropSubtree, entryToward, plainRows, treeRows, visibleWindow } from './tree.js';
 
 export const CodeView = {
   props: {
@@ -35,11 +28,16 @@ export const CodeView = {
     loadingFile: false,
     error: null,
     notice: null,
-    files: [],
-    truncated: false,
+    // The directories loaded so far, by path ('' is the root): { entries, next, total, partial,
+    // loading, error }. Collapsing a folder drops its subtree, so this holds only what is open.
+    dirs: {},
+    expanded: {}, // open folders, keyed by the row's path (a folded chain keys off its deepest dir)
     file: null,
     filter: '',
-    expanded: {}, // open directory paths, keyed by the (possibly compacted) node path
+    found: null, // the filter's matches: { query, files, more, partial }, or null before the first answer
+    finding: false,
+    treeScrollTop: 0,
+    treeViewport: 600,
     highlighterFailed: false,
     copied: false,
     saved: false,
@@ -55,6 +53,8 @@ export const CodeView = {
     _previewTimer: null,
     _previewGen: 0,
     _listAbort: null,
+    _findTimer: null,
+    _findGen: 0,
     _fileAbort: null,
     _baseline: '',
     _etag: null,
@@ -67,24 +67,25 @@ export const CodeView = {
     filtering() {
       return !!(this.filter || '').trim();
     },
-    visibleFiles() {
-      const q = (this.filter || '').trim().toLowerCase();
-      const all = this.files || [];
-      if (!q) return all;
-      return all.filter((f) => f.path.toLowerCase().includes(q));
-    },
-    fileTree() {
-      return buildFileTree((this.files || []).map((f) => f.path));
-    },
     /**
-     * Tree rows while browsing; a flat list of full paths while filtering — same as GitHub, where
-     * the tree is for browsing and the file finder answers with paths.
+     * Tree rows while browsing; the engine's matches as a flat list of full paths while filtering —
+     * same as GitHub, where the tree is for browsing and the file finder answers with paths.
      */
     treeRows() {
       if (this.filtering) {
-        return this.visibleFiles.map((f) => ({ name: f.path, path: f.path, dir: false, depth: 0 }));
+        const files = (this.found && this.found.files) || [];
+        return files.map((f) => ({ kind: 'file', key: f.path, name: f.path, path: f.path, depth: 0, lang: f.lang }));
       }
-      return visibleRows(this.fileTree, this.expanded);
+      return treeRows(this.dirs, this.expanded);
+    },
+    /** Only the rows the tree's viewport shows, plus overscan: the DOM never holds the whole tree. */
+    treeWindow() {
+      const all = this.treeRows;
+      const w = visibleWindow(all.length, this.treeScrollTop, this.treeViewport);
+      return { ...w, rows: all.slice(w.start, w.end) };
+    },
+    rootLoaded() {
+      return !!(this.dirs[''] && !this.dirs[''].loading);
     },
     skippedHighlight() {
       return !!(this.file && !canHighlight(this.file));
@@ -105,7 +106,7 @@ export const CodeView = {
         !this.isImage &&
         !this.skippedHighlight &&
         !this.highlighterFailed &&
-        isTextWritableLang(this.file.lang || langFromPath(this.file.path))
+        isTextWritableLang(this.file.lang)
       );
     },
     canSave() {
@@ -154,11 +155,14 @@ export const CodeView = {
       }
       // Landing back on a bare /files (the Browse control) re-arms the default file.
       if (!this.path) this.openDefaultFile();
-      this.expandTo(this.path);
+      this.reveal(this.path);
       this.loadFile();
     },
     line() {
       this.$nextTick(() => this.scrollToLine());
+    },
+    filter() {
+      this.scheduleFind();
     },
     col() {
       this.$nextTick(() => this.scrollToLine());
@@ -208,6 +212,7 @@ export const CodeView = {
       this.requestSave();
     };
     window.addEventListener('keydown', this._onSaveKey, true);
+    this.observeTreeViewport();
     await this.loadList();
     await this.loadFile();
   },
@@ -231,6 +236,11 @@ export const CodeView = {
       this.settleSaveConfirm(false, { restoreFocus: false });
       if (this._listAbort) this._listAbort.abort();
       if (this._fileAbort) this._fileAbort.abort();
+      if (this._findTimer) clearTimeout(this._findTimer);
+      if (this._treeResize) {
+        this._treeResize.disconnect();
+        this._treeResize = null;
+      }
       if (this._copiedTimer) clearTimeout(this._copiedTimer);
       if (this._savedTimer) clearTimeout(this._savedTimer);
       if (this._previewTimer) clearTimeout(this._previewTimer);
@@ -343,18 +353,144 @@ export const CodeView = {
     fileName(p) {
       return baseFileName(p);
     },
-    /** A row's own click target: folders open/close, files navigate. */
+    /** A row's own click target: folders open/close, files navigate, a `more` row loads the next page. */
     activate(row) {
-      if (row.dir) this.toggleDir(row.path);
-      else this.selectFile(row.path);
+      if (row.kind === 'dir') this.toggleDir(row.path);
+      else if (row.kind === 'more') this.loadDir(row.path, { more: true });
+      else if (row.kind === 'file') this.selectFile(row.path);
     },
+    /** Open fetches the folder; close forgets it and everything below, so it re-fetches next time. */
     toggleDir(dirPath) {
-      if (this.expanded[dirPath]) delete this.expanded[dirPath];
-      else this.expanded[dirPath] = true;
+      if (this.expanded[dirPath]) {
+        const next = dropSubtree(this.dirs, this.expanded, dirPath);
+        this.dirs = next.dirs;
+        this.expanded = next.expanded;
+        return;
+      }
+      this.expanded = { ...this.expanded, [dirPath]: true };
+      this.loadDir(dirPath);
     },
-    /** Open every directory on the way to a file, so a `?line=` deep link lands revealed. */
-    expandTo(filePath) {
-      for (const dir of ancestorDirs(filePath)) this.expanded[dir] = true;
+    /**
+     * One page of a folder from the engine, into `dirs[path]`; `more` appends the next page. A
+     * project switch aborts every listing in flight through the shared controller.
+     */
+    async loadDir(path, { more = false } = {}) {
+      const ac = this._listAbort;
+      if (!ac || !this.projectId) return null;
+      const have = this.dirs[path];
+      if (have && have.loading) return have._pending || null;
+      if (have && !more && !have.error) return have;
+      const cursor = more && have ? have.next : null;
+      if (more && !cursor) return have;
+      const base = more && have ? have : { entries: [], next: null, total: 0, partial: false };
+      const pending = (async () => {
+        this.dirs = { ...this.dirs, [path]: { ...base, loading: true, error: null } };
+        try {
+          const { get } = await import('./api.js');
+          const data = await get(
+            '/api/project/dir?' +
+              this.projectQuery() +
+              (path ? '&path=' + encodeURIComponent(path) : '') +
+              (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''),
+            { signal: ac.signal },
+          );
+          if (ac.signal.aborted) return null;
+          const entry = {
+            entries: (base.entries || []).concat(data.entries || []),
+            next: data.next || null,
+            total: data.total || 0,
+            partial: !!data.partial,
+            loading: false,
+            error: null,
+          };
+          this.dirs = { ...this.dirs, [path]: entry };
+          return entry;
+        } catch (e) {
+          if (ac.signal.aborted || (e && e.name === 'AbortError')) return null;
+          const error = (e && e.error) || (e && e.status ? 'HTTP ' + e.status : 'Failed to list files');
+          this.dirs = { ...this.dirs, [path]: { ...base, loading: false, error } };
+          return null;
+        }
+      })();
+      this.dirs[path]._pending = pending;
+      return pending;
+    },
+    /**
+     * Open every folder on the way to a file, loading each as it goes (and further pages of a big
+     * folder until the next step shows up), so a `?line=` deep link lands revealed and in view.
+     */
+    async reveal(filePath) {
+      if (!filePath || !this._listAbort) return;
+      const ac = this._listAbort;
+      let dirPath = '';
+      for (let step = 0; step < 64; step++) {
+        let dir = await this.loadDir(dirPath);
+        if (!dir || ac.signal.aborted) return;
+        let hit = entryToward(dir.entries, filePath);
+        for (let page = 0; !hit && dir && dir.next && page < 50; page++) {
+          dir = await this.loadDir(dirPath, { more: true });
+          hit = dir && entryToward(dir.entries, filePath);
+        }
+        if (!hit || ac.signal.aborted) return;
+        if (!hit.dir) break;
+        if (!this.expanded[hit.path]) this.expanded = { ...this.expanded, [hit.path]: true };
+        dirPath = hit.path;
+      }
+      await this.$nextTick();
+      this.scrollTreeTo(filePath);
+    },
+    /** Scroll the tree so the row for `path` is in view, if it is not already. */
+    scrollTreeTo(path) {
+      const host = this.$refs.treeScroll;
+      if (!host) return;
+      const index = this.treeRows.findIndex((r) => r.path === path && r.kind === 'file');
+      if (index < 0) return;
+      const top = index * ROW_HEIGHT;
+      if (top < host.scrollTop || top + ROW_HEIGHT > host.scrollTop + host.clientHeight) {
+        host.scrollTop = Math.max(0, top - host.clientHeight / 3);
+        this.treeScrollTop = host.scrollTop;
+      }
+    },
+    onTreeScroll(e) {
+      this.treeScrollTop = e.target.scrollTop;
+    },
+    /** The virtual list draws as many rows as the scroller is tall; follow its size. */
+    observeTreeViewport() {
+      const host = this.$refs.treeScroll;
+      if (!host) return;
+      this.treeViewport = host.clientHeight || this.treeViewport;
+      if (typeof ResizeObserver === 'undefined') return;
+      this._treeResize = new ResizeObserver(() => {
+        this.treeViewport = host.clientHeight || this.treeViewport;
+      });
+      this._treeResize.observe(host);
+    },
+    /** The filter asks the engine, debounced; an answer to an older query is dropped. */
+    scheduleFind() {
+      if (this._findTimer) clearTimeout(this._findTimer);
+      const q = (this.filter || '').trim();
+      if (!q) {
+        this.found = null;
+        this.finding = false;
+        return;
+      }
+      this.finding = true;
+      this._findTimer = setTimeout(() => this.runFind(q), 200);
+    },
+    async runFind(q) {
+      this._findTimer = null;
+      const gen = ++this._findGen;
+      try {
+        const { get } = await import('./api.js');
+        const data = await get('/api/project/find?' + this.projectQuery() + '&q=' + encodeURIComponent(q));
+        if (gen !== this._findGen) return;
+        this.found = { query: q, files: data.files || [], more: !!data.more, partial: !!data.partial };
+      } catch (e) {
+        if (gen !== this._findGen) return;
+        this.found = { query: q, files: [], more: false, partial: false, error: (e && e.error) || 'Search failed' };
+      } finally {
+        if (gen === this._findGen) this.finding = false;
+      }
     },
     /**
      * `/files` with no path opens the workspace `jk.toml`. `replace` so the pane the user actually
@@ -362,7 +498,9 @@ export const CodeView = {
      */
     openDefaultFile() {
       if (this.path) return;
-      const fallback = defaultFilePath(this.files);
+      const root = this.dirs[''];
+      if (!root || root.loading) return;
+      const fallback = defaultFilePath(root.entries);
       if (fallback) this.$emit('navigate', { path: fallback, line: 0, replace: true });
     },
     selectFile(p) {
@@ -408,36 +546,32 @@ export const CodeView = {
         'project=' + encodeURIComponent(this.projectId) + (this.dir ? '&dir=' + encodeURIComponent(this.dir) : '')
       );
     },
+    /** A new project or checkout: forget the tree, list the root, then reveal the open file. */
     async loadList() {
       if (this._listAbort) this._listAbort.abort();
-      this.files = [];
-      this.truncated = false;
+      this._listAbort = null;
+      this.dirs = {};
       this.expanded = {}; // a different project is a different tree
+      this.found = null;
       this.error = null;
       if (!this.projectId) {
         this.loadingList = false;
         return;
       }
-      const ac = new AbortController();
-      this._listAbort = ac;
+      this._listAbort = new AbortController();
+      const ac = this._listAbort;
       this.loadingList = true;
-      try {
-        const { get } = await import('./api.js');
-        const data = await get('/api/project/files?' + this.projectQuery(), {
-          signal: ac.signal,
-        });
-        if (ac.signal.aborted) return;
-        this.files = data.files || [];
-        this.truncated = !!data.truncated;
-        this.loadingList = false;
-        this.expandTo(this.path); // the open file may predate the list (deep link / fail-report jump)
-        this.openDefaultFile(); // and with no file in the route, the list decides the default
-      } catch (e) {
-        if (e && e.name === 'AbortError') return;
-        if (ac.signal.aborted) return;
-        this.loadingList = false;
-        this.error = (e && e.error) || (e && e.status ? 'HTTP ' + e.status : 'Failed to list files');
+      const root = await this.loadDir('');
+      if (ac.signal.aborted) return;
+      this.loadingList = false;
+      if (!root) {
+        const failed = this.dirs[''];
+        this.error = (failed && failed.error) || 'Failed to list files';
+        return;
       }
+      this.reveal(this.path); // the open file may predate the tree (deep link / fail-report jump)
+      this.openDefaultFile(); // and with no file in the route, the root listing decides the default
+      if (this.filtering) this.scheduleFind();
     },
     async loadFile() {
       if (this._fileAbort) this._fileAbort.abort();
@@ -498,7 +632,7 @@ export const CodeView = {
         if (e && e.name === 'AbortError') return;
         if (ac.signal.aborted) return;
         this.loadingFile = false;
-        this.error = (e && e.error) || (e && e.status ? 'HTTP ' + e.status : 'Failed to load file');
+        this.error = loadErrorMessage(e);
       }
     },
     async paint() {
@@ -532,7 +666,7 @@ export const CodeView = {
       if (!host || !this.file) return;
       const options = viewerOptions({
         content: this.file.content,
-        lang: this.file.lang || langFromPath(this.file.path),
+        lang: this.file.lang,
         readOnly: !this.editable,
       });
       // Belt to editorVisible's braces: an editor whose DOM is no longer under the live host can
@@ -680,20 +814,37 @@ export const CodeView = {
           <input class="code-filter" v-model="filter" placeholder="Filter files" spellcheck="false"
                  aria-label="Filter files">
         </div>
-        <p v-if="truncated" class="warn">File list truncated at 5000</p>
         <p v-if="loadingList" class="empty">Listing…</p>
-        <p v-else-if="!treeRows.length" class="empty">{{ filtering ? 'No matching files' : 'No files' }}</p>
-        <button v-for="row in treeRows" :key="row.path" type="button"
-                class="code-row" :class="{ dir: row.dir, on: !row.dir && row.path === path }"
-                :style="{ paddingLeft: (8 + row.depth * 12) + 'px' }"
-                :aria-expanded="row.dir ? String(row.open) : null"
-                :data-tip="row.path"
-                @click="activate(row)">
-          <jk-icon v-if="row.dir" class="code-twist" :name="row.open ? 'chevron-down' : 'chevron-right'"></jk-icon>
-          <span v-else class="code-twist"></span>
-          <jk-icon class="code-glyph" :name="row.dir ? (row.open ? 'folder-open' : 'folder') : 'file'"></jk-icon>
-          <span class="code-name">{{ row.name }}</span>
-        </button>
+        <p v-else-if="filtering && finding && !found" class="empty">Searching…</p>
+        <p v-else-if="filtering && found && found.error" class="error">{{ found.error }}</p>
+        <p v-else-if="!treeRows.length && (rootLoaded || filtering)" class="empty">{{ filtering ? 'No matching files' : 'No files' }}</p>
+        <div class="code-tree-scroll" ref="treeScroll" @scroll="onTreeScroll">
+          <div class="code-tree-sizer" :style="{ height: treeWindow.total + 'px' }">
+            <div class="code-tree-slice" :style="{ transform: 'translateY(' + treeWindow.offset + 'px)' }">
+              <template v-for="row in treeWindow.rows" :key="row.key">
+                <button v-if="row.kind === 'dir' || row.kind === 'file'" type="button"
+                        class="code-row" :class="{ dir: row.kind === 'dir', on: row.kind === 'file' && row.path === path, out: row.output, bin: row.lang === 'binary' || row.lang === 'image' }"
+                        :style="{ paddingLeft: (8 + row.depth * 12) + 'px' }"
+                        :aria-expanded="row.kind === 'dir' ? String(row.open) : null"
+                        :data-tip="row.path"
+                        @click="activate(row)">
+                  <jk-icon v-if="row.kind === 'dir' && !row.empty" class="code-twist" :name="row.open ? 'chevron-down' : 'chevron-right'"></jk-icon>
+                  <span v-else class="code-twist"></span>
+                  <jk-icon class="code-glyph" :name="row.kind === 'dir' ? (row.open ? 'folder-open' : 'folder') : 'file'"></jk-icon>
+                  <span class="code-name">{{ row.name }}</span>
+                </button>
+                <button v-else-if="row.kind === 'more'" type="button" class="code-row code-row-more"
+                        :style="{ paddingLeft: (8 + row.depth * 12 + 17) + 'px' }" :disabled="row.loading" @click="activate(row)">
+                  {{ row.loading ? 'Loading…' : 'Show ' + Math.min(row.remaining, 500) + ' more of ' + row.remaining }}
+                </button>
+                <div v-else class="code-row code-row-note" :class="{ error: row.kind === 'error' }"
+                     :style="{ paddingLeft: (8 + row.depth * 12 + 17) + 'px' }">{{ row.kind === 'error' ? row.text : 'Loading…' }}</div>
+              </template>
+            </div>
+          </div>
+        </div>
+        <p v-if="filtering && found && (found.more || found.partial)" class="dim small code-tree-foot">
+          {{ found.more ? 'Showing the first ' + found.files.length + ' matches; type more to narrow' : 'Search stopped early on a very large tree; type more to narrow' }}</p>
       </aside>
       <div class="code-main">
         <!-- Tab strip: open-file tab (left) + Copy / Preview / Save (right). Build stays in the header. -->

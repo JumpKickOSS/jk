@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceFileAccessTest {
 
     @Test
-    void happy_path_lists_and_reads_allow_listed_sources(@TempDir Path root) throws Exception {
+    void happy_path_reads_a_source(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Main.java"), "package demo;\nclass Main {}\n");
@@ -28,12 +27,6 @@ class WorkspaceFileAccessTest {
                 name = "demo"
                 version = "1"
                 """);
-
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.truncated()).isFalse();
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .containsExactly("jk.toml", "src/Main.java");
 
         var read = WorkspaceFileAccess.read(root, "src/Main.java");
         assertThat(read).isInstanceOf(ReadResult.Ok.class);
@@ -81,64 +74,88 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
-    void file_deleted_between_list_and_read_is_not_found(@TempDir Path root) throws Exception {
+    void file_deleted_after_it_was_listed_is_not_found(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Gone.java"), "class Gone {}");
-        assertThat(WorkspaceFileAccess.list(root).files())
-                .anyMatch(f -> f.path().equals("src/Gone.java"));
+        assertThat(WorkspaceFileAccess.read(root, "src/Gone.java")).isInstanceOf(ReadResult.Ok.class);
         Files.delete(root.resolve("src/Gone.java"));
         assertThat(WorkspaceFileAccess.read(root, "src/Gone.java")).isInstanceOf(ReadResult.NotFound.class);
     }
 
     @Test
-    void hidden_unsupported_and_gradle_output_paths_are_not_servable(@TempDir Path root) throws Exception {
+    void every_file_is_servable_but_hidden_entries_node_modules_and_key_material(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("build"));
-        Files.createDirectories(root.resolve(".env-dir"));
         Files.writeString(root.resolve("build/Foo.java"), "class Foo {}");
         Files.writeString(root.resolve(".env"), "SECRET=1");
         Files.writeString(root.resolve("build.gradle"), "plugins {}");
-        Files.writeString(root.resolve("notes.txt"), "nope");
+        Files.writeString(root.resolve("notes.txt"), "plain\n");
+        Files.writeString(root.resolve("Dockerfile"), "FROM scratch\n");
+        Files.writeString(root.resolve("server.pem"), "-----BEGIN PRIVATE KEY-----");
+        Files.writeString(root.resolve("id_ed25519"), "key");
+        Files.writeString(root.resolve("id_ed25519.pub"), "ssh-ed25519 AAAA");
 
-        assertThat(WorkspaceFileAccess.servable(root, "build/Foo.java")).isFalse();
+        assertThat(WorkspaceFileAccess.servable(root, "build/Foo.java")).isTrue();
+        assertThat(WorkspaceFileAccess.servable(root, "build.gradle")).isTrue();
+        assertThat(WorkspaceFileAccess.servable(root, "notes.txt")).isTrue();
+        assertThat(WorkspaceFileAccess.servable(root, "Dockerfile")).isTrue();
+        assertThat(WorkspaceFileAccess.servable(root, "id_ed25519.pub")).isTrue();
         assertThat(WorkspaceFileAccess.servable(root, ".env")).isFalse();
-        assertThat(WorkspaceFileAccess.servable(root, "build.gradle")).isFalse();
-        assertThat(WorkspaceFileAccess.servable(root, "notes.txt")).isFalse();
-        assertThat(WorkspaceFileAccess.read(root, "build/Foo.java")).isInstanceOf(ReadResult.NotFound.class);
-        assertThat(WorkspaceFileAccess.read(root, ".env")).isInstanceOf(ReadResult.NotFound.class);
+        assertThat(WorkspaceFileAccess.servable(root, "node_modules/x/index.js"))
+                .isFalse();
+        assertThat(WorkspaceFileAccess.servable(root, "server.pem")).isFalse();
+        assertThat(WorkspaceFileAccess.servable(root, "id_ed25519")).isFalse();
 
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .containsExactly("jk.toml");
+        assertThat(WorkspaceFileAccess.read(root, "build/Foo.java")).isInstanceOf(ReadResult.Ok.class);
+        var notes = (ReadResult.Ok) WorkspaceFileAccess.read(root, "notes.txt");
+        assertThat(notes.body().lang()).isEqualTo("text");
+        assertThat(((ReadResult.Ok) WorkspaceFileAccess.read(root, "Dockerfile"))
+                        .body()
+                        .lang())
+                .isEqualTo("dockerfile");
+        assertThat(WorkspaceFileAccess.read(root, ".env")).isInstanceOf(ReadResult.NotFound.class);
+        assertThat(WorkspaceFileAccess.read(root, "server.pem")).isInstanceOf(ReadResult.NotFound.class);
+        assertThat(WorkspaceFileAccess.readRaw(root, "id_ed25519"))
+                .isInstanceOf(WorkspaceFileAccess.RawResult.NotFound.class);
+        assertThat(WorkspaceFileAccess.write(root, "server.pem", "x"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotFound.class);
+        assertThat(WorkspaceFileAccess.write(root, "notes.txt", "edited\n"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
     }
 
     @Test
-    void target_allowlisted_files_are_listed_and_readable(@TempDir Path root) throws Exception {
+    void a_known_binary_is_refused_as_text_before_its_bytes_are_read(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
-        Files.createDirectories(root.resolve("target/reports"));
-        Files.writeString(root.resolve("target/report.md"), "# report\n");
-        Files.writeString(root.resolve("target/reports/flow.mmd"), "graph TD; A-->B;\n");
-        Files.writeString(root.resolve("target/Gen.java"), "class Gen {}");
-        // Unknown extensions under target stay out of the tree (classes, binaries, …).
+        Files.createDirectories(root.resolve("target"));
+        // Bytes that would pass the NUL scan: the extension alone says binary.
         Files.writeString(root.resolve("target/Foo.class"), "not-really-a-class");
+        assertThat(WorkspaceFileAccess.langOf("Foo.class")).isEqualTo("binary");
+        assertThat(WorkspaceFileAccess.read(root, "target/Foo.class")).isInstanceOf(ReadResult.Binary.class);
+        assertThat(WorkspaceFileAccess.write(root, "target/Foo.class", "x"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotWritable.class);
+        var raw = (WorkspaceFileAccess.RawResult.Ok) WorkspaceFileAccess.readRaw(root, "target/Foo.class");
+        assertThat(raw.body().contentType()).isEqualTo("application/octet-stream");
+    }
 
-        assertThat(WorkspaceFileAccess.isSkippedOutputDir(root.resolve("target")))
-                .isFalse();
-        assertThat(WorkspaceFileAccess.servable(root, "target/report.md")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "target/reports/flow.mmd"))
-                .isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "target/Gen.java")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "target/Foo.class")).isFalse();
-
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .contains("jk.toml", "target/report.md", "target/reports/flow.mmd", "target/Gen.java")
-                .doesNotContain("target/Foo.class");
-        assertThat(WorkspaceFileAccess.read(root, "target/report.md")).isInstanceOf(ReadResult.Ok.class);
-        assertThat(WorkspaceFileAccess.read(root, "target/Foo.class")).isInstanceOf(ReadResult.NotFound.class);
+    @Test
+    void a_language_is_named_by_role_then_extension_and_anything_else_is_text() {
+        assertThat(WorkspaceFileAccess.langOf("app.ts")).isEqualTo("typescript");
+        assertThat(WorkspaceFileAccess.langOf("View.TSX")).isEqualTo("typescript");
+        assertThat(WorkspaceFileAccess.langOf("index.mjs")).isEqualTo("javascript");
+        assertThat(WorkspaceFileAccess.langOf("site.css")).isEqualTo("css");
+        assertThat(WorkspaceFileAccess.langOf("page.htm")).isEqualTo("html");
+        assertThat(WorkspaceFileAccess.langOf("build.gradle")).isEqualTo("groovy");
+        assertThat(WorkspaceFileAccess.langOf("Jenkinsfile")).isEqualTo("groovy");
+        assertThat(WorkspaceFileAccess.langOf("transform.xslt")).isEqualTo("xml");
+        assertThat(WorkspaceFileAccess.langOf("rows.csv")).isEqualTo("csv");
+        assertThat(WorkspaceFileAccess.langOf("LICENSE")).isEqualTo("text");
+        assertThat(WorkspaceFileAccess.langOf(".bashrc")).isEqualTo("text");
+        assertThat(WorkspaceFileAccess.langOf("server.log")).isEqualTo("text");
+        assertThat(WorkspaceFileAccess.langOf("lib.jar")).isEqualTo("binary");
+        assertThat(WorkspaceFileAccess.isTextWritable("text")).isTrue();
+        assertThat(WorkspaceFileAccess.isTextWritable("image")).isFalse();
+        assertThat(WorkspaceFileAccess.isTextWritable("binary")).isFalse();
     }
 
     @Test
@@ -154,7 +171,7 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
-    void member_directory_named_build_with_jk_toml_is_listed_and_readable(@TempDir Path root) throws Exception {
+    void member_directory_named_build_with_jk_toml_is_source_not_output(@TempDir Path root) throws Exception {
         writeJkToml(root, "ws");
         Path member = root.resolve("build");
         Files.createDirectories(member.resolve("src"));
@@ -163,16 +180,11 @@ class WorkspaceFileAccessTest {
         Files.createDirectories(member.resolve("target"));
         Files.writeString(member.resolve("target/A.java"), "class Gen {}");
 
-        assertThat(WorkspaceFileAccess.isSkippedOutputDir(member)).isFalse();
-        assertThat(WorkspaceFileAccess.isSkippedOutputDir(member.resolve("target")))
-                .isFalse();
+        assertThat(WorkspaceFileAccess.isOutputDir(member)).isFalse();
+        assertThat(WorkspaceFileAccess.isOutputDir(member.resolve("target"))).isTrue();
         assertThat(WorkspaceFileAccess.servable(root, "build/src/A.java")).isTrue();
         assertThat(WorkspaceFileAccess.servable(root, "build/target/A.java")).isTrue();
 
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .contains("build/jk.toml", "build/src/A.java", "build/target/A.java");
         assertThat(WorkspaceFileAccess.read(root, "build/src/A.java")).isInstanceOf(ReadResult.Ok.class);
         assertThat(WorkspaceFileAccess.read(root, "build/target/A.java")).isInstanceOf(ReadResult.Ok.class);
     }
@@ -225,7 +237,7 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
-    void text_config_and_script_extensions_are_listed_readable_and_writable(@TempDir Path root) throws Exception {
+    void text_config_and_script_extensions_are_readable_and_writable(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src/main/resources"));
         Files.createDirectories(root.resolve("scripts"));
@@ -252,22 +264,6 @@ class WorkspaceFileAccessTest {
         assertThat(WorkspaceFileAccess.langOf("env.zsh")).isEqualTo("shell");
         assertThat(WorkspaceFileAccess.langOf("Main.scala")).isEqualTo("scala");
         assertThat(WorkspaceFileAccess.langOf("Scratch.sc")).isEqualTo("scala");
-
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .contains(
-                        "pom.xml",
-                        "config.yaml",
-                        "config.yml",
-                        "schema.sql",
-                        "app.properties",
-                        "scripts/setup.sh",
-                        "scripts/run.bash",
-                        "scripts/env.zsh",
-                        "src/Main.scala",
-                        "src/Scratch.sc",
-                        "src/main/resources/logback.xml");
 
         assertThat(WorkspaceFileAccess.read(root, "config.yaml")).isInstanceOf(ReadResult.Ok.class);
         assertThat(WorkspaceFileAccess.read(root, "schema.sql")).isInstanceOf(ReadResult.Ok.class);
@@ -457,166 +453,10 @@ class WorkspaceFileAccessTest {
         Files.writeString(secret, "class Secret {}");
         Symlinks.create(root.resolve("src/Leak.java"), secret);
         assertThat(WorkspaceFileAccess.read(root, "src/Leak.java")).isInstanceOf(ReadResult.NotFound.class);
-        // list/read parity: the escaping link must not be listed either …
-        assertThat(WorkspaceFileAccess.list(root).files())
-                .noneMatch(f -> f.path().equals("src/Leak.java"));
-        // … while an in-root symlink stays listed and readable.
+        // An in-root symlink stays readable.
         Files.writeString(root.resolve("src/Real.java"), "class Real {}");
         Symlinks.create(root.resolve("src/Alias.java"), root.resolve("src/Real.java"));
-        assertThat(WorkspaceFileAccess.list(root).files())
-                .anyMatch(f -> f.path().equals("src/Alias.java"));
         assertThat(WorkspaceFileAccess.read(root, "src/Alias.java")).isInstanceOf(ReadResult.Ok.class);
-    }
-
-    @Test
-    void symlinked_out_root_manifest_is_not_listed(@TempDir Path root, @TempDir Path outside) throws Exception {
-        // The pre-seed must pay the same real-path containment as every BFS entry — an
-        // escaping root jk.toml would otherwise be listed (and default-opened) only to 404.
-        Files.writeString(outside.resolve("jk.toml"), "name = \"demo\"\n");
-        Symlinks.create(root.resolve("jk.toml"), outside.resolve("jk.toml"));
-        Files.createDirectories(root.resolve("src"));
-        Files.writeString(root.resolve("src/Main.java"), "class Main {}");
-        assertThat(WorkspaceFileAccess.list(root).files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .containsExactly("src/Main.java");
-        assertThat(WorkspaceFileAccess.read(root, "jk.toml")).isInstanceOf(ReadResult.NotFound.class);
-        // An in-root symlinked manifest still pre-seeds first, exactly once.
-        Files.delete(root.resolve("jk.toml"));
-        Files.writeString(root.resolve("real.toml"), "name = \"demo\"\n");
-        Symlinks.create(root.resolve("jk.toml"), root.resolve("real.toml"));
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .containsExactly("jk.toml", "real.toml", "src/Main.java");
-        assertThat(WorkspaceFileAccess.read(root, "jk.toml")).isInstanceOf(ReadResult.Ok.class);
-    }
-
-    @Test
-    void depth_cap_reports_truncation(@TempDir Path root) throws Exception {
-        // files below MAX_WALK_DEPTH are readable via deep link but invisible in the
-        // tree — the UI must at least see the truncation hint.
-        writeJkToml(root, "demo");
-        StringBuilder relDir = new StringBuilder();
-        Path deep = root;
-        for (int i = 0; i < WorkspaceFileAccess.MAX_WALK_DEPTH + 2; i++) {
-            deep = deep.resolve("d" + i);
-            relDir.append(relDir.isEmpty() ? "" : "/").append("d").append(i);
-        }
-        Files.createDirectories(deep);
-        Files.writeString(deep.resolve("Deep.java"), "class Deep {}");
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.truncated()).isTrue();
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .doesNotContain(relDir + "/Deep.java");
-        assertThat(WorkspaceFileAccess.read(root, relDir + "/Deep.java")).isInstanceOf(ReadResult.Ok.class);
-    }
-
-    @Test
-    void in_root_directory_symlinks_are_listed_and_cycles_terminate(@TempDir Path root) throws Exception {
-        // read() serves files under an in-root dir symlink, so list must show them.
-        writeJkToml(root, "demo");
-        Files.createDirectories(root.resolve("real"));
-        Files.writeString(root.resolve("real/A.java"), "class A {}");
-        Symlinks.create(root.resolve("linkdir"), root.resolve("real"));
-        // A link back to the root would cycle the BFS without the visited set.
-        Symlinks.create(root.resolve("real/loop"), root);
-        var list = WorkspaceFileAccess.list(root);
-        // The target tree is walked exactly once, via whichever name the directory stream
-        // yielded first — either spelling is a correct listing, and reads serve both.
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .anyMatch(p -> p.equals("real/A.java") || p.equals("linkdir/A.java"));
-        assertThat(WorkspaceFileAccess.read(root, "linkdir/A.java")).isInstanceOf(ReadResult.Ok.class);
-        assertThat(WorkspaceFileAccess.read(root, "real/A.java")).isInstanceOf(ReadResult.Ok.class);
-    }
-
-    @Test
-    void escaping_directory_symlinks_stay_unlisted_and_unreadable(@TempDir Path root, @TempDir Path outside)
-            throws Exception {
-        writeJkToml(root, "demo");
-        Files.writeString(outside.resolve("Secret.java"), "class Secret {}");
-        Symlinks.create(root.resolve("esc"), outside);
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.files())
-                .extracting(WorkspaceFileAccess.ListedFile::path)
-                .noneMatch(p -> p.startsWith("esc/"));
-        assertThat(WorkspaceFileAccess.read(root, "esc/Secret.java")).isInstanceOf(ReadResult.NotFound.class);
-    }
-
-    @Test
-    void list_caps_and_stays_sorted(@TempDir Path root) throws Exception {
-        writeJkToml(root, "demo");
-        Files.createDirectories(root.resolve("src"));
-        int n = WorkspaceFileAccess.MAX_LIST_FILES + 10;
-        for (int i = 0; i < n; i++) {
-            Files.writeString(root.resolve(String.format("src/f-%04d.java", i)), "class F {}");
-        }
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.truncated()).isTrue();
-        assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
-        assertThat(list.files().getFirst().path()).isEqualTo("jk.toml");
-        assertThat(list.files()).isSortedAccordingTo(Comparator.comparing(f -> f.path()));
-    }
-
-    @Test
-    void truncation_never_drops_the_root_manifest(@TempDir Path root) throws Exception {
-        // Truncation must keep the workspace-root jk.toml even when cap+ files sort before it.
-        writeJkToml(root, "demo");
-        Files.createDirectories(root.resolve("aaa"));
-        int n = WorkspaceFileAccess.MAX_LIST_FILES + 100;
-        for (int i = 0; i < n; i++) {
-            Files.writeString(root.resolve(String.format("aaa/f-%04d.java", i)), "class F {}");
-        }
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.truncated()).isTrue();
-        assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
-        assertThat(list.files()).anyMatch(f -> f.path().equals("jk.toml"));
-    }
-
-    @Test
-    void truncation_trims_the_deepest_leaves_first(@TempDir Path root) throws Exception {
-        // Breadth-first: when the cap hits, deep subtrees are what goes missing — not an
-        // arbitrary alphabetic slice spanning every depth.
-        writeJkToml(root, "demo");
-        Files.createDirectories(root.resolve("src"));
-        Files.createDirectories(root.resolve("a/b"));
-        int n = WorkspaceFileAccess.MAX_LIST_FILES + 100;
-        for (int i = 0; i < n; i++) {
-            Files.writeString(root.resolve(String.format("src/f-%04d.java", i)), "class F {}");
-        }
-        for (int i = 0; i < 20; i++) {
-            Files.writeString(root.resolve(String.format("a/b/deep-%02d.java", i)), "class D {}");
-        }
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.truncated()).isTrue();
-        assertThat(list.files()).noneMatch(f -> f.path().startsWith("a/b/"));
-        assertThat(list.files()).anyMatch(f -> f.path().equals("jk.toml"));
-    }
-
-    @Test
-    void target_output_never_crowds_sources_out_of_the_cap(@TempDir Path root) throws Exception {
-        // target/ output fills only the capacity hand-written sources leave over, so a
-        // report-heavy workspace lists every src/ file even past the cap.
-        writeJkToml(root, "demo");
-        Files.createDirectories(root.resolve("src"));
-        Files.createDirectories(root.resolve("target"));
-        int n = WorkspaceFileAccess.MAX_LIST_FILES + 50;
-        for (int i = 0; i < n; i++) {
-            Files.writeString(root.resolve(String.format("target/r-%04d.xml", i)), "<r/>");
-        }
-        for (int i = 0; i < 40; i++) {
-            Files.writeString(root.resolve(String.format("src/Z%02d.java", i)), "class Z {}");
-        }
-        var list = WorkspaceFileAccess.list(root);
-        assertThat(list.truncated()).isTrue();
-        assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
-        assertThat(list.files().stream()
-                        .filter(f -> f.path().startsWith("src/"))
-                        .count())
-                .isEqualTo(40);
-        assertThat(list.files()).anyMatch(f -> f.path().equals("jk.toml"));
-        assertThat(list.files()).anyMatch(f -> f.path().startsWith("target/"));
     }
 
     /**

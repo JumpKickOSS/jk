@@ -7,7 +7,7 @@
 
 import { get } from './api.js';
 import { canHighlight, copyText, ensureMonaco, viewerOptions } from './monaco.js';
-import { isImagePath, langFromPath } from './paths.js';
+import { isImagePath } from './paths.js';
 import { buildProjectHash } from './route.js';
 import { plainRows } from './tree.js';
 
@@ -112,7 +112,7 @@ export const FileViewer = {
         host,
         viewerOptions({
           content: this.file.content,
-          lang: this.file.lang || langFromPath(this.path),
+          lang: this.file.lang,
           readOnly: true,
         }),
       );

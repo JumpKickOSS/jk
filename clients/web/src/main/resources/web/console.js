@@ -7,7 +7,6 @@
 
 import { deltaChip } from './delta.js';
 import { outcomeOf } from './outcome.js';
-import { langFromPath } from './paths.js';
 
 /** A session that ended more than this long ago leaves the rail (it stays on the project's Sessions tab). */
 export const RAIL_ENDED_MILLIS = 60 * 60 * 1000;
@@ -241,8 +240,8 @@ function deltaPaths(delta) {
  */
 function editItem(rec, at, projectId = null) {
   const count = rec.delta.files.count;
-  // A deleted file has nothing to read, and the engine's file view serves only the types it knows.
-  const files = deltaFiles(rec.delta).map((f) => ({ ...f, viewable: f.mark !== 'gone' && !!langFromPath(f.path) }));
+  // A deleted file has nothing to read; any other path opens, and the viewer says if it is binary.
+  const files = deltaFiles(rec.delta).map((f) => ({ ...f, viewable: f.mark !== 'gone' }));
   const more = Math.max(0, count - files.length);
   return {
     key: 'edit-' + rec.id,

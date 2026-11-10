@@ -279,17 +279,24 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code GET /api/project/files?project=&lt;id&gt;[&amp;dir=…]} — allow-listed source paths
-     * under one of the id's live checkouts. {@code dir} is required when the id has several; it
-     * never widens the sandbox to a tree the id does not record.
+     * {@code GET /api/project/dir?project=&lt;id&gt;[&amp;dir=…][&amp;path=&lt;rel&gt;][&amp;cursor=…][&amp;limit=…]}
+     * — one page of one directory under one of the id's live checkouts ({@link WorkspaceTree#list}).
+     * {@code path} is blank for the checkout root. {@code dir} is required when the id has several
+     * checkouts; it never widens the sandbox to a tree the id does not record.
      */
-    void handleProjectFiles(HttpExchange exchange) throws IOException {
+    void handleProjectDir(HttpExchange exchange) throws IOException {
+        String q = exchange.getRequestURI().getRawQuery();
         String projectId;
         String dir;
+        String path;
+        String cursor;
+        int limit;
         try {
-            String q = exchange.getRequestURI().getRawQuery();
             projectId = HttpQuery.queryParam(q, "project");
             dir = HttpQuery.queryParam(q, "dir");
+            path = HttpQuery.queryParam(q, "path");
+            cursor = HttpQuery.queryParam(q, "cursor");
+            limit = intParam(q, "limit");
         } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -304,20 +311,76 @@ final class HttpProjectApi {
         }
         Path root = checkoutRoot(exchange, projectId, dir);
         if (root == null) return;
-        WorkspaceFileAccess.FileList list;
+        switch (WorkspaceTree.list(root, path, cursor, limit)) {
+            case WorkspaceTree.ListResult.BadRequest bad ->
+                HttpResponses.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceTree.ListResult.NotFound ignored ->
+                HttpResponses.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceTree.ListResult.Ok ok -> {
+                WorkspaceTree.Page page = ok.page();
+                List<Map<String, Object>> entries =
+                        new ArrayList<>(page.entries().size());
+                for (WorkspaceTree.Entry e : page.entries()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("name", e.name());
+                    row.put("path", e.path());
+                    row.put("dir", e.dir());
+                    if (e.lang() != null) row.put("lang", e.lang());
+                    if (e.output()) row.put("output", true);
+                    if (e.empty()) row.put("empty", true);
+                    entries.add(row);
+                }
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("projectId", projectId);
+                body.put("dir", page.root().toString());
+                body.put("path", page.path());
+                body.put("total", page.total());
+                body.put("next", page.next());
+                body.put("partial", page.partial());
+                body.put("entries", entries);
+                HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
+            }
+        }
+    }
+
+    /**
+     * {@code GET /api/project/find?project=&lt;id&gt;&amp;q=&lt;terms&gt;[&amp;dir=…][&amp;limit=…]} —
+     * files whose path holds every term ({@link WorkspaceTree#find}), for the files pane's filter.
+     */
+    void handleProjectFind(HttpExchange exchange) throws IOException {
+        String q = exchange.getRequestURI().getRawQuery();
+        String projectId;
+        String dir;
+        String query;
+        int limit;
         try {
-            list = WorkspaceFileAccess.list(root);
-        } catch (IOException e) {
+            projectId = HttpQuery.queryParam(q, "project");
+            dir = HttpQuery.queryParam(q, "dir");
+            query = HttpQuery.queryParam(q, "q");
+            limit = intParam(q, "limit");
+        } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
-                    exchange,
-                    500,
-                    JsonOut.object()
-                            .put("error", e.getMessage() == null ? "list failed" : e.getMessage())
-                            .toString());
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        List<Map<String, Object>> files = new ArrayList<>(list.files().size());
-        for (var f : list.files()) {
+        if (projectId == null || projectId.isBlank()) {
+            HttpResponses.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        Path root = checkoutRoot(exchange, projectId, dir);
+        if (root == null) return;
+        WorkspaceTree.Matches found = WorkspaceTree.find(root, query == null ? "" : query, limit);
+        List<Map<String, Object>> files = new ArrayList<>(found.files().size());
+        for (WorkspaceTree.Found f : found.files()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("path", f.path());
             row.put("lang", f.lang());
@@ -325,15 +388,29 @@ final class HttpProjectApi {
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("projectId", projectId);
-        body.put("dir", list.root().toString());
-        body.put("truncated", list.truncated());
+        body.put("dir", found.root().toString());
+        body.put("more", found.more());
+        body.put("partial", found.partial());
         body.put("files", files);
         HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
     }
 
+    /** A non-negative integer query parameter; 0 when absent, which the callee reads as its default. */
+    private static int intParam(@Nullable String rawQuery, String name) {
+        String v = HttpQuery.queryParam(rawQuery, name);
+        if (v == null || v.isBlank()) return 0;
+        try {
+            int n = Integer.parseInt(v.trim());
+            if (n < 0) throw new IllegalArgumentException("\"" + name + "\" must not be negative");
+            return n;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("\"" + name + "\" is not a number");
+        }
+    }
+
     /**
      * {@code GET /api/project/file?project=&lt;id&gt;&amp;path=&lt;rel&gt;[&amp;dir=…]} — UTF-8
-     * source body for one allow-listed path, in the checkout {@link #checkoutRoot} selects.
+     * source body for one servable path, in the checkout {@link #checkoutRoot} selects.
      */
     void handleProjectFile(HttpExchange exchange) throws IOException {
         String projectId;
@@ -409,7 +486,7 @@ final class HttpProjectApi {
 
     /**
      * {@code GET /api/project/file/raw?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — raw bytes of one
-     * allow-listed file (images for the Preview pane). Same sandbox as the JSON body endpoint.
+     * servable file (images for the Preview pane). Same sandbox as the JSON body endpoint.
      * Clients must {@code fetch} with the bearer token and build a blob URL — a bare
      * {@code <img src>} cannot send Authorization.
      */

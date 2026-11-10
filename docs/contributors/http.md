@@ -218,48 +218,66 @@ The default scope set is defined once — `DependencyTreeStyle.defaultScopeOrder
 `runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
 both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
-### `GET /api/project/files`
+### `GET /api/project/dir`
 
-`GET /api/project/files?project=<id>[&dir=<abs-path>]`
+`GET /api/project/dir?project=<id>[&dir=<abs-path>][&path=<rel>][&cursor=<c>][&limit=<n>]`
 
-Allow-listed source paths under one of the id's live checkouts (`WorkspaceFileAccess.resolveRoot`,
-over `ProjectIdentity.checkoutsForId`). One live checkout is implied; when the id has several,
-`dir=` is **required** and must be one of them — a request without it is a structured **400**
-`{ error, projectId, checkouts: [{ dir, lastBuilt }] }`, never a guess. `dir=` never widens the
-sandbox: a tree that merely contains a `jk.toml` is a **404**.
+One page of one directory under one of the id's live checkouts (`WorkspaceFileAccess.resolveRoot`,
+over `ProjectIdentity.checkoutsForId`); `path` is blank for the checkout root. One live checkout is
+implied; when the id has several, `dir=` is **required** and must be one of them — a request
+without it is a structured **400** `{ error, projectId, checkouts: [{ dir, lastBuilt }] }`, never
+a guess. `dir=` never widens the sandbox: a tree that merely contains a `jk.toml` is a **404**.
 
-Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is workspace-relative
-with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `scala` / `toml` / `xml` / `yaml` /
-`json` / `sql` / `properties` / `shell` / `markdown` / `mermaid` / `graphviz` / `asciidoc` / `d2` /
-`image` (plus the usual source extensions). Hidden
-segments, `node_modules`, module-root `build`/`out`, and unknown extensions are omitted.
-JumpKick's own `target/` is included when present (allow-listed files only — e.g. reports and
-diagrams; `.class` and other unknown extensions stay out). The walk is breadth-first, capped at
-5000 files and 32 directory levels, so truncation drops the deepest paths first; the
-workspace-root `jk.toml` is always included when it exists.
-In-root directory symlinks are walked (once — cycles are guarded by real path); links whose
-target escapes the workspace are omitted, matching the read endpoints. Entries are sorted by
-path; `truncated: true` means more remain (file cap or depth cap — deeper files stay readable
-via `GET /api/project/file`).
+Response: `{ projectId, dir, path, total, next, partial, entries: [{ name, path, dir, lang?,
+output?, empty? }] }`. Folders come first, then files, each side ordered case-insensitively. A
+folder holding exactly one entry that is itself a folder is **folded** into its parent's row, up
+to 16 levels: `name` is `main/java/cc/jumpkick`, `path` the deepest folder, which is what the next
+request asks for. `lang` names a file's language (below); `output` marks a module's build output
+(`target/`, module-root `build/` and `out/`), listed rather than hidden; `empty` marks a folder with
+nothing to show. A page holds at most `limit` entries (default 500, at most 1000); `next` is the
+cursor of the following page, or null on the last; `total` counts the whole directory. A directory
+past 50 000 entries is read that far and says `partial: true`.
 
-Errors: missing `project` → **400**; several live checkouts and no `dir` → **400** with the
-`checkouts` list; unknown id, no live checkout, or a `dir` the id does not record → **404**.
-Token-gated.
+Every entry is shown except hidden names (a leading `.`), `node_modules`, and key material:
+`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*.kdbx`, `*.ppk` and SSH private keys
+(`id_rsa`, `id_ed25519`, …; their `.pub` halves are shown). In-root symlinks count as what they
+point at; links whose target escapes the checkout are omitted, matching the read endpoints.
+
+`lang` is the language the dashboard highlights the file in, by role-named file (`Dockerfile`,
+`Jenkinsfile`), else by extension (`java`, `kotlin`, `groovy` for `.gradle`, `xml`, `yaml`,
+`javascript`, `typescript`, `css`, `html`, `markdown`, `mermaid`, …), else `text`. `image` and
+`binary` (`.class`, `.jar`, archives, native libraries, fonts, media) are files that are never
+read as text.
+
+Errors: missing `project`, an illegal `path` or `cursor`, or a negative or non-numeric `limit` →
+**400**; several live checkouts and no `dir` → **400** with the `checkouts` list; unknown id, no
+live checkout, a `dir` the id does not record, or a `path` that is hidden, missing or not a
+directory → **404**. Token-gated.
+
+### `GET /api/project/find`
+
+`GET /api/project/find?project=<id>&q=<terms>[&dir=<abs-path>][&limit=<n>]`
+
+Files whose checkout-relative path contains every space-separated term of `q`, case-insensitively,
+for the files pane's filter. Same sandbox and same shown entries as `dir`. Breadth-first, sources
+before build output; files whose own name matches rank above those that match by a folder.
+Response: `{ projectId, dir, more, partial, files: [{ path, lang }] }`, at most `limit` files
+(default 200, at most 1000); `more` says further matches exist, `partial` that the walk stopped at
+200 000 entries or 3 s. Token-gated.
 
 ### `GET /api/project/file`
 
 `GET /api/project/file?project=<id>&path=<rel>[&dir=<abs-path>]`
 
-UTF-8 body of one allow-listed file. `path` is workspace-relative (`src%2FMain.java`). Same
-sandbox as the list: the id's checkout (`dir=` selects among several), real-path containment,
-shared allow-list. Hidden / output / unsupported paths are **404** (existence is not
-distinguishable).
+UTF-8 body of one file. `path` is workspace-relative (`src%2FMain.java`). Same sandbox as the
+tree: the id's checkout (`dir=` selects among several), real-path containment, and the same hidden
+and key-material paths refused as **404** (existence is not distinguishable).
 
 Response: `{ projectId, dir, path, lang, bytes, lines, encoding, etag, content }`. `encoding` is
 `utf-8`, or `iso-8859-1` when the bytes were not valid UTF-8 (the pane labels the fallback
 instead of silently substituting U+FFFD). `etag` is the SHA-256 hex of the on-disk bytes
-(optimistic concurrency for PUT). Image allow-list entries (`lang: image`) are **415**
-here — use the raw endpoint below.
+(optimistic concurrency for PUT). Images and known binaries (`lang: image` / `binary`) are **415**
+here without reading their bytes, and so is any file with a NUL byte — use the raw endpoint below.
 
 | Status | When |
 | --- | --- |
@@ -274,8 +292,8 @@ here — use the raw endpoint below.
 
 `GET /api/project/file/raw?project=<id>&path=<rel>[&dir=<abs-path>]`
 
-Raw bytes of one allow-listed file with a suitable `Content-Type` (images for the dashboard
-Preview pane). Same sandbox as the JSON body endpoint. Clients must `fetch` with the bearer
+Raw bytes of one file, with the image's `Content-Type` or `application/octet-stream` (images for
+the dashboard Preview pane). Same sandbox as the JSON body endpoint. Clients must `fetch` with the bearer
 token and build a blob URL — a bare `<img src>` cannot send `Authorization`.
 
 | Status | When |
@@ -296,8 +314,8 @@ bytes, so a save cannot land in a sibling worktree.
 fallback) so a save re-encodes to the original charset instead of transcoding; content no
 longer representable in the declared charset → **400**.
 
-Replace a **text-servable** file under the selected checkout (atomic temp+move). Images and
-non-servable paths are not writable. Body size is capped near 1 MiB of content (not the smaller
+Replace a **text** file under the selected checkout (atomic temp+move). Images, known binaries
+and refused paths are not writable. Body size is capped near 1 MiB of content (not the smaller
 global 64 KiB mutation limit used for build/cancel).
 
 When `etag` is present it must match the current on-disk SHA-256 (from GET). Mismatch → **409**

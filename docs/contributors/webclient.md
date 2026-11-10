@@ -132,8 +132,7 @@ episode and build number) for the outcome chip, the failing headline and the del
 `edited N files` line goes before every run whose `delta.files` is not empty. Each of its paths is
 a link that opens `<file-viewer>`: the file's current content from `GET /api/project/file` for the
 run's project and checkout, in read-only Monaco, or as plain text past `canHighlight`. A file the
-edit deleted (`(gone)`) and a type the file API does not serve (`langFromPath` is null) stay plain
-text. The live build is
+edit deleted (`(gone)`) stays plain text; a binary one opens to a message saying so. The live build is
 `strip.js`: `doingSegments` (`doingLine` is its plain text, the hover tip), `moduleCells` (padded
 with waiting cells to the record's `moduleCount`) and the card's own progress and ETA (`cards.js`).
 The live line keeps the CLI's detail colours (`detailSegments`: the class gold, the method purple)
@@ -338,16 +337,27 @@ centred *Select a file from the tree.* empty state instead.
 
 The tree pane itself is GitHub-shaped: collapsible folders (chevron + `folder`/`folder-open`
 glyph) above files (generic `file` glyph), directories before files at every level, names sorted
-case-insensitively. `buildFileTree` **compacts single-child directory chains** into one row
-(`main/java/cc/jumpkick`) so a Java source file is a few rows deep instead of a dozen; a compacted
-node keys off its deepest path, which is what `ancestorDirs` yields for files under it. Folders are
-closed by default, except the ancestors of the open file — so a `?line=` deep link or a fail-report
-jump lands with its file revealed and selected. `visibleRows` flattens only the open parts, so the
-whole tree is one non-recursive `v-for` (up to 5000 paths, no recursive components). Typing in the filter
-box switches to a **flat list of matching full paths** — the tree is for browsing, the filter
-answers like GitHub's file finder; every row carries its full path as a `data-tip`.
+case-insensitively. It never holds the whole checkout. The engine answers one folder at a time
+(`GET /api/project/dir`, 500 entries a page), already folding **single-child directory chains**
+into one row (`main/java/cc/jumpkick`) so a Java source file is a few rows deep instead of a
+dozen; a folded row keys off its deepest path. The pane keeps a map of the folders it has loaded
+(`dirs`, `''` the root): opening a folder fetches it, closing one drops it and everything loaded
+below (`dropSubtree`), so what is held is bounded by what is open, and a folder past one page ends
+in a *Show N more* row. Folders are closed by default, except the ancestors of the open file:
+`reveal` loads each folder on the way down (further pages too, until the next step shows up) so a
+`?line=` deep link or a fail-report jump lands with its file revealed, selected and scrolled into
+view.
 
-The pane lists `GET /api/project/files`, reads `GET /api/project/file`, writes
+`treeRows` flattens the open parts into rows and the list is **virtual**: rows are a fixed
+`ROW_HEIGHT` (24 px), the scroller is as tall as all of them, and `visibleWindow` draws only the
+rows in the viewport plus `OVERSCAN` either side, so a 20 000-entry folder or a fully opened
+monorepo keeps a few dozen buttons in the DOM. Build output and files that are not text (`output`,
+`lang: image|binary`) are listed, dimmed. Typing in the filter box asks `GET /api/project/find`
+(debounced 200 ms, an older answer dropped) and switches to a **flat list of matching full
+paths** — the tree is for browsing, the filter answers like GitHub's file finder; every row carries
+its full path as a `data-tip`.
+
+The pane lists `GET /api/project/dir`, finds through `GET /api/project/find`, reads `GET /api/project/file`, writes
 `PUT /api/project/file`, and loads image Preview via `GET /api/project/file/raw` (see
 [http.md](http.md)).
 

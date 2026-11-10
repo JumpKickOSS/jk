@@ -2020,10 +2020,20 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 }
 .code-tree {
   border-right: 1px solid var(--bd);
-  overflow: auto;
-  padding: 8px 0 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 0 0;
   background: var(--s1);
 }
+.code-tree > p { flex: none; margin: 4px 10px; }
+/* The virtual list (tree.js): the scroller is as tall as every row, and only the rows in view are
+ * drawn, pushed down to where they belong. Rows are a fixed ROW_HEIGHT so the arithmetic holds. */
+.code-tree-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 12px; }
+.code-tree-sizer { position: relative; }
+.code-tree-slice { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+.code-tree-foot { flex: none; margin: 0; padding: 6px 10px; border-top: 1px solid var(--bd2); }
 /* Editor column: tab strip + pane. The open-file tab sits on the strip and merges into the pane. */
 .code-main {
   display: flex;
@@ -2133,6 +2143,8 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   display: flex;
   align-items: center;
   gap: 5px;
+  box-sizing: border-box;
+  height: 24px; /* tree.js ROW_HEIGHT */
   width: 100%;
   text-align: left;
   background: none;
@@ -2153,6 +2165,14 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .code-row.dir .code-glyph { color: var(--cg); }
 .code-row.on .code-glyph { color: var(--cn); }
 .code-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Build output and files that are not text stay in the tree, quieter. */
+.code-row.out .code-name, .code-row.bin .code-name { color: var(--mu); }
+.code-row.out.dir .code-glyph { color: var(--mu); }
+.code-row-more { color: var(--cn); }
+.code-row-more:disabled { color: var(--mu); cursor: default; }
+.code-row-note { color: var(--mu); cursor: default; }
+.code-row-note.error { color: var(--err); }
+.code-row-note:hover { background: none; }
 /* Same token the editor's theme override reads (consoleBackground in code.js) — the pane already
  * shows the final canvas while Monaco is still loading.
  * flex:1 fills .code-main under the tab strip; without it the editor stays content-height (~Monaco's

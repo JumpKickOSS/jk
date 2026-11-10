@@ -278,7 +278,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(noToken.statusCode()).isEqualTo(401);
 
-            HttpResponse<String> missing = get("/api/project/files");
+            HttpResponse<String> missing = get("/api/project/dir");
             assertThat(missing.statusCode()).isEqualTo(400);
             assertThat(missing.body()).contains("missing");
 
@@ -286,43 +286,53 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
             assertThat(dirOnly.statusCode()).isEqualTo(400);
             assertThat(dirOnly.body()).contains("missing");
 
-            HttpResponse<String> unknown = get("/api/project/files?project=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
+            HttpResponse<String> unknown = get("/api/project/dir?project=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
             assertThat(unknown.statusCode()).isEqualTo(404);
         });
     }
 
     @Test
-    void api_project_files_lists_sources_and_target_but_never_build_or_dotfiles() throws Exception {
+    void api_project_dir_lists_one_directory_with_output_marked_and_dotfiles_hidden() throws Exception {
         withScopedCheckout("file-list-state", "src-list", c -> {
             Path checkout = c.checkout();
             Files.createDirectories(checkout.resolve("target"));
             Files.createDirectories(checkout.resolve("build"));
             Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
             Files.writeString(checkout.resolve("target/report.md"), "# report\n");
-            Files.writeString(checkout.resolve("build/Skip.java"), "class Skip {}");
+            Files.writeString(checkout.resolve("build/Out.java"), "class Out {}");
             Files.writeString(checkout.resolve(".env"), "SECRET=1");
+            Files.writeString(checkout.resolve("notes.txt"), "plain\n");
 
-            HttpResponse<String> listed = get("/api/project/files?project=" + c.id());
-            assertThat(listed.statusCode()).isEqualTo(200);
-            assertThat(listed.body())
-                    .contains("\"path\":\"src/Main.java\"")
-                    .contains("\"lang\":\"java\"")
+            HttpResponse<String> top = get("/api/project/dir?project=" + c.id());
+            assertThat(top.statusCode()).isEqualTo(200);
+            assertThat(top.body())
+                    .contains("\"path\":\"\"")
+                    .contains("\"name\":\"src\"")
                     .contains("\"path\":\"jk.toml\"")
-                    .contains("target/Gen.java")
-                    .contains("target/report.md")
-                    .doesNotContain("build/Skip.java")
-                    .doesNotContain(".env");
+                    .contains("\"path\":\"notes.txt\",\"dir\":false,\"lang\":\"text\"")
+                    .contains("\"name\":\"target\",\"path\":\"target\",\"dir\":true,\"output\":true")
+                    .contains("\"next\":null")
+                    .doesNotContain(".env")
+                    .doesNotContain("Main.java");
 
-            HttpResponse<String> file = get("/api/project/file?project=" + c.id() + "&path=src%2FMain.java");
-            assertThat(file.statusCode()).isEqualTo(200);
-            assertThat(file.body()).contains("class Main").contains("\"lang\":\"java\"");
+            HttpResponse<String> src = get("/api/project/dir?project=" + c.id() + "&path=src");
+            assertThat(src.statusCode()).isEqualTo(200);
+            assertThat(src.body()).contains("\"path\":\"src/Main.java\"").contains("\"lang\":\"java\"");
 
-            assertThat(get("/api/project/file?project=" + c.id() + "&path=target%2FGen.java")
+            HttpResponse<String> paged = get("/api/project/dir?project=" + c.id() + "&limit=1");
+            assertThat(paged.body()).contains("\"next\":\"1\"");
+            assertThat(get("/api/project/dir?project=" + c.id() + "&limit=x").statusCode())
+                    .isEqualTo(400);
+            assertThat(get("/api/project/dir?project=" + c.id() + "&path=.git").statusCode())
+                    .isEqualTo(404);
+
+            HttpResponse<String> found = get("/api/project/find?project=" + c.id() + "&q=gen");
+            assertThat(found.statusCode()).isEqualTo(200);
+            assertThat(found.body()).contains("\"path\":\"target/Gen.java\"").contains("\"more\":false");
+
+            assertThat(get("/api/project/file?project=" + c.id() + "&path=build%2FOut.java")
                             .statusCode())
                     .isEqualTo(200);
-            assertThat(get("/api/project/file?project=" + c.id() + "&path=build%2FSkip.java")
-                            .statusCode())
-                    .isEqualTo(404);
             assertThat(get("/api/project/file?project=" + c.id() + "&path=.env").statusCode())
                     .isEqualTo(404);
             assertThat(get("/api/project/file?project=" + c.id() + "&path=../jk.toml")
@@ -348,7 +358,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
             Files.createDirectories(checkout.resolve("docs"));
             Files.write(checkout.resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0});
             Files.writeString(checkout.resolve("docs/flow.mmd"), "graph TD; A-->B\n");
-            assertThat(get("/api/project/files?project=" + c.id()).body())
+            assertThat(get("/api/project/dir?project=" + c.id() + "&path=docs").body())
                     .contains("docs/logo.png")
                     .contains("docs/flow.mmd");
             HttpResponse<String> imgJson = get("/api/project/file?project=" + c.id() + "&path=docs%2Flogo.png");
@@ -427,16 +437,16 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         assertThat(Jsonl.topStr(card.body(), "dir")).isEqualTo(b.toString());
         assertThat(card.body()).contains("\"coord\":\"g:n\"").contains("\"checkouts\":[");
 
-        HttpResponse<String> files = get("/api/project/files?project=" + id);
+        HttpResponse<String> files = get("/api/project/dir?project=" + id);
         assertThat(files.statusCode()).isEqualTo(400);
         assertThat(files.body())
                 .contains("2 live checkouts")
                 .contains("\"checkouts\":[")
                 .contains(json(a));
-        assertThat(get("/api/project/files?project=" + id + "&dir=" + encDir(b)).statusCode())
+        assertThat(get("/api/project/dir?project=" + id + "&dir=" + encDir(b)).statusCode())
                 .isEqualTo(200);
         HttpResponse<String> stranger =
-                get("/api/project/files?project=" + id + "&dir=" + encDir(stateDir.resolve("two-checkouts-state")));
+                get("/api/project/dir?project=" + id + "&dir=" + encDir(stateDir.resolve("two-checkouts-state")));
         assertThat(stranger.statusCode()).isEqualTo(404);
         assertThat(stranger.body()).contains("not a live checkout");
 
@@ -475,7 +485,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         PathUtil.deleteRecursively(a);
         assertThat(Jsonl.topStr(get("/api/project?project=" + id).body(), "dir"))
                 .isEqualTo(b.toString());
-        assertThat(get("/api/project/files?project=" + id).statusCode()).isEqualTo(200);
+        assertThat(get("/api/project/dir?project=" + id).statusCode()).isEqualTo(200);
     }
 
     /** A checkout whose manifest pins {@code id}, recorded in the id's identity file. */

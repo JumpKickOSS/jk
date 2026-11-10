@@ -466,13 +466,13 @@ test('a painted action or decision frame leaves a jk-console-event mark saying w
   }
 });
 
-test("an edit line's deleted file, and a type the file view does not serve, are not links", () => {
+test("an edit line's deleted file is not a link; any other path is, whatever its type", () => {
   const delta = { files: { count: 3, shown: ['web/app.js', 'core/Gone.java (gone)', 'core/Fee.java (new)'] } };
   const items = episodeTimeline(ep(), { actions: [runAction(1, 1067, 'green')], records: [run({ buildNumber: 1067, delta })], session: claude(), current: true });
   assert.deepEqual(
     items[0].files.map((f) => [f.path, f.mark, f.viewable]),
     [
-      ['web/app.js', '', false],
+      ['web/app.js', '', true],
       ['core/Gone.java', 'gone', false],
       ['core/Fee.java', 'new', true],
     ],

@@ -54,10 +54,10 @@ export function themeDefinition(background) {
 }
 
 /**
- * Monaco language ids for the langs above. Monaco ships no Groovy, TOML, or Java properties
- * grammar, so those fall back to the closest one it has: Java (C-like), and ini (`[section]`,
- * `key = value`, `#` comments). Anything unknown tokenizes as plain text rather than handing
- * Monaco an unregistered id.
+ * Monaco language ids for the langs the engine names (WorkspaceFileAccess.langOf). Monaco ships no
+ * Groovy, TOML, or Java properties grammar, so those fall back to the closest one it has: Java
+ * (C-like), and ini (`[section]`, `key = value`, `#` comments). `text`, `csv`, `tsv`, `binary` and
+ * anything unknown tokenize as plain text rather than handing Monaco an unregistered id.
  */
 const MONACO_LANG = {
   java: 'java',
@@ -70,13 +70,28 @@ const MONACO_LANG = {
   json: 'json',
   sql: 'sql',
   properties: 'ini',
+  ini: 'ini',
   shell: 'shell',
+  bat: 'bat',
+  powershell: 'powershell',
+  javascript: 'javascript',
+  typescript: 'typescript',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
+  html: 'html',
+  protobuf: 'proto',
+  graphql: 'graphql',
+  python: 'python',
+  ruby: 'ruby',
+  go: 'go',
+  rust: 'rust',
+  c: 'c',
+  cpp: 'cpp',
+  csharp: 'csharp',
+  swift: 'swift',
+  dockerfile: 'dockerfile',
   markdown: 'markdown',
-  mermaid: 'plaintext',
-  graphviz: 'plaintext',
-  asciidoc: 'plaintext',
-  d2: 'plaintext',
-  image: 'plaintext',
 };
 
 /**
@@ -89,7 +104,7 @@ export function hoverMessage(msg) {
   return { value: '```text\n' + t.replace(/```/g, "'''") + '\n```' };
 }
 
-/** Server lang (or {@link langFromPath}) → a language id Monaco actually has registered. */
+/** The engine's lang → a language id Monaco actually has registered. */
 export function monacoLang(lang) {
   return MONACO_LANG[String(lang || '')] || 'plaintext';
 }

@@ -14,12 +14,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,34 +22,83 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Identity-scoped source-tree access for the dashboard {@code #project/<id>/files} viewer. List
- * and read share one {@link #servable} predicate; the sandbox root is one of the checkouts
- * {@code identity.toml} records for the id ({@link #resolveRoot}), never a caller-supplied tree.
+ * Identity-scoped source-tree access for the dashboard {@code #project/<id>/files} viewer: one
+ * file read, raw read and write. {@link WorkspaceTree} lists directories and finds paths over the
+ * same {@link #servable} predicate. The sandbox root is one of the checkouts {@code identity.toml}
+ * records for the id ({@link #resolveRoot}), never a caller-supplied tree.
+ *
+ * <p>Every regular file is servable except hidden entries, {@code node_modules} and key material
+ * ({@link #isKeyMaterial}). The extension map names a language for highlighting and Preview, and
+ * says which files are images or known binaries; it does not decide what is served. A read decides
+ * text from the bytes: a NUL is {@link ReadResult.Binary}.
  */
 final class WorkspaceFileAccess {
 
     static final int MAX_FILE_BYTES = 1024 * 1024;
-    static final int MAX_LIST_FILES = 5000;
-    static final int MAX_WALK_DEPTH = 32;
+
+    /** The language of a file nothing names: highlighted as plain text, written as text. */
+    static final String TEXT = "text";
+
+    /** A known binary format: listed, never read as text or written. */
+    static final String BINARY = "binary";
 
     private static final Map<String, String> LANG_BY_EXT = Map.ofEntries(
             Map.entry(".java", "java"),
             Map.entry(".kt", "kotlin"),
             Map.entry(".kts", "kotlin"),
             Map.entry(".groovy", "groovy"),
+            Map.entry(".gradle", "groovy"),
             Map.entry(".scala", "scala"),
             Map.entry(".sc", "scala"),
             Map.entry(".toml", "toml"),
             Map.entry(".xml", "xml"),
+            Map.entry(".xsd", "xml"),
+            Map.entry(".xsl", "xml"),
+            Map.entry(".xslt", "xml"),
+            Map.entry(".wsdl", "xml"),
             Map.entry(".yaml", "yaml"),
             Map.entry(".yml", "yaml"),
             Map.entry(".json", "json"),
             Map.entry(".jsonl", "json"),
             Map.entry(".sql", "sql"),
             Map.entry(".properties", "properties"),
+            Map.entry(".ini", "ini"),
+            Map.entry(".cfg", "ini"),
+            Map.entry(".conf", "ini"),
             Map.entry(".sh", "shell"),
             Map.entry(".bash", "shell"),
             Map.entry(".zsh", "shell"),
+            Map.entry(".bat", "bat"),
+            Map.entry(".cmd", "bat"),
+            Map.entry(".ps1", "powershell"),
+            Map.entry(".js", "javascript"),
+            Map.entry(".mjs", "javascript"),
+            Map.entry(".cjs", "javascript"),
+            Map.entry(".jsx", "javascript"),
+            Map.entry(".ts", "typescript"),
+            Map.entry(".mts", "typescript"),
+            Map.entry(".cts", "typescript"),
+            Map.entry(".tsx", "typescript"),
+            Map.entry(".css", "css"),
+            Map.entry(".scss", "scss"),
+            Map.entry(".less", "less"),
+            Map.entry(".html", "html"),
+            Map.entry(".htm", "html"),
+            Map.entry(".proto", "protobuf"),
+            Map.entry(".graphql", "graphql"),
+            Map.entry(".gql", "graphql"),
+            Map.entry(".py", "python"),
+            Map.entry(".rb", "ruby"),
+            Map.entry(".go", "go"),
+            Map.entry(".rs", "rust"),
+            Map.entry(".c", "c"),
+            Map.entry(".h", "c"),
+            Map.entry(".cpp", "cpp"),
+            Map.entry(".hpp", "cpp"),
+            Map.entry(".cs", "csharp"),
+            Map.entry(".swift", "swift"),
+            Map.entry(".csv", "csv"),
+            Map.entry(".tsv", "tsv"),
             Map.entry(".md", "markdown"),
             Map.entry(".markdown", "markdown"),
             // Preview-oriented text (dashboard Preview pane; still UTF-8 sources).
@@ -65,7 +109,7 @@ final class WorkspaceFileAccess {
             Map.entry(".adoc", "asciidoc"),
             Map.entry(".asciidoc", "asciidoc"),
             Map.entry(".d2", "d2"),
-            // Binary image kinds — listable + raw-readable; not text-writable.
+            // Images: listed, raw-readable for Preview, not text.
             Map.entry(".png", "image"),
             Map.entry(".jpg", "image"),
             Map.entry(".jpeg", "image"),
@@ -75,6 +119,30 @@ final class WorkspaceFileAccess {
             Map.entry(".svg", "image"),
             Map.entry(".bmp", "image"),
             Map.entry(".avif", "image"));
+
+    /** Files named for their role rather than their format. Lower-cased. */
+    private static final Map<String, String> LANG_BY_NAME = Map.of(
+            "dockerfile", "dockerfile",
+            "containerfile", "dockerfile",
+            "jenkinsfile", "groovy",
+            "gemfile", "ruby",
+            "vagrantfile", "ruby");
+
+    /** Formats that are never text: listed so the tree is complete, refused as text before a read. */
+    private static final Set<String> BINARY_EXT = Set.of(
+            ".class", ".jar", ".war", ".ear", ".jmod", ".zip", ".gz", ".tgz", ".bz2", ".xz", ".zst", ".7z", ".tar",
+            ".so", ".dylib", ".dll", ".exe", ".o", ".a", ".lib", ".obj", ".bin", ".pdf", ".woff", ".woff2", ".ttf",
+            ".otf", ".eot", ".mp3", ".mp4", ".mov", ".wav", ".ogg", ".webm", ".db", ".sqlite", ".hprof", ".jfr", ".pyc",
+            ".dat");
+
+    /**
+     * Key material: private keys and keystores. Never listed, read or written, whatever the token
+     * may otherwise reach; a key file has no business on a dashboard.
+     */
+    private static final Set<String> KEY_EXT =
+            Set.of(".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".kdbx", ".ppk");
+
+    private static final List<String> KEY_NAME_PREFIXES = List.of("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519");
 
     private static final Map<String, String> IMAGE_CONTENT_TYPE = Map.ofEntries(
             Map.entry(".png", "image/png"),
@@ -86,10 +154,6 @@ final class WorkspaceFileAccess {
             Map.entry(".svg", "image/svg+xml"),
             Map.entry(".bmp", "image/bmp"),
             Map.entry(".avif", "image/avif"));
-
-    record ListedFile(String path, @Nullable String lang) {}
-
-    record FileList(Path root, List<ListedFile> files, boolean truncated) {}
 
     /**
      * {@code encoding} is {@code utf-8}, or {@code iso-8859-1} when the bytes were not valid UTF-8
@@ -198,20 +262,48 @@ final class WorkspaceFileAccess {
         return String.join("/", segs);
     }
 
-    static @Nullable String langOf(String filename) {
+    /**
+     * The language a file is shown in: by name for role-named files ({@code Dockerfile}), else by
+     * extension, else {@link #TEXT}; {@link #BINARY} for a known binary format. Never null.
+     */
+    static String langOf(String filename) {
         String lower = filename.toLowerCase(Locale.ROOT);
-        int dot = lower.lastIndexOf('.');
-        if (dot < 0) return null;
-        return LANG_BY_EXT.get(lower.substring(dot));
+        String byName = LANG_BY_NAME.get(lower);
+        if (byName != null) return byName;
+        String ext = extension(lower);
+        if (ext == null) return TEXT;
+        if (BINARY_EXT.contains(ext)) return BINARY;
+        return LANG_BY_EXT.getOrDefault(ext, TEXT);
+    }
+
+    private static @Nullable String extension(String lowerName) {
+        int dot = lowerName.lastIndexOf('.');
+        return dot <= 0 ? null : lowerName.substring(dot);
     }
 
     static boolean isImageLang(@Nullable String lang) {
         return "image".equals(lang);
     }
 
+    /** Whether a file of this language can be text: not an image, not a known binary. */
+    static boolean isTextLang(@Nullable String lang) {
+        return lang != null && !isImageLang(lang) && !BINARY.equals(lang);
+    }
+
     /** Text sources the dashboard may write back via {@code PUT /api/project/file}. */
     static boolean isTextWritable(@Nullable String lang) {
-        return lang != null && !isImageLang(lang);
+        return isTextLang(lang);
+    }
+
+    /** A private key or keystore, by extension or by the SSH key names. */
+    static boolean isKeyMaterial(String filename) {
+        String lower = filename.toLowerCase(Locale.ROOT);
+        String ext = extension(lower);
+        if (ext != null && KEY_EXT.contains(ext)) return true;
+        for (String prefix : KEY_NAME_PREFIXES) {
+            if (lower.startsWith(prefix) && !lower.endsWith(".pub")) return true;
+        }
+        return false;
     }
 
     static @Nullable String imageContentType(String filename) {
@@ -229,147 +321,25 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Gradle/Mill-style output dir of a module root — not a reserved path segment. JumpKick's
-     * own {@code target/} is listable (reports, diagrams, and other allow-listed artifacts). A
-     * workspace member named {@code build/} that contains {@code jk.toml} is itself a module root
-     * and is not skipped.
+     * Gradle/Mill-style output dir of a module root — not a reserved path segment. Listed and
+     * read like any other directory; the tree marks it as output. A workspace member named {@code
+     * build/} that contains {@code jk.toml} is itself a module root, not output.
      */
-    static boolean isSkippedOutputDir(Path dir) {
+    static boolean isBuildOutputDir(Path dir) {
         Path name = dir.getFileName();
         if (name == null) return false;
         String n = name.toString();
-        // target/ is JumpKick's module output and often holds viewable .md / .mmd / etc.
         if (!n.equals("build") && !n.equals("out")) return false;
         Path parent = dir.getParent();
         if (parent == null) return false;
         return isModuleRoot(parent) && !isModuleRoot(dir);
     }
 
-    /** Shared by list and read — hidden / output / unknown extension are not distinguishable. */
-    static boolean servable(Path root, String rel) {
-        String[] segs = rel.split("/", -1);
-        if (segs.length == 0) return false;
-        for (String s : segs) {
-            if (s.startsWith(".")) return false;
-            if (s.equals("node_modules")) return false;
-        }
-        if (langOf(segs[segs.length - 1]) == null) return false;
-        Path ancestor = root;
-        for (int i = 0; i < segs.length - 1; i++) {
-            ancestor = ancestor.resolve(segs[i]);
-            if (isSkippedOutputDir(ancestor)) return false;
-        }
-        return true;
-    }
-
     /**
-     * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries. Truncation trims the
-     * deepest leaves, and {@code target/} output before any of them: generated files (test
-     * reports, generated sources) fill only the capacity hand-written sources leave over, so a
-     * report-heavy workspace cannot crowd them out of the cap. The workspace-root {@code jk.toml}
-     * is pre-seeded so the default-open contract survives any truncation. Prune rules match
-     * {@link #servable}; ancestors are pruned before descent.
+     * Module {@code target/} output. A workspace member named {@code target/} that is itself a
+     * module root is source, not output.
      */
-    static FileList list(Path root) throws IOException {
-        record Dir(Path path, boolean output) {}
-        Path absRoot = root.toAbsolutePath().normalize();
-        Path realRoot;
-        try {
-            realRoot = absRoot.toRealPath();
-        } catch (IOException e) {
-            realRoot = absRoot;
-        }
-        List<ListedFile> collected = new ArrayList<>();
-        List<ListedFile> outputFiles = new ArrayList<>();
-        boolean rootManifest = containedRegularFile(absRoot.resolve(ManifestPaths.MANIFEST), realRoot);
-        if (rootManifest) collected.add(new ListedFile(ManifestPaths.MANIFEST, langOf(ManifestPaths.MANIFEST)));
-        boolean truncated = false;
-        // Output overflow must not stop the walk — sources found later still list.
-        boolean outputOverflow = false;
-        // Real-path visited set: in-root directory symlinks are walked (list/read parity,
-        // ), and a link pointing at an ancestor would otherwise cycle the BFS.
-        Set<Path> visited = new HashSet<>();
-        visited.add(realRoot);
-        List<Dir> level = List.of(new Dir(absRoot, false));
-        for (int depth = 0; depth < MAX_WALK_DEPTH && !level.isEmpty() && !truncated; depth++) {
-            List<Dir> next = new ArrayList<>();
-            for (Dir dir : level) {
-                if (truncated) break;
-                try (var entries = Files.newDirectoryStream(dir.path())) {
-                    for (Path entry : entries) {
-                        Path name = entry.getFileName();
-                        String n = name == null ? "" : name.toString();
-                        if (n.startsWith(".") || n.equals("node_modules")) continue;
-                        BasicFileAttributes attrs;
-                        try {
-                            attrs = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-                        } catch (IOException unreadable) {
-                            continue;
-                        }
-                        if (attrs.isDirectory() || (attrs.isSymbolicLink() && Files.isDirectory(entry))) {
-                            // Symlinked dirs descend only when their target stays in root
-                            // (read() would reject their files otherwise) and only once.
-                            if (!isSkippedOutputDir(entry) && descendOnce(entry, realRoot, visited)) {
-                                next.add(new Dir(entry, dir.output() || isTargetOutputDir(entry)));
-                            }
-                            continue;
-                        }
-                        String lang = langOf(n);
-                        if (lang == null) continue;
-                        // list/read parity: read() rejects symlinks whose real path
-                        // escapes the root, so an escaping link must not appear in the tree only
-                        // to 404 on click. Only symlinks pay the real-path check.
-                        if (attrs.isSymbolicLink()) {
-                            try {
-                                if (!Files.isRegularFile(entry)
-                                        || !entry.toRealPath().startsWith(absRoot.toRealPath())) {
-                                    continue;
-                                }
-                            } catch (IOException broken) {
-                                continue;
-                            }
-                        }
-                        String posix = absRoot.relativize(entry).toString().replace('\\', '/');
-                        if (rootManifest && posix.equals(ManifestPaths.MANIFEST)) continue; // pre-seeded
-                        if (dir.output()) {
-                            // Overflow past the cap can never be listed — drop, and flag.
-                            if (outputFiles.size() < MAX_LIST_FILES) {
-                                outputFiles.add(new ListedFile(posix, lang));
-                            } else {
-                                outputOverflow = true;
-                            }
-                            continue;
-                        }
-                        if (collected.size() >= MAX_LIST_FILES) {
-                            truncated = true;
-                            break;
-                        }
-                        collected.add(new ListedFile(posix, lang));
-                    }
-                } catch (IOException unreadable) {
-                    // skip unreadable dirs, keep walking the rest of the level
-                }
-            }
-            level = next;
-        }
-        // The depth cap is truncation too: files below it are readable via deep link but
-        // invisible here, so the UI must get its hint. Conservative — the unvisited
-        // dirs may hold nothing servable.
-        if (!level.isEmpty()) truncated = true;
-        int leftover = MAX_LIST_FILES - collected.size();
-        if (outputOverflow || outputFiles.size() > leftover) truncated = true;
-        // BFS order — the leftover slice keeps the shallowest output files, like the main trim.
-        collected.addAll(outputFiles.subList(0, Math.min(leftover, outputFiles.size())));
-        collected.sort(Comparator.comparing(ListedFile::path));
-        return new FileList(absRoot, List.copyOf(collected), truncated);
-    }
-
-    /**
-     * Module {@code target/} output — listable, but it fills the cap only after every non-output
-     * file. A workspace member named {@code target/} that is itself a module root is source, not
-     * output.
-     */
-    private static boolean isTargetOutputDir(Path dir) {
+    static boolean isTargetOutputDir(Path dir) {
         Path name = dir.getFileName();
         if (name == null || !name.toString().equals(BuildLayout.TARGET)) return false;
         Path parent = dir.getParent();
@@ -377,38 +347,27 @@ final class WorkspaceFileAccess {
         return isModuleRoot(parent) && !isModuleRoot(dir);
     }
 
-    /**
-     * Pre-seed containment: the root manifest gets the same NOFOLLOW + real-path check the BFS
-     * applies to every other entry, so a symlinked-out {@code jk.toml} is not listed only to 404
-     * on read. An in-root symlinked manifest still pre-seeds.
-     */
-    private static boolean containedRegularFile(Path file, Path realRoot) {
-        BasicFileAttributes attrs;
-        try {
-            attrs = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        } catch (IOException absent) {
-            return false;
-        }
-        if (attrs.isRegularFile()) return true;
-        if (!attrs.isSymbolicLink()) return false;
-        try {
-            return Files.isRegularFile(file) && file.toRealPath().startsWith(realRoot);
-        } catch (IOException broken) {
-            return false;
-        }
+    /** A module's build output, JumpKick's {@code target/} or a Gradle-style {@code build/} / {@code out/}. */
+    static boolean isOutputDir(Path dir) {
+        return isTargetOutputDir(dir) || isBuildOutputDir(dir);
+    }
+
+    /** Whether a directory entry's name is ever shown: not hidden, not {@code node_modules}. */
+    static boolean visibleName(String name) {
+        return !name.isEmpty() && !name.startsWith(".") && !name.equals("node_modules");
     }
 
     /**
-     * True when {@code dir} should be entered: its real path stays under {@code realRoot} and has
-     * not been walked yet this listing (symlink cycles / diamonds visit a tree once).
+     * Shared by the tree, find, read and write: no hidden segment, no {@code node_modules}, and the
+     * file is not key material. A refused path reads as absent.
      */
-    private static boolean descendOnce(Path dir, Path realRoot, Set<Path> visited) {
-        try {
-            Path real = dir.toRealPath();
-            return real.startsWith(realRoot) && visited.add(real);
-        } catch (IOException broken) {
-            return false;
+    static boolean servable(Path root, String rel) {
+        String[] segs = rel.split("/", -1);
+        if (segs.length == 0) return false;
+        for (String s : segs) {
+            if (!visibleName(s)) return false;
         }
+        return !isKeyMaterial(segs[segs.length - 1]);
     }
 
     static ReadResult read(Path root, @Nullable String rawRel) {
@@ -443,11 +402,9 @@ final class WorkspaceFileAccess {
             return new ReadResult.NotFound();
         }
         if (bytes.length > MAX_FILE_BYTES) return new ReadResult.TooLarge(bytes.length, MAX_FILE_BYTES);
-        String name = file.getFileName().toString();
-        String lang = langOf(name);
-        if (lang == null) return new ReadResult.NotFound();
-        // Image allow-list entries are binary by nature — JSON body endpoint rejects them; use raw.
-        if (isImageLang(lang)) return new ReadResult.Binary();
+        String lang = langOf(file.getFileName().toString());
+        // Images and known binaries are not text whatever their bytes; images read through raw.
+        if (!isTextLang(lang)) return new ReadResult.Binary();
         // Whole-buffer NUL scan: the file is already in memory, and a late NUL means binary
         // content that would otherwise fail strict UTF-8 and render as Latin-1 mojibake.
         for (byte b : bytes) {
@@ -475,7 +432,7 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Raw bytes for any servable path (images and text). Same sandbox as {@link #read}; no UTF-8
+     * Raw bytes for any servable path. Same sandbox as {@link #read}; no UTF-8
      * decode. Used by {@code GET /api/project/file/raw} for the Preview image path (token-bearing
      * fetch → blob URL).
      */
@@ -513,7 +470,6 @@ final class WorkspaceFileAccess {
         if (bytes.length > MAX_FILE_BYTES) return new RawResult.TooLarge(bytes.length, MAX_FILE_BYTES);
         String name = file.getFileName().toString();
         String lang = langOf(name);
-        if (lang == null) return new RawResult.NotFound();
         String contentType = imageContentType(name);
         if (contentType == null) contentType = "application/octet-stream";
         return new RawResult.Ok(new RawBody(absRoot, rel, lang, contentType, bytes));

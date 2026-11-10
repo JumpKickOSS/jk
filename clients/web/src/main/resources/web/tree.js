@@ -1,94 +1,125 @@
 // SPDX-License-Identifier: Apache-2.0
-// The file-tree model behind the files pane: flat servable paths in, a directory-first render tree
-// and its visible-row projection out. Pure functions of (paths, expanded) so the pane's expand and
-// filter behaviour is testable without a DOM.
+// The file-tree model behind the files pane. The engine answers one directory at a time
+// (GET /api/project/dir), so the pane holds a map of the directories it has loaded, keyed by path
+// ('' is the checkout root), and these pure functions turn that map and the open folders into the
+// rows a virtual list draws. Nothing here touches the DOM.
 
-const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+/** Height of one tree row in px: the virtual list's unit, and .code-row's fixed height in style.css. */
+export const ROW_HEIGHT = 24;
+
+/** Rows drawn above and below the viewport, so a fling does not show blank space. */
+export const OVERSCAN = 12;
 
 /**
- * Flat servable paths → a render-ready directory tree: at every level directories come first, then
- * files, each side name-sorted — case-insensitive and numeric-aware, so `build.gradle.kts` sits
- * next to `README.md` and `Step2` after `Step10` does not happen.
+ * The open tree as flat rows, depth-first. A loaded directory contributes its entries in the
+ * engine's order (folders first, folded package chains as one row); an open folder still loading
+ * shows a `loading` row, a failed one an `error` row, and a directory with more pages ends in a
+ * `more` row. Every row has a unique `key`.
  *
- * A directory whose only child is another directory is **compacted** into one node —
- * `core` + `src/main/java/cc/jumpkick` become a single row — so a Java source file is a handful of
- * rows deep instead of a dozen. The compacted node keeps the *deepest* path as its key, which is
- * what {@link ancestorDirs} produces for a file under it.
+ * `dirs`: `{ [path]: { entries, next, total, loading, error } }`. `expanded`: `{ [path]: true }`.
  */
-export function buildFileTree(paths) {
-  const root = { name: '', path: '', dirs: new Map(), files: [] };
-  for (const raw of paths || []) {
-    const segs = String(raw || '').split('/').filter(Boolean);
-    if (!segs.length) continue;
-    let node = root;
-    for (let i = 0; i < segs.length - 1; i++) {
-      let next = node.dirs.get(segs[i]);
-      if (!next) {
-        next = { name: segs[i], path: segs.slice(0, i + 1).join('/'), dirs: new Map(), files: [] };
-        node.dirs.set(segs[i], next);
-      }
-      node = next;
-    }
-    node.files.push({ name: segs[segs.length - 1], path: segs.join('/'), dir: false });
-  }
-  const finish = (node) => {
-    const children = [...node.dirs.values()].sort(byName).map(finish).concat(node.files.sort(byName));
-    let out = { name: node.name, path: node.path, dir: true, children };
-    // Bottom-up, so a chain of single-child dirs folds into one node in a single pass.
-    while (out.children.length === 1 && out.children[0].dir) {
-      const only = out.children[0];
-      out = { name: out.name + '/' + only.name, path: only.path, dir: true, children: only.children };
-    }
-    return out;
-  };
-  // The root itself is never a row, so it never compacts — a lone top-level dir stays clickable.
-  return {
-    children: [...root.dirs.values()].sort(byName).map(finish).concat(root.files.sort(byName)),
-  };
-}
-
-/** Flatten the open parts of a tree into rows — one flat v-for beats a recursive component here. */
-export function visibleRows(tree, expanded) {
-  const open = expanded || {};
+export function treeRows(dirs, expanded) {
   const out = [];
-  const walk = (nodes, depth) => {
-    for (const node of nodes) {
-      if (!node.dir) {
-        out.push({ name: node.name, path: node.path, dir: false, depth });
+  const open = expanded || {};
+  const walk = (path, depth) => {
+    const dir = dirs && dirs[path];
+    if (!dir) return;
+    if (dir.error && !(dir.entries && dir.entries.length)) {
+      out.push({ kind: 'error', key: path + '\0error', path, depth, text: dir.error });
+      return;
+    }
+    for (const e of dir.entries || []) {
+      if (!e.dir) {
+        out.push({ kind: 'file', key: e.path, name: e.name, path: e.path, depth, lang: e.lang || null, output: !!e.output });
         continue;
       }
-      const isOpen = !!open[node.path];
-      out.push({ name: node.name, path: node.path, dir: true, depth, open: isOpen });
-      if (isOpen) walk(node.children, depth + 1);
+      const isOpen = !!open[e.path];
+      out.push({
+        kind: 'dir',
+        key: e.path,
+        name: e.name,
+        path: e.path,
+        depth,
+        open: isOpen,
+        output: !!e.output,
+        empty: !!e.empty,
+      });
+      if (!isOpen || e.empty) continue;
+      const child = dirs[e.path];
+      if (!child || (child.loading && !(child.entries && child.entries.length))) {
+        out.push({ kind: 'loading', key: e.path + '\0loading', path: e.path, depth: depth + 1 });
+      } else {
+        walk(e.path, depth + 1);
+      }
+    }
+    if (dir.next) {
+      const shown = (dir.entries || []).length;
+      out.push({
+        kind: 'more',
+        key: path + '\0more',
+        path,
+        depth,
+        remaining: Math.max(0, (dir.total || 0) - shown),
+        loading: !!dir.loading,
+      });
     }
   };
-  walk((tree && tree.children) || [], 0);
+  walk('', 0);
   return out;
 }
 
-/** Every directory prefix of a file path — the keys to expand so a deep link lands revealed. */
-export function ancestorDirs(path) {
-  const segs = String(path || '').split('/').filter(Boolean);
-  segs.pop(); // the file itself
-  const out = [];
-  let acc = '';
-  for (const seg of segs) {
-    acc = acc ? acc + '/' + seg : seg;
-    out.push(acc);
+/**
+ * The slice of `count` rows a viewport of `height` px scrolled to `scrollTop` shows, widened by
+ * `overscan` rows each side: `{ start, end, offset, total }`, `end` exclusive, `offset` the px the
+ * slice is pushed down, `total` the full height the scroller must have.
+ */
+export function visibleWindow(count, scrollTop, height, rowHeight = ROW_HEIGHT, overscan = OVERSCAN) {
+  const n = Math.max(0, count | 0);
+  const first = Math.floor(Math.max(0, scrollTop || 0) / rowHeight);
+  const shown = Math.ceil(Math.max(0, height || 0) / rowHeight) + 1;
+  const start = Math.max(0, Math.min(n, first - overscan));
+  const end = Math.max(start, Math.min(n, first + shown + overscan));
+  return { start, end, offset: start * rowHeight, total: n * rowHeight };
+}
+
+/**
+ * The entry of a directory listing on the way to `target`: the file itself, or the folder (a folded
+ * chain counts by its deepest path) that holds it. Null when the listing does not have it.
+ */
+export function entryToward(entries, target) {
+  const t = String(target || '');
+  if (!t) return null;
+  for (const e of entries || []) {
+    if (e.path === t) return e;
+    if (e.dir && t.startsWith(e.path + '/')) return e;
   }
-  return out;
+  return null;
+}
+
+/**
+ * Forget a folder: its own listing, everything loaded below it, and the open state of what is
+ * below. Collapsing a folder calls this, so what the pane holds is bounded by what is open, and
+ * opening it again fetches it fresh. Returns new `{ dirs, expanded }` objects.
+ */
+export function dropSubtree(dirs, expanded, path) {
+  const under = (k) => k === path || k.startsWith(path + '/');
+  const nextDirs = {};
+  for (const [k, v] of Object.entries(dirs || {})) if (!under(k)) nextDirs[k] = v;
+  const nextOpen = {};
+  for (const [k, v] of Object.entries(expanded || {})) if (!under(k)) nextOpen[k] = v;
+  return { dirs: nextDirs, expanded: nextOpen };
 }
 
 /** The build definition is the one file every jk workspace has, so it opens by default. */
 export const DEFAULT_FILE = 'jk.toml';
 
 /**
- * The file to open when the route names none: the workspace-root `jk.toml`, and only if the list
- * actually served it — a member's `sub/jk.toml` is not the workspace, and an imported Maven/Gradle
- * tree has none at all, which is what leaves the pane on its empty state.
+ * The file to open when the route names none: the workspace-root `jk.toml`, and only if the root
+ * listing has it — a member's `sub/jk.toml` is not the workspace, and an imported Maven/Gradle tree
+ * has none at all, which is what leaves the pane on its empty state.
  */
-export function defaultFilePath(files) {
-  return (files || []).some((f) => f && f.path === DEFAULT_FILE) ? DEFAULT_FILE : null;
+export function defaultFilePath(rootEntries) {
+  return (rootEntries || []).some((e) => e && !e.dir && e.path === DEFAULT_FILE) ? DEFAULT_FILE : null;
 }
 
 export function plainRows(content) {

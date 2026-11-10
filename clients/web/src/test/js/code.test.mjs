@@ -31,7 +31,7 @@ const {
   isPreviewable,
   isRemoteHttpUrl,
   isTextWritableLang,
-  langFromPath,
+  loadErrorMessage,
   posixJoin,
   previewKind,
   relativizeUnder,
@@ -42,7 +42,7 @@ const {
   saveErrorMessage,
 } = await spa('paths.js');
 const { buildProjectHash, clipHashMsg, locusLabel, parseHashQuery, routeFromHash } = await spa('route.js');
-const { DEFAULT_FILE, ancestorDirs, buildFileTree, defaultFilePath, plainRows, visibleRows } =
+const { DEFAULT_FILE, ROW_HEIGHT, defaultFilePath, dropSubtree, entryToward, plainRows, treeRows, visibleWindow } =
   await spa('tree.js');
 
 test('routeFromHash nests files under #project/<id>', () => {
@@ -180,27 +180,6 @@ test('clipHashMsg and hoverMessage wrap compiler notes', () => {
   assert.match(hoverMessage('```evil```').value, /'''evil'''/);
 });
 
-test('langFromPath is case-insensitive and closed', () => {
-  assert.equal(langFromPath('Main.JAVA'), 'java');
-  assert.equal(langFromPath('x.Kt'), 'kotlin');
-  assert.equal(langFromPath('a.jsonl'), 'json');
-  assert.equal(langFromPath('diagram.mmd'), 'mermaid');
-  assert.equal(langFromPath('logo.PNG'), 'image');
-  assert.equal(langFromPath('pom.xml'), 'xml');
-  assert.equal(langFromPath('Logback.XML'), 'xml');
-  assert.equal(langFromPath('config.yaml'), 'yaml');
-  assert.equal(langFromPath('config.YML'), 'yaml');
-  assert.equal(langFromPath('schema.sql'), 'sql');
-  assert.equal(langFromPath('app.properties'), 'properties');
-  assert.equal(langFromPath('setup.sh'), 'shell');
-  assert.equal(langFromPath('run.bash'), 'shell');
-  assert.equal(langFromPath('env.zsh'), 'shell');
-  assert.equal(langFromPath('Main.scala'), 'scala');
-  assert.equal(langFromPath('Scratch.sc'), 'scala');
-  assert.equal(langFromPath('build.gradle'), null);
-  assert.equal(langFromPath('notes.txt'), null);
-});
-
 test('preview eligibility is extension-driven', () => {
   assert.equal(previewKind('README.md'), 'markdown');
   assert.equal(previewKind('docs/flow.mmd'), 'mermaid');
@@ -211,7 +190,9 @@ test('preview eligibility is extension-driven', () => {
   assert.equal(isPreviewable('src/Main.java'), false);
   assert.equal(isImagePath('assets/a.png'), true);
   assert.equal(isTextWritableLang('java'), true);
+  assert.equal(isTextWritableLang('text'), true);
   assert.equal(isTextWritableLang('image'), false);
+  assert.equal(isTextWritableLang('binary'), false);
   assert.equal(isTextWritableLang(null), false);
 });
 
@@ -285,6 +266,15 @@ test('sanitizeDiagramSvg is the DOMPurify chokepoint with the SVG profiles', () 
   for (const c of calls) {
     assert.deepEqual(c.opts, { USE_PROFILES: { svg: true, svgFilters: true } });
   }
+});
+
+test('loadErrorMessage says why a file cannot be shown', () => {
+  assert.equal(loadErrorMessage({ status: 415, error: 'binary file' }), 'Binary file: there is no text to show');
+  assert.equal(loadErrorMessage({ status: 413, error: 'file too large' }), 'Too large to show (over 1 MiB)');
+  assert.equal(loadErrorMessage({ status: 404, error: 'not found' }), 'This file is not there any more');
+  assert.equal(loadErrorMessage({ status: 400, error: 'illegal path' }), 'illegal path');
+  assert.equal(loadErrorMessage({ status: 502 }), 'HTTP 502');
+  assert.equal(loadErrorMessage(null), 'Failed to load file');
 });
 
 test('saveErrorMessage covers network and concurrency', () => {
@@ -406,6 +396,11 @@ test('monacoLang maps server langs onto ids Monaco has', () => {
   // Monaco ships no Groovy or TOML grammar — closest registered grammar, never a bogus id.
   assert.equal(monacoLang('groovy'), 'java');
   assert.equal(monacoLang('toml'), 'ini');
+  assert.equal(monacoLang('typescript'), 'typescript');
+  assert.equal(monacoLang('protobuf'), 'proto');
+  assert.equal(monacoLang('dockerfile'), 'dockerfile');
+  assert.equal(monacoLang('text'), 'plaintext');
+  assert.equal(monacoLang('csv'), 'plaintext');
   assert.equal(monacoLang('brainfuck'), 'plaintext');
   assert.equal(monacoLang(null), 'plaintext');
 });
@@ -479,73 +474,111 @@ test('columnSpan covers the identifier at col', () => {
   assert.deepEqual(columnSpan('foo + bar', 5), { start: 5, end: 6 });
 });
 
-const TREE_PATHS = [
-  'README.md',
-  'build.gradle.kts',
-  'shared/core/src/main/java/cc/jumpkick/config/JkBuildParser.java',
-  'shared/core/src/main/java/cc/jumpkick/config/Ansi.java',
-  'shared/core/src/test/java/cc/jumpkick/ConfigTest.java',
-  'clients/web/src/main/resources/web/code.js',
-];
+// Directory listings as GET /api/project/dir answers them: folders first, folded chains as one row.
+const ROOT = {
+  entries: [
+    { name: 'clients/web', path: 'clients/web', dir: true },
+    { name: 'shared/core/src', path: 'shared/core/src', dir: true },
+    { name: 'target', path: 'target', dir: true, output: true },
+    { name: 'empty', path: 'empty', dir: true, empty: true },
+    { name: 'build.gradle.kts', path: 'build.gradle.kts', dir: false, lang: 'kotlin' },
+    { name: 'README.md', path: 'README.md', dir: false, lang: 'markdown' },
+  ],
+  next: null,
+  total: 6,
+};
+const SRC = {
+  entries: [
+    { name: 'main/java/cc/jumpkick/config', path: 'shared/core/src/main/java/cc/jumpkick/config', dir: true },
+    { name: 'test/java/cc/jumpkick', path: 'shared/core/src/test/java/cc/jumpkick', dir: true },
+  ],
+  next: null,
+  total: 2,
+};
+const CONFIG = {
+  entries: [
+    { name: 'Ansi.java', path: 'shared/core/src/main/java/cc/jumpkick/config/Ansi.java', dir: false, lang: 'java' },
+    { name: 'Parser.java', path: 'shared/core/src/main/java/cc/jumpkick/config/Parser.java', dir: false, lang: 'java' },
+  ],
+  next: '2',
+  total: 700,
+};
 
-test('buildFileTree puts dirs before files and compacts single-child chains', () => {
-  const tree = buildFileTree(TREE_PATHS);
-  assert.deepEqual(
-    tree.children.map((n) => [n.name, n.dir]),
-    [
-      ['clients/web/src/main/resources/web', true],
-      ['shared/core/src', true],
-      ['build.gradle.kts', false], // names sort case-insensitively: build… before README…
-      ['README.md', false],
-    ],
+test('treeRows walks only the open folders, in the order the engine listed them', () => {
+  const collapsed = treeRows({ '': ROOT }, {});
+  assert.deepEqual(collapsed.map((r) => [r.kind, r.name, r.depth]), [
+    ['dir', 'clients/web', 0],
+    ['dir', 'shared/core/src', 0],
+    ['dir', 'target', 0],
+    ['dir', 'empty', 0],
+    ['file', 'build.gradle.kts', 0],
+    ['file', 'README.md', 0],
+  ]);
+  assert.equal(collapsed[2].output, true);
+  assert.equal(collapsed[3].empty, true);
+
+  const config = 'shared/core/src/main/java/cc/jumpkick/config';
+  const open = treeRows(
+    { '': ROOT, 'shared/core/src': SRC, [config]: CONFIG },
+    { 'shared/core/src': true, [config]: true, 'clients/web': true, empty: true },
   );
-  // The compacted node keys off its DEEPEST path, which is what ancestorDirs yields for its files.
-  const shared = tree.children[1];
-  assert.equal(shared.path, 'shared/core/src');
-  assert.ok(ancestorDirs(TREE_PATHS[2]).includes(shared.path));
-  // Two children (main, test) below it, so the chain stops here and resumes under each.
-  assert.deepEqual(shared.children.map((n) => n.name), [
-    'main/java/cc/jumpkick/config',
-    'test/java/cc/jumpkick',
+  assert.deepEqual(open.map((r) => [r.kind, r.name || '', r.depth]), [
+    ['dir', 'clients/web', 0],
+    ['loading', '', 1], // open, not loaded yet
+    ['dir', 'shared/core/src', 0],
+    ['dir', 'main/java/cc/jumpkick/config', 1],
+    ['file', 'Ansi.java', 2],
+    ['file', 'Parser.java', 2],
+    ['more', '', 2], // 698 more behind the cursor
+    ['dir', 'test/java/cc/jumpkick', 1],
+    ['dir', 'target', 0],
+    ['dir', 'empty', 0], // open but empty: nothing below it
+    ['file', 'build.gradle.kts', 0],
+    ['file', 'README.md', 0],
   ]);
-  assert.deepEqual(shared.children[0].children.map((n) => n.name), ['Ansi.java', 'JkBuildParser.java']);
-  // A lone top-level dir stays its own row — the root is never a rendered node, so it never folds.
-  assert.deepEqual(buildFileTree(['a/b.java']).children.map((n) => [n.name, n.path]), [['a', 'a']]);
+  const more = open.find((r) => r.kind === 'more');
+  assert.equal(more.path, config);
+  assert.equal(more.remaining, 698);
+  assert.equal(new Set(open.map((r) => r.key)).size, open.length, 'every row has its own key');
+  assert.deepEqual(treeRows({}, {}), []);
+  assert.deepEqual(treeRows({ '': { entries: [], error: 'HTTP 500' } }, {}).map((r) => r.kind), ['error']);
 });
 
-test('visibleRows walks only the open dirs and carries depth', () => {
-  const tree = buildFileTree(TREE_PATHS);
-  const collapsed = visibleRows(tree, {});
-  assert.deepEqual(collapsed.map((r) => [r.name, r.depth, r.dir]), [
-    ['clients/web/src/main/resources/web', 0, true],
-    ['shared/core/src', 0, true],
-    ['build.gradle.kts', 0, false],
-    ['README.md', 0, false],
-  ]);
-  assert.equal(collapsed[0].open, false);
-  const open = visibleRows(tree, { 'shared/core/src': true, 'shared/core/src/main/java/cc/jumpkick/config': true });
-  assert.deepEqual(open.map((r) => [r.name, r.depth]), [
-    ['clients/web/src/main/resources/web', 0],
-    ['shared/core/src', 0],
-    ['main/java/cc/jumpkick/config', 1],
-    ['Ansi.java', 2],
-    ['JkBuildParser.java', 2],
-    ['test/java/cc/jumpkick', 1],
-    ['build.gradle.kts', 0],
-    ['README.md', 0],
-  ]);
-  assert.deepEqual(visibleRows(null, {}), []);
+test('visibleWindow draws the rows in view plus overscan, and sizes the scroller for all of them', () => {
+  assert.equal(ROW_HEIGHT, 24);
+  const top = visibleWindow(20_000, 0, 480, 24, 10);
+  assert.deepEqual(top, { start: 0, end: 31, offset: 0, total: 480_000 });
+  const mid = visibleWindow(20_000, 24_000, 480, 24, 10);
+  assert.deepEqual(mid, { start: 990, end: 1031, offset: 23_760, total: 480_000 });
+  const end = visibleWindow(20_000, 480_000, 480, 24, 10);
+  assert.equal(end.end, 20_000);
+  assert.ok(end.end - end.start <= 31);
+  assert.deepEqual(visibleWindow(0, 0, 480), { start: 0, end: 0, offset: 0, total: 0 });
 });
 
-test('ancestorDirs is every dir prefix, never the file', () => {
-  assert.deepEqual(ancestorDirs('a/b/c/D.java'), ['a', 'a/b', 'a/b/c']);
-  assert.deepEqual(ancestorDirs('README.md'), []);
-  assert.deepEqual(ancestorDirs(null), []);
+test('entryToward finds the file, or the folder (a folded chain by its deepest path) that holds it', () => {
+  const target = 'shared/core/src/main/java/cc/jumpkick/config/Parser.java';
+  assert.equal(entryToward(ROOT.entries, target).path, 'shared/core/src');
+  assert.equal(entryToward(SRC.entries, target).path, 'shared/core/src/main/java/cc/jumpkick/config');
+  assert.equal(entryToward(CONFIG.entries, target).path, target);
+  assert.equal(entryToward(ROOT.entries, 'shared/corex/A.java'), null, 'a prefix of a name is not a folder');
+  assert.equal(entryToward(ROOT.entries, ''), null);
+});
+
+test('dropSubtree forgets a folder and everything loaded below it', () => {
+  const config = 'shared/core/src/main/java/cc/jumpkick/config';
+  const dirs = { '': ROOT, 'shared/core/src': SRC, [config]: CONFIG, 'shared/core/srcx': SRC };
+  const expanded = { 'shared/core/src': true, [config]: true, 'clients/web': true };
+  const next = dropSubtree(dirs, expanded, 'shared/core/src');
+  assert.deepEqual(Object.keys(next.dirs).sort(), ['', 'shared/core/srcx']);
+  assert.deepEqual(next.expanded, { 'clients/web': true });
+  assert.ok(dirs[config], 'the inputs are left alone');
 });
 
 test('defaultFilePath opens the workspace jk.toml, and only that one', () => {
   assert.equal(DEFAULT_FILE, 'jk.toml');
   assert.equal(defaultFilePath([{ path: 'README.md' }, { path: 'jk.toml' }]), 'jk.toml');
+  assert.equal(defaultFilePath([{ path: 'jk.toml', dir: true }]), null, 'a folder named jk.toml is not the manifest');
   // A member's jk.toml is not the workspace's, and a tree without one falls through to the
   // pane's empty state rather than opening something arbitrary.
   assert.equal(defaultFilePath([{ path: 'sub/jk.toml' }]), null);
