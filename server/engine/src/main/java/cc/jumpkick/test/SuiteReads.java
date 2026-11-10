@@ -223,17 +223,35 @@ public final class SuiteReads {
     }
 
     /**
-     * How far before the run's start a birth time may read and still be the run's own: a second where
-     * the file system stamps whole seconds, else a few clock ticks, since the kernel stamps files from
-     * a clock that lags ours by up to a tick. A second everywhere took a directory a test or a script
-     * made just before the build for one the run made, and never keyed what the suite read in it.
+     * The latest moment, in epoch millis, the entry {@code attrs} describes can have come into being.
+     * A birth time on a whole second may have been cut to it: the JDK reports macOS's to the second
+     * on file systems that stamp nanoseconds, and a coarse file system stamps whole seconds. Such an
+     * entry may have been born up to a second later, though never after it was last modified. A
+     * modification older than the birth (a copy that kept its source's time) bounds nothing.
      */
-    static long birthSlackMillis(FileTime born) {
-        return born.to(TimeUnit.NANOSECONDS) % 1_000_000_000L == 0 ? 1_000 : FINE_BIRTH_SLACK_MILLIS;
+    static long latestBirthMillis(BasicFileAttributes attrs) {
+        FileTime born = attrs.creationTime();
+        if (!wholeSecond(born)) return born.toMillis();
+        FileTime modified = attrs.lastModifiedTime();
+        long modifiedLatest = modified.toMillis() + (wholeSecond(modified) ? 999 : 0);
+        long latest = born.toMillis() + 999;
+        return modifiedLatest >= born.toMillis() ? Math.min(latest, modifiedLatest) : latest;
     }
 
-    /** {@link #birthSlackMillis} on a file system that stamps finer than a second. */
-    static final long FINE_BIRTH_SLACK_MILLIS = 20;
+    private static boolean wholeSecond(FileTime t) {
+        return t.to(TimeUnit.NANOSECONDS) % 1_000_000_000L == 0;
+    }
+
+    /**
+     * How far before the run's start an entry's latest birth may fall and still be the run's own: a
+     * few clock ticks, since the kernel stamps files from a clock that lags ours by up to a tick.
+     */
+    static final long BIRTH_SLACK_MILLIS = 20;
+
+    /** Whether the entry {@code attrs} describes may have come into being once a run started at {@code startedMillis}. */
+    static boolean bornDuringRun(BasicFileAttributes attrs, long startedMillis) {
+        return latestBirthMillis(attrs) >= startedMillis - BIRTH_SLACK_MILLIS;
+    }
 
     /** Whether an ancestor of {@code f} outside {@code workspace} came into being once the run had started. */
     static boolean madeDuringRun(Path f, Path workspace, long startedMillis, Map<Path, Boolean> memo) {
@@ -243,9 +261,7 @@ public final class SuiteReads {
             Boolean known = memo.get(dir);
             if (known == null) {
                 try {
-                    FileTime born =
-                            Files.readAttributes(dir, BasicFileAttributes.class).creationTime();
-                    known = born.toMillis() >= startedMillis - birthSlackMillis(born);
+                    known = bornDuringRun(Files.readAttributes(dir, BasicFileAttributes.class), startedMillis);
                 } catch (IOException gone) {
                     // Gone already: only the run's own scratch is reaped before it ends.
                     known = true;
@@ -494,16 +510,16 @@ public final class SuiteReads {
     }
 
     /**
-     * The first entry of {@code dir}'s keyed listing that came into being at or after {@code
-     * millis}, or null when none did. An entry made and removed since is gone, and the listing is
-     * as it was.
+     * The first entry of {@code dir}'s keyed listing that may have come into being once a run started
+     * at {@code startedMillis}, or null when none did. An entry made and removed since is gone, and
+     * the listing is as it was.
      */
-    public static @Nullable Path bornSince(Path dir, long millis) throws IOException {
+    public static @Nullable Path bornSince(Path dir, long startedMillis) throws IOException {
         String output = outputEntry(dir);
         Path[] born = new Path[1];
         PathUtil.forEachChild(dir, (child, attrs) -> {
             if (String.valueOf(child.getFileName()).equals(output)) return true;
-            if (attrs.creationTime().toMillis() >= millis) born[0] = child;
+            if (bornDuringRun(attrs, startedMillis)) born[0] = child;
             return born[0] == null;
         });
         return born[0];

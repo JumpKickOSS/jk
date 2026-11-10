@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Set;
@@ -61,19 +62,87 @@ class SuiteReadsTest {
     }
 
     /**
-     * A directory made outside the workspace half a second before the run is not the run's own: only a
-     * file system that stamps whole seconds earns a second of slack.
+     * A directory made outside the workspace half a second before the run is not the run's own. The
+     * JDK reports a macOS birth time cut to the second; the directory's modification time, which
+     * keeps the file system's precision, says it was born before the run began.
      */
     @Test
     void a_directory_made_just_before_the_run_is_not_taken_for_the_runs_own() {
         long started = 1_794_165_723_818L;
-        FileTime fine = FileTime.from(started - 492, TimeUnit.MILLISECONDS);
-        FileTime whole = FileTime.from((started - 492) / 1_000, TimeUnit.SECONDS);
-        assertThat(fine.toMillis()).isLessThan(started - SuiteReads.birthSlackMillis(fine));
-        assertThat(whole.toMillis())
-                .as("a whole-second stamp may read up to a second early")
-                .isGreaterThanOrEqualTo(started - SuiteReads.birthSlackMillis(whole));
-        assertThat(SuiteReads.birthSlackMillis(fine)).isEqualTo(SuiteReads.FINE_BIRTH_SLACK_MILLIS);
+        long made = started - 492;
+        FileTime cut = FileTime.from(made / 1_000, TimeUnit.SECONDS);
+
+        assertThat(SuiteReads.bornDuringRun(attrs(FileTime.fromMillis(made), FileTime.fromMillis(made)), started))
+                .as("a birth time the file system stamped finely")
+                .isFalse();
+        assertThat(SuiteReads.bornDuringRun(attrs(cut, FileTime.fromMillis(made + 3)), started))
+                .as("a birth time cut to the second, bounded by the modification")
+                .isFalse();
+        assertThat(SuiteReads.bornDuringRun(attrs(cut, cut), started))
+                .as("a file system that stamps whole seconds leaves the birth anywhere in that second")
+                .isTrue();
+    }
+
+    /** A directory the run made, whose birth time is cut to the second, is still the run's own. */
+    @Test
+    void a_directory_the_run_made_is_its_own_whatever_its_birth_time_was_cut_to() {
+        long started = 1_794_165_723_818L;
+        FileTime cut = FileTime.from(started / 1_000, TimeUnit.SECONDS);
+
+        assertThat(SuiteReads.bornDuringRun(attrs(cut, FileTime.fromMillis(started + 40)), started))
+                .isTrue();
+        assertThat(SuiteReads.bornDuringRun(attrs(cut, FileTime.fromMillis(started - 60_000)), started))
+                .as("a modification older than the birth, a copy keeping its source's time, bounds nothing")
+                .isTrue();
+    }
+
+    private static BasicFileAttributes attrs(FileTime born, FileTime modified) {
+        return new BasicFileAttributes() {
+            @Override
+            public FileTime lastModifiedTime() {
+                return modified;
+            }
+
+            @Override
+            public FileTime lastAccessTime() {
+                return modified;
+            }
+
+            @Override
+            public FileTime creationTime() {
+                return born;
+            }
+
+            @Override
+            public boolean isRegularFile() {
+                return false;
+            }
+
+            @Override
+            public boolean isDirectory() {
+                return true;
+            }
+
+            @Override
+            public boolean isSymbolicLink() {
+                return false;
+            }
+
+            @Override
+            public boolean isOther() {
+                return false;
+            }
+
+            @Override
+            public long size() {
+                return 0;
+            }
+
+            @Override
+            public Object fileKey() {
+                return born;
+            }
+        };
     }
 
     @Test

@@ -195,7 +195,7 @@ final class SuiteDiscovery {
             }
             for (Path dir : listed(files, workspace)) {
                 if (proven.contains(dir)) continue;
-                Path born = SuiteReads.bornSince(dir, startedMillis - COARSE_TICK_MILLIS);
+                Path born = SuiteReads.bornSince(dir, startedMillis);
                 if (born != null) return born;
             }
         } catch (IOException gone) {
