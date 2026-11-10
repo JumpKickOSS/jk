@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -133,6 +134,64 @@ class SessionLogTest {
         assertThat(sessionOf(log.placeRun("cli", null, "build", "/ws/app", now.get())))
                 .as("the shell's next run after the expiry is another session")
                 .isNotEqualTo(shell);
+    }
+
+    @Test
+    void a_terminal_session_ends_once_its_leader_exits_and_not_while_its_run_is_in_flight() {
+        Map<String, Boolean> alive = new HashMap<>(Map.of("100@5", true, "200@6", true));
+        AtomicBoolean building = new AtomicBoolean(true);
+        log.leaders(leader -> alive.getOrDefault(leader, false));
+        log.running((origin, label) -> building.get() && "terminal aaaaaa".equals(label));
+        String a = sessionOf(log.placeRun("cli", "terminal aaaaaa", "build", "/ws/app", T));
+        log.leader("cli", "terminal aaaaaa", "100@5");
+        String b = sessionOf(log.placeRun("cli", "terminal bbbbbb", "build", "/ws/app", T));
+        log.leader("cli", "terminal bbbbbb", "200@6");
+        assertThat(a).as("two terminals are two sessions").isNotEqualTo(b).startsWith("cli-aaaaaa-");
+
+        alive.put("100@5", false);
+        alive.put("200@6", false);
+        now.addAndGet(1_000);
+        log.sweep();
+        assertThat(log.session(a, 0, 1).orElseThrow().session())
+                .as("its build is still in flight")
+                .doesNotContainEntry("state", "ended");
+        assertThat(log.session(b, 0, 1).orElseThrow().session())
+                .as("its shell exited: ended at once, not at the expiry")
+                .containsEntry("state", "ended");
+
+        building.set(false);
+        log.sweep();
+        assertThat(log.session(a, 0, 1).orElseThrow().session()).containsEntry("state", "ended");
+    }
+
+    @Test
+    void a_new_engine_keeps_a_sessions_leader_and_the_dashboard_never_sees_it() throws Exception {
+        log.leaders(leader -> true);
+        String id = sessionOf(log.placeRun("cli", "terminal aaaaaa", "build", "/ws/app", T));
+        log.leader("cli", "terminal aaaaaa", "100@5");
+        assertThat(log.session(id, 0, 1).orElseThrow().session().toString()).doesNotContain("100@5");
+        assertThat(log.sessions(10).toString()).doesNotContain("100@5");
+
+        SessionLog next = newLog();
+        AtomicBoolean asked = new AtomicBoolean();
+        next.leaders(leader -> {
+            asked.set("100@5".equals(leader));
+            return false;
+        });
+        next.sweep();
+        assertThat(asked).as("the adopted session's leader is probed").isTrue();
+        assertThat(next.session(id, 0, 1).orElseThrow().session()).containsEntry("state", "ended");
+    }
+
+    @Test
+    void a_leader_is_alive_while_its_pid_runs_under_the_same_start() {
+        ProcessHandle self = ProcessHandle.current();
+        long started = self.info().startInstant().orElseThrow().toEpochMilli();
+        assertThat(SessionLog.processAlive(self.pid() + "@" + started)).isTrue();
+        assertThat(SessionLog.processAlive(self.pid() + "@" + (started - 3_600_000)))
+                .as("a reused pid is another process")
+                .isFalse();
+        assertThat(SessionLog.processAlive(Long.MAX_VALUE / 2 + "@1")).isFalse();
     }
 
     @Test

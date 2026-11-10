@@ -163,6 +163,10 @@ test('the rail puts who waits on you first, then who is working, then the idle',
   assert.equal(rail[1].title, 'Fix weekend uplift rounding');
   assert.equal(rail[1].source, 'goal from the agent');
   assert.equal(rail[2].source, 'your own commands', 'your shell is a session like any other');
+  const agentShell = shell({ id: 'cli-9b20e1-x', client: 'claude-code (shell)', label: 'claude-code (shell) 9b20e1' });
+  const [row] = sessionRail([agentShell], { now: NOW });
+  assert.equal(row.host, 'claude-code (shell) 9b20e1');
+  assert.equal(row.source, 'shell commands', "an agent's shell commands are not yours");
   assert.equal(rail[2].project, 'hotel');
 });
 

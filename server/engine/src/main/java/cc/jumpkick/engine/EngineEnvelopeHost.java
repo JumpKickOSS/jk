@@ -59,6 +59,11 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
+    public void sessionLeader(String trigger, @Nullable String session, String leader) {
+        sessionLog.leader(trigger, session, leader);
+    }
+
+    @Override
     public boolean tryStartBuildPlan() {
         return tryStart.getAsBoolean();
     }

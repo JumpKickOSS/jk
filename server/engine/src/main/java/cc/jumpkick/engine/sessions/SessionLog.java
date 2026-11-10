@@ -36,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * <p>A session is keyed by its origin and its label: an MCP connection ({@code mcp}, {@code
  * claude-code 3f9a}) is opened at {@code initialize}; a BSP client, the dashboard or the shell is
  * opened by its first run. Every session ends the same way: at {@code DELETE /mcp}, or once it has
- * had no activity for the session expiry ({@link #sweep}). Its MCP connection is forgotten with it,
+ * had no activity for the session expiry, or once the process a CLI session names as its {@link
+ * #leader} (its terminal's shell, its agent) has exited ({@link #sweep}). Its MCP connection is forgotten with it,
  * so a client that comes back after that is a stranger. The idle gap marks a session idle, settles
  * its open episode and splits its episodes; a session with a run in flight in this engine ({@link
  * #running}) is live however long the run takes. The code graph's own compiles and fixture runs
@@ -58,6 +59,15 @@ public final class SessionLog {
     @FunctionalInterface
     public interface Events {
         void publish(String type, Map<String, Object> payload);
+    }
+
+    /**
+     * Whether the process a session's leader names ({@code <pid>@<start millis>}) still runs: the
+     * terminal's shell, the agent. A start that does not match is another process on a reused pid.
+     */
+    @FunctionalInterface
+    public interface Leaders {
+        boolean alive(String leader);
     }
 
     /** Whether a session has a run in flight in this engine: the job table's answer, not the log's. */
@@ -88,6 +98,7 @@ public final class SessionLog {
     private volatile BooleanSupplier predecessorStopped = () -> false;
     private volatile Consumer<String> connectionEnded = id -> {};
     private volatile Running running = (origin, label) -> false;
+    private volatile Leaders leaders = SessionLog::processAlive;
 
     private final Map<String, Live> byKey = new LinkedHashMap<>();
     private final Map<String, Live> byId = new LinkedHashMap<>();
@@ -109,6 +120,10 @@ public final class SessionLog {
 
         @Nullable
         Map<String, Object> connection;
+
+        /** The process whose exit ends the session ({@code <pid>@<start millis>}), when a CLI named one. */
+        @Nullable
+        String leader;
 
         /** Each kept episode's line as last appended, so only a changed episode is appended again. */
         final Map<String, String> written = new HashMap<>();
@@ -150,6 +165,11 @@ public final class SessionLog {
      */
     public void running(Running running) {
         this.running = running != null ? running : (origin, label) -> false;
+    }
+
+    /** Ask {@code leaders} whether a session's leader process still runs; the machine's process table by default. */
+    public void leaders(Leaders leaders) {
+        this.leaders = leaders != null ? leaders : SessionLog::processAlive;
     }
 
     /**
@@ -260,6 +280,7 @@ public final class SessionLog {
             Live live =
                     new Live(r, EpisodeInference.resume(r.id(), idleGapMillis, stored, state, numberOf(r.episode())));
             live.episodeLines = lines.size();
+            live.leader = MiniJson.str(doc, "leader");
             for (EpisodeInference.Stored e : live.episodes.stored())
                 live.written.put(e.episode().id(), lineText(e));
             // The record names the newest episode it keeps, or none: an episode compacted away is
@@ -320,6 +341,20 @@ public final class SessionLog {
     }
 
     /**
+     * Name the process whose exit ends the open session of {@code origin} and {@code label}: a CLI
+     * request's {@code sessionLeader}, its terminal's shell or its agent. {@link #sweep} ends the
+     * session once that process is gone. Nothing while no such session is open.
+     */
+    public synchronized void leader(String origin, @Nullable String label, String leader) {
+        if (!ownsTrigger(origin) || leader.isBlank()) return;
+        adopt();
+        Live live = byKey.get(key(origin, label));
+        if (live == null || leader.equals(live.leader)) return;
+        live.leader = leader;
+        persist(live);
+    }
+
+    /**
      * Store the MCP connection behind the session of {@code origin} and {@code label}, as it opened
      * or changed, so an engine that adopts the session answers the connection too. Nothing while no
      * such session is open.
@@ -367,7 +402,7 @@ public final class SessionLog {
             adopt();
             long now = clock.getAsLong();
             for (Live live : List.copyOf(byId.values())) {
-                if (now - lastActivity(live) >= expiryMillis) {
+                if (now - lastActivity(live) >= expiryMillis || leaderGone(live)) {
                     end(live, now, ended);
                     continue;
                 }
@@ -383,6 +418,38 @@ public final class SessionLog {
             }
         }
         ended.forEach(connectionEnded);
+    }
+
+    /** Whether {@code live}'s leader process has exited, with none of its runs still in flight here. */
+    private boolean leaderGone(Live live) {
+        String leader = live.leader;
+        if (leader == null) return false;
+        SessionRecord r = live.record;
+        return !running.has(r.origin(), r.label()) && !leaders.alive(leader);
+    }
+
+    /**
+     * Whether {@code leader} ({@code <pid>@<start millis>}) names a running process. A start of 0, or
+     * one the process table will not tell, matches any process on the pid; one unreadable is alive.
+     */
+    static boolean processAlive(String leader) {
+        int at = leader.indexOf('@');
+        long pid;
+        long started;
+        try {
+            pid = Long.parseLong(at < 0 ? leader : leader.substring(0, at));
+            started = at < 0 ? 0L : Long.parseLong(leader.substring(at + 1));
+        } catch (NumberFormatException e) {
+            return true;
+        }
+        Optional<ProcessHandle> p = ProcessHandle.of(pid);
+        if (p.isEmpty() || !p.get().isAlive()) return false;
+        if (started <= 0) return true;
+        return p.get()
+                .info()
+                .startInstant()
+                .map(i -> Math.abs(i.toEpochMilli() - started) < 1_000)
+                .orElse(true);
     }
 
     /** {@code live}'s state at {@code now}: live while one of its runs is in flight, however long ago it acted. */
@@ -806,6 +873,8 @@ public final class SessionLog {
         doc.put("schema", 1);
         doc.put("session", live.record.toMap());
         doc.put("inference", live.episodes.state());
+        // Beside the record, never in it: the record is what the dashboard shows.
+        if (live.leader != null) doc.put("leader", live.leader);
         return doc;
     }
 

@@ -21,11 +21,12 @@ working, green done, red failed, amber needs you, cyan identity.
 - **Needs you**: the decisions an agent is blocked on, oldest first, each with who asked, how
   long ago, and **Review**, which opens the decision's dialog (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
 - **Sessions**: one card per live or idle session, and those that ended within the last hour. A
-  card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `shell`), the current episode's
-  title and where it came from (*goal from the agent*, *last goal*, *inferred*, or *your own
-  commands* for the shell), the project, and the state: **waiting on you**, **working** (a run in flight or its
-  episode open), **idle** or **ended**. Your own shell is a session like any other, so your
-  `jk test` sits beside the agent's. Click a card to select it; the route carries the choice
+  card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `terminal 4c1e9a`), the current episode's
+  title and where it came from (*goal from the agent*, *last goal*, *inferred*, *your own
+  commands* for a terminal, or *shell commands* for an agent's shell), the project, and the state:
+  **waiting on you**, **working** (a run in flight or its episode open), **idle** or **ended**.
+  Each terminal is a session like any other, so your `jk test` sits beside the agent's, and two
+  terminals are two cards. Click a card to select it; the route carries the choice
   (`#console/<session-id>`). With none chosen the console holds the first card.
 - **The selected session's current episode**: its outcome, title and title source; episode *n* of
   *m*, the project, its wall (to now while it works), the time JumpKick spent on its actions and runs,
@@ -56,8 +57,10 @@ the line opens the run page, and the cancel button stops the run.
 Every run carries its **trigger** — `cli`, `mcp`, `web` or `bsp` — and, when the surface has
 one, the **session** that asked: an MCP connection is `<client> <id>` (`claude-code 3f9a`,
 from the client's `initialize` and the id the engine minted for that connection), a BSP client
-is the IDE's `displayName` plus a per-process id (`IntelliJ-BSP 7b2c`). A shell run is `cli`
-with no session. The run page and the build history show it as `MCP · claude-code 3f9a`; `jk-results.md`
+is the IDE's `displayName` plus a per-process id (`IntelliJ-BSP 7b2c`). A command-line run is
+`cli`, and its session names who ran it ([below](#command-line-sessions)): `terminal 4c1e9a` for a
+terminal tab or SSH connection, `script` with no terminal, `claude-code (shell) 9b20e1` for the
+commands an agent runs through its shell tool, or whatever `JK_BUILD_SESSION` says. The run page and the build history show it as `MCP · claude-code 3f9a`; `jk-results.md`
 prints the same as `trigger: mcp · session: claude-code 3f9a`, and `jk history` has a
 Trigger column.
 
@@ -70,14 +73,15 @@ previous attempt; hovering it shows the whole strip.
 
 The engine keeps who asked as records of their own, beside the runs and under the same
 `[history]` retention: a **session** is one origin talking to the engine — an MCP connection, a
-BSP client, the dashboard, or the shell — and an **episode** is one goal inside it. Every run
+BSP client, the dashboard, or one terminal, script or agent shell on the command line — and an **episode** is one goal inside it. Every run
 record carries the `episode` it belongs to (`mcp-3f9a-mfx2k1.2`: the session's id, then the
 episode's number).
 
 A session is **live** while it acts, **idle** after ten minutes of quiet, and **ended** when its
-MCP connection closes (`DELETE /mcp`) or once it has had no activity for the session expiry
-(`[mcp] session-expiry`, default 24 hours). That one rule covers every session: an agent's whose
-connection is still open, the shell's, the dashboard's, and one a previous engine left open. The
+MCP connection closes (`DELETE /mcp`), when the terminal or agent behind a command-line session
+exits, or once it has had no activity for the session expiry (`[mcp] session-expiry`, default 24
+hours). That rule covers every session: an agent's whose connection is still open, a
+terminal's, the dashboard's, and one a previous engine left open. The
 next run after it opens another session, and an agent whose session expired is asked to start a new
 one. Besides its runs, a session's timeline
 holds the MCP calls that are not runs, each as one line with its outcome and time: the code
@@ -89,6 +93,23 @@ next command starts another, the new engine carries on every session the old one
 agent's next call keeps its session, its label and its current episode, and a run that was still
 finishing on the old engine lands in that episode. A session nobody returns to ends at the
 session expiry, like any other.
+
+### Command-line sessions
+
+Each `jk` command names the session it belongs to, so the rail shows who actually ran it rather
+than one card for every command on the machine:
+
+- `JK_BUILD_SESSION`, when set, is the session as written: a script or CI job that wants its
+  runs under one name sets it.
+- An agent's shell commands are one session per agent session: Claude Code's are `claude-code
+  (shell) <key>` (from `CLAUDE_CODE_SESSION_ID`), Codex's `codex (shell) <key>`. They sit beside
+  the agent's MCP session on the rail.
+- Otherwise each terminal tab or SSH connection is its own session, `terminal <key>`, and so is a
+  script run from it; a command with no terminal is `script <key>`.
+
+`<key>` is a short hash, so no process id or terminal name appears on the dashboard. A terminal's
+session ends as soon as its shell exits, and an agent's when the agent exits, rather than at the
+session expiry.
 
 An episode starts with the session's first action, and again when the session moves to another
 project, when it acts after ten minutes of quiet, and after a red run streak ends green (the
@@ -141,8 +162,8 @@ bar and ETA, its downloads and the newest output lines.
 ## Since the previous run
 
 Under the run's header sits the **iteration strip**: what changed since the run before it from
-the same origin (the same MCP session or IDE window; a shell run compares against the shell run
-before it). Counts first — `since #12 · failed · 8.4s · 3 files · +0 / −2 diagnostics · tests: 1
+the same origin (the same MCP session, IDE window or agent shell; your own command-line runs
+compare against your last one from any terminal). Counts first — `since #12 · failed · 8.4s · 3 files · +0 / −2 diagnostics · tests: 1
 fixed · −2.3s` — and hovering a chip lists the rows behind it: the files whose content changed
 (`(new)` / `(gone)` for added or deleted ones), the diagnostics that appeared or went away, the
 tests that flipped (fixed, broke, new, gone). Clicking the strip opens the same rows inline. Each

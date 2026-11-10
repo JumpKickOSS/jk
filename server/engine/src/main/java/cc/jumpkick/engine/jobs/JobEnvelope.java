@@ -175,6 +175,8 @@ public final class JobEnvelope {
             admission.release(eventRequestId);
             return refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
         }
+        String leader = Jsonl.topStr(requestLine, "sessionLeader");
+        if (leader != null && !leader.isBlank()) host.sessionLeader(trigger, session, leader);
         host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
         host.registerAccumulator(
                 eventRequestId,

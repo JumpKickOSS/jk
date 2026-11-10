@@ -20,6 +20,12 @@ export function hostLabel(s) {
   return s.client || s.origin || 'session';
 }
 
+/** A command-line session's title source: a person's terminal or script, or an agent's shell. */
+export function cliSource(s) {
+  if (!s || s.origin !== 'cli') return null;
+  return / \(shell\)$/.test(s.client || '') ? 'shell commands' : 'your own commands';
+}
+
 /** Where an episode's title came from, as the screen says it. */
 export function titleSourceLabel(ep) {
   if (!ep) return '';
@@ -86,7 +92,7 @@ export function sessionRail(sessions, { cards = [], waiting = new Set(), now = D
       origin: s.origin || null,
       state: railState(s, { waiting, running }),
       title: ep ? ep.title : 'No episode yet',
-      source: s.origin === 'cli' ? 'your own commands' : titleSourceLabel(ep),
+      source: cliSource(s) || titleSourceLabel(ep),
       project: projectName((ep && ep.project) || s.project),
       projectId: (ep && ep.projectId) || s.projectId || null,
       startedAt: s.startedAt || null,

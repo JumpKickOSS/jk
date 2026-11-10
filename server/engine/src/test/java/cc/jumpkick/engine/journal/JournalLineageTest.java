@@ -89,6 +89,26 @@ class JournalLineageTest {
                 .isEmpty();
     }
 
+    @Test
+    void a_persons_runs_from_any_terminal_are_one_trail_and_an_agents_shell_is_its_own() {
+        BuildJournal journal = new BuildJournal(dir.resolve("builds"));
+        journal.append(run(1_000, "build", "cli", "terminal 4c1e9a", false), BuildJournal.Snapshot.NONE);
+        journal.append(run(2_000, "build", "cli", "claude-code (shell) 9b20e1", false), BuildJournal.Snapshot.NONE);
+
+        assertThat(journal.previousInSession(run(9_000, "build", "cli", "terminal 07d2aa", false)))
+                .map(p -> p.record().finishedAt())
+                .as("a new tab's first build compares against the last one from another tab")
+                .contains(1_000L);
+        assertThat(journal.previousInSession(run(9_000, "build", "cli", "script 51ac03", false)))
+                .map(p -> p.record().finishedAt())
+                .as("a script is the same person's trail")
+                .contains(1_000L);
+        assertThat(journal.previousInSession(run(9_000, "build", "cli", "claude-code (shell) 9b20e1", false)))
+                .map(p -> p.record().finishedAt())
+                .as("the agent's shell follows its own trail")
+                .contains(2_000L);
+    }
+
     /**
      * Two worktrees of one repository share the id and the project home. A run in the sibling
      * worktree is not this checkout's previous attempt: its files and tests are another trail.
