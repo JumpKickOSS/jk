@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.api.ClientEnvForward;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
@@ -17,15 +18,21 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.SocketTimeoutException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.Channels;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -230,6 +237,52 @@ public final class EngineWire {
      * {@link EngineProtocol#AUTH} line before returning, so every caller authenticates transparently
      * without needing its own knowledge of the transport.
      */
+    /**
+     * How long a connect may wait for the engine to take it. An engine that stopped accepting
+     * (stopped, swapping, in a GC death spiral) leaves each connect in its listen queue, and once
+     * that is full a blocking connect waits forever, the one in {@code jk engine stop -n} included.
+     */
+    static final long CONNECT_TIMEOUT_MILLIS = 10_000;
+
+    /**
+     * Connect {@code ch} to {@code address} within {@code millis}, then hand it back blocking. A
+     * full listen queue answers a non-blocking connect at once; it is asked again until the
+     * deadline, and then the connect fails as nothing listening does.
+     */
+    static void connectWithin(SocketChannel ch, SocketAddress address, long millis) throws IOException {
+        long deadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(millis);
+        ch.configureBlocking(false);
+        try (Selector selector = Selector.open()) {
+            boolean connected;
+            while (true) {
+                try {
+                    connected = ch.connect(address);
+                    break;
+                } catch (IOException queueFull) {
+                    if (!retryable(queueFull) || Clock.SYSTEM.nanos() >= deadline) throw queueFull;
+                    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50));
+                }
+            }
+            if (!connected) {
+                ch.register(selector, SelectionKey.OP_CONNECT);
+                while (!ch.finishConnect()) {
+                    long left = TimeUnit.NANOSECONDS.toMillis(deadline - Clock.SYSTEM.nanos());
+                    if (left <= 0)
+                        throw new SocketTimeoutException(
+                                "the engine did not take the connection within " + millis + " ms");
+                    selector.select(left);
+                }
+            }
+        }
+        ch.configureBlocking(true);
+    }
+
+    /** A connect refused because the listener's queue is full, not because nothing listens. */
+    private static boolean retryable(IOException e) {
+        String m = e.getMessage();
+        return m != null && (m.contains("temporarily unavailable") || m.contains("EAGAIN"));
+    }
+
     static SocketChannel connect(@Nullable Path endpoint) throws IOException {
         if (endpoint == null) throw new IOException("no engine endpoint to connect to");
         Path socket = endpoint;
@@ -263,7 +316,7 @@ public final class EngineWire {
         }
         SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX);
         try {
-            ch.connect(UnixDomainSocketAddress.of(socket));
+            connectWithin(ch, UnixDomainSocketAddress.of(socket), CONNECT_TIMEOUT_MILLIS);
             return ch;
         } catch (Throwable t) {
             try {
