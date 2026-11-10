@@ -101,7 +101,7 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 | `TestEffort` | `run-tests` pricing (own suite wall before method product) |
 | `WorkSchedule` / `RemainingWork` | Wall schedule + residual annotation `R(t)` |
 | `WorkspaceProgressTracker` | Preflight band + calibrated effort-weight bar; peak hold (never backwards) |
-| `BuildService` | `R0` seed; dirty prepare uses live `estimatedTotalWeight` (not stale shape-memo) |
+| `BuildService` | `R0` seed; dirty prepare uses live `estimatedTotalWeight` |
 | Wire `workspace-progress` / `eta` | Snapshots: `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0` |
 
 ## Task pricing ladder

@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
@@ -11,7 +10,6 @@ import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
-import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -218,20 +216,6 @@ final class WorkspacePreparePhase {
         // over-reserve too — every module prepared here is dirty, and a jar-derived tail priced
         // against the pre-build binary would under-count the work the run then does.
         int weight = EffortWeights.withOverReserveTails(plan::estimatedTotalWeight);
-        boolean distrust = SessionContext.current().config().forceOr(false)
-                || SessionContext.current().config().rebuildOr(false);
-        if (!distrust && !forceRebuild) {
-            var shape = PreflightMemo.tryLoadShape(request.entryDir(), dir, request.skipTests());
-            if (shape.isPresent()) {
-                weight = shape.orElseThrow().weight();
-                Perf.note("shape-memo hit " + unit.coord(), "weight", weight);
-            } else {
-                PreflightMemo.storeShape(
-                        request.entryDir(), dir, request.skipTests(), PreflightMemo.shapeOf(plan, weight));
-            }
-        } else if (!distrust) {
-            PreflightMemo.storeShape(request.entryDir(), dir, request.skipTests(), PreflightMemo.shapeOf(plan, weight));
-        }
         return new ModulePlan(unit.dir(), unit.coord(), plan, weight, false, request.cache());
     }
 

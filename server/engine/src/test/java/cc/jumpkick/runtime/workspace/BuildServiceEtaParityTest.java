@@ -94,7 +94,7 @@ class BuildServiceEtaParityTest {
 
     @Test
     void shape_style_cost_keeps_weight_and_test_weight_coupled() {
-        // Shape row: total 869, tests 841 (matches monorepo jk-cli shape-memo).
+        // Shape row: total 869, tests 841.
         var coupled = EffortWeights.costOf(MOD, Set.of(), 869, 841);
         assertThat(coupled.weight()).isEqualTo(869);
         assertThat(coupled.testWeight()).isEqualTo(841);

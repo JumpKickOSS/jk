@@ -25,8 +25,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
-import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
@@ -66,7 +64,6 @@ public final class PreflightMemo {
     static final int SCHEMA = 1;
     private static final String DIRTY_FILE = "dirty-memo.txt";
     private static final String GRAPH_FILE = "graph-memo.txt";
-    private static final String SHAPE_FILE = "shape-memo.txt";
 
     /**
      * Serialize shape-memo upserts per entry directory. Parallel prepare races
@@ -144,13 +141,6 @@ public final class PreflightMemo {
                 .resolve(".jk")
                 .resolve("preflight")
                 .resolve(GRAPH_FILE);
-    }
-
-    public static Path shapeMemoFile(Path entryDir) {
-        return entryDir.resolve(BuildLayout.TARGET)
-                .resolve(".jk")
-                .resolve("preflight")
-                .resolve(SHAPE_FILE);
     }
 
     static Path durablePreflightDir(Path entryDir) {
@@ -647,169 +637,6 @@ public final class PreflightMemo {
             unitDirs.add(u.dir().toAbsolutePath().normalize());
         }
         return structureFingerprint(entryDir, unitDirs);
-    }
-
-    // BuildPlan shape (layer B)
-
-    /**
-     * Static plan outline for one module: total weight, serial test-step weight, and step
-     * names/phases. Shape fingerprint ignores sources — weights are not freshness-aware.
-     *
-     * <p><b>Dirty prepare never uses shape-memo for bar weight</b> (a dirty prepare always runs
-     * {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} with over-reserve tails).
-     * Memo remains optional for clean / ETA-only outline hits and for storing the live outline
-     * after a dirty prepare.
-     */
-    public record BuildPlanShape(int weight, int testWeight, List<StepShape> steps) {
-        public record StepShape(String name, String phase) {}
-    }
-
-    /**
-     * Shape key: toml + lock + skipTests + engine version — not sources (static plan outline).
-     */
-    public static Fingerprint shapeFingerprint(Path moduleDir, boolean skipTests) {
-        try {
-            MessageDigest md = Hashing.newSha256();
-            feed(md, "shape");
-            feed(md, "skip=" + (skipTests ? "1" : "0"));
-            feed(md, BuildIdentity.cacheKeyVersion());
-            feedFile(md, ManifestPaths.manifestIn(moduleDir));
-            feedFile(md, LockPaths.lockFile(moduleDir));
-            return new Known(Hashing.hex(md.digest()));
-        } catch (Exception e) {
-            return uncertain(moduleDir, e);
-        }
-    }
-
-    public static Optional<BuildPlanShape> tryLoadShape(Path entryDir, Path moduleDir, boolean skipTests) {
-        Path file = shapeMemoFile(entryDir);
-        if (!Files.isRegularFile(file)) return Optional.empty();
-        try {
-            Path root = entryDir.toAbsolutePath().normalize();
-            String rel = relKey(root, moduleDir.toAbsolutePath().normalize());
-            if (!(shapeFingerprint(moduleDir, skipTests) instanceof Known want)) return Optional.empty();
-            String wantFp = want.hex();
-            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-            if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return Optional.empty();
-            String gotVersion = null;
-            for (String line : lines) {
-                if (line.startsWith("cacheKeyVersion=")) {
-                    gotVersion = line.substring("cacheKeyVersion=".length());
-                }
-            }
-            if (!BuildIdentity.cacheKeyVersion().equals(gotVersion)) return Optional.empty();
-
-            // shape\trel\tfp\tweight\ttestWeight\tname:phase,...
-            // Multiple rows per rel may exist (skipTests true vs false); match fingerprint.
-            for (String line : lines) {
-                if (!line.startsWith("shape\t")) continue;
-                String[] p = line.split("\t", 6);
-                if (p.length != 6) continue;
-                if (!rel.equals(p[1])) continue;
-                if (!wantFp.equals(p[2])) continue; // other skipTests/fp variant — keep scanning
-                return Optional.of(
-                        new BuildPlanShape(Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
-            }
-            return Optional.empty();
-        } catch (Exception e) {
-            return Optional.empty();
-        }
-    }
-
-    private static List<BuildPlanShape.StepShape> parseStepField(String stepsField) {
-        List<BuildPlanShape.StepShape> steps = new ArrayList<>();
-        if (stepsField == null || stepsField.isBlank()) return List.of();
-        for (String tok : stepsField.split(",")) {
-            int c = tok.indexOf(':');
-            if (c < 0) steps.add(new BuildPlanShape.StepShape(tok, ""));
-            else steps.add(new BuildPlanShape.StepShape(tok.substring(0, c), tok.substring(c + 1)));
-        }
-        return List.copyOf(steps);
-    }
-
-    /**
-     * Unique row key: module rel + shape fingerprint. Fingerprint embeds skipTests, so
-     * alternating {@code --skip-tests} keeps both variants instead of thrashing.
-     */
-    private static String shapeRowKey(String rel, String fingerprint) {
-        return rel + "\0" + fingerprint;
-    }
-
-    /** Upsert one module's plan shape into the shape memo. Best-effort. */
-    public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, BuildPlanShape shape) {
-        if (shape == null) return;
-        Path root = entryDir.toAbsolutePath().normalize();
-        Object lock = SHAPE_LOCKS[Math.floorMod(root.hashCode(), SHAPE_LOCKS.length)];
-        synchronized (lock) {
-            try {
-                Path file = shapeMemoFile(entryDir);
-                Files.createDirectories(file.getParent());
-                String rel = relKey(root, moduleDir.toAbsolutePath().normalize());
-                if (!(shapeFingerprint(moduleDir, skipTests) instanceof Known known)) return;
-                String fp = known.hex();
-                StringBuilder steps = new StringBuilder();
-                for (int i = 0; i < shape.steps().size(); i++) {
-                    if (i > 0) steps.append(',');
-                    BuildPlanShape.StepShape s = shape.steps().get(i);
-                    steps.append(s.name()).append(':').append(s.phase() == null ? "" : s.phase());
-                }
-                String newLine =
-                        "shape\t" + rel + "\t" + fp + "\t" + shape.weight() + "\t" + shape.testWeight() + "\t" + steps;
-
-                Map<String, String> byKey = new LinkedHashMap<>();
-                String gotVersion = BuildIdentity.cacheKeyVersion();
-                if (Files.isRegularFile(file)) {
-                    for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                        if (line.startsWith("schema=") || line.startsWith("cacheKeyVersion=")) continue;
-                        if (line.startsWith("shape\t")) {
-                            String[] p = line.split("\t", 6);
-                            if (p.length >= 3) byKey.put(shapeRowKey(p[1], p[2]), line);
-                        }
-                    }
-                }
-                byKey.put(shapeRowKey(rel, fp), newLine);
-                // Bounded per-module rowsfingerprints embed skipTests, so
-                // a live module keeps a couple of valid rows — but every jk.toml/lock edit mints
-                // a NEW fingerprint and stale rows can never hit again. Rotate out the oldest
-                // beyond a small cap instead of growing the memo forever.
-                final int maxRowsPerModule = 4;
-                List<String> sameRel = new ArrayList<>();
-                for (String key : byKey.keySet()) {
-                    if (key.startsWith(rel + "\u0000")) sameRel.add(key);
-                }
-                for (int i = 0; sameRel.size() - i > maxRowsPerModule; i++) {
-                    byKey.remove(sameRel.get(i)); // insertion order — oldest first
-                }
-
-                StringBuilder sb = new StringBuilder();
-                sb.append("schema=").append(SCHEMA).append('\n');
-                sb.append("cacheKeyVersion=").append(gotVersion).append('\n');
-                for (String line : byKey.values()) sb.append(line).append('\n');
-                AtomicWrites.replaceIfChanged(file, sb.toString());
-            } catch (Exception e) {
-                // fail-open
-                Log.debug("storeShape: fail-open", e);
-            }
-        }
-    }
-
-    /** Build a {@link BuildPlanShape} from an assembled plan (weights + step outline). */
-    public static BuildPlanShape shapeOf(BuildPlan plan, int weight) {
-        List<BuildPlanShape.StepShape> steps = new ArrayList<>();
-        int testWeight = 0;
-        for (var s : plan.steps()) {
-            String phase = s.group().orElse("");
-            steps.add(new BuildPlanShape.StepShape(s.name(), phase));
-            if (TaskNames.RUN_TESTS.equals(s.name())) {
-                try {
-                    testWeight += s.estimateWeight();
-                } catch (Exception e) {
-                    // best-effort
-                    Log.debug("shapeOf: best-effort", e);
-                }
-            }
-        }
-        return new BuildPlanShape(weight, testWeight, List.copyOf(steps));
     }
 
     // Module dirty fingerprint (sources)

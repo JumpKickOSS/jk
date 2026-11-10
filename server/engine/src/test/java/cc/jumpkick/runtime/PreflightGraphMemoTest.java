@@ -8,13 +8,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The graph rebuild and plan shape memos. */
+/** The graph rebuild memo. */
 class PreflightGraphMemoTest {
 
     @Test
@@ -115,109 +114,6 @@ class PreflightGraphMemoTest {
                 .isEqualTo(first.topoOrder().stream()
                         .map(BuildGraph.BuildUnit::coord)
                         .toList());
-    }
-
-    @Test
-    void shape_memo_round_trip(@TempDir Path tmp) throws Exception {
-        writeProject(tmp);
-        Path mod = tmp.toAbsolutePath().normalize();
-        var shape = new PreflightMemo.BuildPlanShape(
-                42,
-                8,
-                List.of(
-                        new PreflightMemo.BuildPlanShape.StepShape("compile-java", "compile"),
-                        new PreflightMemo.BuildPlanShape.StepShape("package-jar", "package")));
-        PreflightMemo.storeShape(tmp, mod, false, shape);
-        Optional<PreflightMemo.BuildPlanShape> hit = PreflightMemo.tryLoadShape(tmp, mod, false);
-        assertThat(hit).isPresent();
-        assertThat(hit.get().weight()).isEqualTo(42);
-        assertThat(hit.get().testWeight()).isEqualTo(8);
-        assertThat(hit.get().steps()).hasSize(2);
-        assertThat(hit.get().steps().getFirst().name()).isEqualTo("compile-java");
-    }
-
-    @Test
-    void shape_memo_misses_when_toml_changes(@TempDir Path tmp) throws Exception {
-        writeProject(tmp);
-        Path mod = tmp.toAbsolutePath().normalize();
-        PreflightMemo.storeShape(tmp, mod, false, new PreflightMemo.BuildPlanShape(10, 0, List.of()));
-        Files.writeString(tmp.resolve("jk.toml"), """
-                group = "t"
-                name = "app"
-                version = "9.9.9"
-                jdk = 25
-                java = 25
-                """);
-        assertThat(PreflightMemo.tryLoadShape(tmp, mod, false)).isEmpty();
-    }
-
-    @Test
-    void shape_memo_skip_tests_variants_coexist(@TempDir Path tmp) throws Exception {
-        // fingerprint embeds skipTests — both rows must persist.
-        writeProject(tmp);
-        Path mod = tmp.toAbsolutePath().normalize();
-        PreflightMemo.storeShape(
-                tmp,
-                mod,
-                false,
-                new PreflightMemo.BuildPlanShape(
-                        40, 10, List.of(new PreflightMemo.BuildPlanShape.StepShape("run-tests", "test"))));
-        PreflightMemo.storeShape(
-                tmp,
-                mod,
-                true,
-                new PreflightMemo.BuildPlanShape(
-                        30, 0, List.of(new PreflightMemo.BuildPlanShape.StepShape("compile-java", "compile"))));
-        Optional<PreflightMemo.BuildPlanShape> withTests = PreflightMemo.tryLoadShape(tmp, mod, false);
-        Optional<PreflightMemo.BuildPlanShape> skipTests = PreflightMemo.tryLoadShape(tmp, mod, true);
-        assertThat(withTests).isPresent();
-        assertThat(withTests.get().weight()).isEqualTo(40);
-        assertThat(withTests.get().testWeight()).isEqualTo(10);
-        assertThat(skipTests).isPresent();
-        assertThat(skipTests.get().weight()).isEqualTo(30);
-        assertThat(skipTests.get().testWeight()).isEqualTo(0);
-    }
-
-    @Test
-    void shape_memo_concurrent_upserts_retain_all_modules(@TempDir Path tmp) throws Exception {
-        // parallel prepare must not drop peer rows.
-        writeProject(tmp);
-        Path a = tmp.resolve("a");
-        Path b = tmp.resolve("b");
-        Files.createDirectories(a);
-        Files.createDirectories(b);
-        Files.writeString(a.resolve("jk.toml"), """
-                group = "t"
-                name = "a"
-                version = "1.0.0"
-                jdk = 25
-                java = 25
-                """);
-        Files.writeString(b.resolve("jk.toml"), """
-                group = "t"
-                name = "b"
-                version = "1.0.0"
-                jdk = 25
-                java = 25
-                """);
-        var shapeA = new PreflightMemo.BuildPlanShape(11, 0, List.of());
-        var shapeB = new PreflightMemo.BuildPlanShape(22, 0, List.of());
-        Thread t1 = new Thread(() -> {
-            for (int i = 0; i < 40; i++) PreflightMemo.storeShape(tmp, a, false, shapeA);
-        });
-        Thread t2 = new Thread(() -> {
-            for (int i = 0; i < 40; i++) PreflightMemo.storeShape(tmp, b, false, shapeB);
-        });
-        t1.start();
-        t2.start();
-        t1.join();
-        t2.join();
-        assertThat(PreflightMemo.tryLoadShape(tmp, a, false)).isPresent();
-        assertThat(PreflightMemo.tryLoadShape(tmp, a, false).orElseThrow().weight())
-                .isEqualTo(11);
-        assertThat(PreflightMemo.tryLoadShape(tmp, b, false)).isPresent();
-        assertThat(PreflightMemo.tryLoadShape(tmp, b, false).orElseThrow().weight())
-                .isEqualTo(22);
     }
 
     @Test
