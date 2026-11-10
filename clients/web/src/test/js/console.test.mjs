@@ -22,6 +22,7 @@ const {
   changedFiles,
   currentEpisode,
   earlierEpisodes,
+  EPISODES_KEPT,
   episodeHeader,
   episodeTimeline,
   foldEpisodeIntoRail,
@@ -186,7 +187,7 @@ test('session, episode and action frames fold into the rail and the selected pag
 
   let detail = { session: claude(), episodes: [ep()], actions: [] };
   detail = foldIntoDetail(detail, 'episode', { change: 'started', episode: next });
-  assert.deepEqual(detail.episodes.map((e) => e.number), [1, 2]);
+  assert.deepEqual(detail.episodes.map((e) => e.number), [2, 1], 'newest first, as the engine serves them');
   assert.equal(detail.session.episode, 'mcp-3f9a.2');
   assert.equal(currentEpisode(detail).id, 'mcp-3f9a.2');
   const action = { seq: 4, at: NOW, kind: 'callers', summary: 'callers PricingRules.weekendUplift', headline: '3 callers', outcome: 'ok', millis: 40, episode: 'mcp-3f9a.2' };
@@ -271,6 +272,18 @@ test('a finished run not yet written as an action still shows, once', () => {
   assert.deepEqual(items.map((i) => [i.state, i.chip]), [['ok', 'ok']]);
   const written = episodeTimeline(ep(), { actions: [runAction(1, 1068, 'green')], records: [], cards: [done], session: claude(), current: true });
   assert.equal(written.length, 1, 'the action and its card are one line');
+});
+
+test('a session page keeps only the newest episodes the engine serves, and counts past the ones it dropped', () => {
+  const kept = Array.from({ length: EPISODES_KEPT }, (_, i) => ep({ id: `mcp-3f9a.${2107 - i}`, number: 2107 - i }));
+  let detail = { session: claude({ episode: 'mcp-3f9a.2107' }), episodes: kept, actions: [] };
+  detail = foldIntoDetail(detail, 'episode', { change: 'started', episode: ep({ id: 'mcp-3f9a.2108', number: 2108 }) });
+  assert.equal(detail.episodes.length, EPISODES_KEPT);
+  assert.equal(detail.episodes[0].number, 2108);
+  assert.equal(detail.episodes.at(-1).number, 2108 - EPISODES_KEPT + 1, 'the oldest falls off');
+  const header = episodeHeader(currentEpisode(detail), { timeline: [], records: [], episodes: detail.episodes, now: NOW });
+  assert.equal(header.number, 2108);
+  assert.equal(header.of, 2108, 'episode 2108 of 2108, not of the 50 the page holds');
 });
 
 test('earlier episodes fold newest first; the page names its current one', () => {

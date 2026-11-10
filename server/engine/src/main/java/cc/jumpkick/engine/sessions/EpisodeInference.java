@@ -3,6 +3,7 @@ package cc.jumpkick.engine.sessions;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,6 +38,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class EpisodeInference {
 
+    /**
+     * The episodes a session keeps: the newest, oldest dropped as a new one opens. What the
+     * dashboard shows of a session and what its records store; a run that finishes into a dropped
+     * episode changes nothing.
+     */
+    public static final int KEEP = 50;
+
     /** How long a session may go without a fact before its next one starts a new episode. */
     public static final long DEFAULT_IDLE_GAP_MILLIS = Duration.ofMinutes(10).toMillis();
 
@@ -44,6 +52,9 @@ public final class EpisodeInference {
     private final long idleGapMillis;
     private final List<Draft> episodes = new ArrayList<>();
     private long lastAt;
+
+    /** The number the session's newest episode took; dropped episodes keep their numbers. */
+    private int number;
 
     /** The goal the agent named last in this session, or null before its first. */
     private @Nullable String lastGoal;
@@ -167,34 +178,45 @@ public final class EpisodeInference {
         return List.of(cur.close(why));
     }
 
+    /** One kept episode as it is stored: what the dashboard reads, and the tallies its next fact needs. */
+    public record Stored(Episode episode, Map<String, Object> state) {}
+
+    /** The kept episodes with their tallies, oldest first. */
+    public List<Stored> stored() {
+        List<Stored> out = new ArrayList<>(episodes.size());
+        for (Draft d : episodes) out.add(new Stored(d.view(), d.state()));
+        return out;
+    }
+
     /**
-     * What {@link #episodes()} does not carry and the next fact needs: when the last fact finished,
-     * and each episode's running tallies, oldest first. Stored beside the episodes, and read back by
-     * {@link #resume}.
+     * What the episodes do not carry and the next fact needs: when the last fact finished, the
+     * session's last goal, and the newest episode's number. Read back by {@link #resume}.
      */
     public Map<String, Object> state() {
-        List<Object> drafts = new ArrayList<>(episodes.size());
-        for (Draft d : episodes) drafts.add(d.state());
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("lastAt", lastAt);
         if (lastGoal != null) m.put("lastGoal", lastGoal);
-        m.put("episodes", drafts);
+        m.put("number", number);
         return m;
     }
 
     /**
-     * The inference a previous engine left: {@code stored} as {@link #episodes()} answered it, and
-     * {@code state} as {@link #state()} did. An episode with no state keeps its outcome and starts
-     * its tallies over.
+     * The inference a previous engine left: {@code stored} as {@link #stored()} answered it, in any
+     * order, and {@code state} as {@link #state()} did. The newest {@link #KEEP} are kept. An
+     * episode with no tallies keeps its outcome and starts them over. The next episode's number
+     * follows the highest of the stored episodes', the state's and {@code numberFloor}.
      */
     public static EpisodeInference resume(
-            String session, long idleGapMillis, List<Episode> stored, @Nullable Map<?, ?> state) {
+            String session, long idleGapMillis, List<Stored> stored, @Nullable Map<?, ?> state, int numberFloor) {
         EpisodeInference inference = new EpisodeInference(session, idleGapMillis);
-        List<?> drafts = state != null && state.get("episodes") instanceof List<?> l ? l : List.of();
+        List<Stored> sorted = new ArrayList<>(stored);
+        sorted.sort(Comparator.comparingInt((Stored s) -> s.episode().number()));
+        List<Stored> kept = sorted.subList(Math.max(0, sorted.size() - KEEP), sorted.size());
         long last = 0;
+        int number = Math.max(0, numberFloor);
         String lastGoal = null;
-        for (int i = 0; i < stored.size(); i++) {
-            Episode e = stored.get(i);
+        for (Stored s : kept) {
+            Episode e = s.episode();
             String source = e.titleSource();
             boolean named = Episode.GOAL.equals(source) || Episode.LAST_GOAL.equals(source);
             String goal = named ? e.title() : null;
@@ -203,10 +225,13 @@ public final class EpisodeInference {
             d.lastAt = e.lastAt();
             d.runs = e.runs();
             d.actions = e.actions();
-            d.restore(i < drafts.size() && drafts.get(i) instanceof Map<?, ?> m ? m : null, e.outcome());
+            d.restore(s.state().isEmpty() ? null : s.state(), e.outcome());
             inference.episodes.add(d);
             last = Math.max(last, e.lastAt());
         }
+        for (Stored s : sorted) number = Math.max(number, s.episode().number());
+        if (state != null && state.get("number") instanceof Number n) number = Math.max(number, n.intValue());
+        inference.number = number;
         inference.lastAt = state != null && state.get("lastAt") instanceof Number n ? n.longValue() : last;
         inference.lastGoal = state != null && state.get("lastGoal") instanceof String g ? g : lastGoal;
         return inference;
@@ -226,14 +251,11 @@ public final class EpisodeInference {
 
     /** A new episode titled by {@code goal}, which came from {@code source}; inferred when it is null. */
     private Draft open(long at, String project, @Nullable String goal, String source) {
-        Draft d = new Draft(
-                session + "." + (episodes.size() + 1),
-                episodes.size() + 1,
-                project,
-                at,
-                goal,
-                goal == null ? Episode.INFERRED : source);
+        number++;
+        Draft d =
+                new Draft(session + "." + number, number, project, at, goal, goal == null ? Episode.INFERRED : source);
         episodes.add(d);
+        while (episodes.size() > KEEP) episodes.removeFirst();
         return d;
     }
 

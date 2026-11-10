@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,8 +68,14 @@ public final class SessionLog {
     /** Triggers that run on the engine's own account and never belong to a session. */
     private static final Set<String> SESSIONLESS = Set.of("graph", "optimize", "calibrate", "synthetic");
 
-    /** Actions a session keeps in memory when there is no journal to page them from. */
-    static final int MEMORY_ACTIONS = 1000;
+    /** Actions a session keeps: in memory with no journal, and in its {@code actions.jsonl} once compacted. */
+    static final int KEPT_ACTIONS = 1000;
+
+    /**
+     * Episode lines a session's {@code episodes.jsonl} may reach before it is compacted to one line
+     * per kept episode: every change to an episode appends one.
+     */
+    static final int COMPACT_EPISODE_LINES = 4 * EpisodeInference.KEEP;
 
     private final @Nullable SessionJournal journal;
     private final LongSupplier clock;
@@ -101,6 +108,12 @@ public final class SessionLog {
 
         @Nullable
         Map<String, Object> connection;
+
+        /** Each kept episode's line as last appended, so only a changed episode is appended again. */
+        final Map<String, String> written = new HashMap<>();
+
+        /** Lines in its {@code episodes.jsonl}, superseded ones included. */
+        int episodeLines;
 
         Live(SessionRecord record, EpisodeInference episodes) {
             this.record = record;
@@ -241,9 +254,16 @@ public final class SessionLog {
             SessionRecord r = SessionRecord.of(s);
             if (r.id().isBlank() || SessionRecord.ENDED.equals(r.state()) || byId.containsKey(r.id())) continue;
             Map<?, ?> state = doc.get("inference") instanceof Map<?, ?> m ? m : null;
-            Live live = new Live(r, EpisodeInference.resume(r.id(), idleGapMillis, episodesOf(doc), state));
+            List<Map<String, Object>> lines = journal.episodeLines(r.id());
+            List<EpisodeInference.Stored> stored = latest(lines);
+            Live live =
+                    new Live(r, EpisodeInference.resume(r.id(), idleGapMillis, stored, state, numberOf(r.episode())));
+            live.episodeLines = lines.size();
+            for (EpisodeInference.Stored e : live.episodes.stored())
+                live.written.put(e.episode().id(), lineText(e));
             List<Map<String, Object>> actions = journal.actions(r.id());
             live.seq = actions.isEmpty() ? 0 : Episode.num(actions.getLast(), "seq");
+            if (live.episodeLines > EpisodeInference.KEEP || actions.size() > KEPT_ACTIONS) compact(live, actions);
             byId.put(r.id(), live);
             Live other = byKey.get(key(r.origin(), r.label()));
             if (other == null || other.record.lastActiveAt() < r.lastActiveAt())
@@ -534,7 +554,7 @@ public final class SessionLog {
                 if (!(doc.get("session") instanceof Map<?, ?> s)) continue;
                 SessionRecord r = SessionRecord.of(s);
                 if (rows.containsKey(r.id())) continue;
-                rows.put(r.id(), row(r, null, episodesOf(doc)));
+                rows.put(r.id(), row(r, null, storedEpisodes(r.id())));
             }
         }
         List<Map<String, Object>> out = new ArrayList<>(rows.values());
@@ -576,7 +596,7 @@ public final class SessionLog {
             Optional<Map<String, Object>> doc = stored.read(id);
             if (doc.isEmpty() || !(doc.get().get("session") instanceof Map<?, ?> s)) return Optional.empty();
             record = SessionRecord.of(s);
-            episodes = episodesOf(doc.get());
+            episodes = storedEpisodes(id);
         }
         if (actions == null) {
             List<ActionRecord> read = new ArrayList<>();
@@ -593,7 +613,10 @@ public final class SessionLog {
         for (ActionRecord a : actions.subList(start, end)) page.add(a.toMap());
         long next = start > 0 ? actions.get(start).seq() : 0;
         List<Map<String, Object>> eps = new ArrayList<>();
-        for (Episode e : episodes) eps.add(withProjectId(e).toMap());
+        for (Episode e : episodes.reversed()) {
+            if (eps.size() == EpisodeInference.KEEP) break;
+            eps.add(withProjectId(e).toMap());
+        }
         return Optional.of(new Page(sessionMap(record, state), eps, page, next));
     }
 
@@ -698,7 +721,7 @@ public final class SessionLog {
         ActionRecord logged = action.redacted().withSeq(++live.seq);
         if (journal == null) {
             live.memory.add(logged);
-            if (live.memory.size() > MEMORY_ACTIONS) live.memory.removeFirst();
+            if (live.memory.size() > KEPT_ACTIONS) live.memory.removeFirst();
             return logged;
         }
         if (!writing()) return logged;
@@ -710,24 +733,128 @@ public final class SessionLog {
         return logged;
     }
 
+    /**
+     * Store {@code live}: an episode line for each kept episode that changed since it was last
+     * appended, then the head. Once the episode lines pass {@link #COMPACT_EPISODE_LINES}, both logs
+     * are compacted to the kept episodes.
+     */
     private void persist(Live live) {
         if (journal == null || !writing()) return;
-        List<Map<String, Object>> eps = new ArrayList<>();
-        // Only the current episode's project is asked for its id here: this runs while a build is
-        // admitted, and resolving every older episode's checkout forked git once per checkout on
-        // a fresh engine — a second of a Helidon build's first request. Older episodes keep the id
-        // they were written with; the history views resolve the rest through the memo.
+        String id = live.record.id();
         String current = live.record.episode();
-        for (Episode e : live.episodes.episodes()) eps.add((e.id().equals(current) ? withProjectId(e) : e).toMap());
+        Set<String> kept = new HashSet<>();
+        try {
+            for (EpisodeInference.Stored e : live.episodes.stored()) {
+                String eid = e.episode().id();
+                kept.add(eid);
+                String text = lineText(e);
+                if (text.equals(live.written.get(eid))) continue;
+                // Only the current episode's project is asked for its id: this runs while a build is
+                // admitted, and resolving an older episode's checkout could fork git on a fresh engine.
+                journal.appendEpisode(id, line(e, eid.equals(current)));
+                live.written.put(eid, text);
+                live.episodeLines++;
+            }
+            live.written.keySet().retainAll(kept);
+            if (live.episodeLines > COMPACT_EPISODE_LINES) compact(live, null);
+            else journal.write(id, head(live));
+        } catch (IOException | RuntimeException e) {
+            Log.debug("session not written: " + id, e);
+        }
+    }
+
+    /**
+     * Rewrite {@code live}'s logs to what it keeps: one line per kept episode, and the actions of
+     * those episodes, at most {@link #KEPT_ACTIONS} of the newest; then its head. {@code actions} is
+     * its action log when the caller has already read it.
+     */
+    private void compact(Live live, @Nullable List<Map<String, Object>> actions) {
+        if (journal == null || !writing()) return;
+        String id = live.record.id();
+        String current = live.record.episode();
+        try {
+            List<Map<String, Object>> lines = new ArrayList<>();
+            Set<String> kept = new HashSet<>();
+            for (EpisodeInference.Stored e : live.episodes.stored()) {
+                lines.add(line(e, e.episode().id().equals(current)));
+                kept.add(e.episode().id());
+            }
+            journal.rewriteEpisodes(id, lines);
+            live.episodeLines = lines.size();
+            List<Map<String, Object>> keep = new ArrayList<>();
+            for (Map<String, Object> a : actions != null ? actions : journal.actions(id)) {
+                if (kept.contains(MiniJson.str(a, "episode"))) keep.add(a);
+            }
+            journal.rewriteActions(id, keep.subList(Math.max(0, keep.size() - KEPT_ACTIONS), keep.size()));
+            journal.write(id, head(live));
+        } catch (IOException | RuntimeException e) {
+            Log.debug("session not compacted: " + id, e);
+        }
+    }
+
+    /** {@code live}'s {@code session.json}: its record and the inference state its next fact needs. */
+    private static Map<String, Object> head(Live live) {
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("schema", 1);
         doc.put("session", live.record.toMap());
-        doc.put("episodes", eps);
         doc.put("inference", live.episodes.state());
+        return doc;
+    }
+
+    /** One episode line: the episode, with its project's id when {@code resolve} or already known, and its tallies. */
+    private Map<String, Object> line(EpisodeInference.Stored e, boolean resolve) {
+        Episode episode = e.episode();
+        String dir = episode.project();
+        if (!dir.isBlank() && (resolve || projectIds.containsKey(dir))) episode = withProjectId(episode);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("episode", episode.toMap());
+        m.put("state", e.state());
+        return m;
+    }
+
+    /** An episode line as compared for change: without the project id, which only some lines carry. */
+    private static String lineText(EpisodeInference.Stored e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("episode", e.episode().toMap());
+        m.put("state", e.state());
+        return MiniJson.write(m);
+    }
+
+    /** The episodes {@code lines} hold: the last line for each episode id. */
+    private static List<EpisodeInference.Stored> latest(List<Map<String, Object>> lines) {
+        Map<String, EpisodeInference.Stored> byId = new LinkedHashMap<>();
+        for (Map<String, Object> line : lines) {
+            if (!(line.get("episode") instanceof Map<?, ?> em)) continue;
+            Episode e = Episode.of(em);
+            if (e.id().isBlank()) continue;
+            Map<String, Object> state = new LinkedHashMap<>();
+            if (line.get("state") instanceof Map<?, ?> sm) sm.forEach((k, v) -> state.put(String.valueOf(k), v));
+            byId.remove(e.id());
+            byId.put(e.id(), new EpisodeInference.Stored(e, state));
+        }
+        return new ArrayList<>(byId.values());
+    }
+
+    /** A stored session's kept episodes, oldest first. */
+    private List<Episode> storedEpisodes(String id) {
+        SessionJournal stored = journal;
+        if (stored == null) return List.of();
+        List<Episode> out = new ArrayList<>();
+        for (EpisodeInference.Stored e : latest(stored.episodeLines(id))) out.add(e.episode());
+        out.sort(Comparator.comparingInt(Episode::number));
+        return out.size() > EpisodeInference.KEEP
+                ? List.copyOf(out.subList(out.size() - EpisodeInference.KEEP, out.size()))
+                : out;
+    }
+
+    /** The number an episode id ends in, or 0. */
+    static int numberOf(@Nullable String episode) {
+        if (episode == null) return 0;
+        int dot = episode.lastIndexOf('.');
         try {
-            journal.write(live.record.id(), doc);
-        } catch (IOException | RuntimeException e) {
-            Log.debug("session not written: " + live.record.id(), e);
+            return dot > 0 ? Integer.parseInt(episode.substring(dot + 1)) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
@@ -826,16 +953,6 @@ public final class SessionLog {
         }
         projectIds.put(dir, id);
         return id;
-    }
-
-    private static List<Episode> episodesOf(Map<String, Object> doc) {
-        List<Episode> out = new ArrayList<>();
-        for (Object e : list(doc.get("episodes"))) if (e instanceof Map<?, ?> m) out.add(Episode.of(m));
-        return out;
-    }
-
-    private static List<?> list(@Nullable Object o) {
-        return o instanceof List<?> l ? l : List.of();
     }
 
     private static String key(String origin, @Nullable String label) {

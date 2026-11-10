@@ -410,8 +410,9 @@ actions }`: `id` is `<session>.<number>`, `titleSource` `goal` (the agent's `goa
 `green`, `red` or `abandoned`. What starts an episode and how its title is chosen:
 [web](../user/web.md#sessions-and-episodes); the rules are `EpisodeInference`.
 
-`GET /api/sessions/<id>[?before=<seq>&limit=N]`: `{ session, episodes, actions, next }` — every
-episode, oldest first, and up to `limit` (default 100, at most 1000) actions older than `before`
+`GET /api/sessions/<id>[?before=<seq>&limit=N]`: `{ session, episodes, actions, next }` — the
+session's newest episodes, at most 50 (`EpisodeInference.KEEP`, all a session keeps), newest
+first, and up to `limit` (default 100, at most 1000) actions older than `before`
 (default: the newest), oldest first. `next` is the `before` that reads the page older than this
 one, `null` on the first page. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
 episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `callers`, `read`,
@@ -423,9 +424,16 @@ repository credentials its build resolved) before they are written, so `actions.
 route and the SSE `action` event all carry the masked form. An id that is not one path
 segment of letters, digits, `.`, `-` and `_` is a **400**; an unknown one a **404**.
 
-Both are bearer-gated like every `/api/*`. The records live under the journal root,
-`sessions/<id>/session.json` (the session and its episodes) and `actions.jsonl` (one line per
-action), and are pruned with the runs under the same `[history]` age and disk budgets; a session
+Both are bearer-gated like every `/api/*`. The records live under the journal root, one
+directory per session: `sessions/<id>/session.json` is a small head (the session record and the
+inference state its next fact needs: last fact time, last goal, newest episode number), replaced on
+every change; `episodes.jsonl` appends one `{ episode, state }` line each time an episode changes,
+the episode whole with the tallies its next fact needs, so the last line for an id is the
+episode; `actions.jsonl` appends one line per action. No write grows with a session's age: a
+session keeps its newest 50 episodes (an older one is dropped as a new one opens, and a run that
+finishes into a dropped episode changes nothing), and once `episodes.jsonl` passes 200 lines it is
+compacted to one line per kept episode and `actions.jsonl` to the actions of those episodes, at
+most 1000; an engine adopting a session over those bounds compacts it first. The records are pruned with the runs under the same `[history]` age and disk budgets; a session
 that has not ended is never pruned. An open MCP session's directory also holds `connection.json`,
 the connection behind it (below); it is removed when the session ends.
 

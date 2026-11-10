@@ -16,9 +16,9 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -165,11 +165,7 @@ class EngineConnectionTest extends EngineServerHarness {
                 assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.ping()))).isEqualTo(EngineProtocol.PONG);
             }
             log.goal("mcp", label, dir, "Fix the weekend uplift");
-            Map<String, Object> stored = Objects.requireNonNull(
-                    SessionJournal.under(BuildJournal.current().buildsRoot())
-                            .read(id)
-                            .orElse(null));
-            assertThat((List<?>) stored.get("episodes"))
+            assertThat(episodes(id))
                     .as("the goal after the refusal was written")
                     .singleElement()
                     .satisfies(e -> assertThat(((Map<?, ?>) e).get("title")).isEqualTo("Fix the weekend uplift"));
@@ -241,13 +237,16 @@ class EngineConnectionTest extends EngineServerHarness {
         }
     }
 
+    /** Session {@code sessionId}'s episodes as its {@code episodes.jsonl} holds them: the last line for each. */
     private static List<?> episodes(String sessionId) {
-        Map<String, Object> stored = Objects.requireNonNull(
-                SessionJournal.under(BuildJournal.current().buildsRoot())
-                        .read(sessionId)
-                        .orElse(null));
-        Object episodes = stored.get("episodes");
-        return episodes == null ? List.of() : (List<?>) episodes;
+        Map<Object, Object> byId = new LinkedHashMap<>();
+        for (Map<String, Object> line :
+                SessionJournal.under(BuildJournal.current().buildsRoot()).episodeLines(sessionId)) {
+            if (!(line.get("episode") instanceof Map<?, ?> e)) continue;
+            byId.remove(e.get("id"));
+            byId.put(e.get("id"), e);
+        }
+        return List.copyOf(byId.values());
     }
 
     private EnginePaths.Paths start() throws Exception {

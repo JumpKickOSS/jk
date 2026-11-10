@@ -45,7 +45,7 @@ class EpisodeInferenceTest {
         });
         assertThat(inference.settle()).as("settled once").isEmpty();
 
-        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.episodes(), inference.state());
+        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.stored(), inference.state(), 0);
         assertThat(Objects.requireNonNull(resumed.current()).outcome()).isEqualTo(Episode.RED);
         assertThat(resumed.place(T + 6_000, "/ws/app").episode())
                 .as("a settled episode takes no more facts, even inside the idle gap")
@@ -130,7 +130,7 @@ class EpisodeInferenceTest {
                         .episode())
                 .isEqualTo(fix);
 
-        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.episodes(), inference.state());
+        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.stored(), inference.state(), 0);
         resumed.place(T + 3_000 + GAP + 1_000, "/ws/lib");
         assertThat(resumed.episodes())
                 .extracting(e -> e.project() + ":" + e.title() + ":" + e.titleSource())
@@ -178,7 +178,7 @@ class EpisodeInferenceTest {
 
         Map<String, Object> state =
                 MiniJson.parse(MiniJson.write(before.state())) instanceof Map<?, ?> m ? cast(m) : Map.of();
-        EpisodeInference after = EpisodeInference.resume("s", GAP, before.episodes(), state);
+        EpisodeInference after = EpisodeInference.resume("s", GAP, roundTrip(before.stored()), state, 0);
 
         assertThat(after.episodes()).isEqualTo(before.episodes());
         assertThat(after.lastAt()).isEqualTo(before.lastAt());
@@ -196,10 +196,44 @@ class EpisodeInferenceTest {
         Episode closed = new Episode(
                 "s.1", "s", 1, "/ws/app", null, "Working in app", Episode.INFERRED, Episode.RED, T, T, 1, 0);
 
-        EpisodeInference after = EpisodeInference.resume("s", GAP, List.of(closed), null);
+        EpisodeInference after =
+                EpisodeInference.resume("s", GAP, List.of(new EpisodeInference.Stored(closed, Map.of())), null, 0);
 
         assertThat(after.episodes()).containsExactly(closed);
         assertThat(after.lastAt()).isEqualTo(T);
+    }
+
+    @Test
+    void a_session_keeps_its_newest_episodes_and_numbers_on_past_the_ones_it_dropped() {
+        EpisodeInference inference = new EpisodeInference("s", GAP);
+        int total = EpisodeInference.KEEP + 7;
+        for (int i = 0; i < total; i++) inference.place(T + i, "/ws/p" + i);
+
+        assertThat(inference.episodes()).hasSize(EpisodeInference.KEEP);
+        assertThat(inference.episodes().getFirst().number()).isEqualTo(8);
+        assertThat(Objects.requireNonNull(inference.current()).id()).isEqualTo("s." + total);
+        assertThat(inference.fold("s.1", Fact.run(T, 0, "/ws/p0", "p0", true, List.of())))
+                .as("a run finishing into a dropped episode changes nothing")
+                .isEmpty();
+
+        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.stored(), inference.state(), 0);
+        assertThat(resumed.episodes()).isEqualTo(inference.episodes());
+        assertThat(resumed.place(T + total, "/ws/other").episode()).isEqualTo("s." + (total + 1));
+
+        EpisodeInference lost = EpisodeInference.resume("s", GAP, List.of(), null, 2105);
+        assertThat(lost.place(T, "/ws/app").episode())
+                .as("with no episodes stored, numbering carries on from the session's current one")
+                .isEqualTo("s.2106");
+    }
+
+    /** {@code stored} as a journal hands it back: every value through JSON. */
+    private static List<EpisodeInference.Stored> roundTrip(List<EpisodeInference.Stored> stored) {
+        return stored.stream()
+                .map(e -> new EpisodeInference.Stored(
+                        Episode.of(cast((Map<?, ?>) Objects.requireNonNull(
+                                MiniJson.parse(MiniJson.write(e.episode().toMap()))))),
+                        cast((Map<?, ?>) Objects.requireNonNull(MiniJson.parse(MiniJson.write(e.state()))))))
+                .toList();
     }
 
     @SuppressWarnings("unchecked")

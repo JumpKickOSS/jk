@@ -104,7 +104,8 @@ class McpActionsTest {
         SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
         assertThat(page.episodes())
                 .extracting(e -> e.get("title") + "/" + e.get("titleSource") + "/" + e.get("actions"))
-                .containsExactly("Rename post to record/goal/3", "Add Postgres/goal/1");
+                .as("newest first")
+                .containsExactly("Add Postgres/goal/1", "Rename post to record/goal/3");
     }
 
     @Test

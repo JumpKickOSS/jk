@@ -20,9 +20,13 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The session records beside the run records: {@code <builds>/sessions/<id>/session.json} holds one
- * session and its episodes, rewritten whole on every change, and {@code actions.jsonl} beside it
- * appends one line per action the session took. An open MCP session's {@code connection.json} holds
+ * The session records beside the run records, one directory per session under {@code
+ * <builds>/sessions/<id>/}: {@code session.json} is the session's small head (its record and the
+ * inference state its next fact needs), replaced on every change; {@code episodes.jsonl} appends one
+ * line per change to an episode, each carrying the whole episode, so the last line for an episode
+ * id is the episode; {@code actions.jsonl} appends one line per action the session took. The
+ * session log compacts both logs to the episodes it keeps ({@link #rewriteEpisodes}, {@link
+ * #rewriteActions}), so no write grows with a session's age. An open MCP session's {@code connection.json} holds
  * the connection behind it, so a successor engine answers the same {@code Mcp-Session-Id}; it is
  * removed when the session ends. The shapes are the session log's; this class only
  * stores and reads them as {@link MiniJson} objects. Pruned with the runs, under the same {@code
@@ -40,6 +44,8 @@ public final class SessionJournal {
     static final String SESSION_JSON = "session.json";
 
     static final String ACTIONS_JSONL = "actions.jsonl";
+
+    static final String EPISODES_JSONL = "episodes.jsonl";
 
     static final String CONNECTION_JSON = "connection.json";
 
@@ -183,15 +189,50 @@ public final class SessionJournal {
 
     /** Append one action line to session {@code id}. */
     public void append(String id, Map<String, Object> action) throws IOException {
+        appendLine(id, ACTIONS_JSONL, action);
+    }
+
+    /** Append one episode line to session {@code id}: it supersedes every earlier line for the same episode. */
+    public void appendEpisode(String id, Map<String, Object> line) throws IOException {
+        appendLine(id, EPISODES_JSONL, line);
+    }
+
+    /** Replace session {@code id}'s episode lines with {@code lines}, oldest first. */
+    public void rewriteEpisodes(String id, List<Map<String, Object>> lines) throws IOException {
+        rewrite(id, EPISODES_JSONL, lines);
+    }
+
+    /** Replace session {@code id}'s action lines with {@code lines}, oldest first. */
+    public void rewriteActions(String id, List<Map<String, Object>> lines) throws IOException {
+        rewrite(id, ACTIONS_JSONL, lines);
+    }
+
+    /**
+     * Every episode line of session {@code id}, oldest first, superseded ones included; a line that
+     * does not parse is skipped.
+     */
+    public List<Map<String, Object>> episodeLines(String id) {
+        return lines(id, EPISODES_JSONL);
+    }
+
+    private void appendLine(String id, String file, Map<String, Object> line) throws IOException {
         Path dir = dirOf(id);
         OwnerOnlyFiles.createDirectories(dir);
         Files.writeString(
-                dir.resolve(ACTIONS_JSONL),
-                MiniJson.write(action) + "\n",
+                dir.resolve(file),
+                MiniJson.write(line) + "\n",
                 StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND,
                 StandardOpenOption.WRITE);
+    }
+
+    private void rewrite(String id, String file, List<Map<String, Object>> lines) throws IOException {
+        Path dir = dirOf(id);
+        OwnerOnlyFiles.createDirectories(dir);
+        StringBuilder out = new StringBuilder();
+        for (Map<String, Object> line : lines) out.append(MiniJson.write(line)).append('\n');
+        AtomicWrites.replace(dir.resolve(file), out.toString());
     }
 
     /** Session {@code id}'s document, or empty when it has none or it does not parse. */
@@ -209,8 +250,12 @@ public final class SessionJournal {
 
     /** Every action line of session {@code id}, oldest first; a line that does not parse is skipped. */
     public List<Map<String, Object>> actions(String id) {
+        return lines(id, ACTIONS_JSONL);
+    }
+
+    private List<Map<String, Object>> lines(String id, String name) {
         if (!validId(id)) return List.of();
-        Path file = root.resolve(id).resolve(ACTIONS_JSONL);
+        Path file = root.resolve(id).resolve(name);
         if (!Files.isRegularFile(file)) return List.of();
         List<Map<String, Object>> out = new ArrayList<>();
         try {
@@ -219,7 +264,7 @@ public final class SessionJournal {
                 if (parse(line) instanceof Map<?, ?> m) out.add(cast(m));
             }
         } catch (IOException e) {
-            Log.debug("session actions unreadable: " + file, e);
+            Log.debug("session lines unreadable: " + file, e);
         }
         return out;
     }

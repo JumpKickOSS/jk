@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,7 +71,8 @@ class SessionLogTest {
                 .containsEntry("state", "live")
                 .containsEntry("episode", episode)
                 .doesNotContainKey("host");
-        assertThat(MiniJson.list(doc, "episodes")).singleElement().satisfies(e -> assertThat(e)
+        assertThat(doc).as("the head holds no episodes").doesNotContainKey("episodes");
+        assertThat(storedEpisodes(id)).singleElement().satisfies(e -> assertThat(e)
                 .asInstanceOf(InstanceOfAssertFactories.MAP)
                 .containsEntry("title", "Fixing QuoteTest#threeNightWeekendStay")
                 .containsEntry("titleSource", "inferred")
@@ -148,7 +150,7 @@ class SessionLogTest {
                 .as("nothing works on it any more: its wall stops at its last fact")
                 .satisfies(e -> assertThat(e).containsEntry("outcome", "green"));
         assertThat(events).endsWith("episode:outcome", "session:idle");
-        assertThat(root.resolve("sessions").resolve(shell).resolve("session.json"))
+        assertThat(root.resolve("sessions").resolve(shell).resolve("episodes.jsonl"))
                 .content()
                 .contains("\"closed\":\"IDLE\"");
 
@@ -208,6 +210,82 @@ class SessionLogTest {
         assertThat(next.placeRun("cli", null, "build", "/ws/app", T + 61_000))
                 .as("the shell's next run is the next episode of the same session")
                 .isEqualTo(shell + ".2");
+    }
+
+    @Test
+    void a_long_session_appends_only_what_changed_and_compacts_to_the_episodes_it_keeps() throws Exception {
+        int keep = EpisodeInference.KEEP;
+        String first = Objects.requireNonNull(log.placeRun("cli", null, "build", "/ws/p0", T));
+        String shell = sessionOf(first);
+        Path dir = root.resolve("sessions").resolve(shell);
+        log.runFinished(run(first, 1, T, true));
+        int afterOne = journal.episodeLines(shell).size();
+        log.sweep();
+        assertThat(journal.episodeLines(shell))
+                .as("a sweep that changed nothing appends nothing")
+                .hasSize(afterOne);
+
+        // Each run in another checkout opens an episode: far more than the session keeps.
+        int total = 3 * keep;
+        for (int i = 1; i < total; i++) {
+            long at = T + i * 10_000L;
+            String ep = Objects.requireNonNull(log.placeRun("cli", null, "build", "/ws/p" + i, at));
+            log.runFinished(run(ep, i + 1, at, true));
+            assertThat(journal.episodeLines(shell).size()).isLessThanOrEqualTo(SessionLog.COMPACT_EPISODE_LINES);
+        }
+
+        assertThat(Files.size(dir.resolve("session.json")))
+                .as("the head stays small")
+                .isLessThan(1_024);
+        List<Map<?, ?>> stored = storedEpisodes(shell);
+        assertThat(stored)
+                .as(
+                        "between compactions the log may still hold episodes since dropped, never more lines than the bound")
+                .hasSizeBetween(keep, SessionLog.COMPACT_EPISODE_LINES);
+        assertThat(Episode.num(stored.getLast(), "number")).isEqualTo(total);
+        assertThat(journal.actions(shell))
+                .as("only the actions of kept episodes survive a compaction")
+                .allSatisfy(a -> assertThat(SessionLog.numberOf(MiniJson.str(a, "episode")))
+                        .isGreaterThan(total - keep - SessionLog.COMPACT_EPISODE_LINES));
+
+        SessionLog.Page page = log.session(shell, 0, 10).orElseThrow();
+        assertThat(page.episodes()).hasSize(keep);
+        assertThat(page.episodes())
+                .as("newest first")
+                .extracting(e -> e.get("number"))
+                .startsWith(total, total - 1);
+    }
+
+    @Test
+    void a_new_engine_compacts_an_oversized_session_and_numbers_on_from_its_current_episode() throws Exception {
+        String id = "cli-shell-old";
+        Path dir = root.resolve("sessions").resolve(id);
+        Files.createDirectories(dir);
+        // A session as an older engine left it: one big head and a long action log, no episode log.
+        Files.writeString(
+                dir.resolve("session.json"),
+                "{\"schema\":1,\"session\":{\"id\":\"" + id + "\",\"origin\":\"cli\",\"startedAt\":" + T
+                        + ",\"lastActiveAt\":" + T + ",\"state\":\"live\",\"episode\":\"" + id
+                        + ".2105\"},\"episodes\":[],\"inference\":{\"lastAt\":" + T + "}}\n");
+        StringBuilder actions = new StringBuilder();
+        for (int i = 1; i <= SessionLog.KEPT_ACTIONS + 500; i++) {
+            actions.append("{\"seq\":")
+                    .append(i)
+                    .append(",\"at\":")
+                    .append(T)
+                    .append(",\"kind\":\"run\",\"summary\":\"build\",\"outcome\":\"green\",\"millis\":1,\"episode\":\"")
+                    .append(id)
+                    .append('.')
+                    .append(i)
+                    .append("\"}\n");
+        }
+        Files.writeString(dir.resolve("actions.jsonl"), actions.toString());
+
+        SessionLog next = newLog();
+        assertThat(next.adopt()).isEqualTo(1);
+        assertThat(journal.actions(id)).as("no kept episode owns them").isEmpty();
+        assertThat(journal.read(id).orElseThrow()).doesNotContainKey("episodes");
+        assertThat(next.placeRun("cli", null, "build", "/ws/app", T + 1_000)).isEqualTo(id + ".2106");
     }
 
     @Test
@@ -400,7 +478,7 @@ class SessionLogTest {
         assertThat(page.episodes())
                 .singleElement()
                 .satisfies(e -> assertThat(e).containsEntry("runs", 2).containsEntry("outcome", "green"));
-        assertThat(MiniJson.list(journal.read(id).orElseThrow(), "episodes"))
+        assertThat(storedEpisodes(id))
                 .as("the record on disk counts both runs")
                 .singleElement()
                 .satisfies(e -> assertThat(Episode.num((Map<?, ?>) e, "runs")).isEqualTo(2L));
@@ -534,6 +612,17 @@ class SessionLogTest {
                 .asInstanceOf(InstanceOfAssertFactories.MAP)
                 .containsEntry("summary", "query \"where is *** read\"")
                 .containsEntry("headline", "uses ***" + ActionRecord.CLIP);
+    }
+
+    /** Session {@code id}'s episodes as its {@code episodes.jsonl} holds them: the last line for each id, oldest first. */
+    private List<Map<?, ?>> storedEpisodes(String id) {
+        LinkedHashMap<Object, Map<?, ?>> byId = new LinkedHashMap<>();
+        for (Map<String, Object> line : journal.episodeLines(id)) {
+            Map<?, ?> e = (Map<?, ?>) Objects.requireNonNull(line.get("episode"));
+            byId.remove(e.get("id"));
+            byId.put(e.get("id"), e);
+        }
+        return new ArrayList<>(byId.values());
     }
 
     private void callers(long at) {

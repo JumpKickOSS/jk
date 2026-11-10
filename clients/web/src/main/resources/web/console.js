@@ -125,6 +125,9 @@ export function foldEpisodeIntoRail(sessions, frame) {
  * replaced or appended in number order, an action appended once by `seq`, the session row
  * replaced. A frame for another session leaves the page as it was. Returns a new object.
  */
+/** Episodes a session page holds, newest first: as many as the engine keeps and serves. */
+export const EPISODES_KEPT = 50;
+
 export function foldIntoDetail(detail, type, frame) {
   if (!detail || !detail.session || !frame) return detail;
   const id = detail.session.id;
@@ -133,7 +136,9 @@ export function foldIntoDetail(detail, type, frame) {
   }
   if (type === 'episode' && frame.episode && frame.episode.session === id) {
     const ep = frame.episode;
-    const episodes = [...(detail.episodes || []).filter((e) => e.id !== ep.id), ep].sort((a, b) => a.number - b.number);
+    const episodes = [...(detail.episodes || []).filter((e) => e.id !== ep.id), ep]
+      .sort((a, b) => b.number - a.number)
+      .slice(0, EPISODES_KEPT);
     const session = frame.change === 'started' ? { ...detail.session, episode: ep.id } : detail.session;
     return { ...detail, session, episodes };
   }
@@ -362,7 +367,8 @@ export function episodeHeader(episode, { timeline = [], records = [], episodes =
     source: titleSourceLabel(episode),
     outcome: open && !working ? 'idle' : episode.outcome,
     number: episode.number,
-    of: (episodes || []).length || episode.number,
+    // The page holds only the newest episodes: the session has had as many as its newest's number.
+    of: Math.max(episode.number || 0, ...(episodes || []).map((e) => e.number || 0)),
     project: projectName(episode.project),
     projectId: episode.projectId || null,
     arc: attemptsArc(timeline),
@@ -395,7 +401,9 @@ export function earlierEpisodes(detail) {
 export function currentEpisode(detail) {
   if (!detail || !detail.session) return null;
   const eps = detail.episodes || [];
-  return eps.find((e) => e.id === detail.session.episode) || eps[eps.length - 1] || null;
+  const found = eps.find((e) => e.id === detail.session.episode);
+  if (found) return found;
+  return eps.reduce((best, e) => (!best || e.number > best.number ? e : best), null);
 }
 
 // ---- the right rail ----
