@@ -347,10 +347,10 @@ public final class LockPlans {
             int exitCode, int refreshed, @Nullable String error) {}
 
     /**
-     * {@code jk update -g [<name>]}: re-resolve git dependencies only, in {@code root}'s project
-     * and (for a workspace root) each declared module — one dependency by its declared name, or
-     * every git dependency when {@code targetLibrary} is {@code null}. Every scope with no matching
-     * git dependency is left untouched entirely (its {@code jk-lock.toml} isn't even read).
+     * {@code jk update -g [<name>]}: re-pin git dependencies only — one by its declared name, or
+     * every git dependency {@code root}'s project and (for a workspace root) its modules declare
+     * when {@code targetLibrary} is {@code null}. The lock owner's lock is re-resolved once and
+     * every other row keeps its pin; with nothing to target, the lock is not read.
      */
     public static GitUpdateOutcome updateGitOnly(
             Path dir,
@@ -378,19 +378,20 @@ public final class LockPlans {
             }
         }
 
+        // The members only choose which git rows move; the lock is the owner's, so it is resolved
+        // and written once, from the whole workspace, as every other lock writer does.
+        List<Dependency> targeted = new ArrayList<>();
+        for (JkBuild scope : scopes.values()) {
+            for (Dependency d : declaredGitDeps(scope)) {
+                if (targetLibrary == null || d.library().equals(targetLibrary)) targeted.add(d);
+            }
+        }
         int totalRefreshed = 0;
-        for (Map.Entry<Path, JkBuild> scope : scopes.entrySet()) {
-            List<Dependency> gitDeps = declaredGitDeps(scope.getValue());
-            List<Dependency> targeted = targetLibrary == null
-                    ? gitDeps
-                    : gitDeps.stream()
-                            .filter(d -> d.library().equals(targetLibrary))
-                            .toList();
-            if (targeted.isEmpty()) continue;
-
+        if (!targeted.isEmpty()) {
             try {
-                totalRefreshed += updateGitOnlyForScope(
-                        scope.getKey(), scope.getValue(), cache, repoUrl, features, withDefaultFeatures, targeted);
+                LockScope owner = lockScope(dir);
+                totalRefreshed = updateGitOnlyForScope(
+                        owner.lockDir(), owner.effective(), cache, repoUrl, features, withDefaultFeatures, targeted);
             } catch (Exception e) {
                 return new GitUpdateOutcome(Exit.RESOLVE, 0, e.getMessage());
             }
