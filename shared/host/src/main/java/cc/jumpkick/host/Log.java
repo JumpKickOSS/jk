@@ -26,9 +26,13 @@ import org.jspecify.annotations.Nullable;
  * suffix for structured detail, and {@link #install}, which binds the JDK logging backend to one
  * stream, one line format and one redaction. There is no framework underneath — the CLI never
  * calls this class, a worker binds its own stderr, and the engine binds the stream its
- * size-capped log sink owns, so the cap and the redaction cover every line.
+ * size-capped log sink owns, so the cap and the redaction cover every line. A JVM nothing
+ * installs (a test JVM) binds {@code System.err} at the level {@value #LEVEL_PROPERTY} names, when set.
  */
 public final class Log {
+
+    /** The system property naming the level a process nothing {@linkplain #install installs} logs at. */
+    public static final String LEVEL_PROPERTY = "jk.log.level";
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss.SSS", Locale.ROOT);
 
@@ -40,6 +44,15 @@ public final class Log {
 
         /** The backend logger the level is set on; held so the level is not garbage-collected. */
         static @Nullable Logger JK;
+
+        static {
+            installRequested(System.getProperty(LEVEL_PROPERTY), System.err);
+        }
+    }
+
+    /** Install on {@code out} at the level {@code name} spells; no level, no change. */
+    static void installRequested(@Nullable String name, PrintStream out) {
+        level(name).ifPresent(l -> install(out, l, UnaryOperator.identity()));
     }
 
     /** True when a {@link #debug} line would be written; guards detail that is costly to build. */

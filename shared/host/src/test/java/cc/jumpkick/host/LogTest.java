@@ -81,6 +81,17 @@ class LogTest {
     }
 
     @Test
+    void a_requested_level_binds_the_stream_and_no_level_leaves_it_alone() {
+        PrintStream sink = new PrintStream(bytes, true, StandardCharsets.UTF_8);
+        Log.installRequested("debug", sink);
+        Log.debug("asked for");
+        Log.installRequested("loud", new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        Log.installRequested(null, new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        Log.debug("still here");
+        assertThat(written()).contains("DEBUG asked for").contains("DEBUG still here");
+    }
+
+    @Test
     void detail_quotes_values_that_would_split_a_line() {
         assertThat(Log.detail("units", 3, "dir", "a b", "empty", "")).isEqualTo(" units=3 dir=\"a b\" empty=\"\"");
         assertThat(Log.detail()).isEmpty();

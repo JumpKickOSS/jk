@@ -160,6 +160,11 @@ code (the CLI owns the terminal and is out of scope).
 - **Threshold.** `[engine] log-level` / `JK_LOG_LEVEL`, default `info`, read at engine start —
   `JK_LOG_LEVEL=debug jk build` takes effect on the engine that shell starts, so run
   `jk engine stop` first. `debug` adds the perf probes and every swallowed-exception line.
+- **In a test.** Nothing binds a test JVM, so `Log` lines below `info` are dropped there. The
+  system property `jk.log.level` binds `System.err` at that level in any JVM nothing else binds
+  (without redaction), so `jk test -m jk-engine --class <fqcn> --jvm-arg=-Djk.log.level=debug`
+  shows the code under test's `Log.debug` lines; reach for that before a print. They land in the
+  class's `<system-out>` in `target/surefire-reports/TEST-<fqcn>.xml`.
 - **Redaction.** The formatter passes each formatted record — stack included — through
   `SecretRedactor.known()`, the union of every secret value the process has built a redactor
   from (`.env` declarations, resolved repository credentials). A declared secret does not reach
