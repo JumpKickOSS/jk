@@ -4,6 +4,8 @@
 // reverse chevron, the percentage at the bar's far end, then the ETA and elapsed clock. The rows
 // below are a fixed set (strip.workerLanes) so the pane never changes height mid-build.
 
+const SETTLED_ICON = Object.freeze({ success: 'check', failed: 'x', cancelled: 'ban' });
+
 /** The top bar. `state` is the run's outcome class: running | success | failed | cancelled | … */
 export const BuildHead = {
   props: {
@@ -13,9 +15,15 @@ export const BuildHead = {
     eta: { type: String, default: '' }, // '~1:20' / '0s' / '+0:05'; '' with no estimate
     clock: { type: String, default: '' }, // elapsed while running, the final wall once finished
   },
+  // The settled chip carries the outcome's icon (the terminal's check / cross / cancelled) where the spinner was.
+  computed: {
+    icon() {
+      return SETTLED_ICON[this.state] || '';
+    },
+  },
   template: `
     <div class="bhead" :class="'bhead-' + state" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100">
-      <span class="bchip"><span v-if="state === 'running'" class="spin bspin"></span><span class="bchip-label">{{ label }}</span></span>
+      <span class="bchip"><span v-if="state === 'running'" class="spin bspin"></span><jk-icon v-else-if="icon" :name="icon" class="bglyph"></jk-icon><span class="bchip-label">{{ label }}</span></span>
       <span class="btrack"><span class="bfill" :style="{ width: (state === 'running' ? pct : 100) + '%' }"></span><span class="bpct">{{ state === 'running' ? pct : 100 }}%</span></span>
       <span class="bclock"><template v-if="eta"><span class="bsep">·</span> <span class="eta-label">ETA</span> <span class="eta-cd">{{ eta }}</span> </template><span class="bsep">·</span> <span class="bel">{{ clock }}</span></span>
     </div>`,

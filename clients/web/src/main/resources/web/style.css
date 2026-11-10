@@ -3011,6 +3011,7 @@ main.activity-page { max-width: min(64rem, 100%); }
 .bhead-success .bchip { background: var(--okc); }
 .bhead-failed .bchip { background: var(--err); }
 .bhead-cancelled .bchip, .bhead-finished .bchip { background: var(--dim); }
+.bglyph { width: 13px; height: 13px; stroke-width: 3; flex: none; }
 .bspin { width: 11px; height: 11px; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; }
 /* The track starts one chevron-width under the chip's tip, so the two diagonals run parallel, 1px apart. */
 .btrack {

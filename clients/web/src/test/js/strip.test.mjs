@@ -128,3 +128,12 @@ test('a one-module build reserves one row and grows only to the peak concurrency
   c.modules.push(mod('/w/b', 'running', { steps: [step('test', 'test', 'running')] }));
   assert.equal(workerLanes(c).length, 2);
 });
+
+test('the settled top-bar chip carries its outcome icon where the spinner was', async () => {
+  const { BuildHead } = await spa('buildhead.js');
+  const icon = (state) => BuildHead.computed.icon.call({ state });
+  assert.equal(icon('success'), 'check');
+  assert.equal(icon('failed'), 'x');
+  assert.equal(icon('cancelled'), 'ban');
+  assert.equal(icon('running'), '', 'a running chip has the spinner instead');
+});
