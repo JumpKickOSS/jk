@@ -7,6 +7,7 @@ import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.SelfUpdatePolicy.Action;
 import cc.jumpkick.config.SelfUpdateState;
+import cc.jumpkick.config.UpdateOffer;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.testing.FakeClock;
 import java.time.Duration;
@@ -35,6 +36,42 @@ class SelfUpdateSchedulerTest {
 
     private SelfUpdateScheduler scheduler() {
         return new SelfUpdateScheduler(RUNNING, active::get, () -> false, steps, home, clock, log::add);
+    }
+
+    private void stage(String version) {
+        home.prepared = new PreparedUpdate(
+                version, RUNNING, "a".repeat(64), PreparedUpdate.Client.NATIVE, "b".repeat(64), clock.instant());
+    }
+
+    @Test
+    void a_downloaded_release_is_offered_until_snoozed() {
+        var s = scheduler();
+        assertThat(s.offer()).isEmpty();
+        stage("0.17.0");
+        assertThat(s.offer()).contains("0.17.0");
+
+        assertThat(s.snooze()).isTrue();
+        assertThat(s.offer()).isEmpty();
+        assertThat(s.snooze()).isFalse();
+
+        home.action = Action.OFF;
+        home.state = SelfUpdateState.EMPTY;
+        assertThat(s.offer()).isEmpty();
+    }
+
+    @Test
+    void install_now_skips_the_quiet_trigger_and_installs_the_download() {
+        var s = scheduler();
+        active.set(2); // builds in flight: the quiet trigger would wait
+        assertThat(s.installNow()).isFalse();
+
+        stage("0.17.0");
+        s.runInstallNow("0.17.0");
+
+        assertThat(steps.ran).containsExactly("install 0.17.0");
+        assertThat(s.installing()).isFalse();
+        assertThat(s.offer()).isEmpty();
+        assertThat(s.installNow()).isFalse();
     }
 
     @Test
@@ -259,6 +296,11 @@ class SelfUpdateSchedulerTest {
         @Override
         public void recordAttempt(Instant at) {
             state = state.withAttempt(at);
+        }
+
+        @Override
+        public void snooze(String version, Instant at) {
+            state = UpdateOffer.snooze(state, version, at);
         }
     }
 }

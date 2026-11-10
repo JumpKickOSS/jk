@@ -23,6 +23,7 @@ import { FileViewer } from './fileviewer.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { whatsNewData, whatsNewMethods } from './whatsnew.js';
+import { selfUpdateData, selfUpdateMethods, updatePill } from './selfupdate.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
 import { activityData, activityFilters, activityMethods, activityKindLabel, channelLabel, diffLines, surfaceLabel } from './activity.js';
 import { bellLook, justNow, noticeData, noticeMethods } from './notices.js';
@@ -85,6 +86,7 @@ export const appOptions = {
     ...consoleData(routeFromHash()),
     ...decisionData(routeFromHash()),
     ...whatsNewData(),
+    ...selfUpdateData(),
     ...notifyData(),
     ...noticeData(),
     ...activityData(routeFromHash()),
@@ -158,6 +160,7 @@ export const appOptions = {
       if (this.view === 'new') this.enterWizard();
       if (this.view === 'activity') this.loadActivity();
       if (routeFromHash().whatsNew) this.openWhatsNew();
+      this.watchSelfUpdate(window, document); // the header's Update pill (selfupdate.js)
     }
     // The service worker: installability, and notifications whose clicks come back as messages.
     registerWorker(navigator.serviceWorker, (message) => this.workerMessage(message));
@@ -197,6 +200,10 @@ export const appOptions = {
     bellJustNow() {
       return justNow(this.notices, this.decisions);
     },
+    /** The header's Update pill, or null when no downloaded release is on offer. */
+    updatePill() {
+      return updatePill(this.selfUpdate);
+    },
     ...wizardComputed,
     ...projectComputed,
     ...consoleComputed,
@@ -218,6 +225,7 @@ export const appOptions = {
     ...notifyMethods,
     ...noticeMethods,
     ...whatsNewMethods,
+    ...selfUpdateMethods,
     ...activityMethods,
     ...installMethods,
     ...cardMethods,

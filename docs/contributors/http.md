@@ -563,6 +563,18 @@ headline?, releaseUrl, entries: [{ version, bullets: [markdown…] }] }`, the hi
 release the last install moved across (from the `whats-new.md` the install kept), or this version's
 own when the last install was not to it.
 
+### The Update pill
+
+`GET /api/self-update`: `{ running, offer, installing }`. `offer` is the downloaded release a
+person may be offered (newer than this engine, not snoozed on any surface, updating not off), or
+`null`; an engine that never updates itself (a checkout, a snapshot) always answers `null`.
+`POST /api/self-update/install` installs it now, past the scheduler's quiet trigger, and answers
+**202** with the state (**409** when nothing newer is downloaded): the new engine displaces this
+one, builds in flight finish here, and the epoch gate reloads every tab onto the new engine. `POST
+/api/self-update/snooze` is "not now" for the offered release on every surface until the next
+check (`UpdateOffer`). Both POSTs need the bearer token like every `/api` call. The dashboard reads
+the state on load, every five minutes and when the tab comes back (`selfupdate.js`).
+
 ### One channel per decision
 
 `Decisions.alert` carries out `[ui] ask` once a decision reaches `NEEDS-YOU`. Under `notify` it asks

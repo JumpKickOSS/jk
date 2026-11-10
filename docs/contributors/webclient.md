@@ -37,6 +37,7 @@ stopped providing.
 | `wizard.js` | New Project and the directory browser its path fields open |
 | `notify.js` | Telling the person once: presence reports, the `notify` frame, in-app delivery (the bell's wiggle and preview card), the notification adapters, the service worker's messages |
 | `notices.js` | The bell's number: the engine's notices and seen marker (`/api/notices`, the `notice` frame), "Just now", and moving the marker |
+| `selfupdate.js` | The header's Update pill (`/api/self-update`): Update Now, "not now", and the state read on load, every five minutes and on focus |
 | `whatsnew.js` | The `#whats-new` dialog after an update (`/api/whats-new`): each release's highlights, with only code, bold and http(s) links rendered |
 | `pwa.js` | The installed app: the service worker's registration and the **Install JumpKick** entry |
 | `sw.js` | The service worker, a classic script the page registers by URL, never imported |

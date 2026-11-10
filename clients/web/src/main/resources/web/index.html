@@ -56,6 +56,17 @@
       <span class="hdiv"></span>
 
       <div class="hdr-actions">
+        <!-- Update Now: a newer JumpKick is downloaded and ready to swap in (selfupdate.js). -->
+        <div v-if="updatePill" class="update-pill" :class="{ busy: updatePill.busy }">
+          <button type="button" class="update-now" :disabled="updatePill.busy" @click="installUpdate()"
+                  :aria-label="updatePill.label + ' to JumpKick ' + updatePill.version" :data-tip="updatePill.tip">
+            <jk-icon :name="updatePill.busy ? 'refresh' : 'arrow-up'"></jk-icon>
+            <span class="update-label">{{ updatePill.label }}</span>
+            <span class="update-ver">{{ updatePill.version }}</span>
+          </button>
+          <button v-if="!updatePill.busy" type="button" class="update-later" @click="snoozeUpdate()"
+                  aria-label="Not now" data-tip="Not now"><jk-icon name="x"></jk-icon></button>
+        </div>
         <!-- The bell: what you haven't seen, and the decisions waiting on you (notices.js, decisions.js). -->
         <div class="bell">
           <button class="icon-btn bell-btn" :class="{ waiting: bell.amber, pulse: bellPulse }" @click="toggleBell()"

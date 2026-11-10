@@ -269,6 +269,45 @@ nav button.active {
 
 .hdr-actions { display: flex; gap: 8px; }
 
+/* The Update pill: a newer JumpKick is downloaded (selfupdate.js). Amber, like the CLI's ↑ Update
+ * wedge, so it reads as "do this" rather than as status. */
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  height: 30px;
+  border: 1px solid rgba(var(--warn-rgb), 0.6);
+  border-radius: var(--r-pill);
+  background: rgba(var(--warn-rgb), 0.10);
+  box-shadow: 0 0 12px rgba(var(--warn-rgb), 0.18);
+  overflow: hidden;
+}
+.update-pill button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--warn);
+  font: 600 12px var(--mono);
+  cursor: pointer;
+}
+.update-now { padding: 0 10px 0 11px; }
+.update-now:hover:not(:disabled) { background: rgba(var(--warn-rgb), 0.18); }
+.update-now:disabled { cursor: progress; }
+.update-ver { color: var(--mu); font-weight: 500; }
+.update-later { padding: 0 9px; border-left: 1px solid rgba(var(--warn-rgb), 0.35) !important; color: var(--mu) !important; }
+.update-later:hover { color: var(--warn) !important; background: rgba(var(--warn-rgb), 0.18); }
+.update-pill .ico { width: 14px; height: 14px; }
+.update-pill.busy .ico { animation: update-spin 1.1s linear infinite; }
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-pill.busy .ico { animation: none; } }
+@media (max-width: 1100px) {
+  .update-label, .update-ver { display: none; }
+  .update-now { padding: 0 9px; }
+}
+
 .icon-btn {
   width: 34px;
   height: 34px;

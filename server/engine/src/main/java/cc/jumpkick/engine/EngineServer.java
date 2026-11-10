@@ -20,6 +20,7 @@ import cc.jumpkick.engine.graph.GraphCompiles;
 import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
+import cc.jumpkick.engine.http.SelfUpdateControl;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobRow;
@@ -410,6 +411,10 @@ public final class EngineServer implements AutoCloseable {
         GraphRunner.compiler(new GraphCompiles(
                 this::submitJob, liveRuns::snapshot, journal::rawFinishedRecordByRequestId, Clock.SYSTEM));
         this.http = newHttpFront();
+        http.selfUpdate(() -> {
+            SelfUpdateScheduler scheduler = selfUpdate;
+            return scheduler != null ? scheduler : SelfUpdateControl.NONE;
+        });
         this.vitals = newVitals();
     }
 

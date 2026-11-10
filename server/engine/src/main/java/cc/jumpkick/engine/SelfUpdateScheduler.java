@@ -8,6 +8,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.UpdateOffer;
+import cc.jumpkick.engine.http.SelfUpdateControl;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
@@ -42,7 +43,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Under {@code ask} the run stops after the download and the client offers it at a terminal.
  * Nothing here fails a build: a step that fails is logged and tried again later.
  */
-final class SelfUpdateScheduler implements AutoCloseable {
+final class SelfUpdateScheduler implements AutoCloseable, SelfUpdateControl {
 
     /** Gap between checks that reached the release site. */
     static final Duration CHECK_EVERY = UpdateOffer.CHECK_EVERY;
@@ -89,6 +90,9 @@ final class SelfUpdateScheduler implements AutoCloseable {
         boolean freshCiHome();
 
         void recordAttempt(Instant at);
+
+        /** "Not now" to {@code version} at {@code at}, on every surface ({@link UpdateOffer#snooze}). */
+        void snooze(String version, Instant at);
     }
 
     /** The step due next. */
@@ -111,6 +115,7 @@ final class SelfUpdateScheduler implements AutoCloseable {
     private final Consumer<String> log;
 
     private final AtomicBoolean running = new AtomicBoolean();
+    private final AtomicBoolean installingNow = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicInteger buildsSinceQuiet = new AtomicInteger();
     private volatile long lastBuildEndMillis;
@@ -301,6 +306,62 @@ final class SelfUpdateScheduler implements AutoCloseable {
         return failed == Long.MIN_VALUE || now.toEpochMilli() - failed >= RETRY_AFTER.toMillis();
     }
 
+    /** The downloaded release a person may be offered now: newer, not snoozed, updating not off. */
+    @Override
+    public Optional<String> offer() {
+        if (installed || view.action() == SelfUpdatePolicy.Action.OFF) return Optional.empty();
+        String staged = view.prepared().map(PreparedUpdate::version).orElse(null);
+        return UpdateOffer.due(view.state(), staged, version, clock.instant());
+    }
+
+    @Override
+    public boolean installing() {
+        return installingNow.get();
+    }
+
+    /**
+     * A person asked to install the downloaded release now: it installs as soon as no other step
+     * is running, whatever the quiet trigger says. False when nothing newer is downloaded.
+     */
+    @Override
+    public boolean installNow() {
+        if (closed.get() || installed || stopping.getAsBoolean()) return false;
+        Optional<String> staged =
+                view.prepared().filter(p -> p.newerThan(version)).map(PreparedUpdate::version);
+        if (staged.isEmpty()) return false;
+        if (!installingNow.compareAndSet(false, true)) return true;
+        // A person's click; reads no session.
+        Thread.ofVirtual().name("jk-self-update-now").start(() -> runInstallNow(staged.get()));
+        return true;
+    }
+
+    /** The install {@link #installNow} started, once no other step is running; called directly by tests. */
+    void runInstallNow(String target) {
+        try {
+            while (!running.compareAndSet(false, true)) {
+                if (closed.get()) return;
+                Thread.sleep(1000);
+            }
+            try {
+                if (run(new Next.Install(target))) installed = true;
+            } finally {
+                running.set(false);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            installingNow.set(false);
+        }
+    }
+
+    @Override
+    public boolean snooze() {
+        Optional<String> offered = offer();
+        if (offered.isEmpty()) return false;
+        view.snooze(offered.get(), clock.instant());
+        return true;
+    }
+
     @Override
     public void close() {
         closed.set(true);
@@ -365,6 +426,15 @@ final class SelfUpdateScheduler implements AutoCloseable {
                 SelfUpdateState.update(s -> s.withAttempt(at));
             } catch (IOException e) {
                 Log.debug("SelfUpdateScheduler: attempt not recorded", e);
+            }
+        }
+
+        @Override
+        public void snooze(String version, Instant at) {
+            try {
+                SelfUpdateState.update(s -> UpdateOffer.snooze(s, version, at));
+            } catch (IOException e) {
+                Log.debug("SelfUpdateScheduler: snooze not recorded", e);
             }
         }
 

@@ -176,6 +176,17 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
+     * Engine hook: the Update pill's state and actions on {@code /api/self-update}. Before {@link
+     * #start}; without it the API answers that nothing is on offer.
+     */
+    public void setSelfUpdate(Supplier<SelfUpdateControl> control) {
+        HttpSelfUpdateApi selfUpdate = new HttpSelfUpdateApi(engineVersion, control);
+        api.register("GET", HttpSelfUpdateApi.PATH, selfUpdate::handleState);
+        api.register("POST", HttpSelfUpdateApi.INSTALL, selfUpdate::handleInstall);
+        api.register("POST", HttpSelfUpdateApi.SNOOZE, selfUpdate::handleSnooze);
+    }
+
+    /**
      * Engine hook: serve {@code activity} on {@code /api/activity}, the Activity page's merged
      * history. Before {@link #start}.
      */

@@ -10,6 +10,7 @@ import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
+import cc.jumpkick.engine.http.SelfUpdateControl;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -66,11 +67,18 @@ public final class EngineHttpFront {
     private final DecisionQueue decisions;
     private final Notices notices;
 
+    private volatile Supplier<SelfUpdateControl> selfUpdate = () -> SelfUpdateControl.NONE;
+
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
 
     /** Set by {@link #stopNow} and {@link #close}: a bind still retrying then lets its server go. */
     private volatile boolean stopped;
+
+    /** What the dashboard's Update pill reads and drives; before {@link #start}. */
+    public void selfUpdate(Supplier<SelfUpdateControl> control) {
+        this.selfUpdate = control;
+    }
 
     public @Nullable HttpEngineServer server() {
         return server;
@@ -115,6 +123,7 @@ public final class EngineHttpFront {
         candidate.setSessions(sessions);
         candidate.setDecisions(decisions);
         candidate.setNotices(notices);
+        candidate.setSelfUpdate(selfUpdate);
         candidate.setActivity(new Activity(ChangeJournal::current, decisions, notices));
         try {
             candidate.start(1);
