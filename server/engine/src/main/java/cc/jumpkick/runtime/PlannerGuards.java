@@ -13,6 +13,7 @@ import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceScan;
@@ -107,7 +108,7 @@ final class PlannerGuards {
 
     /**
      * One stat: does the root {@code jk-guards.toml} exist? Then the already-parsed manifest's
-     * {@code [guards]} table. Nothing else. {@code --skip-tests} without {@code --guard} runs no
+     * {@code [guards]} table, then the request's one scan for a guard suite. {@code --skip-tests} without {@code --guard} runs no
      * lane at all.
      */
     static GuardsPlan detect(BuildPlanner.Inputs in) {
@@ -135,10 +136,17 @@ final class PlannerGuards {
 
     /**
      * A {@code src/guard} suite anywhere in the workspace is guards declared: a project with guard
-     * tests and no TOML still gets its lanes. One directory stat per module, from the already-memoised
-     * root manifest.
+     * tests and no TOML still gets its lanes. A directory stat per module, once per request: every
+     * module's plan asks, and a workspace with no guards would otherwise pay modules squared stats.
      */
     static boolean guardSuiteSeen(Path root) {
+        return RequestScope.current().get(new GuardSuiteSeen(root), k -> scanForGuardSuite(k.root()));
+    }
+
+    /** The request-scoped key of {@link #guardSuiteSeen}. */
+    private record GuardSuiteSeen(Path root) {}
+
+    private static boolean scanForGuardSuite(Path root) {
         if (TestSuites.hasGuardSuite(root, ModuleLayout.isCompact(root))) return true;
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return false;
