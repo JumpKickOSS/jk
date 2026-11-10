@@ -7,6 +7,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -67,5 +70,20 @@ class PlannerTestGateOrderTest {
         assertThat(PlannerTest.<String>resolveBeforeGate(null, false, () -> order.add("gate")))
                 .isNull();
         assertThat(order).as("--parallel-tests: no serial gate").isEmpty();
+    }
+
+    @Test
+    void a_suite_parked_at_a_held_gate_gives_up_when_cancelled_and_holds_nothing() {
+        Semaphore gate = new Semaphore(1);
+        gate.acquireUninterruptibly(); // another workspace's suite holds it
+        AtomicInteger asked = new AtomicInteger();
+        assertThatThrownBy(() -> PlannerTest.awaitGate(gate, () -> asked.incrementAndGet() >= 2))
+                .isInstanceOf(CancellationException.class);
+        assertThat(gate.availablePermits()).isZero();
+        gate.release();
+        PlannerTest.awaitGate(gate, () -> true);
+        assertThat(gate.availablePermits())
+                .as("a free gate is taken even when cancelled is asked")
+                .isZero();
     }
 }

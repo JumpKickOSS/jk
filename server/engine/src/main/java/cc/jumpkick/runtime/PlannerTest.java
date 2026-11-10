@@ -27,6 +27,7 @@ import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
@@ -57,6 +58,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -613,6 +618,9 @@ public final class PlannerTest {
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
         // The agent and the report tool come first: a coverage run that cannot fetch
         // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+        // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
+        // before the gate too, never between the acquire and the try that releases it.
+        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
@@ -620,7 +628,6 @@ public final class PlannerTest {
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         TagExcludedCapture tagExcluded;
-        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -985,10 +992,25 @@ public final class PlannerTest {
      * of the machine it then uses alone.
      */
     static void awaitTestGate() {
+        awaitGate(TEST_GATE, SessionCancel::cancelled);
+    }
+
+    /**
+     * Take {@code gate}, giving up with a {@link CancellationException} once {@code cancelled}
+     * answers true: a suite parked behind another workspace's tests stays cancellable.
+     */
+    static void awaitGate(Semaphore gate, BooleanSupplier cancelled) {
         try (LiveUnits.Lease parked = LiveUnits.stepOut()) {
-            TEST_GATE.acquireUninterruptibly();
+            while (!gate.tryAcquire(GATE_POLL_MS, TimeUnit.MILLISECONDS)) {
+                if (cancelled.getAsBoolean()) throw new CancellationException("test run cancelled");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("test run interrupted");
         }
     }
+
+    private static final long GATE_POLL_MS = 200;
 
     /** What a finished run leaves for later builds under the same inputs. */
     enum Stamp {
