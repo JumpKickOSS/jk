@@ -90,4 +90,15 @@ class JUnitClassFilterTest {
         assertThat(re.matcher("com.acme.db.PoolTest").matches()).isTrue();
         assertThat(re.matcher("com.acme.OrdersTest").matches()).isFalse();
     }
+
+    @Test
+    void a_settled_default_package_class_is_excluded_by_its_exact_name_alone() {
+        String body = JUnitClassFilter.excludeBody(List.of(), List.of("SmokeTest"));
+        Pattern excluded = Pattern.compile("^(?:" + body + ")$");
+        assertThat(excluded.matcher("SmokeTest").matches()).isTrue();
+        assertThat(excluded.matcher("SmokeTest$Inner").matches()).isTrue();
+        assertThat(excluded.matcher("com.acme.SmokeTest").matches())
+                .as("a failed class of the same simple name in a package still runs")
+                .isFalse();
+    }
 }

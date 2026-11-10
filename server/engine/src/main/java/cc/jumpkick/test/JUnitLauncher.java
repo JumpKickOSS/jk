@@ -120,7 +120,15 @@ public final class JUnitLauncher {
      * discovers or executes, whatever the other filters select.
      */
     public JUnitLauncher withExcludedClasses(List<String> patterns) {
-        this.excludeFilter = patterns == null ? null : JUnitClassFilter.excludeBody(patterns);
+        return withExcludedClasses(patterns, List.of());
+    }
+
+    /**
+     * As {@link #withExcludedClasses(List)}, and {@code classNames} by exact binary name: the
+     * classes that passed earlier under the same inputs and are not run again.
+     */
+    public JUnitLauncher withExcludedClasses(List<String> patterns, List<String> classNames) {
+        this.excludeFilter = JUnitClassFilter.excludeBody(patterns, classNames);
         return this;
     }
 

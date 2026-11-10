@@ -652,7 +652,9 @@ public final class PlannerTest {
                                 testClasses,
                                 suites,
                                 effectiveSel.classes(),
-                                TestLaunch.excludedClasses(projectUnderTest, settled),
+                                // The settled classes are left out by the launcher alone: a part
+                                // whose only matches passed earlier still starts, and runs nothing.
+                                projectUnderTest.build().testExcludeClasses(),
                                 affected,
                                 launcher,
                                 runtimeCp,

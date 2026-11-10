@@ -450,7 +450,7 @@ final class TestLaunch {
                 .withAssertions(projectUnderTest.build().testAssertions())
                 .withJvmArgs(testJvmArgs)
                 .withClassPatterns(effectiveSel.classes())
-                .withExcludedClasses(excludedClasses(projectUnderTest, settled))
+                .withExcludedClasses(projectUnderTest.build().testExcludeClasses(), settled)
                 .withDebug(in.session().debugJvm())
                 .withKeepOutput(in.verbose());
         if (jacoco != null && coverageExec != null) {
@@ -458,15 +458,6 @@ final class TestLaunch {
         }
         if (affected != null) launcher.withClassNames(affected.classNames());
         return launcher;
-    }
-
-    /** The module's {@code [test] exclude-classes}, then the classes a re-run under the same stamp need not run. */
-    static List<String> excludedClasses(JkBuild project, List<String> settled) {
-        List<String> own = project.build().testExcludeClasses();
-        if (settled.isEmpty()) return own;
-        List<String> out = new ArrayList<>(own);
-        out.addAll(settled);
-        return out;
     }
 
     /**

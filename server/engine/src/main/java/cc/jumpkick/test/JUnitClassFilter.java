@@ -39,11 +39,21 @@ final class JUnitClassFilter {
      * classes of the class it names; null when there are none.
      */
     static @Nullable String excludeBody(List<String> patterns) {
+        return excludeBody(patterns, List.of());
+    }
+
+    /**
+     * {@link #excludeBody(List)} over {@code patterns}, and over {@code classNames} taken as exact
+     * binary names: a default-package {@code SmokeTest} there is that class and its nested ones,
+     * never {@code com.acme.SmokeTest} as the pattern grammar would read it.
+     */
+    static @Nullable String excludeBody(List<String> patterns, List<String> classNames) {
         List<String> parts = new ArrayList<>();
         for (String raw : patterns) {
             String p = classPart(raw);
             if (!p.isEmpty()) parts.add(classRegex(p) + "(\\$.*)?");
         }
+        for (String name : classNames) parts.add(Pattern.quote(name) + "(\\$.*)?");
         return parts.isEmpty() ? null : String.join("|", parts);
     }
 
