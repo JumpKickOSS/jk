@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -80,25 +86,45 @@ public final class ToolIdentity {
 
     /** The first non-blank line {@code --version} prints, or a word saying why there is none. */
     static String probe(Path exe) {
+        return probe(exe, VERSION_TIMEOUT_MILLIS);
+    }
+
+    /**
+     * As {@link #probe(Path)}, giving up after {@code timeoutMillis}. The output is read on its own
+     * thread, so a tool that prints nothing and never exits cannot hold the caller past the bound.
+     */
+    static String probe(Path exe, long timeoutMillis) {
+        Process p;
         try {
-            Process p = JobWorkers.start(new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true));
+            p = JobWorkers.start(new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true));
+        } catch (IOException e) {
+            return "no-version";
+        }
+        try {
             p.getOutputStream().close();
-            byte[] out = p.getInputStream().readNBytes(4096);
-            if (!p.waitFor(VERSION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
-                p.destroyForcibly();
-                return "no-version";
-            }
-            return new String(out, StandardCharsets.UTF_8)
+            CompletableFuture<byte[]> out = new CompletableFuture<>();
+            SessionContext.startPlatform("jk-tool-version", () -> {
+                try (InputStream in = p.getInputStream()) {
+                    out.complete(in.readNBytes(4096));
+                    in.transferTo(OutputStream.nullOutputStream());
+                } catch (IOException e) {
+                    out.complete(new byte[0]);
+                }
+            });
+            if (!p.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)) return "no-version";
+            return new String(out.get(timeoutMillis, TimeUnit.MILLISECONDS), StandardCharsets.UTF_8)
                     .lines()
                     .map(String::trim)
                     .filter(l -> !l.isEmpty())
                     .findFirst()
                     .orElse("no-version");
-        } catch (IOException e) {
+        } catch (IOException | ExecutionException | TimeoutException e) {
             return "no-version";
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "no-version";
+        } finally {
+            p.destroyForcibly();
         }
     }
 }

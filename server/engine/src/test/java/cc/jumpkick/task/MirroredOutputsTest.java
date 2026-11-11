@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -157,6 +158,32 @@ class MirroredOutputsTest {
                 .isTrue();
         assertThat(classes.resolve("META-INF/manifest")).hasContent("static\nmerged");
         assertThat(classes.resolve("META-INF/plain.txt")).hasContent("plain");
+    }
+
+    @Test
+    void dropping_mirrored_paths_keeps_what_the_compile_said(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("target/test-classes"));
+        Files.writeString(classes.resolve("AppTest.class"), "class");
+        Files.writeString(classes.resolve("fixture.txt"), "resource");
+        Path cache = tmp.resolve("cache");
+        ActionCache ac = new ActionCache(new Cas(cache.resolve("cas")), cache.resolve("actions"));
+        List<String> said = List.of("warning: [deprecation] old() in Api has been deprecated");
+        ActionCache.ActionRecord stored = ac.store("compile-test", "key-1", Map.of(), classes, said);
+        Path ledger = Files.createDirectories(tmp.resolve("target/incremental")).resolve(MirroredOutputs.TEST_LEDGER);
+        Files.writeString(ledger, "fixture.txt\n");
+
+        ActionCache.ActionRecord restored = MirroredOutputs.omitting(classes, stored);
+        MirroredOutputs.release(ac, "key-1", classes, Set.of("fixture.txt"));
+        ActionCache.ActionRecord released = ac.lookup("key-1").orElseThrow();
+
+        assertThat(restored.outputs()).containsOnlyKeys("AppTest.class");
+        assertThat(released.outputs()).containsOnlyKeys("AppTest.class");
+        assertThat(released.said())
+                .as("a hit after the release still says the warning")
+                .isEqualTo(said);
+        assertThat(restored.said())
+                .as("a restore that omits mirrored paths still says it")
+                .isEqualTo(said);
     }
 
     @Test

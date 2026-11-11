@@ -110,7 +110,8 @@ public final class MirroredOutputs {
         for (String rel : record.executables()) {
             if (!skipped.contains(rel)) exec.add(rel);
         }
-        return new ActionCache.ActionRecord(record.taskId(), record.actionKey(), record.inputs(), kept, exec);
+        return new ActionCache.ActionRecord(
+                record.taskId(), record.actionKey(), record.inputs(), kept, exec, record.said());
     }
 
     /**
@@ -150,7 +151,7 @@ public final class MirroredOutputs {
         // An empty record restores as a wipe. A compile that produced classes must keep them.
         String task = record.taskId();
         if (!changed || kept.isEmpty() || task == null) return;
-        cache.storeWithOutputs(task, key, record.inputs(), kept);
+        cache.storeWithOutputs(task, key, record.inputs(), kept, record.said());
     }
 
     /** Every path the resource ledger and the merge ledgers for {@code outputDir} record. */

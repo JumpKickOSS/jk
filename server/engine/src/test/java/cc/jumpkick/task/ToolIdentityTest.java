@@ -2,11 +2,14 @@
 package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,5 +26,18 @@ class ToolIdentityTest {
         String path = corrupt + SearchPath.SEPARATOR + bin;
         assertThat(ToolIdentity.resolve("node", path)).isEqualTo(node);
         assertThat(ToolIdentity.of("node", corrupt)).isEqualTo(ToolIdentity.MISSING);
+    }
+
+    @Test
+    void a_tool_that_prints_nothing_and_never_exits_gives_up_at_the_version_timeout(@TempDir Path tmp)
+            throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        Path tool = tmp.resolve("hangs");
+        Files.writeString(tool, "#!/bin/sh\nexec sleep 120\n");
+        assertThat(tool.toFile().setExecutable(true)).isTrue();
+
+        String version = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> ToolIdentity.probe(tool));
+
+        assertThat(version).isEqualTo("no-version");
     }
 }
