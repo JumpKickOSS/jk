@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
-import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -38,6 +36,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -60,6 +60,7 @@ public final class JobEnvelope {
     public interface Host extends PlanSlots, JobEvents, JobJournaling, JobRuntime {}
 
     private final Host host;
+    private final JobRefusals refusals;
     private final JobLimits limits;
     private final JobWatchdog watchdogs;
     private final LiveJobRegistry live;
@@ -83,6 +84,7 @@ public final class JobEnvelope {
         this.terminalGraceMs = terminalGraceMs;
         this.joinBufferMs = joinBufferMs;
         this.host = host;
+        this.refusals = new JobRefusals(host);
         this.limits = limits;
         this.admission = admission;
         this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf, host::lastEventAt, host::log);
@@ -132,7 +134,7 @@ public final class JobEnvelope {
         boolean workspaceStream = job.workspaceTerminal();
         // A draining engine keeps its socket for status and cancel, and refuses every new job;
         // the client that reads this refusal starts a successor and resends.
-        if (host.draining()) return refuseDraining(detached, writer);
+        if (host.draining()) return refusals.refuseDraining(detached, writer);
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
         // requests never record the literal string "null".
@@ -144,14 +146,87 @@ public final class JobEnvelope {
         String fingerprint = BuildJobFingerprint.ofRequest(eventKind, requestLine);
         if (BuildJobFingerprint.isExclusiveKind(eventKind) && fingerprint != null && !fingerprint.isEmpty()) {
             var running = host.inFlight().peek(fingerprint);
-            if (running.isPresent()) return refuseAlreadyRunning(running.get(), eventKind, detached, false, writer);
+            if (running.isPresent())
+                return refusals.refuseAlreadyRunning(running.get(), eventKind, detached, false, writer);
         }
         long eventRequestId = host.nextRequestId();
         Long disk = refuseIfNoDisk(eventRequestId, eventKind, eventDir, detached, writer);
         if (disk != null) return disk;
+        Submission sub = new Submission(
+                requestLine,
+                job,
+                reader,
+                writer,
+                detached,
+                deadline,
+                threadPrefix,
+                kind,
+                runner,
+                plan,
+                workspaceStream,
+                eventKind,
+                eventDir,
+                fingerprint,
+                eventRequestId);
+        if (!(detached && plan)) return proceed(sub, () -> {});
+        // A detached build (POST /api/build, MCP run) waits here only until it starts, is refused,
+        // or is queued behind coordinator memory. Queued, its caller has the jid at once: the
+        // request returns and frees its RPC permit, an MCP client binds its progress token and can
+        // cancel by jid, and the admission wait (up to the queue's hour) runs on its own thread.
+        CompletableFuture<Long> answer = new CompletableFuture<>();
+        Thread.ofVirtual().name("jk-job-admit-", 0).start(() -> {
+            try {
+                answer.complete(proceed(sub, () -> answer.complete(eventRequestId)));
+            } catch (RuntimeException refused) {
+                if (!answer.completeExceptionally(refused))
+                    refusals.publishLateRefusal(eventRequestId, eventKind, eventDir, refused);
+            }
+        });
+        try {
+            return answer.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException cause) throw cause;
+            throw e;
+        }
+    }
+
+    /** One submission past its first checks, as {@link #proceed} carries it to admission and start. */
+    private record Submission(
+            String requestLine,
+            JobRequest job,
+            @Nullable BufferedReader reader,
+            @Nullable BufferedWriter writer,
+            boolean detached,
+            WallDeadline deadline,
+            String threadPrefix,
+            String kind,
+            JobBody runner,
+            boolean plan,
+            boolean workspaceStream,
+            String eventKind,
+            String eventDir,
+            String fingerprint,
+            long eventRequestId) {}
+
+    /** Admission, the plan slot and the start of {@code sub}; {@code onQueued} runs when it waits for memory. */
+    private long proceed(Submission sub, Runnable onQueued) {
+        String requestLine = sub.requestLine();
+        JobRequest job = sub.job();
+        BufferedReader reader = sub.reader();
+        BufferedWriter writer = sub.writer();
+        boolean detached = sub.detached();
+        WallDeadline deadline = sub.deadline();
+        String threadPrefix = sub.threadPrefix();
+        JobBody runner = sub.runner();
+        boolean plan = sub.plan();
+        boolean workspaceStream = sub.workspaceStream();
+        String eventKind = sub.eventKind();
+        String eventDir = sub.eventDir();
+        String fingerprint = sub.fingerprint();
+        long eventRequestId = sub.eventRequestId();
         boolean claimedBuildPlanSlot = false;
         if (plan) {
-            Long refused = admitPlan(eventRequestId, eventKind, eventDir, workspaceStream, detached, writer);
+            Long refused = admitPlan(eventRequestId, eventKind, eventDir, workspaceStream, detached, writer, onQueued);
             if (refused != null) return refused;
             claimedBuildPlanSlot = true;
         }
@@ -173,7 +248,7 @@ public final class JobEnvelope {
         AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger, session);
         if (admit.rejected() != null) {
             admission.release(eventRequestId);
-            return refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
+            return refusals.refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
         }
         String leader = Jsonl.topStr(requestLine, "sessionLeader");
         if (leader != null && !leader.isBlank()) host.sessionLeader(trigger, session, leader);
@@ -260,10 +335,10 @@ public final class JobEnvelope {
     private @Nullable Long refuseIfNoDisk(
             long jid, String kind, String dir, boolean detached, @Nullable BufferedWriter writer) {
         DiskFloor.Outcome disk = DiskFloor.await(DiskFloor.paths(dir), host::draining);
-        if (disk.halted()) return refuseDraining(detached, writer);
+        if (disk.halted()) return refusals.refuseDraining(detached, writer);
         DiskFloor.Shortage shortage = disk.shortage();
         if (shortage == null) return null;
-        return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_DISK, shortage.message());
+        return refusals.refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_DISK, shortage.message());
     }
 
     /**
@@ -279,19 +354,23 @@ public final class JobEnvelope {
             String dir,
             boolean workspaceStream,
             boolean detached,
-            @Nullable BufferedWriter writer) {
+            @Nullable BufferedWriter writer,
+            Runnable onQueued) {
         MemoryAdmission.Verdict verdict = admission.admit(
                 jid,
                 kind,
                 dir,
-                (ahead, waitedMs) -> announceQueued(jid, kind, dir, ahead, waitedMs, writer),
+                (ahead, waitedMs) -> {
+                    announceQueued(jid, kind, dir, ahead, waitedMs, writer);
+                    onQueued.run();
+                },
                 host::draining);
         switch (verdict) {
             case CANCELLED -> {
-                return refuseCancelledInQueue(jid, kind, dir, workspaceStream, detached, writer);
+                return refusals.refuseCancelledInQueue(jid, kind, dir, workspaceStream, detached, writer);
             }
             case DRAINING -> {
-                return refuseDraining(detached, writer);
+                return refusals.refuseDraining(detached, writer);
             }
             case TIMED_OUT -> {
                 return refuseTimedOut(jid, kind, dir, detached, writer);
@@ -305,7 +384,7 @@ public final class JobEnvelope {
         }
         if (!host.tryStartBuildPlan()) {
             admission.release(jid);
-            return refuseDraining(detached, writer);
+            return refusals.refuseDraining(detached, writer);
         }
         Path left = LastBuiltRoot.note(dir);
         if (left != null) host.switchedWorkspace(left, Objects.requireNonNull(LastBuiltRoot.get()));
@@ -356,7 +435,7 @@ public final class JobEnvelope {
                         + ahead + (ahead == 1 ? " job" : " jobs") + liveSummary(liveRows())
                         + "\njk engine status lists the jobs, jk cancel <jid> stops one;"
                         + " [engine] queue-wait-ms sets the wait";
-        return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_QUEUE_WAIT, message);
+        return refusals.refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_QUEUE_WAIT, message);
     }
 
     /**
@@ -371,121 +450,12 @@ public final class JobEnvelope {
         String message = "a " + kind + " of " + dir + " needs about " + mib(estimate)
                 + " MiB of engine heap, over the " + mib(cap) + " MiB cap\nset [engine] max-heap-mb = " + needed
                 + " in ~/.jk/config.toml, then run jk engine stop";
-        return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_ENGINE_HEAP, message);
+        return refusals.refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_ENGINE_HEAP, message);
     }
 
     /** Whole mebibytes, rounded up. */
     private static long mib(long bytes) {
         return (bytes + (1L << 20) - 1) >> 20;
-    }
-
-    /** A refusal before the job ran: one log line, the dashboard card resolved, the error to the client. */
-    private long refuse(
-            long jid,
-            String kind,
-            String dir,
-            boolean detached,
-            @Nullable BufferedWriter writer,
-            String code,
-            String message) {
-        host.log("jk engine: job " + jid + " (" + kind + " " + dir + ") " + message);
-        host.publishEvent(
-                "request-finish",
-                JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "request-finish")
-                        .put("jid", jid)
-                        .put("kind", kind)
-                        .put("dir", dir)
-                        .put("projectId", ProjectIds.idOf(dir))
-                        .put("success", false)
-                        .put("cancelled", false)
-                        .put("error", message)
-                        .put("millis", 0L)
-                        .put("activeBuildPlans", host.activeBuildPlans()));
-        if (detached) throw new IllegalStateException(message);
-        // A refusal's terminal has landed before submit returns, as a job's finish has: the
-        // connection loop may close the socket the moment it gets it back.
-        if (writer != null) {
-            WireWriter.sendQuiet(writer, ProtoLifecycle.error(code, message));
-            WireWriter.awaitLanded(writer);
-        }
-        return -1;
-    }
-
-    /**
-     * Cancelled while waiting: nothing ran, so the stream ends on the cancelled terminal its shape
-     * expects and the dashboard card resolves through {@code request-finish} — no journal row was
-     * ever begun for it.
-     */
-    private long refuseCancelledInQueue(
-            long jid,
-            String kind,
-            String dir,
-            boolean workspaceStream,
-            boolean detached,
-            @Nullable BufferedWriter writer) {
-        host.publishEvent(
-                "request-finish",
-                JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "request-finish")
-                        .put("jid", jid)
-                        .put("kind", kind)
-                        .put("dir", dir)
-                        .put("projectId", ProjectIds.idOf(dir))
-                        .put("success", false)
-                        .put("cancelled", true)
-                        .put("millis", 0L)
-                        .put("activeBuildPlans", host.activeBuildPlans()));
-        if (detached) throw new IllegalStateException("cancelled while waiting for engine memory");
-        if (writer != null) {
-            WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
-            WireWriter.awaitLanded(writer);
-        }
-        return -1;
-    }
-
-    /** The engine is draining: a detached submit throws, a socket submit tells the client and returns -1. */
-    private static long refuseDraining(boolean detached, @Nullable BufferedWriter writer) {
-        if (detached) throw new IllegalStateException("engine is shutting down");
-        try {
-            if (writer != null)
-                WireWriter.send(
-                        writer,
-                        ProtoLifecycle.error(
-                                EngineProtocol.ERR_SHUTTING_DOWN,
-                                "the engine is shutting down; retry to start a new one"));
-            if (writer != null) WireWriter.awaitLanded(writer);
-        } catch (IOException ignored) {
-            // Client vanished mid-refusal — nothing to do; the connection is closing anyway.
-        }
-        return -1;
-    }
-
-    /** A same-fingerprint job holds the slot: give back the plan slot nothing ran on, then refuse. */
-    private long refuseAlreadyRunning(
-            InFlightBuilds.Hold h,
-            String eventKind,
-            boolean detached,
-            boolean claimedBuildPlanSlot,
-            @Nullable BufferedWriter writer) {
-        String label = "test".equals(eventKind) ? "Test" : "Build";
-        String msg = label + (h.buildNumber() > 0 ? " #" + h.buildNumber() : "") + " is already running";
-        if (detached) {
-            if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
-            throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
-        }
-        try {
-            if (writer != null) {
-                WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
-                WireWriter.awaitLanded(writer);
-            }
-        } catch (IOException ignored) {
-            // client gone
-        }
-        if (claimedBuildPlanSlot) host.abandonBuildPlanSlot(); // nothing ran — give the slot back
-        return -1;
     }
 
     /**

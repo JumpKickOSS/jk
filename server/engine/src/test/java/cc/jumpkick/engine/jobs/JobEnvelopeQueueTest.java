@@ -12,7 +12,9 @@ import java.io.StringWriter;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -131,6 +133,43 @@ class JobEnvelopeQueueTest {
                 .as("queued is announced before the second job's start")
                 .isLessThan(host.sequence.lastIndexOf("request-start"));
         host.awaitSettled();
+    }
+
+    /**
+     * A detached build (an HTTP or MCP run) short of memory gets its jid while it waits, so its
+     * request returns and frees its permit, and that jid cancels it in the queue.
+     */
+    @Test
+    void a_detached_job_short_of_memory_returns_its_jid_while_queued_and_cancels_by_it(@TempDir Path dir)
+            throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        CountDownLatch firstMayFinish = new CountDownLatch(1);
+        env.submit(
+                request("build-request", dir.resolve("a")),
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    awaitQuietly(firstMayFinish);
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget());
+        AtomicBoolean secondRan = new AtomicBoolean();
+        CompletableFuture<Long> second = CompletableFuture.supplyAsync(() -> env.submit(
+                request("build-request", dir.resolve("b")),
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    secondRan.set(true);
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget()));
+
+        long jid = second.get(5, TimeUnit.SECONDS);
+        assertThat(jid).isPositive();
+        assertThat(env.queued()).as("returned while still queued").isEqualTo(1);
+
+        assertThat(env.cancelJob(jid)).isTrue();
+        Await.until(Duration.ofSeconds(5), () -> env.queued() == 0);
+        firstMayFinish.countDown();
+        host.awaitSettled();
+        assertThat(secondRan).isFalse();
     }
 
     @Test
