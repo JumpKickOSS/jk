@@ -196,7 +196,9 @@ public final class EngineInstall {
     public Materialized materialize(String version, Cas cas, String engineJarSha, boolean downgrade)
             throws IOException {
         Optional<Materialized> existing = currentInstall();
-        if (sameLive(existing, version, engineJarSha) && pointerComplete(existing.get())) {
+        if (sameLive(existing, version, engineJarSha)
+                && pointerComplete(existing.get())
+                && intact(existing.get(), cas, engineJarSha)) {
             return existing.get();
         }
 
@@ -205,14 +207,38 @@ public final class EngineInstall {
         try (FileChannel lockCh = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 FileLock lock = lockCh.lock()) {
             Optional<Materialized> raced = currentInstall();
-            if (sameLive(raced, version, engineJarSha)) {
+            if (sameLive(raced, version, engineJarSha) && intact(raced.get(), cas, engineJarSha)) {
                 return confirmLive(raced.get(), version, engineJarSha);
             }
-            if (!downgrade && raced.isPresent() && Versions.compare(raced.get().version(), version) > 0) {
-                throw new IOException(
-                        "refusing to replace jk-engine " + raced.get().version() + " with older " + version);
-            }
+            refuseOlder(raced, version, downgrade);
             return materializeLocked(version, cas, engineJarSha);
+        }
+    }
+
+    /**
+     * Throw the refusal {@link #materialize(String, Cas, String, boolean)} would, without changing
+     * anything: an install that must not end half done asks first.
+     */
+    public void requireAccepts(String version, boolean downgrade) throws IOException {
+        refuseOlder(currentInstall(), version, downgrade);
+    }
+
+    private static void refuseOlder(Optional<Materialized> live, String version, boolean downgrade) throws IOException {
+        if (!downgrade && live.isPresent() && Versions.compare(live.get().version(), version) > 0) {
+            throw new IOException("refusing to replace jk-engine " + live.get().version() + " with older " + version);
+        }
+    }
+
+    /**
+     * Whether the live jar is as long as the blob it was copied from: a jar a power loss truncated
+     * is installed again instead of kept because its pointer still names it.
+     */
+    private static boolean intact(Materialized live, Cas cas, String engineJarSha) {
+        try {
+            Path blob = cas.pathFor(engineJarSha);
+            return !Files.isRegularFile(blob) || Files.size(blob) == Files.size(live.engineJar());
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
         }
     }
 
@@ -302,9 +328,9 @@ public final class EngineInstall {
 
     /**
      * Replace the PATH client with a copy of {@code clientSource}. Both {@code jk} and {@code jkx}
-     * are staged beside their destination and made executable first; only then is the live pair
-     * parked as {@code .old} and the staged pair moved in. A failure after the park puts the parked
-     * client back, so the bin never ends up with no client at all.
+     * are staged beside their destination and made executable first; only then is the staged pair
+     * renamed over the live one. On Windows the live pair is parked as {@code .old} before the
+     * rename, and a failure after the park puts it back, so the bin never ends up with no client.
      */
     static void installBinaries(Path clientSource, Path binDir, boolean windows) throws IOException {
         Files.createDirectories(binDir);
@@ -338,8 +364,12 @@ public final class EngineInstall {
         Optional<Path> parkedJk = Optional.empty();
         Optional<Path> parkedJkx = Optional.empty();
         try {
-            parkedJk = displaceToOld(jk);
-            parkedJkx = displaceToOld(jkx);
+            // POSIX renames over a running binary, which keeps its inode, so the name is never
+            // missing; Windows refuses to replace a mapped .exe, so the live one is parked first.
+            if (windows) {
+                parkedJk = displaceToOld(jk);
+                parkedJkx = displaceToOld(jkx);
+            }
             AtomicWrites.moveInto(stagedJk, jk);
             AtomicWrites.moveInto(stagedJkx, jkx);
         } catch (IOException | RuntimeException publish) {
@@ -411,6 +441,11 @@ public final class EngineInstall {
         Path jarTmp = Files.createTempFile(engineHome(), ".jk-engine-", ".tmp");
         try {
             Files.copy(cas.pathFor(engineJarSha), jarTmp, StandardCopyOption.REPLACE_EXISTING);
+            // The pointer below is written durably; the jar it names has to be on disk first, or a
+            // power loss leaves a pointer to a torn jar.
+            try (FileChannel ch = FileChannel.open(jarTmp, StandardOpenOption.WRITE)) {
+                ch.force(true);
+            }
             try {
                 Files.move(jarTmp, dest, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException e) {

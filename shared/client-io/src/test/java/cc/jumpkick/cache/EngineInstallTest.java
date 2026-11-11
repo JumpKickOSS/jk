@@ -70,6 +70,34 @@ class EngineInstallTest {
         }
     }
 
+    /** A power loss can leave the live jar torn under an intact pointer; installing it again repairs it. */
+    @Test
+    void a_truncated_live_jar_is_installed_again(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-bytes");
+        var first = store.materializeFromFiles("0.12.0", cas, jar);
+        Files.writeString(first.engineJar(), "engine");
+
+        var repaired = store.materializeFromFiles("0.12.0", cas, jar);
+
+        assertThat(repaired.engineJar()).hasContent("engine-bytes");
+        assertThat(store.currentInstall().orElseThrow().engineJar()).hasContent("engine-bytes");
+    }
+
+    /** The jar the durable pointer names is forced to disk before the pointer is written; not observable from a test. */
+    @Test
+    void the_engine_jar_is_forced_to_disk_before_the_pointer_names_it() throws Exception {
+        String source = Files.readString(RepoRoot.dir(EngineInstallTest.class, "shared/client-io")
+                .resolve("src/main/java/cc/jumpkick/cache/EngineInstall.java"));
+        int body = source.indexOf("private Materialized materializeLocked(");
+        int end = source.indexOf("\n    }", body);
+        String method = source.substring(body, end);
+        assertThat(method).contains(".force(true)");
+        assertThat(method.indexOf(".force(true)")).isLessThan(method.indexOf("writePointer("));
+    }
+
     @Test
     void the_pointer_remembers_the_engine_before_it_so_the_store_keeps_both(@TempDir Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
@@ -408,8 +436,12 @@ class EngineInstallTest {
         assertThat(removed).contains(stale);
     }
 
+    /**
+     * On POSIX the new pair is renamed straight over the live one: a running client keeps its inode,
+     * and parking the live name first would leave a moment with no {@code jk} on the PATH.
+     */
     @Test
-    void install_binaries_parks_previous_and_writes_jk_plus_jkx(@TempDir Path tmp) throws Exception {
+    void install_binaries_renames_over_the_live_pair_and_parks_nothing_on_posix(@TempDir Path tmp) throws Exception {
         Path bin = Files.createDirectories(tmp.resolve("bin"));
         Files.writeString(bin.resolve("jk"), "old-jk");
         Files.writeString(bin.resolve("jkx"), "old-jkx");
@@ -419,8 +451,26 @@ class EngineInstallTest {
 
         assertThat(bin.resolve("jk")).hasContent("new-jk");
         assertThat(bin.resolve("jkx")).hasContent("new-jk");
-        assertThat(bin.resolve("jk.old")).hasContent("old-jk");
-        assertThat(bin.resolve("jkx.old")).hasContent("old-jkx");
+        try (var entries = Files.list(bin)) {
+            assertThat(entries.map(p -> p.getFileName().toString()))
+                    .as("nothing parked, nothing staged")
+                    .containsExactlyInAnyOrder("jk", "jkx");
+        }
+    }
+
+    @Test
+    void install_binaries_parks_the_live_pair_on_windows(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Files.writeString(bin.resolve("jk.exe"), "old-jk");
+        Files.writeString(bin.resolve("jkx.exe"), "old-jkx");
+        Path src = Files.writeString(tmp.resolve("new-jk"), "new-jk");
+
+        EngineInstall.installBinaries(src, bin, true);
+
+        assertThat(bin.resolve("jk.exe")).hasContent("new-jk");
+        assertThat(bin.resolve("jkx.exe")).hasContent("new-jk");
+        assertThat(bin.resolve("jk.exe.old")).hasContent("old-jk");
+        assertThat(bin.resolve("jkx.exe.old")).hasContent("old-jkx");
     }
 
     @Test
@@ -446,16 +496,16 @@ class EngineInstallTest {
     @Test
     void an_install_sweeps_the_last_parked_client_and_parks_the_current_one(@TempDir Path tmp) throws Exception {
         Path bin = Files.createDirectories(tmp.resolve("bin"));
-        Files.writeString(bin.resolve("jk"), "v2");
-        Files.writeString(bin.resolve("jkx"), "v2");
-        Files.writeString(bin.resolve("jk.old-99"), "v1");
+        Files.writeString(bin.resolve("jk.exe"), "v2");
+        Files.writeString(bin.resolve("jkx.exe"), "v2");
+        Files.writeString(bin.resolve("jk.exe.old-99"), "v1");
         Path src = Files.writeString(tmp.resolve("v3"), "v3");
 
-        EngineInstall.installBinaries(src, bin, false);
+        EngineInstall.installBinaries(src, bin, true);
 
-        assertThat(bin.resolve("jk.old-99")).doesNotExist();
-        assertThat(bin.resolve("jk.old")).hasContent("v2");
-        assertThat(bin.resolve("jk")).hasContent("v3");
+        assertThat(bin.resolve("jk.exe.old-99")).doesNotExist();
+        assertThat(bin.resolve("jk.exe.old")).hasContent("v2");
+        assertThat(bin.resolve("jk.exe")).hasContent("v3");
     }
 
     @Test

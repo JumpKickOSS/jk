@@ -105,15 +105,19 @@ class JvmClientInstallTest {
     }
 
     @Test
-    void install_jar_places_one_jar_and_retires_the_previous_version(@TempDir Path tmp) throws Exception {
+    void install_places_one_jar_points_the_launcher_at_it_and_retires_the_previous_version(@TempDir Path tmp)
+            throws Exception {
         Path lib = tmp.resolve("lib/jk");
+        Path bin = tmp.resolve("bin");
         Files.createDirectories(lib);
         Files.write(lib.resolve("jk-1.0.0.jar"), new byte[] {1});
         Files.write(lib.resolve("jk-engine-unrelated.txt"), new byte[] {3});
 
-        Path placed = JvmClientInstall.installJar(new byte[] {9, 9}, lib, "1.1.0");
+        Path placed =
+                JvmClientInstall.install(new byte[] {9, 9}, lib, bin, "1.1.0", Path.of("/opt/jdk/bin/java"), false);
 
         assertThat(placed).isEqualTo(lib.resolve("jk-1.1.0.jar")).hasBinaryContent(new byte[] {9, 9});
+        assertThat(Files.readString(bin.resolve("jk"))).contains("jk-1.1.0.jar");
         assertThat(lib.resolve("jk-1.0.0.jar")).doesNotExist();
         assertThat(lib.resolve("jk-engine-unrelated.txt"))
                 .as("only the client's files are retired")
@@ -121,8 +125,23 @@ class JvmClientInstallTest {
         assertThat(lib.resolve(".jk-1.1.0.jar-new")).as("the temp file is gone").doesNotExist();
     }
 
+    /** The old jar goes only after the launcher names the new one: a launcher that cannot be written leaves a working client. */
     @Test
-    void write_launcher_parks_the_native_client_and_points_jkx_at_the_script(@TempDir Path tmp) throws Exception {
+    void a_launcher_that_cannot_be_written_keeps_the_jar_the_old_launcher_runs(@TempDir Path tmp) throws Exception {
+        Path lib = Files.createDirectories(tmp.resolve("lib/jk"));
+        Files.write(lib.resolve("jk-1.0.0.jar"), new byte[] {1});
+        Path bin = Files.writeString(tmp.resolve("bin"), "a file where the bin directory goes");
+
+        assertThatThrownBy(() -> JvmClientInstall.install(
+                        new byte[] {9, 9}, lib, bin, "1.1.0", Path.of("/opt/jdk/bin/java"), false))
+                .isInstanceOf(IOException.class);
+
+        assertThat(lib.resolve("jk-1.0.0.jar")).hasBinaryContent(new byte[] {1});
+    }
+
+    @Test
+    void write_launcher_renames_over_the_native_client_and_points_jkx_at_the_script(@TempDir Path tmp)
+            throws Exception {
         Path bin = tmp.resolve("bin");
         Files.createDirectories(bin);
         Files.write(bin.resolve("jk"), new byte[] {0x7f, 'E', 'L', 'F'});
@@ -135,7 +154,9 @@ class JvmClientInstallTest {
         assertThat(launcher).isEqualTo(bin.resolve("jk"));
         assertThat(Files.readString(launcher)).startsWith("#!/bin/sh\n");
         assertThat(Files.isExecutable(launcher)).isTrue();
-        assertThat(bin.resolve("jk.old")).hasBinaryContent(new byte[] {0x7f, 'E', 'L', 'F'});
+        assertThat(bin.resolve("jk.old"))
+                .as("POSIX renames over the live client; nothing is parked")
+                .doesNotExist();
         assertThat(bin.resolve(".jk-new")).as("the staged sibling is gone").doesNotExist();
         Path jkx = Os.isWindows() ? bin.resolve("jkx.cmd") : bin.resolve("jkx");
         assertThat(jkx).exists();

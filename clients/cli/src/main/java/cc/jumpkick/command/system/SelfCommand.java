@@ -472,12 +472,24 @@ public final class SelfCommand extends GroupCommand {
                 EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
             }
             Path newJk = EngineInstall.pathClient(JkDirs.binDir());
-            if (Files.isRegularFile(newJk)) {
-                ProcessTrees.awaitExit(
-                        CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start")));
-                CliOutput.out("engine " + target + " is taking over"
-                        + (in.isSet("now") ? "" : " (running builds finish on the old engine)"));
+            if (!Files.isRegularFile(newJk)) return 0;
+            return handOver(newJk, version, in.isSet("now"));
+        }
+
+        /**
+         * Start {@code version}'s engine through the client just installed at {@code newJk} and say
+         * it is taking over; an engine that did not start fails the update with that exit code.
+         */
+        static int handOver(Path newJk, String version, boolean now) throws IOException, InterruptedException {
+            int started = ProcessTrees.awaitExit(
+                    CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start")));
+            if (started != 0) {
+                CommandWedge.printFail(
+                        "Self", version + " is installed but its engine did not start; `jk engine start` retries");
+                return started;
             }
+            CliOutput.out("engine " + version + " is taking over"
+                    + (now ? "" : " (running builds finish on the old engine)"));
             return 0;
         }
 
@@ -602,26 +614,35 @@ public final class SelfCommand extends GroupCommand {
         }
 
         /**
-         * Install a prepared update: the engine pointer moves to its jar, then the PATH client is
-         * replaced (a native binary parked and renamed in, or the JVM client's jar placed under
-         * {@code <home>/lib/jk} with the launcher rewritten over it), and the record goes. {@code
-         * downgrade} lets an explicit older target replace the live engine. Returns the engine jar.
+         * Install a prepared update: the PATH client is replaced (a native binary renamed in, or the
+         * JVM client's jar placed under {@code <home>/lib/jk} with the launcher rewritten over it),
+         * then the engine pointer moves to its jar, and the record goes. The client goes first: a
+         * newer client installs its own engine when the pointer still names an older one, while an
+         * older client cannot replace the newer engine a moved pointer names, so an update cut
+         * short between the steps leaves a client that starts. {@code downgrade} lets an explicit
+         * older target replace the live engine; a refusal is raised before anything moves. Returns
+         * the engine jar.
          */
         static String apply(PreparedUpdate prepared, EngineInstall install, Cas cas, boolean downgrade)
                 throws IOException {
-            EngineInstall.Materialized engine =
-                    install.materialize(prepared.version(), cas, prepared.engineSha256(), downgrade);
+            install.requireAccepts(prepared.version(), downgrade);
             Path client = cas.pathFor(prepared.clientSha256());
             if (prepared.client() == PreparedUpdate.Client.JVM) {
-                Path placed = JvmClientInstall.installJar(
-                        Files.readAllBytes(client), JvmClientInstall.libDir(), prepared.version());
-                JvmClientInstall.writeLauncher(JkDirs.binDir(), placed, JvmClientInstall.runningJava(), Os.isWindows());
+                JvmClientInstall.install(
+                        Files.readAllBytes(client),
+                        JvmClientInstall.libDir(),
+                        JkDirs.binDir(),
+                        prepared.version(),
+                        JvmClientInstall.runningJava(),
+                        Os.isWindows());
             } else {
                 EngineInstall.installBinaries(client, JkDirs.binDir());
                 if (JvmClient.installed()) {
                     JvmClientInstall.retire(JkDirs.binDir(), JvmClientInstall.libDir(), Os.isWindows());
                 }
             }
+            EngineInstall.Materialized engine =
+                    install.materialize(prepared.version(), cas, prepared.engineSha256(), downgrade);
             keepWhatsNew(install);
             PreparedUpdate.delete(install.engineHome());
             StoreCasGc.afterInstall();

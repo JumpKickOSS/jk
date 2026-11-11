@@ -69,25 +69,24 @@ public final class JvmClientInstall {
     }
 
     /**
-     * Place {@code bytes} as {@code <libDir>/jk-<version>.jar} through a temp file and an atomic
-     * move, then retire every other {@code jk-*.jar} in the directory: the
-     * launcher names one jar, and a second one there is dead weight or, when an installer globs,
-     * the wrong client. A jar a running client still maps cannot be deleted on Windows; it is parked
-     * as {@code .old} and swept by the next install.
+     * Install the JVM client: {@code bytes} placed as {@code <libDir>/jk-<version>.jar} through a
+     * temp file and an atomic move, the launcher under {@code binDir} rewritten to run it on {@code
+     * java}, and only then every other {@code jk-*.jar} in {@code libDir} retired: the launcher names
+     * one jar, and a second one there is dead weight or, when an installer globs, the wrong client.
+     * A failure before the launcher moves leaves the old launcher and the jar it names in place. A
+     * jar a running client still maps cannot be deleted on Windows; it is parked as {@code .old}
+     * and swept by the next install.
      */
-    public static Path installJar(byte[] bytes, Path libDir, String version) throws IOException {
+    public static Path install(byte[] bytes, Path libDir, Path binDir, String version, Path java, boolean windows)
+            throws IOException {
         Files.createDirectories(libDir);
         Path dest = libDir.resolve(jarName(version));
         Path tmp = dest.resolveSibling("." + dest.getFileName() + "-new");
         Files.write(tmp, bytes);
         AtomicWrites.moveInto(tmp, dest);
+        writeLauncher(binDir, dest, java, windows);
         retireOthers(libDir, dest);
         return dest;
-    }
-
-    /** As {@link #installJar(byte[], Path, String)} from a file. */
-    public static Path installJar(Path source, Path libDir, String version) throws IOException {
-        return installJar(Files.readAllBytes(source), libDir, version);
     }
 
     private static void retireOthers(Path libDir, Path keep) throws IOException {
@@ -108,11 +107,11 @@ public final class JvmClientInstall {
     }
 
     /**
-     * Write the launcher for {@code jar} on {@code java} under {@code binDir}, parking the PATH
-     * client it replaces, and point {@code jkx} at it. The text is staged beside the launcher and
-     * made executable first; only then is the live client parked as {@code .old} and the staged
-     * file moved in, and a failure after the park puts the parked client back, so the bin never
-     * ends up with no {@code jk} at all. On Windows a leftover {@code jk.exe} is parked too:
+     * Write the launcher for {@code jar} on {@code java} under {@code binDir} over the PATH client it
+     * replaces, and point {@code jkx} at it. The text is staged beside the launcher and made
+     * executable first; only then is it renamed over the live client. On Windows the live client is
+     * parked as {@code .old} first, and a failure after the park puts it back, so the bin never ends
+     * up with no {@code jk} at all. On Windows a leftover {@code jk.exe} is parked too:
      * PATHEXT prefers {@code .exe} to {@code .bat}, so one left beside the launcher is what
      * {@code jk} would keep starting.
      */
@@ -136,11 +135,13 @@ public final class JvmClientInstall {
         Optional<Path> parkedJkxExe = Optional.empty();
         Optional<Path> parkedLauncher = Optional.empty();
         try {
+            // POSIX renames over the live client, which keeps its inode, so the name is never
+            // missing; Windows refuses to replace a mapped file, so the live one is parked first.
             if (windows) {
                 parkedExe = EngineInstall.displaceToOld(exe);
                 parkedJkxExe = EngineInstall.displaceToOld(jkxExe);
+                parkedLauncher = EngineInstall.displaceToOld(launcher);
             }
-            parkedLauncher = EngineInstall.displaceToOld(launcher);
             AtomicWrites.moveInto(staged, launcher);
         } catch (IOException | RuntimeException publish) {
             EngineInstall.restoreParked(parkedLauncher, launcher, publish);
