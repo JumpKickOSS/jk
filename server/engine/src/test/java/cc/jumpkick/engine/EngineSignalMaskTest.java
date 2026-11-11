@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.EngineJvmFlags;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
@@ -40,11 +41,9 @@ class EngineSignalMaskTest {
     @Test
     void an_engine_started_with_int_and_hup_ignored_resets_both_before_serving() throws Exception {
         // Control: the harness really does hand SIG_IGN down through exec.
-        Process control = new ProcessBuilder(ignoringShell(List.of("cat", "/proc/self/status")))
-                .redirectErrorStream(true)
-                .start();
-        String controlStatus = new String(control.getInputStream().readAllBytes());
-        control.waitFor();
+        String controlStatus = Processes.capture(
+                        ignoringShell(List.of("cat", "/proc/self/status")), Duration.ofSeconds(30))
+                .output();
         assertThat(sigIgn(controlStatus) & HUP_AND_INT)
                 .as("the control child inherits the shell's ignore of HUP and INT")
                 .isEqualTo(HUP_AND_INT);

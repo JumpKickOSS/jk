@@ -8,10 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -428,10 +428,9 @@ class OfficialTemplatesFreshenTest {
     private static String gitOut(Path dir, String... args) throws Exception {
         List<String> cmd = new ArrayList<>(List.of("git", "-C", dir.toString()));
         cmd.addAll(List.of(args));
-        Process proc = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-        String out = new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (proc.waitFor() != 0) throw new IOException("git " + String.join(" ", args) + " failed: " + out);
-        return out.strip();
+        Processes.Captured run = Processes.capture(cmd, Duration.ofMinutes(1));
+        if (!run.ok()) throw new IOException("git " + String.join(" ", args) + " failed: " + run.output());
+        return run.output().strip();
     }
 
     /**

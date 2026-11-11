@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -12,6 +13,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -112,8 +114,10 @@ class FileLocksTest {
             running.add(fork(FoldMain.class, counter.toString(), Integer.toString(perProcess)));
         }
         for (Process p : running) {
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            assertThat(p.waitFor()).as("subprocess exit; output: " + out).isZero();
+            Processes.Captured run = Processes.capture(p, Duration.ofMinutes(2));
+            assertThat(run.exit())
+                    .as("subprocess exit; output: " + run.output() + run.error())
+                    .isZero();
         }
         assertThat(Files.readString(counter).trim()).isEqualTo(Integer.toString(processes * perProcess));
     }
@@ -154,13 +158,9 @@ class FileLocksTest {
 
     /** The one-shot probe {@link ProbeMain} answers: {@code held} or {@code free}. */
     private static String probeFromAnotherProcess(Path lock) throws IOException {
-        Process p = fork(ProbeMain.class, lock.toString());
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        try {
-            assertThat(p.waitFor()).as(out).isZero();
-        } catch (InterruptedException e) {
-            throw new IOException(e);
-        }
+        Processes.Captured run = Processes.capture(fork(ProbeMain.class, lock.toString()), Duration.ofMinutes(1));
+        String out = run.output().trim();
+        assertThat(run.exit()).as(out + run.error()).isZero();
         return out;
     }
 

@@ -4,9 +4,9 @@ package cc.jumpkick.terminal.windows;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.host.Processes;
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,12 +20,11 @@ class WindowsUtf8PipedStdoutTest {
     void bootstrap_println_reaches_a_piped_consumer() throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java")
                 .toString();
-        Process p = new ProcessBuilder(
-                        java, "-cp", System.getProperty("java.class.path"), PipedStdoutMain.class.getName())
-                .start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(30, TimeUnit.SECONDS)).isTrue();
-        assertThat(p.exitValue()).isZero();
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), PipedStdoutMain.class.getName()),
+                Duration.ofSeconds(30));
+        String out = run.output();
+        assertThat(run.exit()).as(run.error()).isZero();
         assertThat(out).contains("piped-line-alive");
         assertThat(out).contains("piped-tail-alive"); // the print() tail rides the shutdown flush
     }

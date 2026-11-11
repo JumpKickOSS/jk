@@ -6,9 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -89,11 +91,10 @@ class JvmClientInstallTest {
         String longer = original.replace("setlocal\r\n", "setlocal\r\nrem " + "x".repeat(400) + "\r\necho TAIL\r\n");
         Files.writeString(launcher, original);
         Files.writeString(replacement, longer);
-        Process p = new ProcessBuilder("cmd.exe", "/c", launcher.toString())
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes());
-        assertThat(p.waitFor()).as(out).isEqualTo(7);
+        Processes.Captured run =
+                Processes.capture(List.of("cmd.exe", "/c", launcher.toString()), Duration.ofMinutes(1));
+        String out = run.output();
+        assertThat(run.exit()).as(out).isEqualTo(7);
         assertThat(out).doesNotContain("TAIL");
     }
 

@@ -6,12 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.command.ScaffoldTestSupport;
+import cc.jumpkick.host.Processes;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
@@ -138,12 +140,9 @@ class CompileCommandTest {
         var cmd = new ArrayList<String>();
         cmd.add("git");
         cmd.addAll(List.of(args));
-        Process p = new ProcessBuilder(cmd)
-                .directory(dir.toFile())
-                .redirectErrorStream(true)
-                .start();
-        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (p.waitFor() != 0) throw new IOException("git " + String.join(" ", args) + " failed: " + output);
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));
+        if (!run.ok()) throw new IOException("git " + String.join(" ", args) + " failed: " + run.output());
     }
 
     // --- helpers -----------------------------------------------------------

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -19,11 +20,10 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -95,14 +95,11 @@ class SourceDependencyBuildE2eTest {
 
         ExecPlan run = ExecPlans.execPlan(app, cache, "run", null, null);
         assertThat(run.error()).isNull();
-        Process p = new ProcessBuilder(run.argv())
-                .directory(app.toFile())
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        assertThat(p.exitValue()).as(out).isZero();
-        assertThat(out).contains(expected);
+        Processes.Captured ran = Processes.capture(
+                new ProcessBuilder(run.argv()).directory(app.toFile()).redirectErrorStream(true),
+                Duration.ofSeconds(60));
+        assertThat(ran.exit()).as(ran.output()).isZero();
+        assertThat(ran.output()).contains(expected);
     }
 
     private static Path writeLibrary(Path dir, String greeting) throws IOException {

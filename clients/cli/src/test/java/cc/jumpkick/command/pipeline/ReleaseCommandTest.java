@@ -4,12 +4,13 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.host.Processes;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -51,12 +52,10 @@ class ReleaseCommandTest {
     private static String git(Path dir, String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(List.of("git"));
         command.addAll(List.of(args));
-        Process p = new ProcessBuilder(command)
-                .directory(dir.toFile())
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-        assertThat(p.waitFor()).as(String.join(" ", command) + "\n" + out).isZero();
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));
+        String out = run.output().strip();
+        assertThat(run.exit()).as(String.join(" ", command) + "\n" + out).isZero();
         return out;
     }
 

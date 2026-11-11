@@ -6,11 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.AotCacheFiles;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.host.Processes;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -91,13 +91,10 @@ class AotCacheBuildE2eTest {
     }
 
     private static String output(Path dir, List<String> command) throws Exception {
-        Process process = new ProcessBuilder(command)
-                .directory(dir.toFile())
-                .redirectErrorStream(true)
-                .start();
-        byte[] bytes = process.getInputStream().readAllBytes();
-        assertThat(process.waitFor(120, TimeUnit.SECONDS)).isTrue();
-        return new String(bytes, StandardCharsets.UTF_8);
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true), Duration.ofSeconds(120));
+        assertThat(run.timedOut()).isFalse();
+        return run.output();
     }
 
     /** The value of a {@code key = "value"} line in the cache manifest. */

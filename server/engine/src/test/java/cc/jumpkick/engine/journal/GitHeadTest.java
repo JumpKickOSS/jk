@@ -4,13 +4,12 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.host.Processes;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -92,14 +91,6 @@ class GitHeadTest {
     private static @Nullable String git(Path dir, String... args) throws Exception {
         List<String> command = new ArrayList<>(List.of("git", "-C", dir.toString()));
         command.addAll(List.of(args));
-        Process p;
-        try {
-            p = new ProcessBuilder(command).redirectErrorStream(true).start();
-        } catch (IOException e) {
-            return null;
-        }
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (!p.waitFor(30, TimeUnit.SECONDS) || p.exitValue() != 0) return null;
-        return out;
+        return Processes.outputIfOk(command, Duration.ofSeconds(30));
     }
 }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.testing.RepoRoot;
@@ -19,6 +20,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -420,12 +422,11 @@ class JarSizeBenchTest {
     }
 
     private static String firstLine(String... command) throws IOException {
-        Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
-        try (InputStream in = p.getInputStream()) {
-            String out = new String(in.readAllBytes()).strip();
-            return out.isEmpty()
-                    ? String.join(" ", command)
-                    : out.lines().findFirst().orElse("");
-        }
+        String out = Processes.capture(List.of(command), Duration.ofMinutes(1))
+                .output()
+                .strip();
+        return out.isEmpty()
+                ? String.join(" ", command)
+                : out.lines().findFirst().orElse("");
     }
 }

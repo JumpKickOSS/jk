@@ -3,6 +3,7 @@ package cc.jumpkick.builds;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
@@ -10,7 +11,6 @@ import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -352,8 +352,8 @@ class ProjectIdentityTest {
             running.add(new ProcessBuilder(cmd).redirectErrorStream(true).start());
         }
         for (Process p : running) {
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            assertThat(p.waitFor()).as(out).isZero();
+            Processes.Captured run = Processes.capture(p, Duration.ofMinutes(2));
+            assertThat(run.exit()).as(run.output()).isZero();
         }
         assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())
                 .hasSize(writers);

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
@@ -184,22 +184,8 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
     private static @Nullable String git(Path root, String... args) {
         List<String> command = new ArrayList<>(List.of("git", "-C", root.toString()));
         command.addAll(List.of(args));
-        try {
-            Process process = new ProcessBuilder(command)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            process.getOutputStream().close();
-            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                return null;
-            }
-            return process.exitValue() == 0 ? out : null;
-        } catch (IOException e) {
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
+        return Processes.outputIfOk(
+                new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD),
+                Duration.ofSeconds(GIT_TIMEOUT_SECONDS));
     }
 }

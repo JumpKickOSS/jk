@@ -4,16 +4,16 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.LibDir;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -170,13 +170,13 @@ class LibDirLayoutTest {
 
     private static String runJar(Path dir, String jar) throws Exception {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-        Process p = new ProcessBuilder(java.toString(), "-jar", jar)
-                .directory(dir.toFile())
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        assertThat(p.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        assertThat(p.exitValue()).as(out).isZero();
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(java.toString(), "-jar", jar)
+                        .directory(dir.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofSeconds(60));
+        String out = run.output().trim();
+        assertThat(run.exit()).as(out).isZero();
         return out;
     }
 }

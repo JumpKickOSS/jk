@@ -3,10 +3,12 @@ package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,10 +60,9 @@ class ToolRunForkTest {
 
     @Test
     void start_hands_back_the_process_for_a_caller_that_drives_its_own_drain() throws Exception {
-        Process process = probe().arg("solo").start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(process.waitFor()).isZero();
-        assertThat(output).contains("arg=solo");
+        Processes.Captured run = Processes.capture(probe().arg("solo").start(), Duration.ofMinutes(1));
+        assertThat(run.exit()).isZero();
+        assertThat(run.output()).contains("arg=solo");
     }
 
     @Test

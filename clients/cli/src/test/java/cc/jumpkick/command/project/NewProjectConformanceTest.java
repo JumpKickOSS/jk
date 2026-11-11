@@ -26,6 +26,7 @@ import cc.jumpkick.form.FormCommand;
 import cc.jumpkick.form.Option;
 import cc.jumpkick.form.Values;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.MiniJson;
@@ -38,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -494,15 +496,15 @@ class NewProjectConformanceTest {
                     : Files.isRegularFile(Path.of(home, "bin", "node"))
                             ? Path.of(home, "bin", "node").toString()
                             : Path.of(home, "node.exe").toString();
-            Process p = new ProcessBuilder(node, "drive.mjs")
-                    .directory(stage.toFile())
-                    .redirectInput(in.toFile())
-                    .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            assertThat(p.waitFor(30, TimeUnit.SECONDS)).as("node finishes").isTrue();
-            assertThat(p.exitValue()).as("node drive.mjs: %s", out).isZero();
-            return out;
+            Processes.Captured run = Processes.capture(
+                    new ProcessBuilder(node, "drive.mjs")
+                            .directory(stage.toFile())
+                            .redirectInput(in.toFile())
+                            .redirectError(ProcessBuilder.Redirect.INHERIT),
+                    Duration.ofSeconds(30));
+            assertThat(run.timedOut()).as("node finishes").isFalse();
+            assertThat(run.exit()).as("node drive.mjs: %s", run.output()).isZero();
+            return run.output();
         }
     }
 

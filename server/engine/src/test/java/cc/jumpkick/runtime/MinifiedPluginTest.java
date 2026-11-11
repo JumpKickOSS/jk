@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -14,6 +15,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -74,12 +76,11 @@ class MinifiedPluginTest {
                 .isLessThan(Files.size(target.resolve("slim-1.0.0-all.jar")));
 
         // Behavioral: the shrunk jar actually runs — R8 kept the reachable closure.
-        Process run = new ProcessBuilder(
-                        Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-jar", jar.toString())
-                .redirectErrorStream(true)
-                .start();
-        String output = new String(run.getInputStream().readAllBytes());
-        assertThat(run.waitFor()).as("java -jar exit (output: %s)", output).isZero();
+        Processes.Captured run = Processes.capture(
+                List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-jar", jar.toString()),
+                Duration.ofMinutes(1));
+        String output = run.output();
+        assertThat(run.exit()).as("java -jar exit (output: %s)", output).isZero();
         assertThat(output).contains("Hello jk");
 
         // Structural: dead library code is gone; the app + used helpers survived.

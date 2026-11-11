@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,6 +35,10 @@ import java.util.regex.Pattern;
 final class HouseRules {
 
     private static final String MAIN_JAVA = "**/src/main/java/**/*.java";
+    /** Main, test, test-fixture and end-to-end Java sources: every tree code ships or tests from. */
+    private static final List<String> EVERY_JAVA_SET = List.of(
+            MAIN_JAVA, "**/src/test/java/**/*.java", "**/src/fixtures/java/**/*.java", "**/src/e2e/java/**/*.java");
+
     private static final String JDK_FINGERPRINT = "shared/host/src/main/java/cc/jumpkick/jdk/JdkFingerprint.java";
     private static final List<String> JSON_CODEC_OWNERS = List.of(
             "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java",
@@ -217,7 +222,9 @@ final class HouseRules {
     void processOutputOwner(Text text, Violations v) {
         owner(text, PROCESSES);
         long files = 0;
-        for (String rel : text.files(MAIN_JAVA)) {
+        Set<String> sources = new TreeSet<>();
+        for (String glob : EVERY_JAVA_SET) sources.addAll(text.files(glob));
+        for (String rel : sources) {
             if (rel.equals(PROCESSES)) continue;
             files++;
             String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);

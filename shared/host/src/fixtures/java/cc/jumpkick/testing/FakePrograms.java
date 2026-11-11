@@ -4,12 +4,14 @@ package cc.jumpkick.testing;
 import static org.junit.jupiter.api.Assumptions.abort;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -111,18 +113,9 @@ public final class FakePrograms {
         Path dir = Files.createTempDirectory("jk-fake-exe-");
         Path source = Files.writeString(dir.resolve("shim.cs"), SHIM_SOURCE);
         Path out = dir.resolve("shim.exe");
-        Process p = new ProcessBuilder(csc.toString(), "/nologo", "/out:" + out, source.toString())
-                .redirectErrorStream(true)
-                .start();
-        try {
-            String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!p.waitFor(2, TimeUnit.MINUTES) || p.exitValue() != 0) {
-                throw new IOException("csc could not build the fake .exe shim:\n" + log);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException(e);
-        }
+        Processes.Captured run = Processes.capture(
+                List.of(csc.toString(), "/nologo", "/out:" + out, source.toString()), Duration.ofMinutes(2));
+        if (!run.ok()) throw new IOException("csc could not build the fake .exe shim:\n" + run.output());
         cached = Files.readAllBytes(out);
         shim = cached;
         return cached;

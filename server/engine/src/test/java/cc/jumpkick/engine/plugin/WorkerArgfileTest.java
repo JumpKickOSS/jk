@@ -3,13 +3,14 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -71,12 +72,9 @@ class WorkerArgfileTest {
         WorkerArgfile shortened = WorkerArgfile.shorten(cmd, true, 10);
         assertThat(shortened.command()).hasSize(2);
         try {
-            Process p = new ProcessBuilder(shortened.command())
-                    .redirectErrorStream(true)
-                    .start();
-            String out = new String(p.getInputStream().readAllBytes());
-            assertThat(p.waitFor(60, TimeUnit.SECONDS)).as("launcher exited").isTrue();
-            assertThat(p.exitValue()).as(out).isZero();
+            Processes.Captured run = Processes.capture(shortened.command(), Duration.ofSeconds(60));
+            assertThat(run.timedOut()).as("launcher exited").isFalse();
+            assertThat(run.exit()).as(run.output()).isZero();
             assertThat(Files.readString(marker)).isEqualTo(value);
         } finally {
             shortened.delete();

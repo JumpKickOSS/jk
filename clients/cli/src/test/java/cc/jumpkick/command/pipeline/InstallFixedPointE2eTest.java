@@ -9,15 +9,15 @@ import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -157,14 +157,12 @@ class InstallFixedPointE2eTest {
         pb.environment().put("JK_HOME", home.toString());
         pb.environment().put("JAVA_HOME", System.getProperty("java.home"));
         pb.environment().remove("JK_ENGINE_EXE");
-        Process p = pb.start();
-        byte[] out = p.getInputStream().readAllBytes();
-        if (!p.waitFor(4, TimeUnit.MINUTES)) {
-            p.destroyForcibly();
-            throw new IOException("jk " + String.join(" ", args) + " did not finish within 4 minutes:\n"
-                    + new String(out, StandardCharsets.UTF_8));
+        Processes.Captured run = Processes.capture(pb, Duration.ofMinutes(4));
+        if (run.timedOut()) {
+            throw new IOException(
+                    "jk " + String.join(" ", args) + " did not finish within 4 minutes:\n" + run.output());
         }
-        return new Run(p.exitValue(), new String(out, StandardCharsets.UTF_8));
+        return new Run(run.exit(), run.output());
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

@@ -3,16 +3,16 @@ package cc.jumpkick.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -185,12 +185,12 @@ class WebClientJsTest {
                 .redirectErrorStream(true)
                 .directory(stage.toFile());
         builder.environment().putAll(nodeEnv);
-        Process node = builder.start();
-        String output = new String(node.getInputStream().readAllBytes());
-        assertThat(node.waitFor(60, TimeUnit.SECONDS))
+        Processes.Captured node = Processes.capture(builder, Duration.ofSeconds(60));
+        String output = node.output();
+        assertThat(node.timedOut())
                 .as("node --test %s finished%n%s", suite.getFileName(), output)
-                .isTrue();
-        assertThat(node.exitValue())
+                .isFalse();
+        assertThat(node.exit())
                 .as("node --test %s exit status%n%s", suite.getFileName(), output)
                 .isZero();
         return output;
@@ -244,17 +244,10 @@ class WebClientJsTest {
 
     /** The major of the {@code node} on PATH ({@code v24.15.0} → 24), or empty when there is none. */
     private static Optional<Integer> installedNodeMajor() {
-        try {
-            Process p = new ProcessBuilder(node(), "--version")
-                    .redirectErrorStream(true)
-                    .start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            if (!p.waitFor(10, TimeUnit.SECONDS) || p.exitValue() != 0) return Optional.empty();
-            Matcher m = Pattern.compile("^v?(\\d+)").matcher(out);
-            return m.find() ? Optional.of(Integer.parseInt(m.group(1))) : Optional.empty();
-        } catch (IOException | InterruptedException e) {
-            return Optional.empty();
-        }
+        String out = Processes.outputIfOk(List.of(node(), "--version"), Duration.ofSeconds(10));
+        if (out == null) return Optional.empty();
+        Matcher m = Pattern.compile("^v?(\\d+)").matcher(out.trim());
+        return m.find() ? Optional.of(Integer.parseInt(m.group(1))) : Optional.empty();
     }
 
     /** The leading integer of the {@code .nvmrc} pin ({@code 24} or {@code 24.15.0} → 24). */

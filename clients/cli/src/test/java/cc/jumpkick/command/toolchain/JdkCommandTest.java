@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.FakeJdk;
@@ -16,6 +17,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -546,14 +548,10 @@ class JdkCommandTest {
             Files.writeString(target, entry.getValue());
         }
         Path archivePath = workdir.resolve("archive.tar.gz");
-        ProcessBuilder pb =
-                new ProcessBuilder("tar", "czf", archivePath.toString(), "-C", workdir.toString(), topLevelDir);
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        if (p.waitFor() != 0) {
-            throw new RuntimeException(
-                    "tar fixture build failed: " + new String(p.getInputStream().readAllBytes()));
-        }
+        Processes.Captured tar = Processes.capture(
+                List.of("tar", "czf", archivePath.toString(), "-C", workdir.toString(), topLevelDir),
+                Duration.ofMinutes(1));
+        if (!tar.ok()) throw new RuntimeException("tar fixture build failed: " + tar.output());
         return Files.readAllBytes(archivePath);
     }
 

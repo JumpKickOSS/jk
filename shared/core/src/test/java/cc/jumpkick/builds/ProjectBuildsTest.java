@@ -3,12 +3,13 @@ package cc.jumpkick.builds;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.testing.Symlinks;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -204,12 +205,11 @@ class ProjectBuildsTest {
         }
         List<String> allocated = new ArrayList<>();
         for (Process p : running) {
-            try (var in = p.getInputStream()) {
-                for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
-                    if (!line.isBlank()) allocated.add(line.trim());
-                }
+            Processes.Captured run = Processes.capture(p, Duration.ofMinutes(2));
+            for (String line : run.output().split("\n")) {
+                if (!line.isBlank()) allocated.add(line.trim());
             }
-            assertThat(p.waitFor()).as("allocator subprocess exit").isZero();
+            assertThat(run.exit()).as("allocator subprocess exit").isZero();
         }
         assertThat(allocated).hasSize(processes * perProcess);
         assertThat(allocated).as("no build number handed out twice").doesNotHaveDuplicates();

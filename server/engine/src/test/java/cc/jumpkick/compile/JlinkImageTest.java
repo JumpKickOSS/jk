@@ -6,14 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.Jlink;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -138,10 +138,8 @@ class JlinkImageTest {
         cmd.addAll(List.of(args));
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
         pb.environment().remove("JAVA_OPTS");
-        Process p = pb.start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(30, TimeUnit.SECONDS)).isTrue();
-        assertThat(p.exitValue()).as(out).isZero();
-        return out.lines().toList();
+        Processes.Captured run = Processes.capture(pb, Duration.ofSeconds(30));
+        assertThat(run.exit()).as(run.output()).isZero();
+        return run.output().lines().toList();
     }
 }

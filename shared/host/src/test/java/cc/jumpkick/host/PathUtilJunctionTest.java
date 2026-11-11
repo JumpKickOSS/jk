@@ -7,8 +7,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -22,13 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 class PathUtilJunctionTest {
 
     private static void junction(Path link, Path target) throws Exception {
-        Process p = new ProcessBuilder("cmd", "/c", "mklink", "/J", link.toString(), target.toString())
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes());
-        if (!p.waitFor(30, TimeUnit.SECONDS) || p.exitValue() != 0) {
-            throw new IOException("mklink /J failed: " + out.strip());
-        }
+        Processes.Captured run = Processes.capture(
+                List.of("cmd", "/c", "mklink", "/J", link.toString(), target.toString()), Duration.ofSeconds(30));
+        if (!run.ok()) throw new IOException("mklink /J failed: " + run.output().strip());
     }
 
     @Test

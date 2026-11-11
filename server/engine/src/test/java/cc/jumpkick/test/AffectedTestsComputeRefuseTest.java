@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,11 +93,8 @@ class AffectedTestsComputeRefuseTest {
         List<String> cmd = new ArrayList<>();
         cmd.add("git");
         Collections.addAll(cmd, args);
-        Process p = new ProcessBuilder(cmd)
-                .directory(dir.toFile())
-                .redirectErrorStream(true)
-                .start();
-        p.getInputStream().readAllBytes();
-        assertThat(p.waitFor()).isZero();
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));
+        assertThat(run.exit()).as(run.output()).isZero();
     }
 }

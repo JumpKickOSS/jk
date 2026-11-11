@@ -4,17 +4,16 @@ package cc.jumpkick.plugin.image;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -124,15 +123,9 @@ class ImageAotCacheE2eTest {
 
     private record Output(int exit, String text) {}
 
-    private static Output command(List<String> command) throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(new ArrayList<>(command))
-                .redirectErrorStream(true)
-                .start();
-        byte[] bytes = process.getInputStream().readAllBytes();
-        if (!process.waitFor(180, TimeUnit.SECONDS)) {
-            process.destroyForcibly();
-            return new Output(-1, "timed out: " + String.join(" ", command));
-        }
-        return new Output(process.exitValue(), new String(bytes, StandardCharsets.UTF_8));
+    private static Output command(List<String> command) throws IOException {
+        Processes.Captured run = Processes.capture(command, Duration.ofSeconds(180));
+        if (run.timedOut()) return new Output(-1, "timed out: " + String.join(" ", command));
+        return new Output(run.exit(), run.output());
     }
 }

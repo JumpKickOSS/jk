@@ -8,6 +8,7 @@ import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -16,6 +17,7 @@ import cc.jumpkick.testing.TestCaches;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -129,12 +131,10 @@ class AndroidReleaseTest {
 
         // The signature verifies — the env-indirected release identity signed it.
         Path jarsigner = Path.of(System.getProperty("java.home"), "bin", "jarsigner");
-        var verify = new ProcessBuilder(
-                        jarsigner.toString(), "-verify", aab.toAbsolutePath().toString())
-                .redirectErrorStream(true)
-                .start();
-        String verifyOut = new String(verify.getInputStream().readAllBytes());
-        assertThat(verify.waitFor()).as(verifyOut).isZero();
+        Processes.Captured verify = Processes.capture(
+                List.of(jarsigner.toString(), "-verify", aab.toAbsolutePath().toString()), Duration.ofMinutes(2));
+        String verifyOut = verify.output();
+        assertThat(verify.exit()).as(verifyOut).isZero();
         assertThat(verifyOut).contains("jar verified");
 
         // bundletool accepts the bundle: validate + the universal-APK local-deploy path.
@@ -178,15 +178,14 @@ class AndroidReleaseTest {
         command.add(cp.toString());
         command.add("com.android.tools.build.bundletool.BundleToolMain");
         command.addAll(List.of(args));
-        var process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes());
-        assertThat(process.waitFor()).as(output).isZero();
-        return output;
+        Processes.Captured run = Processes.capture(command, Duration.ofMinutes(5));
+        assertThat(run.exit()).as(run.output()).isZero();
+        return run.output();
     }
 
     private static void generateKeystore(Path keystore) throws Exception {
         Path keytool = Path.of(System.getProperty("java.home"), "bin", "keytool");
-        var process = new ProcessBuilder(
+        ProcessBuilder keygen = new ProcessBuilder(
                         keytool.toString(),
                         "-genkeypair",
                         "-keystore",
@@ -207,10 +206,9 @@ class AndroidReleaseTest {
                         "10000",
                         "-dname",
                         "CN=Release Test,O=jk,C=US")
-                .redirectErrorStream(true)
-                .start();
-        String output = new String(process.getInputStream().readAllBytes());
-        assertThat(process.waitFor()).as(output).isZero();
+                .redirectErrorStream(true);
+        Processes.Captured run = Processes.capture(keygen, Duration.ofMinutes(1));
+        assertThat(run.exit()).as(run.output()).isZero();
     }
 
     private static void acceptLicenses() throws Exception {

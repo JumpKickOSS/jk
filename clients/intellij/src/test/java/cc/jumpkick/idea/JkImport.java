@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 
@@ -56,9 +57,10 @@ final class JkImport {
         try {
             Process p = new ProcessBuilder(JkBin.path(), "--version")
                     .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .start();
-            p.getInputStream().readAllBytes();
-            present = p.waitFor() == 0;
+            present = p.waitFor(30, TimeUnit.SECONDS) && p.exitValue() == 0;
+            if (!present) p.destroyForcibly();
         } catch (IOException | InterruptedException e) {
             present = false;
         }

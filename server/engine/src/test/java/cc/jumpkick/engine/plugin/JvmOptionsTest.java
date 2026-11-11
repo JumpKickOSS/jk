@@ -13,12 +13,13 @@ import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.PreferIpv4;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
@@ -182,9 +183,9 @@ class JvmOptionsTest {
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         command.addAll(JvmOptions.suiteFlags(4, List.of()));
         command.add(program.toString());
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(process.waitFor()).as(out).isZero();
+        Processes.Captured run = Processes.capture(command, Duration.ofMinutes(1));
+        String out = run.output();
+        assertThat(run.exit()).as(out).isZero();
         assertThat(out).contains("G1 Young Generation");
     }
 

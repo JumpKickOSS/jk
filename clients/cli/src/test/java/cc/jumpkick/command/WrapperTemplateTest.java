@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.testing.Symlinks;
@@ -23,6 +24,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -474,8 +476,9 @@ class WrapperTemplateTest {
         Path lock = Files.createDirectories(home.resolve("bin/.jk-wrapper.lock"));
         Process gone = new ProcessBuilder(Sleepers.exits(0)).start();
         assertThat(gone.waitFor(10, TimeUnit.SECONDS)).isTrue();
-        Process uname = new ProcessBuilder("uname", "-n").start();
-        String host = new String(uname.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+        String host = Processes.capture(List.of("uname", "-n"), Duration.ofSeconds(10))
+                .output()
+                .strip();
         Files.writeString(lock.resolve("owner"), gone.pid() + " " + host + "\n");
 
         String releases = "file://" + tmp.resolve("no-such-releases");

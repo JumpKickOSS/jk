@@ -6,14 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.runtime.RepoGroupBuilder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,13 +33,10 @@ class BuildLogicGroovyAotTest {
         Path scratch = Files.createDirectories(dir.resolve("scratch"));
         Files.createDirectories(scratch.resolve("out"));
 
-        Process p = new ProcessBuilder(BuildLogicGroovyHost.trainerCommand(java, classpath, aot, scratch))
-                .redirectErrorStream(true)
-                .start();
-        String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(120, TimeUnit.SECONDS)).isTrue();
-
-        assertThat(p.exitValue()).as(log).isZero();
+        Processes.Captured run = Processes.capture(
+                BuildLogicGroovyHost.trainerCommand(java, classpath, aot, scratch), Duration.ofSeconds(120));
+        String log = run.output();
+        assertThat(run.exit()).as(log).isZero();
         assertThat(log).contains("trained 12");
         assertThat(scratch.resolve("out/demo/Version.java")).content().contains("1.2");
         assertThat(scratch.resolve("out/ant")).isDirectory();

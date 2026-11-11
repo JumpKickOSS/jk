@@ -3,15 +3,16 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -94,12 +95,10 @@ class ZincJavaCompilerEncodingTest {
                 Fork.class.getName(),
                 dir.toString(),
                 procDir.toString());
-        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(5, TimeUnit.MINUTES))
-                .as("fork did not exit:%n%s", out)
-                .isTrue();
-        assertThat(p.exitValue()).as("fork failed:%n%s", out).isZero();
+        Processes.Captured run = Processes.capture(cmd, Duration.ofMinutes(5));
+        String out = run.output();
+        assertThat(run.timedOut()).as("fork did not exit:%n%s", out).isFalse();
+        assertThat(run.exit()).as("fork failed:%n%s", out).isZero();
 
         String observed = null;
         for (String line : out.split("\n")) {

@@ -5,19 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.repo.HostClassifiers;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.ExecPlans;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.protocol.ExecPlan;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -53,13 +53,10 @@ class JavafxExampleTest {
         assertThat(run.argv()).contains("--module-path", "--add-modules", "javafx.controls");
         List<String> argv = new ArrayList<>(run.argv());
         argv.add("--check");
-        Process p = new ProcessBuilder(argv)
-                .directory(project.toFile())
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        assertThat(out).contains("javafx.controls named=true");
+        Processes.Captured ran = Processes.capture(
+                new ProcessBuilder(argv).directory(project.toFile()).redirectErrorStream(true), Duration.ofSeconds(60));
+        assertThat(ran.timedOut()).isFalse();
+        assertThat(ran.output()).contains("javafx.controls named=true");
     }
 
     private static BuildPlanResult test(Path project, Path cache) throws Exception {

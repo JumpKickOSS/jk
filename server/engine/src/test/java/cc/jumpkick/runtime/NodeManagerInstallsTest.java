@@ -10,6 +10,7 @@ import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -30,13 +31,13 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -223,11 +224,9 @@ class NodeManagerInstallsTest {
         ProcessBuilder pb = new ProcessBuilder(argv).directory(web.toFile()).redirectErrorStream(true);
         pb.environment().clear();
         pb.environment().putAll(env);
-        Process p = pb.start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(p.waitFor(5, TimeUnit.MINUTES)).isTrue();
+        Processes.Captured run = Processes.capture(pb, Duration.ofMinutes(5));
         NodeNetwork.discard(network);
-        assertThat(p.exitValue()).as("%s lockfile run:\n%s", manager, out).isZero();
+        assertThat(run.exit()).as("%s lockfile run:\n%s", manager, run.output()).isZero();
         for (String left : List.of("node_modules", ".yarn/cache", ".pnp.cjs")) {
             PathUtil.deleteRecursively(web.resolve(left));
         }

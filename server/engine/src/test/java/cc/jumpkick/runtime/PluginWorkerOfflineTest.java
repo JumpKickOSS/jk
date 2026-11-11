@@ -7,6 +7,7 @@ import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -16,6 +17,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -115,12 +117,11 @@ class PluginWorkerOfflineTest {
                 System.getProperty("java.class.path"),
                 OfflineEchoWorker.class.getName(),
                 spec.toAbsolutePath().toString()));
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(process.waitFor())
-                .describedAs("echo worker exit (%s)", output)
+        Processes.Captured run = Processes.capture(command, Duration.ofMinutes(1));
+        assertThat(run.exit())
+                .describedAs("echo worker exit (%s)", run.output())
                 .isZero();
-        return output.strip();
+        return run.output().strip();
     }
 
     private static Session session(boolean offline) {

@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -20,14 +21,13 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -189,10 +189,9 @@ class JlinkBuildE2eTest {
     private static String run(Path exe, String... args) throws Exception {
         List<String> cmd = new ArrayList<>(List.of(exe.toString()));
         cmd.addAll(List.of(args));
-        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        assertThat(p.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        assertThat(p.exitValue()).as(out).isZero();
+        Processes.Captured run = Processes.capture(cmd, Duration.ofSeconds(60));
+        String out = run.output().trim();
+        assertThat(run.exit()).as(out).isZero();
         return out;
     }
 

@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -149,33 +150,19 @@ class KotlinNullnessConsumerTest {
      * Cumulative CPU time of {@code process}. The process handle on macOS leaves this empty for
      * every process but the current one, so {@code ps} supplies it there.
      */
-    private static Optional<Duration> cpuTime(Process process) throws InterruptedException {
+    private static Optional<Duration> cpuTime(Process process) {
         Optional<Duration> reported = process.toHandle().info().totalCpuDuration();
         if (reported.isPresent() || Os.isWindows()) return reported;
         return cpuTimeFromPs(process.pid());
     }
 
-    private static Optional<Duration> cpuTimeFromPs(long pid) throws InterruptedException {
-        Process ps;
-        try {
-            ps = new ProcessBuilder("ps", "-o", "time=", "-p", Long.toString(pid))
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-        if (!ps.waitFor(2, TimeUnit.SECONDS)) {
-            ps.destroyForcibly();
-            return Optional.empty();
-        }
-        String out;
-        try {
-            out = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-        if (ps.exitValue() != 0 || out.isEmpty()) return Optional.empty();
-        return Optional.of(parsePsTime(out));
+    private static Optional<Duration> cpuTimeFromPs(long pid) {
+        String out = Processes.outputIfOk(
+                new ProcessBuilder("ps", "-o", "time=", "-p", Long.toString(pid))
+                        .redirectError(ProcessBuilder.Redirect.DISCARD),
+                Duration.ofSeconds(2));
+        if (out == null || out.isBlank()) return Optional.empty();
+        return Optional.of(parsePsTime(out.trim()));
     }
 
     /** {@code ps -o time=} value: {@code [[dd-]hh:]mm:ss[.fraction]}. */

@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -18,14 +19,13 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
@@ -206,13 +206,10 @@ class TrainAotCacheE2eTest {
         return null;
     }
 
-    private static String output(Path dir, List<String> command) throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(command)
-                .directory(dir.toFile())
-                .redirectErrorStream(true)
-                .start();
-        byte[] bytes = process.getInputStream().readAllBytes();
-        assertThat(process.waitFor(120, TimeUnit.SECONDS)).isTrue();
-        return new String(bytes, StandardCharsets.UTF_8);
+    private static String output(Path dir, List<String> command) throws IOException {
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true), Duration.ofSeconds(120));
+        assertThat(run.timedOut()).isFalse();
+        return run.output();
     }
 }

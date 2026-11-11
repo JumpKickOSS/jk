@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.node.NodeCatalog;
 import cc.jumpkick.node.NodeDiscovery;
@@ -16,12 +17,10 @@ import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.node.PackageManagerSpec;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,8 +57,8 @@ class NodeRealInstallTest {
     }
 
     private static String run(List<String> argv) throws Exception {
-        Process proc = new ProcessBuilder(argv).redirectErrorStream(true).start();
-        assertThat(proc.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        return new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        Processes.Captured run = Processes.capture(argv, Duration.ofSeconds(60));
+        assertThat(run.timedOut()).isFalse();
+        return run.output().trim();
     }
 }

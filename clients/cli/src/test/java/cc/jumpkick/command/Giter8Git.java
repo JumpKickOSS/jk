@@ -2,14 +2,15 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -181,33 +182,19 @@ public final class Giter8Git {
     }
 
     private static void runGit(List<String> args) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(args);
-        pb.redirectErrorStream(true);
         Process proc;
         try {
-            proc = pb.start();
+            proc = new ProcessBuilder(args).redirectErrorStream(true).start();
         } catch (IOException e) {
             throw new IOException("git is required for remote templates (not found on PATH): " + e.getMessage(), e);
         }
-        String out;
-        try (var in = proc.getInputStream()) {
-            out = new String(in.readAllBytes());
-        }
-        try {
-            boolean finished = proc.waitFor(120, TimeUnit.SECONDS);
-            if (!finished) {
-                proc.destroyForcibly();
-                throw new IOException("git clone timed out after 120s");
-            }
-            if (proc.exitValue() != 0) {
-                String msg = out == null || out.isBlank() ? "(no output)" : out.strip();
-                if (msg.length() > 400) msg = msg.substring(0, 400) + "…";
-                throw new IOException("git clone failed: " + msg);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            proc.destroyForcibly();
-            throw new IOException("git clone interrupted", e);
+        Processes.Captured run = Processes.capture(proc, Duration.ofSeconds(120));
+        if (run.timedOut()) throw new IOException("git clone timed out after 120s");
+        if (run.exit() != 0) {
+            String out = run.output();
+            String msg = out.isBlank() ? "(no output)" : out.strip();
+            if (msg.length() > 400) msg = msg.substring(0, 400) + "…";
+            throw new IOException("git clone failed: " + msg);
         }
     }
 

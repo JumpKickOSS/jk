@@ -4,10 +4,10 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.Sleepers;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -94,14 +94,9 @@ class JobWorkersTest {
 
     /** The process state letter from {@code ps} ({@code T} = stopped), or {@code ?}; macOS has no {@code /proc}. */
     private static char state(long pid) {
-        try {
-            Process ps = new ProcessBuilder("ps", "-o", "stat=", "-p", Long.toString(pid)).start();
-            String stat = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-            ps.waitFor();
-            return stat.isEmpty() ? '?' : stat.charAt(0);
-        } catch (Exception e) {
-            return '?';
-        }
+        String stat = Processes.outputIfOk(
+                new ProcessBuilder("ps", "-o", "stat=", "-p", Long.toString(pid)), Duration.ofSeconds(10));
+        return stat == null || stat.isBlank() ? '?' : stat.strip().charAt(0);
     }
 
     @Test

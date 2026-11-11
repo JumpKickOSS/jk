@@ -3,10 +3,12 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -33,12 +35,12 @@ class SuiteReadsTest {
         Path recordings = tmp.resolve("rec");
         String flag = SuiteReads.prepare(recordings);
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-        Process p = new ProcessBuilder(java.toString(), flag, probe.toString())
-                .directory(tmp.toFile())
-                .redirectErrorStream(true)
-                .start();
-        p.getInputStream().readAllBytes();
-        assertThat(p.waitFor()).isZero();
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(java.toString(), flag, probe.toString())
+                        .directory(tmp.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofMinutes(2));
+        assertThat(run.exit()).as(run.output()).isZero();
 
         SuiteReads.Observed seen = SuiteReads.collect(recordings, tmp);
         assertThat(seen.files()).contains(data.toAbsolutePath().normalize());

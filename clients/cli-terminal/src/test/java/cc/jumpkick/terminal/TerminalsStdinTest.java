@@ -4,13 +4,13 @@ package cc.jumpkick.terminal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import java.io.Console;
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -120,19 +120,18 @@ class TerminalsStdinTest {
     void a_process_whose_stdin_is_redirected_from_the_null_device_reads_it_as_no_terminal() throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java")
                 .toString();
-        Process child = new ProcessBuilder(
+        ProcessBuilder child = new ProcessBuilder(
                         java,
                         "--enable-native-access=ALL-UNNAMED",
                         "-cp",
                         System.getProperty("java.class.path"),
                         PrintStdinIsTty.class.getName())
                 .redirectInput(ProcessBuilder.Redirect.from(new File(Os.isWindows() ? "NUL" : "/dev/null")))
-                .redirectErrorStream(true)
-                .start();
-        assertThat(child.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        String out = new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                .redirectErrorStream(true);
+        Processes.Captured run = Processes.capture(child, Duration.ofSeconds(60));
+        String out = run.output();
 
-        assertThat(child.exitValue()).as(out).isZero();
+        assertThat(run.exit()).as(out).isZero();
         assertThat(out.strip().lines().toList()).as(out).endsWith("stdin-is-tty=false");
     }
 

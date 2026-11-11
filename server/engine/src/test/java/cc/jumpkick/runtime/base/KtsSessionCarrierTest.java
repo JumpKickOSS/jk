@@ -3,11 +3,10 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.host.Processes;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -44,15 +43,8 @@ class KtsSessionCarrierTest {
                 .redirectErrorStream(true);
         Map<String, String> env = pb.environment();
         env.put("CLASSPATH", classpath);
-        Process probe = pb.start();
-        String said = read(probe);
-        assertThat(probe.waitFor(30, TimeUnit.SECONDS)).as("the probe exited").isTrue();
-        assertThat(said.strip()).as("the probe's verdict").endsWith("vthread-ran");
-    }
-
-    private static String read(Process p) throws IOException {
-        try (var in = p.getInputStream()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        Processes.Captured probe = Processes.capture(pb, Duration.ofSeconds(30));
+        assertThat(probe.timedOut()).as("the probe exited").isFalse();
+        assertThat(probe.output().strip()).as("the probe's verdict").endsWith("vthread-ran");
     }
 }
