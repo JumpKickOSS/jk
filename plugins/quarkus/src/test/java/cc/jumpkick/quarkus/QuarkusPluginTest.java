@@ -137,6 +137,26 @@ class QuarkusPluginTest {
         assertThat(outJar).hasContent("RUN");
     }
 
+    /** Switching package to uber-jar leaves no fast-jar layout beside the jar for an image to ship. */
+    @Test
+    void an_uber_jar_package_clears_the_fast_jar_siblings(@TempDir Path dir) throws Exception {
+        Path target = dir.resolve("target");
+        for (String child : List.of("lib/main", "app", "quarkus", "quarkus-app")) {
+            Files.createDirectories(target.resolve(child));
+        }
+        Files.writeString(target.resolve("lib/main/old.jar"), "OLD");
+        Path augment = Files.createDirectories(dir.resolve("augment"));
+        Files.writeString(augment.resolve("quarkus-uber.jar"), "UBER");
+
+        Path outJar = target.resolve("hello.jar");
+        QuarkusPlugin.produceFastJar(fake(dir, outJar, augment));
+
+        assertThat(outJar).hasContent("UBER");
+        for (String child : List.of("lib", "app", "quarkus", "quarkus-app")) {
+            assertThat(target.resolve(child)).doesNotExist();
+        }
+    }
+
     @Test
     void uber_jar_wins_and_needs_no_siblings(@TempDir Path dir) throws Exception {
         Path augment = dir.resolve("augment");

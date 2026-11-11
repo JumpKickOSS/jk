@@ -439,6 +439,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         return jars;
     }
 
+    /** What a fast-jar package lays beside its jar. */
+    private static final List<String> FAST_JAR_SIBLINGS = List.of("lib", "app", "quarkus", "quarkus-app");
+
     static void produceFastJar(PackageIo io) throws Exception {
         Path outJar = io.artifactPath();
         Files.createDirectories(outJar.getParent());
@@ -450,6 +453,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if (uber != null) {
             io.label("package " + outJar.getFileName() + " (quarkus uber-jar)");
             Files.copy(uber, outJar, StandardCopyOption.REPLACE_EXISTING);
+            // A fast-jar package laid these beside the jar; left there, an image built from this
+            // directory ships the old layout next to the new runner.
+            for (String child : FAST_JAR_SIBLINGS) {
+                Path stale = outJar.resolveSibling(child);
+                if (Files.exists(stale)) deleteTree(stale);
+            }
             return;
         }
         // Fast-jar: quarkus-run.jar + relative Class-Path into lib/.
