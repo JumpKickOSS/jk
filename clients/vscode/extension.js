@@ -43,7 +43,18 @@ function activate(context) {
   context.subscriptions.push(...disposables);
 }
 
+/** jk processes this window started and that have not exited: stopped with the extension. */
+const running = new Set();
+
 function deactivate() {
+  for (const child of running) {
+    try {
+      child.kill();
+    } catch (_) {
+      // already gone
+    }
+  }
+  running.clear();
   for (const d of disposables) {
     try {
       d.dispose();
@@ -128,6 +139,12 @@ function runJk(args) {
     // Windows only starts .exe/.com without a shell; cmd.exe resolves a bare `jk` or a jk.bat through
     // PATHEXT. With a shell the command line is joined unquoted, so the binary path is quoted.
     const viaShell = process.platform === "win32" && !/\.(exe|com)$/i.test(bin);
+    if (viaShell && bin.includes('"')) {
+      // No Windows path holds a quote, and one would end the quoting below early.
+      vscode.window.showErrorMessage(`JumpKick: jk.path may not contain a quote: ${bin}`);
+      resolve(1);
+      return;
+    }
     const child = spawn(viaShell ? `"${bin}"` : bin, args, {
       cwd,
       // The OutputChannel is a parser/pane, not a terminal: jk keeps ANSI on pipes, so ask for
@@ -135,6 +152,8 @@ function runJk(args) {
       env: { ...process.env, NO_COLOR: "1" },
       shell: viaShell,
     });
+    running.add(child);
+    child.on("exit", () => running.delete(child));
     child.stdout.on("data", (buf) => output.append(buf.toString()));
     child.stderr.on("data", (buf) => output.append(buf.toString()));
     child.on("error", (err) => {
@@ -170,6 +189,8 @@ function maybeOfferBspInstall() {
   if (!fs.existsSync(path.join(cwd, "jk.toml"))) return;
   const bspJson = path.join(cwd, ".bsp", "jk.json");
   if (fs.existsSync(bspJson)) return;
+  // An untrusted folder does not get to start a program from this prompt.
+  if (!vscode.workspace.isTrusted) return;
 
   const auto = vscode.workspace.getConfiguration("jk").get("autoBspInstall", true);
   if (!auto) return;

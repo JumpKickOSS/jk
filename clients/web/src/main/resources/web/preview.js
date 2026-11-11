@@ -16,6 +16,9 @@ import {
 } from './paths.js';
 import { buildProjectHash, escapeHtml } from './route.js';
 
+/** Tags a preview never renders: a repository document may not style or script the console around it. */
+export const PREVIEW_FORBID_TAGS = ['style', 'link', 'meta', 'base', 'form'];
+
 export const previewMethods = {
   revokeImageUrl() {
     if (this.previewImageUrl) {
@@ -182,6 +185,9 @@ export const previewMethods = {
         // Keep raw HTML <img> (GitHub READMEs) and markdown images; hydrate srcs to blob: after.
         let html = purify.sanitize(raw, {
           ADD_ATTR: ['loading', 'referrerpolicy', 'decoding', 'width', 'height'],
+          // A repository's README is not the page's to style: a <style> it carries would restyle
+          // the whole console (an overlay on Save or Build), with the CSP's inline styles allowed.
+          FORBID_TAGS: PREVIEW_FORBID_TAGS,
           ALLOW_UNKNOWN_PROTOCOLS: false,
           ALLOWED_URI_REGEXP:
             /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
@@ -236,7 +242,7 @@ export const previewMethods = {
         if (gen !== this._previewGen) return;
         const adoc = typeof Asciidoctor === 'function' ? Asciidoctor() : Asciidoctor;
         const html = adoc.convert(this.currentContent(), { safe: 'secure', attributes: { showtitle: true } });
-        this.previewHtml = purify.sanitize(html);
+        this.previewHtml = purify.sanitize(html, { FORBID_TAGS: PREVIEW_FORBID_TAGS });
       } else if (kind === 'd2') {
         // WASM-heavy; dynamic ESM from unpkg. CSP/wasm may reject — surface the error.
         const mod = await import('https://unpkg.com/@terrastruct/d2@0.1.33/dist/index.js');

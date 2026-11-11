@@ -604,3 +604,20 @@ test('a failed monaco load does not latch — the next open retries', async () =
   assert.notStrictEqual(p1, p2, 'second open must start a fresh load, not replay the rejection');
   await assert.rejects(p2);
 });
+
+test('a CDN module is fetched with its pinned integrity and a failed fetch is not imported', async () => {
+  const { importVerified } = await spa('monaco.js');
+  const asked = [];
+  const failing = async (url, opts) => {
+    asked.push({ url, opts });
+    return { ok: false, status: 404 };
+  };
+  const pin = { src: 'https://unpkg.com/x@1/x.js', integrity: 'sha384-abc' };
+  await assert.rejects(importVerified(pin, failing), /could not load https:\/\/unpkg\.com\/x@1\/x\.js/);
+  assert.equal(asked[0].opts.integrity, 'sha384-abc');
+});
+
+test('a document preview never renders style, link, meta, base or form tags', async () => {
+  const { PREVIEW_FORBID_TAGS } = await spa('preview.js');
+  for (const tag of ['style', 'link', 'meta', 'base', 'form']) assert.ok(PREVIEW_FORBID_TAGS.includes(tag), tag);
+});

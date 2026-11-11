@@ -28,6 +28,15 @@
   "activationEvents": [
     "workspaceContains:jk.toml"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace JumpKick does not offer to install the BSP connection, and jk.path is read from user settings only.",
+      "restrictedConfigurations": [
+        "jk.path"
+      ]
+    }
+  },
   "main": "./extension.js",
   "contributes": {
     "commands": [
@@ -65,7 +74,7 @@
         "properties": {
           "task": {
             "type": "string",
-            "description": "JumpKick verb: lock, sync, build, test, assemble, …"
+            "description": "JumpKick verb: lock, sync, build, test, assemble, \u2026"
           },
           "args": {
             "type": "array",
@@ -83,7 +92,8 @@
         "jk.path": {
           "type": "string",
           "default": "jk",
-          "description": "Path to the jk executable, absolute or on PATH."
+          "description": "Path to the jk executable, absolute or on PATH. Set in user settings only: a workspace cannot choose the program this extension runs.",
+          "scope": "machine"
         },
         "jk.autoBspInstall": {
           "type": "boolean",

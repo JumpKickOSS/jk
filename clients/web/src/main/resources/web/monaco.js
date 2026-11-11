@@ -223,8 +223,14 @@ export function viewerOptions({ content, lang, readOnly = false } = {}) {
  * Mermaid / viz / asciidoctor still use classic UMD + noAmd, and only when that diagram kind is needed.
  */
 const CDN = {
-  markedEsm: 'https://unpkg.com/marked@15.0.12/lib/marked.esm.js',
-  purifyEsm: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
+  markedEsm: {
+    src: 'https://unpkg.com/marked@15.0.12/lib/marked.esm.js',
+    integrity: 'sha384-lq4NLkerQHkbMAdHSdtQaZigoSO2ONX6Ink84jzU+8MZHEKDmLUYspbP0h6tybCc',
+  },
+  purifyEsm: {
+    src: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
+    integrity: 'sha384-2G1R+xYUzDJWsgWNyUeZC4h+GvYt3MJG5zXKiLD7fxMkwT5y7P45szixzpn8OHFa',
+  },
   mermaid: {
     src: 'https://unpkg.com/mermaid@11.6.0/dist/mermaid.min.js',
     integrity: 'sha384-zkWMJO4sgpPUzyuOgDx8HB/K55glbAwajEpk1Go2NWRuPkPA/wIhoEJTuSkmOYrV',
@@ -241,11 +247,28 @@ const CDN = {
 
 const previewLoaders = Object.create(null);
 
+/**
+ * An ES module from the CDN, verified before it runs: import() takes no integrity, so the bytes
+ * are fetched with one (the browser refuses a mismatch) and imported from a blob: URL. The
+ * sanitizer is among these, and the page's token can write files and start builds. Both pinned
+ * modules import nothing of their own, which a blob: URL could not resolve.
+ */
+export async function importVerified(pin, fetchImpl = fetch) {
+  const resp = await fetchImpl(pin.src, { integrity: pin.integrity, mode: 'cors', credentials: 'omit' });
+  if (!resp.ok) throw new Error('could not load ' + pin.src + ' (' + resp.status + ')');
+  const url = URL.createObjectURL(new Blob([await resp.text()], { type: 'text/javascript' }));
+  try {
+    return await import(/* @vite-ignore */ url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function ensureCdn(name) {
   if (previewLoaders[name]) return previewLoaders[name];
 
   if (name === 'marked') {
-    previewLoaders.marked = import(/* @vite-ignore */ CDN.markedEsm)
+    previewLoaders.marked = importVerified(CDN.markedEsm)
       .then((m) => {
         const api = m.marked || m.default || m;
         if (api == null) throw new Error('marked ESM export missing');
@@ -259,7 +282,7 @@ export async function ensureCdn(name) {
   }
 
   if (name === 'purify') {
-    previewLoaders.purify = import(/* @vite-ignore */ CDN.purifyEsm)
+    previewLoaders.purify = importVerified(CDN.purifyEsm)
       .then((m) => {
         // purify.es.mjs exports a ready DOMPurify instance as default.
         const api = m.default || m.DOMPurify || m;
