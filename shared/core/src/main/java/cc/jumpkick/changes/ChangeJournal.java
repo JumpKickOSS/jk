@@ -4,12 +4,10 @@ package cc.jumpkick.changes;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,10 +24,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The change journal: {@code <home>/changes/changes.jsonl}, one {@link Change} per line, appended by
- * whichever process made the change (the {@code jk} client or the engine) under a file lock, so the
- * two never interleave a line. When the file passes {@link #ROLL_BYTES} it becomes {@code
- * changes.1.jsonl}, replacing the one before, so the journal keeps between one and two files' worth:
- * thousands of changes, not a history without end.
+ * whichever process made the change (the {@code jk} client or the engine) under {@code
+ * changes.lock}, so no two writers interleave a line or race a roll. When the file passes {@link
+ * #ROLL_BYTES} it becomes {@code changes.1.jsonl}, replacing the one before, so the journal keeps
+ * between one and two files' worth: thousands of changes, not a history without end.
  *
  * <p>Recording never asks and never throws: a journal that cannot be written costs the change its
  * entry, never the change itself.
@@ -39,6 +37,9 @@ public final class ChangeJournal {
     static final String FILE = "changes.jsonl";
 
     static final String ROLLED = "changes.1.jsonl";
+
+    /** The lock every appender in every process takes before it rolls or writes. */
+    static final String LOCK = "changes.lock";
 
     /** The size past which the live file rolls over. */
     static final long ROLL_BYTES = 2L * 1024 * 1024;
@@ -173,23 +174,16 @@ public final class ChangeJournal {
     private void append(Change change) throws IOException {
         OwnerOnlyFiles.createDirectories(dir);
         Path file = dir.resolve(FILE);
-        byte[] line = (MiniJson.write(change.toMap()) + "\n").getBytes(StandardCharsets.UTF_8);
-        try (FileChannel ch = OwnerOnlyFiles.channel(
-                        file, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
-                FileLock ignored = ch.lock()) {
-            if (ch.size() > ROLL_BYTES) {
+        String line = MiniJson.write(change.toMap()) + "\n";
+        // A sidecar lock, never the live file: the roll moves that file, and a writer queued on the old
+        // inode would size-check a stale handle and roll the new file over the history.
+        FileLocks.withLock(dir.resolve(LOCK), () -> {
+            if (Files.isRegularFile(file) && Files.size(file) > ROLL_BYTES) {
                 Files.move(file, dir.resolve(ROLLED), StandardCopyOption.REPLACE_EXISTING);
-                // The lock is on the moved file now: write the first line of a new one under it.
-                OwnerOnlyFiles.writeString(
-                        file,
-                        new String(line, StandardCharsets.UTF_8),
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.APPEND);
-                return;
             }
-            ByteBuffer buf = ByteBuffer.wrap(line);
-            while (buf.hasRemaining()) ch.write(buf);
-        }
+            OwnerOnlyFiles.writeString(
+                    file, line, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+        });
     }
 
     private static void read(Path file, List<Change> into) {

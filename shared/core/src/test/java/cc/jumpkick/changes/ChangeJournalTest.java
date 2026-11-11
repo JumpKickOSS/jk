@@ -7,8 +7,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -115,6 +117,31 @@ class ChangeJournalTest {
         assertThat(dir.resolve(ChangeJournal.ROLLED)).exists();
         assertThat(Files.size(file)).isLessThan(10_000);
         assertThat(journal.page(null, 10).entries()).extracting(Change::what).containsExactly("new", "old");
+    }
+
+    @Test
+    void threads_appending_at_once_each_keep_their_entry() throws Exception {
+        ChangeJournal journal = new ChangeJournal(dir);
+        int threads = 8;
+        int each = 40;
+        CountDownLatch start = new CountDownLatch(1);
+        List<Thread> writers = new ArrayList<>();
+        for (int t = 0; t < threads; t++) {
+            int id = t;
+            writers.add(Thread.ofPlatform().start(() -> {
+                try {
+                    start.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                for (int i = 0; i < each; i++) journal.record("t" + id + "-" + i, Change.CLEAN, "s", null);
+            }));
+        }
+        start.countDown();
+        for (Thread w : writers) w.join();
+
+        assertThat(journal.newestFirst()).hasSize(threads * each);
     }
 
     @Test
