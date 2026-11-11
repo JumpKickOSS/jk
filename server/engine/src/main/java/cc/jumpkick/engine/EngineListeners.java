@@ -6,6 +6,7 @@ import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.engine.journal.EtaModels;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.listen.BridgingWorkspaceListener;
@@ -110,6 +111,7 @@ public final class EngineListeners {
             @Override
             public void workModel(WorkModel model) {
                 if (rid <= 0) return;
+                EtaModels.put(rid, model);
                 RemainingWork rw = model.toRemainingWork();
                 sessions.remaining(rid, rw);
                 var tracker = sessions.tracker(rid);

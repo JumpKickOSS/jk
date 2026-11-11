@@ -254,6 +254,7 @@ public final class BuildJournal {
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
                 } else {
                     RunMetricsToml.write(tmp, withIds);
+                    EtaModels.write(tmp, withIds.requestId());
                 }
                 if (Files.isDirectory(target)) {
                     // A live entry (its details.jsonl is being written) is only ever rewritten in
@@ -388,6 +389,7 @@ public final class BuildJournal {
             writeRecord(tmp, toWrite);
             writeSnapshot(tmp, snapshot, previousRun(target));
             RunMetricsToml.write(tmp, toWrite);
+            EtaModels.write(tmp, toWrite.requestId());
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
             // the record sees the old bytes or the new ones, and a Windows handle on it is waited
