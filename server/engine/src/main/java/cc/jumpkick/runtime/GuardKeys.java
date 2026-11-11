@@ -5,8 +5,14 @@ import static cc.jumpkick.config.WorkspaceModules.expand;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.guard.baseline.Baseline;
+import cc.jumpkick.guard.baseline.BaselineFile;
+import cc.jumpkick.guard.baseline.Entry;
+import cc.jumpkick.guard.baseline.RuleBaseline;
+import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardSuites;
+import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.guard.eval.TreeCorpus;
 import cc.jumpkick.guard.eval.WorkspaceModel;
@@ -17,7 +23,9 @@ import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -29,13 +37,18 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,19 +62,77 @@ final class GuardKeys {
 
     private GuardKeys() {}
 
-    /** The lane key: the lane's read-set tokens plus the baseline the verdict was judged against. */
-    static String laneKey(String taskId, List<String> tokens, String baselineSha) {
+    /** The lane key: the lane's read-set tokens plus the baseline slice the verdict was judged against. */
+    static String laneKey(String taskId, List<String> tokens, String baselineSlice) {
         List<String> all = new ArrayList<>(tokens);
-        all.add("baseline:" + baselineSha);
+        all.add("baseline:" + baselineSlice);
         String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), all);
         return key;
     }
 
-    static String baselineSha(Path root) throws IOException {
+    /**
+     * A digest of the part of the baseline lane {@code lane} at {@code module} ({@code ""} at the
+     * root) judges against, so a lane tightening its own slice, or a freeze of another lane's rule,
+     * leaves every other lane's verdict cached. A declared rule the lane owns contributes its {@link
+     * LaneRun#sliceOf slice}; a rule of another lane contributes nothing. An id no TOML rule declares
+     * is a guard test of some suite or an orphan: a module lane reads it in its own slice and the
+     * root's, a root lane in the root's. The model lane also reads the ids themselves, since it
+     * reports the orphans.
+     */
+    static String baselineSlice(Path root, Lane lane, String module, RuleSet rules) throws IOException {
         Path f = GuardsPresence.baselineFile(root);
-        // Every lane key carries it; the memo reads the file once per change, not once per module.
-        return Files.isRegularFile(f) ? FileHashMemo.contentHash(f) : "none";
+        if (!Files.isRegularFile(f)) return "none";
+        Baseline baseline = parsedBaseline(f);
+        MessageDigest md = Hashing.newSha256();
+        for (var e : new TreeMap<>(baseline.rules()).entrySet()) {
+            String id = e.getKey();
+            if (lane == Lane.MODEL) feed(md, "id", id);
+            Rule rule = rules.rules().get(id);
+            List<String> slices;
+            if (rule == null) slices = lane == Lane.MODULE ? List.of(module, "") : List.of("");
+            else if (Evaluators.laneOf(rule) == lane
+                    || (lane == Lane.MODULE
+                            && LaneRun.sliceOf(lane, rule, module).isEmpty()))
+                slices = List.of(LaneRun.sliceOf(lane, rule, module));
+            else continue;
+            RuleBaseline rb = e.getValue();
+            for (String slice : slices) {
+                Map<String, Long> population = rb.population(slice);
+                List<Entry> entries = rb.entries(slice);
+                String reason = rb.scopeReason(slice);
+                if (population.isEmpty() && entries.isEmpty() && reason == null) continue;
+                feed(md, "rule", id + "@" + slice);
+                feed(md, "population", new TreeMap<>(population).toString());
+                feed(md, "reason", String.valueOf(reason));
+                for (Entry entry : entries) feed(md, "entry", entry.toString());
+            }
+        }
+        return Hashing.hex(md.digest());
     }
+
+    /** {@link #baselineSlice} of the lane {@code ectx} runs, at its module. */
+    static String slice(PlannerGuards.GuardsPlan g, Lane lane, EvalContext ectx, LoadResult load) throws IOException {
+        return baselineSlice(g.root(), lane, ectx.module(), load.rules());
+    }
+
+    private static void feed(MessageDigest md, String tag, String value) {
+        md.update((tag + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** The baseline parsed once per content: every lane of a build reads the same file. */
+    private static Baseline parsedBaseline(Path file) throws IOException {
+        Path abs = file.toAbsolutePath().normalize();
+        String hash = FileHashMemo.contentHash(abs);
+        Parsed held = PARSED.get(abs);
+        if (held != null && held.hash().equals(hash)) return held.baseline();
+        Baseline read = BaselineFile.read(abs);
+        PARSED.put(abs, new Parsed(hash, read));
+        return read;
+    }
+
+    private record Parsed(String hash, Baseline baseline) {}
+
+    private static final Map<Path, Parsed> PARSED = new ConcurrentHashMap<>();
 
     static void addRuleTokens(List<String> tokens, LoadResult load) {
         for (var e : load.rules().sourceDigests().entrySet()) tokens.add("rules:" + e.getKey() + ":" + e.getValue());
@@ -142,7 +213,12 @@ final class GuardKeys {
             tokens.addAll(suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null)));
         }
         addRuleTokens(tokens, load);
-        return new LaneProbe(laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD, dir), tokens, baselineSha(root)), "");
+        return new LaneProbe(
+                laneKey(
+                        ActionKey.qualifiedTaskId(TaskNames.GUARD, dir),
+                        tokens,
+                        baselineSlice(root, Lane.MODULE, WorkspaceModel.rel(root, dir), load.rules())),
+                "");
     }
 
     /**
@@ -218,7 +294,10 @@ final class GuardKeys {
             if (load.hasErrors()) return Optional.of(workspace("guards · jk-guards.toml does not load"));
             List<String> tokens = workspaceTokens(root, modules);
             addRuleTokens(tokens, load);
-            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root), tokens, baselineSha(root));
+            String key = laneKey(
+                    ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root),
+                    tokens,
+                    baselineSlice(root, Lane.WORKSPACE, "", load.rules()));
             if (actionCache.lookup(key).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_WORKSPACE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
@@ -263,7 +342,10 @@ final class GuardKeys {
             List<String> tokens =
                     outputTokens(root, WorkspaceModules.of(root), g.config().coverageReport());
             addRuleTokens(tokens, load);
-            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, root), tokens, baselineSha(root));
+            String key = laneKey(
+                    ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, root),
+                    tokens,
+                    baselineSlice(root, Lane.OUTPUT, "", load.rules()));
             if (actionCache.lookup(key).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_OUTPUT, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
@@ -297,7 +379,10 @@ final class GuardKeys {
             if (load.hasErrors()) return Optional.of(tree("guards · jk-guards.toml does not load"));
             List<String> tokens = new ArrayList<>(treeTokens(root));
             addRuleTokens(tokens, load);
-            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root), tokens, baselineSha(root));
+            String key = laneKey(
+                    ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root),
+                    tokens,
+                    baselineSlice(root, Lane.TREE, "", load.rules()));
             if (actionCache.lookup(key).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_TREE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
@@ -325,7 +410,10 @@ final class GuardKeys {
             if (load.hasErrors()) return Optional.of(model("guards · jk-guards.toml does not load"));
             List<String> tokens = modelTokens(root, rootBuild);
             addRuleTokens(tokens, load);
-            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, root), tokens, baselineSha(root));
+            String key = laneKey(
+                    ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, root),
+                    tokens,
+                    baselineSlice(root, Lane.MODEL, "", load.rules()));
             if (actionCache.lookup(key).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_MODEL, TaskForecast.Status.CACHED, "", key.substring(0, 8)));

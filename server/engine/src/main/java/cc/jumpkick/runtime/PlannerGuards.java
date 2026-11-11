@@ -720,7 +720,7 @@ final class PlannerGuards {
         // evaluate costs no stat, no walk.
         List<String> tokens = new ArrayList<>(tokenSupplier.get());
         GuardKeys.addRuleTokens(tokens, load);
-        String baselineSha = GuardKeys.baselineSha(g.root());
+        String baselineSha = GuardKeys.slice(g, lane, ectx, load);
         String key = GuardKeys.laneKey(taskId, tokens, baselineSha);
         if (Perf.enabled()) Perf.note("guard-lane " + taskId, "key", key, "X", tokens);
         ActionCache cache = env.actionCache();
@@ -756,7 +756,7 @@ final class PlannerGuards {
                 : lane == Lane.MODULE ? EngineValidations.module(g.root(), ectx.module(), ectx.testFacts()) : List.of();
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
-        String storedBaselineSha = tightenBaseline(ctx, g, baselineFile, result, ci, baselineSha);
+        String storedSlice = tightenBaseline(ctx, g, result, ci) ? GuardKeys.slice(g, lane, ectx, load) : baselineSha;
         if (!result.unseen().isEmpty())
             ctx.warn(WITHHELD, withheldNotice(lane, result.unseen(), result.unseenModules()));
         writeJsonl(g.root(), taskId, result);
@@ -797,16 +797,16 @@ final class PlannerGuards {
         // Nor is a view missing modules: the run that builds them tightens the baseline, and until
         // then every run over the partial view says it left the baseline alone.
         if (!result.unseen().isEmpty()) return;
-        String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
+        String storeKey = GuardKeys.laneKey(taskId, tokens, storedSlice);
         List<Path> evidence = new ArrayList<>();
         for (Path f : List.of(RuleSummaries.file(g.root(), taskId), observationsFile(g.root(), taskId))) {
             if (Files.isRegularFile(f)) evidence.add(f);
         }
         if (evidence.isEmpty()) {
-            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
+            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedSlice));
         } else {
             cache.storeArtifacts(
-                    taskId, storeKey, inputsOf(tokens, storedBaselineSha), RuleSummaries.dir(g.root()), evidence);
+                    taskId, storeKey, inputsOf(tokens, storedSlice), RuleSummaries.dir(g.root()), evidence);
         }
     }
 
@@ -908,26 +908,25 @@ final class PlannerGuards {
     }
 
     /**
-     * Entries that would tighten: merged into the baseline outside CI (returning the sha of the
-     * rewritten file), an error in CI. Returns the baseline sha the verdict is stored under.
+     * Entries that would tighten: merged into the baseline outside CI, an error in CI. True when
+     * the baseline was rewritten, so the verdict is stored under the lane's new slice.
      */
-    private static String tightenBaseline(
-            TaskContext ctx, GuardsPlan g, Path baselineFile, LaneRun.Result result, boolean ci, String baselineSha)
+    private static boolean tightenBaseline(TaskContext ctx, GuardsPlan g, LaneRun.Result result, boolean ci)
             throws IOException {
-        if (result.tightened() <= 0) return baselineSha;
+        if (result.tightened() <= 0) return false;
         if (ci) {
             ctx.error(
                     "guards",
                     "GUARD baseline  loose\n  Observed: " + result.tightened() + " entries would tighten\n  Instead:  "
                             + Baselines.CI_MESSAGE);
-            return baselineSha;
+            return false;
         }
-        mergeTightened(baselineFile, result);
+        mergeTightened(GuardsPresence.baselineFile(g.root()), result);
         // The pre-commit hook lets a baseline through only behind this marker; a tightening is the
         // engine's own write, so it leaves the marker exactly as a freeze does.
         GuardBaselineMarker.leave(g.root(), "jk guard (tightened)");
         ctx.output(result.tightened() + " baseline entries tightened");
-        return GuardKeys.baselineSha(g.root());
+        return true;
     }
 
     /** Same fingerprint red on consecutive runs of this lane: the message turns to stop-and-ask. */
