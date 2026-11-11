@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.JsonlDownloads;
+import cc.jumpkick.cli.run.TailBuffer;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
@@ -107,7 +108,6 @@ import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -500,8 +500,9 @@ public final class CommandDispatch {
         else StartupPulse.phase("Running " + qualified);
         PrintStream prevOut = System.out;
         PrintStream prevErr = System.err;
-        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        // Held until the command ends, so each keeps its last 8 MiB, not everything the command printed.
+        TailBuffer outBuf = new TailBuffer();
+        TailBuffer errBuf = new TailBuffer();
         if (capture) {
             System.setOut(new PrintStream(outBuf, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(errBuf, true, StandardCharsets.UTF_8));

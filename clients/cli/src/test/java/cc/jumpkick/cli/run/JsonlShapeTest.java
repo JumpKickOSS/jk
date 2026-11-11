@@ -61,12 +61,12 @@ class JsonlShapeTest {
 
         assertThat(Capture.stdout(() -> JsonlShape.emitEvent(event, false))).isEmpty();
         assertThat(Capture.stdout(() -> JsonlShape.emitEvent(event, true))).isEqualTo(event + "\n");
+        session.finish(0);
 
         List<String> recorded = Files.readAllLines(details).stream()
                 .filter(l -> l.contains("sidecar-output"))
                 .toList();
         assertThat(recorded).as("once per emit, as encoded, no progress rider").containsExactly(event, event);
-        session.finish(0);
     }
 
     @Test

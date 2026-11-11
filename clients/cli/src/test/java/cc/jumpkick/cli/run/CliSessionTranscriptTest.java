@@ -33,6 +33,7 @@ class CliSessionTranscriptTest {
     @AfterEach
     void lazyAgain() {
         CliSessionTranscript.lazyOpenMillis = CliSessionTranscript.LAZY_OPEN_MILLIS;
+        CliSessionTranscript.flushMillis = CliSessionTranscript.FLUSH_MILLIS;
     }
 
     @AfterEach
@@ -71,7 +72,7 @@ class CliSessionTranscriptTest {
         assertTrue(early.stream().noneMatch(l -> l.contains("historyId")));
 
         LiveProgress.get().update(50, 100);
-        session.append(JsonlShape.stepStart("compile-main", "compile", 10), true);
+        session.append(JsonlShape.stepStart("compile-main", "compile", 10));
         session.module("demo:app");
 
         BuildPlanResult result = new BuildPlanResult(
@@ -112,7 +113,7 @@ class CliSessionTranscriptTest {
 
         Path second = project.resolve("runs").resolve("8").resolve(CliSessionTranscript.FILE_NAME);
         session.bindJob(43, 8, second.toString(), -1);
-        session.appendRaw("{\"schema\":1,\"type\":\"app-started\",\"pid\":7}", true);
+        session.appendRaw("{\"schema\":1,\"type\":\"app-started\",\"pid\":7}");
         Path third = project.resolve("runs").resolve("9").resolve(CliSessionTranscript.FILE_NAME);
         session.bindJob(44, 9, third.toString(), -1);
         session.finish(0);
@@ -216,7 +217,7 @@ class CliSessionTranscriptTest {
         CliSessionTranscript session = CliSessionTranscript.open(project, "build");
         assertNotNull(session);
         bind(session, project);
-        session.append(JsonlShape.label("compile", "Working…"), false);
+        session.append(JsonlShape.label("compile", "Working…"));
         session.finish(0);
         String body = Files.readString(session.file());
         assertTrue(body.contains("\"type\":\"label\""));
@@ -224,47 +225,39 @@ class CliSessionTranscriptTest {
     }
 
     @Test
-    void flush_is_line_bounded_lazy_lines_stay_off_disk(@TempDir Path project) throws Exception {
+    void records_wait_for_the_next_flush_and_never_land_half_written(@TempDir Path project) throws Exception {
+        CliSessionTranscript.flushMillis = 60_000;
         CliSessionTranscript session = CliSessionTranscript.open(project, "build");
         assertNotNull(session);
         Path file = bind(session, project);
-        // After bind: session-start + job meta flushed.
-        List<String> onDisk = Files.readAllLines(file);
-        assertTrue(onDisk.size() >= 1);
-        for (String line : onDisk) {
-            MiniJson.parse(line);
-        }
-        int before = onDisk.size();
+        // After bind: session-start + job meta, written as the file opened.
+        int before = Files.readAllLines(file).size();
 
-        session.append(JsonlShape.label("compile", "buffered-only"), false);
-        List<String> still = Files.readAllLines(file);
-        assertEquals(before, still.size(), "lazy line must not partial-flush mid-record");
-        assertFalse(Files.readString(file).contains("buffered-only"));
-
-        session.append(
-                JsonlShape.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ofMillis(1), Duration.ZERO),
-                true);
-        String after = Files.readString(file);
-        assertTrue(after.contains("buffered-only"));
-        assertTrue(after.contains("task-finish"));
-        for (String line : Files.readAllLines(file)) {
-            MiniJson.parse(line);
+        for (String step : List.of("compile", "test", "jar")) {
+            session.append(JsonlShape.stepFinish(step, step, TaskStatus.SUCCESS, Duration.ofMillis(1), Duration.ZERO));
         }
+
+        assertEquals(before, Files.readAllLines(file).size(), "no write per record between flushes");
         session.finish(0);
+        List<String> lines = Files.readAllLines(file);
+        for (String line : lines) MiniJson.parse(line);
+        assertEquals(3, lines.stream().filter(l -> l.contains("task-finish")).count());
     }
 
     @Test
-    void is_immediate_type_classifies_hot_ticks() {
-        assertFalse(
-                CliSessionTranscript.isImmediateType("{\"schema\":1,\"ts\":1,\"type\":\"progress\",\"step\":\"x\"}"));
-        assertFalse(CliSessionTranscript.isImmediateType(
-                "{\"schema\":1,\"ts\":1,\"type\":\"tick-update\",\"step\":\"x\"}"));
-        assertFalse(CliSessionTranscript.isImmediateType(
-                "{\"schema\":1,\"ts\":1,\"type\":\"workspace-progress\",\"numerator\":5,\"denominator\":10}"));
-        assertTrue(CliSessionTranscript.isImmediateType(
-                "{\"schema\":1,\"ts\":1,\"type\":\"step-finish\",\"step\":\"x\"}"));
-        assertTrue(CliSessionTranscript.isImmediateType(
-                "{\"schema\":1,\"ts\":1,\"type\":\"error\",\"message\":\"nope\"}"));
+    void collected_records_reach_the_file_without_another_append(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build");
+        assertNotNull(session);
+        Path file = bind(session, project);
+
+        session.append(JsonlShape.label("compile", "Working…"));
+
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (!Files.readString(file).contains("Working") && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(Files.readString(file).contains("Working"), "the flusher wrote the record within its interval");
+        session.finish(0);
     }
 
     @Test

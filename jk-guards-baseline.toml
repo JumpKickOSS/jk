@@ -23,6 +23,10 @@
 [archive-stream-owner]
 population = { files = 2203 }
 
+[atomic-move-owner]
+[atomic-move-owner.populations]
+"clients/cli" = { classes = 817, sites = 52816 }
+
 [blind-tree-walks]
 [blind-tree-walks.populations]
 "clients/cli" = { classes = 720, sites = 44920 }
@@ -700,6 +704,10 @@ population = { examined = 4 }
 [cli-engine-package-cycle.populations]
 "clients/cli" = { examined = 31 }
 
+[cli-handoff-awaited]
+[cli-handoff-awaited.populations]
+"clients/cli" = { examined = 11 }
+
 [cli-no-parse-types]
 [cli-no-parse-types.populations]
 "clients/cli" = { examined = 352 }
@@ -718,7 +726,7 @@ population = { examined = 4 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 812, sites = 52432 }
+"clients/cli" = { classes = 817, sites = 52816 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 20, sites = 1681 }
@@ -771,15 +779,7 @@ at     = "cc.jumpkick.cli.engine.WindowsCommandLines#snapshot()Ljava/util/Map; -
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.cli.run.CliSessionTranscript#appendRaw(Ljava/lang/String;Z)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
 at     = "cc.jumpkick.cli.run.CliSessionTranscript#finish(I)Ljava/util/Optional; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.run.CliSessionTranscript#flushPending()V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"

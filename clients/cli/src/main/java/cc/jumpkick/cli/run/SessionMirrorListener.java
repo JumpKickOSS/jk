@@ -26,8 +26,8 @@ public final class SessionMirrorListener extends JsonlEmittingListener {
     }
 
     @Override
-    protected void emit(String line, boolean immediate) {
-        session.appendRaw(line, immediate);
+    protected void emit(String line) {
+        session.appendRaw(line);
     }
 
     /**

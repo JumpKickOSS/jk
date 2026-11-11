@@ -74,7 +74,8 @@ jk test -O jsonl
 jk explain
 ```
 
-Session log (same JSONL shape as `-O jsonl`), live-appended:
+Session log (same JSONL shape as `-O jsonl`), live-appended: records reach the file in whole
+lines every 250 ms and when the command ends, so `tail -F` trails the run by at most that:
 
 ```text
 ~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl

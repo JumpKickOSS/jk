@@ -14,6 +14,7 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.LiveProgress;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.SlowestTestsBlock;
+import cc.jumpkick.cli.run.TailLines;
 import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -669,7 +670,7 @@ final class WorkspaceRunView {
     }
 
     private List<String> buffer(Path moduleDir) {
-        return buffers.computeIfAbsent(moduleDir, d -> Collections.synchronizedList(new ArrayList<>()));
+        return buffers.computeIfAbsent(moduleDir, d -> Collections.synchronizedList(new TailLines()));
     }
 
     /** {@code lis} with this module's lines mirrored into {@code details.jsonl}, each naming {@code module}. */
@@ -695,7 +696,7 @@ final class WorkspaceRunView {
      * only for as long as the terminal shows it.
      */
     private void mirror(String line) {
-        if (session != null) session.appendRaw(JsonlShape.withProgress(line, null), false);
+        if (session != null) session.appendRaw(JsonlShape.withProgress(line, null));
     }
 
     /**

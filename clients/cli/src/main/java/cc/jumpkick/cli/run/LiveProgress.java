@@ -17,9 +17,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class LiveProgress {
 
-    /** Disk JSONL flush heartbeat when only hot ticks dirty the file. */
-    public static final long DISK_HEARTBEAT_MS = 2000;
-
     /** Partial process-line stale flush (TTY only; not session JSONL). */
     public static final long LINE_STALE_MS = 360;
 

@@ -79,6 +79,7 @@ class BuildPlanConsoleTest {
             BuildPlanListener console =
                     BuildPlanConsole.chooseConsoleListener("test", "app", List.of(), BuildPlanConsole.Mode.QUIET);
             console.stepStart("run-tests", "test", 1);
+            session.finish(0);
             assertThat(Files.readAllLines(details))
                     .anyMatch(l -> l.contains("\"type\":\"task-start\"") && l.contains("\"run-tests\""));
         } finally {
@@ -103,6 +104,7 @@ class BuildPlanConsoleTest {
                     new ConsoleSpec("Build", r -> "ok", r -> "failed", true),
                     "app"));
             Capture.stdout(plan::run);
+            session.finish(0);
             assertThat(Files.readAllLines(details))
                     .as("the chooser mirrors already; a second mirror doubled every event")
                     .filteredOn(l -> l.contains("\"type\":\"task-start\"") && l.contains("\"compile-java\""))

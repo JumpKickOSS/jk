@@ -33,12 +33,12 @@ public final class JsonlListener extends JsonlEmittingListener {
     }
 
     @Override
-    protected void emit(String line, boolean immediate) {
+    protected void emit(String line) {
         synchronized (out) {
             out.println(line);
             out.flush();
         }
         CliSessionTranscript session = CliSessionTranscript.active();
-        if (session != null) session.appendRaw(line, immediate);
+        if (session != null) session.appendRaw(line);
     }
 }

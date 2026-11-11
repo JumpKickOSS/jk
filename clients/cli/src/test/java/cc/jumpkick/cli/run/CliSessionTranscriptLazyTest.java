@@ -39,7 +39,7 @@ class CliSessionTranscriptLazyTest {
                 Objects.requireNonNull(CliSessionTranscript.open(project, "build", List.of("build")));
         Path details = project.resolve("runs").resolve("7").resolve(CliSessionTranscript.FILE_NAME);
         session.bindJob(42, 7, details.toString(), -1);
-        session.append("{\"type\":\"task-start\",\"task\":\"compile-java\"}", true);
+        session.append("{\"type\":\"task-start\",\"task\":\"compile-java\"}");
 
         assertThat(details.getParent()).doesNotExist();
 

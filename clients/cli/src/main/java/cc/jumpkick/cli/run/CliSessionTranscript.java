@@ -30,7 +30,8 @@ import org.jspecify.annotations.Nullable;
  * Incremental CLI session transcript as {@code details.jsonl} under the project run dir
  * ({@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/details.jsonl}). Same event shape as
  * {@code -O jsonl} ({@link JsonlShape}, schema 1), appended live so agents can
- * {@code tail -F} mid-run.
+ * {@code tail -F} mid-run: records collect in memory and reach the file every {@link
+ * #FLUSH_MILLIS}, whole, and at {@link #finish}, rather than one write per record.
  *
  * <p>On open the session buffers until {@link #bindJob} (from engine {@code job-start}) points at the
  * journal run's details path, and past that until the session is {@link #LAZY_OPEN_MILLIS} old: a
@@ -64,6 +65,12 @@ public final class CliSessionTranscript {
      * {@code tail -F} of any build worth watching.
      */
     static final long LAZY_OPEN_MILLIS = 400;
+
+    /** How often collected records are written to the open file. */
+    static final long FLUSH_MILLIS = 250;
+
+    /** {@link #FLUSH_MILLIS}; a test of what stays off disk between flushes lengthens it. */
+    static volatile long flushMillis = FLUSH_MILLIS;
 
     /** {@link #LAZY_OPEN_MILLIS}; a test of the live file sets it to {@code 0}. */
     static volatile long lazyOpenMillis = LAZY_OPEN_MILLIS;
@@ -104,6 +111,9 @@ public final class CliSessionTranscript {
 
     private @Nullable OutputStream out;
     private long lastFlushMs;
+    /** Writes what collected since the last flush every {@link #FLUSH_MILLIS}; started by the first append. */
+    private @Nullable Thread flusher;
+
     private @Nullable String wedgeSummary;
     private boolean closed;
     private boolean bound;
@@ -157,7 +167,7 @@ public final class CliSessionTranscript {
             CliSessionTranscript session = new CliSessionTranscript(projectDir, started, command, args, acrossJobs);
             LiveProgress.get().clear();
             active = session;
-            session.appendRaw(JsonlShape.withProgress(JsonlShape.sessionStart(command, args), null), true);
+            session.appendRaw(JsonlShape.withProgress(JsonlShape.sessionStart(command, args), null));
             return session;
         } catch (RuntimeException e) {
             return null;
@@ -221,7 +231,7 @@ public final class CliSessionTranscript {
         if (etaMs < 0) return;
         synchronized (lock) {
             this.etaMs = etaMs;
-            appendRaw(JsonlShape.withProgress(JsonlShape.eta(etaMs), null), true);
+            appendRaw(JsonlShape.withProgress(JsonlShape.eta(etaMs), null));
         }
     }
 
@@ -322,16 +332,17 @@ public final class CliSessionTranscript {
         if (message == null || message.isBlank()) return this;
         String s = step == null ? "" : step;
         String c = code == null ? "" : code;
-        append(JsonlShape.error(s, c, message), true);
+        append(JsonlShape.error(s, c, message));
         return this;
     }
 
-    public void append(String line, boolean immediateFlush) {
+    public void append(String line) {
         if (line == null || line.isBlank()) return;
-        appendRaw(JsonlShape.withProgress(line), immediateFlush);
+        appendRaw(JsonlShape.withProgress(line));
     }
 
-    public void appendRaw(String line, boolean immediateFlush) {
+    /** Collect {@code line} as one record; it reaches the file within {@link #FLUSH_MILLIS}. */
+    public void appendRaw(String line) {
         if (line == null || line.isBlank()) return;
         String record = stripTrailingNewlines(line);
         if (record.isEmpty()) return;
@@ -339,11 +350,29 @@ public final class CliSessionTranscript {
             if (closed) return;
             try {
                 enqueueRecord(record);
-                long now = System.currentTimeMillis();
-                if (immediateFlush || now - lastFlushMs >= LiveProgress.DISK_HEARTBEAT_MS) {
-                    flushPending();
-                }
+                if (Clock.SYSTEM.millis() - lastFlushMs >= flushMillis) flushPending();
+                else if (flusher == null)
+                    flusher = Thread.ofVirtual().name("jk-details-flush").start(this::flushEvery);
             } catch (IOException ignored) {
+            }
+        }
+    }
+
+    /** The flusher's loop: what collected reaches the file every {@link #FLUSH_MILLIS} until {@link #finish}. */
+    private void flushEvery() {
+        while (true) {
+            try {
+                Thread.sleep(flushMillis);
+            } catch (InterruptedException e) {
+                return;
+            }
+            synchronized (lock) {
+                if (closed) return;
+                try {
+                    flushPending();
+                } catch (IOException ignored) {
+                    // The next append or finish tries again.
+                }
             }
         }
     }
@@ -358,12 +387,12 @@ public final class CliSessionTranscript {
         if (out == null && target != null && oldEnough()) openFile(target);
         if (out == null) {
             // Keep buffering until bind/finish opens a file.
-            lastFlushMs = System.currentTimeMillis();
+            lastFlushMs = Clock.SYSTEM.millis();
             return;
         }
         byte[] records = pending.toByteArray();
         pending.reset();
-        lastFlushMs = System.currentTimeMillis();
+        lastFlushMs = Clock.SYSTEM.millis();
         out.write(records);
         out.flush();
     }
@@ -381,17 +410,7 @@ public final class CliSessionTranscript {
     public static void appendActive(String line) {
         CliSessionTranscript s = active;
         if (s == null || line == null || line.isBlank()) return;
-        s.appendRaw(line, isImmediateType(line));
-    }
-
-    private static final String[] HOT_TYPE_NEEDLES =
-            JsonlShape.HOT_TYPES.stream().map(t -> "\"type\":\"" + t + "\"").toArray(String[]::new);
-
-    static boolean isImmediateType(String line) {
-        for (String needle : HOT_TYPE_NEEDLES) {
-            if (line.contains(needle)) return false;
-        }
-        return true;
+        s.appendRaw(line);
     }
 
     public Optional<Path> finish(int exitCode) {
@@ -429,6 +448,8 @@ public final class CliSessionTranscript {
             } finally {
                 closed = true;
                 if (active == this) active = null;
+                Thread t = flusher;
+                if (t != null) t.interrupt();
                 if (out != null) {
                     try {
                         out.close();

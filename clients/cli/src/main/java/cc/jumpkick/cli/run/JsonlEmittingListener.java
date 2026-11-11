@@ -8,7 +8,6 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EventEnvelope;
 import java.time.Duration;
 import java.util.Map;
@@ -17,8 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Base for listeners that render plan events as {@link JsonlShape} lines (progress rider
- * applied). Subclasses supply only the sink via {@link #emit}. {@code immediate} marks semantic
- * boundaries (per-line flush); hot ticks ({@link JsonlShape#HOT_TYPES}) use the heartbeat.
+ * applied). Subclasses supply only the sink via {@link #emit}.
  */
 abstract class JsonlEmittingListener implements BuildPlanListener {
 
@@ -42,40 +40,40 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     /** Sink for one rider-decorated JSONL line. */
-    protected abstract void emit(String line, boolean immediate);
+    protected abstract void emit(String line);
 
     @Override
     public void planStart(BuildPlanView v) {
-        line(JsonlShape.planStart(v), EngineProtocol.BUILDPLAN_START);
+        line(JsonlShape.planStart(v));
     }
 
     @Override
     public void stepStart(String step, @Nullable String group, int ticks) {
-        line(JsonlShape.stepStart(step, wire(group), ticks), EngineProtocol.TASK_START);
+        line(JsonlShape.stepStart(step, wire(group), ticks));
     }
 
     @Override
     public void progress(String step, int delta, BuildPlanView v) {
         // Per-step numerator/denominator on the event; aggregate % via LiveProgress rider.
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
-        line(JsonlShape.progress(step, delta, v), EngineProtocol.PROGRESS);
+        line(JsonlShape.progress(step, delta, v));
     }
 
     @Override
     public void tickUpdate(String step, int delta, BuildPlanView v) {
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
-        line(JsonlShape.tickUpdate(step, delta, v), EngineProtocol.TICK_UPDATE);
+        line(JsonlShape.tickUpdate(step, delta, v));
     }
 
     @Override
     public void label(String step, String label) {
         labels.put(step, label);
-        line(JsonlShape.label(step, label), EngineProtocol.LABEL);
+        line(JsonlShape.label(step, label));
     }
 
     @Override
     public void output(String step, String out) {
-        line(JsonlShape.output(step, out), EngineProtocol.OUTPUT);
+        line(JsonlShape.output(step, out));
     }
 
     @Override
@@ -85,48 +83,46 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void warn(String step, String code, String msg, boolean replayed) {
-        line(JsonlShape.warn(step, code, msg, replayed), EngineProtocol.WARN);
+        line(JsonlShape.warn(step, code, msg, replayed));
     }
 
     @Override
     public void error(String step, String code, String msg) {
-        line(JsonlShape.error(step, code, msg), "error");
+        line(JsonlShape.error(step, code, msg));
     }
 
     @Override
     public void error(String step, String code, String msg, @Nullable String test, String exClass) {
-        line(JsonlShape.error(step, code, msg, test, exClass), "error");
+        line(JsonlShape.error(step, code, msg, test, exClass));
     }
 
     @Override
     public void error(String step, String code, String msg, @Nullable TestFailureInfo failure) {
-        line(JsonlShape.error(step, code, msg, failure, JsonlShape.STREAM_TEXTS), "error");
+        line(JsonlShape.error(step, code, msg, failure, JsonlShape.STREAM_TEXTS));
     }
 
     @Override
     public void testClass(String step, TestClassResult result) {
-        line(JsonlShape.classFinish(step, result), EngineProtocol.CLASS_FINISH);
+        line(JsonlShape.classFinish(step, result));
     }
 
     @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus s, Duration d, Duration waited) {
         String said = labels.remove(step);
-        line(
-                JsonlShape.stepFinish(step, wire(group), s, d, waited, said == null ? "" : said),
-                EngineProtocol.TASK_FINISH);
+        line(JsonlShape.stepFinish(step, wire(group), s, d, waited, said == null ? "" : said));
     }
 
     @Override
     public void planFinish(BuildPlanResult r) {
-        line(JsonlShape.planFinish(r), EngineProtocol.BUILDPLAN_FINISH);
+        line(JsonlShape.planFinish(r));
     }
 
-    private void line(String raw, String type) {
+    private void line(String raw) {
         // A record that names its module itself (a test class, a diagnostic) keeps its own field.
         String tagged = module == null || EventEnvelope.keys(raw).contains("module")
                 ? raw
                 : Jsonl.append(raw, "\"module\":" + Jsonl.quote(module));
-        emit(JsonlShape.withProgress(tagged), !JsonlShape.HOT_TYPES.contains(type));
+        emit(JsonlShape.withProgress(tagged));
     }
 
     private static String wire(@Nullable String group) {

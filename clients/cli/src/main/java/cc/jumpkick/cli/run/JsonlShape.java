@@ -68,14 +68,6 @@ public final class JsonlShape {
      */
     public static final int SCHEMA = JsonlEnvelope.SCHEMA;
 
-    /** Hot-tick event types: heartbeat flush to disk (M4/M5); everything else flushes per line. */
-    static final Set<String> HOT_TYPES = Set.of(
-            EngineProtocol.PROGRESS,
-            EngineProtocol.TICK_UPDATE,
-            EngineProtocol.WORKSPACE_PROGRESS,
-            EngineProtocol.LABEL,
-            EngineProtocol.OUTPUT);
-
     private static final Object STDOUT_LOCK = new Object();
 
     /**
