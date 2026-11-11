@@ -159,3 +159,11 @@ test('a filter goes through the route, and toggling an entry remembers it withou
   vm.toggleActivity('change:c1');
   assert.equal(vm.activityOpen, null);
 });
+
+test('the activity list holds at most the list cap, newest kept', async () => {
+  const { LIST_CAP } = await spa('api.js');
+  const entries = Array.from({ length: LIST_CAP + 10 }, (_, i) => ({ id: 'e' + i, at: i }));
+  const merged = mergePage([], { entries });
+  assert.equal(merged.length, LIST_CAP);
+  assert.equal(merged[0].at, LIST_CAP + 9);
+});

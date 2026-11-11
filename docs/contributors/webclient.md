@@ -482,7 +482,16 @@ engine delivers **one** `run-snapshot` frame per running job to **that subscript
 (phases + progress + ETA anchors + `startedAt`) — not a phase-by-phase replay, which filled the
 256-frame SSE queue and left the SPA frozen for seconds while live ticks queued behind it.
 `fold.js` applies the snapshot atomically, rebinds journal stubs (`h:…`), and then folds live
-`workspace-progress` / task events in real time (TUI parity).
+`workspace-progress` / task events in real time (TUI parity). A running history stub binds only
+the card of its own request id; a finished record still reconciles by (dir, buildNumber).
+
+**Reconnect:** `api.js` remembers the last frame id the tab received and names it when it
+re-creates the stream (`?lastEventId=`); EventSource's own reconnect sends it as `Last-Event-ID`.
+The engine replays the frames missed since then instead of a snapshot, so a reconnect mid-build
+keeps the failure details (`docs/contributors/http.md`, "Reconnect replay").
+
+**Long-open lists:** the session rail, the notices, a session's actions and the activity log hold
+at most `LIST_CAP` (500) rows each, newest kept; older rows stay on the engine.
 
 Build phase/progress is **inflicted SSE** at the same human cadence as the CLI wire
 (`JK_WIRE_PROGRESS_MS`, default 500 ms for aggregate + plan ticks + output samples). The SPA

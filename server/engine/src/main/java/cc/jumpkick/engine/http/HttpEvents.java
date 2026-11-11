@@ -2,10 +2,12 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -27,6 +29,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>MCP subscribers may filter by {@code jid} so multi-job engines only deliver one job's
  * events to a given SSE connection ({@code GET /mcp?jid=N} or {@code ?progressToken=T}).
+ *
+ * <p>Every frame carries an {@code id:}, increasing for the engine's life and starting past any id
+ * an earlier engine on this machine handed out. The last {@link #REPLAY_FRAMES} broadcast frames
+ * are kept, so a dashboard that reconnects naming the last id it saw ({@code Last-Event-ID}) is
+ * given exactly the frames it missed, failure details included, instead of a snapshot of the runs
+ * in flight; one whose id is older than the oldest kept frame, or from another engine, gets the
+ * snapshot.
  */
 public final class HttpEvents {
 
@@ -47,8 +56,39 @@ public final class HttpEvents {
         MCP
     }
 
-    private final AtomicLong seq = new AtomicLong();
+    /** Broadcast frames kept for a reconnecting dashboard to replay. */
+    static final int REPLAY_FRAMES = 2048;
+
+    /** Bytes of kept frames past which the oldest are let go, however few they are. */
+    static final long REPLAY_BYTES = 8L << 20;
+
+    private final AtomicLong seq;
     private final Set<Subscription> subscriptions = ConcurrentHashMap.newKeySet();
+
+    /** Guarded by itself: the kept frames, oldest first, and each publish's fan-out. */
+    private final ArrayDeque<Kept> replay = new ArrayDeque<>();
+
+    /** Guarded by {@link #replay}: bytes of the kept frames. */
+    private long replayBytes;
+
+    /** Guarded by {@link #replay}: the newest id no longer kept; ids up to it cannot be replayed. */
+    private long forgottenThrough;
+
+    private record Kept(long id, String type, String wire) {}
+
+    /**
+     * Ids start at this engine's start time in microseconds, so an id a dashboard kept from an
+     * earlier engine is below every id of this one and is never mistaken for one it can replay.
+     */
+    public HttpEvents() {
+        this(Clock.SYSTEM.millis() * 1000);
+    }
+
+    /** Test seam: the first frame's id is {@code lastId + 1}. */
+    HttpEvents(long lastId) {
+        this.seq = new AtomicLong(lastId);
+        this.forgottenThrough = lastId;
+    }
 
     public boolean hasSubscribers() {
         return !subscriptions.isEmpty();
@@ -91,13 +131,59 @@ public final class HttpEvents {
     }
 
     private void publish(String type, JsonOut payload, boolean dashboardOnly) {
-        long id = seq.incrementAndGet();
         String data = payload.toString();
         Long requestId = extractRequestId(data);
-        for (Subscription s : subscriptions) {
-            if (dashboardOnly && s.style == FrameStyle.MCP) continue;
-            if (!s.accepts(requestId)) continue;
-            s.offer(type, s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
+        // One lock for the id, the kept copy and the fan-out: a dashboard attaching with a replay
+        // sees each frame either among the kept ones or in its queue, never both, never neither.
+        synchronized (replay) {
+            long id = seq.incrementAndGet();
+            String dashboard = dashboardFrame(id, type, data);
+            keep(new Kept(id, type, dashboard));
+            for (Subscription s : subscriptions) {
+                if (dashboardOnly && s.style == FrameStyle.MCP) continue;
+                if (!s.accepts(requestId)) continue;
+                s.offer(type, s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboard);
+            }
+        }
+    }
+
+    /** Guarded by {@link #replay}. */
+    private void keep(Kept frame) {
+        replay.addLast(frame);
+        replayBytes += frame.wire.length();
+        while (replay.size() > REPLAY_FRAMES || (replayBytes > REPLAY_BYTES && replay.size() > 1)) {
+            Kept gone = replay.pollFirst();
+            if (gone == null) break;
+            replayBytes -= gone.wire.length();
+            forgottenThrough = gone.id;
+        }
+    }
+
+    /**
+     * The last frame id the client behind {@code s} received, from its {@code Last-Event-ID}; the
+     * subscription replays from there when it is {@link #attachReplaying attached}.
+     */
+    void replayAfter(Subscription s, long lastId) {
+        s.replayAfter = lastId;
+    }
+
+    /**
+     * Attach {@code s} with every kept frame after the id it named ({@link #replayAfter}) queued
+     * first, and say whether that covered what it missed. False — and nothing attached — when it
+     * named none, or an id older than the oldest kept frame or newer than this engine's newest: the
+     * caller hydrates it from a snapshot and {@link #attach}es it.
+     */
+    public boolean attachReplaying(Subscription s) {
+        if (s == null || s.closed) return false;
+        synchronized (replay) {
+            long after = s.replayAfter;
+            s.replayAfter = -1;
+            if (after < 0 || after < forgottenThrough || after > seq.get()) return false;
+            List<Kept> missed = new ArrayList<>();
+            for (Kept k : replay) if (k.id > after) missed.add(k);
+            s.replay(missed);
+            attach(s);
+            return true;
         }
     }
 
@@ -148,6 +234,7 @@ public final class HttpEvents {
      */
     public void attach(Subscription s) {
         if (s == null || s.closed) return;
+        s.replayAfter = -1;
         subscriptions.add(s);
         // close() may have raced between the check and the add; never leave a closed
         // subscription in the hub (hasSubscribers() would stay true forever).
@@ -221,6 +308,9 @@ public final class HttpEvents {
         private final Condition notEmpty = lock.newCondition();
         private final ArrayDeque<Queued> frames = new ArrayDeque<>(QUEUE_CAPACITY);
         private volatile boolean closed;
+
+        /** The last frame id its client named, until attached; -1 for none. */
+        private volatile long replayAfter = -1;
 
         private record Queued(boolean critical, String wire) {}
 
@@ -301,6 +391,20 @@ public final class HttpEvents {
                 }
                 frames.addLast(new Queued(critical, wire));
                 notEmpty.signal();
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        /**
+         * Queue frames a reconnecting client missed, ahead of anything live and past the queue's
+         * capacity: shedding them would lose the very failure details the replay is for.
+         */
+        private void replay(List<Kept> missed) {
+            lock.lock();
+            try {
+                for (Kept k : missed) frames.addLast(new Queued(isCritical(k.type), k.wire));
+                if (!missed.isEmpty()) notEmpty.signal();
             } finally {
                 lock.unlock();
             }

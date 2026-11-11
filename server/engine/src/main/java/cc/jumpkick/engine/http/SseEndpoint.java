@@ -137,6 +137,8 @@ final class SseEndpoint {
         // If anything below throws before attach, the subscription was never in the
         // hub, so hasSubscribers() cannot stay true for the process's life.
         HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+        long lastId = lastEventId(exchange);
+        if (lastId >= 0) events.replayAfter(subscription, lastId);
         String stream = UUID.randomUUID().toString();
         JsonOut presence = JsonOut.object().put("stream", stream).put("every", pingMillis);
         try {
@@ -159,7 +161,7 @@ final class SseEndpoint {
             }
             // Safety net: the engine callback attaches inside its ordering lock; if it failed
             // (or no engine is wired, e.g. tests), attach now so live events still flow.
-            events.attach(subscription);
+            if (!events.attachReplaying(subscription)) events.attach(subscription);
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
             // Batch drain: a full queue of structural+progress frames must not force one
@@ -194,6 +196,25 @@ final class SseEndpoint {
             dashboards.close(stream);
             subscription.close();
             liveVitals.onSubscriberLeft();
+        }
+    }
+
+    /**
+     * The last frame id the client received: EventSource's own {@code Last-Event-ID} on a
+     * reconnect, else the {@code lastEventId} query a re-created stream names; -1 for none or for
+     * one that is not a frame id.
+     */
+    static long lastEventId(HttpExchange exchange) {
+        String header = exchange.getRequestHeaders().getFirst("Last-Event-ID");
+        String raw = header != null && !header.isBlank()
+                ? header
+                : HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "lastEventId");
+        if (raw == null || raw.isBlank()) return -1;
+        try {
+            long id = Long.parseLong(raw.trim());
+            return id >= 0 ? id : -1;
+        } catch (NumberFormatException e) {
+            return -1;
         }
     }
 

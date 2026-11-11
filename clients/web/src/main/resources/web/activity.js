@@ -7,7 +7,7 @@
 // Routes: #activity, #activity?kind=change&project=…&session=…&surface=…, and #activity/<entry id>,
 // which opens that entry (a change's diff, a decision's outcome) once its page has loaded.
 
-import { get } from './api.js';
+import { capList, get, LIST_CAP } from './api.js';
 
 /** How many entries one page asks for. */
 export const PAGE = 50;
@@ -89,7 +89,7 @@ export function buildActivityHash(filters = {}, entryId = null) {
   return q.length ? h + '?' + q.join('&') : h;
 }
 
-/** Appends `page`'s entries to `entries`, each once, newest first. */
+/** Appends `page`'s entries to `entries`, each once, newest first, at most {@link LIST_CAP} of them. */
 export function mergePage(entries, page) {
   const seen = new Set((entries || []).map((e) => e.id));
   const out = (entries || []).slice();
@@ -99,7 +99,7 @@ export function mergePage(entries, page) {
       out.push(e);
     }
   }
-  return out.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  return capList(out.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)));
 }
 
 /**
@@ -193,7 +193,8 @@ export const activityMethods = {
     try {
       const page = await get(activityUrl(this.activityFilter, first ? null : this.activityNext));
       this.activity = mergePage(first ? [] : this.activity, page);
-      this.activityNext = (page && page.next) || null;
+      // A full list loads no older page: it would only push rows out of the cap.
+      this.activityNext = this.activity.length >= LIST_CAP ? null : (page && page.next) || null;
       if (page && page.facets) this.activityFacets = page.facets;
     } catch (e) {
       if (e && e.status === 404) this.activityError = 'This engine keeps no activity yet. Update JumpKick to see it.';

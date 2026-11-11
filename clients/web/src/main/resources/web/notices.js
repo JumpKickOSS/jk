@@ -8,7 +8,7 @@
 // longer counts, but the bell stays amber while any decision waits, listed under "Waiting on you".
 // The menu's "Just now" is the recent notices; older history is the activity log's.
 
-import { get, post } from './api.js';
+import { capList, get, post } from './api.js';
 import { isOpen } from './needs.js';
 import { SSE } from './wire.js';
 
@@ -34,7 +34,7 @@ export function foldNotice(state, frame) {
   if (!frame || typeof frame.seenUpTo !== 'number') return state;
   let notices = state.notices || [];
   if (frame.change === 'added' && frame.notice && frame.notice.id) {
-    notices = [frame.notice, ...notices.filter((n) => n.id !== frame.notice.id)];
+    notices = capList([frame.notice, ...notices.filter((n) => n.id !== frame.notice.id)]);
   }
   const unseen = typeof frame.unseen === 'number' ? frame.unseen : unseenOf(notices, frame.seenUpTo);
   return { notices, seenUpTo: Math.max(state.seenUpTo || 0, frame.seenUpTo), unseen };
@@ -70,7 +70,7 @@ export function bellLook(unseen, waiting) {
 export async function fetchNotices(getter) {
   try {
     const body = await getter('/api/notices');
-    const notices = (body && body.notices) || [];
+    const notices = capList((body && body.notices) || []);
     const seenUpTo = Number(body && body.seenUpTo) || 0;
     return { notices, seenUpTo, unseen: typeof body.unseen === 'number' ? body.unseen : unseenOf(notices, seenUpTo) };
   } catch (e) {

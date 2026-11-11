@@ -5,6 +5,7 @@
 // journal records (`/api/history`) and folded cards (fold.js) — no DOM, no fetch — so the suite
 // runs them headlessly. Every number is one the journal, a record or an action already carries.
 
+import { capList, LIST_CAP } from './api.js';
 import { deltaChip } from './delta.js';
 import { outcomeOf } from './outcome.js';
 
@@ -111,7 +112,7 @@ export function foldSessionFrame(sessions, frame) {
   const row = frame && frame.session;
   if (!row || !row.id) return sessions;
   const rest = (sessions || []).filter((s) => s.id !== row.id);
-  return [row, ...rest];
+  return capList([row, ...rest]);
 }
 
 /**
@@ -151,7 +152,8 @@ export function foldIntoDetail(detail, type, frame) {
   if (type === 'action' && frame.session === id && frame.action) {
     const a = frame.action;
     if ((detail.actions || []).some((x) => x.seq === a.seq)) return detail;
-    return { ...detail, actions: [...(detail.actions || []), a].sort((x, y) => x.seq - y.seq) };
+    const actions = [...(detail.actions || []), a].sort((x, y) => x.seq - y.seq);
+    return { ...detail, actions: actions.length > SESSION_ACTIONS_MAX ? actions.slice(-SESSION_ACTIONS_MAX) : actions };
   }
   return detail;
 }
@@ -584,7 +586,7 @@ export function projectSessionRows(sessions, details, projectId) {
 }
 
 /** Most actions the session page holds: past it the oldest are left on the engine. */
-export const SESSION_ACTIONS_MAX = 20000;
+export const SESSION_ACTIONS_MAX = LIST_CAP;
 
 /**
  * One session's detail with every action, oldest first: the engine answers a page at a time and
@@ -602,5 +604,6 @@ export async function fetchSessionDetail(get, id, pageSize = 1000) {
     if (older.next === next) break;
     next = older.next;
   }
+  if (actions.length > SESSION_ACTIONS_MAX) actions = actions.slice(-SESSION_ACTIONS_MAX);
   return { ...first, actions, next: next ?? null };
 }

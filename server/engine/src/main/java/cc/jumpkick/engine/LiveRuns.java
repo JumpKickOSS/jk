@@ -83,6 +83,9 @@ public final class LiveRuns {
         if (sub == null || events == null) return;
         sseConnect.writeLock().lock();
         try {
+            // A reconnect the kept frames cover replays them: they already carry everything a
+            // snapshot would, and the failure details it would not.
+            if (events.attachReplaying(sub)) return;
             for (HttpLive.Run run : snapshot()) {
                 events.deliverTo(sub, "run-snapshot", snapshotJson(run, clock.getAsLong()));
             }

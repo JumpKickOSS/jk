@@ -65,7 +65,7 @@ class HttpEventsTest {
 
     @Test
     void frames_carry_monotonic_ids_and_sse_framing() throws Exception {
-        HttpEvents hub = new HttpEvents();
+        HttpEvents hub = new HttpEvents(0);
         try (HttpEvents.Subscription s = hub.subscribe()) {
             hub.publish("request-start", JsonOut.object().put("jid", 1));
             hub.publish("request-finish", JsonOut.object().put("jid", 1));
@@ -222,6 +222,59 @@ class HttpEventsTest {
                     .contains("downloads")
                     .contains("\"files\":3");
             assertThat(mcp.next(10)).isNull();
+        }
+    }
+
+    /** A dashboard reconnecting with the last id it saw gets the frames after it, then live ones. */
+    @Test
+    void a_reconnect_naming_its_last_id_replays_what_it_missed() throws Exception {
+        HttpEvents hub = new HttpEvents(0);
+        hub.publish("request-start", JsonOut.object().put("jid", 1));
+        hub.publish("error", JsonOut.object().put("jid", 1).put("message", "boom"));
+        hub.publish("output", JsonOut.object().put("jid", 1).put("line", "x"));
+        try (HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null)) {
+            hub.replayAfter(s, 1);
+            assertThat(hub.attachReplaying(s)).isTrue();
+            assertThat(s.next(1000)).startsWith("id: 2\nevent: error\n").contains("boom");
+            assertThat(s.next(1000)).startsWith("id: 3\nevent: output\n");
+            hub.publish("request-finish", JsonOut.object().put("jid", 1));
+            assertThat(s.next(1000)).startsWith("id: 4\nevent: request-finish\n");
+            assertThat(s.next(10)).isNull();
+        }
+    }
+
+    /** More missed frames than a live queue holds are all replayed: none of them is shed. */
+    @Test
+    void a_replay_longer_than_the_queue_loses_nothing() throws Exception {
+        HttpEvents hub = new HttpEvents(0);
+        int n = HttpEvents.QUEUE_CAPACITY + 50;
+        for (int i = 0; i < n; i++)
+            hub.publish("error", JsonOut.object().put("jid", 1).put("i", i));
+        try (HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null)) {
+            hub.replayAfter(s, 0);
+            assertThat(hub.attachReplaying(s)).isTrue();
+            List<String> got = new ArrayList<>();
+            s.drainTo(got, n + 10);
+            assertThat(got).hasSize(n);
+        }
+    }
+
+    /** An id older than the oldest kept frame, or from an earlier engine, gets no replay and stays detached. */
+    @Test
+    void a_reconnect_past_what_is_kept_or_from_another_engine_is_not_replayed() throws Exception {
+        HttpEvents hub = new HttpEvents(0);
+        for (int i = 0; i < HttpEvents.REPLAY_FRAMES + 5; i++)
+            hub.publish("output", JsonOut.object().put("i", i));
+        try (HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null)) {
+            hub.replayAfter(s, 2);
+            assertThat(hub.attachReplaying(s)).isFalse();
+            assertThat(hub.hasSubscribers()).isFalse();
+        }
+        HttpEvents later = new HttpEvents(1_000_000);
+        later.publish("output", JsonOut.object().put("i", 0));
+        try (HttpEvents.Subscription s = later.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null)) {
+            later.replayAfter(s, 5);
+            assertThat(later.attachReplaying(s)).isFalse();
         }
     }
 }

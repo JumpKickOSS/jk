@@ -273,7 +273,7 @@ test('a stale running stub does not flip a finished live card back to running', 
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
   // Reconcile raced the journal write: the record still says running.
   seedFromHistory(cards, [
-    { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', running: true, startedAt: 110_000,
+    { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', running: true, startedAt: 110_000, requestId: 1,
       modules: [], tasks: [], diagnostics: [] },
   ]);
   const live = cards.find((c) => c.id === 1);
@@ -923,12 +923,32 @@ test('seedFromHistory reconciles running SSE card with durable in-flight row', (
       millis: 0,
       running: true,
       buildNumber: 27,
+      jid: 9,
     }),
   ]);
   assert.equal(cards.length, 1);
   assert.equal(cards[0].id, 9);
   assert.equal(cards[0].historyId, '20260101T000000000-run1');
   assert.equal(cards[0].buildNumber, 27);
+});
+
+test('a running history stub binds only the card of its own request', () => {
+  // Two runs of one project share its directory and, across an engine restart, its build number.
+  const cards = [];
+  foldEvent(cards, start(9, '/w/a', { buildNumber: 27 }));
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run2', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      jid: 12,
+    }),
+  ]);
+  assert.equal(cards.length, 2);
+  const mine = cards.find((c) => c.id === 9);
+  assert.equal(mine.historyId, undefined);
+  assert.equal(cards.find((c) => c.id === 12).historyId, '20260101T000000000-run2');
 });
 
 test('seedFromHistory reconciles a live card instead of duplicating it', () => {

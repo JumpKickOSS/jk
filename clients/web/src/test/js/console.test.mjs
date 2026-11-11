@@ -517,3 +517,18 @@ test('the session page follows older pages until the first action', async () => 
   assert.equal(detail.next, null);
   assert.equal(asked.length, 2);
 });
+
+test('the session rail and a session page hold at most the list cap, newest kept', async () => {
+  const { LIST_CAP } = await spa('api.js');
+  const { foldIntoDetail } = await spa('console.js');
+  let sessions = [];
+  for (let i = 0; i < LIST_CAP + 5; i++) sessions = foldSessionFrame(sessions, { change: 'started', session: { id: 's' + i } });
+  assert.equal(sessions.length, LIST_CAP);
+  assert.equal(sessions[0].id, 's' + (LIST_CAP + 4));
+
+  let detail = { session: { id: 's' }, episodes: [], actions: [] };
+  for (let seq = 1; seq <= LIST_CAP + 5; seq++) detail = foldIntoDetail(detail, 'action', { session: 's', action: { seq } });
+  assert.equal(detail.actions.length, LIST_CAP);
+  assert.equal(detail.actions.at(-1).seq, LIST_CAP + 5);
+  assert.equal(detail.actions[0].seq, 6);
+});

@@ -880,6 +880,15 @@ reflected in the snapshot or delivered to the queue after it; overlap folds idem
 are impossible. Independently, `GET /api/history` enriches `running: true` rows with the same
 live fields so the SPA's initial GET matches the TUI even before the first SSE frame.
 
+**Reconnect replay:** every frame carries an `id:`, increasing for the engine's life and starting
+at the engine's start time in microseconds, so an id from an earlier engine is below all of this
+one's. The engine keeps the last 2048 broadcast frames (at most 8 MiB). A reconnect that names the
+last id it received — EventSource's own `Last-Event-ID`, or `?lastEventId=` on a stream the SPA
+re-creates — is attached with every kept frame after that id queued first, and gets no
+`run-snapshot`: the replay already carries what a snapshot would, and the failure details
+(`error`, `output`) it would not. An id older than the oldest kept frame, or newer than the
+engine's newest, gets the snapshot path above.
+
 `run-snapshot` payload (same shape as an enriched history row): `jid`, `kind`,
 `dir`, `coord?`, `projectId?`, `trigger?`/`session?` (who asked, as the journal row carries it;
 `request-start` carries the same pair), `buildNumber?`, `historyId?` (journal id, present for

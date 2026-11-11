@@ -237,3 +237,11 @@ test("a stale tab's rejected token does not delete the newer one another tab sto
     [globalThis.sessionStorage, globalThis.localStorage] = saved;
   }
 });
+
+test('a re-created event stream names the last frame it saw, beside the token', async () => {
+  const { eventsUrl } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')));
+  assert.equal(eventsUrl('', ''), '/api/events');
+  assert.equal(eventsUrl('t k', ''), '/api/events?access_token=t%20k');
+  assert.equal(eventsUrl('t', '41'), '/api/events?access_token=t&lastEventId=41');
+  assert.equal(eventsUrl('', '41'), '/api/events?lastEventId=41');
+});

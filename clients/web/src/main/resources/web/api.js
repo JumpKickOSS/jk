@@ -10,6 +10,17 @@ const EPOCH_HEADER = 'X-Jk-Engine-Epoch';
 const RELOAD_FLAG = 'jk-epoch-reload';
 
 /**
+ * Most rows a list the dashboard keeps open for hours holds — sessions, notices, a session's
+ * actions, the activity log — newest kept. Past it the oldest are left on the engine.
+ */
+export const LIST_CAP = 500;
+
+/** {@code rows} with at most {@link LIST_CAP} of its first rows. */
+export function capList(rows) {
+  return (rows || []).length > LIST_CAP ? rows.slice(0, LIST_CAP) : rows || [];
+}
+
+/**
  * On load, adopt a token from the URL fragment — `#t=…` as `jk engine status` prints it, or
  * `?t=…` in a route's fragment query as an MCP result's `dashboard` link carries it
  * (`#project/<id>?t=…`) — stash it in sessionStorage <em>and</em> localStorage, and scrub it from
@@ -371,6 +382,22 @@ export function isServerFrame(e) {
 }
 
 /**
+ * The id of the last frame any stream of this tab received. EventSource sends it as
+ * `Last-Event-ID` when it reconnects on its own; a stream this tab re-creates (after a non-200
+ * closed the last one) names it in the query, so the engine replays what the tab missed instead of
+ * a snapshot that has no failure details.
+ */
+let lastEventId = '';
+
+/** The stream's URL: the token, and the last frame seen so the engine can replay from there. */
+export function eventsUrl(accessToken, afterId) {
+  const params = [];
+  if (accessToken) params.push('access_token=' + encodeURIComponent(accessToken));
+  if (afterId) params.push('lastEventId=' + encodeURIComponent(afterId));
+  return '/api/events' + (params.length ? '?' + params.join('&') : '');
+}
+
+/**
  * Open the SSE stream. `onEvent({type, data})` per engine event; `onState('live'|'offline')` as the
  * connection comes and goes. EventSource reconnects on its own after NETWORK errors only — any
  * non-200 response (503 while the engine respawns or the SSE budget is exhausted, 421 bad Host)
@@ -385,8 +412,7 @@ export function isServerFrame(e) {
 export function events(onEvent, onState) {
   // EventSource cannot send Authorization headers — always pass the token as a query param
   // when present (required on loopback too now that /api/* is fully gated).
-  const query = token() ? '?access_token=' + encodeURIComponent(token()) : '';
-  const source = new EventSource('/api/events' + query);
+  const source = new EventSource(eventsUrl(token(), lastEventId));
   source.onopen = () => onState('live');
   // The engine publishes a failed build's diagnostics as a named `error` frame, and EventSource
   // hands named frames to onerror too: that one carries data and is an event (the listener below
@@ -485,6 +511,7 @@ export function events(onEvent, onState) {
 
   for (const type of EVENT_TYPES) {
     source.addEventListener(type, (e) => {
+      if (e.lastEventId) lastEventId = e.lastEventId;
       try {
         const event = { type, data: JSON.parse(e.data) };
         // A hidden tab's timers are throttled to a minute: the ping and a notification to show

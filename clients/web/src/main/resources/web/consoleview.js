@@ -4,7 +4,7 @@
 // and the computeds the template renders through console.js's pure models. Spread into the root
 // component, so `this` is the root component.
 
-import { get } from './api.js';
+import { capList, get } from './api.js';
 import {
   currentEpisode,
   hostLabel,
@@ -144,7 +144,7 @@ export const consoleMethods = {
     return this.fetchOnce('sessions', async () => {
       try {
         const body = await get('/api/sessions?limit=' + RAIL_LIMIT);
-        this.sessions = (body && body.sessions) || [];
+        this.sessions = capList((body && body.sessions) || []);
         const first = this.sessionRail[0];
         if (!this.sessions.some((s) => s.id === this.consoleAutoSession)) this.consoleAutoSession = first ? first.id : null;
       } catch (e) {

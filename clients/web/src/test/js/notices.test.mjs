@@ -144,3 +144,11 @@ test('a decision this tab opens by itself, or already shows, never raises the co
   typing.noticeEvent({ type: SSE.notice, data: { change: 'added', notice: notice(9), seenUpTo: 0, unseen: 1 } });
   assert.equal(typing.unseen, 1, 'waiting to open: it counts until shown');
 });
+
+test('the notices list holds at most the list cap, newest kept', async () => {
+  const { LIST_CAP } = await spa('api.js');
+  let state = noticeData();
+  for (let at = 1; at <= LIST_CAP + 3; at++) state = foldNotice(state, { change: 'added', notice: notice(at), seenUpTo: 0 });
+  assert.equal(state.notices.length, LIST_CAP);
+  assert.equal(state.notices[0].at, LIST_CAP + 3);
+});

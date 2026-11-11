@@ -511,35 +511,31 @@ export function weightDenominator(card) {
  * repeatedly (on load and after every reconnect): a run already present as a live SSE card is not
  * duplicated — instead the live card is tagged with its `historyId` so it becomes deletable. Live
  * cards key on the numeric engine request id (which resets per engine start); history entries key on
- * the durable string id, so the two never collide and are reconciled here by (dir, buildNumber) —
- * structurally, since `finishedAt` on a live card is browser receipt time while the record carries
- * engine time, and clock skew on a remote dashboard would otherwise duplicate every finished build
- *. The ±2s time window remains only as a fallback for cards without a buildNumber.
+ * the durable string id, so the two never collide. A finished record is reconciled by (dir,
+ * buildNumber) — structurally, since `finishedAt` on a live card is browser receipt time while the
+ * record carries engine time, and clock skew on a remote dashboard would otherwise duplicate every
+ * finished build; the ±2s time window remains only as a fallback for cards without a buildNumber.
+ * A running stub is matched by its request id alone.
  */
 export function seedFromHistory(cards, records) {
   for (const rec of records || []) {
     if (!rec || !rec.id) continue;
+    const stubId = rec.running ? rec.jid ?? rec.requestId : null;
     const live = cards.find(
       (c) =>
         c.historyId === rec.id ||
-        // A stale running:true stub (journal write racing the reconcile) must not rebind a
-        // just-finished live card and flip it back to running — hence the state agreement guard.
-        (typeof c.id === 'number' &&
+        // A running stub is the engine's in-flight request: it matches the card of that request
+        // and nothing else, since two runs of one project can share a directory and a number.
+        (rec.running && typeof stubId === 'number' && stubId > 0 && c.id === stubId) ||
+        (!rec.running &&
+          typeof c.id === 'number' &&
           c.dir === rec.dir &&
-          rec.buildNumber &&
-          c.buildNumber === rec.buildNumber &&
-          (!rec.running || c.state === 'running')) ||
-        (typeof c.id === 'number' &&
-          c.dir === rec.dir &&
-          c.finishedAt != null &&
-          Math.abs(c.finishedAt - rec.finishedAt) < 2000) ||
-        // match a live SSE card to a durable in-flight journal row
-        (c.state === 'running' &&
-          rec.running &&
-          c.dir === rec.dir &&
-          rec.buildNumber &&
-          c.buildNumber === rec.buildNumber),
+          ((rec.buildNumber && c.buildNumber === rec.buildNumber) ||
+            (c.finishedAt != null && Math.abs(c.finishedAt - rec.finishedAt) < 2000))),
     );
+    // A running stub for a request this tab already saw finish is stale (the journal write raced
+    // the reconcile): it must neither flip the card back to running nor add a phantom row.
+    if (live && rec.running && live.state !== 'running') continue;
     if (live) {
       live.historyId = rec.id; // reconcile: the live card is this run — make it deletable
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
@@ -590,15 +586,6 @@ export function seedFromHistory(cards, records) {
       continue;
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
-    // A running stub for a run this tab already saw finish is stale (reconcile raced the journal
-    // write) — seeding it would add a phantom running row next to the finished card.
-    if (
-      rec.running &&
-      rec.buildNumber &&
-      cards.some((c) => typeof c.id === 'number' && c.dir === rec.dir && c.buildNumber === rec.buildNumber)
-    ) {
-      continue;
-    }
     cards.push(historyCard(rec));
   }
   cards.sort((a, b) => (b.finishedAt ?? b.startedAt ?? 0) - (a.finishedAt ?? a.startedAt ?? 0));
