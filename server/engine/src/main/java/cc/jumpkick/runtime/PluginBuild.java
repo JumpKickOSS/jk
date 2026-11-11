@@ -10,6 +10,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -156,8 +157,9 @@ public final class PluginBuild {
             } finally {
                 Files.deleteIfExists(spec);
             }
-            Files.createDirectories(cacheFile.getParent());
-            Files.write(cacheFile, lines, StandardCharsets.UTF_8);
+            StringBuilder text = new StringBuilder();
+            for (String line : lines) text.append(line).append('\n');
+            AtomicWrites.replace(cacheFile, text.toString());
         }
 
         return PluginDeclarations.decode(lines);
