@@ -946,6 +946,9 @@ public final class PlannerNative {
         if (s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty) {
             return run("rebuild · compile changed");
         }
+        // The image links the runtime siblings' jars by their bytes: one rebuilt this build moves
+        // the key even when this module's own classes and jar stay as they are.
+        if (s.runtimeDepDirty) return run("rebuild · runtime dependency changed");
         if (PluginBuild.shape(s.project, s.dir)
                 .map(PluginDescriptor.Packaging::classesRun)
                 .orElse(false)) return run("native-image · classes-run packager");

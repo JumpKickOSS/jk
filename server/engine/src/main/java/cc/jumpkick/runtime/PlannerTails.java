@@ -458,7 +458,8 @@ public final class PlannerTails {
                 s.compileMainKey,
                 s.restored,
                 s.knownResourceDrift,
-                s.compileDirty);
+                // The assembly embeds the runtime siblings' jars by their bytes.
+                s.compileDirty || s.runtimeDepDirty);
     }
 
     /** package-javadoc's price, under the key {@link PackagingKeys#javadoc} derives for the live step. */

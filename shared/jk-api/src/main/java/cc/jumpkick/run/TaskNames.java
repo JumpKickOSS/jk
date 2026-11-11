@@ -63,6 +63,13 @@ public final class TaskNames {
     /** Forecast-only: a sibling ordered-after this module is rebuilding. */
     public static final String ORDER_CHECK = "order-check";
 
+    /**
+     * Forecast-only: a compile-scope sibling is rebuilding and every step of this module still hits
+     * (the sibling's edit leaves its API alone). The module schedules so the build's own keys verify
+     * that against the sibling's real output, and is priced as the check it almost surely is.
+     */
+    public static final String DEPENDENCY_CHECK = "dependency-check";
+
     /** Forecast-only: outputs restored from the action cache instead of rebuilt. */
     public static final String RESTORE_OUTPUTS = "restore-outputs";
     /** Project build-logic, as the action-cache input label for one logic task. */

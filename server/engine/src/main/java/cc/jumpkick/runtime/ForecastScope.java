@@ -79,6 +79,12 @@ public final class ForecastScope implements StepForecast.Scope {
 
     final boolean compileDepDirty;
     final boolean testDepDirty;
+    /**
+     * A dirty sibling on this module's runtime classpath: its jar's bytes change, so whatever keys
+     * on those bytes (an assembly, a native image) reruns even when this module's own compile, keyed
+     * on the sibling's ABI, still hits.
+     */
+    final boolean runtimeDepDirty;
 
     /** What this module's dirty compile-scope dependencies' edits look like, for its compile texts. */
     final TaskForecaster.DepHint depHint;
@@ -187,10 +193,13 @@ public final class ForecastScope implements StepForecast.Scope {
         this.lockFile = LockPaths.lockFile(dir);
         this.compileDepDirty = dep.compileDepDirty();
         this.testDepDirty = dep.testDepDirty();
+        this.runtimeDepDirty = dep.runtimeDepDirty();
         this.depHint = TaskForecaster.depHint(dep.compileDeps(), hints);
-        // Only compile-scope dirty siblings force main recompile (and package/native cascade).
-        // Test-only siblings (cli's jk-engine test-dep) leave main clean.
-        this.compileDirty = compileDepDirty || force;
+        // Whether this module's classes change is the compile forecasts' verdict, set as each
+        // prices its step: a dirty compile-scope sibling whose edit leaves its ABI alone leaves the
+        // ABI-keyed compile hitting, and then nothing downstream of the classes (package, javadoc,
+        // compile-test) moves. Only a forced rebuild decides it before them.
+        this.compileDirty = force;
         this.nodeModule = NodeShape.kind(project, dir) == NodeShape.Kind.MODULE;
     }
 
@@ -747,6 +756,24 @@ public final class ForecastScope implements StepForecast.Scope {
         if (dep.orderDepDirty() && allCached() && moduleVerdicts.isEmpty()) {
             moduleVerdicts.add(new TaskForecast.Task(
                     TaskNames.ORDER_CHECK, TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
+        }
+        dependencyCheck();
+    }
+
+    /**
+     * A compile-scope sibling is rebuilding and every step here still hits: its edit leaves its API
+     * alone (the source-diff hint), so this module's ABI-keyed compile and everything keyed on its
+     * classes stay as they are. That is a forecast, never a reason to skip the module: it schedules,
+     * so the build's own keys check the sibling's real output (a constant inlined across modules
+     * moves no declaration the hint reads), and it is priced as the check.
+     */
+    private void dependencyCheck() {
+        if (dep.compileDepDirty() && allCached() && moduleVerdicts.isEmpty()) {
+            moduleVerdicts.add(new TaskForecast.Task(
+                    TaskNames.DEPENDENCY_CHECK,
+                    TaskForecast.Status.RUN,
+                    depHint.text().isEmpty() ? "dependency rebuilt · keys re-check it" : depHint.text(),
+                    null));
         }
     }
 

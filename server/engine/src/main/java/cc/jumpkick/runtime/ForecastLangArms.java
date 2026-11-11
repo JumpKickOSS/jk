@@ -147,7 +147,7 @@ final class ForecastLangArms {
         }
         return new LangStep(
                 ForecastSteps.langCompileStep(
-                        TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why, depHint),
+                        TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty, force, why, depHint),
                 key);
     }
 
@@ -257,7 +257,7 @@ final class ForecastLangArms {
         String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, null, ActionKey.snapshotInputs(req));
         return new LangStep(
                 ForecastSteps.langCompileStep(
-                        TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint),
+                        TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty, force, why, depHint),
                 key);
     }
 }

@@ -193,12 +193,16 @@ final class PlannerTestForecast {
         }
         // A sibling on the test classpath is rebuilding: the suite re-runs even when the main
         // compile stays cached.
-        if (s.compileDirty || s.testDirty || s.testDepDirty || s.kspRuns()) {
+        // The runtime classpath is keyed on full bytes where the compile is keyed on ABI: a sibling
+        // rebuilt with its API unchanged leaves this module's compile cached and still reruns its
+        // suite (compileDepDirty).
+        if (s.compileDirty || s.compileDepDirty || s.testDirty || s.testDepDirty || s.kspRuns()) {
             // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
-            // change: the runtime classpath is keyed on full bytes where the compile is keyed on
-            // ABI, and why-rebuilt must be able to tell the two apart.
-            boolean jarOnly = !s.testDirty && (s.depOnlyDirty || (!s.compileDirty && s.testDepDirty));
-            String why = jarOnly ? "run tests · dependency jar changed · " + tests : "run tests · " + tests;
+            // change, so why-rebuilt can tell the two apart.
+            boolean jarOnly = !s.testDirty && !s.compileDirty && (s.compileDepDirty || s.testDepDirty);
+            String why = jarOnly
+                    ? "run tests · " + TaskForecast.DEPENDENCY_JAR_CHANGED + " · " + tests
+                    : "run tests · " + tests;
             return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, why, null);
         }
         List<Path> testRt =

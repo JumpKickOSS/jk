@@ -208,7 +208,7 @@ class BuildServiceEtaTest {
     }
 
     @Test
-    void eta_discounts_cascade_and_resource_suites_keeps_cli_tests_not_native() throws Exception {
+    void eta_discounts_cascade_and_resource_suites_and_prices_a_native_image_that_relinks() throws Exception {
         Path core = Path.of("/core");
         Path a = Path.of("/a");
         Path cli = Path.of("/cli");
@@ -300,10 +300,11 @@ class BuildServiceEtaTest {
         // Engine local compile keeps substantial weight.
         assertThat(engineCost.weight()).isGreaterThan(cascadeCost.weight() * 5);
         assertThat(engineCost.testWeight()).isGreaterThan(0);
-        // Cli: full tests (heavy-tail signal), native cascade-discounted (not full ~30s wall).
+        // Cli: full tests (heavy-tail signal), and its native image priced: the forecast runs it
+        // only when cli's own jar or a runtime sibling's jar changes bytes, which is when the build
+        // relinks it (a discount here priced real multi-minute links at nothing).
         assertThat(cliCost.testWeight()).isGreaterThan(0);
-        // Without native wall, cli weight is dominated by tests — close to testWeight.
-        assertThat(cliCost.weight()).isLessThan(cliCost.testWeight() + 30);
+        assertThat(cliCost.weight()).isGreaterThan(cliCost.testWeight());
     }
 
     /**

@@ -62,8 +62,20 @@ class TaskForecasterHintTextTest {
                 TaskForecaster.depHint(List.of(LIB), Map.of(LIB, hint("lib", SourceApiIndex.Kind.BODY_ONLY)));
         TaskForecast.Task depDirtyHit =
                 ForecastSteps.langCompileStep("compile-kotlin", true, "0123456789abcdef", 3, true, "", body);
-        assertThat(depDirtyHit.status()).isEqualTo(TaskForecast.Status.RUN);
+        assertThat(depDirtyHit.status())
+                .as("every dirty dependency body-only: the ABI-keyed compile still hits")
+                .isEqualTo(TaskForecast.Status.CACHED);
         assertThat(depDirtyHit.text()).isEqualTo(body.text());
+        TaskForecaster.DepHint api = TaskForecaster.depHint(
+                List.of(LIB), Map.of(LIB, hint("lib", SourceApiIndex.Kind.API_CHANGED, "src/com/example/Lib.java")));
+        assertThat(ForecastSteps.langCompileStep("compile-kotlin", true, "0123456789abcdef", 3, true, "", api)
+                        .status())
+                .as("an API change keeps it running until the dependency compiles")
+                .isEqualTo(TaskForecast.Status.RUN);
+        assertThat(ForecastSteps.langCompileStep("compile-kotlin", true, "0123456789abcdef", 3, false, true, "", body)
+                        .status())
+                .as("a forced rebuild always runs")
+                .isEqualTo(TaskForecast.Status.RUN);
         TaskForecast.Task hit = ForecastSteps.langCompileStep(
                 "compile-kotlin", true, "0123456789abcdef", 3, false, "", TaskForecaster.DepHint.NONE);
         assertThat(hit.cached()).isTrue();

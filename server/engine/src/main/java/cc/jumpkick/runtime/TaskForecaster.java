@@ -339,8 +339,17 @@ public final class TaskForecaster {
      * consumption the classpath cannot express). Pricing nothing keeps ETA honest; skipping
      * the module entirely shipped stale outputs.
      */
-    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty, List<Path> compileDeps) {
-        static final DepDirtiness NONE = new DepDirtiness(false, false, false, List.of());
+    record DepDirtiness(
+            boolean compileDepDirty,
+            boolean testDepDirty,
+            boolean orderDepDirty,
+            List<Path> compileDeps,
+            boolean runtimeDepDirty) {
+        static final DepDirtiness NONE = new DepDirtiness(false, false, false, List.of(), false);
+
+        DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty, List<Path> compileDeps) {
+            this(compileDepDirty, testDepDirty, orderDepDirty, compileDeps, compileDepDirty);
+        }
 
         DepDirtiness {
             compileDeps = List.copyOf(compileDeps);
@@ -407,6 +416,7 @@ public final class TaskForecaster {
         boolean compile = false;
         boolean test = false;
         boolean order = false;
+        boolean runtime = false;
         List<Path> compileDeps = new ArrayList<>();
         JkBuild m = u.manifest();
         for (Path dep : prereqs) {
@@ -419,6 +429,8 @@ public final class TaskForecaster {
                     if (hit == null || !hit.equals(dep)) continue;
                     if (scope == Scope.TEST || scope == Scope.TEST_DEV) viaTest = true;
                     else viaCompile = true;
+                    // On the runtime classpath: what an assembly embeds and a native image links.
+                    if (scope == Scope.MAIN || scope == Scope.EXPORT || scope == Scope.RUNTIME) runtime = true;
                 }
             }
             if (viaCompile) {
@@ -430,7 +442,7 @@ public final class TaskForecaster {
                 order = true; // order-after-only prereq: schedule, price nothing
             }
         }
-        return new DepDirtiness(compile, test, order, compileDeps);
+        return new DepDirtiness(compile, test, order, compileDeps, runtime);
     }
 
     /**

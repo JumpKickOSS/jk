@@ -87,7 +87,18 @@ final class ForecastSteps {
      */
     static TaskForecast.Task compileStep(
             String name, JavaCompile.Prediction pred, boolean compileDepDirty, CompileRequest request, DepHint hint) {
-        TaskForecast.Task step = compileStep(name, pred, compileDepDirty, hint);
+        return compileStep(name, pred, compileDepDirty, false, request, hint);
+    }
+
+    /** As above, with a forced rebuild ({@code force}) told apart from a dirty dependency. */
+    static TaskForecast.Task compileStep(
+            String name,
+            JavaCompile.Prediction pred,
+            boolean compileDepDirty,
+            boolean force,
+            CompileRequest request,
+            DepHint hint) {
+        TaskForecast.Task step = compileStep(name, pred, compileDepDirty, force, hint);
         List<String> parts = new ArrayList<>();
         if (!step.text().isEmpty()) parts.add(step.text());
         List<String> plugins = PlannerCompile.pluginNames(request);
@@ -109,22 +120,32 @@ final class ForecastSteps {
         return named.isEmpty() ? "" : "processors: " + String.join(", ", named);
     }
 
+    /**
+     * A compile whose key hits against its dependencies' current outputs. The key reads the
+     * classpath by ABI, so a dependency rebuilt with its API unchanged leaves it hitting: when every
+     * dirty compile-scope dependency's edit is body-only (the source-diff hint), the step is
+     * forecast cached and says so. An API change, or an edit the hint cannot classify, keeps it
+     * running until the dependency compiles; a forced rebuild always runs.
+     */
+    static TaskForecast.Task dependencyDirtyHit(
+            String name, boolean compileDepDirty, boolean force, DepHint hint, String key) {
+        if (force) return new TaskForecast.Task(name, TaskForecast.Status.RUN, "rebuild", null);
+        if (!compileDepDirty) return new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(key));
+        if (hint.kind() == SourceApiIndex.Kind.BODY_ONLY) {
+            return new TaskForecast.Task(name, TaskForecast.Status.CACHED, hint.text(), key8(key));
+        }
+        return new TaskForecast.Task(name, TaskForecast.Status.RUN, dependencyChanged(hint), null);
+    }
+
     /** The text of a hit whose compile-scope dependency is rebuilding: the hint when there is one. */
     static String dependencyChanged(DepHint hint) {
         return hint.text().isEmpty() ? "recompile · dependency changed" : hint.text();
     }
 
     private static TaskForecast.Task compileStep(
-            String name, JavaCompile.Prediction pred, boolean compileDepDirty, DepHint hint) {
+            String name, JavaCompile.Prediction pred, boolean compileDepDirty, boolean force, DepHint hint) {
         return switch (pred.outcome()) {
-            case CACHE_HIT ->
-                // Only force RUN when a *compile-scope* sibling is dirty: the key was computed
-                // against the sibling's current output, so the step stays scheduled and the build's
-                // own key decides. The hint says which way that is likely to go. Test-only siblings
-                // never reach here as compileDepDirty.
-                compileDepDirty
-                        ? new TaskForecast.Task(name, TaskForecast.Status.RUN, dependencyChanged(hint), null)
-                        : new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(pred.actionKey()));
+            case CACHE_HIT -> dependencyDirtyHit(name, compileDepDirty, force, hint, pred.actionKey());
             case INCREMENTAL -> {
                 String detail = pred.reason() != null && !pred.reason().isBlank()
                         ? pred.reason()
@@ -210,10 +231,20 @@ final class ForecastSteps {
             boolean compileDepDirty,
             String missReason,
             DepHint hint) {
-        if (hit && compileDepDirty) {
-            return new TaskForecast.Task(name, TaskForecast.Status.RUN, dependencyChanged(hint), null);
-        }
-        if (hit) return new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(key));
+        return langCompileStep(name, hit, key, sourceCount, compileDepDirty, false, missReason, hint);
+    }
+
+    /** As above, with a forced rebuild ({@code force}) told apart from a dirty dependency. */
+    static TaskForecast.Task langCompileStep(
+            String name,
+            boolean hit,
+            String key,
+            int sourceCount,
+            boolean compileDepDirty,
+            boolean force,
+            String missReason,
+            DepHint hint) {
+        if (hit) return dependencyDirtyHit(name, compileDepDirty, force, hint, key);
         String text = "full compile · " + count(sourceCount, "source");
         if (!missReason.isBlank()) text = text + " · " + missReason;
         return new TaskForecast.Task(name, TaskForecast.Status.FULL, text, null);

@@ -527,19 +527,21 @@ public final class BuildEta {
         if (!localCompile && isCascadeForcedStep(s) && isCompileOrPackageStep(name)) {
             return true;
         }
-        // Cascade-forced native ("rebuild · compile changed") without local compile — cli native
-        // often SKIPPED while tests still run (dogfood: priced ~34s native, actual SKIPPED).
-        if (!localCompile && isCascadeForcedStep(s) && TaskNames.NATIVE_IMAGE.equals(name)) {
-            return true;
-        }
+        // native-image is never discounted here: its forecast runs it only when its own jar or a
+        // runtime sibling's jar changes bytes, which is when the build relinks it.
         // MAIN-resource drift schedules copy/package only — never a full compile/test suite
         // (dogfood-validated discount; the test-resource case exited above).
         if (!localCompile && resourceDrift && (isCompileStepName(name) || TaskNames.RUN_TESTS.equals(name))) {
             return true;
         }
-        // Pure cascade module: discount tests. Cli keeps tests when a heavy tail is forecast
-        // (test-dep on a dirty engine) even if native itself is discounted.
-        if (!localCompile && !keepFullTests && TaskNames.RUN_TESTS.equals(name)) {
+        // A suite forecast to run with nothing else in the module changed and no cause named is a
+        // stamp the forecast could not reproduce, priced as a recheck. A suite rerun because a
+        // sibling's jar changes bytes is real work and keeps its wall: its key hashes the runtime
+        // classpath's full bytes, so a sibling rebuilt with its API unchanged still reruns it.
+        if (!localCompile
+                && !keepFullTests
+                && TaskNames.RUN_TESTS.equals(name)
+                && (s.text() == null || !s.text().contains(TaskForecast.DEPENDENCY_JAR_CHANGED))) {
             return true;
         }
         return false;

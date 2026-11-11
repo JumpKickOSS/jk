@@ -29,6 +29,12 @@ public final class TaskForecast {
     /** As {@link #LIKELY_UP_TO_DATE} when a dependency's declarations moved: the key is expected to miss. */
     public static final String LIKELY_RECOMPILE = "likely recompile";
 
+    /**
+     * A suite that reruns because a sibling's jar changes bytes, not for anything of its own: real
+     * work, priced as the suite (the runtime classpath is keyed on full bytes).
+     */
+    public static final String DEPENDENCY_JAR_CHANGED = "dependency jar changed";
+
     /** Detail of a step that runs only if this module's own compile does: its dirtiness is a dependency's. */
     public static final String ONLY_IF_COMPILE_RUNS = "only if the compile runs";
 

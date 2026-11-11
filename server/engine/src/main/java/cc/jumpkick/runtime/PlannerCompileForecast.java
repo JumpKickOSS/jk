@@ -165,7 +165,7 @@ final class PlannerCompileForecast {
                         .orElse(null)
                 : pred.actionKey();
         TaskForecast.Task step =
-                ForecastSteps.compileStep(TaskNames.COMPILE_JAVA, pred, s.compileDepDirty || s.force, req, s.depHint);
+                ForecastSteps.compileStep(TaskNames.COMPILE_JAVA, pred, s.compileDepDirty, s.force, req, s.depHint);
         if (!step.cached()) s.compileDirty = true;
         // The key hit against the dependency's current output: nothing of this module's own moved,
         // and its package and tests are dirty only for the sibling's jar bytes.
