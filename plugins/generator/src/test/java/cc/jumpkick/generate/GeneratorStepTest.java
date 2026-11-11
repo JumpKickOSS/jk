@@ -307,4 +307,26 @@ class GeneratorStepTest {
                 .isEqualTo("the spec has 2 errors");
         assertThat(GeneratorStep.failureCause(List.of("[main] INFO starting"))).isNull();
     }
+
+    /** What the tool also reads is keyed with the inputs' bases, and never reaches its command line. */
+    @Test
+    void reads_join_the_key_but_not_the_arguments() {
+        GeneratorEntry entry = new GeneratorEntry(
+                "api",
+                "api",
+                "com.example:stub-gen:1.0",
+                null,
+                List.of("api/openapi.yaml"),
+                null,
+                List.of("-o", "${out}", "${inputs}"),
+                GeneratorEntry.Contribution.SOURCES,
+                "generated/api",
+                List.of(),
+                List.of(),
+                null,
+                List.of("api"));
+
+        assertThat(entry.inputBases()).containsExactly("api/openapi.yaml", "api");
+        assertThat(entry.inputs()).containsExactly("api/openapi.yaml");
+    }
 }

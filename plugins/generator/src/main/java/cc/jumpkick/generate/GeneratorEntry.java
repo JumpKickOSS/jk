@@ -38,6 +38,8 @@ import org.jspecify.annotations.Nullable;
  *     writes beside its contribution (DGS codegen's {@code generated-examples})
  * @param keyProbe what the tool reads that no file holds (a live schema), measured into the step's
  *     key before it is looked up; with one, inputs that match no file do not skip the tool
+ * @param reads module-relative files or directories the tool also reads (an import directory, the
+ *     files a spec's references reach): in the step's key, never on its command line
  */
 public record GeneratorEntry(
         String name,
@@ -51,7 +53,8 @@ public record GeneratorEntry(
         String out,
         List<Path> classpath,
         List<String> discard,
-        @Nullable KeyProbe keyProbe) {
+        @Nullable KeyProbe keyProbe,
+        List<String> reads) {
 
     /** Where a generator's output joins the module. */
     public enum Contribution {
@@ -77,12 +80,43 @@ public record GeneratorEntry(
         args = List.copyOf(args);
         classpath = List.copyOf(classpath);
         discard = List.copyOf(discard);
+        reads = List.copyOf(reads);
         if (inputs.isEmpty() && unpack == null && keyProbe == null) {
             throw new IllegalArgumentException("[generate." + name + "] declares no inputs; set inputs or unpack");
         }
         if (toolArtifact == null && (main == null || classpath.isEmpty())) {
             throw new IllegalArgumentException("[generate." + name + "] names no tool; set main and its classpath");
         }
+    }
+
+    /** An entry whose tool reads nothing beyond its {@code inputs}. */
+    public GeneratorEntry(
+            String name,
+            @Nullable String toolArtifact,
+            @Nullable String toolCoordinate,
+            @Nullable String main,
+            List<String> inputs,
+            @Nullable String unpack,
+            List<String> args,
+            Contribution contributes,
+            String out,
+            List<Path> classpath,
+            List<String> discard,
+            @Nullable KeyProbe keyProbe) {
+        this(
+                name,
+                toolArtifact,
+                toolCoordinate,
+                main,
+                inputs,
+                unpack,
+                args,
+                contributes,
+                out,
+                classpath,
+                discard,
+                keyProbe,
+                List.of());
     }
 
     /** The entry as its validated {@code [generate.<name>]} table reads; the tool artifact is the name. */
@@ -138,10 +172,11 @@ public record GeneratorEntry(
         };
     }
 
-    /** Each input's path up to its first glob segment, deduplicated in declaration order. */
+    /** Each input's path up to its first glob segment, then what the tool also reads, deduplicated in order. */
     List<String> inputBases() {
         LinkedHashSet<String> bases = new LinkedHashSet<>();
         for (String input : inputs) bases.add(Inputs.globBase(input));
+        bases.addAll(reads);
         return List.copyOf(bases);
     }
 }

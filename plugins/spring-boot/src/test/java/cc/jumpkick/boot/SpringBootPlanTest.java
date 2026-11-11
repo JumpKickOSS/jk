@@ -52,7 +52,15 @@ class SpringBootPlanTest {
     void aot_on_declares_the_spring_aot_step(@TempDir Path dir) throws Exception {
         String task = aotTask(describe(dir, true, false)).orElseThrow(() -> new AssertionError("no spring-aot task"));
         assertThat(arrayOf(task, "requires")).isEmpty();
-        assertThat(arrayOf(task, "inputs")).containsExactly("classes", "runtime-classpath", "config");
+        assertThat(arrayOf(task, "inputs"))
+                .containsExactly(
+                        "classes",
+                        "runtime-classpath",
+                        "config",
+                        "project:application.properties",
+                        "project:application.yml",
+                        "project:application.yaml",
+                        "project:config");
         assertThat(arrayOf(task, "outputs")).containsExactly("classes", "resources", "sources");
         assertThat(arrayOf(task, "contributesClasses")).containsExactly("classes");
         assertThat(arrayOf(task, "contributesResources")).containsExactly("resources");

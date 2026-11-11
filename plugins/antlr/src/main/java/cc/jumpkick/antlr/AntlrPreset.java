@@ -75,7 +75,9 @@ public final class AntlrPreset implements Plugin, BuildExtension {
                 "generated/antlr",
                 classpath,
                 List.of(),
-                null);
+                null,
+                // Imported grammars are read from lib; one outside src is no input's base.
+                Path.of(lib).normalize().startsWith(Path.of(src).normalize()) ? List.of() : List.of(lib));
     }
 
     /** This worker's own jar (or classes directory), which carries {@link AntlrMain}. */

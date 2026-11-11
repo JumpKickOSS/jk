@@ -59,8 +59,17 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         PluginConfig boot = ctx.config();
         // AOT gate: explicit aot = true, or auto when [native] is declared.
         if (boot.bool("aot").orElse(ctx.project().nativeDeclared())) {
+            // The AOT run forks in the module directory, and Spring reads application.* from it
+            // and from config/ there: those are keyed, present or not.
             ctx.named("spring-aot")
-                    .inputs(In.classes(), In.runtimeClasspath(), In.config())
+                    .inputs(
+                            In.classes(),
+                            In.runtimeClasspath(),
+                            In.config(),
+                            In.projectFiles("application.properties"),
+                            In.projectFiles("application.yml"),
+                            In.projectFiles("application.yaml"),
+                            In.projectFiles("config"))
                     .outputs("classes", "resources", "sources")
                     .contributesClasses("classes")
                     .contributesResources("resources")

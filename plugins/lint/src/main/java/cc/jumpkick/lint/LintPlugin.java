@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -123,12 +124,26 @@ public final class LintPlugin implements Plugin, BuildExtension {
      * checkstyle-header} tool and keys the step on its content — and one inside a {@code
      * checkstyle-classpath} jar rides that jar's hash.
      */
+    /** A property value that names a rule-set side file by its extension, not a directory or a plain value. */
+    static boolean namesConfigFile(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".xml")
+                || lower.endsWith(".properties")
+                || lower.endsWith(".txt")
+                || lower.endsWith(".header");
+    }
+
     static List<String> configFiles(LintTool tool, PluginConfig config) {
         return switch (tool) {
             case CHECKSTYLE -> {
                 List<String> files = new ArrayList<>();
                 for (String key : List.of("checkstyle", "checkstyle-suppressions", "checkstyle-header")) {
                     config.stringOpt(key).filter(c -> !isUrl(c)).ifPresent(files::add);
+                }
+                // A property the rule set expands can name a file it reads (an import-control or
+                // suppression filter); one that names a directory (a build dir) stays out of the key.
+                for (String value : config.stringMap("checkstyle-properties").values()) {
+                    if (!isUrl(value) && namesConfigFile(value)) files.add(value);
                 }
                 yield files;
             }

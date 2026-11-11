@@ -2,6 +2,7 @@
 package cc.jumpkick.quarkus;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.plugin.Plugin;
@@ -90,8 +91,16 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         // native-sources is the directory Quarkus writes when asked for a native build without
         // running native-image: the runner jar, its lib/, and the argument list it computed.
         // Declared as an output so the engine can find it and the action cache covers it.
+        // The augment forks in the module directory, where Quarkus also reads .env and
+        // config/application.properties: both are keyed, present or not.
         ctx.named(AUGMENT_STEP)
-                .inputs(In.classes(), In.runtimeEntries(), In.config(), In.repositories())
+                .inputs(
+                        In.classes(),
+                        In.runtimeEntries(),
+                        In.config(),
+                        In.repositories(),
+                        In.projectFiles(ManifestNames.ENV),
+                        In.projectFiles("config"))
                 .outputs("quarkus-app", NATIVE_SOURCES)
                 .run(QuarkusPlugin::runAugment);
     }

@@ -187,9 +187,23 @@ class OpenApiPresetPlanTest {
                 .orElseThrow();
         assertThat(task)
                 .contains("\"name\":\"generate-openapi\"")
-                .contains("\"inputs\":[\"project:api/openapi.yaml\",\"config\"]")
+                .contains("\"inputs\":[\"project:api/openapi.yaml\",\"project:api\",\"config\"]")
                 .contains("\"outputs\":[\"generated/openapi\"]")
                 .contains("\"contributesSources\":[\"generated/openapi\"]")
                 .contains("\"stage\":\"generate\"");
+    }
+
+    /** A single-file spec's $refs reach its directory, which is in the key; a glob's base already is. */
+    @Test
+    void a_single_file_spec_keys_its_directory_for_the_files_it_references() {
+        assertThat(OpenApiPreset.entry(
+                                new PluginConfig("openapi", Map.of("spec", "api/openapi.yaml", "generator", "spring")),
+                                PROJECT)
+                        .reads())
+                .containsExactly("api");
+        assertThat(OpenApiPreset.referencedFrom("api/*.yaml")).isEmpty();
+        assertThat(OpenApiPreset.referencedFrom("openapi.yaml"))
+                .as("the module dir holds outputs")
+                .isEmpty();
     }
 }

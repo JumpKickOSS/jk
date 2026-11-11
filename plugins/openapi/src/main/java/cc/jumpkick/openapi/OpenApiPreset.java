@@ -123,18 +123,31 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
             args.add("--additional-properties");
             args.add(String.join(",", pairs));
         }
+        String spec = config.stringOpt("spec").orElse("api/*.yaml");
         return new GeneratorEntry(
                 "openapi",
                 TOOL,
                 TOOL_COORDINATE,
                 null,
-                List.of(config.stringOpt("spec").orElse("api/*.yaml")),
+                List.of(spec),
                 null,
                 args,
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/openapi",
                 List.of(),
                 List.of(),
-                null);
+                null,
+                referencedFrom(spec));
+    }
+
+    /**
+     * What a spec's {@code $ref}s can reach beyond the spec itself: a single file's directory. A
+     * glob's base is already the whole directory in the key; a spec at the module root adds
+     * nothing, since the module directory holds the build's own outputs and would miss every time.
+     */
+    static List<String> referencedFrom(String spec) {
+        if (spec.contains("*") || spec.contains("?") || !spec.contains("/")) return List.of();
+        String dir = spec.substring(0, spec.lastIndexOf('/'));
+        return dir.isEmpty() || dir.equals(".") ? List.of() : List.of(dir);
     }
 }

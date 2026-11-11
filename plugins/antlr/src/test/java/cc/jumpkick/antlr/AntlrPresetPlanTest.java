@@ -100,4 +100,16 @@ class AntlrPresetPlanTest {
         assertThat(AntlrPreset.ownJar()).singleElement().satisfies(p -> assertThat(p)
                 .exists());
     }
+
+    /** Imported grammars outside src are read by the tool, so their directory is in the key. */
+    @Test
+    void a_lib_outside_src_is_in_the_key() {
+        assertThat(AntlrPreset.entry(new PluginConfig("antlr", Map.of("lib", "grammars/common")), List.of(SHIM))
+                        .reads())
+                .containsExactly("grammars/common");
+        assertThat(AntlrPreset.entry(new PluginConfig("antlr", Map.of()), List.of(SHIM))
+                        .reads())
+                .as("the default lib is under src, whose base is already keyed")
+                .isEmpty();
+    }
 }

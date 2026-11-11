@@ -183,4 +183,21 @@ class LintPluginPlanTest {
         assertThat(spec.declaredInputs())
                 .containsExactly(In.projectFiles("src/main/kotlin"), In.classes(), In.config());
     }
+
+    /** A checkstyle property naming a side file the rule set reads is keyed; one naming a directory is not. */
+    @Test
+    void checkstyle_properties_that_name_files_are_keyed() {
+        PluginConfig config = new PluginConfig(
+                "lint",
+                Map.of(
+                        "checkstyle",
+                        "config/checkstyle.xml",
+                        "checkstyle-properties",
+                        Map.of(
+                                "import.control", "config/import-control.xml",
+                                "checkstyle.build.directory", "target")));
+
+        assertThat(LintPlugin.configFiles(LintTool.CHECKSTYLE, config))
+                .containsExactly("config/checkstyle.xml", "config/import-control.xml");
+    }
 }
