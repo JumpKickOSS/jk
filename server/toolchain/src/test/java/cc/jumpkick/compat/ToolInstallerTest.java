@@ -15,12 +15,15 @@ import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -107,6 +110,43 @@ class ToolInstallerTest {
         assertThat(registry.list(BuildTool.MAVEN, true))
                 .extracting(InstalledTool::version)
                 .containsExactly("3.9.9");
+    }
+
+    @Test
+    void the_archive_streams_into_the_tools_tree_under_the_swept_stage_prefix(@TempDir Path tempDir) throws Exception {
+        Path tools = tempDir.resolve("tools");
+        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
+        http.served().put("/maven.zip", zip);
+        List<String> seen = new ArrayList<>();
+        ToolProgress looking = new ToolProgress() {
+            @Override
+            public void downloading(String name, long readBytes, long totalBytes) {
+                try (var children = Files.list(tools.resolve("maven"))) {
+                    children.map(p -> p.getFileName().toString())
+                            .filter(n ->
+                                    Files.isRegularFile(tools.resolve("maven").resolve(n)))
+                            .forEach(seen::add);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+        };
+
+        new ToolInstaller(new Http(), new ToolRegistry(tools))
+                .install(
+                        new ToolDistribution(
+                                BuildTool.MAVEN,
+                                "3.9.9",
+                                http.base().resolve("/maven.zip"),
+                                "zip",
+                                Hashing.sha256Hex(zip)),
+                        false,
+                        looking);
+
+        assertThat(seen).isNotEmpty().allMatch(n -> n.startsWith(ToolRegistry.STAGE_PREFIX));
+        try (var left = Files.list(tools.resolve("maven"))) {
+            assertThat(left.map(p -> p.getFileName().toString()).toList()).containsExactly("3.9.9");
+        }
     }
 
     @Test

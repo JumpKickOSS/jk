@@ -108,7 +108,10 @@ public final class ToolInstaller {
         Files.createDirectories(target.getParent());
 
         ExpectedDigest expected = expectedDigest(dist, acceptUnverified);
-        Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
+        // The archive streams into the tools tree beside the stage, never java.io.tmpdir: one
+        // prefix, so the sweep below reclaims an archive a killed install left as it does a tree.
+        StaleScratch.sweep(target.getParent(), ToolRegistry.STAGE_PREFIX);
+        Path archive = Files.createTempFile(target.getParent(), ToolRegistry.STAGE_PREFIX, "." + dist.archiveType());
         IN_FLIGHT.add(archive);
         try {
             String name = dist.tool().displayName() + " " + dist.version();
@@ -137,7 +140,6 @@ public final class ToolInstaller {
             // — and a cross-filesystem /tmp (tmpfs) can't fail the per-directory moves
             // (Files.move of a non-empty dir across filesystems always throws).
             progress.installing(name);
-            StaleScratch.sweep(target.getParent(), ToolRegistry.STAGE_PREFIX);
             Path stagingDir = Files.createTempDirectory(target.getParent(), ToolRegistry.STAGE_PREFIX);
             IN_FLIGHT.add(stagingDir);
             try {
