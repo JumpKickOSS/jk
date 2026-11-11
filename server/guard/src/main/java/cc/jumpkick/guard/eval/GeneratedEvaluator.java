@@ -36,7 +36,8 @@ final class GeneratedEvaluator implements Evaluator {
         if (!modules.judges(rule, into))
             return Evaluation.notEvaluated(
                     into + " belongs to " + where(modules.moduleOf(into)) + ", outside the rule's scope");
-        Path file = ctx.root().resolve(into);
+        Path file = Extractors.insideRoot(ctx.root(), into);
+        if (file == null) return Evaluation.failed(into + " is outside the workspace");
         if (!Files.isRegularFile(file)) return Evaluation.failed(into + " does not exist");
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
         GeneratedMarkers.Block block = GeneratedMarkers.find(lines, marker);

@@ -3,6 +3,7 @@ package cc.jumpkick.host;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
@@ -436,6 +437,34 @@ public final class CodeText {
             else if (c == ',' && depth == 0) commas++;
         }
         return commas;
+    }
+
+    /**
+     * Line numbers for many offsets into one text: one pass to find the line starts, then a binary
+     * search per lookup, where {@link #lineAt} rescans from the start every time.
+     */
+    public static final class Lines {
+        private final int[] starts;
+
+        private Lines(int[] starts) {
+            this.starts = starts;
+        }
+
+        /** 1-based line number of {@code offset}; the same answer {@link #lineAt} gives. */
+        public int lineAt(int offset) {
+            int i = Arrays.binarySearch(starts, Math.max(0, offset));
+            return i >= 0 ? i + 1 : -i - 1;
+        }
+    }
+
+    /** The line index of {@code text}, for repeated {@link Lines#lineAt} lookups. */
+    public static Lines lines(CharSequence text) {
+        int count = 1;
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') count++;
+        int[] starts = new int[count];
+        int n = 1;
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') starts[n++] = i + 1;
+        return new Lines(starts);
     }
 
     /** 1-based line number of {@code offset} in {@code text}. */

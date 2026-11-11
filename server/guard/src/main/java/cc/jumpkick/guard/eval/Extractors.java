@@ -254,17 +254,25 @@ final class Extractors {
         Pattern p = Pattern.compile(s.arg("pattern", ""));
         int group = Integer.parseInt(s.arg("group", "1"));
         String text = codeView(existing(ctx, file));
+        CodeText.Lines lines = CodeText.lines(text);
         List<Extraction.Row> rows = new ArrayList<>();
-        Matcher m = p.matcher(text);
-        while (m.find()) {
-            String key = m.group(group);
-            if (key == null) continue;
-            Map<String, String> cols = new LinkedHashMap<>();
-            cols.put("match", key);
-            cols.put("line", Integer.toString(CodeText.lineAt(text, m.start())));
-            for (int g = 1; g <= m.groupCount(); g++)
-                cols.put(Integer.toString(g), m.group(g) == null ? "" : m.group(g));
-            rows.add(new Extraction.Row(key, cols));
+        // The pattern comes from a rule, so it runs against the same deadline a text rule's does.
+        Matcher m = p.matcher(new DeadlineCharSequence(text, TextEvaluator.DEADLINE_MILLIS));
+        try {
+            while (m.find()) {
+                String key = m.group(group);
+                if (key == null) continue;
+                Map<String, String> cols = new LinkedHashMap<>();
+                cols.put("match", key);
+                cols.put("line", Integer.toString(lines.lineAt(m.start())));
+                for (int g = 1; g <= m.groupCount(); g++)
+                    cols.put(Integer.toString(g), m.group(g) == null ? "" : m.group(g));
+                rows.add(new Extraction.Row(key, cols));
+            }
+        } catch (DeadlineCharSequence.Expired e) {
+            throw new ExtractorException(e.getMessage() + " on " + file);
+        } catch (StackOverflowError e) {
+            throw new ExtractorException("regex overflowed the stack on " + file);
         }
         return new Extraction(s.label(), file, rows);
     }
@@ -472,9 +480,26 @@ final class Extractors {
 
     private static Path existing(EvalContext ctx, String rel) throws ExtractorException {
         if (rel.isEmpty()) throw new ExtractorException("no file named");
-        Path p = ctx.root().resolve(rel);
+        Path p = insideRoot(ctx.root(), rel);
+        if (p == null) throw new ExtractorException(rel + " is outside the workspace");
         if (!Files.isRegularFile(p)) throw new ExtractorException(rel + " does not exist");
         return p;
+    }
+
+    /**
+     * {@code rel} under {@code root}, or {@code null} when it leaves the root, lexically or through
+     * a link: a rule names the file, and a pack rule must not read {@code ../..} into its details.
+     */
+    static @Nullable Path insideRoot(Path root, String rel) {
+        Path base = root.toAbsolutePath().normalize();
+        Path p = base.resolve(rel).normalize();
+        if (!p.startsWith(base)) return null;
+        if (!Files.exists(p)) return p;
+        try {
+            return p.toRealPath().startsWith(base.toRealPath()) ? p : null;
+        } catch (IOException unreadable) {
+            return null;
+        }
     }
 
     private static Extraction.Row row(String key, String... namesAndValues) {

@@ -141,4 +141,13 @@ class GeneratedEvaluatorTest {
         assertThat(e.outcome()).isEqualTo(Outcome.NOT_EVALUATED);
         assertThat(e.note()).contains("tiers.md belongs to the workspace root, outside the rule's scope");
     }
+
+    @Test
+    void a_target_outside_the_workspace_is_not_read(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(tmp.resolve("tiers.md"), "<!-- tiers:start -->\n<!-- tiers:end -->\n");
+        Evaluation e = ev(run(root, RULE.replace("\"tiers.md\"", "\"../tiers.md\"")), "tier-doc");
+        assertThat(e.outcome()).as(e.note()).isNotEqualTo(Outcome.VIOLATIONS);
+        assertThat(e.observations()).isEmpty();
+    }
 }

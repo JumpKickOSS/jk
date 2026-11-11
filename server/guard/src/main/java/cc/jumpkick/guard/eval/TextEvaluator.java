@@ -276,6 +276,7 @@ final class TextEvaluator implements BatchEvaluator {
     private static void scan(
             Prepared p, TextFiles.Entry f, String original, Object view, boolean inOwner, List<Hit> hits) {
         CharSequence text = new DeadlineCharSequence(viewText(view), DEADLINE_MILLIS);
+        CodeText.Lines lines = null;
         for (Pattern pattern : p.patterns) {
             Matcher m = pattern.matcher(text);
             while (m.find()) {
@@ -285,7 +286,8 @@ final class TextEvaluator implements BatchEvaluator {
                 }
                 int offset = view instanceof Squashed s ? s.originalOffset(m.start()) : m.start();
                 String snippet = text.subSequence(m.start(), m.end()).toString();
-                hits.add(new Hit(f.rel(), CodeText.lineAt(original, offset), snippet, inOwner));
+                if (lines == null) lines = CodeText.lines(original);
+                hits.add(new Hit(f.rel(), lines.lineAt(offset), snippet, inOwner));
             }
         }
     }

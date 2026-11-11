@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.tomlj.Toml;
 
@@ -248,5 +249,23 @@ class ExtractorsTest {
                 .contains("markdown-links");
         assertThat(all).contains("unknown template `ribbon`").contains("arrow-chain");
         assertThat(all).contains("does not compile").contains("group 4 is not in the pattern");
+    }
+
+    @Test
+    void a_rule_named_file_outside_the_workspace_is_not_read(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(tmp.resolve("secret.properties"), "token=hunter2\n");
+        assertThatThrownBy(() -> extract(root, "{ properties-keys = { file = \"../secret.properties\" } }"))
+                .isInstanceOf(ExtractorException.class)
+                .hasMessageContaining("outside the workspace");
+    }
+
+    @Test
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void a_catastrophic_rule_regex_stops_at_the_deadline(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("a.txt"), "a".repeat(40));
+        assertThatThrownBy(() -> extract(root, "{ regex = { file = \"a.txt\", pattern = '^(a+)+\\1b' } }"))
+                .isInstanceOf(ExtractorException.class)
+                .hasMessageContaining("regex exceeded");
     }
 }
