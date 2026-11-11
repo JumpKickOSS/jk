@@ -344,9 +344,9 @@ public final class WarmWorkers {
         volatile boolean yielding;
 
         /**
-         * A run has ended on this worker: what it prints until its next {@code ready} came after that
-         * run's {@code exited} and belongs to no run, least of all the next one, which may be another
-         * project's.
+         * A run has ended on this worker: the chatter it prints before its next protocol line came
+         * after that run's {@code exited} and belongs to no run, least of all the next one, which may
+         * be another project's.
          */
         private volatile boolean served;
 
@@ -400,14 +400,12 @@ public final class WarmWorkers {
                     if (EOF.equals(line)) return died();
                     int at = line.indexOf(prefix);
                     if (stale) {
-                        if (at >= 0
-                                && PluginProtocol.READY.equals(
-                                        Jsonl.str(line.substring(at + prefix.length()), PluginProtocol.T))) {
-                            stale = false;
-                        } else {
+                        if (at < 0) {
                             Log.debug("warm worker " + process.pid() + " after its last run: " + line);
+                            continue;
                         }
-                        continue;
+                        // The worker's ready, or the first protocol line of one that never says it.
+                        stale = false;
                     }
                     if (at < 0) {
                         listener.output(line);
