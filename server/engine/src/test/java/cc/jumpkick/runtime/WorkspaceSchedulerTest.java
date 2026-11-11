@@ -639,4 +639,45 @@ class WorkspaceSchedulerTest {
         // one-unit cap is what shows a gave its slot to b.
         assertThat(completed).containsExactlyInAnyOrder("a", "b");
     }
+
+    /**
+     * A member whose tests read the root, where the root waits for every member to finish: the
+     * member parks on the root and the root is never admitted. The schedule fails naming the root
+     * rather than waiting forever.
+     */
+    @Test
+    void a_member_parked_on_a_root_that_awaits_it_fails_instead_of_hanging() {
+        SiblingArtifacts siblings = new SiblingArtifacts(
+                Map.of(p("m"), Set.of(), p("root"), Set.of(p("m"))),
+                new SiblingArtifacts.TestReads(Map.of(p("m"), Set.of(p("root"))), Map.of(), Map.of()),
+                List.of(p("m"), p("root")));
+        AtomicBoolean stopped = new AtomicBoolean();
+        CompletableFuture<String> run = CompletableFuture.supplyAsync(() -> WorkspaceScheduler.run(
+                List.of("m", "root"),
+                WorkspaceSchedulerTest::p,
+                siblings.edges(),
+                (String unit, Runnable publish) -> {
+                    publish.run();
+                    if ("m".equals(unit)) {
+                        try {
+                            siblings.gateFor(p("m")).awaitTestCompile(stopped::get);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                4,
+                () -> false,
+                unit -> "root".equals(unit),
+                unit -> stopped.set(true),
+                siblings));
+
+        assertThatThrownBy(() -> run.get(30, TimeUnit.SECONDS))
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .rootCause()
+                .hasMessageContaining("root");
+        assertThat(stopped).as("the parked member was stopped").isTrue();
+    }
 }

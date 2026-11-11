@@ -295,9 +295,19 @@ public final class WorkspaceScheduler {
                 }
                 return null;
             }
+            // Every unit in flight is parked on a sibling and none can be admitted: unless a wake
+            // is already on its way, nothing will ever publish again. A member whose tests read a
+            // root that awaits every member's completion parks on that root forever.
+            boolean stalled = inFlight - parking.parked() <= 0 && !notStarted.isEmpty();
             Object event;
             try {
-                event = events.take();
+                event = stalled ? events.poll(STALL_GRACE_MILLIS, TimeUnit.MILLISECONDS) : events.take();
+                if (event == null) {
+                    if (inFlight - parking.parked() > 0) continue;
+                    for (U u : List.copyOf(unitOf.values())) stopUnit.accept(u);
+                    drainCancelled(inflight);
+                    throw unsatisfiable(notStarted, dirOf, edges, unitDirs, published);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 cancelAll(inflight);
@@ -332,6 +342,13 @@ public final class WorkspaceScheduler {
             }
         }
     }
+
+    /**
+     * How long every in-flight unit may sit parked with nothing admissible before the schedule is
+     * declared unsatisfiable: a wake already under way (a publish whose parked waiter has not yet
+     * counted itself out) lands in milliseconds.
+     */
+    static final long STALL_GRACE_MILLIS = 2_000;
 
     /**
      * Units the tallest remaining chain may run beyond {@code maxConcurrency}: enough that a few
