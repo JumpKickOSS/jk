@@ -21,18 +21,23 @@ import org.jspecify.annotations.Nullable;
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
  * KEY} lines, then {@code INPUT <value> <name>}, {@code OUTPUT <sha256> <path>} and {@code EXEC
- * <path>} lines in name order, then {@code SAID <line>} lines in the order the action said them.
- * The engine's action cache and the workers that store their own entries (the code graph's
- * fragments) write and read it here, so the prune and the sweep see one format.
+ * <path>} lines in name order, then {@code SAID <line>} lines in the order the action said them,
+ * then {@code END <outputCount>}. A record without that last line, or whose count disagrees with its
+ * {@code OUTPUT} lines, was cut short and does not parse: every prefix of a record is otherwise a
+ * well-formed record with fewer outputs. The engine's action cache and the workers that store their
+ * own entries (the code graph's fragments) write and read it here, so the prune and the sweep see
+ * one format.
  *
- * <p>A reader skips a line it does not know, so a kind of line added later leaves an older reader
- * reading the rest, and a record written before it reads as having none: {@code SAID} came after
- * the others, and a record without it is an action that said nothing. A change of what a record
- * holds is therefore no change of what any key hashes.
+ * <p>A reader skips a line it does not know before {@code END}, so a kind of line added later
+ * leaves an older reader reading the rest. A change of what a record holds is therefore no change of
+ * what any key hashes.
  */
 public final class ActionRecordText {
 
     private ActionRecordText() {}
+
+    /** The prefix of a record's last line, which counts its {@code OUTPUT} lines. */
+    private static final String END = "END ";
 
     /**
      * How old a record's mtime may grow before a read refreshes it: half the grace in which the
@@ -116,14 +121,15 @@ public final class ActionRecordText {
                     .append(line.replace('\r', ' ').replace('\n', ' '))
                     .append('\n');
         }
+        sb.append(END).append(outputs.size()).append('\n');
         return sb.toString();
     }
 
     /**
      * The record {@code content} holds.
      *
-     * @throws RuntimeException when it is cut short: no {@code TASK} or {@code KEY}, or a line
-     *     without its value
+     * @throws RuntimeException when it is cut short: no {@code TASK} or {@code KEY}, a line without
+     *     its value, or no {@code END} line last that counts its outputs
      */
     public static Parsed parse(String content) {
         @Nullable String taskId = null;
@@ -132,9 +138,13 @@ public final class ActionRecordText {
         Map<String, String> outputs = new LinkedHashMap<>();
         Set<String> executables = new LinkedHashSet<>();
         List<String> said = new ArrayList<>();
+        int declaredOutputs = -1;
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
-            if (line.startsWith("TASK ")) {
+            if (declaredOutputs >= 0) throw new IllegalArgumentException("record continues past its END line");
+            if (line.startsWith(END)) {
+                declaredOutputs = Integer.parseInt(line.substring(END.length()).trim());
+            } else if (line.startsWith("TASK ")) {
                 taskId = line.substring("TASK ".length()).trim();
             } else if (line.startsWith("KEY ")) {
                 actionKey = line.substring("KEY ".length()).trim();
@@ -151,6 +161,10 @@ public final class ActionRecordText {
             } else if (line.startsWith("SAID ")) {
                 said.add(line.substring("SAID ".length()));
             }
+        }
+        if (declaredOutputs != outputs.size()) {
+            throw new IllegalArgumentException(
+                    "record cut short: END " + declaredOutputs + " for " + outputs.size() + " outputs");
         }
         return new Parsed(
                 Objects.requireNonNull(taskId, "taskId in record"),

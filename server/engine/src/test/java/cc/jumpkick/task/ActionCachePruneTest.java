@@ -17,6 +17,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -708,17 +709,14 @@ class ActionCachePruneTest {
     /** Write an action record plus its task pointer, backdating the record by {@code ageMillis}. */
     private static Path key(Path cacheRoot, String actionKey, String taskId, long ageMillis, String... shas)
             throws IOException {
-        StringBuilder body = new StringBuilder("TASK ")
-                .append(taskId)
-                .append("\nKEY ")
-                .append(actionKey)
-                .append('\n');
-        for (int i = 0; i < shas.length; i++) {
-            body.append("OUTPUT ").append(shas[i]).append(" out/").append(i).append(".bin\n");
-        }
+        Map<String, String> outputs = new LinkedHashMap<>();
+        for (int i = 0; i < shas.length; i++) outputs.put("out/" + i + ".bin", shas[i]);
         Path keyFile = cacheRoot.resolve("actions").resolve("keys").resolve(actionKey);
         Files.createDirectories(keyFile.getParent());
-        Files.writeString(keyFile, body.toString(), StandardCharsets.UTF_8);
+        Files.writeString(
+                keyFile,
+                ActionRecordText.render(taskId, actionKey, Map.of(), outputs, Set.of()),
+                StandardCharsets.UTF_8);
         pointAt(cacheRoot, taskId, actionKey);
         backdate(keyFile, ageMillis);
         return keyFile;

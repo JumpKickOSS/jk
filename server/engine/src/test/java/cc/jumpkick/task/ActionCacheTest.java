@@ -526,6 +526,30 @@ class ActionCacheTest {
         assertThat(cache.lastFor("compile-main")).isPresent();
     }
 
+    /**
+     * A record cut at a line boundary is a well-formed prefix: without its closing count it would read
+     * as the same action with fewer outputs, and a restore would lay down only those.
+     */
+    @Test
+    void a_record_cut_between_output_lines_is_a_miss(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path actions = tempDir.resolve("actions");
+        ActionCache cache = new ActionCache(cas, actions);
+        Path outputs = Files.createDirectories(tempDir.resolve("outputs"));
+        Files.writeString(outputs.resolve("A.class"), "alpha");
+        Files.writeString(outputs.resolve("B.class"), "beta");
+        cache.store("compile-main", "cut", Map.of("src/A.java", "aaa"), outputs);
+        Path keyFile = ActionTree.KEYS.under(actions).resolve("cut");
+        String full = Files.readString(keyFile);
+        assertThat(cache.lookup("cut").orElseThrow().outputs()).hasSize(2);
+
+        Files.writeString(keyFile, full.substring(0, full.indexOf("OUTPUT ", full.indexOf("OUTPUT ") + 1)));
+        assertThat(cache.lookup("cut"))
+                .as("a record missing its last output line is a miss, not a hit with one output")
+                .isEmpty();
+        assertThat(keyFile).doesNotExist();
+    }
+
     @Test
     void a_blank_task_pointer_is_a_miss(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
