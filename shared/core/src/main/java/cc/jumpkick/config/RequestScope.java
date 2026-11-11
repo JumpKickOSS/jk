@@ -46,7 +46,9 @@ import org.jspecify.annotations.Nullable;
  * the <em>inputs</em> a request was launched against, which are fixed at launch by definition. The
  * one output-side fact kept here is a classes tree found whole against its compile record
  * ({@code ModuleOutputs.compileOutputsOnDisk}): a build never removes an output a hitting record
- * owns, so a yes holds for the request, and only the yes is kept.
+ * owns, so a yes holds for the request, and only the yes is kept. The other is a classes tree's
+ * class-file stamps ({@code ClassStamps}), each taken with the count of steps ended so far and
+ * trusted only while no other step has ended, since only a step writes a classes tree.
  */
 public final class RequestScope {
 

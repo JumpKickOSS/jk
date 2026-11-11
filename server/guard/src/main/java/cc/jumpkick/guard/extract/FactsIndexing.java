@@ -6,8 +6,6 @@ import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ParallelMap;
-import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
@@ -163,17 +161,9 @@ public final class FactsIndexing {
         return out;
     }
 
-    /** {@code relPath →} {@link StatIdentity} for every class file, sorted. One stat each, no reads. */
+    /** {@code relPath →} {@code size:mtime} for every class file, sorted. One stat each, no reads. */
     static Map<String, String> stamps(Path classesDir) throws IOException {
-        Map<String, String> out = new TreeMap<>();
-        Path root = classesDir.toAbsolutePath().normalize();
-        PathUtil.forEachRegularFile(root, (p, attrs) -> {
-            String rel =
-                    root.relativize(p.toAbsolutePath().normalize()).toString().replace('\\', '/');
-            if (!rel.endsWith(".class")) return;
-            out.put(rel, StatIdentity.of(p, attrs).encode());
-        });
-        return out;
+        return ClassStamps.of(classesDir);
     }
 
     /**

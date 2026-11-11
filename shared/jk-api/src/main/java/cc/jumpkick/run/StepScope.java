@@ -3,6 +3,7 @@ package cc.jumpkick.run;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -18,6 +19,8 @@ public final class StepScope {
 
     /** Told when a step's scope closes, on the thread that closed it. */
     private static final CopyOnWriteArrayList<Consumer<TaskContext>> ON_CLOSE = new CopyOnWriteArrayList<>();
+
+    private static final AtomicLong CLOSED = new AtomicLong();
 
     static {
         ContextPropagator.add(new ContextPropagator.Propagator() {
@@ -61,6 +64,7 @@ public final class StepScope {
 
     /** Drop this thread's step and tell {@link #onClose} listeners which step it was. */
     public static void close() {
+        CLOSED.incrementAndGet();
         TaskContext ctx = CURRENT.get();
         CURRENT.remove();
         if (ctx == null) return;
@@ -71,6 +75,14 @@ public final class StepScope {
                 // a note must not fail the step
             }
         }
+    }
+
+    /**
+     * How many step scopes have closed in this process. A fact read off build outputs before the
+     * count moved may describe outputs a step has since rewritten.
+     */
+    public static long closed() {
+        return CLOSED.get();
     }
 
     /** The step on this thread, or {@code null} outside one. */
