@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.gradle.GradleBuildImport;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.TestImporters;
 import java.nio.file.Files;
@@ -46,6 +47,34 @@ class ProjectImportTest {
                 .as("the root manifest is not written either")
                 .doesNotExist();
         assertThat(Files.readString(root.resolve("core/jk.toml"))).isEqualTo("name = \"prior\"\n");
+    }
+
+    /** A member that cannot be written leaves no manifest behind, so the import can simply run again. */
+    @Test
+    void a_member_that_cannot_be_written_leaves_the_tree_as_it_was(@TempDir Path root) throws Exception {
+        writeReactor(root);
+        Files.createDirectories(root.resolve("app/jk.toml"));
+
+        ProjectImport.Outcome outcome = ProjectImport.run(
+                TestImporters.offline(root.resolve("importer")),
+                GradleBuildImport.scannerOnly(),
+                root.resolve("pom.xml"),
+                root.resolve("jk.toml"),
+                root,
+                null,
+                true,
+                false,
+                null,
+                ImportProgress.NONE,
+                ProjectImport.PinRaise.NONE);
+
+        assertThat(outcome.exit()).isEqualTo(1);
+        assertThat(root.resolve("jk.toml")).doesNotExist();
+        assertThat(root.resolve("core/jk.toml")).doesNotExist();
+        List<String> left = new ArrayList<>();
+        PathUtil.forEachChild(
+                root.resolve("core"), (p, attrs) -> left.add(p.getFileName().toString()));
+        assertThat(left).as("no staged sibling is left either").containsExactly("pom.xml");
     }
 
     /** {@code -t other.toml}: the pin check still runs, on a {@code jk.toml}, and its raises land in the file. */

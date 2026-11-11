@@ -45,6 +45,11 @@ public final class JkEventSpy extends AbstractEventSpy {
         }
     }
 
+    /** Test seam: record to {@code w} instead of the events file. */
+    void writeTo(Writer w) {
+        out = w;
+    }
+
     /** Maven hands its user properties to a spy through the context when they are not system ones. */
     private static @Nullable String fromContext(Context context) {
         Object props = context.getData().get("userProperties");
@@ -60,9 +65,12 @@ public final class JkEventSpy extends AbstractEventSpy {
         Writer w = out;
         if (w == null || !(event instanceof ExecutionEvent e)) return;
         try {
-            w.write(EventLine.of(e, timer.observe(e)));
-            w.write('\n');
-            w.flush();
+            String line = EventLine.of(e, timer.observe(e)) + "\n";
+            // mvn -T sends events from every builder thread; a line goes out whole.
+            synchronized (w) {
+                w.write(line);
+                w.flush();
+            }
         } catch (IOException | RuntimeException ignored) {
             // A line the spy cannot record is a line the report goes without.
         }

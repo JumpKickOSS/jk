@@ -198,33 +198,95 @@ public final class ProjectImport {
             progress.grow(manifests.size()
                     + frontend.moves().size()
                     + frontend.rewrites().size());
-            for (FrontendFiles.Move move : frontend.moves()) {
-                Path dir = move.to().getParent();
-                if (dir != null) Files.createDirectories(dir);
-                Files.move(move.from(), move.to());
-                pruneEmpty(move.from().getParent(), effectiveBaseDir);
-                progress.advance(1);
-            }
+            // Every file is written beside its place first, so a failure before the last one is
+            // written leaves the tree as it was, and an import without --overwrite can run again.
+            Map<Path, String> texts = new LinkedHashMap<>();
             for (Map.Entry<Path, JkBuild> e : manifests.entrySet()) {
                 Path dir = e.getKey().getParent();
-                if (dir != null) Files.createDirectories(dir);
-                progress.detail(display(effectiveBaseDir, e.getKey()));
                 // Spell handles by the catalog the parse of this file reads, downloaded and project
                 // layers included, so a shortened entry names the same coordinate.
                 LibraryCatalog catalog = LibraryCatalog.forProject(dir != null ? dir : effectiveBaseDir);
-                Files.writeString(e.getKey(), JkBuildRenderer.render(e.getValue(), catalog), StandardCharsets.UTF_8);
-                wrote.add(e.getKey());
-                progress.advance(1);
+                texts.put(e.getKey(), JkBuildRenderer.render(e.getValue(), catalog));
             }
-            for (Map.Entry<Path, String> e : frontend.rewrites().entrySet()) {
-                Files.writeString(e.getKey(), e.getValue(), StandardCharsets.UTF_8);
-                wrote.add(e.getKey());
-                progress.advance(1);
+            texts.putAll(frontend.rewrites());
+            StagedFiles staged = new StagedFiles();
+            try {
+                for (Map.Entry<Path, String> e : texts.entrySet()) {
+                    progress.detail(display(effectiveBaseDir, e.getKey()));
+                    staged.stage(e.getKey(), e.getValue());
+                }
+                for (FrontendFiles.Move move : frontend.moves()) {
+                    staged.move(move);
+                    pruneEmpty(move.from().getParent(), effectiveBaseDir);
+                    progress.advance(1);
+                }
+                for (Path target : texts.keySet()) {
+                    staged.place(target);
+                    wrote.add(target);
+                    progress.advance(1);
+                }
+            } catch (IOException | RuntimeException e) {
+                staged.rollBack();
+                throw e;
             }
             report = machineCredentials(report, c.machineCredentials(), JkDirs.userConfigFile(), wrote, source);
             return Staged.of(new Written(c, wrote, report));
         } catch (IOException e) {
             return Staged.stopped(Outcome.failed(1, e.getMessage()));
+        }
+    }
+
+    /**
+     * The files an import writes, each first written to a sibling and then renamed into place, and
+     * the frontend moves made; {@link #rollBack} undoes what was done, so a failure leaves no new
+     * manifest behind.
+     */
+    private static final class StagedFiles {
+        private final Map<Path, Path> pending = new LinkedHashMap<>();
+        private final List<Path> placedNew = new ArrayList<>();
+        private final List<FrontendFiles.Move> moved = new ArrayList<>();
+
+        void stage(Path target, String text) throws IOException {
+            if (Files.exists(target) && !Files.isRegularFile(target)) {
+                throw new IOException(target + " is not a file");
+            }
+            Path dir = target.toAbsolutePath().getParent();
+            if (dir != null) Files.createDirectories(dir);
+            Path tmp = target.resolveSibling("." + target.getFileName() + ".import-"
+                    + ProcessHandle.current().pid());
+            pending.put(target, tmp);
+            Files.writeString(tmp, text, StandardCharsets.UTF_8);
+        }
+
+        void move(FrontendFiles.Move move) throws IOException {
+            Path dir = move.to().getParent();
+            if (dir != null) Files.createDirectories(dir);
+            Files.move(move.from(), move.to());
+            moved.add(move);
+        }
+
+        void place(Path target) throws IOException {
+            Path tmp = Objects.requireNonNull(pending.get(target), "staged");
+            boolean existed = Files.exists(target);
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            pending.remove(target);
+            if (!existed) placedNew.add(target);
+        }
+
+        /** Best effort: remove the staged siblings and the new files, and move the moved ones back. */
+        void rollBack() {
+            for (Path tmp : pending.values()) PathUtil.deleteRecursively(tmp);
+            for (Path placed : placedNew) PathUtil.deleteRecursively(placed);
+            for (int i = moved.size() - 1; i >= 0; i--) {
+                FrontendFiles.Move move = moved.get(i);
+                try {
+                    Path dir = move.from().getParent();
+                    if (dir != null) Files.createDirectories(dir);
+                    Files.move(move.to(), move.from());
+                } catch (IOException e) {
+                    Log.debug("import roll-back: " + move.to() + " stays", e);
+                }
+            }
         }
     }
 

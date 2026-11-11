@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ResourceFilter;
 import cc.jumpkick.model.BuildBlock;
@@ -12,12 +13,15 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Plugin;
 import org.apache.maven.model.Resource;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -53,6 +57,16 @@ final class ResourcePlugins {
         Set<String> dollar = new TreeSet<>();
         Set<String> at = new TreeSet<>();
         for (String rel : concat(filtered, testFiltered)) referenced(baseDir.resolve(rel), dollar, at);
+        Delimiters delimiters = delimiters(model);
+        if (!delimiters.others().isEmpty()) {
+            report.warning("maven-resources-plugin <delimiters> " + String.join(" ", delimiters.others())
+                    + ": not imported; jk filters ${name} and @name@");
+        }
+        // Maven leaves ${name} as written when it is no delimiter, for the application's own
+        // placeholders to read at run time: no such name is written or reported undefined.
+        Set<String> leftByMaven = delimiters.dollar() ? Set.of() : new TreeSet<>(dollar);
+        if (!delimiters.dollar()) dollar.clear();
+        if (!delimiters.at()) at.clear();
         Map<String, String> properties = new TreeMap<>();
         Set<String> unknown = new TreeSet<>();
         for (String name : concat(List.copyOf(dollar), List.copyOf(at))) {
@@ -70,8 +84,54 @@ final class ResourcePlugins {
                             ", ", unknown.stream().map(n -> "${" + n + "}").toList())
                     + " undefined; set them in [resources.properties]");
         }
+        // jk filters with both delimiters, so a ${name} it has a value for is expanded all the same.
+        Set<String> expanded = new TreeSet<>();
+        for (String name : leftByMaven) {
+            if (COMPUTED.contains(name) || properties.containsKey(name)) expanded.add(name);
+        }
+        if (!expanded.isEmpty()) {
+            report.warning("filtered resources: "
+                    + String.join(
+                            ", ", expanded.stream().map(n -> "${" + n + "}").toList())
+                    + " left as written by Maven (@ delimiters only); jk expands them");
+        }
         return new BuildBlock.Resources(dirs, filtered, testDirs, testFiltered, properties);
     }
+
+    /**
+     * The delimiters maven-resources-plugin filters with: {@code ${*}} and {@code @} unless {@code
+     * <useDefaultDelimiters>} is false, plus each {@code <delimiter>}. {@code others} are the ones
+     * besides those two.
+     */
+    record Delimiters(boolean dollar, boolean at, List<String> others) {}
+
+    static Delimiters delimiters(Model model) {
+        Optional<Plugin> plugin = PluginFacts.lifecycleBoundPlugin(model, RESOURCES_PLUGIN);
+        if (plugin.isEmpty() || !(plugin.get().getConfiguration() instanceof Xpp3Dom config)) {
+            return new Delimiters(true, true, List.of());
+        }
+        boolean defaults = EnvValues.parseBool(
+                        PluginFacts.usable(PluginFacts.text(config.getChild("useDefaultDelimiters"))))
+                .orElse(true);
+        boolean dollar = defaults;
+        boolean at = defaults;
+        List<String> others = new ArrayList<>();
+        Xpp3Dom list = config.getChild("delimiters");
+        if (list != null) {
+            for (Xpp3Dom child : list.getChildren()) {
+                String d = PluginFacts.usable(PluginFacts.text(child));
+                if (d == null) continue;
+                switch (d.trim()) {
+                    case "${*}" -> dollar = true;
+                    case "@", "@*@" -> at = true;
+                    default -> others.add(d.trim());
+                }
+            }
+        }
+        return new Delimiters(dollar, at, List.copyOf(others));
+    }
+
+    private static final String RESOURCES_PLUGIN = "maven-resources-plugin";
 
     private static void collect(
             List<Resource> resources,
@@ -134,7 +194,9 @@ final class ResourcePlugins {
                 if (text == null) continue;
                 Set<String> named = ResourceFilter.expand(text, Map.of()).unresolved();
                 dollar.addAll(named);
-                for (String n : ResourceFilter.references(text)) if (!named.contains(n)) at.add(n);
+                for (String n : ResourceFilter.references(text)) {
+                    if (!named.contains(n) || text.contains("@" + n + "@")) at.add(n);
+                }
             }
         } catch (IOException e) {
             // an unreadable file contributes no names; the build reports what stays unexpanded

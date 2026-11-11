@@ -334,6 +334,7 @@ final class PluginFacts {
     private static final Set<String> PROC_VALUES = Set.of("none", "only", "full");
 
     static void collectCompilerArgs(Xpp3Dom config, List<String> args) {
+        collectLegacyCompilerArgs(config, args);
         Xpp3Dom list = config.getChild("compilerArgs");
         if (list == null) return;
         boolean skipValue = false;
@@ -350,6 +351,43 @@ final class PluginFacts {
             }
             if (!args.contains(v)) args.add(v);
         }
+    }
+
+    /**
+     * The compiler plugin's older spellings, as the plugin turns them into javac arguments: each
+     * {@code <compilerArguments>} child {@code <name>value</name>} is {@code -name value}, or {@code
+     * -Aname=value} for a processor option, and {@code <compilerArgument>} is its words. Level
+     * options are left to {@code java =}, as in {@code <compilerArgs>}.
+     */
+    private static void collectLegacyCompilerArgs(Xpp3Dom config, List<String> args) {
+        Xpp3Dom map = config.getChild("compilerArguments");
+        if (map != null) {
+            for (Xpp3Dom child : map.getChildren()) {
+                String key = child.getName().startsWith("-") ? child.getName() : "-" + child.getName();
+                if (LEVEL_OPTIONS.contains(key)) continue;
+                String value = usable(text(child));
+                if (key.startsWith("-A") && value != null) {
+                    addOnce(args, key + "=" + value.trim());
+                } else {
+                    addOnce(args, key);
+                    if (value != null) args.add(value.trim());
+                }
+            }
+        }
+        String single = usable(text(config.getChild("compilerArgument")));
+        if (single == null) return;
+        String[] words = single.trim().split("\\s+");
+        for (int i = 0; i < words.length; i++) {
+            if (LEVEL_OPTIONS.contains(words[i])) {
+                i++;
+                continue;
+            }
+            addOnce(args, words[i]);
+        }
+    }
+
+    private static void addOnce(List<String> args, String arg) {
+        if (!args.contains(arg)) args.add(arg);
     }
 
     /**

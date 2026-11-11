@@ -109,6 +109,37 @@ class PomPackagingImportTest {
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("<relocations>"));
     }
 
+    /** What the fat jar carries and what it is named are a row each, never dropped without a word. */
+    @Test
+    void a_shade_artifact_set_and_classifier_are_rows(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.6.0</version>
+                    <configuration>
+                      <artifactSet>
+                        <includes><include>com.google.guava:*</include></includes>
+                        <excludes><exclude>org.slf4j:*</exclude></excludes>
+                      </artifactSet>
+                      <shadedArtifactAttached>true</shadedArtifactAttached>
+                      <shadedClassifierName>all</shadedClassifierName>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith(
+                        "maven-shade-plugin <artifactSet> include com.google.guava:*, exclude org.slf4j:*: skipped"))
+                .anyMatch(m -> m.startsWith("maven-shade-plugin <shadedArtifactAttached>, <shadedClassifierName>:"));
+    }
+
     @Test
     void jar_with_dependencies_is_the_fat_jar_and_other_descriptors_are_a_row(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "assembly-pom.xml");

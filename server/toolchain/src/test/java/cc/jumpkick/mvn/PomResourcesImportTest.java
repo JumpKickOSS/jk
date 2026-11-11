@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.BuildBlock;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -95,6 +96,51 @@ class PomResourcesImportTest {
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("\n[resources]\nfiltered = [\"src/filter/resources\"]\n");
         assertThat(JkBuildParser.parse(rendered).build().resources()).isEqualTo(r);
+    }
+
+    /**
+     * Spring Boot's parent filters with {@code @} alone, so {@code ${name}} stays for Spring to read
+     * at run time: no such name is reported undefined, and each one jk still expands is named.
+     */
+    @Test
+    void at_only_delimiters_leave_dollar_references_unpinned(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <properties><java.version>21</java.version></properties>
+                  <build>
+                    <resources>
+                      <resource><directory>src/main/resources</directory><filtering>true</filtering></resource>
+                    </resources>
+                    <pluginManagement><plugins><plugin>
+                      <artifactId>maven-resources-plugin</artifactId>
+                      <configuration>
+                        <delimiters><delimiter>@</delimiter></delimiters>
+                        <useDefaultDelimiters>false</useDefaultDelimiters>
+                      </configuration>
+                    </plugin></plugins></pluginManagement>
+                  </build>
+                </project>
+                """);
+        Path resources = Files.createDirectories(root.resolve("src/main/resources"));
+        Files.writeString(resources.resolve("application.properties"), """
+                app.java=@java.version@
+                runtime.java=${java.version}
+                server.port=${PORT}
+                app.version=${project.version}
+                """);
+
+        PomImporter.Result result = TestImporters.offline(root).importFrom(root.resolve("pom.xml"));
+        BuildBlock.Resources r = result.jkBuild().build().resources();
+
+        assertThat(r.filtered()).containsExactly("src/main/resources");
+        assertThat(r.properties()).containsExactly(Map.entry("java.version", "21"));
+        assertThat(TestImporters.messages(result))
+                .noneMatch(m -> m.contains("${PORT}"))
+                .anyMatch(m -> m.contains("${java.version}, ${project.version}") && m.contains("jk expands"));
     }
 
     @Test

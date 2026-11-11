@@ -213,6 +213,8 @@ final class PackagingPlugins {
         List<String> partial = mapped.unmapped();
         List<String> filters = new ArrayList<>();
         List<String> transformers = new ArrayList<>();
+        List<String> artifacts = new ArrayList<>();
+        List<String> namings = new ArrayList<>();
         boolean minimize = false;
         for (Xpp3Dom config : PluginFacts.configurations(shade.get())) {
             PluginFacts.visit(config, "filter", filter -> {
@@ -226,6 +228,28 @@ final class PackagingPlugins {
                 if (!COVERED_TRANSFORMERS.contains(simple)) transformers.add(simple);
             });
             minimize |= Boolean.parseBoolean(PluginFacts.child(config, "minimizeJar"));
+            Xpp3Dom artifactSet = config.getChild("artifactSet");
+            if (artifactSet != null) {
+                for (String list : List.of("includes", "excludes")) {
+                    Xpp3Dom entries = artifactSet.getChild(list);
+                    if (entries == null) continue;
+                    for (Xpp3Dom entry : entries.getChildren()) {
+                        String value = PluginFacts.usable(entry.getValue());
+                        if (value != null) artifactSet(artifacts, list, value.trim());
+                    }
+                }
+            }
+            for (String naming : List.of("shadedArtifactAttached", "shadedClassifierName")) {
+                if (PluginFacts.child(config, naming) != null && !namings.contains(naming)) namings.add(naming);
+            }
+        }
+        if (!artifacts.isEmpty()) {
+            report.warning("maven-shade-plugin <artifactSet> " + String.join(", ", artifacts)
+                    + ": skipped; the fat jar carries every runtime dependency");
+        }
+        if (!namings.isEmpty()) {
+            report.warning(
+                    "maven-shade-plugin <" + String.join(">, <", namings) + ">: skipped; jk names the fat jar itself");
         }
         if (!partial.isEmpty()) {
             report.warning("maven-shade-plugin <relocations> " + String.join(", ", partial)
@@ -244,6 +268,12 @@ final class PackagingPlugins {
                     + " [application] minified = true (R8)");
         }
         return true;
+    }
+
+    /** {@code value} of {@code <artifactSet><list>} as a row names it: {@code excludes g:a}. */
+    private static void artifactSet(List<String> artifacts, String list, String value) {
+        String row = list.substring(0, list.length() - 1) + " " + value;
+        if (!artifacts.contains(row)) artifacts.add(row);
     }
 
     /** {@code jar-with-dependencies} is the fat jar; any other descriptor is a row. */

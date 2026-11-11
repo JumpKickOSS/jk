@@ -264,6 +264,38 @@ class PomPluginImportTest {
                 .containsExactly("-parameters", "-Xlint:all", "--enable-preview", "-Werror");
     }
 
+    /** The plugin's older {@code <compilerArgument>} and {@code <compilerArguments>} reach javac too. */
+    @Test
+    void the_older_compiler_argument_spellings_become_javac_flags(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <properties><maven.compiler.release>21</maven.compiler.release></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                      <compilerArgument>-parameters</compilerArgument>
+                      <compilerArguments>
+                        <Xlint/>
+                        <Xmaxerrs>1000</Xmaxerrs>
+                        <Amapstruct.defaultComponentModel>spring</Amapstruct.defaultComponentModel>
+                        <source>8</source>
+                      </compilerArguments>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().javac().args())
+                .containsExactly(
+                        "-Xlint", "-Xmaxerrs", "1000", "-Amapstruct.defaultComponentModel=spring", "-parameters");
+    }
+
     @Test
     void a_compile_goal_executions_args_reach_compile_main_alone(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = importXml(tempDir, """
