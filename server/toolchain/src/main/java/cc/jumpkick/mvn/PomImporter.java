@@ -136,7 +136,7 @@ public final class PomImporter {
     private static RemoteFile overHttp(Http http) {
         return uri -> {
             try {
-                HttpResponse<byte[]> response = http.get(uri);
+                HttpResponse<byte[]> response = http.documents().get(uri);
                 if (response.statusCode() / 100 != 2) throw new IOException("HTTP " + response.statusCode());
                 return response.body();
             } catch (InterruptedException e) {

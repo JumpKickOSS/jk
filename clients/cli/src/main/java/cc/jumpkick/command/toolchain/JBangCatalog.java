@@ -38,7 +38,7 @@ final class JBangCatalog {
     /** {@link Fetch} over {@code http}. */
     static Fetch over(Http http) {
         return uri -> {
-            var response = http.get(uri);
+            var response = http.documents().get(uri);
             return response.statusCode() == 200 ? response.body() : null;
         };
     }

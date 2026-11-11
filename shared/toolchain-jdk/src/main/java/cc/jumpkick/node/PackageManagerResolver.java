@@ -69,7 +69,7 @@ public final class PackageManagerResolver {
     private @Nullable Object metadata(String pkg) throws IOException, InterruptedException {
         URI uri =
                 registry.resolve(URLEncoder.encode(pkg, StandardCharsets.UTF_8).replace("%40", "@"));
-        HttpResponse<byte[]> response = http.get(uri, Map.of("Accept", ABBREVIATED));
+        HttpResponse<byte[]> response = http.documents().get(uri, Map.of("Accept", ABBREVIATED));
         if (response.statusCode() != 200) {
             throw new IOException(pkg + " metadata " + uri + " returned HTTP " + response.statusCode());
         }

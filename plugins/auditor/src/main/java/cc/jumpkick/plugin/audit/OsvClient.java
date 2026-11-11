@@ -136,8 +136,8 @@ public final class OsvClient {
     /** One querybatch request of {@code rows}, at most {@link #MAX_BATCH}; one page per row, in order. */
     private List<Page> post(List<Object> rows) throws IOException, InterruptedException {
         String body = MiniJson.write(Map.of("queries", rows));
-        HttpResponse<byte[]> response =
-                http.post(batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
+        HttpResponse<byte[]> response = http.documents()
+                .post(batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + ": " + text(response));
         }
@@ -169,7 +169,7 @@ public final class OsvClient {
             throw new IOException("refusing to fetch a malformed OSV vulnerability id: " + vulnId);
         }
         var url = vulnsUrl.resolve(vulnId);
-        HttpResponse<byte[]> response = http.get(url);
+        HttpResponse<byte[]> response = http.documents().get(url);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("OSV vuln fetch failed for " + vulnId + ": HTTP " + response.statusCode());
         }

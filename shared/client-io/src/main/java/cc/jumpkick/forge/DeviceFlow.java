@@ -111,7 +111,7 @@ public final class DeviceFlow {
 
     private HttpResponse<byte[]> post(URI uri, Map<String, String> form) {
         try {
-            return http.postForm(uri, form);
+            return http.documents().postForm(uri, form);
         } catch (IOException e) {
             throw new AuthException(
                     "Network error talking to " + providerName + " (" + uri.getHost() + "): " + e.getMessage(), e);

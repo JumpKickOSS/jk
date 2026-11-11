@@ -226,7 +226,8 @@ public final class ReleaseArtifacts {
         String what = "latest-release pointer";
         HttpResponse<byte[]> response;
         try {
-            response = etag == null ? http.get(uri) : http.get(uri, Map.of("If-None-Match", etag));
+            response =
+                    etag == null ? http.documents().get(uri) : http.documents().get(uri, Map.of("If-None-Match", etag));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while downloading the " + what + " from " + uri);

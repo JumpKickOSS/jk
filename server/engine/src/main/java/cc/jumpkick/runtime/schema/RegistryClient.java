@@ -71,7 +71,7 @@ final class RegistryClient {
         URI uri = base.resolve(
                 "subjects/" + URLEncoder.encode(subject, StandardCharsets.UTF_8).replace("+", "%20") + "/versions/"
                         + URLEncoder.encode(version, StandardCharsets.UTF_8));
-        HttpResponse<byte[]> response = http.get(uri, headers);
+        HttpResponse<byte[]> response = http.documents().get(uri, headers);
         int status = response.statusCode();
         if (status == 401 || status == 403) {
             throw new IOException(subject + ": registry refused the credential (HTTP " + status + ")");

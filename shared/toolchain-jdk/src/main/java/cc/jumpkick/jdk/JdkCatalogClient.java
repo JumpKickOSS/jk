@@ -126,7 +126,7 @@ public final class JdkCatalogClient {
                             HTTP_DATE.format(
                                     Files.getLastModifiedTime(cacheFile).toInstant()))
                     : Map.of();
-            HttpResponse<byte[]> response = http.get(feedUri, headers);
+            HttpResponse<byte[]> response = http.documents().get(feedUri, headers);
             int status = response.statusCode();
             if (status == 304 && Files.isRegularFile(cacheFile)) {
                 Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));

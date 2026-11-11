@@ -120,14 +120,14 @@ public final class BaseImageDigest {
     private static Optional<String> resolve(Http http, Ref ref, RepoCredential cred) {
         URI manifest = URI.create(base(ref.registry()) + "/v2/" + ref.repository() + "/manifests/" + ref.tag());
         try {
-            HttpResponse<byte[]> response = http.get(manifest, Map.of("Accept", ACCEPT));
+            HttpResponse<byte[]> response = http.documents().get(manifest, Map.of("Accept", ACCEPT));
             if (response.statusCode() == 401) {
                 Map<String, String> auth = retryAuth(
                         http, response.headers().firstValue("www-authenticate").orElse(""), ref, cred);
                 if (auth.isEmpty()) return Optional.empty();
                 Map<String, String> headers = new HashMap<>(auth);
                 headers.put("Accept", ACCEPT);
-                response = http.get(manifest, headers);
+                response = http.documents().get(manifest, headers);
             }
             if (response.statusCode() != 200) return Optional.empty();
             // Docker-Content-Digest is the manifest digest the registry itself computed; hashing the
@@ -179,7 +179,7 @@ public final class BaseImageDigest {
             url.append("&service=").append(encode(params.get("service")));
         }
         try {
-            HttpResponse<byte[]> response = http.get(URI.create(url.toString()), realmAuth);
+            HttpResponse<byte[]> response = http.documents().get(URI.create(url.toString()), realmAuth);
             if (response.statusCode() != 200) return null;
             Object body = MiniJson.parse(new String(response.body(), StandardCharsets.UTF_8));
             if (!(body instanceof Map<?, ?> fields)) return null;

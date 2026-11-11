@@ -82,7 +82,7 @@ public final class NodeCatalog {
             body = Files.readString(cached, StandardCharsets.UTF_8);
         } else {
             URI uri = distBase.resolve("v" + version + "/SHASUMS256.txt");
-            HttpResponse<byte[]> response = http.get(uri);
+            HttpResponse<byte[]> response = http.documents().get(uri);
             if (response.statusCode() != 200) {
                 throw new IOException(
                         "Node " + version + " checksums " + uri + " returned HTTP " + response.statusCode());
@@ -135,7 +135,7 @@ public final class NodeCatalog {
                             "If-Modified-Since",
                             HTTP_DATE.format(Files.getLastModifiedTime(cache).toInstant()))
                     : Map.of();
-            HttpResponse<byte[]> response = http.get(uri, headers);
+            HttpResponse<byte[]> response = http.documents().get(uri, headers);
             if (response.statusCode() == 304 && Files.isRegularFile(cache)) {
                 Files.setLastModifiedTime(cache, FileTime.from(Clock.SYSTEM.instant()));
                 return Files.readAllBytes(cache);

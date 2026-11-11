@@ -5,7 +5,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.RepositorySpec;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -126,6 +125,15 @@ public final class Http {
 
     /** How long a read of a streamed body waits for its next byte before it fails. */
     private final Duration bodyIdle;
+
+    /** The most bytes of a response body read into memory; past it the request fails. */
+    private final long bodyLimit;
+
+    /** The most of any response body read into memory: {@value} bytes (64 MiB). */
+    public static final long MAX_BODY_BYTES = 64L * 1024 * 1024;
+
+    /** The most of a metadata, POM or JSON body read into memory: {@value} bytes (16 MiB). */
+    public static final long MAX_DOCUMENT_BYTES = 16L * 1024 * 1024;
 
     /**
      * A comma-separated list of hosts this process must not reach; a request to one fails at once
@@ -279,7 +287,8 @@ public final class Http {
                 requestTimeout,
                 true,
                 NO_AUTHORIZATION,
-                StalledBodyGuard.NO_BYTES);
+                StalledBodyGuard.NO_BYTES,
+                MAX_BODY_BYTES);
     }
 
     private Http(
@@ -293,7 +302,8 @@ public final class Http {
             Duration requestTimeout,
             boolean retriesSilence,
             Function<URI, Optional<String>> authorization,
-            Duration bodyIdle) {
+            Duration bodyIdle,
+            long bodyLimit) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
@@ -305,6 +315,7 @@ public final class Http {
         this.retriesSilence = retriesSilence;
         this.authorization = authorization;
         this.bodyIdle = bodyIdle;
+        this.bodyLimit = bodyLimit;
     }
 
     /**
@@ -324,7 +335,8 @@ public final class Http {
                 requestTimeout,
                 false,
                 authorization,
-                bodyIdle);
+                bodyIdle,
+                bodyLimit);
     }
 
     /**
@@ -343,7 +355,8 @@ public final class Http {
                 requestTimeout,
                 retriesSilence,
                 Objects.requireNonNull(authorization, "authorization"),
-                bodyIdle);
+                bodyIdle,
+                bodyLimit);
     }
 
     /**
@@ -362,7 +375,8 @@ public final class Http {
                 timeout,
                 retriesSilence,
                 authorization,
-                bodyIdle);
+                bodyIdle,
+                bodyLimit);
     }
 
     /**
@@ -381,7 +395,33 @@ public final class Http {
                 requestTimeout,
                 retriesSilence,
                 authorization,
-                idle);
+                idle,
+                bodyLimit);
+    }
+
+    /**
+     * This client reading at most {@link #MAX_DOCUMENT_BYTES} of a response body into memory, for
+     * metadata, POMs and JSON; a larger body fails with {@link BodyTooLargeException}.
+     */
+    public Http documents() {
+        return withBodyLimit(MAX_DOCUMENT_BYTES);
+    }
+
+    /** This client reading at most {@code bytes} of a response body into memory. */
+    Http withBodyLimit(long bytes) {
+        return new Http(
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                retriesSilence,
+                authorization,
+                bodyIdle,
+                bytes);
     }
 
     /** The {@link #DENY_HOSTS_ENV} entry for every host but this one. */
@@ -441,13 +481,13 @@ public final class Http {
         // Opt into transport-level gzip unless the caller already set
         // their own Accept-Encoding (e.g. testing without compression).
         // The response body is transparently decompressed by
-        // `gzipAwareByteArray` when the server replies with
+        // `cappedBytes` when the server replies with
         // Content-Encoding: gzip.
         if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
             builder.header("Accept-Encoding", "gzip");
         }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("GET", uri, request, gzipAwareByteArray(), null);
+        return sendWithRetry("GET", uri, request, cappedBytes(uri), null);
     }
 
     /**
@@ -536,7 +576,7 @@ public final class Http {
                 .header("Accept", "application/json")
                 .timeout(requestTimeout);
         HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("POST", uri, request, gzipAwareByteArray(), null);
+        return sendWithRetry("POST", uri, request, cappedBytes(uri), null);
     }
 
     /**
@@ -548,7 +588,7 @@ public final class Http {
      */
     public HttpResponse<byte[]> post(URI uri, byte[] body, Map<String, String> headers)
             throws IOException, InterruptedException {
-        return sendWithRetry("POST", uri, postRequest(uri, body, headers), gzipAwareByteArray(), null);
+        return sendWithRetry("POST", uri, postRequest(uri, body, headers), cappedBytes(uri), null);
     }
 
     /**
@@ -568,8 +608,9 @@ public final class Http {
                 requestTimeout,
                 false,
                 authorization,
-                bodyIdle);
-        return once.sendWithRetry("POST", uri, postRequest(uri, body, headers), gzipAwareByteArray(), null);
+                bodyIdle,
+                bodyLimit);
+        return once.sendWithRetry("POST", uri, postRequest(uri, body, headers), cappedBytes(uri), null);
     }
 
     private HttpRequest postRequest(URI uri, byte[] body, Map<String, String> headers) throws IOException {
@@ -614,7 +655,7 @@ public final class Http {
             builder.header(e.getKey(), e.getValue());
         }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("PUT", uri, request, HttpResponse.BodyHandlers.ofByteArray(), null);
+        return sendWithRetry("PUT", uri, request, cappedBytes(uri), null);
     }
 
     /**
@@ -787,6 +828,9 @@ public final class Http {
                 }
                 throw noAnswerWithin(verb, uri, request, e);
             } catch (IOException e) {
+                // A body over the limit is an answer, and the same body would come back.
+                BodyTooLargeException tooLarge = tooLarge(e);
+                if (tooLarge != null) throw tooLarge;
                 lastIo = e;
                 if (!retriesSilence) break;
             }
@@ -809,6 +853,14 @@ public final class Http {
                 verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
         if (lastIo != null) failed.initCause(lastIo);
         throw failed;
+    }
+
+    /** The {@link BodyTooLargeException} in {@code e}'s cause chain, or null. */
+    private static @Nullable BodyTooLargeException tooLarge(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof BodyTooLargeException big) return big;
+        }
+        return null;
     }
 
     /** The failure of a request that met silence for its whole timeout, naming the timeout it had. */
@@ -954,32 +1006,17 @@ public final class Http {
     }
 
     /**
-     * Body handler that returns the response as a {@code byte} and transparently inflates the
-     * payload when the server set {@code Content-Encoding: gzip}. Java's {@link HttpClient} never
-     * decompresses on its own (unlike curl), so without this every gzip-aware caller would have to
-     * wrap manually.
-     *
-     * <p>Callers should treat the returned bytes as the canonical body. The response object retains
-     * the original {@code Content-Encoding} and {@code Content-Length} headers — those describe the
-     * wire, not the decoded payload, so reading them is now a footgun. In practice jk callers don't,
-     * so the tradeoff is acceptable.
+     * The body read into memory, at most {@link #bodyLimit} bytes of it ({@link CappedBody}), and
+     * inflated when the server set {@code Content-Encoding: gzip}: the JDK client never
+     * decompresses on its own. The response keeps the wire's {@code Content-Encoding} and {@code
+     * Content-Length}, which describe the compressed bytes, not the ones handed back.
      */
-    static BodyHandler<byte[]> gzipAwareByteArray() {
-        return responseInfo -> {
-            var upstream = HttpResponse.BodyHandlers.ofByteArray().apply(responseInfo);
-            if (!isGzipped(responseInfo)) return upstream;
-            return BodySubscribers.mapping(upstream, raw -> {
-                try (var in = new GZIPInputStream(new ByteArrayInputStream(raw))) {
-                    return in.readAllBytes();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
-        };
+    private BodyHandler<byte[]> cappedBytes(URI uri) {
+        return responseInfo -> new CappedBody(uri, bodyLimit, isGzipped(responseInfo));
     }
 
     /**
-     * Streaming counterpart of {@link #gzipAwareByteArray}. Wraps the incoming {@link InputStream}
+     * Streaming counterpart of {@link #cappedBytes}. Wraps the incoming {@link InputStream}
      * in a {@link GZIPInputStream} when the response is gzip-encoded; the caller's {@code
      * try-with-resources} closes the gzip stream, which in turn releases the underlying connection.
      */

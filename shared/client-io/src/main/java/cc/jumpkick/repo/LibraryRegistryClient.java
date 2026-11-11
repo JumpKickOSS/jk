@@ -57,7 +57,7 @@ public final class LibraryRegistryClient {
         String etag = isNonEmptyFile(cacheFile) ? readEtag(etagFile) : null;
         if (etag != null) headers.put("If-None-Match", etag);
 
-        HttpResponse<byte[]> response = http.get(source, headers);
+        HttpResponse<byte[]> response = http.documents().get(source, headers);
         int status = response.statusCode();
         if (status == 304) return new Result.Unchanged();
         if (status != 200) {

@@ -288,7 +288,7 @@ public final class ToolInstaller {
                 }
                 body = Files.readString(sidecarFile, StandardCharsets.UTF_8);
             } else {
-                HttpResponse<byte[]> response = http.get(sidecarUri);
+                HttpResponse<byte[]> response = http.documents().get(sidecarUri);
                 if (response.statusCode() != 200) {
                     tried.add(sidecarUri + " returned " + response.statusCode());
                     continue;

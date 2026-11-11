@@ -127,7 +127,7 @@ public final class AndroidSdkInstaller {
             if (url.startsWith("file:")) {
                 feed = AndroidRepoFeed.parse(Files.readAllBytes(Path.of(URI.create(url))));
             } else {
-                HttpResponse<byte[]> response = http.get(URI.create(url));
+                HttpResponse<byte[]> response = http.documents().get(URI.create(url));
                 if (response.statusCode() != 200) {
                     throw new IOException("Android SDK feed " + url + " returned " + response.statusCode());
                 }

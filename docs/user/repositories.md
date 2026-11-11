@@ -74,7 +74,10 @@ resolve.
 
 A download that stops mid-body fails once 60 s pass with no bytes, naming the URL, rather than
 hanging the build; a repository artifact is then asked for again, up to three times in all. The
-same bound covers JDK, Android SDK and tool downloads.
+same bound covers JDK, Android SDK and tool downloads. Downloads stream to disk and have no size
+limit, but a response JumpKick reads into memory does: 16 MiB for `maven-metadata.xml`, a POM, a
+checksum or a JSON API answer, and 64 MiB for anything else. A larger response fails, naming the
+URL and the limit, and is not asked for again.
 
 ### When Central refuses this host
 

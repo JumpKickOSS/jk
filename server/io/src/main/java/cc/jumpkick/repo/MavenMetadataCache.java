@@ -251,7 +251,7 @@ public final class MavenMetadataCache {
 
     /** One GET under the host's permit: a catalog read is bounded per host as an artifact download is. */
     private HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
-        return limiter.run(uri, () -> gate.send(() -> http.get(uri, headers)));
+        return limiter.run(uri, () -> gate.send(() -> http.documents().get(uri, headers)));
     }
 
     /** A cached body worth validating: present and non-empty. */

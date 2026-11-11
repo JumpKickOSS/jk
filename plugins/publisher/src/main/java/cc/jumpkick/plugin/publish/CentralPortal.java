@@ -134,13 +134,14 @@ public final class CentralPortal {
         URI uri = base.resolve("api/v1/publisher/upload?name=" + encode(name) + "&publishingType=" + type.name());
         // One attempt: the Portal may have taken the bundle before a 5xx or a reset, and a second
         // upload would be a second deployment.
-        HttpResponse<byte[]> response = http.postOnce(
-                uri,
-                body,
-                Map.of(
-                        "Authorization", "Bearer " + bearer,
-                        "Content-Type", "multipart/form-data; boundary=" + boundary,
-                        "Accept", "text/plain"));
+        HttpResponse<byte[]> response = http.documents()
+                .postOnce(
+                        uri,
+                        body,
+                        Map.of(
+                                "Authorization", "Bearer " + bearer,
+                                "Content-Type", "multipart/form-data; boundary=" + boundary,
+                                "Accept", "text/plain"));
         String text = new String(response.body(), StandardCharsets.UTF_8).trim();
         if (response.statusCode() / 100 != 2) {
             throw new IOException("Central Portal upload returned HTTP " + response.statusCode() + " for " + uri
@@ -156,8 +157,8 @@ public final class CentralPortal {
     /** One status read for {@code deploymentId}. */
     public Status status(String deploymentId) throws IOException, InterruptedException {
         URI uri = base.resolve("api/v1/publisher/status?id=" + encode(deploymentId));
-        HttpResponse<byte[]> response =
-                http.post(uri, new byte[0], Map.of("Authorization", "Bearer " + bearer, "Accept", "application/json"));
+        HttpResponse<byte[]> response = http.documents()
+                .post(uri, new byte[0], Map.of("Authorization", "Bearer " + bearer, "Accept", "application/json"));
         String text = new String(response.body(), StandardCharsets.UTF_8);
         if (response.statusCode() / 100 != 2) {
             throw new IOException("Central Portal status returned HTTP " + response.statusCode() + " for deployment "

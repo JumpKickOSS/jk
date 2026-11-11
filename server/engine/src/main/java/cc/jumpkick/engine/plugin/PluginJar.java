@@ -191,7 +191,7 @@ public enum PluginJar {
         if (jarResp.statusCode() < 200 || jarResp.statusCode() >= 300) {
             throw new IOException("GET " + jarUri + " → HTTP " + jarResp.statusCode());
         }
-        HttpResponse<byte[]> pomResp = http.get(pomUri, auth);
+        HttpResponse<byte[]> pomResp = http.documents().get(pomUri, auth);
         if (pomResp.statusCode() < 200 || pomResp.statusCode() >= 300) {
             throw new IOException("official repo has no POM for " + relPath + " (HTTP " + pomResp.statusCode() + ")");
         }
@@ -203,7 +203,7 @@ public enum PluginJar {
         String sha = Hashing.sha256Hex(bytes);
         Optional<String> published = Optional.empty();
         try {
-            HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"), auth);
+            HttpResponse<byte[]> sumResp = http.documents().get(URI.create(jarUri + ".sha256"), auth);
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
                 published = Hashing.checksumFromSidecar(new String(sumResp.body(), StandardCharsets.UTF_8), 64);
             }
