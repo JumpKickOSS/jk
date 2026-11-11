@@ -13,6 +13,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -121,7 +122,7 @@ public final class VerifyBuildCommand implements CliCommand {
                         }
                     }
                     ctx.put(PLAN, new VerifyPlan(moduleDirs));
-                    ctx.put(SCRATCH, Files.createTempDirectory("jk-verify-"));
+                    ctx.put(SCRATCH, Files.createTempDirectory(HostTemp.dir(), "jk-verify-"));
                     ctx.progress(1);
                 })
                 .build();

@@ -12,6 +12,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.host.EngineJvmFlags;
+import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.time.Clock;
@@ -656,6 +657,10 @@ public final class EngineSpawn {
         // (HotSpot names a dump into a directory java_pid<pid>.hprof).
         command.addAll(EngineJvmFlags.BASE);
         command.addAll(EngineJvmFlags.memory(Runtime.getRuntime().availableProcessors()));
+        // The engine's temporary files on disk, not in a tmpfs /tmp (HostTemp); its forks inherit
+        // the same rule from JvmOptions.
+        String tmpdir = HostTemp.jvmFlag();
+        if (tmpdir != null) command.add(tmpdir);
         command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
         // Metaspace/stack mirror what workers already get from JvmOptions.
         command.add("-XX:MaxMetaspaceSize=256m");
@@ -693,6 +698,8 @@ public final class EngineSpawn {
         command.add("-XX:+ExitOnOutOfMemoryError");
         command.add("-XX:+HeapDumpOnOutOfMemoryError");
         command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
+        String tmpdir = HostTemp.jvmFlag();
+        if (tmpdir != null) command.add(tmpdir);
         return command;
     }
 

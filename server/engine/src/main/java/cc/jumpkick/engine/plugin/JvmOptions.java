@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -311,6 +312,10 @@ public final class JvmOptions {
             out.add("-XX:MaxMetaspaceSize=" + COMPILER_MAX_METASPACE_MB + "m");
         }
         if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) out.add(PreferIpv4.JVM_FLAG);
+        if (!HostTemp.named(extra)) {
+            String tmpdir = HostTemp.jvmFlag();
+            if (tmpdir != null) out.add(tmpdir);
+        }
         if (!hasArgPrefix(
                 extra, "-XX:+ExitOnOutOfMemoryError", "-XX:-ExitOnOutOfMemoryError", "-XX:+CrashOnOutOfMemoryError")) {
             out.add("-XX:+ExitOnOutOfMemoryError");
@@ -657,6 +662,12 @@ public final class JvmOptions {
         }
         if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {
             out.add(PreferIpv4.JVM_FLAG);
+        }
+        // jk's own forks keep their temporary files on disk (HostTemp). A test JVM keeps the per-run
+        // directory jk gives it, and the tuning's own -Djava.io.tmpdir wins.
+        if (role != Role.SUITE && !HostTemp.named(extra)) {
+            String tmpdir = HostTemp.jvmFlag();
+            if (tmpdir != null) out.add(tmpdir);
         }
         if (role == Role.BATCH
                 && !hasArgPrefix(

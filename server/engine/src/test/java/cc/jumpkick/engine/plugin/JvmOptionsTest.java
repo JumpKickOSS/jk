@@ -12,6 +12,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,9 +47,14 @@ class JvmOptionsTest {
     private static List<String> hardening(int concurrency, boolean namedCollector) {
         List<String> out = new ArrayList<>(List.of("-XX:MaxMetaspaceSize=256m"));
         if (namedCollector) out.add("-XX:ActiveProcessorCount=" + cores(concurrency));
-        out.addAll(List.of("-Xss512k", PreferIpv4.JVM_FLAG, "-XX:+ExitOnOutOfMemoryError"));
+        out.addAll(List.of("-Xss512k", PreferIpv4.JVM_FLAG));
+        if (TMPDIR != null) out.add(TMPDIR);
+        out.add("-XX:+ExitOnOutOfMemoryError");
         return out;
     }
+
+    /** jk's own forks keep their temporary files on disk ({@link HostTemp}); null off Linux. */
+    private static final @Nullable String TMPDIR = HostTemp.jvmFlag();
 
     private static boolean collectorFlag(String flag) {
         return flag.startsWith("-XX:+Use") && flag.endsWith("GC");
@@ -76,6 +83,7 @@ class JvmOptionsTest {
         expected.remove("-Xss512k");
         expected.remove("-XX:MaxMetaspaceSize=256m");
         expected.remove("-XX:+ExitOnOutOfMemoryError");
+        if (TMPDIR != null) expected.remove(TMPDIR);
         assertThat(suite).containsExactlyElementsOf(expected);
     }
 
@@ -238,6 +246,7 @@ class JvmOptionsTest {
                         "-XX:ActiveProcessorCount=2",
                         "-Xss2m",
                         PreferIpv4.JVM_FLAG,
+                        "-Djava.io.tmpdir=/scratch",
                         "-XX:+CrashOnOutOfMemoryError"));
         assertThat(JvmOptions.flags(s, 1))
                 .containsExactly(
@@ -246,6 +255,7 @@ class JvmOptionsTest {
                         "-XX:ActiveProcessorCount=2",
                         "-Xss2m",
                         PreferIpv4.JVM_FLAG,
+                        "-Djava.io.tmpdir=/scratch",
                         "-XX:+CrashOnOutOfMemoryError");
     }
 
@@ -481,5 +491,23 @@ class JvmOptionsTest {
         assertThat(JvmOptions.residentCollector(named))
                 .as("a collector already chosen is kept")
                 .isSameAs(named);
+    }
+
+    /**
+     * jk's own forks keep their temporary files where the engine does (HostTemp: /var/tmp on Linux,
+     * where /tmp is often RAM); a test JVM keeps the per-run directory jk gives it.
+     */
+    @Test
+    void jk_forks_take_the_hosts_disk_temp_dir_and_test_jvms_do_not() {
+        String flag = HostTemp.jvmFlag();
+        List<String> suite = JvmOptions.suiteFlags(1, List.of());
+        assertThat(suite).noneMatch(f -> f.startsWith("-Djava.io.tmpdir="));
+        if (flag == null) {
+            assertThat(JvmOptions.batchFlags(1)).noneMatch(f -> f.startsWith("-Djava.io.tmpdir="));
+            return;
+        }
+        assertThat(JvmOptions.batchFlags(1)).contains(flag);
+        assertThat(JvmOptions.compilerWorkerFlags()).contains(flag);
+        assertThat(JvmOptions.launcherFlags(1)).contains("-J" + flag);
     }
 }

@@ -31,6 +31,7 @@ import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.config.WhatsNew;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
@@ -794,9 +795,9 @@ public final class SelfCommand extends GroupCommand {
         private static final Duration INFLATE_TIMEOUT = Duration.ofMinutes(10);
 
         private static Path inflateXzViaEngine(byte[] engineJar, byte[] xz) throws IOException {
-            Path engineTmp = Files.createTempFile("jk-engine-", ".jar");
-            Path xzTmp = Files.createTempFile("jk-self-", ".xz");
-            Path out = Files.createTempFile("jk-self-", ".bin");
+            Path engineTmp = Files.createTempFile(HostTemp.dir(), "jk-engine-", ".jar");
+            Path xzTmp = Files.createTempFile(HostTemp.dir(), "jk-self-", ".xz");
+            Path out = Files.createTempFile(HostTemp.dir(), "jk-self-", ".bin");
             try {
                 Path inflater = inflaterEngineJar(engineJar, engineTmp);
                 Files.write(xzTmp, xz);
@@ -861,7 +862,7 @@ public final class SelfCommand extends GroupCommand {
         }
 
         private static Path unzipSingleBinary(byte[] zip) throws IOException {
-            Path tmp = Files.createTempFile("jk-self-", ".bin");
+            Path tmp = Files.createTempFile(HostTemp.dir(), "jk-self-", ".bin");
             try (var zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
                 ZipEntry e;
                 while ((e = zin.getNextEntry()) != null) {

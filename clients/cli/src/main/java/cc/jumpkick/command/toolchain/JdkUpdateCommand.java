@@ -12,6 +12,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
@@ -412,7 +413,7 @@ public final class JdkUpdateCommand implements CliCommand {
     }
 
     private static Path ephemeralCachePath() throws IOException {
-        Path tmp = Files.createTempFile("jk-feed-", ".json.xz");
+        Path tmp = Files.createTempFile(HostTemp.dir(), "jk-feed-", ".json.xz");
         tmp.toFile().deleteOnExit();
         Files.delete(tmp); // force a fresh fetch
         return tmp;
