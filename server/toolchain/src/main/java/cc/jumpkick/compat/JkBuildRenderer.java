@@ -130,6 +130,7 @@ public final class JkBuildRenderer {
                 && build.testFailures() == TestFailureMode.FAIL
                 && build.testFastMethodBudgetMs() == 0
                 && build.testIdleTimeoutMs() == 0
+                && !build.testCacheModule()
                 && build.testJvm().isEmpty()
                 && build.testEnv().isEmpty()) {
             return;
@@ -167,6 +168,7 @@ public final class JkBuildRenderer {
             sb.append("fast-method-budget = ")
                     .append(quote(budget % 1000 == 0 ? budget / 1000 + "s" : budget + "ms"))
                     .append('\n');
+        if (build.testCacheModule()) sb.append("cache = \"module\"\n");
         long idle = build.testIdleTimeoutMs();
         if (idle > 0)
             sb.append("idle-timeout = ")

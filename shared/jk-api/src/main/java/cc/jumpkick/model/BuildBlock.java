@@ -111,6 +111,11 @@ public record BuildBlock(
          */
         long testIdleTimeoutMs,
         /**
+         * {@code [test] cache = "module"}: the suite reruns whole or not at all, where by default the
+         * classes that passed under an unchanged stamp are not run again.
+         */
+        boolean testCacheModule,
+        /**
          * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
          * {@link PlatformPolicy#ENFORCED}.
          */
@@ -235,6 +240,7 @@ public record BuildBlock(
             TestFailureMode.FAIL,
             0,
             0,
+            false,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
             List.of(),

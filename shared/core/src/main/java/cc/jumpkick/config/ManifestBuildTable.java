@@ -67,6 +67,7 @@ final class ManifestBuildTable {
         TestFailureMode testFailures = TestFailureMode.FAIL;
         long testFastMethodBudgetMs;
         long testIdleTimeoutMs;
+        boolean testCacheModule;
         final List<String> testTools = new ArrayList<>();
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
@@ -295,6 +296,15 @@ final class ManifestBuildTable {
         if (test.contains("fast-method-budget")) {
             s.testFastMethodBudgetMs =
                     ManifestBuild.durationMillis(test.get(List.of("fast-method-budget")), "[test].fast-method-budget");
+        }
+        // [test] cache — "class" (the default) keeps each class that passed under an unchanged stamp;
+        // "module" reruns the suite whole, for suites whose classes share state.
+        if (test.contains("cache")) {
+            Object cache = test.get(List.of("cache"));
+            if ("module".equals(cache)) s.testCacheModule = true;
+            else if (!"class".equals(cache)) {
+                throw new JkBuildParseException("[test].cache must be \"class\" or \"module\", not " + cache);
+            }
         }
         // [test] idle-timeout — how long a test JVM may print nothing before it is killed as hung.
         if (test.contains("idle-timeout")) {

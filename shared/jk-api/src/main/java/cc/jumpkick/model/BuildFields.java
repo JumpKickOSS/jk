@@ -50,6 +50,7 @@ final class BuildFields {
     TestFailureMode testFailures;
     long testFastMethodBudgetMs;
     long testIdleTimeoutMs;
+    boolean testCacheModule;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
     List<EnvDecl> testEnv;
@@ -109,6 +110,7 @@ final class BuildFields {
         testFailures = b.testFailures();
         testFastMethodBudgetMs = b.testFastMethodBudgetMs();
         testIdleTimeoutMs = b.testIdleTimeoutMs();
+        testCacheModule = b.testCacheModule();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
         testEnv = b.testEnv();
@@ -157,6 +159,7 @@ final class BuildFields {
                 testFailures,
                 testFastMethodBudgetMs,
                 testIdleTimeoutMs,
+                testCacheModule,
                 platformPolicy,
                 unmappedPolicy,
                 testEnv,

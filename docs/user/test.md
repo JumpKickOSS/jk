@@ -436,6 +436,18 @@ passes with nothing changed is flaky or depends on what ran before it, and the r
 `test-passed-on-rerun` naming it. `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
 whole selection. A change to any stamp input still re-runs every class.
 
+A suite whose classes share state — a database one class seeds and the next reads, a server the
+first class starts — can break when some of its classes are left out. Such a module reruns whole
+or not at all:
+
+```toml
+[test]
+cache = "module"   # default "class"
+```
+
+A red or cut-short run of it then runs every class again, not only the ones that have not passed;
+a green run is still replayed whole from its marker.
+
 ## The tier table partitions its vocabulary
 
 `[test]` and the profiles together form a tier table, and the engine holds it to one invariant

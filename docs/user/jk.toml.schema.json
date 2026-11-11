@@ -350,6 +350,11 @@
           "type": ["string", "integer"],
           "description": "A fast-tier (untagged) test method that takes longer than this is a warning naming the method and its time; the run still passes. A duration (\"1s\", \"500ms\", \"2m\") or seconds. Set at the workspace root it holds every member; a member's own value wins. Absent: no budget."
         },
+        "cache": {
+          "type": "string",
+          "enum": ["class", "module"],
+          "description": "How a suite that did not pass whole is rerun under an unchanged stamp. \"class\" (the default) runs only the classes that have not passed; \"module\" runs the whole suite again, for suites whose classes share state and break when some are left out."
+        },
         "idle-timeout": {
           "type": ["string", "integer"],
           "description": "How long a test JVM may print nothing (no test started, none finished) before it is taken for hung and stopped, its class reported as the failure. A duration (\"90s\", \"45m\", \"120m\") or seconds; holds the one suite JVM and every pool runner. Absent: 30 minutes for the suite JVM, 10 minutes stretched by host load for a pool runner."

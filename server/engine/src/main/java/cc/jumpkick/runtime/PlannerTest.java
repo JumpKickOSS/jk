@@ -556,9 +556,7 @@ public final class PlannerTest {
         var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir(), in.profileName());
         SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
         AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
-        if (affected != null && affected.classNames().isEmpty()) {
-            return; // nothing affected — no stamp store
-        }
+        if (affected != null && affected.classNames().isEmpty()) return; // nothing affected — no stamp store
         // A --class selection that names no compiled class of this module is judged
         // from the class files, before the siblings' jars, the stamp and a test JVM:
         // in a workspace most modules do not hold the class the user named.
@@ -601,10 +599,10 @@ public final class PlannerTest {
             return; // skip — nothing changed since last green run
         }
         // Under the same stamp the classes that passed before still stand: a red or cut-short
-        // suite runs only what has not passed yet. A forced, debug, coverage or affected run
-        // runs its whole selection.
-        TestClassLedger ledger =
-                TestClassLedger.begin(ctx, actionCache, stampKey, moduleLabel, tier.name(), rerun || affected != null);
+        // suite runs only what has not passed yet. A forced, debug, coverage or affected run, and a
+        // module that says [test] cache = "module", runs its whole selection.
+        boolean whole = rerun || affected != null || projectUnderTest.build().testCacheModule();
+        TestClassLedger ledger = TestClassLedger.begin(ctx, actionCache, stampKey, moduleLabel, tier.name(), whole);
         List<String> settled = ledger.settled();
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
