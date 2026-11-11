@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
@@ -58,6 +59,26 @@ class PluginManifestOrphanTest {
         assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isFalse();
         assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
                 .isFalse();
+    }
+
+    @Test
+    void the_strip_lists_the_catalog_once_and_reads_each_scaffold_once(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path catalog = Files.createDirectories(classes.resolve(Path.of("cc", "jumpkick", "plugin", "manifest")));
+        Files.writeString(catalog.resolve("spring-boot.jk-plugin.toml"), "[plugin]\nid = \"spring-boot\"\n");
+        Path scaffold = Files.createDirectories(catalog.resolve("spring-boot/scaffold/a/b"));
+        Files.writeString(scaffold.resolve("Hello.java.tmpl"), "class Hello {}");
+        Files.writeString(catalog.resolve("Keep.class"), "x");
+        PathUtil.resetWalks();
+
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isTrue();
+
+        assertThat(PathUtil.walks())
+                .as("one listing of the catalog, one early-exit walk of the scaffold")
+                .isEqualTo(2);
+        assertThat(catalog.resolve("spring-boot")).doesNotExist();
+        assertThat(catalog.resolve("Keep.class")).exists();
     }
 
     @Test

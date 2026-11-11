@@ -166,39 +166,36 @@ public final class PlannerResources {
      * Delete jk's OWN flattened catalog fixtures — the {@code BUILT_IN} manifest names and their
      * scaffold trees — from main classes. Those files are test-classpath fixtures; production jars
      * must not bake a flattened catalog. Restricted to the built-in names on purpose: a user
-     * project may legitimately ship resources under {@code cc/jumpkick/plugin/manifest/}, and the
-     * old delete-anything sweep silently kept them out of the jar while re-running resources every
-     * build (copy → strip → drift → copy …). Every deletion is reported through {@code warn}.
+     * project may legitimately ship resources under {@code cc/jumpkick/plugin/manifest/}, and
+     * stripping those would keep them out of the jar while re-running resources every build.
+     * Every deletion is reported through {@code warn}.
      */
     static boolean stripFlattenedPluginCatalog(Path classesDir, Consumer<String> warn) throws IOException {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
         List<String> builtIn = PluginTableRegistry.builtInManifestNames();
-        boolean stripped = false;
-        List<Path> children;
-        try (var stream = Files.list(catalog)) {
-            children = stream.toList();
-        }
-        for (Path p : children) {
+        List<Path> files = new ArrayList<>();
+        List<Path> dirs = new ArrayList<>();
+        PathUtil.forEachChild(catalog, (p, attrs) -> {
             String name = p.getFileName().toString();
-            if (Files.isRegularFile(p) && builtIn.contains(name)) {
-                Files.delete(p);
-                warn.accept(name);
-                stripped = true;
-            } else if (Files.isDirectory(p) && builtIn.contains(name + ".jk-plugin.toml") && !containsClassFiles(p)) {
-                PathUtil.deleteRecursivelyOrThrow(p);
-                warn.accept(name + "/");
-                stripped = true;
-            }
+            if (attrs.isRegularFile() && builtIn.contains(name)) files.add(p);
+            else if (attrs.isDirectory() && builtIn.contains(name + ".jk-plugin.toml")) dirs.add(p);
+            return true;
+        });
+        boolean stripped = false;
+        for (Path p : files) {
+            Files.delete(p);
+            warn.accept(p.getFileName().toString());
+            stripped = true;
+        }
+        for (Path p : dirs) {
+            if (PathUtil.anyRegularFile(
+                    p, d -> false, f -> f.getFileName().toString().endsWith(".class"))) continue;
+            PathUtil.deleteRecursivelyOrThrow(p);
+            warn.accept(p.getFileName() + "/");
+            stripped = true;
         }
         return stripped;
-    }
-
-    private static boolean containsClassFiles(Path dir) throws IOException {
-        try (var walk = Files.walk(dir)) {
-            return walk.anyMatch(
-                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".class"));
-        }
     }
 
     /**

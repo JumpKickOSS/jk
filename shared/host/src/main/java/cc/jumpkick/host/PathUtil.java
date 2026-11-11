@@ -18,6 +18,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.DosFileAttributeView;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -342,6 +343,51 @@ public final class PathUtil {
             }
         });
         return hit[0];
+    }
+
+    /**
+     * Delete every entry under {@code root} that is not a directory and that {@code keep} rejects,
+     * then every directory below {@code root} left empty, in one walk: each directory is listed
+     * once and no entry is stat'ed again. Links are entries, never followed. A directory the walk
+     * cannot open is left alone, and so are its ancestors. Missing root is a no-op.
+     */
+    public static void pruneTree(Path root, Predicate<Path> keep) throws IOException {
+        if (!Files.isDirectory(root)) return;
+        WALKS.incrementAndGet();
+        CarrierShare share = new CarrierShare();
+        // Per open directory, how many entries under it survive; an empty one goes in post-order.
+        ArrayDeque<int[]> survivors = new ArrayDeque<>();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                share.visited();
+                survivors.push(new int[1]);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                share.visited();
+                if (keep.test(file)) survivors.element()[0]++;
+                else Files.deleteIfExists(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) {
+                if (!survivors.isEmpty()) survivors.element()[0]++;
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, @Nullable IOException failure) throws IOException {
+                int kept = survivors.pop()[0];
+                if (dir.equals(root)) return FileVisitResult.CONTINUE;
+                if (kept == 0 && failure == null) Files.deleteIfExists(dir);
+                else survivors.element()[0]++;
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     /**

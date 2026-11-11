@@ -26,7 +26,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -749,27 +748,10 @@ public final class ActionCache {
     /**
      * Delete every file under {@code dir} that {@code owned} does not name, then any directory left
      * empty — so a restore clears stale extras without disturbing the outputs it is about
-     * to restore. Deepest-first, so a directory is only tested once its children are gone.
+     * to restore. One walk, each directory listed once.
      */
     private static void pruneUnowned(Path dir, Set<Path> owned) throws IOException {
-        if (!Files.isDirectory(dir)) return;
-        List<Path> deepestFirst;
-        try (var walk = Files.walk(dir)) {
-            deepestFirst = walk.sorted(Comparator.reverseOrder()).toList();
-        }
-        for (Path p : deepestFirst) {
-            if (Files.isDirectory(p)) {
-                if (!p.equals(dir) && isEmptyDir(p)) Files.deleteIfExists(p);
-            } else if (!owned.contains(p.normalize())) {
-                Files.deleteIfExists(p);
-            }
-        }
-    }
-
-    private static boolean isEmptyDir(Path dir) throws IOException {
-        try (var entries = Files.list(dir)) {
-            return entries.findAny().isEmpty();
-        }
+        PathUtil.pruneTree(dir, p -> owned.contains(p.normalize()));
     }
 
     /**
