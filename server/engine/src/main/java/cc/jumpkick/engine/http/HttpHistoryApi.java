@@ -360,12 +360,12 @@ final class HttpHistoryApi {
     }
 
     /**
-     * {@code DELETE /api/history?id=…} — remove one entry. DELETE is a mutation, so the bearer
-     * token is required even on loopback (CSRF defense).
+     * {@code DELETE /api/history?id=…} — remove one finished entry named by record id. DELETE is a
+     * mutation, so the bearer token is required even on loopback (CSRF defense).
      */
     void handleHistoryDelete(HttpExchange exchange) throws IOException {
         String id = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
-        if (id == null || !journal.delete(id)) {
+        if (id == null || !journal.deleteFinished(id)) {
             HttpResponses.sendJson(
                     exchange,
                     404,

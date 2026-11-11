@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.OwnerOnlyFiles;
@@ -11,8 +12,9 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -22,6 +24,9 @@ import org.jspecify.annotations.Nullable;
  * BuildJournal#complete} writes it whole — or never, as a no-op's line in the run log.
  */
 final class PendingRuns {
+
+    /** Writes a stub on a thread of its own, off the common pool that a build's own work shares. */
+    private static final Executor STUB_WRITER = r -> SessionContext.startVirtual("jk-journal-stub", r);
 
     /** One run's unwritten entry and the directory {@link BuildJournal#append} will give it. */
     static final class Entry {
@@ -41,10 +46,12 @@ final class PendingRuns {
             return transcriptHeader;
         }
 
-        /** Write the in-flight entry unless the run has ended; true when this call decided. */
-        private synchronized boolean materialize(BiConsumer<BuildRecord, @Nullable String> begin) {
-            if (settled) return false;
-            begin.accept(running, transcriptHeader);
+        /**
+         * Write the in-flight entry unless the run has ended; true when it was written. An entry
+         * whose write failed stays pending and unbegun, so the run's end writes it whole.
+         */
+        private synchronized boolean materialize(BiPredicate<BuildRecord, @Nullable String> begin) {
+            if (settled || !begin.test(running, transcriptHeader)) return false;
             begun = true;
             settled = true;
             return true;
@@ -74,10 +81,13 @@ final class PendingRuns {
      */
     private final ConcurrentHashMap<Long, Entry> unwritten = new ConcurrentHashMap<>();
 
-    private final BiConsumer<BuildRecord, @Nullable String> begin;
+    private final BiPredicate<BuildRecord, @Nullable String> begin;
 
-    /** {@code begin} writes a run's in-flight entry, opening its transcript with the header when given. */
-    PendingRuns(BiConsumer<BuildRecord, @Nullable String> begin) {
+    /**
+     * {@code begin} writes a run's in-flight entry, opening its transcript with the header when
+     * given, and answers whether the entry was written.
+     */
+    PendingRuns(BiPredicate<BuildRecord, @Nullable String> begin) {
         this.begin = begin;
     }
 
@@ -85,9 +95,10 @@ final class PendingRuns {
     void defer(long requestId, BuildRecord running, Path planned, long delayMillis) {
         Entry entry = new Entry(running, planned);
         pending.put(requestId, entry);
-        CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS).execute(() -> {
-            if (entry.materialize(begin)) pending.remove(requestId, entry);
-        });
+        CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS, STUB_WRITER)
+                .execute(() -> {
+                    if (entry.materialize(begin)) pending.remove(requestId, entry);
+                });
     }
 
     /** Whether a pending run will have {@code planned} as its directory. */

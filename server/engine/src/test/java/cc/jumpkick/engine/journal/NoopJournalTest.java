@@ -97,6 +97,24 @@ class NoopJournalTest {
     }
 
     @Test
+    void a_stub_whose_write_failed_is_written_whole_when_the_run_completes() throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("proj"));
+        Path builds = tmp.resolve("builds");
+        Path runs = ProjectBuilds.projectHome(builds, null, project).resolve(ProjectBuilds.RUNS);
+        Files.createDirectories(runs.getParent());
+        Files.writeString(runs, "a file where the runs directory belongs");
+        BuildJournal journal = new BuildJournal(builds, 0);
+        String locator = requireNonNull(journal.beginLater(running(10, 18, project)));
+        Thread.sleep(150);
+
+        Files.delete(runs);
+        assertThat(journal.complete(locator, finished(10, 18, project), BuildJournal.Snapshot.NONE))
+                .as("the run is journaled although its in-flight entry never reached disk")
+                .isTrue();
+        assertThat(journal.get(locator).orElseThrow().running()).isFalse();
+    }
+
+    @Test
     void a_run_deleted_before_the_stub_delay_never_begins() throws Exception {
         Path project = Files.createDirectories(tmp.resolve("proj"));
         BuildJournal journal = new BuildJournal(tmp.resolve("builds"), 30);

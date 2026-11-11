@@ -48,16 +48,10 @@ public final class HistoryListVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             int limit = Math.max(1, HistoryListRequest.decode(requestLine).limit());
-            // Truncate in the journal (synthetic fixtures are already filtered there) rather
-            // than materialising every record on disk and then dropping most of them.
-            // Oversample then keep only build-like kinds so lock/format/etc. never dilute history.
-            List<BuildJournal.Head> heads = host.journal().heads(Math.max(limit * 4, limit));
-            int emitted = 0;
+            // Only build-like kinds count toward the limit, so lock/format/etc. never dilute history.
+            List<BuildJournal.Head> heads = host.journal().heads(limit, r -> BuildHistoryKinds.isBuildLike(r.kind()));
             for (BuildJournal.Head head : heads) {
                 BuildRecord r = head.record();
-                if (!BuildHistoryKinds.isBuildLike(r.kind())) continue;
-                if (emitted >= limit) break;
-                emitted++;
                 BuildRecord.Tests t = r.tests();
                 BuildRecord.CacheBenefit b = r.benefit();
                 // Live progress + jid for in-flight rows — match by build number + project dir.
@@ -118,7 +112,7 @@ public final class HistoryListVerb implements HostedVerb {
                     writer,
                     JsonOut.object()
                             .put("type", EngineProtocol.HISTORY_DONE)
-                            .put("count", emitted)
+                            .put("count", heads.size())
                             .toString());
 
         } catch (Exception e) {

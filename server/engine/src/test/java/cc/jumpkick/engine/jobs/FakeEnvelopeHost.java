@@ -78,8 +78,12 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
         return !tryStart;
     }
 
+    /** Runs as each request id is drawn: after the envelope's own in-flight check, before admission. */
+    volatile Runnable onNextRequestId = () -> {};
+
     @Override
     public long nextRequestId() {
+        onNextRequestId.run();
         return ids.incrementAndGet();
     }
 
@@ -91,8 +95,13 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
         return clock.getAsLong();
     }
 
+    /** Every request id a progress session was opened for. */
+    final List<Long> moded = Collections.synchronizedList(new ArrayList<>());
+
     @Override
-    public void putMode(long id, ProgressBarMode mode) {}
+    public void putMode(long id, ProgressBarMode mode) {
+        moded.add(id);
+    }
 
     @Override
     public void publishRequestStart(long id, String kind, String dir, long buildNumber) {

@@ -235,9 +235,6 @@ public final class JobEnvelope {
         // Released by the first user cancel: the joiner parks on the runner's end and on this,
         // so a cancel that reaches a body wedged past its interrupt still ends in a bounded join.
         CountDownLatch cancelSignal = new CountDownLatch(1);
-        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
-        // startup env is not the client's.
-        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
         long eventStartMillis = host.nowMillis();
         boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
         // Who asked: default "cli"; optimize/calibrate mark synthetic history. The session (an MCP
@@ -250,6 +247,9 @@ public final class JobEnvelope {
             admission.release(eventRequestId);
             return refusals.refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
         }
+        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
+        // startup env is not the client's. Opened only once admitted: no path retires a refused id.
+        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
         String leader = Jsonl.topStr(requestLine, "sessionLeader");
         if (leader != null && !leader.isBlank()) host.sessionLeader(trigger, session, leader);
         host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());

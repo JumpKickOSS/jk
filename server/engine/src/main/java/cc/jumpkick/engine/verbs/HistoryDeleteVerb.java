@@ -42,7 +42,7 @@ public final class HistoryDeleteVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             String id = HistoryDeleteRequest.decode(requestLine).id();
-            boolean deleted = id != null && host.journal().delete(id);
+            boolean deleted = id != null && host.journal().deleteFinished(id);
             host.send(
                     writer,
                     JsonOut.object()

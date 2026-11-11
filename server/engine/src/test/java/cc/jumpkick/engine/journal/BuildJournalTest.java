@@ -180,7 +180,7 @@ class BuildJournalTest {
         j.append(record(1_700_000_002_000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
         String id = requireNonNull(j.list().get(0).id());
 
-        assertThat(j.delete(id)).isTrue();
+        assertThat(j.deleteFinished(id)).isTrue();
         assertThat(j.get(id)).isEmpty();
         assertThat(j.list()).hasSize(1);
     }
@@ -506,18 +506,22 @@ class BuildJournalTest {
     @Test
     void delete_removes_the_entry() {
         BuildJournal j = new BuildJournal(dir);
-        String id = requireNonNull(j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE));
-        assertThat(j.delete(id)).isTrue();
+        String locator = requireNonNull(j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE));
+        String id = requireNonNull(j.get(locator).orElseThrow().id());
+        assertThat(j.deleteFinished(locator))
+                .as("a bare build number is refused")
+                .isFalse();
+        assertThat(j.deleteFinished(id)).isTrue();
         assertThat(j.get(id)).isEmpty();
         assertThat(j.list()).isEmpty();
-        assertThat(j.delete(id)).isFalse(); // already gone
+        assertThat(j.deleteFinished(id)).isFalse(); // already gone
     }
 
     @Test
     void hostile_ids_cannot_escape_the_journal_dir() {
         BuildJournal j = new BuildJournal(dir);
         assertThat(j.get("../secret")).isEmpty();
-        assertThat(j.delete("../secret")).isFalse();
+        assertThat(j.deleteFinished("../secret")).isFalse();
         assertThat(j.get("a/b")).isEmpty();
         assertThat(j.artifact("..", "jk-lock.toml")).isEmpty();
     }

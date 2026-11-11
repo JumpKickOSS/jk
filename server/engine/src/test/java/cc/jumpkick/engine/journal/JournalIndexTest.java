@@ -91,7 +91,7 @@ class JournalIndexTest {
         String a = requireNonNull(j.append(finished("/a", 1_700_000_000_000L), BuildJournal.Snapshot.NONE));
         j.append(finished("/b", 1_700_000_001_000L), BuildJournal.Snapshot.NONE);
         String id = requireNonNull(j.get(a).orElseThrow().id());
-        assertThat(j.delete(id)).isTrue();
+        assertThat(j.deleteFinished(id)).isTrue();
         assertThat(j.get(id)).isEmpty();
         assertThat(j.heads(10)).hasSize(1);
     }

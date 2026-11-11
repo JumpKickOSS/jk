@@ -276,6 +276,20 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void write_through_an_in_root_symlink_keeps_the_link_and_updates_its_target(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Real.java"), "class Real {}\n");
+        Symlinks.create(root.resolve("src/Link.java"), root.resolve("src/Real.java"));
+
+        var written = WorkspaceFileAccess.write(root, "src/Link.java", "class Real { int x; }\n");
+
+        assertThat(written).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        assertThat(Files.isSymbolicLink(root.resolve("src/Link.java"))).isTrue();
+        assertThat(Files.readString(root.resolve("src/Real.java"))).isEqualTo("class Real { int x; }\n");
+    }
+
+    @Test
     void write_replaces_text_file_atomically(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));

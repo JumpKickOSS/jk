@@ -102,7 +102,8 @@ public final class BuildJournal {
     private final Path buildsRoot;
 
     /** Runs admitted through {@link #beginLater} whose in-flight entry is not written yet. */
-    private final PendingRuns pending = new PendingRuns((running, header) -> append(running, Snapshot.NONE, header));
+    private final PendingRuns pending =
+            new PendingRuns((running, header) -> append(running, Snapshot.NONE, header) != null);
 
     private final long stubDelayMillis;
 
@@ -600,6 +601,11 @@ public final class BuildJournal {
 
     /** The newest {@code limit} non-synthetic heads, newest first by finish (else start) time, off the index. */
     public List<Head> heads(int limit) {
+        return heads(limit, r -> true);
+    }
+
+    /** As {@link #heads(int)}, counting only records passing {@code keep} toward {@code limit}. */
+    public List<Head> heads(int limit, Predicate<BuildRecord> keep) {
         List<Head> out = new ArrayList<>();
         if (limit <= 0) return out;
         for (JournalIndex.Entry e : runs.newest()) {
@@ -607,7 +613,9 @@ public final class BuildJournal {
             // Defense in depth: never surface optimize/calibrate fixtures.
             if (e.synthetic()) continue;
             Optional<Head> head = headOf(e);
-            if (head.isPresent() && !head.get().record().synthetic()) out.add(head.get());
+            if (head.isPresent()
+                    && !head.get().record().synthetic()
+                    && keep.test(head.get().record())) out.add(head.get());
         }
         return out;
     }
@@ -902,23 +910,28 @@ public final class BuildJournal {
         return findRunDir(idOrLocator).map(d -> d.resolve(name)).filter(Files::isRegularFile);
     }
 
-    public boolean delete(String idOrLocator) {
+    /**
+     * Delete a finished run a person named by record id or {@code j-…} job dir. A bare build
+     * number names a run in every project home, so it is refused, and so is a run still in flight.
+     */
+    public boolean deleteFinished(String idOrLocator) {
+        if (kindOf(idOrLocator) == LocatorKind.RUN_NUMBER) return false;
         Path dir = findRunDir(idOrLocator).orElse(null);
         if (dir == null || !Files.isDirectory(dir)) return false;
+        if (readHead(dir).map(h -> h.record().running()).orElse(false)) return false;
+        return deleteRun(dir);
+    }
+
+    private boolean deleteRun(Path dir) {
         PathUtil.deleteRecursively(dir);
         runs.touched(dir);
         return true;
     }
 
     /**
-     * Delete a run, resolving the locator <em>within one project</em>.
-     *
-     * <p>Build numbers are allocated per project, so a bare number like {@code "8"} names a
-     * different run in every project home; the unscoped {@link #delete(String)} resolves it by
-     * scanning project homes in sorted order and taking the first hit, which can wipe an unrelated
-     * project's history. Callers that know the project (they just wrote the record) must use this
-     *. Falls back to the unscoped lookup only when the project is unknown or the number
-     * does not exist under it — e.g. a history id rather than a build number.
+     * Delete a run, in flight or not, resolving a build number <em>within one project</em>: build
+     * numbers are allocated per project, so {@code "8"} names a different run in every project
+     * home. A record id or job dir is looked up globally.
      */
     public boolean delete(String idOrLocator, @Nullable String coord, String dir) {
         if (idOrLocator != null && !idOrLocator.isBlank() && ProjectBuilds.validRunDirName(idOrLocator)) {
@@ -927,10 +940,7 @@ public final class BuildJournal {
                 settlePendingAt(dir, n);
                 Optional<Path> scoped = runDir(coord, dir, n);
                 if (scoped.isPresent()) {
-                    if (!Files.isDirectory(scoped.get())) return false;
-                    PathUtil.deleteRecursively(scoped.get());
-                    runs.touched(scoped.get());
-                    return true;
+                    return Files.isDirectory(scoped.get()) && deleteRun(scoped.get());
                 }
                 // A per-project number that does not exist under this project is not ours to
                 // resolve globally — another project's run of the same number is not the target.
@@ -939,7 +949,8 @@ public final class BuildJournal {
                 // not a build number — fall through to the id lookup
             }
         }
-        return delete(idOrLocator);
+        Path found = findRunDir(idOrLocator).orElse(null);
+        return found != null && Files.isDirectory(found) && deleteRun(found);
     }
 
     /**

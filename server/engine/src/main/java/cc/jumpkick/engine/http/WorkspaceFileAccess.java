@@ -524,7 +524,7 @@ final class WorkspaceFileAccess {
         // lost update the etag exists to prevent. Striped monitors (never a clear-on-overflow
         // map): a shared stripe only over-serializes distinct files.
         synchronized (WRITE_LOCKS[Math.floorMod(realFile.hashCode(), WRITE_LOCKS.length)]) {
-            return compareAndWrite(file, expectedEtag, content, encoding, absRoot, rel, lang);
+            return compareAndWrite(realFile, expectedEtag, content, encoding, absRoot, rel, lang);
         }
     }
 
