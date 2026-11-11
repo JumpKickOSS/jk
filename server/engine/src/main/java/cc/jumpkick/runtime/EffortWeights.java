@@ -764,7 +764,10 @@ public final class EffortWeights {
         if (!testWillRun) return SKIP;
         // The suite this run selects keeps its own history: the integration tier is never priced
         // off the default tier's wall, nor the reverse.
-        String suite = SuiteSelection.current();
+        // The plan's own session, not the calling thread's: weights are set on a pool thread that
+        // carries no session of its own.
+        String suite =
+                SuiteSelection.step(in.session().testSelection(), in.session().profile());
         if (methods > 0) {
             return learned(timings, metrics, mod, suite, methods, staticTests, projectDirs);
         } else if (classes > 0) {
