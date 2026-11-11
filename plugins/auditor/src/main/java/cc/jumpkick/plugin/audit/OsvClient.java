@@ -18,8 +18,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Client for the <a href="https://api.osv.dev/v1/querybatch">OSV v1 batch query API</a>. One
- * round trip per lockfile, plus one per page when OSV paginates a large hit set; full vuln
- * details are fetched separately when needed.
+ * round trip per thousand locked artifacts, plus one per page when OSV paginates a large hit set;
+ * full vuln details are fetched separately when needed.
  *
  * <p>Requests go through {@link Http}, so the proxy jk is configured with — {@code [network]} or
  * the shell's proxy variables, handed to this worker over the engine's own — carries the audit
@@ -35,6 +35,9 @@ public final class OsvClient {
 
     /** Batch pages followed per audit; a token still present afterwards fails the audit. */
     static final int MAX_PAGES = 50;
+
+    /** Queries one querybatch request may carry; OSV refuses a larger batch. */
+    static final int MAX_BATCH = 1_000;
 
     private final Http http;
     private final URI batchUrl;
@@ -108,27 +111,37 @@ public final class OsvClient {
                         + MAX_PAGES
                         + " pages");
             }
-            List<Object> rows = new ArrayList<>(pending.size());
-            for (var entry : pending.entrySet()) rows.add(row(queries.get(entry.getKey()), entry.getValue()));
-            String body = MiniJson.write(Map.of("queries", rows));
-            HttpResponse<byte[]> response = http.post(
-                    batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + ": " + text(response));
-            }
-            List<Page> pages = parseBatchResponse(text(response), pending.size());
             Map<Integer, @Nullable String> next = new LinkedHashMap<>();
-            int p = 0;
-            for (int index : pending.keySet()) {
-                Page result = pages.get(p++);
-                ids.get(index).addAll(result.vulnIds());
-                if (result.nextPageToken() != null) next.put(index, result.nextPageToken());
+            List<Map.Entry<Integer, @Nullable String>> all = new ArrayList<>(pending.entrySet());
+            for (int from = 0; from < all.size(); from += MAX_BATCH) {
+                List<Map.Entry<Integer, @Nullable String>> batch =
+                        all.subList(from, Math.min(all.size(), from + MAX_BATCH));
+                List<Object> rows = new ArrayList<>(batch.size());
+                for (var entry : batch) rows.add(row(queries.get(entry.getKey()), entry.getValue()));
+                List<Page> pages = post(rows);
+                for (int p = 0; p < batch.size(); p++) {
+                    int index = batch.get(p).getKey();
+                    Page result = pages.get(p);
+                    ids.get(index).addAll(result.vulnIds());
+                    if (result.nextPageToken() != null) next.put(index, result.nextPageToken());
+                }
             }
             pending = next;
         }
         List<Result> out = new ArrayList<>(queries.size());
         for (LinkedHashSet<String> found : ids) out.add(new Result(List.copyOf(found)));
         return out;
+    }
+
+    /** One querybatch request of {@code rows}, at most {@link #MAX_BATCH}; one page per row, in order. */
+    private List<Page> post(List<Object> rows) throws IOException, InterruptedException {
+        String body = MiniJson.write(Map.of("queries", rows));
+        HttpResponse<byte[]> response =
+                http.post(batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + ": " + text(response));
+        }
+        return parseBatchResponse(text(response), rows.size());
     }
 
     /** One querybatch row; {@code pageToken} continues an earlier page of the same query. */

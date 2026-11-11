@@ -75,7 +75,8 @@ class ArchiveTimestampTest {
         Files.writeString(classes.resolve("App.class"), "app");
         Files.writeString(classes.resolve("R.class"), "generated — excluded from the classes jar");
 
-        assertPinned(tmp, "classes.jar", out -> AarPackager.writeClassesJar(tmp.resolve("classes"), out));
+        assertPinned(
+                tmp, "classes.jar", out -> AarPackager.writeClassesJar(tmp.resolve("classes"), "com.example", out));
     }
 
     @Test

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -46,7 +47,7 @@ class WarmWorkersTest {
     /** A run's pid line, chatter and protocol lines. */
     private static final class Seen implements WarmWorkers.Listener {
         long pid = -1;
-        final List<String> output = new ArrayList<>();
+        final List<String> output = new CopyOnWriteArrayList<>();
 
         @Override
         public void protocol(String json) {
@@ -229,6 +230,46 @@ class WarmWorkersTest {
         assertThat(ProcessHandle.of(seen.pid).map(ProcessHandle::isAlive).orElse(false))
                 .isFalse();
         assertThat(WarmWorkers.idleCount()).isZero();
+    }
+
+    /** A stopped worker takes the processes it started with it; an orphan would outlive the build. */
+    @Test
+    void a_stopped_worker_takes_its_children_with_it() throws Exception {
+        Path spec = Files.createTempFile(dir, "spec", ".txt");
+        Files.writeString(spec, "spawn\n");
+        Seen seen = new Seen();
+        AtomicBoolean cancel = new AtomicBoolean();
+        Thread.ofVirtual().start(() -> {
+            try {
+                while (seen.output.stream().noneMatch(l -> l.startsWith("child pid "))) Thread.sleep(50);
+            } catch (InterruptedException ignored) {
+                // the test is ending
+            }
+            cancel.set(true);
+        });
+        WarmWorkers.Outcome out = WarmWorkers.run(launch("a"), spec, seen, cancel::get);
+        assertThat(out.died()).isTrue();
+        long child = seen.output.stream()
+                .filter(l -> l.startsWith("child pid "))
+                .mapToLong(l -> Long.parseLong(l.substring("child pid ".length())))
+                .findFirst()
+                .orElseThrow();
+        assertThat(ProcessHandle.of(child).map(ProcessHandle::isAlive).orElse(false))
+                .as("the worker's child is stopped with it")
+                .isFalse();
+    }
+
+    /** What a worker prints after a run has answered belongs to no run, least of all the next one. */
+    @Test
+    void words_after_a_runs_exit_do_not_reach_the_next_run() throws Exception {
+        Path late = Files.createTempFile(dir, "spec", ".txt");
+        Files.writeString(late, "late\n");
+        Path ok = Files.createTempFile(dir, "spec", ".txt");
+        Files.writeString(ok, "ok\n");
+        WarmWorkers.run(launch("a"), late, new Seen(), () -> false);
+        Seen next = new Seen();
+        WarmWorkers.run(launch("a"), ok, next, () -> false);
+        assertThat(next.output).contains("chatter for ok").noneMatch(l -> l.startsWith("late words"));
     }
 
     @Test

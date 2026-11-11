@@ -16,6 +16,8 @@ import com.google.cloud.tools.jib.api.buildplan.FilePermissions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -120,7 +122,7 @@ public final class LayeredImage {
             b.addEntry(
                     layer.src(),
                     AbsoluteUnixPath.get(dest),
-                    FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                    permissions(layer.src()),
                     AotCacheTrainer.LAYER_TIME.toInstant());
             return b.build();
         }
@@ -133,9 +135,23 @@ public final class LayeredImage {
             b.addEntry(
                     file,
                     AbsoluteUnixPath.get(dest + "/" + rel),
-                    FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                    permissions(file),
                     AotCacheTrainer.LAYER_TIME.toInstant());
         }
         return b.build();
+    }
+
+    private static final FilePermissions EXECUTABLE = FilePermissions.fromOctalString("755");
+
+    /**
+     * 0755 for a file its owner may execute, else 0644: an entrypoint script or a bundled binary keeps
+     * its exec bit. A file system without POSIX modes gives every file 0644.
+     */
+    static FilePermissions permissions(Path file) throws IOException {
+        PosixFileAttributeView posix = Files.getFileAttributeView(file, PosixFileAttributeView.class);
+        if (posix == null) return FilePermissions.DEFAULT_FILE_PERMISSIONS;
+        return posix.readAttributes().permissions().contains(PosixFilePermission.OWNER_EXECUTE)
+                ? EXECUTABLE
+                : FilePermissions.DEFAULT_FILE_PERMISSIONS;
     }
 }

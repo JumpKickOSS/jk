@@ -69,9 +69,10 @@ public final class CompilerProtocol {
 
     /**
      * The worker entry point: validate the single {@code @spec} argument, decode it, and run
-     * {@code body}. An escaping throwable is logged with its stack (the host keeps a bounded tail of
+     * {@code body}. An escaping exception is logged with its stack (the host keeps a bounded tail of
      * non-protocol output and surfaces it when a worker dies before speaking protocol) and mapped
-     * to {@link Exit#SOFTWARE}; a wrong argument count is {@link Exit#USAGE}.
+     * to {@link Exit#SOFTWARE}; an {@link Error} is logged and rethrown, so the worker dies with it
+     * rather than stay warm; a wrong argument count is {@link Exit#USAGE}.
      *
      * @param pluginId the worker's manifest id, used in the usage line and the failure header
      */
@@ -85,9 +86,14 @@ public final class CompilerProtocol {
             String arg = args.get(0);
             PluginSpec spec = PluginSpec.read(Path.of(arg.startsWith("@") ? arg.substring(1) : arg));
             return body.compile(spec, proto);
-        } catch (Throwable t) {
-            Log.error(pluginId + ": " + t.getClass().getName() + ": " + t.getMessage(), t);
+        } catch (Exception e) {
+            Log.error(pluginId + ": " + e.getClass().getName() + ": " + e.getMessage(), e);
             return Exit.SOFTWARE;
+        } catch (Error e) {
+            // A served worker that swallowed it would stay warm with whatever it broke (a class
+            // that failed to initialise, a half-run static) and serve the next compile with it.
+            Log.error(pluginId + ": " + e.getClass().getName() + ": " + e.getMessage(), e);
+            throw e;
         }
     }
 

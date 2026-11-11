@@ -134,6 +134,36 @@ class ReferencesTest {
         return out;
     }
 
+    /**
+     * A source saved while it compiled gets no index: its spans describe the text javac read, and a
+     * digest of the new text would let a rename apply them to offsets that moved.
+     */
+    @Test
+    void a_source_saved_during_the_compile_is_not_indexed(@TempDir Path dir) throws Exception {
+        Path src = Files.createDirectories(dir.resolve("src/main/java"));
+        Path shapes = write(src, "demo/shapes/Shape.java", SHAPES);
+        Path area = write(src, "demo/shapes/Area.java", AREA);
+        Path classes = Files.createDirectories(dir.resolve("target/classes"));
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        try (StandardJavaFileManager fm = javac.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+            JavacTask task = (JavacTask) javac.getTask(
+                    null,
+                    fm,
+                    null,
+                    List.of("-proc:none", "-d", classes.toString()),
+                    null,
+                    fm.getJavaFileObjects(shapes, area));
+            References refs = new References(task);
+            task.addTaskListener(refs);
+            assertThat(task.call()).isTrue();
+            Files.writeString(area, "// a comment the editor saved first\n" + AREA);
+            refs.write(classes, dir);
+        }
+        Path index = References.dirFor(classes);
+        assertThat(index.resolve(References.relative(dir, shapes) + ".refs")).isRegularFile();
+        assertThat(index.resolve(References.relative(dir, area) + ".refs")).doesNotExist();
+    }
+
     /** The name a symbol is spelled with in source: what a reader takes as a span's length. */
     private static String simpleName(String symbol) {
         int hash = symbol.indexOf('#');

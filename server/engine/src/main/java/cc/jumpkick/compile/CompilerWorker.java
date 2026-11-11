@@ -14,6 +14,8 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,6 +27,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -233,13 +236,26 @@ final class CompilerWorker {
     void attach(PluginProcess.Conversation conversation) {
         channel = conversation;
         String hello = hello(concurrencyOverride());
-        detached("jk-javac-hello-" + scope, () -> {
+        detached("jk-javac-hello-" + scope, () -> sendWhenConnected(conversation, hello, () -> dead));
+    }
+
+    /**
+     * Send {@code line} once the worker connects, however long that takes while it lives: a worker
+     * that connects after one connect wait still gets its hello, where giving up would leave it
+     * waiting for one forever and holding its pool slot. Stops when {@code gone} or the channel closes.
+     */
+    static void sendWhenConnected(PluginProcess.Conversation conversation, String line, BooleanSupplier gone) {
+        while (!gone.getAsBoolean()) {
             try {
-                conversation.send(hello);
+                conversation.send(line);
+                return;
+            } catch (UncheckedIOException e) {
+                // Only a connect wait that ran out is worth another; a closed channel is the end.
+                if (!(e.getCause() instanceof SocketTimeoutException)) return;
             } catch (RuntimeException e) {
-                // The worker never connected; its exit says why.
+                return;
             }
-        });
+        }
     }
 
     /** The {@code hello} command: a thread count only when one was asked for. */

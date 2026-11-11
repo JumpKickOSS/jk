@@ -597,8 +597,41 @@ final class LauncherPath {
         m.put("message", capMessage(t.getMessage() == null ? "" : t.getMessage()));
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
-        m.put("stack", sw.toString()); // single string — not a line array
+        m.put("stack", capStack(sw.toString())); // single string — not a line array
         return m;
+    }
+
+    /** Stack lines sent from the top of a trace; past them only the {@code Caused by:} headers go. */
+    private static final int MAX_STACK_LINES = 256;
+
+    private static final String LINE_TRUNCATION_MARKER = " ... line truncated (";
+
+    /**
+     * {@code stack} bounded as the message is: a header line repeats its exception's whole message,
+     * so each line is cut at {@link #MAX_MESSAGE_CHARS}, and past {@link #MAX_STACK_LINES} lines only
+     * the cause headers are kept, so the innermost cause still arrives.
+     */
+    static String capStack(String stack) {
+        String[] lines = stack.split("\n", -1);
+        List<String> kept = new ArrayList<>();
+        int elided = 0;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (i >= MAX_STACK_LINES && !line.strip().startsWith("Caused by: ")) {
+                if (!line.isEmpty()) elided++;
+                continue;
+            }
+            if (elided > 0) kept.add("\t... " + elided + " lines");
+            elided = 0;
+            if (line.length() > MAX_MESSAGE_CHARS) {
+                int cut = MAX_MESSAGE_CHARS;
+                if (Character.isHighSurrogate(line.charAt(cut - 1))) cut--;
+                line = line.substring(0, cut) + LINE_TRUNCATION_MARKER + (line.length() - cut) + " more chars)";
+            }
+            kept.add(line);
+        }
+        if (elided > 0) kept.add("\t... " + elided + " lines");
+        return String.join("\n", kept);
     }
 
     private static String capMessage(String message) {

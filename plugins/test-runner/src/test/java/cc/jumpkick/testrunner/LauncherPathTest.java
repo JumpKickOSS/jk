@@ -467,6 +467,23 @@ class LauncherPathTest {
         assertThat((String) m.get("stack")).contains("java.lang.IllegalStateException");
     }
 
+    /**
+     * A trace's header line repeats its exception's whole message, and a cause's too: the stack is
+     * capped line by line, so a multi-MB assertion diff never rides the wire through it.
+     */
+    @Test
+    void an_oversized_message_does_not_ride_the_wire_inside_the_stack() {
+        Exception cause = new IllegalArgumentException("z".repeat(50_000));
+        Map<String, Object> m = LauncherPath.throwableMap(new IllegalStateException("x".repeat(200_000), cause));
+        String stack = String.valueOf(m.get("stack"));
+        assertThat(stack.length()).isLessThan(20_000);
+        assertThat(stack)
+                .contains("java.lang.IllegalStateException: " + "x".repeat(100))
+                .contains("Caused by: java.lang.IllegalArgumentException: " + "z".repeat(100))
+                .contains(" ... line truncated (");
+        assertThat(stack.lines()).allMatch(line -> line.length() < CAP + 64);
+    }
+
     @Test
     void a_message_at_the_cap_is_left_alone() {
         String exact = "y".repeat(CAP);

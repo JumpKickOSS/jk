@@ -95,6 +95,10 @@ final class References implements TaskListener {
     private final Elements elements;
     private final Types types;
     private final Map<CompilationUnitTree, List<Ref>> units = new IdentityHashMap<>();
+
+    /** Each source's digest as it stood when javac began parsing it. */
+    private final Map<Path, String> parsed = new HashMap<>();
+
     private final Set<Tree> scanned = Collections.newSetFromMap(new IdentityHashMap<>());
 
     /** Symbols already built, by element: most names are of a few symbols, and building one erases types. */
@@ -104,6 +108,17 @@ final class References implements TaskListener {
         this.trees = DocTrees.instance(task);
         this.elements = task.getElements();
         this.types = task.getTypes();
+    }
+
+    @Override
+    public void started(TaskEvent e) {
+        if (e.getKind() != TaskEvent.Kind.PARSE || e.getSourceFile() == null) return;
+        try {
+            Path source = Path.of(e.getSourceFile().toUri()).toAbsolutePath().normalize();
+            parsed.put(source, sha256(Files.readAllBytes(source)));
+        } catch (IOException | RuntimeException unreadable) {
+            // No digest, no index: write skips a source it cannot vouch for.
+        }
     }
 
     @Override
@@ -143,9 +158,14 @@ final class References implements TaskListener {
                     .normalize();
             if (!Files.isRegularFile(source)) continue;
             Path target = dir.resolve(relative(root, source) + ".refs");
-            StringBuilder out = new StringBuilder(HEADER)
-                    .append(sha256(Files.readAllBytes(source)))
-                    .append('\n');
+            String digest = sha256(Files.readAllBytes(source));
+            if (!digest.equals(parsed.get(source))) {
+                // Saved while it compiled: the spans describe text the file no longer holds, and a
+                // rename trusting the new digest would edit the wrong offsets.
+                Files.deleteIfExists(target);
+                continue;
+            }
+            StringBuilder out = new StringBuilder(HEADER).append(digest).append('\n');
             Map<String, Integer> ids = new HashMap<>();
             int previous = 0;
             List<Ref> refs = new ArrayList<>(unit.getValue());

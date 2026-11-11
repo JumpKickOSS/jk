@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -103,5 +104,30 @@ class LearnedHeapsTest {
     void a_sizing_override_replaces_the_estimate(@TempDir Path dir) {
         LearnedHeaps heaps = new LearnedHeaps(dir, 128L << 20);
         assertThat(heaps.choose(dir, "g:app", HeapScope.TEST, 25, 512L << 20)).isEqualTo(128L << 20);
+    }
+
+    /**
+     * Every worker fork asks the store; a file nobody changed is parsed once, and one another
+     * engine rewrote is parsed again.
+     */
+    @Test
+    void an_unchanged_file_is_parsed_once(@TempDir Path dir) throws Exception {
+        LearnedHeaps heaps = new LearnedHeaps(dir);
+        Path project = dir.resolve("app");
+        HeapScope.Key key = new HeapScope.Key(project, "g:app", HeapScope.TEST, 25);
+        heaps.note(key, 256L << 20);
+        int afterWrite = heaps.parses();
+        for (int i = 0; i < 20; i++) {
+            assertThat(heaps.peak(key)).isEqualTo(256L << 20);
+            heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20);
+        }
+        assertThat(heaps.parses()).isEqualTo(afterWrite);
+
+        Path file = heaps.file(project);
+        Files.writeString(file, Files.readString(file).replace(String.valueOf(256L << 20), String.valueOf(512L << 20)));
+        Files.setLastModifiedTime(
+                file, FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() + 5_000));
+        assertThat(heaps.peak(key)).as("another engine's write is read").isEqualTo(512L << 20);
+        assertThat(heaps.parses()).isEqualTo(afterWrite + 1);
     }
 }

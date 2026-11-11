@@ -4,11 +4,14 @@ package cc.jumpkick.asyncapi;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.generate.GeneratorEntry;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.PluginConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -104,6 +107,30 @@ class AsyncApiMainTest {
         assertThat(out.resolve("com/acme/orders/Money.java")).exists();
         assertThat(out.resolve("com/acme/orders/OrderCancelled.java")).exists();
         assertThat(Files.readString(out.resolve("com/acme/orders/Order.java"))).contains("private Money total;");
+    }
+
+    /** A run leaves no scratch in the temp directory: the step runs again and again in a warm worker. */
+    @Test
+    void a_run_leaves_no_scratch_behind(@TempDir Path tmp) throws Exception {
+        Path doc = tmp.resolve("asyncapi.yaml");
+        Files.writeString(doc, V3);
+        Set<String> before = scratch();
+
+        AsyncApiMain.main(
+                new String[] {"-t", tmp.resolve("gen").toString(), "-p", "com.acme.orders", "-D", "--", doc.toString()
+                });
+
+        assertThat(scratch()).isSubsetOf(before);
+    }
+
+    private static Set<String> scratch() throws Exception {
+        Set<String> names = new TreeSet<>();
+        PathUtil.forEachChild(Path.of(System.getProperty("java.io.tmpdir")), (p, attrs) -> {
+            String name = p.getFileName().toString();
+            if (name.startsWith("jk-asyncapi-")) names.add(name);
+            return true;
+        });
+        return names;
     }
 
     /** An Avro payload compiles with the Avro compiler when the table sets avro. */

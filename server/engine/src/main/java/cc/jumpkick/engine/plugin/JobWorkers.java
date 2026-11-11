@@ -226,7 +226,13 @@ public final class JobWorkers {
             forceKillAndAwait(process);
             return;
         }
-        BY_REQUEST.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(process);
+        // Added inside the map's compute, so an unregister dropping the scope's emptied set cannot
+        // orphan the set this process lands in.
+        BY_REQUEST.compute(id, (k, set) -> {
+            Set<Process> tracked = set == null ? ConcurrentHashMap.newKeySet() : set;
+            tracked.add(process);
+            return tracked;
+        });
         // Shutdown may have tombstoned + drained between the check above and the add: our set
         // (or entry) may be orphaned. Kill directly — signalTree is idempotent, so racing the
         // shutdown's own kill loop is harmless.
@@ -424,19 +430,31 @@ public final class JobWorkers {
         return command;
     }
 
-    /** Stop tracking {@code process} (e.g. after it exits normally). */
+    /**
+     * Stop tracking {@code process} (e.g. after it exits normally). A scope left with nothing to
+     * track is forgotten: a compiler worker's scope is never shut down when the worker retires.
+     */
     public static void unregister(Process process) {
         if (process == null) return;
         Long id = CURRENT.get();
         if (id != null) {
-            Set<Process> set = BY_REQUEST.get(id);
-            if (set != null) set.remove(process);
+            untrack(id, process);
             return;
         }
         // Fallback: scan (rare — process ended on a different thread than start).
-        for (Set<Process> set : BY_REQUEST.values()) {
+        for (Long scope : List.copyOf(BY_REQUEST.keySet())) untrack(scope, process);
+    }
+
+    private static void untrack(long scope, Process process) {
+        BY_REQUEST.computeIfPresent(scope, (k, set) -> {
             set.remove(process);
-        }
+            return set.isEmpty() ? null : set;
+        });
+    }
+
+    /** Test seam: whether {@code requestId} has an entry at all. */
+    static boolean tracksScope(long requestId) {
+        return BY_REQUEST.containsKey(requestId);
     }
 
     /**

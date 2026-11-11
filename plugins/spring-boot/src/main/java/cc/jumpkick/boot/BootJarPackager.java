@@ -86,6 +86,8 @@ public final class BootJarPackager {
                     String name = normalize(root, file);
                     if (name.equals("META-INF/MANIFEST.MF")) continue;
                     if (!TreeContent.isContent(name)) continue;
+                    // The SBOM the build renders replaces one a resource put at the same path.
+                    if (request.sbom().length > 0 && SBOM_ENTRY.equals(CLASSES_PREFIX + name)) continue;
                     if (!classEntries.add(name)) continue;
                     zip.writeParentDirs(jos, CLASSES_PREFIX + name, dirsWritten);
                     zip.writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file));

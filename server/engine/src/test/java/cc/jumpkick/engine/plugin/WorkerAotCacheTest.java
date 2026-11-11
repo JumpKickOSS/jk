@@ -125,17 +125,28 @@ class WorkerAotCacheTest {
                 .anyMatch(f -> f.startsWith("-XX:AOTCache="));
     }
 
-    /** When a cache lands, the tool's caches for that JDK go; another JDK's belong to another worker. */
+    /**
+     * When a cache lands, the tool's disused caches for that JDK go; one still mapped serves another
+     * key in use and stays, and another JDK's belong to another worker.
+     */
     @Test
-    void a_landing_cache_sweeps_its_own_jdks_siblings_only(@TempDir Path aot) throws Exception {
+    void a_landing_cache_sweeps_its_own_jdks_disused_siblings_only(@TempDir Path aot) throws Exception {
         String v = JkVersion.VERSION;
+        FileTime disused = FileTime.fromMillis(System.currentTimeMillis() - WorkerAotCache.DISUSE_TTL_MILLIS - 60_000);
         Path landed = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000001.aot"), "x");
         Path stale = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000002.aot"), "x");
+        Files.setLastModifiedTime(stale, disused);
+        Path otherKey = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000005.aot"), "x");
         Path otherJdk = Files.writeString(aot.resolve("kotlinc-" + v + "-bbbbbbbb-0000000000000003.aot"), "x");
+        Files.setLastModifiedTime(otherJdk, disused);
         Path otherTool = Files.writeString(aot.resolve("formatter-" + v + "-aaaaaaaa-0000000000000004.aot"), "x");
+        Files.setLastModifiedTime(otherTool, disused);
         WorkerAotCache.sweepSiblings(landed);
         assertThat(landed).exists();
         assertThat(stale).doesNotExist();
+        assertThat(otherKey)
+                .as("a second key mapped lately (another Kotlin version) must not be retrained every build")
+                .exists();
         assertThat(otherJdk).exists();
         assertThat(otherTool).exists();
     }
@@ -154,6 +165,8 @@ class WorkerAotCacheTest {
         String tag = WorkerAotCache.jdkTag(requireNonNull(engine));
         Path older = Files.writeString(
                 aot.resolve("kotlinc-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "an older key");
+        Files.setLastModifiedTime(
+                older, FileTime.fromMillis(System.currentTimeMillis() - WorkerAotCache.DISUSE_TTL_MILLIS - 60_000));
         Path otherTool = Files.writeString(
                 aot.resolve("java-compiler-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "other tool");
 
@@ -166,7 +179,7 @@ class WorkerAotCacheTest {
         Path cache = WorkerAotCache.cacheFile("kotlinc", engine, "/w/a.jar", List.of());
         assertThat(cache).isRegularFile();
         assertThat(Files.size(cache)).isGreaterThan(0);
-        assertThat(older).as("one file per tool").doesNotExist();
+        assertThat(older).as("a disused key of the tool goes").doesNotExist();
         assertThat(otherTool)
                 .as("another tool's cache is not this tool's business")
                 .exists();

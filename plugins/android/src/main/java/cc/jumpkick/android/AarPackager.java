@@ -35,7 +35,7 @@ final class AarPackager {
         String aarName = aar.getFileName().toString();
         Path classesJar = aar.resolveSibling(aarName.substring(0, aarName.length() - ".aar".length()) + ".jar");
         io.label("classes.jar");
-        writeClassesJar(io.classesDir(), classesJar);
+        writeClassesJar(io.classesDir(), io.config().string("namespace"), classesJar);
         io.produced(classesJar);
 
         io.label(aarName);
@@ -57,19 +57,27 @@ final class AarPackager {
     }
 
     /**
-     * Jar the classes dir, excluding the generated {@code R} / {@code R$*} classes and the compile
-     * freshness stamps — a stamp body is a wall clock, and this jar ships inside the AAR.
+     * Jar the classes dir, excluding the {@code R} / {@code R$*} classes generated in the module's
+     * {@code namespace} package and the compile freshness stamps — a stamp body is a wall clock, and
+     * this jar ships inside the AAR. A class named {@code R} in any other package is the module's own.
      */
-    static void writeClassesJar(Path classesDir, Path jar) throws IOException {
+    static void writeClassesJar(Path classesDir, String namespace, Path jar) throws IOException {
+        String rPackage = namespace.isBlank() ? "" : namespace.replace('.', '/') + "/";
         List<Path> files = ResourceStep.filesUnder(classesDir, "");
         try (ZipOutputStream zip = new ZipOutputStream(DeterministicZip.archiveStream(jar))) {
             for (Path file : files) {
                 String rel = classesDir.relativize(file).toString().replace('\\', '/');
-                String name = file.getFileName().toString();
-                if (name.equals("R.class") || (name.startsWith("R$") && name.endsWith(".class"))) continue;
+                if (generatedR(rel, rPackage)) continue;
                 if (!TreeContent.isContent(rel)) continue;
                 ZIP.writeEntry(zip, rel, file);
             }
         }
+    }
+
+    /** Whether {@code rel} is {@code R.class} or an {@code R$*.class} directly in {@code rPackage}. */
+    private static boolean generatedR(String rel, String rPackage) {
+        if (!rel.startsWith(rPackage)) return false;
+        String name = rel.substring(rPackage.length());
+        return name.equals("R.class") || (name.startsWith("R$") && name.endsWith(".class") && name.indexOf('/') < 0);
     }
 }

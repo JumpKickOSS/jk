@@ -12,8 +12,9 @@ import java.util.List;
  * A served worker for {@link WarmWorkersTest}: the {@code --serve} protocol over the command channel,
  * with no plugin behind it. A spec's first line says what the run does: {@code ok}, {@code retire},
  * {@code oom} (dies the way {@code ExitOnOutOfMemoryError} does), {@code hang}, {@code stdin} (reads
- * {@code System.in} to its end) or {@code child} (runs a child JVM that inherits this one's stdin
- * and reads it to its end).
+ * {@code System.in} to its end), {@code child} (runs a child JVM that inherits this one's stdin
+ * and reads it to its end), {@code spawn} (starts a sleeping child JVM, then hangs) or {@code late}
+ * (prints a line after it has answered {@code exited}).
  */
 public final class ServeFixture {
 
@@ -38,6 +39,18 @@ public final class ServeFixture {
                     System.exit(3);
                 }
                 case "hang" -> Thread.sleep(Long.MAX_VALUE);
+                case "spawn" -> {
+                    Process child = new ProcessBuilder(
+                                    Path.of(System.getProperty("java.home"), "bin", "java")
+                                            .toString(),
+                                    "-cp",
+                                    System.getProperty("java.class.path"),
+                                    Sleeper.class.getName())
+                            .start();
+                    System.out.println("child pid " + child.pid());
+                    System.out.flush();
+                    Thread.sleep(Long.MAX_VALUE);
+                }
                 case "stdin" -> System.out.println("stdin gave " + drainStdin() + " bytes");
                 case "child" -> {
                     Process child = new ProcessBuilder(
@@ -53,6 +66,7 @@ public final class ServeFixture {
                 default -> {}
             }
             emit("{\"t\":\"exited\",\"code\":" + what.length() + ",\"retire\":" + what.equals("retire") + "}");
+            if (what.equals("late")) System.out.println("late words of " + what);
         }
     }
 
@@ -60,6 +74,15 @@ public final class ServeFixture {
         long n = 0;
         while (System.in.read() >= 0) n++;
         return n;
+    }
+
+    /** A child that sleeps until it is killed. */
+    public static final class Sleeper {
+        private Sleeper() {}
+
+        public static void main(String[] args) throws InterruptedException {
+            Thread.sleep(Long.MAX_VALUE);
+        }
     }
 
     /** A child that reads the stdin it inherited to its end and says how much it got. */

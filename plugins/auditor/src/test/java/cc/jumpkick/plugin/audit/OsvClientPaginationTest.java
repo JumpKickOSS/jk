@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
@@ -62,6 +64,23 @@ class OsvClientPaginationTest {
                 .hasMessageContaining("still had more results")
                 .hasMessageContaining("after " + OsvClient.MAX_PAGES + " pages");
         assertThat(postBodies).hasSize(OsvClient.MAX_PAGES);
+    }
+
+    /** OSV takes at most a thousand queries a request; a larger lockfile goes in several, results in order. */
+    @Test
+    void more_queries_than_one_batch_takes_go_in_several_requests() throws Exception {
+        OsvClient client = stub(body -> {
+            int rows = body.split("\"package\"", -1).length - 1;
+            return "{\"results\":[" + String.join(",", Collections.nCopies(rows, "{}")) + "]}";
+        });
+        List<OsvClient.Query> queries = new ArrayList<>();
+        for (int i = 0; i < 2_500; i++) queries.add(new OsvClient.Query("Maven", "g:a" + i, "1.0"));
+
+        List<OsvClient.Result> results = client.queryBatch(queries);
+
+        assertThat(results).hasSize(2_500).allMatch(OsvClient.Result::clean);
+        assertThat(postBodies).hasSize(3);
+        assertThat(postBodies).allMatch(body -> body.split("\"package\"", -1).length - 1 <= OsvClient.MAX_BATCH);
     }
 
     private OsvClient stub(Function<String, String> responseFor) throws IOException {

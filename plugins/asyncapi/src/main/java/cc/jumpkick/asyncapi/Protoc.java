@@ -23,9 +23,9 @@ final class Protoc {
 
     private Protoc() {}
 
-    static void run(Path protoc, Path protobufJava, Path root, List<String> files, Path out)
+    /** {@code tools} is scratch for the staged binary and the include root; the caller removes it. */
+    static void run(Path protoc, Path protobufJava, Path root, List<String> files, Path out, Path tools)
             throws IOException, InterruptedException {
-        Path tools = Files.createTempDirectory("jk-asyncapi-protoc-");
         boolean windows = File.separatorChar == '\\';
         Path staged = tools.resolve(windows ? "protoc.exe" : "protoc");
         Files.copy(protoc, staged, StandardCopyOption.REPLACE_EXISTING);

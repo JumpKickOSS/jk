@@ -343,6 +343,13 @@ public final class WarmWorkers {
         /** The lease ledger wants this worker's memory; it exits after the run in flight. */
         volatile boolean yielding;
 
+        /**
+         * A run has ended on this worker: what it prints until its next {@code ready} came after that
+         * run's {@code exited} and belongs to no run, least of all the next one, which may be another
+         * project's.
+         */
+        private volatile boolean served;
+
         private @Nullable Thread reaper;
 
         Worker(String name, String key, long heap, Process process, WorkerCommands commands) {
@@ -374,6 +381,7 @@ public final class WarmWorkers {
                 kill();
                 return died();
             }
+            boolean stale = served;
             try {
                 while (true) {
                     String line = lines.poll(POLL.toMillis(), TimeUnit.MILLISECONDS);
@@ -391,6 +399,16 @@ public final class WarmWorkers {
                     }
                     if (EOF.equals(line)) return died();
                     int at = line.indexOf(prefix);
+                    if (stale) {
+                        if (at >= 0
+                                && PluginProtocol.READY.equals(
+                                        Jsonl.str(line.substring(at + prefix.length()), PluginProtocol.T))) {
+                            stale = false;
+                        } else {
+                            Log.debug("warm worker " + process.pid() + " after its last run: " + line);
+                        }
+                        continue;
+                    }
                     if (at < 0) {
                         listener.output(line);
                         continue;
@@ -401,6 +419,7 @@ public final class WarmWorkers {
                     if (PluginProtocol.READY.equals(t)) continue;
                     if (PluginProtocol.EXITED.equals(t)) {
                         retire = Jsonl.bool(json, "retire", false);
+                        served = true;
                         return new Outcome(Jsonl.intValue(json, "code", 1), false);
                     }
                     listener.protocol(json);
@@ -500,9 +519,10 @@ public final class WarmWorkers {
             }
         }
 
+        /** Stop the worker and every process it started, which would otherwise outlive it. */
         void kill() {
             LIVE.remove(this);
-            process.destroyForcibly();
+            JobWorkers.destroyTree(process);
             commands.close();
             try {
                 process.waitFor(5, TimeUnit.SECONDS);

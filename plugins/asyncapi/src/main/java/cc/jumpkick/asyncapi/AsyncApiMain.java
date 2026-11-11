@@ -2,6 +2,7 @@
 package cc.jumpkick.asyncapi;
 
 import cc.jumpkick.avro.AvroMain;
+import cc.jumpkick.host.PathUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -47,15 +48,26 @@ public final class AsyncApiMain {
     static final String PROTOBUF_JAVA = "--protobuf-java";
 
     public static void main(String[] args) throws Exception {
+        // One scratch tree for the schema files and protoc, gone when the step is: a step runs in
+        // a warm worker, and every run's leftovers would pile up in the temp directory.
+        Path work = Files.createTempDirectory("jk-asyncapi-");
+        try {
+            run(args, work);
+        } finally {
+            PathUtil.deleteRecursively(work);
+        }
+    }
+
+    private static void run(String[] args, Path work) throws Exception {
         int split = List.of(args).indexOf("--");
         List<String> flags = new ArrayList<>(List.of(args).subList(0, split < 0 ? args.length : split));
         List<String> documents = split < 0 ? List.of() : List.of(args).subList(split + 1, args.length);
         boolean avro = flags.remove(AVRO);
         String protoc = take(flags, PROTOC);
         String protobufJava = take(flags, PROTOBUF_JAVA);
-        Path schemas = Files.createTempDirectory("jk-asyncapi-");
-        Path avsc = Files.createTempDirectory("jk-asyncapi-avro-");
-        Path protos = Files.createTempDirectory("jk-asyncapi-proto-");
+        Path schemas = Files.createDirectories(work.resolve("schemas"));
+        Path avsc = Files.createDirectories(work.resolve("avro"));
+        Path protos = Files.createDirectories(work.resolve("proto"));
         List<String> avroFiles = new ArrayList<>();
         List<String> protoFiles = new ArrayList<>();
         boolean json = false;
@@ -73,7 +85,13 @@ public final class AsyncApiMain {
                 System.err.println("jk-asyncapi: " + protoFiles.size()
                         + " Protobuf payloads not generated; set [asyncapi] protobuf");
             } else {
-                Protoc.run(Path.of(protoc), Path.of(protobufJava), protos, protoFiles, Path.of(out));
+                Protoc.run(
+                        Path.of(protoc),
+                        Path.of(protobufJava),
+                        protos,
+                        protoFiles,
+                        Path.of(out),
+                        Files.createDirectories(work.resolve("protoc")));
             }
         }
         if (!avroFiles.isEmpty() && !avro) {

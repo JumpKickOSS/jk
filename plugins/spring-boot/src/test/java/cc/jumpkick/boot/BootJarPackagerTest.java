@@ -221,6 +221,29 @@ class BootJarPackagerTest {
         return dir.resolve(hi + lo + "0".repeat(56));
     }
 
+    /** A resource at the SBOM's path gives way to the rendered SBOM instead of writing the entry twice. */
+    @Test
+    void the_rendered_sbom_replaces_a_resource_at_its_path(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path stale = Files.createDirectories(classes.resolve("META-INF/sbom")).resolve("application.cdx.json");
+        Files.writeString(stale, "{\"stale\": true}");
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+        byte[] sbom = "{\"bomFormat\": \"CycloneDX\"}".getBytes(StandardCharsets.UTF_8);
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes, List.of(), loader, out, "com.example.App", "4.0.0", Map.of(), sbom, List.of(), 0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(new String(
+                            jar.getInputStream(jar.getEntry(BootJarPackager.SBOM_ENTRY))
+                                    .readAllBytes(),
+                            StandardCharsets.UTF_8))
+                    .isEqualTo("{\"bomFormat\": \"CycloneDX\"}");
+        }
+    }
+
     @Test
     void embeds_the_sbom_when_supplied(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));

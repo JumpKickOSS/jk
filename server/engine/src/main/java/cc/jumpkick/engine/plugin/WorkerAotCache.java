@@ -306,8 +306,10 @@ public final class WorkerAotCache {
     }
 
     /**
-     * One file per tool and JDK: when a cache lands, the tool's other caches for that JDK go,
-     * whatever their age; another JDK's are another worker's.
+     * When a cache lands, the tool's other caches for that JDK go once they have gone {@link
+     * #DISUSE_TTL_MILLIS} unmapped. One still mapped serves another key in use (a second Kotlin
+     * version, another module's {@code -J} flags); sweeping it would retrain both on every build.
+     * Another JDK's are another worker's.
      */
     static void sweepSiblings(Path landed) {
         var m = NAME.matcher(landed.getFileName().toString());
@@ -315,13 +317,15 @@ public final class WorkerAotCache {
         String tool = m.group("tool");
         String jdk = m.group("jdk");
         Path dir = Objects.requireNonNull(landed.getParent(), "cache dir");
+        long now = Clock.SYSTEM.millis();
         try {
             PathUtil.forEachRegularFile(dir, d -> true, (p, attrs) -> {
                 if (p.equals(landed)) return;
                 var other = NAME.matcher(p.getFileName().toString());
                 if (other.matches()
                         && other.group("tool").equals(tool)
-                        && other.group("jdk").equals(jdk)) deleteQuietly(p);
+                        && other.group("jdk").equals(jdk)
+                        && now - attrs.lastModifiedTime().toMillis() > DISUSE_TTL_MILLIS) deleteQuietly(p);
             });
         } catch (IOException ignored) {
             // opportunistic: a leftover cache costs disk, not correctness

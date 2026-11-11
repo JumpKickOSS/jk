@@ -31,9 +31,24 @@ class AarClassesJarTest {
         }
 
         Path jar = tmp.resolve("lib.jar");
-        AarPackager.writeClassesJar(tmp.resolve("classes"), jar);
+        AarPackager.writeClassesJar(tmp.resolve("classes"), "com.ex", jar);
 
         assertThat(entryNames(jar)).containsExactly("com/ex/App.class");
+    }
+
+    /** Only the namespace's generated R goes; a class named R in another package is the module's own code. */
+    @Test
+    void a_class_named_r_outside_the_namespace_is_kept(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes/com/ex"));
+        Files.writeString(classes.resolve("R.class"), "generated");
+        Path own = Files.createDirectories(tmp.resolve("classes/com/ex/util"));
+        Files.writeString(own.resolve("R.class"), "a result type");
+        Files.writeString(own.resolve("R$Ok.class"), "its case");
+
+        Path jar = tmp.resolve("lib.jar");
+        AarPackager.writeClassesJar(tmp.resolve("classes"), "com.ex", jar);
+
+        assertThat(entryNames(jar)).containsExactlyInAnyOrder("com/ex/util/R.class", "com/ex/util/R$Ok.class");
     }
 
     private static List<String> entryNames(Path jar) throws Exception {

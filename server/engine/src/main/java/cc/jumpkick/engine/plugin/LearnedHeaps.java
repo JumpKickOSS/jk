@@ -5,15 +5,19 @@ import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
@@ -56,6 +60,13 @@ public final class LearnedHeaps {
     private final @Nullable Long forcedBytes;
     private final boolean projectIds;
     private final Object[] locks = new Object[64];
+
+    /** Each file's rows as last read or written, by the file's stat identity then. */
+    private final ConcurrentHashMap<Path, Parsed> parsed = new ConcurrentHashMap<>();
+
+    private final AtomicInteger parses = new AtomicInteger();
+
+    private record Parsed(String stat, Map<String, Row> rows) {}
 
     private LearnedHeaps(Supplier<Path> stateDir, @Nullable Long forcedBytes, boolean projectIds) {
         this.stateDir = stateDir;
@@ -155,7 +166,7 @@ public final class LearnedHeaps {
         Path file = file(project);
         if (!Files.isRegularFile(file)) return null;
         synchronized (lock(file)) {
-            return read(file).get(row(module, kind, jdk));
+            return rows(file).get(row(module, kind, jdk));
         }
     }
 
@@ -206,15 +217,42 @@ public final class LearnedHeaps {
     private void update(Path project, String row, UnaryOperator<Row> change) {
         Path file = file(project);
         synchronized (lock(file)) {
-            Map<String, Row> all = read(file);
+            Map<String, Row> all = new LinkedHashMap<>(rows(file));
             all.put(row, change.apply(all.getOrDefault(row, Row.EMPTY)));
             try {
                 OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
                 AtomicWrites.replace(file, write(all));
+                parsed.put(file, new Parsed(StatIdentity.of(file).encode(), Collections.unmodifiableMap(all)));
             } catch (IOException e) {
+                parsed.remove(file);
                 Log.debug("learned heap " + file + ": " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * {@code file}'s rows, parsed again only when its stat identity moved: every worker fork asks,
+     * and another engine sharing the state directory may have written it since.
+     */
+    private Map<String, Row> rows(Path file) {
+        String stat;
+        try {
+            stat = StatIdentity.of(file).encode();
+        } catch (IOException absent) {
+            parsed.remove(file);
+            return Map.of();
+        }
+        Parsed had = parsed.get(file);
+        if (had != null && had.stat().equals(stat)) return had.rows();
+        parses.incrementAndGet();
+        Map<String, Row> rows = Collections.unmodifiableMap(read(file));
+        parsed.put(file, new Parsed(stat, rows));
+        return rows;
+    }
+
+    /** How many times this store has parsed a file. Test seam. */
+    int parses() {
+        return parses.get();
     }
 
     /** The file this project is recorded in, whether or not it exists yet. */

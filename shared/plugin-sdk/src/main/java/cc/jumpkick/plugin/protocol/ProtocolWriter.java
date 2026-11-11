@@ -2,11 +2,13 @@
 package cc.jumpkick.plugin.protocol;
 
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Plugin-side emitter for the host&lt;-&gt;plugin protocol: writes one JSON object per line, each
  * prefixed with the plugin's marker so the host can tell structured protocol lines apart from
- * passthrough chatter (anything the underlying tool writes to stdout). Pair with {@link
+ * passthrough chatter (anything the underlying tool writes to stdout). Lines are UTF-8, whatever
+ * the stream's own charset. Pair with {@link
  * cc.jumpkick.jsonl.Jsonl#quote} to encode string values.
  *
  * <p><strong>Every line is flushed, and that is not negotiable.</strong> It looks like an obvious
@@ -23,7 +25,8 @@ import java.io.PrintStream;
  * progress from the bulk types too, so a latency bound would need a timer thread in every worker.
  *
  * <p>What the buffer underneath <em>does</em> buy: one {@code write(2)} per line instead of however
- * many the encoder emits, since the flush below now has something to flush. This is a pipe, not the
+ * many the encoder emits, since the flush below now has something to flush; a line longer than the
+ * buffer goes past it in one write as well. This is a pipe, not the
  * filesystem — nowhere near the 160–305&nbsp;µs NTFS costs that motivate the rest of — which
  * is the other half of why batching it is not worth a deadlock.
  */
@@ -48,7 +51,11 @@ public final class ProtocolWriter {
      * threads) can't interleave a half-written line.
      */
     public synchronized void emit(String json) {
-        out.println(prefix + json);
+        // One array per line: a buffered stream hands an array at least its own size to the file
+        // whole, so a line past the buffer is still one write(2), never cut at the buffer's edge
+        // where whatever else the worker prints to the same descriptor could land inside it.
+        byte[] line = (prefix + json + System.lineSeparator()).getBytes(StandardCharsets.UTF_8);
+        out.write(line, 0, line.length);
         out.flush();
     }
 }
