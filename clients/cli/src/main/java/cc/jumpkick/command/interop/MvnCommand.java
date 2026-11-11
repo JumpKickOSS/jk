@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
@@ -127,7 +128,7 @@ public final class MvnCommand implements CliCommand {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        int exit = p.waitFor();
+        int exit = ProcessTrees.awaitExit(p);
         if (events != null) journal(projectDir, events, exit, (Clock.SYSTEM.nanos() - started) / 1_000_000L);
         return exit;
     }

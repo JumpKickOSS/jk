@@ -13,7 +13,6 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -72,6 +71,9 @@ public final class Sidecars implements AutoCloseable {
 
     /** Guarded by {@code this}, as is {@code closing}: a restart may not launch across a close. */
     private final List<Running> running = new ArrayList<>();
+
+    /** The apps started through {@link #startCompanion}; guarded by {@code this} like {@link #running}. */
+    private final List<Process> companions = new ArrayList<>();
 
     private final Listener listener;
     private final Clock clock;
@@ -149,24 +151,39 @@ public final class Sidecars implements AutoCloseable {
                 .findFirst();
     }
 
+    /**
+     * Stop every sidecar and every app started through {@link #startCompanion} in one pass: one
+     * signal, one shared grace, one force-kill, so the session goes down inside the SIGINT hook's
+     * bound however many processes it owns. Nothing launches once this has begun.
+     */
     @Override
     public void close() {
-        stopAlongside(List.of());
-    }
-
-    /**
-     * Stop every sidecar and {@code companions} — the app — in one pass: one signal, one shared
-     * grace, one force-kill, so the session goes down inside the SIGINT hook's bound however many
-     * processes it owns. No restart launches once this has begun.
-     */
-    public void stopAlongside(Collection<Process> companions) {
         List<ProcessHandle> roots = new ArrayList<>();
         synchronized (this) {
             closing = true;
             for (Running r : running) roots.add(r.process.toHandle());
+            for (Process p : companions) roots.add(p.toHandle());
         }
-        for (Process p : companions) roots.add(p.toHandle());
         ProcessTrees.stop(roots, clock);
+    }
+
+    /** Starts one app process; {@link #startCompanion} runs it under the session's lock. */
+    @FunctionalInterface
+    public interface Launch {
+        Process start() throws IOException;
+    }
+
+    /**
+     * Start an app the session owns beside its sidecars, so {@link #close} stops it with them. A
+     * close that races the start waits for it and stops the new process too; once the close has
+     * begun nothing starts, and this throws {@link InterruptedException}.
+     */
+    public synchronized Process startCompanion(Launch launch) throws IOException, InterruptedException {
+        if (closing) throw new InterruptedException("the dev session is stopping");
+        Process process = launch.start();
+        companions.removeIf(p -> !p.isAlive());
+        companions.add(process);
+        return process;
     }
 
     private synchronized List<Running> snapshot() {

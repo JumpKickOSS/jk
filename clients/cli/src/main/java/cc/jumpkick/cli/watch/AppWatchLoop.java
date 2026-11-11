@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -196,17 +195,17 @@ public final class AppWatchLoop {
                 CliOutput.err(logPrefix + ": " + notBefore.get());
                 return Exit.SOFTWARE;
             }
-            app = startApp(plan, appArgs);
+            app = startApp(sidecars, plan, appArgs);
         } catch (IOException | RuntimeException | InterruptedException e) {
             sidecars.close();
             throw e;
         }
         // Ctrl-C halts this process without unwinding, so the children are stopped from the
         // signal handler, and the transcript is finished there or never; the finally below does
-        // the same on every other way out.
-        AtomicReference<Process> running = new AtomicReference<>(app.process());
+        // the same on every other way out. Every app start goes through the sidecars, so a restart
+        // that races the signal is stopped with them rather than left behind holding the port.
         try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> {
-                    sidecars.stopAlongside(List.of(running.get()));
+                    sidecars.close();
                     finish(session, Exit.INTERRUPTED, false);
                 });
                 SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
@@ -243,8 +242,7 @@ public final class AppWatchLoop {
                         if (!noSidecars && !plan.sidecars().equals(sidecarSpecs)) {
                             CliOutput.err(logPrefix + ": sidecars changed; restart jk dev to apply");
                         }
-                        app = restartApp(app, plan, appArgs);
-                        running.set(app.process());
+                        app = restartApp(sidecars, app, plan, appArgs);
                         if (!appReady(app)) return Exit.SOFTWARE;
                         if (sidecars.frontDoor().isEmpty()) ready(sidecars, plan);
                     }
@@ -258,14 +256,13 @@ public final class AppWatchLoop {
                 if (devtools) {
                     CliOutput.err(logPrefix + ": " + pass.done + "; DevTools restarts the context");
                 } else {
-                    app = restartApp(app, plan, appArgs);
-                    running.set(app.process());
+                    app = restartApp(sidecars, app, plan, appArgs);
                     if (!appReady(app)) return Exit.SOFTWARE;
                     if (sidecars.frontDoor().isEmpty()) ready(sidecars, plan);
                 }
             }
         } finally {
-            sidecars.stopAlongside(List.of(app.process()));
+            sidecars.close();
         }
     }
 
@@ -432,7 +429,9 @@ public final class AppWatchLoop {
     /** The running app and the probe that says when it is listening; a new pair per start. */
     private record App(Process process, ReadyProbe probe) {}
 
-    private App startApp(ExecPlan plan, List<String> appArgs) throws IOException {
+    /** Start the app through {@code sidecars}, which stop it with themselves; refused once they are stopping. */
+    private App startApp(Sidecars sidecars, ExecPlan plan, List<String> appArgs)
+            throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(plan.argv());
         command.addAll(appArgs);
         ProcessBuilder pb =
@@ -446,8 +445,8 @@ public final class AppWatchLoop {
         // line as it arrives. Otherwise the app owns the terminal — no skipTrailingBlank: watch
         // keeps printing after the app starts, so the envelope's closing blank is still jk's to emit.
         boolean piped = json() || !plan.appReady().readyPattern().isEmpty();
-        Process process =
-                piped ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb);
+        Process process = sidecars.startCompanion(() ->
+                piped ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb));
         ReadyProbe probe = new ReadyProbe("app", plan.appReady(), 0, process, Clock.SYSTEM);
         events.accept(SidecarOutput.appStarted(Clock.SYSTEM, "", process.pid()));
         if (piped) {
@@ -488,11 +487,12 @@ public final class AppWatchLoop {
         events.accept(SidecarOutput.appExited(Clock.SYSTEM, "", app.pid(), app.exitValue()));
     }
 
-    private App restartApp(App app, ExecPlan plan, List<String> appArgs) throws IOException, InterruptedException {
+    private App restartApp(Sidecars sidecars, App app, ExecPlan plan, List<String> appArgs)
+            throws IOException, InterruptedException {
         stop(app.process());
         appExited(app.process());
         CliOutput.err(logPrefix + ": restarting app");
-        return startApp(plan, appArgs);
+        return startApp(sidecars, plan, appArgs);
     }
 
     private static void stop(Process app) {

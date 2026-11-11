@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -372,6 +373,51 @@ class SidecarsTest {
         assertThat(lines.stream().filter(l -> l.endsWith("started")).count())
                 .as("no second launch after close")
                 .isEqualTo(1);
+    }
+
+    /**
+     * Ctrl-C can land while {@code jk dev} restarts the app: the signal's close must stop the app
+     * that start produces, and no app may start once the close has begun, or it outlives jk holding
+     * the port.
+     */
+    @Test
+    void a_close_that_races_an_app_start_stops_that_app_and_refuses_the_next(@TempDir Path dir) throws Exception {
+        Sidecars sidecars = start(List.of(), line -> {});
+        CountDownLatch launching = new CountDownLatch(1);
+        List<Process> started = new CopyOnWriteArrayList<>();
+        Thread restart = Thread.ofPlatform().name("app-restart").start(() -> {
+            try {
+                sidecars.startCompanion(() -> {
+                    launching.countDown();
+                    try {
+                        Thread.sleep(300);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    Process p = new ProcessBuilder("sh", "-c", "sleep 30").start();
+                    started.add(p);
+                    return p;
+                });
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        try {
+            assertThat(launching.await(10, TimeUnit.SECONDS)).isTrue();
+            sidecars.close();
+            restart.join(10_000);
+
+            assertThat(started).hasSize(1);
+            assertThat(started.getFirst().isAlive())
+                    .as("the app started under the closing session outlived it")
+                    .isFalse();
+            assertThat(started.getFirst().waitFor(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> sidecars.startCompanion(() -> new ProcessBuilder("sh", "-c", "sleep 30").start()))
+                    .isInstanceOf(InterruptedException.class);
+        } finally {
+            started.forEach(Process::destroyForcibly);
+            restart.join(2_000);
+        }
     }
 
     private static List<Long> restartDelays(List<String> lines) {

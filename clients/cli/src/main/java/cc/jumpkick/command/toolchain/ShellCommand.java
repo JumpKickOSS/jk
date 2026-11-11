@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.command.JkEnv;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.jdk.JdkInventory;
@@ -88,6 +89,6 @@ public final class ShellCommand implements CliCommand {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return p.waitFor();
+        return ProcessTrees.awaitExit(p);
     }
 }

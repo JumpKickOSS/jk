@@ -4,6 +4,7 @@ package cc.jumpkick.command.toolchain;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.JsonlShape;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.host.Os;
@@ -170,7 +171,7 @@ public final class NodeCli {
         pb.environment().put("PATH", home.path(System.getenv("PATH")));
         Process p = CliOutput.handOffTerminal(pb);
         CliOutput.skipTrailingBlank();
-        return p.waitFor();
+        return ProcessTrees.awaitExit(p);
     }
 
     private static String resolve(NodeHome home, String program) {

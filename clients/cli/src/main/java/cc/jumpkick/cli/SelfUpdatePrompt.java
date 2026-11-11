@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.form.InlineYesNo;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.SelfUpdateState;
@@ -139,8 +140,8 @@ final class SelfUpdatePrompt {
         Path jk = EngineInstall.pathClient(JkDirs.binDir());
         if (!Files.isRegularFile(jk)) return;
         try {
-            CliOutput.handOffTerminal(new ProcessBuilder(jk.toString(), "self", "update", version))
-                    .waitFor();
+            ProcessTrees.awaitExit(
+                    CliOutput.handOffTerminal(new ProcessBuilder(jk.toString(), "self", "update", version)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

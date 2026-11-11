@@ -9,6 +9,7 @@ import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Arity;
@@ -143,8 +144,7 @@ public final class JshellCommand implements CliCommand {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        int exit = p.waitFor();
-        return exit;
+        return ProcessTrees.awaitExit(p);
     }
 
     /** True when the user already chose an execution engine ({@code --execution …}). */

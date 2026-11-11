@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.GlyphProbe;
 import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.NerdFontDetect;
@@ -472,8 +473,8 @@ public final class SelfCommand extends GroupCommand {
             }
             Path newJk = EngineInstall.pathClient(JkDirs.binDir());
             if (Files.isRegularFile(newJk)) {
-                CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start"))
-                        .waitFor();
+                ProcessTrees.awaitExit(
+                        CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start")));
                 CliOutput.out("engine " + target + " is taking over"
                         + (in.isSet("now") ? "" : " (running builds finish on the old engine)"));
             }
@@ -787,7 +788,7 @@ public final class SelfCommand extends GroupCommand {
                 String err = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
                 int rc;
                 try {
-                    rc = p.waitFor();
+                    rc = ProcessTrees.awaitExit(p);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new IOException("interrupted inflating the client binary", e);

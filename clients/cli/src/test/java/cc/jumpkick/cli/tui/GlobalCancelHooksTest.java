@@ -4,12 +4,21 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.watch.ProcessTrees;
+import cc.jumpkick.command.toolchain.NodeCli;
+import cc.jumpkick.node.NodeHome;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The SIGINT handler's hooks: every registered one runs, a thrower does not stop the next, a hang is bounded, a closed handle is gone. */
 class GlobalCancelHooksTest {
@@ -94,6 +103,49 @@ class GlobalCancelHooksTest {
             assertThat(waiter.isAlive()).isFalse();
         } finally {
             child.destroyForcibly();
+            waiter.join(2_000);
+        }
+    }
+
+    /**
+     * A passthrough verb ({@code jk node exec}, like {@code jk mvn} and {@code jk shell}) hands the
+     * terminal to its child and waits; the signal's hooks stop that child, so it cannot outlive jk.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_passthrough_child_stops_with_the_signal(@TempDir Path tmp) throws Exception {
+        Path marker = tmp.resolve("pid");
+        NodeHome home = new NodeHome(tmp.resolve("node"), "24.0.0", "system", null);
+        Thread waiter = Thread.ofPlatform().name("node-exec").start(() -> {
+            try {
+                NodeCli.exec(home, List.of("sh", "-c", "echo $$ > '" + marker + "'; exec sleep 30"), tmp, Map.of());
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Optional<ProcessHandle> child = Optional.empty();
+        try {
+            long deadline = System.nanoTime() + 5_000_000_000L;
+            while (child.isEmpty() && System.nanoTime() < deadline) {
+                if (Files.isRegularFile(marker) && Files.readString(marker).endsWith("\n")) {
+                    child = ProcessHandle.of(
+                            Long.parseLong(Files.readString(marker).strip()));
+                }
+                if (child.isEmpty()) Thread.sleep(20);
+            }
+            assertThat(child).as("the passthrough child started").isPresent();
+
+            GlobalCancel.runInterruptHooks(GlobalCancel.HOOKS_BOUND_MILLIS);
+
+            assertThat(child.get().isAlive())
+                    .as("the child outlived the signal")
+                    .isFalse();
+            waiter.join(2_000);
+            assertThat(waiter.isAlive()).isFalse();
+        } finally {
+            child.ifPresent(ProcessHandle::destroyForcibly);
             waiter.join(2_000);
         }
     }

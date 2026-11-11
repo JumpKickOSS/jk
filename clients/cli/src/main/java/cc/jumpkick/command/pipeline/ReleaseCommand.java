@@ -25,6 +25,7 @@ import cc.jumpkick.repo.RemoteClaim;
 import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.secret.SecretCommand;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -40,7 +41,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -365,45 +365,41 @@ public final class ReleaseCommand implements CliCommand {
         return outcome.exitCode();
     }
 
-    /** Runs {@code git} in the project directory. */
-    private record Git(Path dir) {
+    /**
+     * Runs {@code git} in the project directory, both of its streams drained at once so a chatty
+     * hook cannot fill one pipe while the other is read. A command that runs hooks ({@code commit},
+     * {@code push}) gets {@link #HOOK_CAP}; every other one {@link #CAP}.
+     */
+    record Git(Path dir) {
+
+        static final Duration CAP = Duration.ofSeconds(120);
+
+        static final Duration HOOK_CAP = Duration.ofHours(1);
 
         /** Trimmed stdout of a successful command, else {@code null}. */
         @Nullable
         String output(String... args) {
-            ProcessResult r = exec(args);
-            return r.exit == 0 ? r.out.strip() : null;
+            SecretCommand.Result r = exec(args);
+            return r.exit() == 0 ? r.stdout().strip() : null;
         }
 
         /** {@code null} on success, else git's own explanation. */
         @Nullable
         String run(String... args) {
-            ProcessResult r = exec(args);
-            return r.exit == 0 ? null : (r.err.isBlank() ? r.out : r.err).strip();
+            SecretCommand.Result r = exec(args);
+            return r.exit() == 0 ? null : (r.stderr().isBlank() ? r.stdout() : r.stderr()).strip();
         }
 
-        private ProcessResult exec(String... args) {
-            List<String> command = new ArrayList<>(args.length + 1);
-            command.add("git");
+        private SecretCommand.Result exec(String... args) {
+            List<String> command = new ArrayList<>(args.length + 3);
+            command.addAll(List.of("git", "-C", dir.toString()));
             command.addAll(List.of(args));
+            boolean hooks = args.length > 0 && (args[0].equals("commit") || args[0].equals("push"));
             try {
-                Process p = new ProcessBuilder(command).directory(dir.toFile()).start();
-                p.getOutputStream().close();
-                String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                String errText = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-                if (!p.waitFor(120, TimeUnit.SECONDS)) {
-                    p.destroyForcibly();
-                    return new ProcessResult(1, out, "git timed out");
-                }
-                return new ProcessResult(p.exitValue(), out, errText);
+                return SecretCommand.REAL.run(command, null, hooks ? HOOK_CAP : CAP);
             } catch (IOException e) {
-                return new ProcessResult(1, "", String.valueOf(e.getMessage()));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return new ProcessResult(1, "", "interrupted");
+                return new SecretCommand.Result(1, "", String.valueOf(e.getMessage()));
             }
         }
     }
-
-    private record ProcessResult(int exit, String out, String err) {}
 }

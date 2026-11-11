@@ -12,8 +12,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Runs one platform keychain tool ({@code secret-tool}, {@code security}, {@code powershell}) and
- * hands back what it said. A seam: the backends are tested over their command lines with a fake.
+ * Runs one short-lived tool — a platform keychain ({@code secret-tool}, {@code security}, {@code
+ * powershell}), or {@code git} for {@code jk release} — and hands back what it said. A seam: the
+ * keychain backends are tested over their command lines with a fake.
  */
 @FunctionalInterface
 public interface SecretCommand {

@@ -119,7 +119,7 @@ final class StackWatchLoop {
                 Clock.SYSTEM,
                 Sidecars.Sleeper.REAL);
         try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> {
-            supervisor.stopAlongside(running(apps));
+            supervisor.close();
             loop.interrupted();
         })) {
             Optional<String> notBefore = supervisor.awaitRunBefore();
@@ -128,7 +128,7 @@ final class StackWatchLoop {
                 return Exit.SOFTWARE;
             }
             for (Member m : apps) {
-                start(m, appArgs, exports);
+                start(supervisor, m, appArgs, exports);
                 m.watch = SourceWatch.open(m.dir, roots(m.plan));
             }
             CliOutput.err(loop.logPrefix() + ": running " + String.join(", ", wanted));
@@ -145,17 +145,18 @@ final class StackWatchLoop {
                 }
             }
             ready(supervisor, apps, wanted);
-            return watch(cache, apps, appArgs, exports);
+            return watch(supervisor, cache, apps, appArgs, exports);
         } finally {
             for (Member m : apps) {
                 if (m.watch != null) m.watch.close();
             }
-            supervisor.stopAlongside(running(apps));
+            supervisor.close();
         }
     }
 
     /** Poll every member's sources in turn; restart the one that changed, end when one exits. */
-    private int watch(Path cache, List<Member> apps, List<String> appArgs, Map<String, String> exports)
+    private int watch(
+            Sidecars supervisor, Path cache, List<Member> apps, List<String> appArgs, Map<String, String> exports)
             throws IOException, InterruptedException {
         long slice = Math.max(50, 500 / Math.max(1, apps.size()));
         while (true) {
@@ -192,7 +193,7 @@ final class StackWatchLoop {
                 ProcessTrees.stop(List.of(process.toHandle()), Clock.SYSTEM);
                 exited(m);
                 CliOutput.err(loop.logPrefix() + ": restarting " + m.name);
-                start(m, appArgs, exports);
+                start(supervisor, m, appArgs, exports);
                 String failure = m.run().probe().await();
                 if (failure != null) {
                     CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + failure);
@@ -202,7 +203,8 @@ final class StackWatchLoop {
         }
     }
 
-    private void start(Member m, List<String> appArgs, Map<String, String> exports) throws IOException {
+    private void start(Sidecars supervisor, Member m, List<String> appArgs, Map<String, String> exports)
+            throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(m.plan.argv());
         command.addAll(appArgs);
         ProcessBuilder pb = new ProcessBuilder(command)
@@ -210,7 +212,7 @@ final class StackWatchLoop {
         EnvLookup.layerUnder(pb.environment(), m.plan.appDotEnv());
         pb.environment().putAll(m.plan.appEnv());
         pb.environment().putAll(DevUrls.forApp(m.name, exports));
-        Process process = pb.start();
+        Process process = supervisor.startCompanion(pb::start);
         ReadyProbe probe = new ReadyProbe(m.name, m.plan.appReady(), 0, process, Clock.SYSTEM);
         m.run = new Run(process, probe);
         loop.emit(SidecarOutput.appStarted(Clock.SYSTEM, m.name, process.pid()));
@@ -250,14 +252,6 @@ final class StackWatchLoop {
         String names = String.join(", ", wanted);
         CliOutput.err(loop.logPrefix() + ": " + SidecarOutput.readyLine(doors, names));
         loop.emit(SidecarOutput.devReady(Clock.SYSTEM, doors, names));
-    }
-
-    private static List<Process> running(List<Member> apps) {
-        List<Process> out = new ArrayList<>();
-        for (Member m : apps) {
-            if (m.run != null) out.add(m.run.process());
-        }
-        return out;
     }
 
     private static List<Path> roots(ExecPlan plan) {

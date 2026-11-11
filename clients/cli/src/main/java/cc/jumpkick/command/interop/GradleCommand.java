@@ -4,6 +4,7 @@ package cc.jumpkick.command.interop;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -76,6 +77,6 @@ public final class GradleCommand implements CliCommand {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return p.waitFor();
+        return ProcessTrees.awaitExit(p);
     }
 }

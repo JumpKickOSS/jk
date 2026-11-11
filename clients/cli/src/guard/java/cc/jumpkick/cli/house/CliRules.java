@@ -132,6 +132,33 @@ final class CliRules {
     }
 
     @Guard(
+            id = "cli-handoff-awaited",
+            why =
+                    "a child given this terminal is waited for through ProcessTrees.awaitExit, which stops its tree when jk is signalled; a bare waitFor() leaves it running after an IDE stop button, a kill or a timeout ends jk",
+            instead = "ProcessTrees.awaitExit(CliOutput.handOffTerminal(pb))")
+    void aHandedOffChildIsAwaitedThroughProcessTrees(Text text, Violations v) {
+        List<String> main = text.files(MAIN);
+        if (main.size() < 200)
+            throw new IllegalStateException(
+                    "scan of clients/cli/src/main/java: " + main.size() + " files; measured against 285");
+        int handOffs = 0;
+        for (String rel : main) {
+            if (rel.endsWith("/CliOutput.java")) continue;
+            String code = text.blanked(rel, Blank.COMMENTS);
+            if (!code.contains("handOffTerminal(")) continue;
+            handOffs++;
+            if (code.contains(".waitFor()"))
+                v.add(
+                        new TextSite(rel, 0, ".waitFor()"),
+                        rel + " hands the terminal to a child and waits with a bare waitFor()");
+        }
+        if (handOffs < 8)
+            throw new IllegalStateException(
+                    "found " + handOffs + " files that call CliOutput.handOffTerminal; measured against 13");
+        v.population(handOffs);
+    }
+
+    @Guard(
             id = "cli-test-isolated-state",
             why =
                     "the tier's JK_HOME is shared across forks and across runs, so a test that reads the ambient state root — or runs a real engine, which writes it — inherits state instead of establishing it",

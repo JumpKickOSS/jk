@@ -4,6 +4,7 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.ReleaseArtifacts;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.JkDirs;
@@ -51,7 +52,7 @@ final class SupersededClient {
             command.addAll(List.of(args));
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.environment().put(ENV, JkVersion.VERSION);
-            return OptionalInt.of(CliOutput.handOffTerminal(pb).waitFor());
+            return OptionalInt.of(ProcessTrees.awaitExit(CliOutput.handOffTerminal(pb)));
         } catch (IOException | RuntimeException e) {
             Log.debug("SupersededClient: running here instead", e);
             return OptionalInt.empty();
