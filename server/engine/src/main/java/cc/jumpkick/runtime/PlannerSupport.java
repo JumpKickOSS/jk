@@ -683,6 +683,20 @@ public final class PlannerSupport {
     public static List<String> testStampExtras(
             Path dir, JkBuild project, @Nullable String profileName, ClasspathFingerprint.EntryIdentity identity)
             throws IOException {
+        return testStampExtras(dir, project, profileName, identity, testJvmArgs(project, profileName));
+    }
+
+    /**
+     * As above with the suite's flags given: the forecast passes {@link TestLaunch#testJvmArgs},
+     * the run's own composition, so a plugin that contributes test flags keys both sides alike.
+     */
+    static List<String> testStampExtras(
+            Path dir,
+            JkBuild project,
+            @Nullable String profileName,
+            ClasspathFingerprint.EntryIdentity identity,
+            List<String> testJvmArgs)
+            throws IOException {
         // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build -A`) forecasts "tests cached" off the unit-tier marker and the whole
@@ -690,12 +704,7 @@ public final class PlannerSupport {
         TestSelection selection = effectiveSelection(SessionContext.current().testSelection(), dir, profileName);
         TestTier tier = TestTier.of(selection, profileName, PlannerTest.fastMethodBudget(project, dir));
         List<String> extras = new ArrayList<>(NodeTestStamp.testStampExtras(
-                testStampWorkerJars(dir, project),
-                selection,
-                project,
-                tier.suiteJvmArgs(testJvmArgs(project, profileName)),
-                dir,
-                identity));
+                testStampWorkerJars(dir, project), selection, project, tier.suiteJvmArgs(testJvmArgs), dir, identity));
         extras.addAll(SuiteEnvKeys.profileEnv(project, profileName));
         return extras;
     }
@@ -810,8 +819,14 @@ public final class PlannerSupport {
                 .all();
         List<Path> stampRt = PlannerVersions.withOwnVersions(
                 project, layout, PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp));
-        List<String> stampExtras =
-                TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
+        List<String> stampExtras = TestStamp.withCompileTest(
+                testStampExtras(
+                        dir,
+                        project,
+                        profileName,
+                        identity,
+                        TestLaunch.testJvmArgs(layout, project, profileName, pluginDecls)),
+                compileTestKeys);
         List<String> compiledSuites =
                 TestSuites.compiled(dir, compact, suites, project.build().testClassSuites());
         // As the live copy: the test KSP round's output roots, then the suites' resources.

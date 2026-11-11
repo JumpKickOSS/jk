@@ -80,8 +80,20 @@ final class TestLaunch {
     static List<String> testJvmArgs(
             TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, @Nullable PluginDeclarations pluginDecls)
             throws IOException {
-        List<String> args = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
-        args.addAll(PlannerSupport.testJvmArgs(project, in.profileName()));
+        return testJvmArgs(ctx.require(LAYOUT), project, in.profileName(), pluginDecls);
+    }
+
+    /**
+     * {@link #testJvmArgs(TaskContext, BuildPlanner.Inputs, JkBuild, PluginDeclarations)} from its
+     * inputs alone, so the forecast keys run-tests with exactly the flags the run stamps: the
+     * plugins' contributed flags (read from their scratch, as the last build left it) and then the
+     * module's and the profile's.
+     */
+    static List<String> testJvmArgs(
+            BuildLayout layout, JkBuild project, @Nullable String profileName, @Nullable PluginDeclarations pluginDecls)
+            throws IOException {
+        List<String> args = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(layout, pluginDecls));
+        args.addAll(PlannerSupport.testJvmArgs(project, profileName));
         return args;
     }
 

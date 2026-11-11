@@ -8,6 +8,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -78,5 +79,30 @@ class PluginTestJvmArgsTest {
     void no_declarations_means_no_arguments(@TempDir Path tmp) throws Exception {
         BuildLayout layout = BuildLayout.of(tmp, JkBuildParser.parse(TOML));
         assertThat(PlannerKsp.pluginTestJvmArgs(layout, null)).isEmpty();
+    }
+
+    /**
+     * The forecast keys run-tests with the flags the run stamps: a plugin's contributed test JVM
+     * flags first, then the module's. Left out, every module with such a plugin forecast a suite
+     * re-run on every build that the build then replayed as green.
+     */
+    @Test
+    void the_forecast_stamps_the_plugin_flags_the_run_stamps(@TempDir Path tmp) throws Exception {
+        JkBuild project = JkBuildParser.parse(TOML);
+        BuildLayout layout = BuildLayout.of(tmp, project);
+        TaskDecl model = decl("model", List.of("out/jvm.args"));
+        Path file = PluginBuild.taskScratch(layout, "model").resolve("out/jvm.args");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "-Dframework.model=/m/target/model.json\n");
+        PluginDeclarations decls = new PluginDeclarations(List.of(model), null, List.of());
+
+        List<String> runFlags = TestLaunch.testJvmArgs(layout, project, null, decls);
+        assertThat(runFlags).startsWith("-Dframework.model=/m/target/model.json");
+
+        List<String> forecastExtras =
+                PlannerSupport.testStampExtras(tmp, project, null, ClasspathFingerprint.ON_DISK, runFlags);
+        List<String> withoutPlugin = PlannerSupport.testStampExtras(tmp, project, null, ClasspathFingerprint.ON_DISK);
+        assertThat(String.join("\n", forecastExtras)).contains("-Dframework.model=/m/target/model.json");
+        assertThat(forecastExtras).isNotEqualTo(withoutPlugin);
     }
 }
