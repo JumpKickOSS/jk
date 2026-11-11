@@ -423,7 +423,8 @@ public final class JavaCompile {
             ActionKey.EntryToken cp)
             throws IOException {
         String key = ActionKey.forJavac(taskId, request, jkVersion, cp);
-        if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {
+        // A hit only when the restore would succeed: a record whose payload was pruned compiles.
+        if (request.sources().isEmpty() || actionCache.restorable(key).isPresent()) {
             return new Prediction(Outcome.CACHE_HIT, key, request.sources().size(), "");
         }
         if (!Files.isRegularFile(stateDir.resolve(ProducerAnalyses.ANALYSIS_FILE))) {

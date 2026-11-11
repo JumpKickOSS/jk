@@ -16,7 +16,6 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -239,18 +238,7 @@ final class ForecastSteps {
 
     /** The record behind {@link #present}, for callers that read its markers. */
     static Optional<ActionCache.ActionRecord> presentRecord(ActionCache ac, @Nullable String key) {
-        try {
-            if (key == null) return Optional.empty();
-            var rec = ac.lookup(key);
-            if (rec.isEmpty()) return Optional.empty();
-            for (String sha : rec.get().outputs().values()) {
-                if (!isSha256Hex(sha)) continue; // marker scalar, not a CAS blob
-                if (!Files.isRegularFile(ac.cas().pathFor(sha))) return Optional.empty();
-            }
-            return rec;
-        } catch (Exception e) {
-            return Optional.empty();
-        }
+        return ac.restorable(key);
     }
 
     /** Same shape {@link ActionCache} meters by — 64-char hex digests only. */

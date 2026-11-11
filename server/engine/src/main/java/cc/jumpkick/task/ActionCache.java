@@ -133,6 +133,28 @@ public final class ActionCache {
         }
     }
 
+    /**
+     * The record for {@code actionKey} when a restore of it would succeed: the record exists and
+     * every output blob it names is present (cache CAS or store CAS, as {@link #resolveBlob}
+     * finds it). A record whose payload was pruned is a miss: the build would compile, not
+     * restore. The forecast and every step's cache check ask this one question, so a prediction
+     * can never call a hit that the restore then refuses.
+     */
+    public Optional<ActionRecord> restorable(@Nullable String actionKey) {
+        try {
+            if (actionKey == null) return Optional.empty();
+            Optional<ActionRecord> rec = lookup(actionKey);
+            if (rec.isEmpty()) return Optional.empty();
+            for (String sha : rec.get().outputs().values()) {
+                if (!isSha256Hex(sha)) continue; // a marker scalar, not a CAS blob
+                if (!Files.isRegularFile(resolveBlob(sha))) return Optional.empty();
+            }
+            return rec;
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
     /** Resolve a blob path: cache CAS first, then store CAS (promoted Class-C). */
     Path resolveBlob(String sha) {
         Path p = cas.pathFor(sha);
