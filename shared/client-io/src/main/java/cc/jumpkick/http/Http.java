@@ -519,6 +519,30 @@ public final class Http {
      */
     public HttpResponse<byte[]> post(URI uri, byte[] body, Map<String, String> headers)
             throws IOException, InterruptedException {
+        return sendWithRetry("POST", uri, postRequest(uri, body, headers), gzipAwareByteArray(), null);
+    }
+
+    /**
+     * As {@link #post} for a request that is not safe to repeat, such as an upload that creates a
+     * deployment: one attempt, so a 5xx or a reset after the server acted never makes it act twice.
+     */
+    public HttpResponse<byte[]> postOnce(URI uri, byte[] body, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        Http once = new Http(
+                client,
+                new Duration[0],
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                false,
+                authorization);
+        return once.sendWithRetry("POST", uri, postRequest(uri, body, headers), gzipAwareByteArray(), null);
+    }
+
+    private HttpRequest postRequest(URI uri, byte[] body, Map<String, String> headers) throws IOException {
         checkOffline(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
@@ -529,8 +553,7 @@ public final class Http {
         if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
             builder.header("Accept-Encoding", "gzip");
         }
-        HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("POST", uri, request, gzipAwareByteArray(), null);
+        return withProxyAuthorization(builder, uri).build();
     }
 
     private static String urlEncode(Map<String, String> form) {

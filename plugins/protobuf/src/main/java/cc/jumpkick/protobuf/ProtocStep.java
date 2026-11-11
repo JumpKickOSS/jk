@@ -140,8 +140,7 @@ final class ProtocStep {
     private static Path executable(TaskExec exec, String artifact) throws IOException {
         Path fetched = exec.requireExtra(artifact);
         boolean windows = Os.isWindows();
-        Path staged = Files.createDirectories(exec.scratch().resolve("tools"))
-                .resolve(windows ? artifact + ".exe" : artifact);
+        Path staged = exec.privateDir("tools").resolve(windows ? artifact + ".exe" : artifact);
         Files.copy(fetched, staged, StandardCopyOption.REPLACE_EXISTING);
         if (!staged.toFile().setExecutable(true) && !windows) {
             throw new IOException("cannot mark " + artifact + " executable: " + staged);

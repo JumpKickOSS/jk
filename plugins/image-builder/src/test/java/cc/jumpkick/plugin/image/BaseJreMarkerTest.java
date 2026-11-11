@@ -8,10 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.HexFormat;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,7 +26,7 @@ class BaseJreMarkerTest {
     void using_a_pinned_tree_records_that_it_was_used(@TempDir Path cache) throws Exception {
         Path marker = seed(cache, PINNED, Duration.ofDays(40));
 
-        BaseJre.javaBinary(PINNED, cache, RegistryAuth.NONE);
+        BaseJre.javaBinary(PINNED, "linux/amd64", cache, RegistryAuth.NONE);
 
         assertThat(age(marker))
                 .as("a pinned reference never re-extracts, so nothing else records the use")
@@ -40,7 +37,7 @@ class BaseJreMarkerTest {
     void using_a_tagged_tree_leaves_the_revalidation_clock_alone(@TempDir Path cache) throws Exception {
         Path marker = seed(cache, TAG, Duration.ofHours(20));
 
-        BaseJre.javaBinary(TAG, cache, RegistryAuth.NONE);
+        BaseJre.javaBinary(TAG, "linux/amd64", cache, RegistryAuth.NONE);
 
         assertThat(age(marker))
                 .as("touching this would defer the 24 h re-resolve forever, and a republished tag "
@@ -50,25 +47,12 @@ class BaseJreMarkerTest {
 
     /** An extracted tree whose marker is {@code age} old, and no {@code bin/java} to run. */
     private static Path seed(Path cache, String base, Duration age) throws Exception {
-        Path root = cache.resolve("base-jre").resolve(digestOf(base));
+        Path root = BaseJre.treeOf(base, "linux/amd64", cache);
         Files.createDirectories(root);
         Path marker = root.resolve(".extracted");
         Files.writeString(marker, base + "\nsha256:cafe\n", StandardCharsets.UTF_8);
         Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis() - age.toMillis()));
         return marker;
-    }
-
-    /** The directory {@link BaseJre} picks for a reference, discovered rather than recomputed. */
-    private static String digestOf(String base) throws IOException {
-        return HexFormat.of().formatHex(sha256(base.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    private static byte[] sha256(byte[] bytes) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(bytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     private static Duration age(Path p) throws IOException {

@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -162,25 +163,45 @@ public final class AvroMain {
     /**
      * Each schema file's parsed {@code Schema}, in an order that defines every name before its
      * use: a file the parser refuses for an undefined name is retried after the others, and a
-     * round that places no file fails with the parser's own message. A fresh parser replays the
-     * placed files before each attempt, since a refused parse may have registered part of a file.
+     * round that places no file fails with the parser's own message.
      */
     static Map<Path, Object> parseSchemas(ClassLoader loader, List<Path> files) throws Exception {
         Class<?> parserType = Class.forName(PARSER, true, loader);
         Constructor<?> newParser = parserType.getConstructor();
         Method parse = parserType.getMethod("parse", File.class);
+        return parseInOrder(newParser::newInstance, (parser, file) -> invoke(parse, parser, file.toFile()), files);
+    }
+
+    /** One parse of {@code file} into {@code parser}, which keeps the names it defines. */
+    interface Parse {
+        @Nullable
+        Object parse(Object parser, Path file) throws Exception;
+    }
+
+    /**
+     * {@link #parseSchemas} over any parser. One parser takes file after file while each parse
+     * succeeds; a refused parse may have registered part of its file, so the next attempt starts
+     * from a fresh parser that replays the placed files.
+     */
+    static Map<Path, Object> parseInOrder(Callable<Object> newParser, Parse parse, List<Path> files) throws Exception {
         List<Path> placed = new ArrayList<>();
         List<Path> pending = new ArrayList<>(files);
+        Object live = newParser.call();
+        boolean clean = true;
         while (!pending.isEmpty()) {
             @Nullable Exception refused = null;
             boolean progress = false;
             for (Path file : List.copyOf(pending)) {
-                Object parser = newParser.newInstance();
-                for (Path done : placed) invoke(parse, parser, done.toFile());
+                if (!clean) {
+                    live = newParser.call();
+                    for (Path done : placed) parse.parse(live, done);
+                    clean = true;
+                }
                 try {
-                    invoke(parse, parser, file.toFile());
+                    parse.parse(live, file);
                 } catch (Exception e) {
                     refused = e;
+                    clean = false;
                     continue;
                 }
                 placed.add(file);
@@ -189,9 +210,9 @@ public final class AvroMain {
             }
             if (!progress) throw refused == null ? new IllegalStateException("no schema parsed") : refused;
         }
-        Object parser = newParser.newInstance();
+        Object parser = newParser.call();
         Map<Path, Object> schemas = new LinkedHashMap<>();
-        for (Path file : placed) schemas.put(file, require(invoke(parse, parser, file.toFile())));
+        for (Path file : placed) schemas.put(file, require(parse.parse(parser, file)));
         return schemas;
     }
 

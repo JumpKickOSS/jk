@@ -6,7 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -115,6 +120,50 @@ class AvroMainTest {
     void schemas_are_ordered_by_definition() throws Exception {
         assertThat(AvroMain.parseSchemas(AvroMain.class.getClassLoader(), List.of()))
                 .isEmpty();
+    }
+
+    /**
+     * One parser takes the schemas while each parse succeeds: thirty independent files cost one
+     * parse each to order and one each to keep, not a replay of every placed file per attempt.
+     */
+    @Test
+    void ordering_parses_each_schema_once_while_parses_succeed() throws Exception {
+        List<Path> files = new ArrayList<>();
+        for (int i = 0; i < 30; i++) files.add(Path.of("s" + i + ".avsc"));
+        AtomicInteger parses = new AtomicInteger();
+        Map<Path, Object> schemas = AvroMain.parseInOrder(
+                Object::new,
+                (parser, file) -> {
+                    parses.incrementAndGet();
+                    return file.toString();
+                },
+                files);
+        assertThat(schemas).hasSize(30);
+        assertThat(parses).hasValue(60);
+    }
+
+    /** A file naming a type a later file defines is placed after it, from a parser the refusal did not touch. */
+    @Test
+    void a_refused_schema_is_retried_on_a_fresh_parser_after_its_dependency() throws Exception {
+        Path user = Path.of("user.avsc");
+        Path role = Path.of("role.avsc");
+        Map<Path, Object> schemas = AvroMain.parseInOrder(
+                HashSet<String>::new,
+                (parser, file) -> {
+                    @SuppressWarnings("unchecked")
+                    Set<String> names = (Set<String>) parser;
+                    if (file.equals(user)) {
+                        names.add("User");
+                        if (!names.contains("Role")) throw new IllegalArgumentException("undefined name: Role");
+                    } else if (names.contains("User") && !names.contains("Role")) {
+                        throw new IllegalArgumentException("a refused parse left User half-defined");
+                    } else {
+                        names.add("Role");
+                    }
+                    return file.toString();
+                },
+                List.of(user, role));
+        assertThat(schemas.keySet()).containsExactly(role, user);
     }
 
     private static Path write(Path file, String text) throws Exception {

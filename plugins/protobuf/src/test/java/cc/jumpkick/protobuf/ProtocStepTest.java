@@ -4,6 +4,7 @@ package cc.jumpkick.protobuf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
@@ -171,8 +172,11 @@ class ProtocStepTest {
 
         ProtocStep.run(io);
 
-        Path staged = tmp.resolve("scratch/tools/protoc");
+        Path staged = tmp.resolve("scratch/.jk-tools/protoc");
         assertThat(staged).isRegularFile();
+        assertThat(TreeContent.isContent(tmp.resolve("scratch").relativize(staged)))
+                .as("the staged tool is never an output the step's action record keeps")
+                .isFalse();
         assertThat(Files.isExecutable(staged)).isTrue();
         assertThat(Files.readString(staged)).isEqualTo(Files.readString(fetched));
     }
@@ -213,7 +217,7 @@ class ProtocStepTest {
         ProtocStep.run(io);
 
         Path gen = tmp.resolve("scratch/gen").toAbsolutePath();
-        Path staged = tmp.resolve("scratch/tools/protoc-gen-grpc-java").toAbsolutePath();
+        Path staged = tmp.resolve("scratch/.jk-tools/protoc-gen-grpc-java").toAbsolutePath();
         assertThat(Files.readAllLines(argv))
                 .containsExactly(
                         "--java_out=" + gen,
@@ -271,7 +275,7 @@ class ProtocStepTest {
 
         ProtocStep.run(io);
 
-        Path includes = tmp.resolve("scratch/includes").toAbsolutePath();
+        Path includes = tmp.resolve("scratch/.jk-includes").toAbsolutePath();
         Path common = includes.resolve("proto-google-common-protos-2.17.0");
         Path wellKnown = includes.resolve("protobuf-java-3.25.5");
         assertThat(Files.readAllLines(argv))
@@ -311,7 +315,7 @@ class ProtocStepTest {
 
         ProtocStep.run(io);
 
-        Path includes = tmp.resolve("scratch/includes").toAbsolutePath();
+        Path includes = tmp.resolve("scratch/.jk-includes").toAbsolutePath();
         Path wellKnown = includes.resolve("protobuf-java-3.25.5");
         Path contracts = includes.resolve("acme-contracts-1.2");
         assertThat(Files.readAllLines(argv))
@@ -359,7 +363,7 @@ class ProtocStepTest {
 
         ProtocStep.run(io);
 
-        Path includes = tmp.resolve("scratch/includes").toAbsolutePath();
+        Path includes = tmp.resolve("scratch/.jk-includes").toAbsolutePath();
         assertThat(Files.readAllLines(argv))
                 .containsExactly(
                         "--java_out=" + tmp.resolve("scratch/gen").toAbsolutePath(),

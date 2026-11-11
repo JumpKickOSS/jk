@@ -31,6 +31,7 @@ class CentralPortalTest {
     private final AtomicInteger polls = new AtomicInteger();
     private volatile List<String> walk = List.of("PENDING", "VALIDATING", "VALIDATED");
     private volatile String errorsJson = "";
+    private volatile int uploadStatus = 201;
 
     /** A clock the test moves by hand, so a deadline passes through a method call and never a wait. */
     private static final class TestClock implements Clock {
@@ -59,7 +60,7 @@ class CentralPortalTest {
             authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
             uploaded = exchange.getRequestBody().readAllBytes();
             byte[] id = "dep-1234".getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(201, id.length);
+            exchange.sendResponseHeaders(uploadStatus, id.length);
             exchange.getResponseBody().write(id);
             exchange.close();
         });
@@ -97,6 +98,19 @@ class CentralPortalTest {
         assertThat(body)
                 .contains("name=\"bundle\"; filename=\"widget-1.0.0.zip\"")
                 .contains("\r\n\r\nzip\r\n--");
+    }
+
+    /** The Portal may have taken a bundle it then answers 5xx for: a second upload would be a second deployment. */
+    @Test
+    void an_upload_answered_with_a_server_error_is_not_sent_again() throws Exception {
+        uploadStatus = 503;
+        CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
+        assertThatThrownBy(() -> portal.upload(
+                        "zip".getBytes(StandardCharsets.UTF_8), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("503");
+        assertThat(requests)
+                .containsExactly("POST /api/v1/publisher/upload?name=widget-1.0.0&publishingType=AUTOMATIC");
     }
 
     @Test

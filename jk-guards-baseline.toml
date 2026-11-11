@@ -721,7 +721,7 @@ population = { examined = 4 }
 "clients/cli" = { classes = 812, sites = 52432 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/android" = { classes = 30, sites = 1970 }
-"plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/image-builder" = { classes = 20, sites = 1681 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
@@ -948,14 +948,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "clients/cli-terminal"
 at     = "cc.jumpkick.terminal.windows.WindowsConsole#readByte(Ljava/time/Duration;Ljava/util/function/BooleanSupplier;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/image-builder"
-at     = "cc.jumpkick.plugin.image.BaseJre#extractIfChanged(Ljava/lang/String;Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/plugin/image/RegistryAuth;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/image-builder"
-at     = "cc.jumpkick.plugin.image.BaseJre#javaBinary(Ljava/lang/String;Ljava/nio/file/Path;Lcc/jumpkick/plugin/image/RegistryAuth;)Ljava/nio/file/Path; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "plugins/java-compiler"
@@ -1793,6 +1785,7 @@ population = { examined = 5 }
 
 [one-env-surface]
 [one-env-surface.populations]
+"plugins/image-builder" = { classes = 20, sites = 1681 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1387, sites = 100473 }
@@ -1867,6 +1860,7 @@ population = { files = 2240 }
 [one-module-planner]
 [one-module-planner.populations]
 "clients/cli" = { classes = 812, sites = 0 }
+"plugins/image-builder" = { classes = 20, sites = 0 }
 "plugins/publisher" = { classes = 24, sites = 0 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }

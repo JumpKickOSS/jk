@@ -28,9 +28,9 @@ final class DependencyProtos {
 
     private DependencyProtos() {}
 
-    /** The include roots, freshly unpacked under {@code scratch/includes}. */
+    /** The include roots, freshly unpacked under {@code scratch/.jk-includes}. */
     static List<Path> includeRoots(TaskExec exec) throws IOException {
-        Path includes = exec.scratch().resolve("includes");
+        Path includes = exec.privateDir("includes");
         PathUtil.deleteRecursivelyOrThrow(includes);
         List<Path> roots = new ArrayList<>();
         LinkedHashSet<Path> jars = new LinkedHashSet<>(exec.runtimeClasspath());

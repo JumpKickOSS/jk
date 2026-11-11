@@ -5,13 +5,16 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.build.TaskExec;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.InvalidImageReferenceException;
 import com.google.cloud.tools.jib.api.Jib;
+import com.google.cloud.tools.jib.api.JibContainerBuilder;
 import com.google.cloud.tools.jib.api.RegistryException;
 import com.google.cloud.tools.jib.api.TarImage;
+import com.google.cloud.tools.jib.api.buildplan.Platform;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.DirectoryNotEmptyException;
@@ -55,12 +58,16 @@ final class BaseJre {
     static boolean hostCanExecute(List<String> platforms) {
         if (!Os.isLinux()) return false;
         String hostArch = normalizeArch(System.getProperty("os.arch", ""));
-        // The default when nothing is declared is linux/amd64, matching ImageConfig.
-        String target = platforms == null || platforms.isEmpty() ? "linux/amd64" : platforms.getFirst();
+        String target = target(platforms);
         if (platforms != null && platforms.size() > 1) return false; // multi-arch: no single JVM to train with
         String[] parts = target.split("/");
         if (parts.length < 2 || !parts[0].equals("linux")) return false;
         return normalizeArch(parts[1]).equals(hostArch);
+    }
+
+    /** The image's first {@code os/arch}; linux/amd64 when nothing is declared, matching ImageConfig. */
+    static String target(@Nullable List<String> platforms) {
+        return platforms == null || platforms.isEmpty() ? "linux/amd64" : platforms.getFirst();
     }
 
     private static String normalizeArch(String arch) {
@@ -84,26 +91,42 @@ final class BaseJre {
      * Digest-pinned references never re-validate; mutable tags re-resolve after
      * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */
-    static @Nullable Path javaBinary(String base, Path cacheRoot, RegistryAuth auth)
+    static @Nullable Path javaBinary(String base, String platform, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
-        Path root = CacheTree.BASE_JRE.under(cacheRoot).resolve(Hashing.sha256Hex(base));
+        Path root = treeOf(base, platform, cacheRoot);
         Path marker = root.resolve(".extracted");
         boolean pinned = base.contains("@sha256:");
         if (Files.isRegularFile(marker)) {
-            long age = System.currentTimeMillis()
-                    - Files.getLastModifiedTime(marker).toMillis();
+            long age = Clock.SYSTEM.millis() - Files.getLastModifiedTime(marker).toMillis();
             if (pinned) {
                 // The marker is also what cache retention reads to decide the tree is still in
                 // use, and a pinned reference never re-resolves, so this is the only place the
                 // use is ever recorded. A mutable tag records it by re-validating instead, which
                 // rewrites the marker at least as often as the retention window can care about.
-                Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis()));
+                Files.setLastModifiedTime(marker, FileTime.fromMillis(Clock.SYSTEM.millis()));
                 return findJava(root);
             }
             if (age < REVALIDATE_MILLIS) return findJava(root);
         }
-        extractIfChanged(base, root, marker, auth);
+        extractIfChanged(base, platform, root, marker, auth);
         return findJava(root);
+    }
+
+    /** Where {@code base}'s JRE for {@code platform} ({@code os/arch}) is unpacked: one tree per both. */
+    static Path treeOf(String base, String platform, Path cacheRoot) {
+        return CacheTree.BASE_JRE.under(cacheRoot).resolve(Hashing.sha256Hex(platform + " " + base));
+    }
+
+    /**
+     * The pull of {@code base} for {@code platform} ({@code os/arch}). Jib pulls linux/amd64 when
+     * asked for nothing, which an emulating host would run and train an amd64 cache with.
+     */
+    static JibContainerBuilder pull(RegistryAuth auth, String base, String platform)
+            throws InvalidImageReferenceException {
+        int slash = platform.indexOf('/');
+        return Jib.from(auth.base(base))
+                .setPlatforms(Set.of(new Platform(platform.substring(slash + 1), platform.substring(0, slash))))
+                .setEntrypoint("/bin/sh");
     }
 
     /**
@@ -112,13 +135,14 @@ final class BaseJre {
      * and swap it in. Skips the unpack when the registry still serves the digest already
      * extracted.
      */
-    private static void extractIfChanged(String base, Path root, Path marker, RegistryAuth auth) throws IOException {
+    private static void extractIfChanged(String base, String platform, Path root, Path marker, RegistryAuth auth)
+            throws IOException {
         Files.createDirectories(root.getParent());
         Path tar = root.resolveSibling(root.getFileName() + ".tar");
         com.google.cloud.tools.jib.api.JibContainer pulled;
         try {
             pulled = auth.containerize(
-                    Jib.from(auth.base(base)).setEntrypoint("/bin/sh"),
+                    pull(auth, base, platform),
                     Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
         } catch (InvalidImageReferenceException | RegistryException e) {
             throw new IOException("cannot read base image " + base + ": " + e.getMessage(), e);
@@ -136,7 +160,7 @@ final class BaseJre {
         }
         if (resolved.equals(previous)) {
             // Same bytes — refresh the trust window and keep the tree.
-            Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis()));
+            Files.setLastModifiedTime(marker, FileTime.fromMillis(Clock.SYSTEM.millis()));
             Files.deleteIfExists(tar);
             return;
         }

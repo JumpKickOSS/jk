@@ -42,7 +42,7 @@ final class ResourceStep {
         Path gen = exec.outputDir("gen");
         Path packaged = exec.outputDir("packaged");
         Path rawRes = exec.outputDir("raw-res");
-        Path work = Files.createDirectories(exec.scratch().resolve("work"));
+        Path work = exec.privateDir("work");
 
         List<Path> depFlats = compileDeps(exec, aapt2, aars, work);
         Path ownFlats = null;
@@ -134,7 +134,7 @@ final class ResourceStep {
         Path res = exec.requireStepOutput("android-res");
         Path rawRes = res.resolve("raw-res");
         Path ids = res.resolve("packaged").resolve(IDS);
-        Path work = Files.createDirectories(exec.scratch().resolve("work"));
+        Path work = exec.privateDir("work");
         List<Path> depFlats = compileDeps(exec, aapt2, AndroidDeps.aars(exec.runtimeEntries()), work);
         Path ownFlats = null;
         if (Files.isDirectory(rawRes)) {
@@ -300,8 +300,7 @@ final class ResourceStep {
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into the step scratch. */
     private static Path extractAapt2(TaskExec exec) throws IOException {
-        return AndroidDeps.extractAapt2(
-                exec.requireExtra("aapt2"), exec.scratch().resolve("tools"));
+        return AndroidDeps.extractAapt2(exec.requireExtra("aapt2"), exec.privateDir("tools"));
     }
 
     /** Every file under {@code dir} (sorted), for tools that want explicit file lists. */

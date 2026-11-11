@@ -132,7 +132,9 @@ public final class CentralPortal {
         String boundary = "----jk-central-" + UUID.randomUUID();
         byte[] body = multipart(boundary, name + ".zip", bundle);
         URI uri = base.resolve("api/v1/publisher/upload?name=" + encode(name) + "&publishingType=" + type.name());
-        HttpResponse<byte[]> response = http.post(
+        // One attempt: the Portal may have taken the bundle before a 5xx or a reset, and a second
+        // upload would be a second deployment.
+        HttpResponse<byte[]> response = http.postOnce(
                 uri,
                 body,
                 Map.of(

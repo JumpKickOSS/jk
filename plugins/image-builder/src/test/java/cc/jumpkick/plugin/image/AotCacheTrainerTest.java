@@ -5,12 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.image.ImageConfig;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -164,11 +161,7 @@ class AotCacheTrainerTest {
     @Test
     void the_base_jre_is_taken_from_the_cache_root(@TempDir Path cacheRoot) throws Exception {
         String base = "example.invalid/jre@sha256:" + "a".repeat(64);
-        Path marker = cacheRoot
-                .resolve("base-jre")
-                .resolve(HexFormat.of()
-                        .formatHex(MessageDigest.getInstance("SHA-256").digest(base.getBytes(StandardCharsets.UTF_8))))
-                .resolve(".extracted");
+        Path marker = BaseJre.treeOf(base, "linux/amd64", cacheRoot).resolve(".extracted");
         Files.createDirectories(marker.getParent());
         Files.writeString(marker, base + "\nsha256:cafe\n");
         Files.setLastModifiedTime(marker, FileTime.fromMillis(0));

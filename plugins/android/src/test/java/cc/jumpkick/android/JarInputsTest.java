@@ -3,6 +3,7 @@ package cc.jumpkick.android;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +33,10 @@ class JarInputsTest {
         assertThat(out.get(2)).isSameAs(zip);
         assertThat(out.get(1))
                 .as("the alias is index-named under scratch so two same-named inputs cannot collide")
-                .isEqualTo(exec.scratch().resolve("rt-jars/rt-1-0a1b2c3d.jar"));
+                .isEqualTo(exec.scratch().resolve(".jk-rt-jars/rt-1-0a1b2c3d.jar"));
+        assertThat(TreeContent.isContent(exec.scratch().relativize(out.get(1))))
+                .as("an alias is the tool's input, never an output the step's action record keeps")
+                .isFalse();
         assertThat(out.get(1).getFileName().toString()).endsWith(".jar");
         assertThat(Files.readString(out.get(1)))
                 .as("link or copy, the tool reads the same bytes")
@@ -47,7 +51,8 @@ class JarInputsTest {
 
         Path alias = JarInputs.jarNamed(exec, source, "r8.jar");
 
-        assertThat(alias).isEqualTo(exec.scratch().resolve("tools/r8.jar"));
+        assertThat(alias).isEqualTo(exec.scratch().resolve(".jk-tools/r8.jar"));
+        assertThat(TreeContent.isContent(exec.scratch().relativize(alias))).isFalse();
         assertThat(Files.readString(alias)).isEqualTo("r8-bytes");
     }
 

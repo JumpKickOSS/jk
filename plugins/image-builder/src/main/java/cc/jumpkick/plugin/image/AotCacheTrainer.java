@@ -220,7 +220,7 @@ final class AotCacheTrainer {
             ImageBuilder.Plan plan, String base, Path cacheRoot, RegistryAuth auth, Consumer<String> log) {
         if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
         try {
-            Path java = BaseJre.javaBinary(base, cacheRoot, auth);
+            Path java = BaseJre.javaBinary(base, BaseJre.target(plan.config().platforms()), cacheRoot, auth);
             return java != null && PathUtil.isRunnable(java) ? java : null;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();

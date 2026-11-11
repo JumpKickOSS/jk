@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -77,6 +78,14 @@ public interface TaskExec {
 
     /** The scratch root the step's declared output dirs resolve under. */
     Path scratch();
+
+    /**
+     * {@code scratch/.jk-<name>}, created: a directory under the scratch root that is never an
+     * action output, for a tool staged to run or an intermediate the outputs are made from.
+     */
+    default Path privateDir(String name) throws IOException {
+        return Files.createDirectories(scratch().resolve(TreeContent.SCRATCH_PREFIX + name));
+    }
 
     /**
      * An engine-supplied extra: a manifest-contributed {@code step-dependency} artifact, by its

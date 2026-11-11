@@ -4,7 +4,6 @@ package cc.jumpkick.android;
 import cc.jumpkick.host.Linking;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,7 +11,7 @@ import java.util.List;
 /**
  * d8 / R8 judge program and {@code --lib} inputs by file extension. Dependency jars are
  * Maven-layout {@code *.jar} files; any extensionless input still gets a {@code .jar}-suffixed
- * alias under the step's scratch so the tool accepts it.
+ * alias under the step's private scratch so the tool accepts it.
  */
 final class JarInputs {
 
@@ -20,7 +19,7 @@ final class JarInputs {
 
     /** A {@code .jar}-suffixed alias of {@code source} under the step's scratch. */
     static Path jarNamed(TaskExec exec, Path source, String name) throws IOException {
-        Path alias = Files.createDirectories(exec.scratch().resolve("tools")).resolve(name);
+        Path alias = exec.privateDir("tools").resolve(name);
         return linkOrCopy(source, alias);
     }
 
@@ -34,7 +33,7 @@ final class JarInputs {
             if (name.endsWith(".jar") || name.endsWith(".zip")) {
                 out.add(jar);
             } else {
-                if (dir == null) dir = Files.createDirectories(exec.scratch().resolve("rt-jars"));
+                if (dir == null) dir = exec.privateDir("rt-jars");
                 out.add(linkOrCopy(jar, dir.resolve("rt-" + i + "-" + name + ".jar")));
             }
             i++;
