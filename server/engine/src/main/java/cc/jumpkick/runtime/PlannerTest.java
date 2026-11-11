@@ -22,6 +22,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
@@ -260,17 +261,35 @@ public final class PlannerTest {
     /** target/classes, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
     private static List<Path> testCompileClasspath(TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, TestSources src)
             throws Exception {
-        List<Path> compileCp = ctx.require(COMPILE_TEST_CP);
+        return testCompileClasspath(
+                ctx.require(PROJECT),
+                ctx.require(LAYOUT),
+                ctx.require(MAIN_CLASSES),
+                ctx.require(COMPILE_TEST_CP),
+                needsGroovyJar(cx.groovyModule(), src) ? groovyCompileJar(ctx, cas) : null);
+    }
+
+    /**
+     * The test compilers' base classpath, for the build and the forecast alike: the main classes,
+     * the module's own fixtures, the resolved test compile classpath, then {@code groovyJar} when
+     * {@link #needsGroovyJar}.
+     */
+    static List<Path> testCompileClasspath(
+            JkBuild project, BuildLayout layout, Path mainClasses, List<Path> compileCp, @Nullable Path groovyJar) {
         List<Path> baseCp = new ArrayList<>();
-        baseCp.add(ctx.require(MAIN_CLASSES));
-        baseCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), baseCp);
+        baseCp.add(mainClasses);
+        baseCp = PlannerFixtures.withOwnFixtures(project, layout, baseCp);
         baseCp.addAll(compileCp);
-        // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject
-        // javac (and groovyc itself) must resolve it from the version-matched jar.
-        if (cx.groovyModule() || !src.gvTest().isEmpty()) {
-            baseCp.add(groovyCompileJar(ctx, cas));
-        }
+        if (groovyJar != null) baseCp.add(groovyJar);
         return baseCp;
+    }
+
+    /**
+     * A Groovy module's classes (main or test) implement groovy.lang.GroovyObject: javac and groovyc
+     * must resolve it from the version-matched jar.
+     */
+    static boolean needsGroovyJar(boolean groovyModule, TestSources src) {
+        return groovyModule || !src.gvTest().isEmpty();
     }
 
     /**

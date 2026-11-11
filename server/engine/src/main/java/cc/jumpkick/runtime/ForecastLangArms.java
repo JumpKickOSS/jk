@@ -260,4 +260,80 @@ final class ForecastLangArms {
                         TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty, force, why, depHint),
                 key);
     }
+
+    /**
+     * The key compile-test's kotlinc pass runs under: the request {@code PlannerTest}'s Kotlin pass
+     * builds, from the same facts. Null when the toolchain cannot be resolved read-only.
+     */
+    @Nullable
+    String kotlinTestKey(
+            ForecastScope.Prepared prepared,
+            List<Path> sources,
+            List<Path> classpath,
+            Path outputDir,
+            Path testClasses,
+            @Nullable List<Path> javaRoots) {
+        try {
+            Path workingDir = ActionKey.stateDir(
+                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cache)),
+                    TaskNames.COMPILE_TEST_KOTLIN,
+                    testClasses);
+            PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
+                    project,
+                    dir,
+                    cache,
+                    cas,
+                    sources,
+                    classpath,
+                    outputDir,
+                    workingDir,
+                    PlannerLang.kotlinConfig(
+                            project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots));
+            return ActionKey.forKotlinc(
+                    ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses),
+                    worker.request(),
+                    BuildIdentity.cacheKeyVersion(),
+                    snapshotter);
+        } catch (Exception e) {
+            Log.debug("kotlinTestKey: the Kotlin toolchain could not be resolved read-only", e);
+            return null;
+        }
+    }
+
+    /**
+     * The key compile-test's groovyc pass runs under: the request {@code PlannerTest}'s Groovy pass
+     * builds, from the same facts. Null when the toolchain cannot be resolved read-only.
+     */
+    @Nullable
+    String groovyTestKey(
+            ForecastScope.Prepared prepared,
+            List<Path> sources,
+            List<Path> classpath,
+            Path outputDir,
+            Path testClasses,
+            @Nullable List<Path> javaRoots) {
+        try {
+            GroovycRequest req = PlannerLang.groovyRequest(
+                    project,
+                    prepared.lock(),
+                    dir,
+                    cas,
+                    sources,
+                    classpath,
+                    outputDir,
+                    javaRoots,
+                    null,
+                    javaRoots == null ? List.of() : prepared.processorCp(),
+                    prepared.release(),
+                    prepared.javaHome());
+            return ActionKey.forGroovyc(
+                    ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses),
+                    req,
+                    BuildIdentity.cacheKeyVersion(),
+                    classpathToken);
+        } catch (Exception e) {
+            Log.debug("groovyTestKey: the Groovy toolchain could not be resolved read-only", e);
+            return null;
+        }
+    }
 }

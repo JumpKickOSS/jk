@@ -12,9 +12,11 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -52,6 +54,10 @@ final class PlannerTestForecast {
                     ? null
                     : lastTestCompileKey(s.actionCache, TaskNames.COMPILE_TEST_GROOVY, layout);
         }
+        // Kotlin and Groovy tests keyed as the build's passes key them, ahead of javac, which reads
+        // their outputs.
+        TaskForecast.Task langMiss =
+                s.testRound().runs() || s.compileDirty || s.kspRuns() ? null : testLangMiss(s, prepared, testSources);
         TaskForecast.Task step;
         if (s.testRound().runs()) {
             // The round runs inside this step, and its output is unknown until it does.
@@ -65,12 +71,16 @@ final class PlannerTestForecast {
                     s.depOnlyDirty ? "recompile · " + TaskForecast.ONLY_IF_COMPILE_RUNS : "recompile · main changed",
                     null);
             s.testDirty = true;
+        } else if (langMiss != null) {
+            step = langMiss;
+            s.testDirty = true;
         } else if (!testSources.javacSources().isEmpty()) {
             int release = prepared.release();
-            List<Path> baseCp = new ArrayList<>();
-            baseCp.add(layout.classesDir());
-            baseCp.addAll(s.testCompileCp());
-            baseCp = PlannerFixtures.withOwnFixtures(s.project, layout, baseCp);
+            List<Path> baseCp = testBaseClasspath(s, prepared, testSources);
+            if (baseCp == null) {
+                return new TaskForecast.Task(
+                        TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "compile · Groovy jar unresolved", null);
+            }
             Path testOut = layout.testClassesDir();
             // javac reads the Kotlin and Groovy test outputs beside it, as their records restore them.
             TestOutputs outs = TestOutputs.of(testSources, layout, testOut);
@@ -131,7 +141,7 @@ final class PlannerTestForecast {
             s.compileTestKey = pred.actionKey();
             if (!step.cached()) s.testDirty = true;
         } else {
-            // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
+            // Kotlin/Groovy-only tests whose passes' records are all present (testLangMiss).
             step = new TaskForecast.Task(TaskNames.COMPILE_TEST, TaskForecast.Status.CACHED, "", null);
         }
         if (step.cached()
@@ -144,6 +154,94 @@ final class PlannerTestForecast {
                     TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, TaskForecast.TEST_RESOURCES_CHANGED, null);
         }
         return step;
+    }
+
+    /**
+     * The test compilers' base classpath through the build's own {@link PlannerTest#testCompileClasspath},
+     * or null when the Groovy jar it needs cannot be resolved here.
+     */
+    private static @Nullable List<Path> testBaseClasspath(
+            ForecastScope s, ForecastScope.Prepared prepared, TestSources src) throws Exception {
+        Path groovyJar = null;
+        if (PlannerTest.needsGroovyJar(
+                CompileSupport.resolveLanguages(s.project.project(), s.dir).groovy(), src)) {
+            try {
+                groovyJar = PlannerSupport.groovyCompileJar(s.project, prepared.lock(), s.cas);
+            } catch (Exception e) {
+                Log.debug("testBaseClasspath: the Groovy compile jar could not be resolved read-only", e);
+                return null;
+            }
+        }
+        BuildLayout layout = prepared.layout();
+        return PlannerTest.testCompileClasspath(s.project, layout, layout.classesDir(), s.testCompileCp(), groovyJar);
+    }
+
+    /**
+     * compile-test's Kotlin and Groovy passes, keyed with the requests the build's passes build
+     * (Kotlin first, Groovy against its output): the step's RUN when a pass's record is missing or
+     * its toolchain cannot be resolved read-only, null when every pass hits. A hit records the key,
+     * so the javac pass and the classes projection read that pass's record.
+     */
+    private static TaskForecast.@Nullable Task testLangMiss(
+            ForecastScope s, ForecastScope.Prepared prepared, TestSources src) throws Exception {
+        if (src.ktTest().isEmpty() && src.gvTest().isEmpty()) return null;
+        BuildLayout layout = prepared.layout();
+        Path testClasses = layout.testClassesDir();
+        List<Path> baseCp = testBaseClasspath(s, prepared, src);
+        if (baseCp == null) return langRun(src.ktTest().isEmpty() ? "Groovy" : "Kotlin", 1, " · toolchain unresolved");
+        TestOutputs outs = TestOutputs.of(src, layout, testClasses);
+        boolean javaTests = !src.javaTest().isEmpty();
+        ForecastLangArms arms = s.arms();
+        if (!src.ktTest().isEmpty()) {
+            String key = arms.kotlinTestKey(
+                    prepared,
+                    src.ktTest(),
+                    baseCp,
+                    outs.kotlinOut(),
+                    testClasses,
+                    outs.mixedKotlin() && javaTests ? List.of(src.javaTestSrc()) : null);
+            if (key == null) return langRun("Kotlin", src.ktTest().size(), " · toolchain unresolved");
+            if (!ForecastSteps.present(s.actionCache, key))
+                return langRun("Kotlin", src.ktTest().size(), "");
+            s.compileTestKotlinKey = key;
+        }
+        if (!src.gvTest().isEmpty()) {
+            String key = arms.groovyTestKey(
+                    prepared,
+                    src.gvTest(),
+                    outs.groovyClasspath(baseCp),
+                    outs.groovyOut(),
+                    testClasses,
+                    outs.mixedGroovy() && javaTests ? groovyJointRoots(s, prepared) : null);
+            if (key == null) return langRun("Groovy", src.gvTest().size(), " · toolchain unresolved");
+            if (!ForecastSteps.present(s.actionCache, key))
+                return langRun("Groovy", src.gvTest().size(), "");
+            s.compileTestGroovyKey = key;
+        }
+        return null;
+    }
+
+    private static TaskForecast.Task langRun(String lang, int sources, String why) {
+        return new TaskForecast.Task(
+                TaskNames.COMPILE_TEST,
+                TaskForecast.Status.RUN,
+                "compile · " + ForecastSteps.count(sources, lang + " test source") + why,
+                null);
+    }
+
+    /** The Java test roots a joint Groovy pass sweeps: every compiled suite's, as the build lists them. */
+    private static List<Path> groovyJointRoots(ForecastScope s, ForecastScope.Prepared prepared) {
+        boolean compact = prepared.compact();
+        List<String> selected = TestSupport.selectedSuites(
+                s.dir, compact, s.project.build(), SessionContext.current().testSelection());
+        List<Path> roots = new ArrayList<>();
+        for (String suite :
+                TestSuites.compiled(s.dir, compact, selected, s.project.build().testClassSuites())) {
+            for (Path root : TestSuites.javaRoots(s.dir, compact, suite)) {
+                if (Files.isDirectory(root)) roots.add(root);
+            }
+        }
+        return roots;
     }
 
     /**
