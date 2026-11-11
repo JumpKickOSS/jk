@@ -89,6 +89,7 @@ public final class FilteredResources {
      */
     public static boolean testStageOutOfSync(Path moduleDir, JkBuild build, BuildLayout layout) {
         Map<String, String> values = ResourceFilter.values(build);
+        ResourceFilter filter = ResourceFilter.of(build);
         Path stageBase = layout.targetDir().resolve(TEST_STAGE);
         try {
             for (String rel : build.build().resources().testFiltered()) {
@@ -98,7 +99,7 @@ public final class FilteredResources {
                     if (Files.exists(staged)) return true;
                     continue;
                 }
-                if (expandedOutOfSync(root, values, staged, Set.of())) return true;
+                if (expandedOutOfSync(root, filter, values, staged, Set.of())) return true;
                 Set<String> expected = new HashSet<>();
                 PathUtil.forEachRegularFile(
                         root,
@@ -127,10 +128,11 @@ public final class FilteredResources {
     public static boolean mainOutOfSync(Path moduleDir, JkBuild build, Path classes, Set<String> skip) {
         BuildBlock.Resources r = build.build().resources();
         Map<String, String> values = ResourceFilter.values(build);
+        ResourceFilter filter = ResourceFilter.of(build);
         try {
             for (String rel : r.filtered()) {
                 Path root = moduleDir.resolve(rel);
-                if (Files.isDirectory(root) && expandedOutOfSync(root, values, classes, skip)) return true;
+                if (Files.isDirectory(root) && expandedOutOfSync(root, filter, values, classes, skip)) return true;
             }
         } catch (IOException e) {
             return true;
@@ -167,6 +169,7 @@ public final class FilteredResources {
             Set<String> unresolved)
             throws IOException {
         Map<String, String> values = ResourceFilter.values(build);
+        ResourceFilter filter = ResourceFilter.of(build);
         Set<Path> filteredRoots = new HashSet<>();
         for (String rel : filtered) filteredRoots.add(moduleDir.resolve(rel).normalize());
         List<Path> out = new ArrayList<>();
@@ -184,14 +187,15 @@ public final class FilteredResources {
                 PathUtil.deleteRecursively(staged);
                 continue;
             }
-            stage(root, staged, values, unresolved);
+            stage(root, staged, filter, values, unresolved);
             out.add(staged);
         }
         return out;
     }
 
     /** Expand {@code root} into {@code staged}: changed files rewritten, files no longer in {@code root} removed. */
-    static void stage(Path root, Path staged, Map<String, String> values, Set<String> unresolved) throws IOException {
+    static void stage(Path root, Path staged, ResourceFilter filter, Map<String, String> values, Set<String> unresolved)
+            throws IOException {
         Set<Path> wanted = new HashSet<>();
         List<Path> files = new ArrayList<>();
         PathUtil.forEachRegularFile(root, (file, attrs) -> files.add(file));
@@ -199,8 +203,8 @@ public final class FilteredResources {
             Path rel = root.relativize(file);
             Path target = staged.resolve(rel.toString());
             wanted.add(target.normalize());
-            byte[] bytes = ResourceFilter.filter(
-                    String.valueOf(file.getFileName()), Files.readAllBytes(file), values, unresolved);
+            byte[] bytes =
+                    filter.filter(String.valueOf(file.getFileName()), Files.readAllBytes(file), values, unresolved);
             if (Files.isRegularFile(target) && Arrays.equals(Files.readAllBytes(target), bytes)) continue;
             Files.createDirectories(target.getParent());
             Files.write(target, bytes);
@@ -213,7 +217,8 @@ public final class FilteredResources {
         for (Path file : stale) Files.deleteIfExists(file);
     }
 
-    private static boolean expandedOutOfSync(Path root, Map<String, String> values, Path classes, Set<String> skip)
+    private static boolean expandedOutOfSync(
+            Path root, ResourceFilter filter, Map<String, String> values, Path classes, Set<String> skip)
             throws IOException {
         List<Path> files = new ArrayList<>();
         PathUtil.forEachRegularFile(root, (file, attrs) -> files.add(file));
@@ -222,7 +227,7 @@ public final class FilteredResources {
             if (skip.contains(rel.replace('\\', '/'))) continue;
             Path copy = classes.resolve(rel);
             if (!Files.isRegularFile(copy)) return true;
-            byte[] want = ResourceFilter.filter(
+            byte[] want = filter.filter(
                     String.valueOf(file.getFileName()), Files.readAllBytes(file), values, new HashSet<>());
             if (!Arrays.equals(want, Files.readAllBytes(copy))) return true;
         }

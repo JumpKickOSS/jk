@@ -98,6 +98,7 @@ as Maven's resource filtering does:
 dirs = ["src/extra/resources"]          # copied as written
 filtered = ["src/filter/resources"]     # ${name} and @name@ become the value of name
 # test-dirs = […]  test-filtered = […]  # the same for the default test suite
+# delimiters = ["${*}", "@"]            # the default; ["@"] leaves ${name} for the application
 
 [resources.properties]
 "remoting.version" = "3391.va_37fa_a_305d6d"
@@ -105,7 +106,11 @@ filtered = ["src/filter/resources"]     # ${name} and @name@ become the value of
 
 A filtered file's `${name}` and `@name@` take their value from `[resources.properties]`, then
 from `project.groupId`, `project.artifactId` and `project.version`, which JumpKick sets itself.
-`\${name}` stays `${name}`. A `${name}` with no value is copied as written and warned. Images and
+`delimiters` names the placeholders that are expanded, as Maven's resources plugin writes them:
+`<begin>*<end>` (`${*}`, `#{*}`) or one token that both begins and ends the name (`@`). Spring
+Boot's `["@"]` leaves `${name}` as written for Spring to resolve at run time.
+A backslash keeps a placeholder as written: `\${name}` stays `${name}`. A placeholder with no value
+is copied as written, and warned when its two ends differ (`${name}`, not `@name@`). Images and
 files that are not UTF-8 are copied as they are. A layout root may be listed as filtered.
 `jk import` writes the table from a POM's `<resources>`.
 

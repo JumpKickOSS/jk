@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.layout.ResourceFilter;
 import cc.jumpkick.model.BuildBlock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.tomlj.TomlTable;
 
-/** The {@code [resources]} table: extra and filtered resource roots, and the values filtering uses. */
+/** The {@code [resources]} table: extra and filtered resource roots, and the values and delimiters filtering uses. */
 final class ManifestResources {
 
     static final String TABLE = "resources";
 
-    static final List<String> KEYS = List.of("dirs", "filtered", "test-dirs", "test-filtered", "properties");
+    static final List<String> KEYS =
+            List.of("dirs", "filtered", "test-dirs", "test-filtered", "properties", "delimiters");
 
     private ManifestResources() {}
 
@@ -41,7 +43,19 @@ final class ManifestResources {
                 dirs(table, "filtered"),
                 dirs(table, "test-dirs"),
                 dirs(table, "test-filtered"),
-                properties);
+                properties,
+                delimiters(table));
+    }
+
+    /** Maven's spelling, {@code <begin>*<end>} or one token for both ends; absent, {@code ${*}} and {@code @}. */
+    private static List<String> delimiters(TomlTable table) {
+        if (!table.contains("delimiters")) return BuildBlock.Resources.DEFAULT_DELIMITERS;
+        List<String> delimiters = JkBuildParser.optionalStringList(table, "delimiters", "resources.delimiters");
+        for (String d : delimiters) {
+            String problem = ResourceFilter.problem(d);
+            if (problem != null) throw new JkBuildParseException("[resources] delimiters: " + problem);
+        }
+        return delimiters;
     }
 
     /** Quoted ({@code "a.b" = …}) and dotted ({@code a.b = …}) names alike, by their full name. */

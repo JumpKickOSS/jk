@@ -201,7 +201,7 @@ public final class JkBuildRenderer {
     }
 
     /** {@code [war]}, its keys only when off their defaults. */
-    /** {@code [resources]}, each list only when non-empty, then {@code [resources.properties]}. */
+    /** {@code [resources]}, each list only when non-empty and the delimiters only off their default, then {@code [resources.properties]}. */
     private static void renderResources(StringBuilder sb, BuildBlock.Resources resources) {
         if (resources.isEmpty()) return;
         sb.append("\n[resources]\n");
@@ -209,6 +209,14 @@ public final class JkBuildRenderer {
         renderDirList(sb, "filtered", resources.filtered());
         renderDirList(sb, "test-dirs", resources.testDirs());
         renderDirList(sb, "test-filtered", resources.testFiltered());
+        if (!resources.delimiters().equals(BuildBlock.Resources.DEFAULT_DELIMITERS)) {
+            sb.append("delimiters = [");
+            for (int i = 0; i < resources.delimiters().size(); i++) {
+                sb.append(i == 0 ? "" : ", ")
+                        .append(quote(resources.delimiters().get(i)));
+            }
+            sb.append("]\n");
+        }
         if (!resources.properties().isEmpty()) {
             sb.append("\n[resources.properties]\n");
             resources

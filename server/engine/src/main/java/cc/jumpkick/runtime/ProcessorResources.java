@@ -51,6 +51,7 @@ public record ProcessorResources(Path moduleDir, JkBuild build, boolean compact)
         }
         BuildBlock.Resources r = build.build().resources();
         if (!r.filtered().isEmpty()) {
+            sb.append("delimiters:").append(String.join(" ", r.delimiters())).append('\n');
             new TreeMap<>(ResourceFilter.values(build))
                     .forEach((k, v) ->
                             sb.append("value:").append(k).append('=').append(v).append('\n'));

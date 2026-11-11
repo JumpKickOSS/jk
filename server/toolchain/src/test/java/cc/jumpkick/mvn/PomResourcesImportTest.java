@@ -89,9 +89,7 @@ class PomResourcesImportTest {
                 .containsEntry("remoting.minimum.supported.version", "3176.v207ec082a_8c0")
                 .doesNotContainKey("project.version");
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.contains("${changelog.url}")
-                        && m.contains("${env.HOME}")
-                        && m.contains("[resources.properties]"));
+                .anyMatch(m -> m.contains("changelog.url, env.HOME") && m.contains("[resources.properties]"));
 
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("\n[resources]\nfiltered = [\"src/filter/resources\"]\n");
@@ -100,10 +98,10 @@ class PomResourcesImportTest {
 
     /**
      * Spring Boot's parent filters with {@code @} alone, so {@code ${name}} stays for Spring to read
-     * at run time: no such name is reported undefined, and each one jk still expands is named.
+     * at run time: the table filters with {@code @} alone too, and no such name is pinned or reported.
      */
     @Test
-    void at_only_delimiters_leave_dollar_references_unpinned(@TempDir Path root) throws Exception {
+    void at_only_delimiters_import_as_the_tables_delimiters(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -137,10 +135,48 @@ class PomResourcesImportTest {
         BuildBlock.Resources r = result.jkBuild().build().resources();
 
         assertThat(r.filtered()).containsExactly("src/main/resources");
+        assertThat(r.delimiters()).containsExactly("@");
         assertThat(r.properties()).containsExactly(Map.entry("java.version", "21"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("PORT") || m.contains("delimiter"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("delimiters = [\"@\"]");
+        assertThat(JkBuildParser.parse(rendered).build().resources()).isEqualTo(r);
+    }
+
+    /** A delimiter of Maven's own spelling beside the defaults imports as written; {@code @*@} is {@code @}. */
+    @Test
+    void a_custom_delimiter_joins_the_defaults(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <properties><build.label>nightly</build.label></properties>
+                  <build>
+                    <resources>
+                      <resource><directory>src/main/resources</directory><filtering>true</filtering></resource>
+                    </resources>
+                    <plugins><plugin>
+                      <artifactId>maven-resources-plugin</artifactId>
+                      <configuration>
+                        <delimiters><delimiter>#{*}</delimiter><delimiter>@*@</delimiter></delimiters>
+                      </configuration>
+                    </plugin></plugins>
+                  </build>
+                </project>
+                """);
+        Path resources = Files.createDirectories(root.resolve("src/main/resources"));
+        Files.writeString(resources.resolve("app.properties"), "label=#{build.label}\nmissing=#{nope}\n");
+
+        PomImporter.Result result = TestImporters.offline(root).importFrom(root.resolve("pom.xml"));
+        BuildBlock.Resources r = result.jkBuild().build().resources();
+
+        assertThat(r.delimiters()).containsExactly("${*}", "@", "#{*}");
+        assertThat(r.properties()).containsExactly(Map.entry("build.label", "nightly"));
         assertThat(TestImporters.messages(result))
-                .noneMatch(m -> m.contains("${PORT}"))
-                .anyMatch(m -> m.contains("${java.version}, ${project.version}") && m.contains("jk expands"));
+                .noneMatch(m -> m.contains("not imported"))
+                .anyMatch(m -> m.contains("nope") && m.contains("undefined"));
     }
 
     @Test

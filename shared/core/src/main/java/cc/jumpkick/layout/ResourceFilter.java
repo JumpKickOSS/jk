@@ -6,7 +6,9 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -16,44 +18,106 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Maven's default resource filtering: {@code ${name}} and {@code @name@} become the value of
- * {@code name}. {@code \${name}} stays {@code ${name}}, the backslash dropped. A name with no value
- * is left as written; an unresolved {@code ${name}} is reported, an unresolved {@code @name@} is
- * not, since {@code @} pairs are common in plain text. Images and files that are not UTF-8 are
- * copied as they are.
+ * Maven's resource filtering over a module's {@code [resources] delimiters}, by default {@code
+ * ${*}} and {@code @}: {@code ${name}} and {@code @name@} become the value of {@code name}. A
+ * delimiter is written as Maven writes it, {@code <begin>*<end>}, or one token that both begins and
+ * ends the name. A backslash before a reference keeps it as written, the backslash dropped. A name
+ * with no value is left as written; an unresolved reference is reported when its delimiter's ends
+ * differ ({@code ${name}}), not when they are the same token ({@code @name@}), since such pairs are
+ * common in plain text. Images and files that are not UTF-8 are copied as they are.
  */
 public final class ResourceFilter {
 
     /** Maven's default {@code nonFilteredFileExtensions}. */
     private static final Set<String> BINARY = Set.of("jpg", "jpeg", "gif", "bmp", "png");
 
-    private static final Pattern TOKEN = Pattern.compile("(\\\\)?\\$\\{([^}\\s]+)}|@([A-Za-z0-9_.-]+)@");
+    /** A name between two equal tokens: the characters a property name is made of. */
+    private static final String SYMMETRIC_NAME = "[A-Za-z0-9_.-]+";
 
-    private ResourceFilter() {}
+    /** One delimiter's two ends. */
+    private record Delimiter(String begin, String end) {
 
-    /** The expanded text and the {@code ${name}} references that had no value. */
+        boolean reported() {
+            return !begin.equals(end);
+        }
+    }
+
+    private final List<Delimiter> delimiters;
+    private final Pattern token;
+
+    private ResourceFilter(List<Delimiter> delimiters) {
+        this.delimiters = List.copyOf(delimiters);
+        StringBuilder regex = new StringBuilder();
+        for (Delimiter d : delimiters) {
+            if (!regex.isEmpty()) regex.append('|');
+            String name = d.reported() ? "(?:(?!" + Pattern.quote(d.end()) + ")\\S)+" : SYMMETRIC_NAME;
+            regex.append("(\\\\)?")
+                    .append(Pattern.quote(d.begin()))
+                    .append('(')
+                    .append(name)
+                    .append(')')
+                    .append(Pattern.quote(d.end()));
+        }
+        this.token = Pattern.compile(regex.isEmpty() ? "(?!)" : regex.toString());
+    }
+
+    /** The filter for {@code delimiters}, each checked by {@link #parse}. */
+    public static ResourceFilter of(List<String> delimiters) {
+        List<Delimiter> parsed = new ArrayList<>(delimiters.size());
+        for (String d : delimiters) parsed.add(parse(d));
+        return new ResourceFilter(parsed);
+    }
+
+    /** The filter a module's {@code [resources] delimiters} name. */
+    public static ResourceFilter of(JkBuild build) {
+        return of(build.build().resources().delimiters());
+    }
+
+    /**
+     * Why {@code delimiter} is not one, or null when it is: one {@code *} between a non-empty begin
+     * and end, or no {@code *} and no whitespace at all.
+     */
+    public static @Nullable String problem(String delimiter) {
+        if (delimiter.isBlank() || delimiter.chars().anyMatch(Character::isWhitespace)) {
+            return "a delimiter is <begin>*<end> or one token, with no spaces";
+        }
+        int star = delimiter.indexOf('*');
+        if (star < 0) return null;
+        if (star != delimiter.lastIndexOf('*') || star == 0 || star == delimiter.length() - 1) {
+            return "`" + delimiter + "` must put one * between a begin and an end, such as ${*}";
+        }
+        return null;
+    }
+
+    private static Delimiter parse(String delimiter) {
+        String problem = problem(delimiter);
+        if (problem != null) throw new IllegalArgumentException(problem);
+        int star = delimiter.indexOf('*');
+        return star < 0
+                ? new Delimiter(delimiter, delimiter)
+                : new Delimiter(delimiter.substring(0, star), delimiter.substring(star + 1));
+    }
+
+    /** The expanded text and the references that had no value, by name. */
     public record Result(String text, Set<String> unresolved) {}
 
     /** {@code text} with every resolvable reference replaced. */
-    public static Result expand(String text, Map<String, String> values) {
-        Matcher m = TOKEN.matcher(text);
+    public Result expand(String text, Map<String, String> values) {
+        Matcher m = token.matcher(text);
         StringBuilder out = new StringBuilder(text.length());
         Set<String> unresolved = new TreeSet<>();
         while (m.find()) {
+            int i = matched(m);
+            Delimiter d = delimiters.get(i);
+            String name = m.group(2 * i + 2);
             String replacement;
-            if (m.group(2) != null) {
-                String name = m.group(2);
-                if (m.group(1) != null) {
-                    replacement = "${" + name + "}";
-                } else if (values.containsKey(name)) {
-                    replacement = values.get(name);
-                } else {
-                    unresolved.add(name);
-                    replacement = m.group();
-                }
+            if (m.group(2 * i + 1) != null) {
+                replacement = d.begin() + name + d.end();
+            } else if (values.containsKey(name)) {
+                replacement = values.get(name);
             } else {
-                String name = m.group(3);
-                replacement = values.containsKey(name) ? values.get(name) : m.group();
+                if (d.reported()) unresolved.add(name);
+                replacement = m.group();
             }
             m.appendReplacement(out, Matcher.quoteReplacement(replacement));
         }
@@ -61,15 +125,23 @@ public final class ResourceFilter {
         return new Result(out.toString(), unresolved);
     }
 
-    /** Every name {@code text} references, {@code ${name}} and {@code @name@} alike, escaped ones excluded. */
-    public static Set<String> references(String text) {
+    /** Every name {@code text} references, escaped ones excluded. */
+    public Set<String> references(String text) {
         Set<String> names = new TreeSet<>();
-        Matcher m = TOKEN.matcher(text);
+        Matcher m = token.matcher(text);
         while (m.find()) {
-            if (m.group(2) != null && m.group(1) == null) names.add(m.group(2));
-            if (m.group(3) != null) names.add(m.group(3));
+            int i = matched(m);
+            if (m.group(2 * i + 1) == null) names.add(m.group(2 * i + 2));
         }
         return names;
+    }
+
+    /** Which delimiter {@code m} matched, by its index. */
+    private int matched(Matcher m) {
+        for (int i = 0; i < delimiters.size(); i++) {
+            if (m.group(2 * i + 2) != null) return i;
+        }
+        throw new IllegalStateException("a match names no delimiter");
     }
 
     /** Whether {@code fileName} is filtered at all, or copied as it is. */
@@ -80,9 +152,9 @@ public final class ResourceFilter {
 
     /**
      * The bytes {@code fileName} is copied as: expanded when it is UTF-8 text, as they are
-     * otherwise. {@code unresolved} collects the {@code ${name}} references left as written.
+     * otherwise. {@code unresolved} collects the reported references left as written.
      */
-    public static byte[] filter(String fileName, byte[] bytes, Map<String, String> values, Set<String> unresolved) {
+    public byte[] filter(String fileName, byte[] bytes, Map<String, String> values, Set<String> unresolved) {
         if (!filters(fileName)) return bytes;
         String text = utf8(bytes);
         if (text == null) return bytes;

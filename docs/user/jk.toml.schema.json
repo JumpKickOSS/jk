@@ -669,9 +669,10 @@
       "description": "[resources]: resource roots beyond the layout's, and roots whose files are expanded while copied (Maven's resource filtering) (docs/user/layout.md).",
       "properties": {
         "dirs": { "type": "array", "items": { "type": "string" }, "description": "Extra main resource roots, module-relative, copied as written." },
-        "filtered": { "type": "array", "items": { "type": "string" }, "description": "Main resource roots whose files are expanded: ${name} and @name@ become the value of name; \\${name} stays literal; an unresolved ${name} is left as written and warned. Images and non-UTF-8 files are copied as they are. A layout root may be listed." },
+        "filtered": { "type": "array", "items": { "type": "string" }, "description": "Main resource roots whose files are expanded: a placeholder of the delimiters (${name} and @name@ by default) becomes the value of name; a backslash keeps one literal; an unresolved ${name} is left as written and warned. Images and non-UTF-8 files are copied as they are. A layout root may be listed." },
         "test-dirs": { "type": "array", "items": { "type": "string" }, "description": "Extra test resource roots." },
         "test-filtered": { "type": "array", "items": { "type": "string" }, "description": "Test resource roots whose files are expanded." },
+        "delimiters": { "type": "array", "items": { "type": "string" }, "default": ["${*}", "@"], "description": "The placeholders filtering expands, as Maven's resources plugin spells them: <begin>*<end> (${*}, #{*}) or one token for both ends (@). [\"@\"] leaves ${name} for the application to resolve at run time." },
         "properties": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Values the expansion uses, over project.groupId, project.artifactId and project.version, which jk sets itself. Quote dotted names: \"remoting.version\" = \"…\"." }
       },
       "additionalProperties": false

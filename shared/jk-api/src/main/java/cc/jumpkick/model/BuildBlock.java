@@ -571,9 +571,14 @@ public record BuildBlock(
             List<String> filtered,
             List<String> testDirs,
             List<String> testFiltered,
-            Map<String, String> properties) {
+            Map<String, String> properties,
+            List<String> delimiters) {
 
-        public static final Resources EMPTY = new Resources(List.of(), List.of(), List.of(), List.of(), Map.of());
+        /** Maven's default delimiters: {@code ${name}} and {@code @name@}. */
+        public static final List<String> DEFAULT_DELIMITERS = List.of("${*}", "@");
+
+        public static final Resources EMPTY =
+                new Resources(List.of(), List.of(), List.of(), List.of(), Map.of(), DEFAULT_DELIMITERS);
 
         public Resources {
             dirs = dirs == null ? List.of() : List.copyOf(dirs);
@@ -581,6 +586,7 @@ public record BuildBlock(
             testDirs = testDirs == null ? List.of() : List.copyOf(testDirs);
             testFiltered = testFiltered == null ? List.of() : List.copyOf(testFiltered);
             properties = properties == null ? Map.of() : Collections.unmodifiableMap(new TreeMap<>(properties));
+            delimiters = delimiters == null ? DEFAULT_DELIMITERS : List.copyOf(delimiters);
         }
 
         public boolean isEmpty() {
@@ -588,7 +594,8 @@ public record BuildBlock(
                     && filtered.isEmpty()
                     && testDirs.isEmpty()
                     && testFiltered.isEmpty()
-                    && properties.isEmpty();
+                    && properties.isEmpty()
+                    && delimiters.equals(DEFAULT_DELIMITERS);
         }
     }
 
