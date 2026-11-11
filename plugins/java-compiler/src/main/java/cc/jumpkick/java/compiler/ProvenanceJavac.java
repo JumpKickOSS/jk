@@ -36,7 +36,7 @@ import xsbti.compile.Output;
  * provenance through its file manager when there are processors to install.
  *
  * <p>This is used instead of Zinc's {@code JavaCompiler.local} whether or not a processor path is
- * present, because the file manager it compiles through is held across compiles rather than opened
+ * present, because the file manager it compiles through is pooled across compiles rather than opened
  * per compile — see {@link ReusedJavacFileManager} for what that is worth. Zinc's own compiler opens
  * one per compile, so a build that used it for its processor-free modules would pay full classpath
  * indexing on most of its compiles.
@@ -92,9 +92,9 @@ final class ProvenanceJavac implements JavaCompiler {
         // This path reads sources through the file manager, and the charset given here is what
         // decides: it outranks -encoding, which BaseFileManager.getDecoder only falls back to.
         // Same constant as the flag, so the two spellings of the charset cannot drift apart.
-        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(
-                javac, encoding, diags, declaredLocations(options), pathEntriesNamed(options), releaseOf(options));
-        try {
+        try (ReusedJavacFileManager.Lease lease = ReusedJavacFileManager.acquire(
+                javac, encoding, diags, declaredLocations(options), pathEntriesNamed(options), releaseOf(options))) {
+            StandardJavaFileManager fm = lease.manager();
             Files.createDirectories(classOut);
             fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
             // Every location this compile depends on is set on every compile, never left to whatever

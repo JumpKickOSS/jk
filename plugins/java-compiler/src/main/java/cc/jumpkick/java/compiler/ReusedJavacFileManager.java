@@ -6,8 +6,11 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,8 +24,8 @@ import javax.tools.StandardLocation;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One {@link StandardJavaFileManager} per thread, held across compiles rather than opened and closed
- * around each one.
+ * A bounded pool of {@link StandardJavaFileManager}s, each checked out for one compile and held
+ * across compiles rather than opened and closed around each one.
  *
  * <p>A manager opened per compile re-opens and re-indexes every classpath entry, and that cost is
  * fixed per invocation — it does not shrink with the module. Measured on a 20-cpu host, a
@@ -32,8 +35,14 @@ import org.jspecify.annotations.Nullable;
  * has not seen. A compile whose classpath shares 190 of its 200 entries with its predecessor drops
  * from 276 ms to 56 ms.
  *
+ * <p>The worker compiles on one thread per core, and {@link StandardJavaFileManager} is not
+ * thread-safe, so a manager belongs to one compile at a time: {@link #acquire} checks one out and
+ * {@link Lease#close} returns it. A compile gets the idle manager that has already named the most of
+ * its path entries; at most {@link #CAP} idle managers are kept, and the one returned longest ago is
+ * closed past that, so the jars held open stay bounded however many threads compile.
+ *
  * <p>Reuse is bounded by what is on disk, not by the job: the engine keeps a worker for a short
- * linger after its job, so the next build's compile may get the manager the last one left. javac
+ * linger after its job, so the next build's compile may get a manager the last one left. javac
  * lists a directory entry afresh on every task, so a class added to an upstream output directory
  * resolves, and one removed stops resolving. Everything else about an entry the manager remembers
  * as it first found it: an archive stays open on the file it opened, and an entry that was missing
@@ -41,73 +50,13 @@ import org.jspecify.annotations.Nullable;
  * snapshot re-resolved, a local jar rebuilt) or one that has appeared since (a sibling's output
  * directory created after a compile named it) discards the manager. {@code
  * ReusedJavacFileManagerTest} pins these.
- *
- * <p>Per thread rather than static because the worker is single-threaded today but the protocol is
- * specified to allow concurrent items; {@link StandardJavaFileManager} is not thread-safe, so a
- * second compile thread must get its own rather than silently share this one.
  */
 final class ReusedJavacFileManager {
 
-    private static final ThreadLocal<ReusedJavacFileManager> PER_THREAD =
-            ThreadLocal.withInitial(ReusedJavacFileManager::new);
+    /** Idle managers kept between compiles; each holds every archive it has opened. */
+    static final int CAP = 4;
 
-    /**
-     * The listener the manager is constructed with. A manager outlives any one compile, so it cannot
-     * be handed that compile's collector directly — it forwards to whichever compile is running.
-     */
-    private final Relay relay = new Relay();
-
-    private @Nullable StandardJavaFileManager fm;
-    private @Nullable Charset encoding;
-
-    /**
-     * The release options the held manager's compiles ran under. javac opens each archive with the
-     * multi-release view of the target at first open and keeps it until the manager closes, so a
-     * compile at another release must not inherit that view.
-     */
-    private String release = "";
-
-    /** Every option-set location a compile has declared on the held manager since it was built. */
-    private final Set<StandardLocation> carried = EnumSet.noneOf(StandardLocation.class);
-
-    /** Every path entry a compile on the held manager named, as it was on disk then. */
-    private final Map<Path, EntryStamp> entries = new HashMap<>();
-
-    private ReusedJavacFileManager() {}
-
-    /**
-     * The calling thread's manager, reporting file-manager diagnostics to {@code diags} until the
-     * next call. A manager built for a different charset is discarded rather than reused, because
-     * the charset a manager is constructed with is what decodes sources and cannot be changed after.
-     *
-     * <p>{@code declared} names the path locations the compile about to run sets through its own
-     * options ({@link ProvenanceJavac#declaredLocations}). If the held manager still carries one the
-     * compile never asked for, that manager is thrown away rather than handed over — see
-     * {@link #staleLocation}.
-     */
-    static StandardJavaFileManager acquire(
-            JavaCompiler javac,
-            Charset encoding,
-            DiagnosticListener<JavaFileObject> diags,
-            Set<StandardLocation> declared) {
-        return acquire(javac, encoding, diags, declared, List.of(), "");
-    }
-
-    /**
-     * As above, for a compile whose path options name {@code entries} and whose release options
-     * spell {@code release}: a held manager that saw one of the entries as it was before a rewrite,
-     * or before it existed, or that compiled at another release, is thrown away rather than handed
-     * over.
-     */
-    static StandardJavaFileManager acquire(
-            JavaCompiler javac,
-            Charset encoding,
-            DiagnosticListener<JavaFileObject> diags,
-            Set<StandardLocation> declared,
-            List<Path> entries,
-            String release) {
-        return PER_THREAD.get().get(javac, encoding, diags, declared, entries, release);
-    }
+    private static final ReusedJavacFileManager SHARED = new ReusedJavacFileManager(CAP);
 
     /**
      * The option-set locations a held manager may carry over from an earlier compile, each one
@@ -125,45 +74,201 @@ final class ReusedJavacFileManager {
             StandardLocation.PATCH_MODULE_PATH,
             StandardLocation.NATIVE_HEADER_OUTPUT);
 
-    private StandardJavaFileManager get(
+    private final int cap;
+
+    /** Managers no compile holds, the most recently returned first. */
+    private final Deque<Held> idle = new ArrayDeque<>();
+
+    ReusedJavacFileManager(int cap) {
+        this.cap = cap;
+    }
+
+    /**
+     * Checks a manager out of the worker's pool for one compile, reporting file-manager diagnostics
+     * to {@code diags} until the lease is closed. A manager built for another charset is never
+     * handed over, because the charset a manager is constructed with is what decodes sources and
+     * cannot be changed after.
+     *
+     * <p>{@code declared} names the path locations the compile sets through its own options
+     * ({@link ProvenanceJavac#declaredLocations}); a manager that carries one the compile never
+     * asked for is passed over — see {@link Held#staleLocation}. {@code entries} are the path
+     * entries the options name and {@code release} the release options they spell: a manager that
+     * saw one of the entries before a rewrite, or before it existed, is closed, and one that compiled
+     * at another release is passed over.
+     */
+    static Lease acquire(
             JavaCompiler javac,
-            Charset wanted,
+            Charset encoding,
+            DiagnosticListener<JavaFileObject> diags,
+            Set<StandardLocation> declared,
+            List<Path> entries,
+            String release) {
+        return SHARED.checkout(javac, encoding, diags, declared, entries, release);
+    }
+
+    Lease checkout(
+            JavaCompiler javac,
+            Charset encoding,
             DiagnosticListener<JavaFileObject> diags,
             Set<StandardLocation> declared,
             List<Path> named,
-            String wantedRelease) {
-        relay.to = diags;
+            String release) {
         Map<Path, EntryStamp> now = new HashMap<>();
         for (Path entry : named) now.put(entry, EntryStamp.of(entry));
-        StandardJavaFileManager current = fm;
-        if (current != null
-                && wanted.equals(encoding)
-                && wantedRelease.equals(release)
-                && !staleLocation(current, declared)
-                && !rewritten(now)) {
-            carried.addAll(declared);
-            entries.putAll(now);
-            return current;
+        Held chosen = null;
+        synchronized (this) {
+            int best = -1;
+            for (Iterator<Held> it = idle.iterator(); it.hasNext(); ) {
+                Held held = it.next();
+                if (held.rewritten(now)) {
+                    it.remove();
+                    held.close();
+                    continue;
+                }
+                if (!held.encoding.equals(encoding) || !held.release.equals(release) || held.staleLocation(declared)) {
+                    continue;
+                }
+                int overlap = held.overlap(now);
+                if (overlap > best) {
+                    best = overlap;
+                    chosen = held;
+                }
+            }
+            if (chosen != null) idle.remove(chosen);
         }
-        close(current);
-        StandardJavaFileManager fresh = javac.getStandardFileManager(relay, Locale.ROOT, wanted);
-        fm = fresh;
-        encoding = wanted;
-        release = wantedRelease;
-        carried.clear();
-        carried.addAll(declared);
-        entries.clear();
-        entries.putAll(now);
-        return fresh;
+        if (chosen == null) chosen = new Held(javac, encoding, release);
+        chosen.carried.addAll(declared);
+        chosen.entries.putAll(now);
+        chosen.relay.to = diags;
+        return new Lease(chosen);
     }
 
-    /** Whether an entry the held manager may have seen is not what it was when last named. */
-    private boolean rewritten(Map<Path, EntryStamp> now) {
-        for (Map.Entry<Path, EntryStamp> e : now.entrySet()) {
-            EntryStamp then = entries.get(e.getKey());
-            if (then != null && !then.equals(e.getValue())) return true;
+    /**
+     * Puts {@code held} back as the most recently returned, closing the oldest past the cap. A
+     * manager that carried {@code --patch-module} is never handed over again, so it is closed here.
+     */
+    private void giveBack(Held held) {
+        held.relay.to = null;
+        if (held.carried.contains(StandardLocation.PATCH_MODULE_PATH)) {
+            held.close();
+            return;
         }
-        return false;
+        Held evicted = null;
+        synchronized (this) {
+            idle.addFirst(held);
+            if (idle.size() > cap) evicted = idle.removeLast();
+        }
+        if (evicted != null) evicted.close();
+    }
+
+    /** Test seam: how many managers sit idle in this pool. */
+    synchronized int idleCount() {
+        return idle.size();
+    }
+
+    /** One compile's hold on a manager; closing it returns the manager to the pool, not to javac. */
+    final class Lease implements AutoCloseable {
+        private @Nullable Held held;
+
+        private Lease(Held held) {
+            this.held = held;
+        }
+
+        StandardJavaFileManager manager() {
+            Held h = held;
+            if (h == null) throw new IllegalStateException("file manager lease already returned");
+            return h.fm;
+        }
+
+        @Override
+        public void close() {
+            Held h = held;
+            held = null;
+            if (h != null) giveBack(h);
+        }
+    }
+
+    /** A manager and what the compiles that ran on it declared and named. */
+    private static final class Held {
+        /**
+         * The listener the manager is constructed with. A manager outlives any one compile, so it
+         * cannot be handed that compile's collector directly — it forwards to whichever compile holds it.
+         */
+        final Relay relay = new Relay();
+
+        final StandardJavaFileManager fm;
+        final Charset encoding;
+
+        /**
+         * The release options the manager's compiles ran under. javac opens each archive with the
+         * multi-release view of the target at first open and keeps it until the manager closes, so a
+         * compile at another release must not inherit that view.
+         */
+        final String release;
+
+        /** Every option-set location a compile has declared on the manager since it was built. */
+        final Set<StandardLocation> carried = EnumSet.noneOf(StandardLocation.class);
+
+        /** Every path entry a compile on the manager named, as it was on disk then. */
+        final Map<Path, EntryStamp> entries = new HashMap<>();
+
+        Held(JavaCompiler javac, Charset encoding, String release) {
+            this.fm = javac.getStandardFileManager(relay, Locale.ROOT, encoding);
+            this.encoding = encoding;
+            this.release = release;
+        }
+
+        /** Whether an entry the manager may have seen is not what it was when last named. */
+        boolean rewritten(Map<Path, EntryStamp> now) {
+            for (Map.Entry<Path, EntryStamp> e : now.entrySet()) {
+                EntryStamp then = entries.get(e.getKey());
+                if (then != null && !then.equals(e.getValue())) return true;
+            }
+            return false;
+        }
+
+        /** How many of the compile's entries the manager has already named. */
+        int overlap(Map<Path, EntryStamp> now) {
+            int n = 0;
+            for (Path entry : now.keySet()) {
+                if (entries.containsKey(entry)) n++;
+            }
+            return n;
+        }
+
+        /**
+         * Whether the manager carries a path location the compile about to run never asked for: one
+         * an earlier compile declared, or one the manager reports set.
+         *
+         * <p>Such a manager is passed over rather than corrected, because a location cannot be put
+         * back to "never set": clearing the processor path with a null leaves javac treating it as
+         * declared and empty, which stops it falling back to the compile classpath for {@code
+         * -proc:full} discovery. Handing it over instead is worse — the compile would silently run the
+         * previous module's processors, resolve a type from the previous module's source path, or
+         * read its module path, patches or system image, in a build that never asked for them.
+         */
+        boolean staleLocation(Set<StandardLocation> declared) {
+            for (StandardLocation location : carried) {
+                if (!declared.contains(location)) return true;
+            }
+            for (StandardLocation location : OPTION_LOCATIONS) {
+                if (!declared.contains(location) && fm.hasLocation(location)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Closing releases the open jars, which is the whole point of holding it, so this runs only
+         * when a manager is evicted or stale. A manager still open when the worker exits is left to
+         * the process teardown, which is force-kill — the handles must be safe to leak, and they are.
+         */
+        void close() {
+            try {
+                fm.close();
+            } catch (IOException e) {
+                // A manager being thrown away cannot fail the compile that is replacing it.
+            }
+        }
     }
 
     /**
@@ -183,46 +288,6 @@ final class ReusedJavacFileManager {
             } catch (IOException e) {
                 return MISSING;
             }
-        }
-    }
-
-    /**
-     * Whether the held manager carries a path location the compile about to run never asked for:
-     * one an earlier compile declared, or one the manager reports set.
-     *
-     * <p>Such a manager has to be discarded rather than corrected, because a location cannot be put
-     * back to "never set": clearing the processor path with a null leaves javac treating it as
-     * declared and empty, which stops it falling back to the compile classpath for {@code -proc:full}
-     * discovery. Leaving it alone instead is worse — the compile would silently run the previous
-     * module's processors, resolve a type from the previous module's source path, or read its module
-     * path, patches or system image, in a build that never asked for them. Discarding costs one
-     * manager on a transition between a module with the location and one without, and nothing on a
-     * run of either kind.
-     */
-    private boolean staleLocation(StandardJavaFileManager held, Set<StandardLocation> declared) {
-        if (carried.contains(StandardLocation.PATCH_MODULE_PATH)) {
-            return true;
-        }
-        for (StandardLocation location : carried) {
-            if (!declared.contains(location)) return true;
-        }
-        for (StandardLocation location : OPTION_LOCATIONS) {
-            if (!declared.contains(location) && held.hasLocation(location)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Closing releases the open jars, which is the whole point of holding it, so this runs only when
-     * a manager is being replaced. A manager still open when the worker exits is left to the process
-     * teardown, which is force-kill — the handles must be safe to leak, and they are.
-     */
-    private void close(@Nullable StandardJavaFileManager stale) {
-        if (stale == null) return;
-        try {
-            stale.close();
-        } catch (IOException e) {
-            // A manager being thrown away cannot fail the compile that is replacing it.
         }
     }
 
