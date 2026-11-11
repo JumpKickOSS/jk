@@ -459,7 +459,7 @@ public final class PackagingKeys {
             // could disagree with it and project the token from a different tree state.
             boolean drifted = knownResourceDrift != null
                     ? knownResourceDrift
-                    : TaskForecaster.mainResourcesOutOfSync(dir, project, compact, classesDir);
+                    : TaskForecaster.mainResourcesOutOfSync(dir, project, compact, layout);
             if (drifted) {
                 return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
             }
@@ -511,7 +511,8 @@ public final class PackagingKeys {
         List<Path> roots = new ArrayList<>(PlannerKsp.liveOutputRoots(project, dir));
         roots.addAll(packageResourceRoots(dir, compact));
         roots.addAll(FilteredResources.extraMainDirs(dir, project));
-        return ClasspathFingerprint.entryProjectedAfterResourceCopy(layout.classesDir(), roots);
+        return ClasspathFingerprint.entryProjectedAfterResourceCopy(
+                layout.classesDir(), roots, TaskForecaster.mirrorDeletes(dir, project, compact, layout));
     }
 
     /**

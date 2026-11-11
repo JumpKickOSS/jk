@@ -65,6 +65,15 @@ public record ProcessorResources(Path moduleDir, JkBuild build, boolean compact)
 
     /** The directories the copy reads, in its order; filtered roots as their source, not their staged copy. */
     private List<Path> roots(BuildLayout layout) {
+        return sourceRoots(moduleDir, build, compact, layout);
+    }
+
+    /**
+     * The main resource roots {@code copy-resources} mirrors, in its order, each filtered root as
+     * its source rather than its staged copy: the KSP round's output, the layout root, the extra
+     * and filtered roots, the plugin-contributed ones. Those that exist, each once.
+     */
+    static List<Path> sourceRoots(Path moduleDir, JkBuild build, boolean compact, BuildLayout layout) {
         List<Path> out = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(layout)));
         out.add(ModuleLayout.mainResourcesDir(moduleDir, compact));
         BuildBlock.Resources r = build.build().resources();

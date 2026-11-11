@@ -242,6 +242,34 @@ public final class ResourceMirror {
         return out;
     }
 
+    /**
+     * Whether the next mirror would delete a copy, read-only: a file the last mirror copied (the
+     * ledger) that no root in {@code sourceRoots} and none of {@code files} holds any more, and that
+     * is still in {@code classes}. The forecast's half of the mirror's first pass.
+     */
+    public static boolean deletesCopies(List<Path> sourceRoots, Set<String> files, Path classes, Path ledger)
+            throws IOException {
+        return !copiesToDelete(sourceRoots, files, classes, ledger).isEmpty();
+    }
+
+    /** The tree-relative copies {@link #deletesCopies} finds: what the next mirror removes. */
+    public static Set<String> copiesToDelete(List<Path> sourceRoots, Set<String> files, Path classes, Path ledger)
+            throws IOException {
+        Set<String> owned = previous(ledger);
+        if (owned.isEmpty()) return Set.of();
+        Set<String> current = new HashSet<>(files);
+        for (Path dir : sourceRoots) {
+            PathUtil.forEachRegularFile(
+                    dir,
+                    (file, attrs) -> current.add(dir.relativize(file).toString().replace('\\', '/')));
+        }
+        Set<String> out = new TreeSet<>();
+        for (String rel : owned) {
+            if (!current.contains(rel) && Files.isRegularFile(classes.resolve(rel))) out.add(rel);
+        }
+        return out;
+    }
+
     private static Set<String> previous(Path ledger) throws IOException {
         if (!Files.isRegularFile(ledger)) return Set.of();
         Set<String> out = new TreeSet<>();

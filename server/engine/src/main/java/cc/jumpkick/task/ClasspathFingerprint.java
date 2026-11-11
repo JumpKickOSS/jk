@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -160,10 +161,20 @@ public final class ClasspathFingerprint {
      * source resource roots — same content the live package step hashes once the copy has run.
      */
     public static String entryProjectedAfterResourceCopy(Path classesDir, List<Path> resourceRoots) throws IOException {
+        return entryProjectedAfterResourceCopy(classesDir, resourceRoots, Set.of());
+    }
+
+    /**
+     * As {@link #entryProjectedAfterResourceCopy(Path, List)}, less the tree-relative {@code
+     * removed} paths: the copies of deleted resources the mirror takes out first.
+     */
+    public static String entryProjectedAfterResourceCopy(Path classesDir, List<Path> resourceRoots, Set<String> removed)
+            throws IOException {
         Map<String, String> digests = new TreeMap<>();
         if (classesDir != null && Files.isDirectory(classesDir)) {
             hashInto(classesDir, digests);
         }
+        digests.keySet().removeAll(removed);
         return entryFromCompileAndResources(digests, resourceRoots);
     }
 

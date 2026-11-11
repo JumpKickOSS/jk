@@ -13,7 +13,9 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
@@ -31,6 +33,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ProcessedResources;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
@@ -682,6 +685,20 @@ public final class TaskForecaster {
      * classesDir}. A copy a processor rewrote is the compile's while its resource is unchanged.
      */
     static boolean mainResourcesOutOfSync(Path dir, JkBuild project, boolean compact, Path classesDir) {
+        return mainResourcesOutOfSync(dir, project, compact, classesDir, null);
+    }
+
+    /**
+     * The copy step's decision for the module laid out by {@code layout}: as {@link
+     * #mainResourcesOutOfSync(Path, JkBuild, boolean, Path)} over its classes tree, plus the copies
+     * the mirror would delete (its ledger names a file no root holds any more).
+     */
+    static boolean mainResourcesOutOfSync(Path dir, JkBuild project, boolean compact, BuildLayout layout) {
+        return mainResourcesOutOfSync(dir, project, compact, layout.classesDir(), layout);
+    }
+
+    private static boolean mainResourcesOutOfSync(
+            Path dir, JkBuild project, boolean compact, Path classesDir, @Nullable BuildLayout layout) {
         if (flattenedPluginCatalogPresent(classesDir)) return true;
         Set<String> held;
         try {
@@ -700,7 +717,30 @@ public final class TaskForecaster {
             if (resourcesOutOfSync(extra, classesDir, held)) return true;
         }
         if (FilteredResources.mainOutOfSync(dir, project, classesDir, held)) return true;
-        return pluginManifestOutOfSync(dir, classesDir);
+        // A plugin-contributed root is mirrored with the rest (PlannerResources.mirrorMainResources).
+        for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {
+            if (root.resource() && resourcesOutOfSync(dir.resolve(root.relative()), classesDir, held)) return true;
+        }
+        if (pluginManifestOutOfSync(dir, classesDir)) return true;
+        if (layout == null) return false;
+        try {
+            return !mirrorDeletes(dir, project, compact, layout).isEmpty();
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    /** The copies the next main-resource mirror deletes: its ledger names them and no root holds them. */
+    static Set<String> mirrorDeletes(Path dir, JkBuild project, boolean compact, BuildLayout layout)
+            throws IOException {
+        Set<String> files = Files.isRegularFile(dir.resolve(ManifestPaths.PLUGIN_MANIFEST))
+                ? Set.of(ManifestPaths.PLUGIN_MANIFEST)
+                : Set.of();
+        return ResourceMirror.copiesToDelete(
+                ProcessorResources.sourceRoots(dir, project, compact, layout),
+                files,
+                layout.classesDir(),
+                layout.buildDir().resolve("incremental").resolve(ResourceMirror.LEDGER));
     }
 
     /**
