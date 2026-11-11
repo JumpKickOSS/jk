@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.eclipse.jgit.api.Git;
@@ -49,6 +51,10 @@ public final class JGitExtension implements GitBackend {
     private final Path gitRoot;
     private final ForgeGitCredentials credentials;
     private final GitProxy proxy;
+
+    /** Mirrors this instance has fully fetched; each is fetched at most once per instance. */
+    private final Set<Path> fetched = ConcurrentHashMap.newKeySet();
+
     static final Pattern DESCRIBE_SUFFIX = Pattern.compile("^(.*)-\\d+-g[0-9a-fA-F]+$");
 
     public JGitExtension(Path gitRoot, ForgeGitCredentials credentials, GitProxy proxy) {
@@ -155,6 +161,7 @@ public final class JGitExtension implements GitBackend {
         Path bareDir = gitRoot.resolve("db").resolve(GitUrl.canonicalHash(source.canonicalUrl()));
         return GitCacheDirs.locked(bareDir, () -> {
             if (GitCacheDirs.complete(bareDir)) {
+                if (fetched.contains(bareDir) || hasLocalRev(source, bareDir)) return bareDir;
                 try (Git git = Git.open(bareDir.toFile())) {
                     var f = git.fetch()
                             .setRemote("origin")
@@ -167,6 +174,7 @@ public final class JGitExtension implements GitBackend {
                 } catch (GitAPIException | RuntimeException e) {
                     throw new IOException("git fetch failed: " + e.getMessage(), e);
                 }
+                fetched.add(bareDir);
                 return bareDir;
             }
             try {
@@ -174,7 +182,7 @@ public final class JGitExtension implements GitBackend {
             } catch (URISyntaxException e) {
                 throw new IOException("invalid URL", e);
             }
-            return GitCacheDirs.publish(bareDir, false, staging -> {
+            GitCacheDirs.publish(bareDir, false, staging -> {
                 try {
                     var clone = Git.cloneRepository()
                             .setBare(true)
@@ -189,7 +197,19 @@ public final class JGitExtension implements GitBackend {
                     throw new IOException("git clone failed: " + e.getMessage(), e);
                 }
             });
+            if (!source.shallow()) fetched.add(bareDir);
+            return bareDir;
         });
+    }
+
+    /** Whether {@code source} pins a commit the mirror already holds, so no fetch can change it. */
+    private static boolean hasLocalRev(GitSource source, Path bareDir) throws IOException {
+        if (!(source.ref() instanceof GitRefSpec.Rev rev)) return false;
+        try (Git git = Git.open(bareDir.toFile())) {
+            return git.getRepository().resolve(rev.sha() + "^{commit}") != null;
+        } catch (IOException | RuntimeException ambiguousOrMissing) {
+            return false;
+        }
     }
 
     static String resolveRefSha(GitSource source, Path bareDir) throws IOException {

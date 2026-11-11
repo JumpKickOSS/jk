@@ -52,6 +52,9 @@ public final class GitSourceMaterializer {
     private final String jkVersion;
     private final ForgeGitCredentials credentials;
 
+    /** One fetcher for every source this materializer sees, so each mirror is fetched once. */
+    private @Nullable GitFetcher fetcher;
+
     /** Production wiring: caches under {@code $JK_CACHE_DIR}, forge-auth git credentials. */
     GitSourceMaterializer(Cas cas, RepoGroup buildRepos, Path javaHome, String jkVersion) {
         this(
@@ -69,11 +72,20 @@ public final class GitSourceMaterializer {
      * Used on {@code jk lock}; {@code jk update} skips it.
      */
     void verifyLocked(GitSource source, String expectedSha) throws IOException {
-        new GitFetcher(gitRoot, credentials).verifyLocked(source, expectedSha);
+        fetcher().verifyLocked(source, expectedSha);
+    }
+
+    private GitFetcher fetcher() {
+        GitFetcher f = fetcher;
+        if (f == null) {
+            f = new GitFetcher(gitRoot, credentials);
+            fetcher = f;
+        }
+        return f;
     }
 
     Materialized materialize(GitSource source) throws IOException, InterruptedException {
-        GitFetcher fetcher = new GitFetcher(gitRoot, credentials);
+        GitFetcher fetcher = fetcher();
         GitFetcher.Fetched fetched = fetcher.fetch(source);
         String sha = fetched.sha();
 

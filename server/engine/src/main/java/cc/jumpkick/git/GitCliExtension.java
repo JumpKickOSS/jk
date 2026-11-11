@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import org.jspecify.annotations.Nullable;
@@ -138,6 +139,9 @@ public final class GitCliExtension implements GitBackend {
     private final long localTimeoutSec;
     private final long networkTimeoutSec;
     private final GitProxy proxy;
+
+    /** Mirrors this instance has fully fetched; each is fetched at most once per instance. */
+    private final Set<Path> fetched = ConcurrentHashMap.newKeySet();
 
     public GitCliExtension(Path gitRoot, ForgeGitCredentials credentials, GitCli git, GitProxy proxy) {
         this(gitRoot, credentials, git, proxy, LOCAL_TIMEOUT_SEC, NETWORK_TIMEOUT_SEC);
@@ -269,6 +273,7 @@ public final class GitCliExtension implements GitBackend {
         Path bareDir = gitRoot.resolve("db").resolve(GitUrl.canonicalHash(url));
         return GitCacheDirs.locked(bareDir, () -> {
             if (GitCacheDirs.complete(bareDir)) {
+                if (fetched.contains(bareDir) || hasLocalRev(source, bareDir)) return bareDir;
                 ProcResult r = exec(
                         bareDir,
                         url,
@@ -281,9 +286,10 @@ public final class GitCliExtension implements GitBackend {
                                 "+refs/tags/*:refs/tags/*"),
                         networkTimeoutSec);
                 if (r.exit != 0) throw new IOException("git fetch failed: " + r.output.strip());
+                fetched.add(bareDir);
                 return bareDir;
             }
-            return GitCacheDirs.publish(bareDir, false, staging -> {
+            GitCacheDirs.publish(bareDir, false, staging -> {
                 List<String> args = new ArrayList<>(List.of("clone", "--bare"));
                 // Explicit tag entries request a shallow clone (depth 1) to save bandwidth; all other
                 // ref types use a full clone. `shallow` is set iff the ref is a Tag (GitSource), so pin
@@ -304,7 +310,21 @@ public final class GitCliExtension implements GitBackend {
                 ProcResult r = exec(null, url, args, networkTimeoutSec);
                 if (r.exit != 0) throw new IOException("git clone failed: " + r.output.strip());
             });
+            if (!source.shallow()) fetched.add(bareDir);
+            return bareDir;
         });
+    }
+
+    /** Whether {@code source} pins a commit the mirror already holds, so no fetch can change it. */
+    private boolean hasLocalRev(GitSource source, Path bareDir) throws IOException {
+        if (!(source.ref() instanceof GitRefSpec.Rev r)) return false;
+        return exec(
+                                bareDir,
+                                null,
+                                List.of("rev-parse", "--verify", "--quiet", "--end-of-options", r.sha() + "^{commit}"),
+                                localTimeoutSec)
+                        .exit
+                == 0;
     }
 
     private String resolveRefSha(GitSource source, Path bareDir) throws IOException {

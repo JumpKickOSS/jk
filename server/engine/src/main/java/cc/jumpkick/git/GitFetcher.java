@@ -19,6 +19,8 @@ import org.jspecify.annotations.Nullable;
  * Git resolver facade over {@link GitBackend}: prefer {@code git} on PATH, else JGit ({@code
  * JK_GIT_BACKEND}=auto|cli|jgit). Refs are pinned in {@code jk-lock.toml}; only {@code jk update -g}/
  * {@code jk fetch} re-resolve. Cache: bare clones under {@code db/}, checkouts under {@code co/}.
+ * An instance serves one request: it fetches each bare clone at most once, and not at all for a
+ * rev the clone already holds.
  */
 public final class GitFetcher {
 

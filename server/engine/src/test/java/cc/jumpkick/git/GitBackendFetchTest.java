@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.Objects;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.Tag;
@@ -117,10 +118,49 @@ class GitBackendFetchTest {
         String secondSha = upstream.commitAndRetag("second commit\n", "v1.0.0", true);
         assertThat(secondSha).isNotEqualTo(firstSha);
 
-        assertThatThrownBy(() -> backend.verifyLocked(source, firstSha))
+        // A later lock is a new request, so its fetcher fetches again.
+        GitBackend relock = factory.create(tempDir.resolve("jk-git"));
+        assertThatThrownBy(() -> relock.verifyLocked(source, firstSha))
                 .isInstanceOf(GitFetcher.TagRewriteException.class)
                 .hasMessageContaining(firstSha)
                 .hasMessageContaining(secondSha);
+    }
+
+    /** One request verifies, fetches and resolves a source with a single fetch of its mirror. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")
+    void a_mirror_is_fetched_once_per_request(String name, BackendFactory factory, @TempDir Path tempDir)
+            throws Exception {
+        UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
+        String branch;
+        try (Git git = Git.open(upstream.workTree().toFile())) {
+            branch = Objects.requireNonNull(git.getRepository().getBranch());
+        }
+        String url = upstream.workTree().toUri().toString();
+        GitSource source = GitSource.of(url, url, new GitRefSpec.Branch(branch));
+        factory.create(tempDir.resolve("jk-git")).fetch(source, false); // an earlier request's clone
+
+        GitBackend request = factory.create(tempDir.resolve("jk-git"));
+        request.verifyLocked(source, upstream.taggedSha());
+        // The remote is gone: every further network fetch in this request would fail.
+        Files.move(upstream.workTree(), tempDir.resolve("gone"));
+        assertThat(request.fetch(source, false).sha()).isEqualTo(upstream.taggedSha());
+        assertThat(request.resolveRef(source).sha()).isEqualTo(upstream.taggedSha());
+    }
+
+    /** A rev the mirror already holds cannot move, so resolving it needs no network. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")
+    void a_rev_the_mirror_holds_is_not_fetched(String name, BackendFactory factory, @TempDir Path tempDir)
+            throws Exception {
+        UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
+        String url = upstream.workTree().toUri().toString();
+        GitSource source = GitSource.of(url, url, new GitRefSpec.Rev(upstream.taggedSha()));
+        factory.create(tempDir.resolve("jk-git")).fetch(source, false);
+
+        Files.move(upstream.workTree(), tempDir.resolve("gone"));
+        GitFetcher.Fetched again = factory.create(tempDir.resolve("jk-git")).fetch(source, false);
+        assertThat(again.sha()).isEqualTo(upstream.taggedSha());
     }
 
     @ParameterizedTest(name = "{0}")

@@ -51,9 +51,9 @@ public final class GitSourceResolution {
     }
 
     /**
-     * As {@link #prepare(JkBuild, RepoGroup, Cas, Path, String)}, but verifies immutable (tag/rev)
-     * refs still match {@code lockedShas} ({@code url|ref-token} → SHA). Empty map skips the check
-     * ({@code jk update} / first run).
+     * As {@link #prepare(JkBuild, RepoGroup, Cas, Path, String)}, but verifies tags still match
+     * {@code lockedShas} ({@code url|ref-token} → SHA). Empty map skips the check ({@code jk
+     * update} / first run).
      */
     public static Prepared prepare(
             JkBuild effective,
@@ -82,9 +82,9 @@ public final class GitSourceResolution {
                 if (git == null) continue;
                 String key = sourceKey(git);
                 if (bySource.containsKey(key)) continue;
-                // Tag-rewrite canary: an immutable ref must still point where the
-                // lockfile says before we build it.
-                verifyImmutableRef(materializer, git, lockedShas);
+                // Tag-rewrite canary: a tag must still point where the lockfile says before we
+                // build it.
+                verifyLockedTag(materializer, git, lockedShas);
                 GitSourceMaterializer.Materialized m = materializer.materialize(git);
                 bySource.put(key, m);
                 extraRepos.add(new MavenRepo(
@@ -155,15 +155,14 @@ public final class GitSourceResolution {
     }
 
     /**
-     * Verify an immutable (tag/rev) ref still resolves to its locked SHA. Branches are mutable by
-     * design, so they're never checked here — their tip is simply re-resolved. No locked SHA for this
-     * ref → nothing to check.
+     * Verify a tag still resolves to its locked SHA. A rev names its commit, so it cannot move, and
+     * a branch is expected to; neither is checked. No locked SHA for this ref → nothing to check.
      */
-    private static void verifyImmutableRef(
+    private static void verifyLockedTag(
             GitSourceMaterializer materializer, GitSource source, Map<String, String> lockedShas) throws IOException {
         if (lockedShas.isEmpty()) return;
         GitRefSpec ref = source.ref();
-        if (!(ref instanceof GitRefSpec.Tag) && !(ref instanceof GitRefSpec.Rev)) return;
+        if (!(ref instanceof GitRefSpec.Tag)) return;
         String expected = lockedShas.get(source.canonicalUrl() + "|" + ref.token());
         if (expected != null) {
             materializer.verifyLocked(source, expected);
@@ -171,15 +170,15 @@ public final class GitSourceResolution {
     }
 
     /**
-     * Build the {@code url|ref-token → SHA} map of immutable git refs recorded in {@code lock}, for
-     * {@link #prepare}'s tag-rewrite check. Branch refs are excluded — they're expected to move.
+     * Build the {@code url|ref-token → SHA} map of the git tags recorded in {@code lock}, for {@link
+     * #prepare}'s tag-rewrite check.
      */
     public static Map<String, String> lockedImmutableShas(Lockfile lock) {
         Map<String, String> out = new LinkedHashMap<>();
         for (Lockfile.Artifact p : lock.artifacts()) {
             Lockfile.Artifact.GitInfo g = p.git();
             if (g == null || g.ref() == null) continue;
-            if (g.ref().startsWith("tag=") || g.ref().startsWith("rev=")) {
+            if (g.ref().startsWith("tag=")) {
                 out.put(g.url() + "|" + g.ref(), g.rev());
             }
         }
