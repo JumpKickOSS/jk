@@ -909,6 +909,27 @@ answer, it does not wait for one. Feed input through the child's own pipe.
 
 Failure lines include **module** (and **worker** when `W > 1`).
 
+## Environment variables a suite reads
+
+A test JVM gets the machine's allow-list, what JumpKick sets and what the module declares in
+`[env]` and `[test] env` ([Build § Worker environment](build.md#worker-environment-env)) — never
+the rest of your shell. So `MY_TOKEN_VALUE=… jk test` does nothing for a suite whose module does
+not declare it, and the test reads `null`. JumpKick says so. After every run that launched the
+suite it reads the test classes' bytecode for `System.getenv("NAME")` and JUnit's
+`@EnabledIfEnvironmentVariable` / `@DisabledIfEnvironmentVariable`, and warns once per name the
+module neither declares nor gets anyway:
+
+```text
+W env-undeclared: AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare; add to [env] optional: "MY_TOKEN_VALUE"
+```
+
+The warning's key is the variable's name, so `jk results -O jsonl` and an MCP answer carry it as
+data. When the suite fails, the check widens, since an undeclared read may be why: the main classes
+and every jar on the test classpath are read too (each jar once per content, kept in
+`$JK_CACHE_DIR/env-reads/`), and a class that reads a name computed at run time or the whole
+`System.getenv()` map is named under `env-computed`, because no check can see which variable it
+wants. None of this is part of the suite's key: only what `[env]` declares is.
+
 ## What a suite read: discovered inputs
 
 A suite is replayed from its green marker only while everything it can see is unchanged. Most of

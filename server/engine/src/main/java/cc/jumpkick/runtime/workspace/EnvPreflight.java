@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
@@ -73,20 +72,6 @@ public final class EnvPreflight {
     public static String message(Missing m, String manifest) {
         String at = m.line() > 0 ? manifest + ":" + m.line() : manifest;
         return m.name() + " is not set; " + at + " requires it";
-    }
-
-    /** The manifest of {@code moduleDir} spelled from {@code entryDir}, where the build was entered. */
-    static String manifest(Path entryDir, Path moduleDir) {
-        Path file = ManifestPaths.manifestIn(moduleDir);
-        try {
-            Path rel = entryDir.toAbsolutePath()
-                    .normalize()
-                    .relativize(file.toAbsolutePath().normalize());
-            String spelled = rel.toString().replace('\\', '/');
-            return spelled.startsWith("..") ? file.toString() : spelled;
-        } catch (IllegalArgumentException otherRoot) {
-            return file.toString();
-        }
     }
 
     /**

@@ -76,6 +76,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.YARN, root -> overStoreBudget(root, CacheTree.YARN, "cache/react-npm-19.0.0.zip", 2L << 30));
         m.put(CacheTree.KTS, root -> in(root, CacheTree.KTS, "dead.jar", "x", OLD));
         m.put(CacheTree.TOOL_SCRIPTS, root -> subtree(root, CacheTree.TOOL_SCRIPTS, "deadkey", OLD));
+        m.put(CacheTree.ENV_READS, root -> in(root, CacheTree.ENV_READS, "dead.reads", "x", OLD));
         // Bookkeeping entries seed a file that must SURVIVE; see the dedicated test below.
         m.put(CacheTree.LAST_PRUNED, root -> null);
         m.put(CacheTree.PRUNE_LOCK, root -> null);

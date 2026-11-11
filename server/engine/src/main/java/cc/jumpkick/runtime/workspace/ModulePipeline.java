@@ -6,6 +6,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.EnvReadReport;
 import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PlannerTails;
@@ -97,7 +98,7 @@ public final class ModulePipeline {
                     EnvPreflight.missing(unit.manifest().build().env(), dir);
             if (!missing.isEmpty()) {
                 return new Planned(
-                        EnvPreflight.failing(missing, EnvPreflight.manifest(request.entryDir(), dir)), Set.of());
+                        EnvPreflight.failing(missing, EnvReadReport.manifest(request.entryDir(), dir)), Set.of());
             }
         }
         boolean nodeModule = NodeShape.kind(unit.manifest(), dir) == NodeShape.Kind.MODULE;

@@ -548,8 +548,7 @@ public final class PlannerTest {
         Path testClasses = ctx.require(TEST_CLASSES);
         List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
         JkBuild projectUnderTest = ctx.require(PROJECT);
-        String moduleLabel = projectUnderTest.project().group() + ":"
-                + projectUnderTest.project().name();
+        String moduleLabel = coordinate(projectUnderTest);
         String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
         TestFailureSource.Cache snippets = new TestFailureSource.Cache();
         // jk build / BSP / MCP: when the session selection carries no tags, resolve the
@@ -673,6 +672,7 @@ public final class PlannerTest {
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         result = ledger.finish(ctx, actionCache, testTaskId, stampKey, result);
+        EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(
                 ctx,
                 in,
@@ -686,6 +686,11 @@ public final class PlannerTest {
                 stampKey,
                 !testSrcs.isEmpty(),
                 snippets);
+    }
+
+    /** {@code group:name}, the label a module's suite reports under. */
+    private static String coordinate(JkBuild project) {
+        return project.project().group() + ":" + project.project().name();
     }
 
     /**

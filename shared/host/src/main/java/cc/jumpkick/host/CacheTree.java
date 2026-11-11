@@ -89,6 +89,8 @@ public enum CacheTree {
     KTS("kts"),
     /** Compiled {@code jk tool run} scripts, one classes tree per script cache key. */
     TOOL_SCRIPTS("tool-scripts"),
+    /** The environment reads a dependency jar's classes make, one file per jar content hash. */
+    ENV_READS("env-reads"),
 
     /** Cadence bookkeeping for the prune itself: {@code <millis> <finalActionBytes>}. */
     LAST_PRUNED(".last-pruned", "constant-size cadence sentinel"),

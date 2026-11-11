@@ -104,6 +104,10 @@ public final class CacheTier {
             // recompile.
             case TOOL_SCRIPTS -> Bound.subtrees(Duration.ofDays(30), Bound.none());
 
+            // One summary per dependency jar, touched on every read, so mtime is a use clock: a jar
+            // no suite has used for a month goes, and costs one scan of it.
+            case ENV_READS -> Bound.files(Duration.ofDays(30), Bound.resetOverBytes(64L * 1024 * 1024));
+
             // Bookkeeping, not cache: the reason is CacheTree's, because it is the same fact that
             // keeps `jk cache nuke` off these entries.
             case LAST_PRUNED, PRUNE_LOCK, STATUS_USAGE, CENTRAL_RATE_LIMITED -> Bound.unbounded(tree.bookkeeping());
