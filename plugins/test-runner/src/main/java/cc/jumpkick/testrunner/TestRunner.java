@@ -38,7 +38,7 @@ public final class TestRunner implements Plugin {
         } catch (IllegalArgumentException e) {
             System.err.println("jk-test-runner: " + e.getMessage());
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
-                    + "[--list-only] [--pull --worker=<id> --commands=<host>:<port> --token=<hex>] [--filter=<regex>] "
+                    + "[--list-only] [--pull --worker=<id> --commands=<host>:<port>] [--filter=<regex>] "
                     + "[--method=<class regex>#<method>]... [--include-tags=a,b] [--exclude-tags=c,d]");
             return Exit.USAGE;
         }
@@ -120,7 +120,7 @@ public final class TestRunner implements Plugin {
      */
     private static int runPullMode(Args args, EventWriter writer) throws Exception {
         try (BufferedReader in =
-                CommandChannel.connect(Objects.requireNonNull(args.commands), Objects.requireNonNull(args.token))) {
+                CommandChannel.connect(List.of(CommandChannel.COMMANDS + Objects.requireNonNull(args.commands)))) {
             return runPullMode(args, writer, in);
         }
     }
@@ -175,8 +175,7 @@ public final class TestRunner implements Plugin {
             int workerId,
             List<String> includeTags,
             List<String> excludeTags,
-            @Nullable String commands,
-            @Nullable String token) {
+            @Nullable String commands) {
 
         static Args parse(String[] argv) {
             Path scan = null;
@@ -188,7 +187,6 @@ public final class TestRunner implements Plugin {
             List<String> includeTags = new ArrayList<>();
             List<String> excludeTags = new ArrayList<>();
             String commands = null;
-            String token = null;
             for (var a : argv) {
                 if (a.startsWith("--scan-classpath=")) {
                     scan = Path.of(a.substring("--scan-classpath=".length()));
@@ -202,8 +200,6 @@ public final class TestRunner implements Plugin {
                     pull = true;
                 } else if (a.startsWith(CommandChannel.COMMANDS)) {
                     commands = a.substring(CommandChannel.COMMANDS.length());
-                } else if (a.startsWith(CommandChannel.TOKEN)) {
-                    token = a.substring(CommandChannel.TOKEN.length());
                 } else if (a.startsWith("--worker=")) {
                     workerId = Integer.parseInt(a.substring("--worker=".length()));
                 } else if (a.startsWith("--include-tags=")) {
@@ -225,8 +221,8 @@ public final class TestRunner implements Plugin {
             if (listOnly && pull) {
                 throw new IllegalArgumentException("--list-only and --pull are mutually exclusive");
             }
-            if (pull && (commands == null || token == null)) {
-                throw new IllegalArgumentException("--pull needs --commands=<host>:<port> and --token=<hex>");
+            if (pull && commands == null) {
+                throw new IllegalArgumentException("--pull needs --commands=<host>:<port>");
             }
             return new Args(
                     scan,
@@ -237,8 +233,7 @@ public final class TestRunner implements Plugin {
                     workerId,
                     List.copyOf(includeTags),
                     List.copyOf(excludeTags),
-                    commands,
-                    token);
+                    commands);
         }
 
         private static void splitCsv(String csv, List<String> out) {

@@ -42,8 +42,7 @@ public final class JavaIncrementalCompiler implements Plugin {
             }
         }
         if (args.size() != 1) {
-            System.err.println(
-                    "usage: jk-java-compiler <spec-file>|@<spec-file>|--pull --commands=<host>:<port> --token=<hex>");
+            System.err.println("usage: jk-java-compiler <spec-file>|@<spec-file>|--pull --commands=<host>:<port>");
             return Exit.USAGE;
         }
         String specArg = args.get(0);

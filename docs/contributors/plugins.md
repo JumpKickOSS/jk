@@ -458,8 +458,9 @@ The process entry is always the SDK's `PluginMain` — do not put `[application]
 `PluginMain --serve` keeps a worker up between specs: it says `ready`, reads `RUN <spec-file>`
 (or `DONE`) from its command channel, runs `Plugin.run` on the spec and answers `exited` with the
 run's code. The channel is a loopback socket the engine opens per worker (`WorkerCommands`) and
-names with `--commands=<host>:<port> --token=<hex>`; the worker connects through the SDK's
-`CommandChannel`. Every worker starts with its stdin closed, so a step that reads `System.in`, or
+names with `--commands=<host>:<port>`, handing the token the worker proves itself with in
+`JK_COMMAND_TOKEN` rather than on a command line other users can read; the worker connects
+through the SDK's `CommandChannel`. Every worker starts with its stdin closed, so a step that reads `System.in`, or
 a child it starts with an inherited stdin, reads end-of-input and never sees a command.
 The engine's `WarmWorkers` keeps such workers per launch for the warm-worker linger; the
 formatter and the graph worker run this way. A plugin that caches across runs keeps that cache

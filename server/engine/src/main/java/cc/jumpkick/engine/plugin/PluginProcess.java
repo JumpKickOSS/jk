@@ -10,7 +10,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -142,8 +141,8 @@ public final class PluginProcess {
     /**
      * Fork {@code command} and drive a two-way conversation: each protocol line is delivered to
      * {@code onProtocol} along with a {@link Conversation} for sending commands back to the plugin. The
-     * commands travel on a {@link WorkerCommands} channel whose two arguments are appended to {@code
-     * command}; the plugin's stdin is closed.
+     * commands travel on a {@link WorkerCommands} channel {@linkplain WorkerCommands#attach attached}
+     * to {@code command}; the plugin's stdin is closed.
      *
      * <p>Reading stdout and sending commands both happen on the calling thread, so the plugin must
      * alternate (await input → emit → await input) rather than flood stdout while blocked on input,
@@ -295,9 +294,7 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         WorkerCommands commands = WorkerCommands.open();
-        List<String> withChannel = new ArrayList<>(pb.command());
-        withChannel.addAll(commands.args());
-        pb.command(withChannel);
+        commands.attach(pb);
         onOpen.accept(commands);
         AtomicReference<RuntimeException> frameError = new AtomicReference<>();
         try {
@@ -380,9 +377,7 @@ public final class PluginProcess {
             long orphanDrainGraceMs)
             throws IOException, InterruptedException {
         WorkerCommands commands = WorkerCommands.open();
-        List<String> command = new ArrayList<>(pb.command());
-        command.addAll(commands.args());
-        pb.command(command);
+        commands.attach(pb);
         try {
             return fork(
                     pb,

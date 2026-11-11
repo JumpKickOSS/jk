@@ -253,11 +253,10 @@ public final class WarmWorkers {
 
     private static Worker start(Launch launch, String key) throws IOException {
         WorkerCommands commands = WorkerCommands.open();
-        List<String> command = new ArrayList<>(launch.command());
-        command.addAll(commands.args());
-        ProcessBuilder pb = new ProcessBuilder(WorkerSession.detached(command)).redirectErrorStream(true);
+        ProcessBuilder pb = new ProcessBuilder(WorkerSession.detached(launch.command())).redirectErrorStream(true);
         pb.environment().clear();
         pb.environment().putAll(launch.env().environment());
+        commands.attach(pb);
         YieldHook hook = new YieldHook();
         // Bound for the start only: the scope is what files the worker's peak when it exits.
         HeapScope.Key heapKey = launch.heapKey();

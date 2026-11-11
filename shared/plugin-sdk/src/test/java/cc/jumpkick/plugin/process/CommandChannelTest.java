@@ -21,8 +21,8 @@ class CommandChannelTest {
     void the_worker_sends_its_token_first_and_then_reads_the_commands() throws Exception {
         try (ServerSocket engine = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             String address = engine.getInetAddress().getHostAddress() + ":" + engine.getLocalPort();
-            List<String> args = List.of("--serve", CommandChannel.COMMANDS + address, CommandChannel.TOKEN + "abc123");
-            try (BufferedReader commands = CommandChannel.connect(args);
+            List<String> args = List.of("--serve", CommandChannel.COMMANDS + address);
+            try (BufferedReader commands = CommandChannel.connect(args, "abc123");
                     Socket worker = engine.accept()) {
                 BufferedReader hello =
                         new BufferedReader(new InputStreamReader(worker.getInputStream(), StandardCharsets.US_ASCII));
@@ -42,8 +42,11 @@ class CommandChannelTest {
 
     @Test
     void a_worker_with_no_channel_named_is_refused() {
-        assertThatThrownBy(() -> CommandChannel.connect(List.of("--serve")))
+        assertThatThrownBy(() -> CommandChannel.connect(List.of("--serve"), "abc123"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(CommandChannel.COMMANDS);
+        assertThatThrownBy(() -> CommandChannel.connect(List.of(CommandChannel.COMMANDS + "127.0.0.1:1"), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(CommandChannel.TOKEN_ENV);
     }
 }

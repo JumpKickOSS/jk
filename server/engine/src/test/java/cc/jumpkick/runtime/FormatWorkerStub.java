@@ -23,7 +23,7 @@ import java.util.List;
  * reproduce is a HotSpot SIGSEGV under a full GC. So the stub takes the death as an argument.
  *
  * <p>Usage: {@code FormatWorkerStub <exitCode> [<status> <path>]...} — served, as the real worker
- * is, its commands read from the channel the trailing {@code --commands}/{@code --token} name: for
+ * is, its commands read from the channel the trailing {@code --commands} names: for
  * each {@code RUN} it emits one {@code file} event per status/path pair, then answers
  * {@code exitCode} when that is the worker's own {@code 0} or {@code 1}, and dies with it otherwise.
  * Emitting fewer pairs than the run's file total is a worker that stopped early.
@@ -39,7 +39,7 @@ public final class FormatWorkerStub {
         BufferedReader in = CommandChannel.connect(List.of(args));
         List<String> own = new ArrayList<>();
         for (String a : args) {
-            if (!a.startsWith(CommandChannel.COMMANDS) && !a.startsWith(CommandChannel.TOKEN)) own.add(a);
+            if (!a.startsWith(CommandChannel.COMMANDS)) own.add(a);
         }
         int exit = Integer.parseInt(own.get(0));
         while (true) {

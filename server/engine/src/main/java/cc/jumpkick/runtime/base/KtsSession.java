@@ -446,9 +446,7 @@ final class KtsSession {
         AtomicReference<@Nullable KtsSession> started = new AtomicReference<>();
         WorkerCommands commands = WorkerCommands.open();
         ProcessBuilder pb = hostProcess();
-        List<String> command = new ArrayList<>(pb.command());
-        command.addAll(commands.args());
-        pb.command(command);
+        commands.attach(pb);
         Process p;
         try {
             p = JobWorkers.startResident(pb, new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));

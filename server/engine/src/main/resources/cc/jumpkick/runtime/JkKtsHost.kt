@@ -7,8 +7,8 @@
 // as a child process. It is a resource rather than a Java text block so it stays readable Kotlin.
 //
 // Requests come one per line over the engine's command channel, a loopback socket named by the
-// arguments --commands=<host>:<port> and --token=<hex>: the host connects, sends the token as its
-// first line, then reads requests from it. Its stdin is closed, so a script that reads System.in,
+// argument --commands=<host>:<port>, with a token in JK_COMMAND_TOKEN: the host connects, sends the
+// token as its first line, then reads requests from it. Its stdin is closed, so a script that reads System.in,
 // or a child it starts with an inherited stdin, reads end-of-input. One reply per line on stdout:
 //
 //     READY                                        (emitted once, at startup, once connected)
@@ -182,8 +182,10 @@ private fun loadDir(): File {
 /** Connects to the engine's command channel that [args] name and proves the connection with its token. */
 private fun connect(args: Array<String>): BufferedReader {
     val address = args.firstOrNull { it.startsWith("--commands=") }?.removePrefix("--commands=")
-    val token = args.firstOrNull { it.startsWith("--token=") }?.removePrefix("--token=")
-    require(address != null && token != null) { "jk kts host: needs --commands=<host>:<port> and --token=<hex>" }
+    val token = System.getenv("JK_COMMAND_TOKEN")
+    require(address != null && !token.isNullOrEmpty()) {
+        "jk kts host: needs --commands=<host>:<port> and its token in JK_COMMAND_TOKEN"
+    }
     val colon = address.lastIndexOf(':')
     val host = address.substring(0, colon).removePrefix("[").removeSuffix("]")
     val socket = Socket(InetAddress.getByName(host), address.substring(colon + 1).toInt())

@@ -20,6 +20,7 @@ import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -61,11 +62,17 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
         return new WorkerCommands(listener, Hashing.hex(secret));
     }
 
-    /** The worker arguments that point it here: {@code --commands=<host>:<port>} and {@code --token=<hex>}. */
-    public List<String> args() {
+    /**
+     * Point {@code pb}'s worker here: {@code --commands=<host>:<port>} ends its command line and the
+     * token goes in its environment, which, unlike a command line, other users of the host cannot read.
+     */
+    public void attach(ProcessBuilder pb) {
         InetAddress at = listener.getInetAddress();
         String host = at instanceof Inet6Address ? "[" + at.getHostAddress() + "]" : at.getHostAddress();
-        return List.of(CommandChannel.COMMANDS + host + ":" + listener.getLocalPort(), CommandChannel.TOKEN + token);
+        List<String> command = new ArrayList<>(pb.command());
+        command.add(CommandChannel.COMMANDS + host + ":" + listener.getLocalPort());
+        pb.command(command);
+        pb.environment().put(CommandChannel.TOKEN_ENV, token);
     }
 
     /** Whether the worker has connected. */

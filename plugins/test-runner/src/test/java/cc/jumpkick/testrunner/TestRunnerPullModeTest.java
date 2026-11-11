@@ -2,6 +2,7 @@
 package cc.jumpkick.testrunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.BufferedReader;
 import java.io.StringReader;
@@ -40,10 +41,19 @@ class TestRunnerPullModeTest {
         assertThat(events).containsExactly(EventType.READY);
     }
 
+    /** The channel's token comes from the environment; the command line names only the address. */
+    @Test
+    void the_command_line_names_the_channel_but_never_its_token(@TempDir Path dir) {
+        assertThat(args(dir).commands()).isEqualTo("127.0.0.1:1");
+        assertThatThrownBy(() -> TestRunner.Args.parse(
+                        new String[] {"--pull", "--scan-classpath=" + dir, "--commands=127.0.0.1:1", "--token=secret"}))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown arg: --token=");
+    }
+
     private static TestRunner.Args args(Path dir) {
         return TestRunner.Args.parse(
-                new String[] {"--pull", "--worker=7", "--scan-classpath=" + dir, "--commands=127.0.0.1:1", "--token=t"
-                });
+                new String[] {"--pull", "--worker=7", "--scan-classpath=" + dir, "--commands=127.0.0.1:1"});
     }
 
     private static BufferedReader reader(String stdin) {

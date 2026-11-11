@@ -12,9 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -134,9 +132,8 @@ class KtsHostProtocolTest {
 
         ProcessBuilder pb = KtsSession.hostProcess();
         try (WorkerCommands toHost = WorkerCommands.open()) {
-            List<String> command = new ArrayList<>(pb.command());
-            command.addAll(toHost.args());
-            Process host = pb.command(command).start();
+            toHost.attach(pb);
+            Process host = pb.start();
             PluginProcess.closeStdin(host);
             try {
                 BufferedReader fromHost =

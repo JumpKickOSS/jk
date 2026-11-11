@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.process;
 
+import cc.jumpkick.host.ProcessEnv;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -19,28 +20,33 @@ import org.jspecify.annotations.Nullable;
  * worker with its stdin closed, so code a worker runs that reads {@code System.in}, and every child
  * that inherits it, reads end-of-input instead of the command stream.
  *
- * <p>The engine names the channel with two arguments, {@value #COMMANDS}{@code <host>:<port>} and
- * {@value #TOKEN}{@code <hex>}; the worker sends the token as its first line, which is how the
- * engine knows the connection is this worker's.
+ * <p>The engine names the channel with the argument {@value #COMMANDS}{@code <host>:<port>} and
+ * hands the worker a token in {@value #TOKEN_ENV}, never on its command line, which every user of
+ * the host can read; the worker sends the token as its first line, which is how the engine knows
+ * the connection is this worker's.
  */
 public final class CommandChannel {
 
     /** The argument that names the channel's address, {@code <host>:<port>}; an IPv6 host is bracketed. */
     public static final String COMMANDS = "--commands=";
 
-    /** The argument that carries the token the worker proves itself with. */
-    public static final String TOKEN = "--token=";
+    /** The environment variable that carries the token the worker proves itself with. */
+    public static final String TOKEN_ENV = "JK_COMMAND_TOKEN";
 
     private CommandChannel() {}
 
     /**
-     * Connect to the channel {@code args} name.
+     * Connect to the channel {@code args} name, proving it with this process's token.
      *
-     * @throws IllegalArgumentException when either channel argument is missing
+     * @throws IllegalArgumentException when the channel argument or the token is missing
      */
     public static BufferedReader connect(List<String> args) throws IOException {
-        String[] named = named(args);
-        return connect(named[0], named[1]);
+        return connect(args, token());
+    }
+
+    /** As {@link #connect(List)} with {@code token} for the process's own. */
+    public static BufferedReader connect(List<String> args, @Nullable String token) throws IOException {
+        return connect(address(args), required(token));
     }
 
     /**
@@ -48,11 +54,10 @@ public final class CommandChannel {
      * Duplex#in()}, and the worker's own answers go back on {@link Duplex#send}, never on its stdout.
      * A worker that answers here leaves stdout and stderr to whatever the code it runs prints.
      *
-     * @throws IllegalArgumentException when either channel argument is missing
+     * @throws IllegalArgumentException when the channel argument or the token is missing
      */
     public static Duplex connectDuplex(List<String> args) throws IOException {
-        String[] named = named(args);
-        Socket socket = open(named[0], named[1]);
+        Socket socket = open(address(args), required(token()));
         try {
             return new Duplex(socket);
         } catch (IOException | RuntimeException e) {
@@ -61,19 +66,24 @@ public final class CommandChannel {
         }
     }
 
-    /** The address and the token {@code args} name, in that order. */
-    private static String[] named(List<String> args) {
-        @Nullable String address = null;
-        @Nullable String token = null;
+    /** The token the engine started this process with, or null when it was started without a channel. */
+    public static @Nullable String token() {
+        return ProcessEnv.get(TOKEN_ENV);
+    }
+
+    /** The address {@code args} name. */
+    private static String address(List<String> args) {
         for (String a : args) {
-            if (a.startsWith(COMMANDS)) address = a.substring(COMMANDS.length());
-            else if (a.startsWith(TOKEN)) token = a.substring(TOKEN.length());
+            if (a.startsWith(COMMANDS)) return a.substring(COMMANDS.length());
         }
-        if (address == null || token == null) {
-            throw new IllegalArgumentException(
-                    "a served worker needs " + COMMANDS + "<host>:<port> and " + TOKEN + "<hex>");
+        throw new IllegalArgumentException("a served worker needs " + COMMANDS + "<host>:<port>");
+    }
+
+    private static String required(@Nullable String token) {
+        if (token == null || token.isEmpty()) {
+            throw new IllegalArgumentException("a served worker needs its token in " + TOKEN_ENV);
         }
-        return new String[] {address, token};
+        return token;
     }
 
     /** Connect to {@code address} ({@code <host>:<port>}), prove the connection with {@code token}, and read commands from it. */
