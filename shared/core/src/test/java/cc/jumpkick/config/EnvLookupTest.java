@@ -131,6 +131,26 @@ class EnvLookupTest {
     }
 
     @Test
+    void a_project_added_to_a_workspace_later_layers_the_roots_env(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("mod"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "mod"
+                version = "1.0.0"
+                """);
+        Files.writeString(tmp.resolve(".env"), "ROOT_TOKEN=from-the-root\n");
+        assertThat(EnvLookup.forModule(module, name -> null).get("ROOT_TOKEN"))
+                .as("standalone: no root above")
+                .isNull();
+
+        workspace(tmp);
+
+        EnvLookup env = EnvLookup.forModule(module, name -> null);
+        assertThat(env.get("ROOT_TOKEN")).isEqualTo("from-the-root");
+        assertThat(SecretRedactor.from(env).redact("token from-the-root")).isEqualTo("token " + SecretRedactor.MASK);
+    }
+
+    @Test
     void nothing_is_read_from_above_the_workspace_root(@TempDir Path tmp) throws Exception {
         // A.env in a parent directory — a git root, say — must not be picked up: a build has to
         // behave the same from a tarball as from a checkout.

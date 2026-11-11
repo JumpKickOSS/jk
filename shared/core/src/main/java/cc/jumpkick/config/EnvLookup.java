@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -135,32 +134,21 @@ public final class EnvLookup {
     }
 
     /**
-     * The enclosing workspace root for {@code moduleDir}, memoized for the process.
-     *
-     * <p>The {@code .env} parse behind {@link #readCached} was memoized; the walk that finds the
-     * workspace root was not — and this class's own javadoc says the lookup resolves "for every
-     * output line that leaves the engine". {@code WorkspaceLocator.findRoot} is an ancestor walk with
-     * a {@code jk.toml} scan per level, so redaction was paying it per line.
-     *
-     * <p>Keyed by module directory and never invalidated: a module does not change which workspace
-     * encloses it while a build runs, and the answer is a path rather than a file's contents. A
-     * {@code jk watch} iteration that adds a workspace root above an existing module is the one case
-     * this would miss, and that already requires a re-plan for other reasons.
+     * The enclosing workspace root for {@code moduleDir}, remembered for the request. Redaction
+     * resolves the lookup for every output line, and the walk is an ancestor scan with a {@code
+     * jk.toml} read per level. Scoped to the request rather than the process: a directory looked up
+     * before it was a member (a standalone project later added, a branch switch) must see its root's
+     * {@code .env}, and that root's secrets masked, on the next request.
      */
     private static Optional<Path> workspaceRoot(Path moduleDir) {
-        return ROOT_MEMO.computeIfAbsent(moduleDir.toAbsolutePath().normalize(), dir -> {
+        return RequestScope.current().get(new RootKey(moduleDir.toAbsolutePath().normalize()), key -> {
             try {
-                return WorkspaceLocator.findRoot(dir);
+                return WorkspaceLocator.findRoot(key.moduleDir());
             } catch (Exception e) {
                 return Optional.empty();
             }
         });
     }
 
-    private static final ConcurrentHashMap<Path, Optional<Path>> ROOT_MEMO = new ConcurrentHashMap<>();
-
-    /** Test seam: drop the memoized workspace roots. */
-    public static void clearRootCache() {
-        ROOT_MEMO.clear();
-    }
+    private record RootKey(Path moduleDir) {}
 }
