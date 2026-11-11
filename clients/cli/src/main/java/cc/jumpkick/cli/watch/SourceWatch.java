@@ -15,6 +15,7 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -49,6 +50,12 @@ public final class SourceWatch implements AutoCloseable {
     private final long debounceMillis;
     private final Set<Path> skipped;
 
+    /** The roots asked for, as absolute paths: one missing at open is watched once it appears. */
+    private final List<Path> roots = new ArrayList<>();
+
+    /** Directories watched only because a missing root will appear under them. */
+    private final Set<Path> rootParents = new HashSet<>();
+
     /** The project directory is itself a root: its own files are sources, not only {@code jk.toml}. */
     private boolean wholeDir;
 
@@ -79,8 +86,10 @@ public final class SourceWatch implements AutoCloseable {
         sw.wholeDir = roots.stream()
                 .anyMatch(r -> WorkingDirectory.resolve(r).normalize().equals(WorkingDirectory.resolve(projectDir)));
         for (Path root : roots) {
+            sw.roots.add(root.toAbsolutePath().normalize());
             if (Files.isDirectory(root)) sw.registerTree(root);
             else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
+            else sw.watchForRoot(root.toAbsolutePath().normalize());
         }
         sw.registerDir(projectDir);
         return sw;
@@ -157,13 +166,18 @@ public final class SourceWatch implements AutoCloseable {
         while (key != null) {
             Path dir = keys.get(key);
             for (WatchEvent<?> event : key.pollEvents()) {
+                if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
+                    // Events were dropped: which files changed is unknown, so all of them did, and
+                    // a directory created in the gap is registered now.
+                    reregisterRoots();
+                    sources = resources = manifest = true;
+                    continue;
+                }
                 if (!(event.context() instanceof Path rel) || dir == null) continue;
                 Path changed = dir.resolve(rel);
-                Changes c = classify(dir, changed);
+                boolean created = event.kind() == StandardWatchEventKinds.ENTRY_CREATE && Files.isDirectory(changed);
+                Changes c = created ? newDirectory(dir, changed) : classify(dir, changed);
                 if (c == null) continue;
-                if (Files.isDirectory(changed) && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
-                    registerTree(changed);
-                }
                 sources |= c.sources();
                 resources |= c.resources();
                 manifest |= c.manifest();
@@ -173,6 +187,57 @@ public final class SourceWatch implements AutoCloseable {
             key = remaining > 0 ? watcher.poll(remaining, TimeUnit.MILLISECONDS) : watcher.poll();
         }
         return new Changes(sources, resources, manifest);
+    }
+
+    /**
+     * A directory created under the watched {@code dir}: registered with everything under it, and
+     * what its files ask for, since a file written before the registration raises no event. A
+     * root missing at open, or a directory it will appear under, is taken up here too.
+     */
+    private @Nullable Changes newDirectory(Path dir, Path created) throws IOException {
+        Path abs = created.toAbsolutePath().normalize();
+        boolean underRoot = !rootParents.contains(dir.toAbsolutePath().normalize()) && classify(dir, created) != null;
+        for (Path root : roots) {
+            if (root.equals(abs)) {
+                underRoot = true;
+            } else if (root.startsWith(abs) && !skip(created)) {
+                registerDir(created);
+                rootParents.add(abs);
+                Path below = abs.resolve(abs.relativize(root).getName(0));
+                if (Files.isDirectory(below)) return newDirectory(created, below);
+            }
+        }
+        if (!underRoot) return null;
+        registerTree(created);
+        boolean[] seen = new boolean[3];
+        PathUtil.forEachEntry(created, this::skip, (path, attrs) -> {
+            if (!attrs.isRegularFile() || path.getParent() == null) return true;
+            Changes c = classify(path.getParent(), path);
+            if (c != null) {
+                seen[0] |= c.sources();
+                seen[1] |= c.resources();
+                seen[2] |= c.manifest();
+            }
+            return true;
+        });
+        return new Changes(seen[0], seen[1], seen[2]);
+    }
+
+    /** {@code root} does not exist yet: watch its nearest existing ancestor inside the project to see it made. */
+    private void watchForRoot(Path root) throws IOException {
+        Path project = projectDir.toAbsolutePath().normalize();
+        Path at = root.getParent();
+        while (at != null && at.startsWith(project) && !Files.isDirectory(at)) at = at.getParent();
+        if (at == null || !at.startsWith(project) || at.equals(project)) return; // the project dir is watched anyway
+        registerDir(at);
+        rootParents.add(at);
+    }
+
+    private void reregisterRoots() throws IOException {
+        for (Path root : roots) {
+            if (Files.isDirectory(root)) registerTree(root);
+        }
+        registerDir(projectDir);
     }
 
     /** What a change to {@code changed}, an entry of the watched {@code dir}, asks for; null when it is ignored. */

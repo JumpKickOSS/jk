@@ -72,6 +72,39 @@ class WatchPassTest {
         }
     }
 
+    /** A package moved in whole (a checkout, a refactor) raises one event for the directory, none for its files. */
+    @Test
+    void a_directory_arriving_with_sources_in_it_is_a_source_change(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
+        Path java = Files.createDirectories(project.resolve("src/main/java"));
+        Path staged = Files.createDirectories(tmp.resolve("staged/billing"));
+        Files.writeString(staged.resolve("Invoice.java"), "package billing; class Invoice {}\n");
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(project.resolve("src")), 200)) {
+            Files.move(staged, java.resolve("billing"));
+            assertThat(watch.pollChange(30, TimeUnit.SECONDS).map(Pass::of)).contains(Pass.RECOMPILE);
+        }
+    }
+
+    /** A root that did not exist when the watch opened is watched once it appears. */
+    @Test
+    void a_root_made_after_the_watch_opened_is_watched(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
+        Path staged = Files.createDirectories(tmp.resolve("staged/src/main/java"));
+        Files.writeString(staged.resolve("Main.java"), "class Main {}\n");
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(project.resolve("src")), 200)) {
+            Files.move(tmp.resolve("staged/src"), project.resolve("src"));
+            assertThat(watch.pollChange(30, TimeUnit.SECONDS).map(Pass::of)).contains(Pass.RECOMPILE);
+            Files.writeString(project.resolve("src/main/java/Other.java"), "class Other {}\n");
+            assertThat(watch.pollChange(30, TimeUnit.SECONDS).map(Pass::of))
+                    .as("and an edit inside it afterwards")
+                    .contains(Pass.RECOMPILE);
+        }
+    }
+
     private static Pass pass(SourceWatch watch, Path dir, String file) throws Exception {
         Path changed = dir.resolve(file);
         Files.writeString(changed, "x\n");
