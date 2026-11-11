@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The live build's top bar and worker rows, laid out as the terminal paints them: a blue chip
 // (spinner + command name, right-pointing edge), the gradient bar butting up to it through a
-// reverse chevron, the percentage at the bar's far end, then the ETA and elapsed clock. The rows
+// reverse chevron, the percentage centred on the bar, then the ETA and elapsed clock. The rows
 // below are a fixed set (strip.workerLanes) so the pane never changes height mid-build.
 
 const SETTLED_ICON = Object.freeze({ success: 'check', failed: 'x', cancelled: 'ban' });

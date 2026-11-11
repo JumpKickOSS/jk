@@ -2731,7 +2731,11 @@ button.run-chip:hover { filter: brightness(1.2); }
   background: rgba(var(--runc-rgb), 0.12);
   margin-top: 6px;
   cursor: pointer;
+  position: relative;
 }
+/* Cancel hangs off the box's top-right corner, up and out: its bottom edge (top + 26px tall) stays
+ * above the bar's top (8px padding + the bar's 8px margin), so it never covers the ticking clock. */
+.live-build > .live-cancel { position: absolute; top: -12px; right: -10px; z-index: 1; }
 .live-line { display: flex; align-items: center; gap: 10px; color: var(--tx); font-size: 12px; }
 /* One row whatever the width: too long a line loses its left end behind a leading …, so the test
    class and method on the right always show. The rtl box puts the ellipsis on the left; the text
@@ -3064,7 +3068,9 @@ main.activity-page { max-width: min(64rem, 100%); }
 .modal > .file-viewer-plain { flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto; }
 
 /* ---- The live build's top bar and fixed worker rows (buildhead.js), laid out as the terminal ---- */
-.bhead { --chev: 8px; display: flex; align-items: center; height: 20px; margin: 8px 0 4px; font-family: var(--mono); font-size: 11.5px; }
+/* --halo outlines the white chip label and percentage in half-black so they read over any fill:
+ * the stroke paints first (paint-order), so only its outer half shows around each glyph. */
+.bhead { --chev: 8px; --halo: 2px rgba(0, 0, 0, 0.5); display: flex; align-items: center; height: 20px; margin: 8px 0 4px; font-family: var(--mono); font-size: 11.5px; }
 .bchip {
   display: inline-flex; align-items: center; gap: 7px; flex: none; height: 100%;
   padding: 0 calc(var(--chev) + 8px) 0 9px;
@@ -3075,6 +3081,7 @@ main.activity-page { max-width: min(64rem, 100%); }
 .bhead-success .bchip { background: var(--okc); }
 .bhead-failed .bchip { background: var(--err); }
 .bhead-cancelled .bchip, .bhead-finished .bchip { background: var(--dim); }
+.bchip-label, .bpct { -webkit-text-stroke: var(--halo); paint-order: stroke fill; }
 .bglyph { width: 13px; height: 13px; stroke-width: 3; flex: none; }
 .bspin { width: 11px; height: 11px; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; }
 /* The track starts one chevron-width under the chip's tip, so the two diagonals run parallel, 1px apart. */
@@ -3092,9 +3099,8 @@ main.activity-page { max-width: min(64rem, 100%); }
 .bhead-failed .bfill { background: var(--err); }
 .bhead-cancelled .bfill, .bhead-finished .bfill { background: var(--dim); }
 .bpct {
-  position: absolute; right: 8px; top: 0; bottom: 0; display: flex; align-items: center;
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #fff; font-weight: 700; font-size: 11px; white-space: nowrap;
-  text-shadow: 0 0 6px rgba(0, 0, 0, 0.45), 0 1px 1px rgba(0, 0, 0, 0.35);
 }
 .bclock { flex: none; display: inline-flex; align-items: baseline; gap: 5px; margin-left: 10px; color: var(--dim); white-space: nowrap; }
 .bsep, .bel { color: var(--dim); }

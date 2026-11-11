@@ -249,8 +249,7 @@
                     <div v-if="i.state === 'run' && i.card" class="live-build" role="link" tabindex="0" @click="openRun(i)" @keydown.enter.prevent="openRun(i)">
                       <build-head :label="headLabel(i.card)" :pct="progress(i.card)" state="running" :eta="hasEta(i.card) ? etaCountdown(i.card) : ''" :clock="elapsed(i.card)"></build-head>
                       <worker-lanes :lanes="workerLanes(i.card)"></worker-lanes>
-                      <div class="live-line"><span class="spacer"></span>
-                        <button v-if="i.card.id != null" type="button" class="rebuild icon danger" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button></div>
+                      <button v-if="i.card.id != null" type="button" class="rebuild icon danger live-cancel" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button>
                       <div class="cells" aria-label="Modules">
                         <i v-for="c in moduleCells(i.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
                     </div>
