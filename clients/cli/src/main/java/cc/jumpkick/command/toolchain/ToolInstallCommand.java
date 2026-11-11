@@ -387,33 +387,30 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     /**
-     * JBang {@code alias@catalog} install: trust-gate the catalog, then install the alias's
+     * JBang {@code alias@catalog} install: trust-gate each catalog origin, then install the alias's
      * script-ref (coordinate refs rewrite {@code coord} and return null to fall through).
      */
     private @Nullable Integer resolveJBangAliasForInstall() throws IOException, InterruptedException {
         String coord = Objects.requireNonNull(this.coord, "coord");
         String aliasName = coord.substring(0, coord.indexOf('@'));
         Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
-        // Trust decides BEFORE any fetch — same rule as tool run: no request leaves the machine
+        // Trust decides BEFORE each fetch — same rule as tool run: no request leaves the machine
         // for an origin the user never allowed.
-        var trust = TrustedSources.load(stateDirForTrust);
-        List<String> origins = JBangCatalog.origins(coord);
-        boolean preTrusted = origins.stream().anyMatch(trust::isTrusted);
-        if (!preTrusted) {
-            Integer gated = UrlToolSource.gate(origins.get(0), stateDirForTrust, "jk tool install");
-            if (gated != null) return gated;
-        }
         JBangCatalog.Resolved r;
         try {
-            r = JBangCatalog.resolve(coord, new Http(), preTrusted ? trust::isTrusted : o -> true);
+            switch (JBangCatalog.resolve(
+                    coord,
+                    JBangCatalog.over(new Http()),
+                    TrustedSources.load(stateDirForTrust),
+                    origin -> UrlToolSource.gate(origin, stateDirForTrust, "jk tool install"))) {
+                case JBangCatalog.Outcome.Refused refused -> {
+                    return refused.exit();
+                }
+                case JBangCatalog.Outcome.Found found -> r = found.resolved();
+            }
         } catch (IOException e) {
             CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
-        }
-        if (!r.pageOrigin().equals(origins.get(0)) && !trust.isTrusted(r.pageOrigin())) {
-            // Forge fallback landed on a different origin than the one the user allowed.
-            Integer gated = UrlToolSource.gate(r.pageOrigin(), stateDirForTrust, "jk tool install");
-            if (gated != null) return gated;
         }
         if (!r.arguments().isEmpty()) {
             // Default arguments can't ride a launcher's "$@" cleanly yet.

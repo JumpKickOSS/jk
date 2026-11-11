@@ -393,31 +393,28 @@ public final class ToolRunCommand implements CliCommand {
     }
 
     /**
-     * JBang {@code alias@catalog}: trust-gate the catalog origin, then run the alias's {@code
+     * JBang {@code alias@catalog}: trust-gate each catalog origin, then run the alias's {@code
      * script-ref}. Coordinate refs rewrite {@code target}/{@code toolArgs} and return null.
      */
     private @Nullable Integer resolveJBangAlias(String command) throws IOException, InterruptedException {
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
-        // Trust decides BEFORE any fetch: the catalog URL is derived from user input, and no
+        // Trust decides BEFORE each fetch: the catalog URL is derived from user input, and no
         // request may leave the machine for an origin the user never allowed.
-        var trust = TrustedSources.load(stateDir);
-        List<String> origins = JBangCatalog.origins(target);
-        boolean preTrusted = origins.stream().anyMatch(trust::isTrusted);
-        if (!preTrusted) {
-            Integer gated = UrlToolSource.gate(origins.get(0), stateDir, command);
-            if (gated != null) return gated;
-        }
         JBangCatalog.Resolved r;
         try {
-            r = JBangCatalog.resolve(target, new Http(), preTrusted ? trust::isTrusted : o -> true);
+            switch (JBangCatalog.resolve(
+                    target,
+                    JBangCatalog.over(new Http()),
+                    TrustedSources.load(stateDir),
+                    origin -> UrlToolSource.gate(origin, stateDir, command))) {
+                case JBangCatalog.Outcome.Refused refused -> {
+                    return refused.exit();
+                }
+                case JBangCatalog.Outcome.Found found -> r = found.resolved();
+            }
         } catch (IOException e) {
             CliOutput.err(command + ": " + e.getMessage());
             return Exit.SOFTWARE;
-        }
-        if (!r.pageOrigin().equals(origins.get(0)) && !trust.isTrusted(r.pageOrigin())) {
-            // Forge fallback landed on a different origin than the one the user allowed.
-            Integer gated = UrlToolSource.gate(r.pageOrigin(), stateDir, command);
-            if (gated != null) return gated;
         }
         List<String> merged = new ArrayList<>(r.arguments());
         merged.addAll(toolArgs);
