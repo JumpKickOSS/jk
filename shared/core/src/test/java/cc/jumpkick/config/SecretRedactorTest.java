@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -116,6 +119,38 @@ class SecretRedactorTest {
         SecretRedactor plain = SecretRedactor.of(List.of("plain-secret"));
         assertThat(plain.forEscapedJson()).isSameAs(plain);
         assertThat(json).isSameAs(r.forEscapedJson());
+    }
+
+    /**
+     * The engine log's redactor is rebuilt as each request learns its secrets; two requests learning
+     * at once must both end up in it, whichever rebuild finishes last.
+     */
+    @Test
+    void secrets_learned_at_once_all_reach_the_known_redactor() throws Exception {
+        int threads = 8;
+        for (int round = 0; round < 40; round++) {
+            CyclicBarrier start = new CyclicBarrier(threads);
+            List<String> values = new ArrayList<>();
+            List<Thread> learners = new ArrayList<>();
+            for (int t = 0; t < threads; t++) {
+                String value = "learned-at-once-" + round + "-" + t;
+                values.add(value);
+                learners.add(Thread.ofPlatform().start(() -> {
+                    try {
+                        start.await();
+                    } catch (InterruptedException | BrokenBarrierException e) {
+                        throw new IllegalStateException(e);
+                    }
+                    SecretRedactor.of(List.of(value));
+                }));
+            }
+            for (Thread l : learners) l.join();
+            for (String v : values) {
+                assertThat(SecretRedactor.redactKnown("x " + v))
+                        .as("round %d", round)
+                        .isEqualTo("x " + SecretRedactor.MASK);
+            }
+        }
     }
 
     @Test

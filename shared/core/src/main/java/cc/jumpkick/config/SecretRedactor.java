@@ -120,7 +120,8 @@ public final class SecretRedactor {
         return known.redact(text);
     }
 
-    private static void learn(List<String> values) {
+    /** Synchronized: two learners rebuilding at once would each assign a set missing the other's value. */
+    private static synchronized void learn(List<String> values) {
         boolean grew = false;
         for (String v : values) {
             if (KNOWN.size() >= MAX_KNOWN) break;
