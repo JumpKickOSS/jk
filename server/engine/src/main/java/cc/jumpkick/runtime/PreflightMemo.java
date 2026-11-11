@@ -555,37 +555,12 @@ public final class PreflightMemo {
                     || !GraphMemoEdges.resolve(testRels, dirByRel, testEdges)) {
                 return Optional.empty();
             }
-            return Optional.of(
-                    new BuildGraph.Result(List.copyOf(topo), Map.copyOf(edges), Map.copyOf(testEdges), List.of()));
+            return Optional.of(new BuildGraph.Result(
+                    List.copyOf(topo), Map.copyOf(edges), Map.copyOf(testEdges), List.of(), true));
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return Optional.empty();
-        }
-    }
-
-    /** True when the on-disk graph memo's structure key matches {@code graph}'s unit set. */
-    public static boolean graphStructureMatches(Path entryDir, BuildGraph.Result graph) {
-        Path file = graphMemoFile(entryDir);
-        if (!Files.isRegularFile(file) || graph == null || graph.hasErrors()) return false;
-        try {
-            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-            if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return false;
-            List<Path> unitDirs = new ArrayList<>();
-            for (BuildGraph.BuildUnit u : graph.topoOrder()) {
-                unitDirs.add(u.dir().toAbsolutePath().normalize());
-            }
-            if (!(structureFingerprint(entryDir, unitDirs) instanceof Known structure)) return false;
-            String want = structure.hex();
-            String gotVersion = null;
-            String gotStruct = null;
-            for (String line : lines) {
-                if (line.startsWith("cacheKeyVersion=")) gotVersion = line.substring("cacheKeyVersion=".length());
-                if (line.startsWith("structure=")) gotStruct = line.substring("structure=".length());
-            }
-            return BuildIdentity.cacheKeyVersion().equals(gotVersion) && want.equals(gotStruct);
-        } catch (Exception e) {
-            return false;
         }
     }
 

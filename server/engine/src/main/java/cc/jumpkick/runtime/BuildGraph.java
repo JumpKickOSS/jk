@@ -63,12 +63,15 @@ public final class BuildGraph {
      * @param edges unit dir → dirs that must build before it: what admits a unit and what may not cycle
      * @param testEdges unit dir → dirs only its test scopes name, none of them in {@code edges}
      * @param errors cycle / depth-cap / missing-jk.toml
+     * @param fromMemo whether {@link BuildGraph#resolve} rebuilt this graph from the preflight graph
+     *     memo, which then already holds it
      */
     public record Result(
             List<BuildUnit> topoOrder,
             Map<Path, Set<Path>> edges,
             Map<Path, Set<Path>> testEdges,
-            List<String> errors) {
+            List<String> errors,
+            boolean fromMemo) {
         public boolean hasErrors() {
             return !errors.isEmpty();
         }
@@ -154,7 +157,7 @@ public final class BuildGraph {
             for (BuildUnit u : topoOrder) {
                 if (canon.contains(BuildGraph.canonicalPath(u.dir()))) units.add(u);
             }
-            return new Result(units, keepWithin(edges, canon), keepWithin(testEdges, canon), errors);
+            return new Result(units, keepWithin(edges, canon), keepWithin(testEdges, canon), errors, fromMemo);
         }
 
         private static Map<Path, Set<Path>> keepWithin(Map<Path, Set<Path>> edges, Set<Path> canon) {
@@ -244,8 +247,9 @@ public final class BuildGraph {
     }
 
     /**
-     * Resolve the graph rooted at {@code entryDir}/{@code entry}. On a preflight graph-memo hit
-     * , rebuilds topo + edges + re-parsed manifests without {@link WorkspaceLoader}.
+     * Resolve the graph rooted at {@code entryDir}/{@code entry}. On a preflight graph-memo hit it
+     * rebuilds topo + edges + re-parsed manifests without {@link WorkspaceLoader}, and the result
+     * says so in {@link Result#fromMemo}.
      */
     public static Result resolve(Path entryDir, JkBuild entry) throws IOException {
         // try memo first — skip WorkspaceLoader membership walk when structure is warm.
@@ -261,7 +265,7 @@ public final class BuildGraph {
             b.addUnit(b.canonical(entryDir), entry, Origin.ROOT);
         }
         List<BuildUnit> order = b.errors.isEmpty() ? b.topoSort() : List.of();
-        return new Result(order, b.edges, b.testEdges, b.errors);
+        return new Result(order, b.edges, b.testEdges, b.errors, false);
     }
 
     /**

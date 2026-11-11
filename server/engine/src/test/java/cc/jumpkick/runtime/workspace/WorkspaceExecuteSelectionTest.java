@@ -120,12 +120,14 @@ class WorkspaceExecuteSelectionTest {
                 List.of(engineUnit, cliUnit),
                 Map.of(cli, Set.of(), engine, Set.of()),
                 Map.of(cli, Set.of(engine)),
-                List.of());
+                List.of(),
+                false);
         var withoutCli = new BuildGraph.Result(
                 List.of(engineUnit, appUnit),
                 Map.of(app, Set.of(), engine, Set.of()),
                 Map.of(app, Set.of(engine)),
-                List.of());
+                List.of(),
+                false);
         Set<Path> launched = WorkspacePreflightPhase.launchedAssemblies(withCli);
         assertThat(launched).containsExactly(BuildGraph.canonicalPath(engine));
         assertThat(WorkspacePreflightPhase.launchedAssemblies(withoutCli)).isEmpty();
@@ -207,7 +209,8 @@ class WorkspaceExecuteSelectionTest {
                 List.of(unit(core, "ex:jk-core"), unit(cli, "ex:jk-cli")),
                 Map.of(BuildGraph.canonicalPath(cli), Set.of(BuildGraph.canonicalPath(core))),
                 Map.of(),
-                List.of());
+                List.of(),
+                false);
 
         Path link = tmp.resolve("cli-link");
         Symlinks.create(link, cli);
@@ -236,7 +239,8 @@ class WorkspaceExecuteSelectionTest {
                 List.of(subUnit, libUnit, fixturesUnit, appUnit),
                 Map.of(app, Set.of(lib), lib, Set.of(substituted), substituted, Set.of(), fixtures, Set.of()),
                 Map.of(app, Set.of(fixtures)),
-                List.of());
+                List.of(),
+                false);
 
         WorkspaceRequest withTests = selecting(app, false);
         assertThat(WorkspacePreflightPhase.applySelectionCone(graph, withTests).topoOrder())
@@ -259,7 +263,8 @@ class WorkspaceExecuteSelectionTest {
                 List.of(unit(lib, "ex:lib"), unit(fixtures, "ex:fixtures"), unit(app, "ex:app")),
                 Map.of(app, Set.of(lib), lib, Set.of(), fixtures, Set.of()),
                 Map.of(app, Set.of(fixtures)),
-                List.of());
+                List.of(),
+                false);
         for (boolean skipTests : new boolean[] {false, true}) {
             Set<Path> built =
                     WorkspacePreflightPhase.applySelectionCone(graph, selecting(app, skipTests)).topoOrder().stream()

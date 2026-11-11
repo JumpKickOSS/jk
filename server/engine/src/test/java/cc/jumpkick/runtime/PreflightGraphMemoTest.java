@@ -17,14 +17,21 @@ import org.junit.jupiter.api.io.TempDir;
 class PreflightGraphMemoTest {
 
     @Test
-    void graph_structure_memo_matches_after_store(@TempDir Path tmp) throws Exception {
+    void resolve_says_whether_the_graph_came_from_the_memo(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
-        BuildGraph.Result graph =
-                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        assertThat(PreflightMemo.graphStructureMatches(tmp, graph)).isFalse();
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
+        assertThat(graph.fromMemo()).isFalse();
         PreflightMemo.storeGraph(tmp, graph);
-        assertThat(PreflightMemo.graphStructureMatches(tmp, graph)).isTrue();
         assertThat(PreflightMemo.graphMemoFile(tmp)).exists();
+
+        BuildGraph.Result again = BuildGraph.resolve(tmp, entry);
+        assertThat(again.fromMemo()).isTrue();
+        assertThat(again.restrict(Set.of(tmp)).fromMemo()).isTrue();
+        assertThat(again.topoOrder().stream().map(BuildGraph.BuildUnit::coord).toList())
+                .containsExactlyElementsOf(graph.topoOrder().stream()
+                        .map(BuildGraph.BuildUnit::coord)
+                        .toList());
     }
 
     @Test
@@ -203,6 +210,6 @@ class PreflightGraphMemoTest {
         Files.createDirectories(two);
         Files.writeString(two.resolve("jk.toml"), "group = \"t\"\nname = \"two\"\nversion = \"0.1.0\"\njava = 25\n");
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
-        assertThat(PreflightMemo.graphStructureMatches(tmp, full)).isFalse();
+        assertThat(BuildGraph.resolve(tmp, entry).fromMemo()).isFalse();
     }
 }

@@ -126,9 +126,8 @@ public final class WorkspacePreflightPhase {
 
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
         followFirstPartyPins(request, units, listener);
-        boolean graphMemoHit = PreflightMemo.graphStructureMatches(request.entryDir(), graph);
-        PreflightMemo.storeGraph(request.entryDir(), graph);
-        if (graphMemoHit) Perf.note("preflight-graph-memo structure-match", "units", units.size());
+        boolean graphMemoHit = graph.fromMemo();
+        if (!graphMemoHit) PreflightMemo.storeGraph(request.entryDir(), graph);
         listener.onPreflight("graph", 1, 1, units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
         WorkspaceSpec requested = request.spec();
         boolean syncOnly = requested != null && requested.target() == WorkspaceTarget.SYNC;
