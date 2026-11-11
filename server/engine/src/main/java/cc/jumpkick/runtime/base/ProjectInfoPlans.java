@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceModules;
@@ -80,6 +81,7 @@ public final class ProjectInfoPlans {
             Workspace ws = workspace(dir, build);
             List<String> moduleDirs = ws.moduleDirs();
             List<String> moduleNames = ws.moduleNames();
+            Map<String, String> upstreams = Map.of();
             if ((modulesSpec != null && !modulesSpec.isBlank())
                     || (affectedSince != null && !affectedSince.isBlank())
                     || affectedWip) {
@@ -89,12 +91,14 @@ public final class ProjectInfoPlans {
                 }
                 moduleDirs = sel.moduleDirs();
                 moduleNames = sel.moduleNames();
+                upstreams = upstreams(moduleDirs);
             }
             Counts c = counts ? count(dir, moduleDirs) : new Counts(0, 0);
             Path lockFile = LockPaths.lockFile(dir);
             boolean hasLock = Files.exists(lockFile);
             String lockJdk = hasLock ? lockJdk(lockFile) : "";
-            return summary(dir, buildFile, build, ws, moduleDirs, moduleNames, c, lockFile, hasLock, lockJdk);
+            return summary(
+                    dir, buildFile, build, ws, moduleDirs, moduleNames, c, lockFile, hasLock, lockJdk, upstreams);
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(Errors.text(e));
         }
@@ -196,6 +200,27 @@ public final class ProjectInfoPlans {
                 .encode();
     }
 
+    /**
+     * Each of {@code moduleDirs} → the workspace siblings it depends on through any scope,
+     * transitively, as absolute directories joined by {@code \n} ({@link ProjectInfo#upstreams}).
+     */
+    private static Map<String, String> upstreams(List<String> moduleDirs) throws IOException {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String d : moduleDirs) {
+            Path dir = Path.of(d);
+            Path manifest = ManifestPaths.manifestIn(dir);
+            if (!Files.isRegularFile(manifest)) continue;
+            List<String> siblings = new ArrayList<>();
+            for (Path sibling : WorkspaceClasspath.closureSiblings(
+                            dir, JkBuildParser.parse(manifest), WorkspaceClasspath.TEST_SCOPES)
+                    .keySet()) {
+                siblings.add(sibling.toAbsolutePath().normalize().toString());
+            }
+            out.put(d, String.join("\n", siblings));
+        }
+        return out;
+    }
+
     /** The {@code -m}/{@code --affected-since}/{@code --affected} selection, or the selector's error. */
     private record Selection(
             List<String> moduleDirs,
@@ -278,7 +303,8 @@ public final class ProjectInfoPlans {
             Counts counts,
             Path lockFile,
             boolean hasLock,
-            String lockJdk)
+            String lockJdk,
+            Map<String, String> upstreams)
             throws IOException {
         var format = build.format();
         var boot = build.pluginConfig(JkBuild.SPRING_BOOT_ID).orElse(null);
@@ -349,7 +375,8 @@ public final class ProjectInfoPlans {
                 build.pomMetadata().sign(),
                 orEmpty(build.pomMetadata().keyFile()),
                 release.tag(),
-                release.files());
+                release.files(),
+                upstreams);
     }
 
     private static String sanitizeIdentity(String value) {

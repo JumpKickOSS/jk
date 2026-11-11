@@ -38,6 +38,12 @@ import org.jspecify.annotations.Nullable;
  * repository} names a declared repository, else the name as written; empty when none is named.
  * {@code releaseTag} and {@code releaseFiles} are the workspace root's {@code [release]} tag template
  * and its {@code path → pattern} version-carrying files.
+ *
+ * <p>{@code upstreams} is, for each selected module when a selector ({@code -m}, {@code
+ * --affected-since}) was given, every workspace sibling it depends on through any scope,
+ * transitively: {@code dir → } the siblings' absolute directories joined by {@code \n}. Empty
+ * without a selector. {@code jk selective} fingerprints a module with its upstreams, and a thin
+ * client cannot read the manifests that name them.
  */
 public record ProjectInfo(
         @Nullable String error,
@@ -100,7 +106,8 @@ public record ProjectInfo(
         boolean publishSign,
         String publishKeyFile,
         String releaseTag,
-        Map<String, String> releaseFiles) {
+        Map<String, String> releaseFiles,
+        Map<String, String> upstreams) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -133,6 +140,12 @@ public record ProjectInfo(
         var out = new LinkedHashMap<String, Toolchain>();
         for (var e : toolchains.entrySet()) out.put(e.getKey(), Toolchain.decode(e.getValue()));
         return out;
+    }
+
+    /** The siblings {@code dir} depends on ({@link #upstreams}), as absolute directories; empty for none. */
+    public List<String> upstreamsOf(String dir) {
+        String joined = upstreams.get(dir);
+        return joined == null || joined.isEmpty() ? List.of() : List.of(joined.split("\n"));
     }
 
     /** The {@code group:name} display coordinate. */
@@ -202,6 +215,7 @@ public record ProjectInfo(
                 false,
                 "",
                 "",
+                Map.of(),
                 Map.of());
     }
 
@@ -267,6 +281,7 @@ public record ProjectInfo(
                 .string("publishKeyFile", publishKeyFile)
                 .string("releaseTag", releaseTag)
                 .map("releaseFiles", releaseFiles)
+                .map("upstreams", upstreams)
                 .finish();
     }
 
@@ -333,7 +348,8 @@ public record ProjectInfo(
                 Jsonl.bool(line, "publishSign", false),
                 orEmpty(Jsonl.str(line, "publishKeyFile")),
                 orEmpty(Jsonl.str(line, "releaseTag")),
-                Jsonl.strMap(line, "releaseFiles"));
+                Jsonl.strMap(line, "releaseFiles"),
+                Jsonl.strMap(line, "upstreams"));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

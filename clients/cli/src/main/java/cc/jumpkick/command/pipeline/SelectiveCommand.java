@@ -16,6 +16,7 @@ import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -329,23 +330,51 @@ public final class SelectiveCommand implements CliCommand {
     }
 
     /**
-     * Fingerprint a module for selective skip: relative paths under {@code jk.toml} + {@code src/}
-     * (file path + sha256). Absolute paths are not stored — only content — so agents can share
-     * plans when trees match. Generated / target trees are ignored.
-     *
-     * <p><b>Transitive blind spot</b> fingerprints do not yet include dependency
-     * siblings. An unchanged module can be skipped even when an upstream it depends on changed.
-     * Prefer full rebuilds when in doubt; see guide selective section.
+     * Fingerprint each module for selective skip ({@link #fingerprint}), its upstream siblings as
+     * the engine names them for that selection. Absolute paths are not stored — only content — so
+     * agents can share plans when trees match.
      */
     static Map<String, String> contentHashes(Path workspaceRoot, List<String> moduleRels) throws Exception {
         Map<String, String> out = new LinkedHashMap<>();
+        if (moduleRels.isEmpty()) return out;
+        var info = ProjectInfos.orError(workspaceRoot, String.join(",", moduleRels), null);
+        if (info.error() != null && !info.error().isBlank()) throw new IllegalStateException(info.error());
         for (String rel : moduleRels) {
-            Path mod = ".".equals(rel) ? workspaceRoot : workspaceRoot.resolve(rel);
-            out.put(rel, fingerprintModule(mod));
+            Path mod = WorkingDirectory.resolve(".".equals(rel) ? workspaceRoot : workspaceRoot.resolve(rel));
+            List<Path> upstreams = new ArrayList<>();
+            for (String d : info.upstreamsOf(mod.toString())) upstreams.add(Path.of(d));
+            out.put(rel, fingerprint(workspaceRoot, mod, upstreams));
         }
         return out;
     }
 
+    /**
+     * What decides whether a module's build or test can be skipped: its own files ({@link
+     * #fingerprintModule}), the lock file that governs it, and the own files of every workspace
+     * sibling it depends on ({@code upstreams}: any scope, transitively), so an upstream edit or a
+     * lock change re-runs it.
+     */
+    static String fingerprint(Path workspaceRoot, Path moduleDir, List<Path> upstreams) throws Exception {
+        MessageDigest md = Hashing.newSha256();
+        feed(md, "self", fingerprintModule(moduleDir));
+        Path lock = LockPaths.lockFile(moduleDir);
+        feed(md, "lock", Files.isRegularFile(lock) ? Hashing.sha256Hex(Files.readAllBytes(lock)) : "absent");
+        Path root = WorkingDirectory.resolve(workspaceRoot);
+        List<Path> sorted = new ArrayList<>();
+        for (Path sibling : upstreams) sorted.add(WorkingDirectory.resolve(sibling));
+        sorted.sort(Comparator.comparing(Path::toString));
+        for (Path abs : sorted) {
+            String rel = abs.startsWith(root) ? root.relativize(abs).toString().replace('\\', '/') : abs.toString();
+            feed(md, "sibling:" + rel, fingerprintModule(abs));
+        }
+        return "sha256:" + Hashing.hex(md.digest());
+    }
+
+    private static void feed(MessageDigest md, String name, String value) {
+        md.update((name + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A module's own files: {@code jk.toml} and everything under {@code src/}, by relative path and content. */
     static String fingerprintModule(Path moduleDir) throws Exception {
         MessageDigest md = Hashing.newSha256();
         List<Path> files = new ArrayList<>();

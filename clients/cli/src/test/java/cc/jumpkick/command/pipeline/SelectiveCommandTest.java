@@ -10,6 +10,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -71,6 +72,35 @@ class SelectiveCommandTest {
         Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A { int x; }");
         String h2 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"));
         assertThat(h1).isNotEqualTo(h2);
+    }
+
+    /** An upstream sibling's source or the lock moves a module's fingerprint; a sibling it does not name does not. */
+    @Test
+    void content_hash_changes_with_the_lock_and_an_upstream_sibling(@TempDir Path tempDir) throws Exception {
+        writeWorkspace(tempDir);
+        Files.createDirectories(tempDir.resolve("libs/core/src/main/java"));
+        Files.writeString(tempDir.resolve("libs/core/src/main/java/C.java"), "class C {}");
+        Files.createDirectories(tempDir.resolve("worker/src/main/java"));
+        Files.writeString(tempDir.resolve("worker/src/main/java/W.java"), "class W {}");
+        Files.writeString(tempDir.resolve("jk-lock.toml"), "version = 1\n");
+        Path api = tempDir.resolve("api");
+        List<Path> upstreams = List.of(tempDir.resolve("libs/core"));
+        String h1 = SelectiveCommand.fingerprint(tempDir, api, upstreams);
+        assertThat(SelectiveCommand.fingerprint(tempDir, api, upstreams)).isEqualTo(h1);
+
+        Files.writeString(tempDir.resolve("worker/src/main/java/W.java"), "class W { int x; }");
+        assertThat(SelectiveCommand.fingerprint(tempDir, api, upstreams))
+                .as("api does not depend on worker")
+                .isEqualTo(h1);
+
+        Files.writeString(tempDir.resolve("libs/core/src/main/java/C.java"), "class C { int x; }");
+        String h2 = SelectiveCommand.fingerprint(tempDir, api, upstreams);
+        assertThat(h2).as("upstream edit").isNotEqualTo(h1);
+
+        Files.writeString(tempDir.resolve("jk-lock.toml"), "version = 1\n# moved\n");
+        assertThat(SelectiveCommand.fingerprint(tempDir, api, upstreams))
+                .as("lock edit")
+                .isNotEqualTo(h2);
     }
 
     @Test

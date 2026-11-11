@@ -447,13 +447,11 @@ jk selective run test
 jk selective resolve -m 'api,worker'   # dry list
 ```
 
-`prepare` records per-module content fingerprints (`jk.toml` + `src/**`). A later
+`prepare` records per-module content fingerprints: the module's `jk.toml` + `src/**`, the
+`jk-lock.toml` that governs it, and the same files of every workspace sibling it depends on
+(any scope, transitively), so an upstream edit or a lock change re-runs it. A later
 `selective run` without `--force` / `--redo` skips modules that still match. Hashes are
 content-based (not absolute paths). Generated / `target` trees are not fingerprinted.
-
-**Caveat:** fingerprints are **not** transitive. An unchanged module can be skipped even
-when an upstream sibling it depends on changed. Use a full `jk build` / `--force` when
-the graph matters more than incremental CI savings.
 
 Outside a git repo or with an invalid ref, JumpKick prints a clear error. If nothing under the
 workspace matched, it exits 0 with “nothing affected” / “nothing selected”.
