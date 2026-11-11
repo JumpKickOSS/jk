@@ -71,6 +71,25 @@ class PolicyCheckerTest {
         assertThat(violations).hasSize(1);
     }
 
+    /** User info, a port, a query or the root's trailing dot do not hide a denied host. */
+    @Test
+    void a_denied_host_is_found_behind_user_info_and_a_trailing_dot() {
+        DenyPolicy policy = new DenyPolicy(List.of("evil.com"), List.of(), List.of(), DenyPolicy.YankedPolicy.DENY);
+        Lockfile lock = new Lockfile(
+                5,
+                "jk test",
+                "pubgrub-v1",
+                List.of(
+                        pkg("g:a", "1.0", "r+https://user:pw@evil.com/repo/"),
+                        pkg("g:b", "1.0", "r+https://evil.com./repo/"),
+                        pkg("g:c", "1.0", "r+https://repo.evil.com.:8443/"),
+                        pkg("g:d", "1.0", "r+https://evil.com?x=@good.org"),
+                        pkg("g:e", "1.0", "r+https://good.org/evil.com")));
+        assertThat(new PolicyChecker(policy).check(lock))
+                .extracting(PolicyChecker.Violation::module)
+                .containsExactly("g:a", "g:b", "g:c", "g:d");
+    }
+
     @Test
     void host_match_does_not_flag_unrelated_suffix_hosts() {
         // deny evil.com must not match notevil.com

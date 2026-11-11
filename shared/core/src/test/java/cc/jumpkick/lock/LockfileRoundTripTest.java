@@ -283,6 +283,18 @@ class LockfileRoundTripTest {
                 .isEqualTo("d".repeat(64));
     }
 
+    /** A classifier holding a dot is one quoted key, read back by the row grammar and by TOML alike. */
+    @Test
+    void a_tool_classifier_with_a_dot_round_trips() {
+        Lockfile lock = Lockfile.empty("test")
+                .withTools(List.of(
+                        new ToolEntry("com.example:jre", "8", "zip", null, null, Map.of("jdk1.8", "a".repeat(64)))));
+        String rendered = LockfileWriter.render(lock);
+        assertThat(rendered).contains("sha256.\"jdk1.8\" = ");
+        assertThat(LockfileReader.readRows(rendered, "<string>").tools()).containsExactlyElementsOf(lock.tools());
+        assertThat(LockfileReader.readToml(rendered, "<string>").tools()).containsExactlyElementsOf(lock.tools());
+    }
+
     /**
      * A closure a plugin resolved is one row naming the plugin and closure, the module it answers
      * for, the plugin that answered, the digest of its inputs, and each file with its own digest on

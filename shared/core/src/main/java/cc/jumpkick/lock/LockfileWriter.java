@@ -384,7 +384,7 @@ public final class LockfileWriter {
             }
             for (var sha : t.sha256().entrySet()) {
                 out.append("sha256.")
-                        .append(sha.getKey())
+                        .append(key(sha.getKey()))
                         .append(" = ")
                         .append(quote(sha.getValue()))
                         .append('\n');
@@ -470,7 +470,7 @@ public final class LockfileWriter {
         field(out, "package-manager", pin.packageManager());
         for (var sha : pin.sha256().entrySet()) {
             out.append("sha256.")
-                    .append(sha.getKey())
+                    .append(key(sha.getKey()))
                     .append(" = ")
                     .append(quote(sha.getValue()))
                     .append('\n');
@@ -484,5 +484,17 @@ public final class LockfileWriter {
 
     private static String quote(String value) {
         return MinimalToml.quote(value);
+    }
+
+    /** {@code name} as one TOML key: bare when it can be, quoted when a dot or another character would split it. */
+    private static String key(String name) {
+        if (name.isEmpty()) return quote(name);
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            boolean bare =
+                    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+            if (!bare) return quote(name);
+        }
+        return name;
     }
 }

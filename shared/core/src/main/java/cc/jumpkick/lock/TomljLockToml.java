@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
@@ -22,43 +23,43 @@ final class TomljLockToml implements LockToml {
 
     @Override
     public boolean contains(String key) {
-        return table.contains(key);
+        return table.contains(List.of(key));
     }
 
     @Override
     public boolean isTable(String key) {
-        return table.isTable(key);
+        return table.isTable(List.of(key));
     }
 
     @Override
     public @Nullable Object get(String key) {
-        return table.get(key);
+        return table.get(List.of(key));
     }
 
     @Override
     public @Nullable String getString(String key) {
-        return table.getString(key);
+        return table.getString(List.of(key));
     }
 
     @Override
     public @Nullable Long getLong(String key) {
-        return table.getLong(key);
+        return table.getLong(List.of(key));
     }
 
     @Override
     public @Nullable Boolean getBoolean(String key) {
-        return table.getBoolean(key);
+        return table.getBoolean(List.of(key));
     }
 
     @Override
     public @Nullable LockToml getTable(String key) {
-        TomlTable nested = table.getTable(key);
+        TomlTable nested = table.getTable(List.of(key));
         return nested == null ? null : new TomljLockToml(nested);
     }
 
     @Override
     public LockToml.@Nullable Array getArray(String key) {
-        TomlArray array = table.getArray(key);
+        TomlArray array = table.getArray(List.of(key));
         return array == null ? null : new Array(array);
     }
 

@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Scope;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,23 @@ class LockDiffTest {
         assertThat(LockDiff.between(null, lock(row("g:a", "1.0"), row("g:b", "2.0"))))
                 .extracting(LockDiff.Change::from)
                 .containsExactly(null, null);
+    }
+
+    /** A main row and a test row of one coordinate, listed in another order, are no change. */
+    @Test
+    void reordered_main_and_test_rows_of_one_coordinate_are_unchanged() {
+        Lockfile.Artifact main = row("g:a", "2.22.4").withScopes(List.of(Scope.MAIN));
+        Lockfile.Artifact test = row("g:a", "2.21.0").withScopes(List.of(Scope.TEST));
+        assertThat(LockDiff.between(lock(test, main), lock(main, test))).isEmpty();
+    }
+
+    @Test
+    void a_moved_test_row_beside_a_main_row_reports_its_own_move() {
+        Lockfile.Artifact main = row("g:a", "2.22.4").withScopes(List.of(Scope.MAIN));
+        Lockfile.Artifact before = row("g:a", "2.21.0").withScopes(List.of(Scope.TEST));
+        Lockfile.Artifact after = row("g:a", "2.21.1").withScopes(List.of(Scope.TEST));
+        assertThat(LockDiff.between(lock(before, main), lock(main, after)))
+                .containsExactly(new LockDiff.Change("g:a", "2.21.0", "2.21.1", List.of()));
     }
 
     private static Lockfile.Artifact row(String name, String version) {

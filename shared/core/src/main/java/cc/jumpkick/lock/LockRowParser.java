@@ -9,14 +9,15 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Reads the row grammar {@link LockfileWriter} emits — bare keys, basic strings, integers,
- * booleans, arrays of basic strings, {@code [table]} and {@code [[row]]} headers — straight into
+ * Reads the row grammar {@link LockfileWriter} emits — bare or quoted keys, basic strings,
+ * integers, booleans, arrays of basic strings or of one-line inline tables of scalars, {@code
+ * [table]} and {@code [[row]]} headers — straight into
  * {@link LockToml} tables, in one pass over the text with one object per value. tomlj's parse
  * tree holds several objects per quoted character, which on a megabyte lock is hundreds of
  * megabytes of heap before a single row exists; the row grammar's tables are the size of the lock.
  *
- * <p>Anything outside the grammar — a comment, a literal or multi-line string, an inline table, a
- * dotted or repeated header, a duplicate key, a float, a value read as the wrong type — is {@link
+ * <p>Anything outside the grammar — a comment, a literal or multi-line string, an inline table
+ * outside an array, a dotted or repeated header, a duplicate key, a float, a value read as the wrong type — is {@link
  * Unrecognised}, and the reader hands the text to tomlj, whose full grammar and diagnostics stand.
  * The parser accepts nothing tomlj would refuse, so a lock that reads here reads the same there.
  */
@@ -125,14 +126,19 @@ final class LockRowParser {
 
     private List<String> dottedKey() {
         List<String> path = new ArrayList<>(1);
-        path.add(bareKey());
+        path.add(keySegment());
         while (true) {
             skipBlanks();
             if (peek() != '.') return path;
             pos++;
             skipBlanks();
-            path.add(bareKey());
+            path.add(keySegment());
         }
+    }
+
+    /** One segment of a dotted key: bare, or a basic string holding a dot or another character. */
+    private String keySegment() {
+        return peek() == '"' ? basicString() : bareKey();
     }
 
     private String bareKey() {
@@ -247,8 +253,9 @@ final class LockRowParser {
                 pos++;
                 return out;
             }
-            if (peek() != '"') throw new Unrecognised("array element outside the row grammar at " + pos);
-            out.items.add(basicString());
+            if (peek() == '{') out.items.add(inlineTable());
+            else if (peek() == '"') out.items.add(basicString());
+            else throw new Unrecognised("array element outside the row grammar at " + pos);
             skipBlanksAndLineBreaks();
             char c = peek();
             if (c == ',') {
@@ -260,6 +267,33 @@ final class LockRowParser {
                 return out;
             }
             throw new Unrecognised("array separator expected at " + pos);
+        }
+    }
+
+    /** {@code { name = "a", version = 1 }} on one line: bare keys, scalar values. */
+    private MapTable inlineTable() {
+        pos++;
+        MapTable table = new MapTable();
+        skipBlanks();
+        if (peek() == '}') {
+            pos++;
+            return table;
+        }
+        while (true) {
+            skipBlanks();
+            String key = bareKey();
+            skipBlanks();
+            expect('=');
+            skipBlanks();
+            char c = peek();
+            if (c == '[' || c == '{') throw new Unrecognised("nested value in an inline table at " + pos);
+            if (table.values.putIfAbsent(key, value()) != null) throw new Unrecognised("duplicate key " + key);
+            skipBlanks();
+            if (peek() == '}') {
+                pos++;
+                return table;
+            }
+            expect(',');
         }
     }
 
@@ -358,7 +392,7 @@ final class LockRowParser {
         }
     }
 
-    /** An array of strings, or — opened by {@code [[name]]} headers — of rows. */
+    /** An array of strings or inline tables, or — opened by {@code [[name]]} headers — of rows. */
     private static final class MapArray implements LockToml.Array {
 
         final List<Object> items = new ArrayList<>();

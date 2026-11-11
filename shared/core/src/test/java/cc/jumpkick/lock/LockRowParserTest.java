@@ -108,6 +108,26 @@ class LockRowParserTest {
         assertThat(rows.nativeMetadata()).isEqualTo(new Lockfile.NativeMetadata("0.3.16", "sha256:0123"));
     }
 
+    /** A schema's references are inline tables; the row grammar reads them rather than handing the lock off. */
+    @Test
+    void schema_references_read_through_the_row_grammar() {
+        SchemaEntry schema = new SchemaEntry(
+                "apps/one",
+                "https://registry.example",
+                "orders-value",
+                3,
+                42,
+                "avro",
+                "sha256:" + "c".repeat(64),
+                List.of(
+                        new SchemaEntry.Ref("com.acme.Customer", "customer", 2),
+                        new SchemaEntry.Ref("com.acme.Line", "line", 1)));
+        String text = LockfileWriter.render(everyField().withSchemas(List.of(schema)));
+        Lockfile rows = LockfileReader.readRows(text, "<test>");
+        assertThat(rows.schemas()).containsExactly(schema);
+        assertThat(rows).isEqualTo(LockfileReader.readToml(text, "<test>"));
+    }
+
     @Test
     void the_row_grammar_decodes_every_escape_the_writer_and_toml_spell() {
         String text = """

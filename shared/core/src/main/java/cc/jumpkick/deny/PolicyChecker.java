@@ -77,13 +77,32 @@ public final class PolicyChecker {
                 .matches();
     }
 
-    private static String hostOf(String url) {
+    /** The host a URL connects to: no user info, port or IPv6 brackets, nor the root's trailing dot. */
+    static String hostOf(String url) {
         int scheme = url.indexOf("://");
         String rest = scheme >= 0 ? url.substring(scheme + 3) : url;
-        int slash = rest.indexOf('/');
-        String hostPort = slash >= 0 ? rest.substring(0, slash) : rest;
-        int colon = hostPort.indexOf(':');
-        return (colon >= 0 ? hostPort.substring(0, colon) : hostPort).toLowerCase(Locale.ROOT);
+        int end = rest.length();
+        for (char c : new char[] {'/', '?', '#'}) {
+            int at = rest.indexOf(c);
+            if (at >= 0 && at < end) end = at;
+        }
+        String authority = rest.substring(0, end);
+        String hostPort = authority.substring(authority.lastIndexOf('@') + 1);
+        String host;
+        if (hostPort.startsWith("[")) {
+            int close = hostPort.indexOf(']');
+            host = close > 0 ? hostPort.substring(1, close) : hostPort.substring(1);
+        } else {
+            int colon = hostPort.indexOf(':');
+            host = colon >= 0 ? hostPort.substring(0, colon) : hostPort;
+        }
+        return stripRootDot(host.toLowerCase(Locale.ROOT));
+    }
+
+    private static String stripRootDot(String host) {
+        String h = host;
+        while (h.endsWith(".")) h = h.substring(0, h.length() - 1);
+        return h;
     }
 
     /**
@@ -92,8 +111,8 @@ public final class PolicyChecker {
      */
     static boolean hostMatches(String host, String pattern) {
         if (host == null || host.isBlank() || pattern == null || pattern.isBlank()) return false;
-        String h = host.toLowerCase(Locale.ROOT);
-        String p = pattern.toLowerCase(Locale.ROOT);
+        String h = stripRootDot(host.toLowerCase(Locale.ROOT));
+        String p = stripRootDot(pattern.toLowerCase(Locale.ROOT));
         if (p.startsWith(".")) p = p.substring(1);
         if (h.equals(p)) return true;
         return h.endsWith("." + p);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,6 +10,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /** The packages a rewrite of {@code jk-lock.toml} added, removed or moved to another version. */
@@ -34,23 +36,52 @@ public final class LockDiff {
 
     /** Every changed row, ordered by coordinate; every row of {@code after} when {@code before} is null. */
     public static List<Change> between(@Nullable Lockfile before, Lockfile after) {
-        Map<Row, Lockfile.Artifact> old = byRow(before != null ? before.artifacts() : List.of());
-        Map<Row, Lockfile.Artifact> now = byRow(after.artifacts());
+        Map<Row, List<Lockfile.Artifact>> old = byRow(before != null ? before.artifacts() : List.of());
+        Map<Row, List<Lockfile.Artifact>> now = byRow(after.artifacts());
         List<Change> changes = new ArrayList<>();
         for (var e : now.entrySet()) {
-            Lockfile.Artifact was = old.get(e.getKey());
-            Lockfile.Artifact is = e.getValue();
-            if (was == null || !was.version().equals(is.version()))
-                changes.add(new Change(
-                        is.displayIdentity(), was == null ? null : was.version(), is.version(), is.members()));
+            List<Lockfile.Artifact> was = new ArrayList<>(old.getOrDefault(e.getKey(), List.of()));
+            List<Lockfile.Artifact> is = new ArrayList<>(e.getValue());
+            pair(was, is, changes);
         }
         for (var e : old.entrySet()) {
-            Lockfile.Artifact was = e.getValue();
-            if (!now.containsKey(e.getKey()))
+            if (now.containsKey(e.getKey())) continue;
+            for (Lockfile.Artifact was : e.getValue())
                 changes.add(new Change(was.displayIdentity(), was.version(), null, was.members()));
         }
         changes.sort(Comparator.comparing(Change::coordinate).thenComparing(c -> String.join(",", c.members())));
         return changes;
+    }
+
+    /**
+     * The changes between the rows of one coordinate before and after. A coordinate can hold a main
+     * row and a test row at another version; a version both sides hold is unchanged whichever row
+     * holds it, and the rest pair up in version order.
+     */
+    private static void pair(List<Lockfile.Artifact> was, List<Lockfile.Artifact> is, List<Change> changes) {
+        for (var it = is.iterator(); it.hasNext(); ) {
+            Lockfile.Artifact row = it.next();
+            for (var w = was.iterator(); w.hasNext(); ) {
+                if (w.next().version().equals(row.version())) {
+                    w.remove();
+                    it.remove();
+                    break;
+                }
+            }
+        }
+        Comparator<Lockfile.Artifact> byVersion = Comparator.comparing(Lockfile.Artifact::version, Versions::compare);
+        was.sort(byVersion);
+        is.sort(byVersion);
+        for (int i = 0; i < Math.max(was.size(), is.size()); i++) {
+            Lockfile.Artifact from = i < was.size() ? was.get(i) : null;
+            Lockfile.Artifact to = i < is.size() ? is.get(i) : null;
+            Lockfile.Artifact shown = to != null ? to : Objects.requireNonNull(from);
+            changes.add(new Change(
+                    shown.displayIdentity(),
+                    from == null ? null : from.version(),
+                    to == null ? null : to.version(),
+                    shown.members()));
+        }
     }
 
     /** The lockfile under {@code lockDir} as it stands now, or {@code null} when absent or unreadable. */
@@ -66,9 +97,11 @@ public final class LockDiff {
 
     private record Row(String name, List<String> members) {}
 
-    private static Map<Row, Lockfile.Artifact> byRow(List<Lockfile.Artifact> rows) {
-        Map<Row, Lockfile.Artifact> byRow = new LinkedHashMap<>();
-        for (Lockfile.Artifact a : rows) byRow.put(new Row(a.name(), a.members()), a);
+    private static Map<Row, List<Lockfile.Artifact>> byRow(List<Lockfile.Artifact> rows) {
+        Map<Row, List<Lockfile.Artifact>> byRow = new LinkedHashMap<>();
+        for (Lockfile.Artifact a : rows)
+            byRow.computeIfAbsent(new Row(a.name(), a.members()), k -> new ArrayList<>())
+                    .add(a);
         return byRow;
     }
 }
