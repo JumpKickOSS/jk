@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// The files pane's Preview half: markdown, mermaid, graphviz, asciidoc, d2 and images rendered
+// The files pane's Preview half: markdown, mermaid, graphviz, asciidoc and images rendered
 // into `previewHtml`. Every renderer's output goes through DOMPurify before it reaches the DOM,
 // and every async step re-checks `_previewGen` so a superseded render cannot paint over a newer
 // one. Spread into the code-view component's `methods`, so `this` is that component.
@@ -243,20 +243,6 @@ export const previewMethods = {
         const adoc = typeof Asciidoctor === 'function' ? Asciidoctor() : Asciidoctor;
         const html = adoc.convert(this.currentContent(), { safe: 'secure', attributes: { showtitle: true } });
         this.previewHtml = purify.sanitize(html, { FORBID_TAGS: PREVIEW_FORBID_TAGS });
-      } else if (kind === 'd2') {
-        // WASM-heavy; dynamic ESM from unpkg. CSP/wasm may reject — surface the error.
-        const mod = await import('https://unpkg.com/@terrastruct/d2@0.1.33/dist/index.js');
-        if (gen !== this._previewGen) return;
-        const D2 = mod.D2 || mod.default;
-        const d2 = new D2();
-        const result = await d2.compile(this.currentContent());
-        const rendered = await d2.render(result.diagram || result);
-        const purify = await ensureCdn('purify');
-        if (gen !== this._previewGen) return;
-        this.previewHtml =
-          '<div class="code-preview-diagram">' +
-          sanitizeDiagramSvg(purify, rendered) +
-          '</div>';
       } else {
         this.previewError = 'No preview for this file type';
       }

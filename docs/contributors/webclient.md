@@ -50,7 +50,7 @@ stopped providing.
 | `code.js` | `<code-view>`: the `#project/<id>/files` pane |
 | `fileviewer.js` | `<file-viewer>`: one workspace file read-only over the page, as an `edited N files` path opens it |
 | `monaco.js` | Monaco and the preview CDNs: version pins, SRI hashes, AMD parking, editor options |
-| `preview.js` | The Preview half: markdown, mermaid, graphviz, asciidoc, d2, images |
+| `preview.js` | The Preview half: markdown, mermaid, graphviz, asciidoc, images |
 | `paths.js` | Workspace paths: extension → language, previewable kinds, markdown href resolution |
 | `route.js` | The hash router: `#console/<session>`, `#project/<id>/files/<rel>?line=…` parsed and rendered |
 | `tree.js` | The file-tree model: flat paths → a directory-first render tree |
@@ -92,11 +92,12 @@ Vue (and ECharts for history sparks **and** the Project-page module dependency g
 the CDN, **version-pinned with an SRI `integrity` hash** — a CDN compromise must not be able to
 script a page that can trigger builds. When bumping a pin, update the `integrity` hash in
 `index.html` in the same change. Preview-only libraries (marked, DOMPurify, mermaid, viz-js,
-Asciidoctor; D2 via dynamic ESM) are pinned in `monaco.js` and load **only** when Preview is used —
+Asciidoctor) are pinned in `monaco.js` and load **only** when Preview is used —
 same unpkg origin, never self-hosted, and each with its `integrity` hash. marked and DOMPurify load as **ESM** so Preview never parks Monaco's AMD
 `define` (that race broke Monaco's on-demand markdown grammar: `define is not a function`); `import()` takes no
-integrity, so `importVerified` fetches them with it and imports the verified bytes from a `blob:` URL. D2 is the
-exception: a WASM bundle imported straight from unpkg, unverified. Document previews forbid `<style>`, `<link>`,
+integrity, so `importVerified` fetches them with it and imports the verified bytes from a `blob:` URL. Nothing is
+imported from a CDN unverified, which is why D2 has no preview: its WASM bundle loads more files relative to its
+own URL, which a `blob:` import cannot. Document previews forbid `<style>`, `<link>`,
 `<meta>`, `<base>` and `<form>`, so a repository's README cannot restyle the console around it.
 Mermaid / viz / asciidoctor still use classic UMD with a refcounted `define` park, and only when
 those diagram kinds are needed. There is no bundler and no npm build step: the shell ships as
@@ -392,7 +393,7 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   too large, concurrency). Saves send the load-time `etag`; a **409 file changed on disk** means
   another tab or process rewrote the file — reload to continue.
 - **Preview** is enabled for markdown, images, mermaid (`.mmd`/`.mermaid`), Graphviz (`.dot`/`.gv`),
-  AsciiDoc (`.adoc`/`.asciidoc`), and D2 (`.d2`). Renderers load **lazily from unpkg only** (never
+  and AsciiDoc (`.adoc`/`.asciidoc`). Renderers load **lazily from unpkg only** (never
   self-hosted); images use an auth-fetch → blob URL. Markdown also renders fenced
   ` ```mermaid ` blocks. Preview-eligible files open with Preview on by default (toggle to Source). The rendered
   pane sits above the editor; text buffers re-render on a short debounce while both are open.
@@ -401,8 +402,7 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   `referrerpolicy=no-referrer` and **no** `crossorigin` (setting CORS mode broke GitHub
   user-attachments and badges). Images are **inline** (badge rows stay on one line). Relative
   markdown links (`[Status](docs/contributors/architecture.md)`) rewrite to `#project/…/files/…` so they open
-  in the files pane; external links open in a new tab. D2 is WASM-heavy and may fail under CSP —
-  the pane shows the error rather than shipping a binary.
+  in the files pane; external links open in a new tab.
 
 Monaco **0.56.0** loads lazily from unpkg (AMD loader SRI-pinned; see the CDN section) only when
 `/files` is open, and renders a **light editor** in the built-in **Visual Studio Dark**

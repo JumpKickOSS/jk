@@ -22,7 +22,6 @@ const PREVIEW_KINDS = {
   '.gv': 'graphviz',
   '.adoc': 'asciidoc',
   '.asciidoc': 'asciidoc',
-  '.d2': 'd2',
 };
 
 export function previewKind(path) {
@@ -152,7 +151,7 @@ export function injectMermaidSvgs(html, svgs) {
 }
 
 /**
- * One DOMPurify chokepoint for renderer SVG (mermaid, graphviz, d2): SVG profile plus filters.
+ * One DOMPurify chokepoint for renderer SVG (mermaid, graphviz): SVG profile plus filters.
  * Renderer output derives from workspace source text — never inject it unsanitized.
  */
 export function sanitizeDiagramSvg(purify, svg) {

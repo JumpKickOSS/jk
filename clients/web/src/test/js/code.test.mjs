@@ -185,7 +185,7 @@ test('preview eligibility is extension-driven', () => {
   assert.equal(previewKind('docs/flow.mmd'), 'mermaid');
   assert.equal(previewKind('g.dot'), 'graphviz');
   assert.equal(previewKind('note.adoc'), 'asciidoc');
-  assert.equal(previewKind('box.d2'), 'd2');
+  assert.equal(previewKind('box.d2'), null, 'D2 has no preview: its renderer cannot load integrity-checked');
   assert.equal(previewKind('logo.webp'), 'image');
   assert.equal(isPreviewable('src/Main.java'), false);
   assert.equal(isImagePath('assets/a.png'), true);
