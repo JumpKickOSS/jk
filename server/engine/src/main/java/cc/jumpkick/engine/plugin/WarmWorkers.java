@@ -19,9 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
@@ -321,6 +319,55 @@ public final class WarmWorkers {
         }
     }
 
+    /**
+     * A worker's unread lines, at most {@code cap} of them: past that the oldest goes and is counted,
+     * so a worker that chatters while nothing reads it holds a bounded amount of engine memory.
+     */
+    static final class PendingLines {
+
+        /** Lines kept for a worker no run is reading. */
+        static final int CAP = 10_000;
+
+        private final int cap;
+        private final ArrayDeque<String> lines = new ArrayDeque<>();
+        private long dropped;
+
+        PendingLines(int cap) {
+            this.cap = cap;
+        }
+
+        synchronized void add(String line) {
+            if (lines.size() >= cap) {
+                lines.pollFirst();
+                dropped++;
+            }
+            lines.addLast(line);
+            notifyAll();
+        }
+
+        /** The oldest line, waiting up to {@code millis} for one; null when none came. */
+        synchronized @Nullable String poll(long millis, TimeUnit unit) throws InterruptedException {
+            long deadline = CLOCK.nanos() + unit.toNanos(millis);
+            while (lines.isEmpty()) {
+                long left = deadline - CLOCK.nanos();
+                if (left <= 0) return null;
+                TimeUnit.NANOSECONDS.timedWait(this, left);
+            }
+            return lines.pollFirst();
+        }
+
+        /** Lines dropped since the last call. */
+        synchronized long takeDropped() {
+            long n = dropped;
+            dropped = 0;
+            return n;
+        }
+
+        synchronized int size() {
+            return lines.size();
+        }
+    }
+
     /** One served worker process and the lines it has written that no run has read yet. */
     private static final class Worker {
         final String name;
@@ -331,7 +378,7 @@ public final class WarmWorkers {
 
         final Process process;
         private final WorkerCommands commands;
-        private final BlockingQueue<String> lines = new LinkedBlockingQueue<>();
+        private final PendingLines lines = new PendingLines(PendingLines.CAP);
 
         /** When its last run ended, on the monotonic clock. Guarded by {@link #IDLE}. */
         long lastUsedNanos = CLOCK.nanos();
@@ -362,8 +409,8 @@ public final class WarmWorkers {
             Thread.ofPlatform().daemon().name("jk-warm-worker-reader").start(() -> {
                 try {
                     String line;
-                    while ((line = out.readLine()) != null) lines.put(line);
-                } catch (IOException | InterruptedException e) {
+                    while ((line = out.readLine()) != null) lines.add(line);
+                } catch (IOException e) {
                     // The pipe is gone or the engine is stopping; EOF below tells the run either way.
                 } finally {
                     lines.add(EOF);
@@ -395,6 +442,11 @@ public final class WarmWorkers {
                         } else {
                             continue;
                         }
+                    }
+                    long dropped = lines.takeDropped();
+                    if (dropped > 0) {
+                        if (stale) Log.debug("warm worker " + process.pid() + " dropped " + dropped + " idle lines");
+                        else listener.output("(" + dropped + " lines of worker output dropped)");
                     }
                     if (EOF.equals(line)) return died();
                     int at = line.indexOf(prefix);
