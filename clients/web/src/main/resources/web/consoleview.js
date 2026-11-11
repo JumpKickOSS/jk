@@ -12,6 +12,7 @@ import {
   consolePaneState,
   episodeHeader,
   episodeTimeline,
+  fetchSessionDetail,
   foldEpisodeIntoRail,
   foldIntoDetail,
   foldSessionFrame,
@@ -163,7 +164,7 @@ export const consoleMethods = {
       return;
     }
     try {
-      const page = await this.fetchOnce('session:' + id, () => get('/api/sessions/' + encodeURIComponent(id)));
+      const page = await this.fetchOnce('session:' + id, () => fetchSessionDetail(get, id));
       if (id !== this.selectedSessionId) return;
       this.sessionDetail = page;
     } catch (e) {

@@ -499,3 +499,21 @@ test("the file viewer says why a file can't be shown", async () => {
   assert.match(viewerMessage({ status: 502 }), /HTTP 502/);
   assert.equal(viewerMessage(undefined), 'The file could not be read.');
 });
+
+test('the session page follows older pages until the first action', async () => {
+  const { fetchSessionDetail } = await spa('console.js');
+  const pages = {
+    '': { session: { id: 's' }, episodes: [], actions: [{ seq: 3 }, { seq: 4 }], next: 3 },
+    3: { session: { id: 's' }, episodes: [], actions: [{ seq: 1 }, { seq: 2 }], next: null },
+  };
+  const asked = [];
+  const get = async (url) => {
+    asked.push(url);
+    const before = new URL(url, 'http://x').searchParams.get('before') ?? '';
+    return pages[before];
+  };
+  const detail = await fetchSessionDetail(get, 's', 2);
+  assert.deepEqual(detail.actions.map((a) => a.seq), [1, 2, 3, 4]);
+  assert.equal(detail.next, null);
+  assert.equal(asked.length, 2);
+});

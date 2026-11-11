@@ -582,3 +582,25 @@ export function projectSessionRows(sessions, details, projectId) {
   rows.sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
   return rows;
 }
+
+/** Most actions the session page holds: past it the oldest are left on the engine. */
+export const SESSION_ACTIONS_MAX = 20000;
+
+/**
+ * One session's detail with every action, oldest first: the engine answers a page at a time and
+ * names the older page's cursor in `next`, so a session past one page was cut to its newest actions
+ * and its counts and timeline undercounted. Pages are fetched until none is older or the cap is met.
+ */
+export async function fetchSessionDetail(get, id, pageSize = 1000) {
+  const base = '/api/sessions/' + encodeURIComponent(id);
+  const first = await get(base + '?limit=' + pageSize);
+  let actions = first.actions || [];
+  let next = first.next;
+  while (next != null && actions.length < SESSION_ACTIONS_MAX) {
+    const older = await get(base + '?limit=' + pageSize + '&before=' + encodeURIComponent(next));
+    actions = (older.actions || []).concat(actions);
+    if (older.next === next) break;
+    next = older.next;
+  }
+  return { ...first, actions, next: next ?? null };
+}
