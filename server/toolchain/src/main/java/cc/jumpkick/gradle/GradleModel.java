@@ -356,8 +356,8 @@ record GradleModel(
         List<Project> projects = new ArrayList<>();
         for (String p : Jsonl.objectArray(json, PROJECTS)) projects.add(parseProject(p));
         return new GradleModel(
-                Jsonl.topStr(json, GRADLE) == null ? "" : Jsonl.requiredStr(json, GRADLE),
-                Jsonl.topStr(json, ROOT_NAME) == null ? "" : Jsonl.requiredStr(json, ROOT_NAME),
+                Jsonl.str(json, GRADLE) == null ? "" : Jsonl.requiredStr(json, GRADLE),
+                Jsonl.str(json, ROOT_NAME) == null ? "" : Jsonl.requiredStr(json, ROOT_NAME),
                 repositories(json, SETTINGS_REPOSITORIES),
                 projects);
     }
@@ -375,9 +375,9 @@ record GradleModel(
                             ? null
                             : new Credential(
                                     str(c, KIND),
-                                    Jsonl.topStr(c, SECRET_ENV),
-                                    Jsonl.topStr(c, USERNAME_ENV),
-                                    Jsonl.topStr(c, USERNAME)),
+                                    Jsonl.str(c, SECRET_ENV),
+                                    Jsonl.str(c, USERNAME_ENV),
+                                    Jsonl.str(c, USERNAME)),
                     Jsonl.bool(r, RELEASES, true),
                     Jsonl.bool(r, SNAPSHOTS, true)));
         }
@@ -405,11 +405,11 @@ record GradleModel(
             tasks.add(new Task(str(t, "name"), str(t, "type"), str(t, "group")));
         List<RelocationRules.Relocation> relocations = new ArrayList<>();
         for (String r : Jsonl.objectArray(p, RELOCATIONS)) {
-            String pattern = Jsonl.topStr(r, "pattern");
+            String pattern = Jsonl.str(r, "pattern");
             if (pattern == null) continue;
             relocations.add(new RelocationRules.Relocation(
                     pattern,
-                    Jsonl.topStr(r, SHADED_PATTERN),
+                    Jsonl.str(r, SHADED_PATTERN),
                     Jsonl.bool(r, RAW_STRING, false),
                     Jsonl.strArray(r, INCLUDES),
                     Jsonl.strArray(r, EXCLUDES)));
@@ -422,18 +422,18 @@ record GradleModel(
                     str(pub, NAME),
                     str(pub, GROUP_ID),
                     str(pub, ARTIFACT_ID),
-                    Jsonl.topStr(pub, POM_NAME),
-                    Jsonl.topStr(pub, POM_DESCRIPTION),
-                    Jsonl.topStr(pub, POM_URL)));
+                    Jsonl.str(pub, POM_NAME),
+                    Jsonl.str(pub, POM_DESCRIPTION),
+                    Jsonl.str(pub, POM_URL)));
         }
         String javaJson = Jsonl.nested(p, JAVA);
         Java java = javaJson == null
                 ? null
                 : new Java(
                         Jsonl.intValue(javaJson, TOOLCHAIN, 0),
-                        Jsonl.topStr(javaJson, VENDOR),
-                        major(Jsonl.topStr(javaJson, SOURCE_COMPATIBILITY)),
-                        major(Jsonl.topStr(javaJson, TARGET_COMPATIBILITY)),
+                        Jsonl.str(javaJson, VENDOR),
+                        major(Jsonl.str(javaJson, SOURCE_COMPATIBILITY)),
+                        major(Jsonl.str(javaJson, TARGET_COMPATIBILITY)),
                         Jsonl.intValue(javaJson, RELEASE, 0));
         return new Project(
                 str(p, "path"),
@@ -441,21 +441,21 @@ record GradleModel(
                 str(p, "dir"),
                 str(p, "group"),
                 str(p, "version"),
-                Jsonl.topStr(p, DESCRIPTION),
+                Jsonl.str(p, DESCRIPTION),
                 Jsonl.strArray(p, PLUGINS),
                 Jsonl.strArray(p, PLUGIN_CLASSES),
                 Jsonl.strMap(p, PLUGIN_VERSIONS),
                 java,
-                Jsonl.topStr(p, KOTLIN_VERSION),
-                major(Jsonl.topStr(p, KOTLIN_JVM_TARGET)),
-                Jsonl.topStr(p, MAIN_CLASS),
+                Jsonl.str(p, KOTLIN_VERSION),
+                major(Jsonl.str(p, KOTLIN_JVM_TARGET)),
+                Jsonl.str(p, MAIN_CLASS),
                 Jsonl.bool(p, BOOT_BUILD_INFO, false),
                 Jsonl.strMap(p, MANIFEST),
                 repositories(p, REPOSITORIES),
                 sourceSets,
                 configurations,
                 Jsonl.strMap(p, MANAGED_VERSIONS),
-                Jsonl.topStr(p, SPRING_BOOT_BOM),
+                Jsonl.str(p, SPRING_BOOT_BOM),
                 Jsonl.strArray(p, IMPORTED_BOMS),
                 tasks,
                 relocations,
@@ -471,7 +471,7 @@ record GradleModel(
                 testJson == null
                         ? null
                         : new TestTask(Jsonl.strMap(testJson, SYSTEM_PROPERTIES), Jsonl.strArray(testJson, JVM_ARGS)),
-                Jsonl.topStr(p, ARCHIVES_NAME),
+                Jsonl.str(p, ARCHIVES_NAME),
                 publications,
                 ruled(Jsonl.nested(p, RULED)),
                 producers(Jsonl.nested(p, PRODUCERS)),
@@ -483,10 +483,10 @@ record GradleModel(
         List<AsyncApiSpec> out = new ArrayList<>();
         for (String s : Jsonl.objectArray(project, "asyncApiSpecs")) {
             out.add(new AsyncApiSpec(
-                    Jsonl.topStr(s, "specPath"),
+                    Jsonl.str(s, "specPath"),
                     Jsonl.strArray(s, "modelPackages"),
                     Jsonl.bool(s, "generatesCode", false),
-                    Jsonl.topStr(s, "specArtifact")));
+                    Jsonl.str(s, "specArtifact")));
         }
         return out;
     }
@@ -500,10 +500,10 @@ record GradleModel(
                     str(s, "subject"), version > 0 ? version : null, Jsonl.bool(s, "regex", false), str(s, "output")));
         }
         return new SchemaRegistry(
-                Jsonl.topStr(json, "url"),
+                Jsonl.str(json, "url"),
                 Jsonl.bool(json, "auth", false),
-                Jsonl.topStr(json, "usernameEnv"),
-                Jsonl.topStr(json, "passwordEnv"),
+                Jsonl.str(json, "usernameEnv"),
+                Jsonl.str(json, "passwordEnv"),
                 subjects,
                 Jsonl.bool(json, "registers", false));
     }
@@ -534,15 +534,15 @@ record GradleModel(
     private static @Nullable Xjc xjc(@Nullable String json) {
         if (json == null) return null;
         return new Xjc(
-                Jsonl.topStr(json, "xsdDir"),
-                Jsonl.topStr(json, "defaultPackage"),
+                Jsonl.str(json, "xsdDir"),
+                Jsonl.str(json, "defaultPackage"),
                 Jsonl.strArray(json, "bindingFiles"),
                 Jsonl.strArray(json, "options"));
     }
 
     private static @Nullable Avro avro(@Nullable String json) {
         if (json == null) return null;
-        return new Avro(Jsonl.strArray(json, AVRO_SOURCES), Jsonl.topStr(json, AVRO_BUILD_DIR));
+        return new Avro(Jsonl.strArray(json, AVRO_SOURCES), Jsonl.str(json, AVRO_BUILD_DIR));
     }
 
     /** Per plugin id, each read property's value as the init script wrote it. */
@@ -575,22 +575,22 @@ record GradleModel(
                 str(d, "group"),
                 str(d, "artifact"),
                 str(d, "version"),
-                Jsonl.topStr(d, STRICT),
-                Jsonl.topStr(d, REQUIRED),
-                Jsonl.topStr(d, PREFER),
-                Jsonl.topStr(d, CATEGORY),
+                Jsonl.str(d, STRICT),
+                Jsonl.str(d, REQUIRED),
+                Jsonl.str(d, PREFER),
+                Jsonl.str(d, CATEGORY),
                 Jsonl.bool(d, INTRANSITIVE, false),
                 Jsonl.strArray(d, EXCLUDES),
-                Jsonl.topStr(d, CLASSIFIER),
-                Jsonl.topStr(d, TYPE),
-                Jsonl.topStr(d, PROJECT_PATH),
+                Jsonl.str(d, CLASSIFIER),
+                Jsonl.str(d, TYPE),
+                Jsonl.str(d, PROJECT_PATH),
                 Jsonl.bool(d, FIXTURES, false),
                 Jsonl.strArray(d, FILES),
-                Jsonl.topStr(d, TEXT));
+                Jsonl.str(d, TEXT));
     }
 
     private static String str(String json, String key) {
-        String v = Jsonl.topStr(json, key);
+        String v = Jsonl.str(json, key);
         return v == null ? "" : v;
     }
 

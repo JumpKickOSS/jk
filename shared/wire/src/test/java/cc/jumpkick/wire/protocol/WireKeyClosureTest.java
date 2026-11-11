@@ -173,8 +173,8 @@ class WireKeyClosureTest {
 
     // ---- scanning ------------------------------------------------------------------------------
 
-    private static final Pattern READER = Pattern.compile(
-            "Jsonl\\.(?:str|topStr|intValue|longValue|doubleValue|bool|has|strArray|nested|strMap)\\s*\\(");
+    private static final Pattern READER =
+            Pattern.compile("Jsonl\\.(?:str|intValue|longValue|doubleValue|bool|has|strArray|nested|strMap)\\s*\\(");
 
     private static final Pattern JSON_KEY_LITERAL = Pattern.compile("\\\\\"([^\"\\\\]+)\\\\\"\\s*:");
 

@@ -420,7 +420,7 @@ public final class ProjectBuilds {
             }
             Path record = runDir.resolve(RECORD);
             if (Files.isRegularFile(record)) {
-                String dir = Jsonl.topStr(recordHead(record), "dir");
+                String dir = Jsonl.str(recordHead(record), "dir");
                 if (dir != null && !dir.isBlank()) return Path.of(dir);
             }
             return null;

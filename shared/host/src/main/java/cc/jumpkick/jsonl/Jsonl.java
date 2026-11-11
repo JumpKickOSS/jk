@@ -12,6 +12,9 @@ import org.jspecify.annotations.Nullable;
  * Dependency-free JSONL field codec for engine and plugin wire lines: readers return defaults on missing/bad
  * fields; {@link #quote} is the writer half and {@link #append} the one splicer. Tree documents use
  * sibling {@link MiniJson}.
+ *
+ * <p>Every reader looks up a field of the root object only. A field of a nested object is read by
+ * its path: {@code str(nested(json, "throwable"), "class")}.
  */
 public final class Jsonl {
 
@@ -19,11 +22,11 @@ public final class Jsonl {
 
     /**
      * Extract a JSON string field value, handling basic escape sequences ({@code \"}, {@code \\},
-     * {@code \n}, {@code \r}, {@code \t}). Returns {@code null} when the key is absent or the
-     * string never closes (a cut-off line yields nothing, not its prefix).
+     * {@code \n}, {@code \r}, {@code \t}). Returns {@code null} when the root object has no such
+     * field or the string never closes (a cut-off line yields nothing, not its prefix).
      */
     public static @Nullable String str(@Nullable String json, String key) {
-        return strAt(json, indexOfKey(json, key, false), key == null ? 0 : key.length());
+        return strAt(json, indexOfKey(json, key), key == null ? 0 : key.length());
     }
 
     /**
@@ -35,14 +38,6 @@ public final class Jsonl {
         String value = str(json, key);
         if (value == null) throw new IllegalArgumentException("missing string field \"" + key + "\"");
         return value;
-    }
-
-    /**
-     * Like {@link #str} but only the root object's field — not a nested {@code throwable.class}
-     * (or any other nested object).
-     */
-    public static @Nullable String topStr(@Nullable String json, String key) {
-        return strAt(json, indexOfKey(json, key, true), key == null ? 0 : key.length());
     }
 
     private static @Nullable String strAt(@Nullable String json, int keyAt, int keyLen) {
@@ -114,17 +109,14 @@ public final class Jsonl {
     }
 
     /**
-     * Index of {@code "key"} that starts a field. A field of the root object (depth 1) wins over
-     * one nested anywhere before it, so a nested object carrying the same key never shadows the
-     * top-level field. Without {@code topLevelOnly}, a key found only in a nested object is the
-     * answer; with it, the match must sit in the root object, so {@code throwable.class} does not
-     * stand in for a missing top-level {@code class}.
+     * Index of {@code "key"} that starts a field of the root object (depth 1), or {@code -1}. A key
+     * of a nested object is never the answer, so {@code throwable.class} does not stand in for a
+     * missing top-level {@code class}.
      */
-    static int indexOfKey(@Nullable String json, @Nullable String key, boolean topLevelOnly) {
+    static int indexOfKey(@Nullable String json, @Nullable String key) {
         if (json == null || key == null) return -1;
         int keyLen = key.length();
         int depth = 0;
-        int nestedAt = -1;
         boolean inString = false;
         for (int i = 0; i < json.length(); i++) {
             char c = json.charAt(i);
@@ -137,18 +129,13 @@ public final class Jsonl {
                 continue;
             }
             if (c == '"') {
-                boolean atRoot = depth == 1;
-                boolean wanted = atRoot || (!topLevelOnly && nestedAt < 0);
-                if (wanted
+                if (depth == 1
                         && i + 1 + keyLen < json.length()
                         && json.regionMatches(i + 1, key, 0, keyLen)
                         && json.charAt(i + 1 + keyLen) == '"') {
                     int after = i + keyLen + 2;
                     while (after < json.length() && Character.isWhitespace(json.charAt(after))) after++;
-                    if (after < json.length() && json.charAt(after) == ':') {
-                        if (atRoot) return i;
-                        nestedAt = i;
-                    }
+                    if (after < json.length() && json.charAt(after) == ':') return i;
                 }
                 inString = true;
                 continue;
@@ -156,7 +143,7 @@ public final class Jsonl {
             if (c == '{' || c == '[') depth++;
             else if ((c == '}' || c == ']') && depth > 0) depth--;
         }
-        return nestedAt;
+        return -1;
     }
 
     /**
@@ -166,7 +153,7 @@ public final class Jsonl {
      * pretty-printed {@code "key" : value} is a field.
      */
     private static int valueStart(@Nullable String json, String key) {
-        int keyAt = indexOfKey(json, key, false);
+        int keyAt = indexOfKey(json, key);
         if (json == null || keyAt < 0) return -1;
         int colon = json.indexOf(':', keyAt + key.length() + 2);
         if (colon < 0) return -1;
@@ -245,7 +232,7 @@ public final class Jsonl {
 
     /** Returns {@code true} when {@code key} is a field of {@code json}, whatever its value. */
     public static boolean has(@Nullable String json, String key) {
-        return indexOfKey(json, key, false) >= 0;
+        return indexOfKey(json, key) >= 0;
     }
 
     /**

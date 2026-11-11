@@ -34,7 +34,7 @@ class DiagnosticClassSpellingTest {
                 "java.lang.AssertionError",
                 "at cc.jumpkick.FooTest.bar(FooTest.java:9)");
 
-        assertThat(Jsonl.topStr(line, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
+        assertThat(Jsonl.str(line, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
         assertThat(line).doesNotContain("\"class\":");
     }
 
@@ -52,7 +52,7 @@ class DiagnosticClassSpellingTest {
                 "java.lang.AssertionError",
                 "");
 
-        assertThat(Jsonl.topStr(line, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
+        assertThat(Jsonl.str(line, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
         assertThat(line).doesNotContain("\"class\":");
     }
 }

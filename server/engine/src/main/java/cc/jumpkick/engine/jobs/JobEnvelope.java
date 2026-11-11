@@ -250,7 +250,7 @@ public final class JobEnvelope {
         // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
         // startup env is not the client's. Opened only once admitted: no path retires a refused id.
         host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
-        String leader = Jsonl.topStr(requestLine, "sessionLeader");
+        String leader = Jsonl.str(requestLine, "sessionLeader");
         if (leader != null && !leader.isBlank()) host.sessionLeader(trigger, session, leader);
         host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
         host.registerAccumulator(

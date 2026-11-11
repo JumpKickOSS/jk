@@ -428,13 +428,13 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                 .contains("\"dir\":\"" + json(b) + "\"")
                 .contains("\"lastBuilt\":")
                 .doesNotContain("\"coord\":\"g:n\",\"dir\"");
-        assertThat(Jsonl.topStr(listing.body(), "dir"))
+        assertThat(Jsonl.str(listing.body(), "dir"))
                 .as("no checkout is implied")
                 .isNull();
 
         HttpResponse<String> card = get("/api/project?project=" + id + "&dir=" + encDir(b));
         assertThat(card.statusCode()).isEqualTo(200);
-        assertThat(Jsonl.topStr(card.body(), "dir")).isEqualTo(b.toString());
+        assertThat(Jsonl.str(card.body(), "dir")).isEqualTo(b.toString());
         assertThat(card.body()).contains("\"coord\":\"g:n\"").contains("\"checkouts\":[");
 
         HttpResponse<String> files = get("/api/project/dir?project=" + id);
@@ -477,14 +477,13 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                 + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagB
                 + "\"}");
         assertThat(saved.statusCode()).isEqualTo(200);
-        assertThat(Jsonl.topStr(saved.body(), "dir")).isEqualTo(b.toString());
+        assertThat(Jsonl.str(saved.body(), "dir")).isEqualTo(b.toString());
         assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b2; }\n");
         assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
 
         // One worktree deleted: the id implies the other again, selector or not.
         PathUtil.deleteRecursively(a);
-        assertThat(Jsonl.topStr(get("/api/project?project=" + id).body(), "dir"))
-                .isEqualTo(b.toString());
+        assertThat(Jsonl.str(get("/api/project?project=" + id).body(), "dir")).isEqualTo(b.toString());
         assertThat(get("/api/project/dir?project=" + id).statusCode()).isEqualTo(200);
     }
 

@@ -32,7 +32,6 @@ class JsonlTest {
     void anUnterminatedStringIsAbsentNotItsPrefix() {
         String cut = "{\"dir\":\"/home/u/proj";
         assertThat(Jsonl.str(cut, "dir")).isNull();
-        assertThat(Jsonl.topStr(cut, "dir")).isNull();
         assertThat(Jsonl.str(cut + "\\", "dir")).isNull();
         assertThat(Jsonl.str(cut + "\"}", "dir")).isEqualTo("/home/u/proj");
     }
@@ -82,11 +81,10 @@ class JsonlTest {
         assertThat(Jsonl.str(nested, "class")).isEqualTo("E");
         assertThat(Jsonl.str(nested, "message")).isEqualTo("boom {x}");
         // Nested throwable.class must not be read as the top-level test class.
-        assertThat(Jsonl.topStr(json, "class")).isNull();
-        assertThat(Jsonl.str(json, "class")).isEqualTo("E");
+        assertThat(Jsonl.str(json, "class")).isNull();
         String withClass = "{\"class\":\"pkg.Foo\",\"throwable\":{\"class\":\"AssertionError\",\"message\":\"x\"}}";
-        assertThat(Jsonl.topStr(withClass, "class")).isEqualTo("pkg.Foo");
-        assertThat(Jsonl.topStr(withClass, "testClass")).isNull();
+        assertThat(Jsonl.str(withClass, "class")).isEqualTo("pkg.Foo");
+        assertThat(Jsonl.str(withClass, "testClass")).isNull();
     }
 
     @Test
@@ -112,7 +110,6 @@ class JsonlTest {
         assertThat(quoted).contains("\\u001b").contains("\\u000b").contains("\\u0007");
 
         assertThat(Jsonl.str("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
-        assertThat(Jsonl.topStr("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
         assertThat(Jsonl.strArray("{\"a\":[" + quoted + "]}", "a")).containsExactly(raw);
         assertThat(Jsonl.strMap("{\"m\":{\"k\":" + quoted + "}}", "m")).containsEntry("k", raw);
 
@@ -215,8 +212,22 @@ class JsonlTest {
         assertThat(Jsonl.intValue(json, "code", -1)).isEqualTo(3);
         assertThat(Jsonl.bool(json, "ok", false)).isTrue();
         assertThat(Jsonl.strArray(json, "tags")).containsExactly("y");
-        assertThat(Jsonl.str("{\"detail\":{\"only\":\"in\"}}", "only"))
-                .as("a key only a nested object carries still reads")
-                .isEqualTo("in");
+    }
+
+    @Test
+    void a_key_only_a_nested_object_carries_is_absent_and_reads_by_its_path() {
+        String json = "{\"detail\":{\"only\":\"in\",\"n\":7,\"ok\":true,\"tags\":[\"x\"],\"inner\":{\"k\":1}},"
+                + "\"rows\":[{\"only\":\"row\"}]}";
+        assertThat(Jsonl.str(json, "only")).isNull();
+        assertThat(Jsonl.intValue(json, "n", -1)).isEqualTo(-1);
+        assertThat(Jsonl.bool(json, "ok", false)).isFalse();
+        assertThat(Jsonl.has(json, "ok")).isFalse();
+        assertThat(Jsonl.strArray(json, "tags")).isEmpty();
+        assertThat(Jsonl.nested(json, "inner")).isNull();
+
+        String detail = Jsonl.nested(json, "detail");
+        assertThat(Jsonl.str(detail, "only")).isEqualTo("in");
+        assertThat(Jsonl.intValue(detail, "n", -1)).isEqualTo(7);
+        assertThat(Jsonl.nested(detail, "inner")).isEqualTo("{\"k\":1}");
     }
 }

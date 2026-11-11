@@ -69,7 +69,7 @@ public record ClassFinishEvent(String dir, String task, TestClassResult result) 
 
     /** The {@code tier} of a class-finish line; empty when it names none. */
     public static String tier(String json) {
-        String tier = Jsonl.topStr(json, "tier");
+        String tier = Jsonl.str(json, "tier");
         return tier == null ? "" : tier;
     }
 }

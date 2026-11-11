@@ -39,7 +39,7 @@ class ErrorEventJsonTest {
 
         String json = SsePublisher.errorEventJson(7L, "/w", d).toString();
 
-        assertThat(Jsonl.topStr(json, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
+        assertThat(Jsonl.str(json, EngineProtocol.TEST_CLASS_FIELD)).isEqualTo("cc.jumpkick.FooTest");
         assertThat(json).doesNotContain("\"class\":");
         assertThat(Jsonl.str(json, "task")).isEqualTo("run-tests");
         assertThat(Jsonl.str(json, "method")).isEqualTo("bar()");

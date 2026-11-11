@@ -562,12 +562,12 @@ final class HttpProjectApi {
         // write cap can escape past 3x.
         int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
         String body = HttpRequests.body(exchange, maxBody);
-        String projectId = Jsonl.topStr(body, "project");
-        String path = Jsonl.topStr(body, "path");
-        String content = Jsonl.topStr(body, "content");
-        String etag = Jsonl.topStr(body, "etag");
-        String encoding = Jsonl.topStr(body, "encoding");
-        String dir = Jsonl.topStr(body, "dir");
+        String projectId = Jsonl.str(body, "project");
+        String path = Jsonl.str(body, "path");
+        String content = Jsonl.str(body, "content");
+        String etag = Jsonl.str(body, "etag");
+        String encoding = Jsonl.str(body, "encoding");
+        String dir = Jsonl.str(body, "dir");
         if (projectId == null || projectId.isBlank()) {
             HttpResponses.sendJson(
                     exchange,
