@@ -6,6 +6,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.ToolUse;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -53,6 +55,9 @@ final class KtsHostJar {
 
     private static final String SOURCE_RESOURCE = "/cc/jumpkick/runtime/JkKtsHost.kt";
     private static final String JAR_NAME = "jk-kts-host.jar";
+
+    /** How long compiling the host may take before it is killed. */
+    private static final Duration COMPILE_TIMEOUT = Duration.ofMinutes(10);
 
     private KtsHostJar() {}
 
@@ -140,10 +145,14 @@ final class KtsHostJar {
             cmd.add(src.toString());
             ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
             pb.redirectErrorStream(true);
-            Process p = JobWorkers.start(pb);
-            String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (p.waitFor() != 0) {
-                throw new IllegalStateException("[build] logic: compiling the .kts host failed:\n" + log.strip());
+            Processes.Captured c = Processes.capture(JobWorkers.start(pb), COMPILE_TIMEOUT);
+            if (c.timedOut()) {
+                throw new IllegalStateException(
+                        "[build] logic: compiling the .kts host took over " + COMPILE_TIMEOUT.toMinutes() + " minutes");
+            }
+            if (c.exit() != 0) {
+                throw new IllegalStateException("[build] logic: compiling the .kts host failed:\n"
+                        + c.output().strip());
             }
             // A racing call that finished first left the same bytes; its jar is as good as this one.
             if (!(Files.isRegularFile(jar) && Files.size(jar) > 0)) {

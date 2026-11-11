@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
@@ -26,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -384,16 +386,12 @@ public final class SelectiveCommand implements CliCommand {
     }
 
     private static @Nullable String gitRevParse(Path root) {
-        try {
-            Process p = new ProcessBuilder("git", "rev-parse", "HEAD")
-                    .directory(root.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            return p.waitFor() == 0 ? out : null;
-        } catch (Exception e) {
-            return null;
-        }
+        String out = Processes.outputIfOk(
+                new ProcessBuilder("git", "rev-parse", "HEAD")
+                        .directory(root.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofSeconds(30));
+        return out == null ? null : out.trim();
     }
 
     /**

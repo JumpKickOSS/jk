@@ -195,6 +195,50 @@ final class HouseRules {
         return code.substring(open + 1);
     }
 
+    private static final String PROCESSES = "shared/host/src/main/java/cc/jumpkick/host/Processes.java";
+    private static final Pattern PROCESS_TYPE = Pattern.compile("\\b(?:Process|ProcessBuilder)\\b");
+    private static final String READ_TO_END = "\\s*\\.(?:readAllBytes|readNBytes)\\(";
+    private static final Pattern PIPE_READ_CHAINED =
+            Pattern.compile("\\.(?:getInputStream|getErrorStream)\\(\\s*\\)" + READ_TO_END);
+    private static final Pattern PIPE_STREAM_VAR =
+            Pattern.compile("\\b(\\w+)\\s*=\\s*[\\w.]*\\.(?:getInputStream|getErrorStream)\\(\\s*\\)");
+
+    @Guard(
+            id = "process-output-owner",
+            why =
+                    "reading a child's pipe to its end blocks until every holder of the pipe closes it, so a timeout waited on afterwards never starts and a child that keeps its pipe open hangs the caller",
+            instead =
+                    "cc.jumpkick.host.Processes.capture(command | builder | process, timeout), or outputIfOk for a probe: it drains on platform threads and kills the tree at the deadline")
+    @Fixture("server/guard/fixtures/process-output-owner")
+    @Allow(
+            in = "plugins/asyncapi/src/main/java/cc/jumpkick/asyncapi/Protoc.java",
+            reason =
+                    "runs inside a generator step's forked JVM, which carries nothing of jk's, so Processes is not on its classpath; protoc's merged output is read to its end and waited for without a deadline")
+    void processOutputOwner(Text text, Violations v) {
+        owner(text, PROCESSES);
+        long files = 0;
+        for (String rel : text.files(MAIN_JAVA)) {
+            if (rel.equals(PROCESSES)) continue;
+            files++;
+            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+            if (!PROCESS_TYPE.matcher(code).find()) continue;
+            Set<String> streams = new LinkedHashSet<>();
+            Matcher var = PIPE_STREAM_VAR.matcher(code);
+            while (var.find()) streams.add(var.group(1));
+            List<Pattern> reads = new ArrayList<>(List.of(PIPE_READ_CHAINED));
+            for (String s : streams) reads.add(Pattern.compile("\\b" + Pattern.quote(s) + READ_TO_END));
+            for (Pattern read : reads) {
+                Matcher m = read.matcher(code);
+                while (m.find()) {
+                    v.add(
+                            new TextSite(rel, lineOf(code, m.start()), m.group().strip()),
+                            "reads a Process pipe to its end outside Processes");
+                }
+            }
+        }
+        v.population(files);
+    }
+
     @Guard(
             id = "single-truth-set",
             why =

@@ -358,7 +358,7 @@ class DecisionAlertsTest {
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void output_larger_than_the_pipe_buffer_is_read_whole() {
         String out =
-                new DecisionAlerts.Processes().output(List.of("sh", "-c", "head -c 200000 /dev/zero | tr '\\0' x"));
+                new DecisionAlerts.RealLauncher().output(List.of("sh", "-c", "head -c 200000 /dev/zero | tr '\\0' x"));
         assertThat(out).hasSize(200_000);
     }
 }

@@ -5,17 +5,17 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -76,16 +76,11 @@ public final class NodeVerifyCommand implements CliCommand {
         Path node = home.node();
         if (!Files.isRegularFile(node)) return "no " + node.getFileName() + " under " + home.home();
         if (!PathUtil.isRunnable(node)) return node + " is not executable";
-        Process p = new ProcessBuilder(node.toString(), "--version")
-                .redirectErrorStream(true)
-                .start();
-        if (!p.waitFor(30, TimeUnit.SECONDS)) {
-            p.destroyForcibly();
-            return node + " --version did not answer";
-        }
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        Processes.Captured c = Processes.capture(List.of(node.toString(), "--version"), Duration.ofSeconds(30));
+        if (c.timedOut()) return node + " --version did not answer";
+        String out = c.output().trim();
         String reported = out.startsWith("v") ? out.substring(1) : out;
-        if (p.exitValue() != 0) return node + " --version exited " + p.exitValue();
+        if (c.exit() != 0) return node + " --version exited " + c.exit();
         return reported.equals(home.version()) ? null : "reports " + out + ", not " + home.version();
     }
 }

@@ -10,6 +10,7 @@ import cc.jumpkick.host.ClassPathJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -18,10 +19,10 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -205,11 +206,8 @@ public final class AotCachePackage {
 
     /** {@code java -version}'s VM line — the identity the cache is keyed to. */
     private static String jvmIdentity(String java) throws IOException, InterruptedException {
-        Process p = new ProcessBuilder(List.of(java, "-version"))
-                .redirectErrorStream(true)
-                .start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        p.waitFor(30, TimeUnit.SECONDS);
+        String out = Processes.capture(List.of(java, "-version"), Duration.ofSeconds(30))
+                .output();
         for (String line : out.split("\n")) {
             if (line.contains("Server VM") || line.contains("Client VM")) return line.trim();
         }

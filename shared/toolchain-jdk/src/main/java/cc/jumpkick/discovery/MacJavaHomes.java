@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -19,7 +20,8 @@ final class MacJavaHomes {
     /** Run {@code java_home -V}; empty when the tool is absent, fails, or times out. */
     static List<Path> list() {
         if (!PathUtil.isRunnable(JAVA_HOME_TOOL)) return List.of();
-        String out = ToolOutput.run(List.of(JAVA_HOME_TOOL.toString(), "-V"), Duration.ofSeconds(TIMEOUT_SECONDS));
+        String out =
+                Processes.outputIfOk(List.of(JAVA_HOME_TOOL.toString(), "-V"), Duration.ofSeconds(TIMEOUT_SECONDS));
         return out == null ? List.of() : parse(out);
     }
 

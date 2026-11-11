@@ -5,15 +5,16 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.w3c.dom.Element;
@@ -26,6 +27,9 @@ import org.w3c.dom.Element;
  * so the version is not a lock's business — and live in the CAS like any other fetched artifact.
  */
 final class CoverageTools {
+
+    /** How long one JaCoCo report may take before it is killed. */
+    private static final Duration REPORT_TIMEOUT = Duration.ofMinutes(30);
 
     /** The agent and the CLI of one JaCoCo release. */
     record Jacoco(String version, Path agentJar, Path cliJar) {}
@@ -120,11 +124,9 @@ final class CoverageTools {
                                 reportCommand(javaHome, tools.cliJar(), exec, classDirs, sourceDirs, xml, html, name)),
                         javaHome)
                 .redirectErrorStream(true));
-        String output;
-        try (var in = process.getInputStream()) {
-            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-        int exit = process.waitFor();
+        Processes.Captured c = Processes.capture(process, REPORT_TIMEOUT);
+        int exit = c.exit();
+        String output = c.timedOut() ? "timed out after " + REPORT_TIMEOUT.toMinutes() + " minutes" : c.output();
         if (exit != 0 || !Files.isRegularFile(xml)) {
             throw new IOException("jacoco report "
                     + WorkerContainment.failure(exit, "exited " + exit)

@@ -16,6 +16,7 @@ import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
+import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.GlyphProbe;
 import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.watch.ProcessTrees;
@@ -33,6 +34,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
@@ -56,6 +58,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -788,6 +791,8 @@ public final class SelfCommand extends GroupCommand {
          * Inflate {@code xz} by launching {@code EngineMain --inflate-xz} on the just-downloaded
          * engine jar (or the running version's jar). tukaani stays out of the native image.
          */
+        private static final Duration INFLATE_TIMEOUT = Duration.ofMinutes(10);
+
         private static Path inflateXzViaEngine(byte[] engineJar, byte[] xz) throws IOException {
             Path engineTmp = Files.createTempFile("jk-engine-", ".jar");
             Path xzTmp = Files.createTempFile("jk-self-", ".xz");
@@ -806,14 +811,15 @@ public final class SelfCommand extends GroupCommand {
                                 WorkingDirectory.resolve(out).toString())
                         .redirectErrorStream(true)
                         .start();
-                String err = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                int rc;
-                try {
-                    rc = ProcessTrees.awaitExit(p);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("interrupted inflating the client binary", e);
+                Processes.Captured c;
+                try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> Processes.killTree(p))) {
+                    c = Processes.capture(p, INFLATE_TIMEOUT);
                 }
+                if (c.timedOut()) {
+                    throw new IOException("engine xz inflate took over " + INFLATE_TIMEOUT.toMinutes() + " minutes");
+                }
+                int rc = c.exit();
+                String err = c.output();
                 if (rc != 0) {
                     throw new IOException(
                             "engine xz inflate failed (exit " + rc + ")" + (err.isBlank() ? "" : ": " + err.strip()));

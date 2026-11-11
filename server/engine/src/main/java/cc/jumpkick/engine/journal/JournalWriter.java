@@ -9,6 +9,7 @@ import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -30,8 +31,8 @@ import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +41,6 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -555,47 +555,24 @@ public final class JournalWriter {
      * is asked only about a repository that read cannot answer. Best-effort (1s cap): a commit stamp is a
      * nice-to-have on the history record, never worth failing or stalling journaling.
      *
-     * <p>stderr is discarded at the OS level and stdout drained on a side thread, so the 1s cap
-     * actually holds. Reading stdout to EOF inline deadlocks on a repo where git is chatty enough
-     * to fill its stderr pipe: git can't exit, stdout never sees EOF, and waitFor is never
-     * reached — on the journal teardown path that hangs the whole request.
+     * <p>stderr is discarded and stdout captured through {@link Processes}, so the 1s cap holds on
+     * the journal teardown path.
      */
+    private static final Duration GIT_COMMIT_WAIT = Duration.ofSeconds(1);
+
     static @Nullable String gitCommit(String dir) {
         if (dir == null || dir.isEmpty()) return null;
         GitHead.Head head = GitHead.of(Path.of(dir));
         if (head.known()) return head.commit();
-        Process p = null;
         try {
-            p = JobWorkers.startDetached(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
-                    .redirectError(ProcessBuilder.Redirect.DISCARD));
-            p.getOutputStream().close();
-            Process proc = p;
-            StringBuilder sb = new StringBuilder();
-            // Byte pump for the git probe's output; reads no session.
-            Thread drainer = new Thread(
-                    () -> {
-                        try (var in = proc.getInputStream()) {
-                            sb.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                        } catch (IOException ignored) {
-                        }
-                    },
-                    "jk-git-commit-probe");
-            drainer.setDaemon(true);
-            drainer.start();
-            if (!p.waitFor(1, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return null;
-            }
-            drainer.join(200);
-            String out = sb.toString().trim();
-            return p.exitValue() == 0 && !out.isEmpty() ? out : null;
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+            Processes.Captured c = Processes.capture(
+                    JobWorkers.startDetached(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
+                            .redirectError(ProcessBuilder.Redirect.DISCARD)),
+                    GIT_COMMIT_WAIT);
+            String out = c.output().trim();
+            return c.ok() && !out.isEmpty() ? out : null;
+        } catch (IOException | RuntimeException e) {
             return null;
-        } finally {
-            if (p != null && p.isAlive()) p.destroyForcibly();
         }
     }
 }

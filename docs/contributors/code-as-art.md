@@ -370,7 +370,7 @@ callable from a plugin worker, the native CLI **and** the engine goes
 there and nowhere else — today that is `Hashing`, `PathUtil`, `Errors`,
 `Os`, `Classpaths`, `DeterministicZip`, `BuildStamps`, `CacheTree`,
 `AotCacheFiles`, `DomXml`, `EnvValues`, `JdkFingerprint`, `AtomicWrites` (with
-the `OwnerOnlyFiles` modes and the `JkDirs` layout it applies them by), the JSONL codec
+the `OwnerOnlyFiles` modes and the `JkDirs` layout it applies them by), `Processes`, the JSONL codec
 and the `Exit`/command vocabulary.
 
 Two of those kept their original package when they moved
@@ -988,6 +988,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G123 | docs prose (`README.md`, `docs/`) that names the product `jk` instead of JumpKick, outside code spans, fenced blocks, link targets and URLs | phrase scan over the Markdown prose view | `product-name-in-docs` (text) |
 | G124 | a `clients/cli` file that hands the terminal to a child through `CliOutput.handOffTerminal` and waits on a bare `waitFor()`: only `ProcessTrees.awaitExit` stops the child when JumpKick is signalled, so an IDE stop button, a `kill` or a `timeout` leaves it running — comment-blind, plus a self-fail arm on too few handoff files | ban, no allowlist | guard test `cli-handoff-awaited` |
 | G125 | a `StandardCopyOption.ATOMIC_MOVE` outside `cc.jumpkick.host.AtomicWrites` — Windows denies a replace while any handle has the target open, and only `AtomicWrites.moveInto` retries that denial; a hand-rolled move fails the write | ban over main bytecode, owner `AtomicWrites` (`replace`, `copy`, `moveInto`, `publish`) | `atomic-move-owner` (forbid) |
+| G126 | a `readAllBytes` / `readNBytes` on a Process pipe — chained on `getInputStream()` / `getErrorStream()`, or on a variable assigned from one — outside `cc.jumpkick.host.Processes`: the read blocks until every holder of the pipe closes it, so a `waitFor(timeout)` after it never starts and a child that keeps its pipe open hangs the caller. `Processes.capture` drains on platform threads and kills the tree at the deadline | text over `src/main/java` of files that name `Process`, comment- and string-blind; one exemption (`Protoc`, which runs in a forked JVM without JumpKick on its classpath) | guard test `process-output-owner` |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a

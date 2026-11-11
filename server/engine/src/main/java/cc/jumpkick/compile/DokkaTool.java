@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.MiniJson;
@@ -10,11 +11,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Forks the Dokka CLI over a module's Kotlin (and Java) sources. The run is described by Dokka's
@@ -56,16 +57,9 @@ public final class DokkaTool {
                     .directory(workdir.toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);
-            byte[] captured;
-            try (var in = proc.getInputStream()) {
-                captured = in.readAllBytes();
-            }
-            if (!proc.waitFor(TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                proc.destroyForcibly();
-                throw new IOException("dokka timed out after " + TIMEOUT_MINUTES + " minutes");
-            }
-            return new JavadocTool.Result(
-                    proc.exitValue(), List.of(), List.of(), new String(captured, StandardCharsets.UTF_8));
+            Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
+            if (c.timedOut()) throw new IOException("dokka timed out after " + TIMEOUT_MINUTES + " minutes");
+            return new JavadocTool.Result(c.exit(), List.of(), List.of(), c.output());
         } finally {
             Files.deleteIfExists(config);
         }

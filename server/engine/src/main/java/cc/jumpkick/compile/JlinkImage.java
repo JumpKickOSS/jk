@@ -7,6 +7,7 @@ import cc.jumpkick.host.AotTraining;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Jlink;
 import java.io.IOException;
@@ -22,7 +23,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -430,15 +430,11 @@ public final class JlinkImage {
         Process process = pb.start();
         JobWorkers.register(process);
         try {
-            byte[] bytes;
-            try (var in = process.getInputStream()) {
-                bytes = in.readAllBytes();
-            }
-            if (!process.waitFor(TOOL_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                process.destroyForcibly();
+            Processes.Captured c = Processes.capture(process, Duration.ofMinutes(TOOL_TIMEOUT_MINUTES));
+            if (c.timedOut()) {
                 return new Tool(-1, "timed out after " + TOOL_TIMEOUT_MINUTES + " minutes: " + String.join(" ", cmd));
             }
-            return new Tool(process.exitValue(), new String(bytes, StandardCharsets.UTF_8));
+            return new Tool(c.exit(), c.output());
         } finally {
             JobWorkers.unregister(process);
         }

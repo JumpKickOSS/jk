@@ -6,6 +6,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
@@ -26,8 +27,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -406,30 +405,8 @@ public record ProjectIdentity(
      * timed-out command is killed with its descendants.
      */
     static @Nullable String run(Path cwd, Duration timeout, List<String> command) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.directory(cwd.toFile());
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            CompletableFuture<String> output = CompletableFuture.supplyAsync(
-                    () -> {
-                        try (var in = p.getInputStream()) {
-                            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                        } catch (IOException e) {
-                            return "";
-                        }
-                    },
-                    r -> Thread.ofPlatform().daemon().name("jk-identity-probe").start(r));
-            if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-                p.descendants().forEach(ProcessHandle::destroyForcibly);
-                p.destroyForcibly();
-                return null;
-            }
-            if (p.exitValue() != 0) return null;
-            return output.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
-            return null;
-        }
+        return Processes.outputIfOk(
+                new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true), timeout);
     }
 
     /**

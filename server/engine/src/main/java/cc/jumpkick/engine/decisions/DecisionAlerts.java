@@ -7,21 +7,19 @@ import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.desktop.PowerShell;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.Processes;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.ProcessBuilder.Redirect;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -93,7 +91,7 @@ public final class DecisionAlerts implements AutoCloseable {
     private volatile @Nullable Boolean actions;
 
     public DecisionAlerts() {
-        this(new Processes(), Os.name(), ProcessEnv::get, DesktopIdentity.current());
+        this(new RealLauncher(), Os.name(), ProcessEnv::get, DesktopIdentity.current());
     }
 
     public DecisionAlerts(
@@ -328,9 +326,9 @@ public final class DecisionAlerts implements AutoCloseable {
     }
 
     /** Real processes: output discarded, read briefly, or watched on a daemon thread. */
-    static final class Processes implements Launcher {
+    static final class RealLauncher implements Launcher {
 
-        private static final long OUTPUT_WAIT_SECONDS = 3;
+        private static final Duration OUTPUT_WAIT = Duration.ofSeconds(3);
 
         @Override
         public boolean launch(List<String> argv) {
@@ -347,31 +345,10 @@ public final class DecisionAlerts implements AutoCloseable {
 
         @Override
         public @Nullable String output(List<String> argv) {
-            Process p;
             try {
-                p = new ProcessBuilder(argv).redirectErrorStream(true).start();
+                Processes.Captured c = Processes.capture(argv, OUTPUT_WAIT);
+                return c.timedOut() ? null : c.output();
             } catch (IOException | RuntimeException e) {
-                return null;
-            }
-            CompletableFuture<@Nullable String> output = new CompletableFuture<>();
-            SessionContext.startPlatform("jk-decision-output", () -> {
-                try (var in = p.getInputStream()) {
-                    output.complete(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                } catch (IOException e) {
-                    output.complete(null);
-                }
-            });
-            try {
-                if (!p.waitFor(OUTPUT_WAIT_SECONDS, TimeUnit.SECONDS)) {
-                    p.destroyForcibly();
-                    return null;
-                }
-                return output.get(OUTPUT_WAIT_SECONDS, TimeUnit.SECONDS);
-            } catch (ExecutionException | TimeoutException e) {
-                return null;
-            } catch (InterruptedException e) {
-                p.destroyForcibly();
-                Thread.currentThread().interrupt();
                 return null;
             }
         }

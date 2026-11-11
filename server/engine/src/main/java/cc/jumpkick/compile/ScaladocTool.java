@@ -3,15 +3,16 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Forks Scala 3's scaladoc over a module's compiled classes: scaladoc reads the TASTy files scalac
@@ -59,16 +60,9 @@ public final class ScaladocTool {
                     .directory(outDir.toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);
-            byte[] captured;
-            try (var in = proc.getInputStream()) {
-                captured = in.readAllBytes();
-            }
-            if (!proc.waitFor(TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                proc.destroyForcibly();
-                throw new IOException("scaladoc timed out after " + TIMEOUT_MINUTES + " minutes");
-            }
-            String output = new String(captured, StandardCharsets.UTF_8);
-            return new JavadocTool.Result(proc.exitValue(), warnings(output), List.of(), output);
+            Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
+            if (c.timedOut()) throw new IOException("scaladoc timed out after " + TIMEOUT_MINUTES + " minutes");
+            return new JavadocTool.Result(c.exit(), warnings(c.output()), List.of(), c.output());
         } finally {
             Files.deleteIfExists(argfile);
         }

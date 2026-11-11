@@ -42,8 +42,8 @@ public final class GlobalSuspend {
                             "-STOP",
                             Long.toString(ProcessHandle.current().pid()))
                     .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .start();
-            kill.getInputStream().readAllBytes();
             return kill.waitFor() == 0;
         } catch (IOException e) {
             return false;

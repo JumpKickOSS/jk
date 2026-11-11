@@ -6,6 +6,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JavacLevel;
 import cc.jumpkick.host.ModuleDescriptors;
 import cc.jumpkick.host.ModulePath;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JavadocMode;
@@ -13,11 +14,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -78,15 +79,9 @@ public final class JavadocTool {
                     .directory(workdir.toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);
-            byte[] captured;
-            try (var in = proc.getInputStream()) {
-                captured = in.readAllBytes();
-            }
-            if (!proc.waitFor(TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                proc.destroyForcibly();
-                throw new IOException("javadoc timed out after " + TIMEOUT_MINUTES + " minutes");
-            }
-            return parse(proc.exitValue(), new String(captured, StandardCharsets.UTF_8));
+            Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
+            if (c.timedOut()) throw new IOException("javadoc timed out after " + TIMEOUT_MINUTES + " minutes");
+            return parse(c.exit(), c.output());
         } finally {
             Files.deleteIfExists(argfile);
         }

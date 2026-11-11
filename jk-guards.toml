@@ -1335,10 +1335,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/LiveJobRegistry.ja
 reason = "cancel and settle run after the request thread may be gone; token and request id are explicit"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/journal/JournalWriter.java"
-reason = "byte pump for the git probe's output"
-
-[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingBuildPlanListener.java"
 reason = "shared progress timer and its flushers only hand coalesced events to the delegate"
 

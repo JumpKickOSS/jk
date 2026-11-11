@@ -3,14 +3,14 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 /**
  * What jk remembers about an image it built, so the image is kept in one place only.
@@ -80,19 +80,14 @@ final class ImageSidecar {
      */
     static Optional<String> daemonImageId(String exe, String ref) {
         try {
-            Process p = JobWorkers.start(new ProcessBuilder(exe, "image", "inspect", "--format", "{{.Id}}", ref)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD));
-            try {
-                String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-                if (!p.waitFor(10, TimeUnit.SECONDS) || p.exitValue() != 0 || out.isEmpty()) return Optional.empty();
-                return Optional.of(out.startsWith("sha256:") ? out.substring("sha256:".length()) : out);
-            } finally {
-                if (p.isAlive()) p.destroyForcibly();
-            }
+            Processes.Captured c = Processes.capture(
+                    JobWorkers.start(new ProcessBuilder(exe, "image", "inspect", "--format", "{{.Id}}", ref)
+                            .redirectError(ProcessBuilder.Redirect.DISCARD)),
+                    Duration.ofSeconds(10));
+            String out = c.output().strip();
+            if (!c.ok() || out.isEmpty()) return Optional.empty();
+            return Optional.of(out.startsWith("sha256:") ? out.substring("sha256:".length()) : out);
         } catch (IOException | RuntimeException e) {
-            return Optional.empty();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
             return Optional.empty();
         }
     }

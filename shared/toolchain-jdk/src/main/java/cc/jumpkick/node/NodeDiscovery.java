@@ -6,11 +6,12 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.discovery.MiseProbe;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.SearchPath;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -18,7 +19,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -130,22 +130,10 @@ public final class NodeDiscovery {
 
     /** {@code node --version}, or null when it does not answer with a version within two seconds. */
     static @Nullable String nodeVersion(Path node) {
-        try {
-            Process p = new ProcessBuilder(node.toString(), "--version")
-                    .redirectErrorStream(true)
-                    .start();
-            if (!p.waitFor(2, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return null;
-            }
-            var m = VERSION.matcher(new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim());
-            return m.matches() ? m.group(1) : null;
-        } catch (IOException e) {
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
+        String out = Processes.outputIfOk(List.of(node.toString(), "--version"), Duration.ofSeconds(2));
+        if (out == null) return null;
+        var m = VERSION.matcher(out.trim());
+        return m.matches() ? m.group(1) : null;
     }
 
     private List<Path> fnmDirs() {

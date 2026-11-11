@@ -513,8 +513,10 @@ public final class JobWorkers {
         int n = command.size() - 2;
         if (n == 0) return 0;
         try {
-            Process kill = new ProcessBuilder(command).redirectErrorStream(true).start();
-            kill.getInputStream().readAllBytes();
+            Process kill = new ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
             kill.waitFor(5, TimeUnit.SECONDS);
         } catch (IOException e) {
             Log.debug("job " + requestId + ": kill " + signal + " failed", e);

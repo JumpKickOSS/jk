@@ -2,13 +2,12 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -92,37 +91,14 @@ final class WindowsCommandLines {
     }
 
     private static Map<Long, String> query() {
-        Process p = null;
         try {
-            p = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            p.getOutputStream().close();
-            Process proc = p;
-            StringBuilder out = new StringBuilder();
-            Thread drainer = new Thread(
-                    () -> {
-                        try (InputStream in = proc.getInputStream()) {
-                            out.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                        } catch (IOException ignored) {
-                        }
-                    },
-                    "jk-win-cmdlines");
-            drainer.setDaemon(true);
-            drainer.start();
-            if (!p.waitFor(QUERY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return Map.of();
-            }
-            drainer.join(500);
-            return p.exitValue() == 0 ? parse(out.toString()) : Map.of();
+            Processes.Captured c = Processes.capture(
+                    new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
+                            .redirectError(ProcessBuilder.Redirect.DISCARD),
+                    Duration.ofSeconds(QUERY_TIMEOUT_SECONDS));
+            return c.ok() ? parse(c.output()) : Map.of();
         } catch (IOException e) {
             return Map.of(); // no PowerShell, or policy refused it
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return Map.of();
-        } finally {
-            if (p != null && p.isAlive()) p.destroyForcibly();
         }
     }
 

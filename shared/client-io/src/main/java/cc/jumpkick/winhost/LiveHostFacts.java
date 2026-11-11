@@ -3,14 +3,13 @@ package cc.jumpkick.winhost;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.Processes;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** This machine: the registry through advapi32, volumes through the JDK's file stores, git by its exit. */
@@ -52,27 +51,14 @@ final class LiveHostFacts implements HostFacts {
 
     @Override
     public @Nullable Boolean gitLongPaths() {
-        Process p = null;
         try {
-            p = new ProcessBuilder("git", "config", "--get", "core.longpaths")
-                    .redirectErrorStream(true)
-                    .start();
-            p.getOutputStream().close();
-            if (!p.waitFor(GIT_WAIT.toMillis(), TimeUnit.MILLISECONDS)) return null;
-            String out;
-            try (InputStream in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            if (p.exitValue() == 1) return false;
-            if (p.exitValue() != 0) return null;
-            return EnvValues.parseBool(out).orElse(false);
+            Processes.Captured c = Processes.capture(List.of("git", "config", "--get", "core.longpaths"), GIT_WAIT);
+            if (c.timedOut()) return null;
+            if (c.exit() == 1) return false;
+            if (c.exit() != 0) return null;
+            return EnvValues.parseBool(c.output()).orElse(false);
         } catch (IOException e) {
             return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        } finally {
-            if (p != null && p.isAlive()) p.destroyForcibly();
         }
     }
 
