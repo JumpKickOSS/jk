@@ -9,11 +9,14 @@ import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
+import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -182,6 +185,64 @@ class RunMetricsTomlTest {
         assertThat(toml)
                 .as("17384 x 8^(1/3), the single-runner-equivalent cost")
                 .contains(".task.run-tests.wall1-ms = " + TestSuiteScaling.normalize(17_384, 8));
+    }
+
+    private String metricsOf(BuildJournal j, Path mod, TestSuiteTiers.Suite suite, long wall) throws Exception {
+        TestSuiteTiers.put(mod.toString(), suite);
+        TestSuiteRunners.put(mod.toString(), 1);
+        TestClassWalls.put(mod.toString(), suite.step(), Map.of("a.SlowIT", 9_000L));
+        var modules = List.of(new BuildRecord.Module(
+                "g:cli",
+                mod.toString(),
+                true,
+                0,
+                wall,
+                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", wall, 0L))));
+        String locator = requireNonNull(
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE));
+        return Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+    }
+
+    /**
+     * A suite's wall is kept under the selection that produced it. The integration tier of a module
+     * takes many times what its default tier does; one row for both priced every tier off a blend.
+     */
+    @Test
+    void an_integration_suite_wall_is_journalled_under_its_own_step() throws Exception {
+        Path mod = dir.resolve("clients/cli");
+        String toml = metricsOf(
+                new BuildJournal(dir), mod, new TestSuiteTiers.Suite("run-tests@integration", false), 575_000);
+
+        assertThat(toml)
+                .contains(".task.run-tests@integration.wall-ms = 575000")
+                .contains(".task.run-tests@integration.wall1-ms = 575000")
+                .doesNotContain(".task.run-tests.wall-ms")
+                .as("the class walls sit under the tier's key, not the default tier's")
+                .containsPattern("\\[test-class\\.\"[^\"]*clients/cli@integration\"\\.\"a\"]");
+    }
+
+    @Test
+    void a_default_suite_keeps_the_bare_row() throws Exception {
+        Path mod = dir.resolve("clients/cli");
+        String toml =
+                metricsOf(new BuildJournal(dir), mod, new TestSuiteTiers.Suite(TaskNames.RUN_TESTS, false), 54_000);
+
+        assertThat(toml).contains(".task.run-tests.wall-ms = 54000").doesNotContain("run-tests@");
+        assertThat(toml).containsPattern("\\[test-class\\.\"[^\"@]*clients/cli\"\\.\"a\"]");
+    }
+
+    /** A --class run times the classes it ran, not the suite: no suite wall, but the class walls stay. */
+    @Test
+    void a_class_filtered_run_leaves_no_suite_wall_but_keeps_its_class_walls() throws Exception {
+        Path mod = dir.resolve("clients/cli");
+        String toml =
+                metricsOf(new BuildJournal(dir), mod, new TestSuiteTiers.Suite(TaskNames.RUN_TESTS, true), 56_000);
+
+        assertThat(toml)
+                .doesNotContain("run-tests.wall-ms")
+                .doesNotContain("run-tests.wall1-ms")
+                .doesNotContain("run-tests.workers")
+                .contains("SlowIT = 9000");
     }
 
     /**

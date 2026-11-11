@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-process buffer: module path → FQCN → wall-ms for the run currently finishing, keyed by
+ * In-process buffer: (module path, suite step) → FQCN → wall-ms for the run currently finishing, keyed by
  * {@link DirKeys#key} so the recorder's spelling of a module and the journal's ({@code C:\ws} and
  * {@code C:/ws} on Windows) are one module. Written by
  * {@link StepTimingsRecorder} from {@link cc.jumpkick.run.TestSummary#classWallMs()}; consumed when
@@ -20,25 +20,26 @@ public final class TestClassWalls {
 
     private TestClassWalls() {}
 
-    public static void put(String moduleDir, Map<String, Long> walls) {
+    /** Walls of {@code step}'s suite: one tier's classes are never another's. */
+    public static void put(String moduleDir, String step, Map<String, Long> walls) {
         if (moduleDir == null || moduleDir.isBlank() || walls == null || walls.isEmpty()) return;
         Map<String, Long> copy = new LinkedHashMap<>();
         walls.forEach((k, v) -> {
             if (k != null && !k.isBlank() && v != null && v > 0) copy.put(k, v);
         });
-        if (!copy.isEmpty()) BY_MODULE.put(key(moduleDir), Map.copyOf(copy));
+        if (!copy.isEmpty()) BY_MODULE.put(key(moduleDir, step), Map.copyOf(copy));
     }
 
     /** Snapshot without clearing (ETA within the same process after a train). */
-    public static Map<String, Long> get(String moduleDir) {
+    public static Map<String, Long> get(String moduleDir, String step) {
         if (moduleDir == null) return Map.of();
-        return BY_MODULE.getOrDefault(key(moduleDir), Map.of());
+        return BY_MODULE.getOrDefault(key(moduleDir, step), Map.of());
     }
 
     /** Drain walls for journal write (one-shot). */
-    public static Map<String, Long> take(String moduleDir) {
+    public static Map<String, Long> take(String moduleDir, String step) {
         if (moduleDir == null) return Map.of();
-        Map<String, Long> m = BY_MODULE.remove(key(moduleDir));
+        Map<String, Long> m = BY_MODULE.remove(key(moduleDir, step));
         return m == null ? Map.of() : m;
     }
 
@@ -52,7 +53,7 @@ public final class TestClassWalls {
         return out;
     }
 
-    private static String key(String moduleDir) {
-        return Objects.requireNonNullElse(DirKeys.key(moduleDir), moduleDir);
+    private static String key(String moduleDir, String step) {
+        return Objects.requireNonNullElse(DirKeys.key(moduleDir), moduleDir) + "|" + step;
     }
 }

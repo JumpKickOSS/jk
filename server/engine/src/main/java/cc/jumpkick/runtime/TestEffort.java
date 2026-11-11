@@ -41,6 +41,7 @@ public final class TestEffort {
      * @param testWorkers within-module workers for cold parallel body only
      */
     public static int weight(
+            String step,
             String moduleDir,
             Map<String, Long> classWallsMs,
             Collection<String> classesToRun,
@@ -50,12 +51,13 @@ public final class TestEffort {
             @Nullable BuildMetrics metrics,
             int testWorkers) {
         long wallMs = wallMillis(
-                moduleDir, classWallsMs, classesToRun, methodCount, timings, projectDirs, metrics, testWorkers);
+                step, moduleDir, classWallsMs, classesToRun, methodCount, timings, projectDirs, metrics, testWorkers);
         return wallMs > 0 ? EffortWeights.flatWeight(wallMs) : EffortWeights.TOKEN;
     }
 
     /** Absolute wall-ms estimate (before weight conversion). */
     public static long wallMillis(
+            String step,
             String moduleDir,
             Map<String, Long> classWallsMs,
             Collection<String> classesToRun,
@@ -65,6 +67,7 @@ public final class TestEffort {
             @Nullable BuildMetrics metrics,
             int testWorkers) {
         return wallMillis(
+                step,
                 moduleDir,
                 classWallsMs,
                 classesToRun,
@@ -85,6 +88,7 @@ public final class TestEffort {
      * otherwise it measures the host, which is a different question and not a stable one.
      */
     static long wallMillis(
+            String step,
             String moduleDir,
             Map<String, Long> classWallsMs,
             Collection<String> classesToRun,
@@ -103,7 +107,7 @@ public final class TestEffort {
             // runs that sharded the suite differently. See TestSuiteScaling. A module with a raw
             // wall but no normalized one has no usable suite history and is priced from its
             // classes or methods below.
-            long wall1 = metrics.stepWall1Millis(moduleDir, TaskNames.RUN_TESTS);
+            long wall1 = metrics.stepWall1Millis(moduleDir, step);
             if (wall1 > 0) return TestSuiteScaling.forRunners(wall1, testWorkers);
         }
         // Class-wall path: complete selection coverage → Σ walls (no method count).
@@ -138,13 +142,13 @@ public final class TestEffort {
         if (methods <= 0) {
             // Unknown size: host whole-task wall is better than inventing a method count.
             if (metrics != null) {
-                long host = StepWalls.stepOkAvgMillisHost(metrics, TaskNames.RUN_TESTS);
+                long host = StepWalls.stepOkAvgMillisHost(metrics, step);
                 if (host > 0) return host;
             }
             return Math.max(startup, Calibration.STATIC_SUITE_STARTUP_MS);
         }
         // Known method count on a cold module → hierarchical method-ms product (not host suite avg).
-        double perMethod = methodMs(moduleDir, timings, projectDirs, cal);
+        double perMethod = methodMs(step, moduleDir, timings, projectDirs, cal);
         int w = Math.max(1, testWorkers);
         long body = Math.round(methods * perMethod);
         long parallelBody = w <= 1 ? body : (body + w - 1) / w;
@@ -152,32 +156,34 @@ public final class TestEffort {
     }
 
     /** Hierarchical method-ms: module residual → project median → host absolute → calibration. */
-    public static double methodMs(String moduleDir, @Nullable StepTimings timings, Collection<String> projectDirs) {
-        return methodMs(moduleDir, timings, projectDirs, loadedCalibration());
+    public static double methodMs(
+            String step, String moduleDir, @Nullable StepTimings timings, Collection<String> projectDirs) {
+        return methodMs(step, moduleDir, timings, projectDirs, loadedCalibration());
     }
 
     /** {@link #methodMs} with the calibration rung supplied; {@code null} means fall to the baseline. */
     static double methodMs(
+            String step,
             String moduleDir,
             @Nullable StepTimings timings,
             Collection<String> projectDirs,
             @Nullable Calibration cal) {
         if (timings != null) {
-            var own = timings.perUnit(moduleDir == null ? "" : moduleDir, TaskNames.RUN_TESTS);
+            var own = timings.perUnit(moduleDir == null ? "" : moduleDir, step);
             if (own.isPresent() && own.getAsDouble() > 0) {
                 return own.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
             }
             // Project median before host absolute: sibling modules share frameworks/fixtures, a
             // strictly closer prior than a host-wide average that may come from other projects.
             if (projectDirs != null && !projectDirs.isEmpty()) {
-                var proj = timings.medianPerUnit(TaskNames.RUN_TESTS, projectDirs);
+                var proj = timings.medianPerUnit(step, projectDirs);
                 if (proj.isPresent() && proj.getAsDouble() > 0) {
                     return proj.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
                 }
             }
             OptionalDouble hostAbs = timings.hostAvgTestMethodMs();
             if (hostAbs.isPresent()) return hostAbs.getAsDouble();
-            var hostRate = timings.medianPerUnit(TaskNames.RUN_TESTS);
+            var hostRate = timings.medianPerUnit(step);
             if (hostRate.isPresent() && hostRate.getAsDouble() > 0) {
                 return hostRate.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
             }

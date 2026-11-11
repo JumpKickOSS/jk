@@ -223,6 +223,31 @@ public final class TaskNames {
     public static final String WIZARD = "wizard";
     public static final String SCAFFOLD = "scaffold";
 
+    /**
+     * Joins {@link #RUN_TESTS} to the test selection it ran under in the metrics ledger, as in
+     * {@code run-tests@integration}: the suite's wall belongs to that selection and to no other.
+     * The default selection is the bare {@link #RUN_TESTS}.
+     */
+    public static final String SUITE_SEPARATOR = "@";
+
+    /** The metrics name of {@code run-tests} under {@code selection}; blank is the default selection. */
+    public static String suiteStep(String selection) {
+        return selection == null || selection.isBlank() ? RUN_TESTS : RUN_TESTS + SUITE_SEPARATOR + selection;
+    }
+
+    /**
+     * The selection {@code step} ran under, with its separator ({@code @integration}); empty for the
+     * default selection. What a suite's class walls append to their module's key.
+     */
+    public static String suiteScope(String step) {
+        return step != null && step.startsWith(RUN_TESTS + SUITE_SEPARATOR) ? step.substring(RUN_TESTS.length()) : "";
+    }
+
+    /** Whether {@code step} is a suite's {@code run-tests}, under any selection. */
+    public static boolean isRunTests(String step) {
+        return RUN_TESTS.equals(step) || (step != null && step.startsWith(RUN_TESTS + SUITE_SEPARATOR));
+    }
+
     /** The metrics name of a compile-java that compiled only part of its sources. */
     public static final String COMPILE_JAVA_INCREMENTAL = "compile-java-incremental";
 

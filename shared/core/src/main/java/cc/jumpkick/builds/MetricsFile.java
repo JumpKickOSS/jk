@@ -25,7 +25,7 @@ public final class MetricsFile {
     private static final Pattern SECTION = Pattern.compile("^\\[([a-zA-Z0-9._-]+)\\]\\s*$");
     private static final Pattern TEST_CLASS_HEADER =
             Pattern.compile("^\\[test-class\\.\"([^\"]+)\"(?:\\.\"([^\"]*)\")?\\]\\s*$");
-    private static final Pattern KEY_EQ = Pattern.compile("^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
+    private static final Pattern KEY_EQ = Pattern.compile("^([a-zA-Z0-9._:/@-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
 
     private MetricsFile() {}
 

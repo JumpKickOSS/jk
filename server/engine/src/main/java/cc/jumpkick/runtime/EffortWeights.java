@@ -31,6 +31,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SourceRefs;
 import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.runtime.base.SuiteSelection;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.test.TestWorkers;
@@ -203,7 +204,7 @@ public final class EffortWeights {
 
     /** Learnable startup floor subtracted before recording a per-unit rate. */
     static int floor(String step) {
-        return switch (step) {
+        return switch (TaskNames.isRunTests(step) ? TaskNames.RUN_TESTS : step) {
             case TaskNames.RUN_TESTS -> TEST_STARTUP_FLOOR;
             case TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST ->
                 COMPILE_FLOOR;
@@ -255,7 +256,7 @@ public final class EffortWeights {
         // Cold module with a known planned method count: the count-scaled host prior beats the
         // host suite-wall average, which prices a 2000-method suite like the host's ~average
         // suite. The host wall stays the fallback when no count is known.
-        if (TaskNames.RUN_TESTS.equals(key) && count > 0) {
+        if (TaskNames.isRunTests(key) && count > 0) {
             var msPer = timings.hostAvgTestMethodMs();
             if (msPer.isPresent()) {
                 return Math.max(1, (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
@@ -377,10 +378,12 @@ public final class EffortWeights {
             String step = metricsStepName(raw);
             if (step.isEmpty()) continue;
             int w;
-            if (TaskNames.RUN_TESTS.equals(step)) {
+            if (TaskNames.isRunTests(step)) {
                 // Class walls when complete; else method product only if count known (never invent).
-                int methods = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 0));
-                Map<String, Long> walls = loadClassWalls(mod);
+                // The planned count is keyed by the plan's step name, whichever selection prices the suite.
+                int methods = stepCounts.getOrDefault(
+                        step, stepCounts.getOrDefault(raw, stepCounts.getOrDefault(TaskNames.RUN_TESTS, 0)));
+                Map<String, Long> walls = loadClassWalls(mod, step);
                 if (Perf.enabled()) {
                     long wsum = walls.values().stream()
                             .filter(v -> v != null && v > 0)
@@ -397,17 +400,17 @@ public final class EffortWeights {
                             "workers",
                             wWorkers,
                             "ownMs",
-                            StepWalls.stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS),
+                            StepWalls.stepOkAvgMillisOwn(metrics, mod, step),
                             "wall1",
-                            metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS),
+                            metrics.stepWall1Millis(mod, step),
                             "rate",
-                            timings == null ? "none" : timings.perUnit(mod, TaskNames.RUN_TESTS));
+                            timings == null ? "none" : timings.perUnit(mod, step));
                 }
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
-                w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
+                w = TestEffort.weight(step, mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
                 // The suite's shape for the schedule, which prices it again at dispatch: the
                 // single-runner cost and how many classes can share it.
-                long wall1 = metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS);
+                long wall1 = metrics.stepWall1Millis(mod, step);
                 if (wall1 > 0) suiteWall1 = flatWeight(wall1);
                 suiteClasses = walls.size();
             } else if (TaskNames.NATIVE_IMAGE.equals(step)) {
@@ -436,7 +439,7 @@ public final class EffortWeights {
                 }
             }
             weight += w;
-            if (TaskNames.RUN_TESTS.equals(step)) testWeight += w;
+            if (TaskNames.isRunTests(step)) testWeight += w;
             // Every tail requires only package-jar, so the tails overlap the suite AND each other:
             // the branch's length is its longest tail, not their sum (cli: native-image 37 +
             // assembly 3 + sources 2 priced 42 against a true 37).
@@ -446,9 +449,9 @@ public final class EffortWeights {
         return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
     }
 
-    /** How many test classes the ledger knows for {@code moduleDir}; {@code 0} for a cold module. */
-    public static int knownClassCount(String moduleDir) {
-        return loadClassWalls(moduleDir).size();
+    /** How many test classes the ledger knows for {@code step}'s suite of {@code moduleDir}; {@code 0} when cold. */
+    public static int knownClassCount(String moduleDir, String step) {
+        return loadClassWalls(moduleDir, step).size();
     }
 
     /**
@@ -456,12 +459,12 @@ public final class EffortWeights {
      * harvested walls come from the session's class-wall index, built once per aggregate window
      * over the same project-preferring aggregates every other learned weight reads.
      */
-    static Map<String, Long> loadClassWalls(String moduleDir) {
-        Map<String, Long> live = TestClassWalls.get(moduleDir);
+    static Map<String, Long> loadClassWalls(String moduleDir, String step) {
+        Map<String, Long> live = TestClassWalls.get(moduleDir, step);
         if (!live.isEmpty()) return live;
         if (moduleDir == null || moduleDir.isBlank()) return Map.of();
         try {
-            return BuildMetrics.classWallsForSession().forModule(moduleDir);
+            return BuildMetrics.classWallsForSession().forModule(moduleDir, step);
         } catch (RuntimeException e) {
             return Map.of();
         }
@@ -759,12 +762,22 @@ public final class EffortWeights {
         int staticTests =
                 coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
         if (!testWillRun) return SKIP;
+        // The suite this run selects keeps its own history: the integration tier is never priced
+        // off the default tier's wall, nor the reverse.
+        String suite = SuiteSelection.current();
         if (methods > 0) {
-            return learned(timings, metrics, mod, TaskNames.RUN_TESTS, methods, staticTests, projectDirs);
+            return learned(timings, metrics, mod, suite, methods, staticTests, projectDirs);
         } else if (classes > 0) {
-            return learned(timings, metrics, mod, "run-tests-class", classes, staticTests, projectDirs);
+            return learned(
+                    timings,
+                    metrics,
+                    mod,
+                    "run-tests-class" + TaskNames.suiteScope(suite),
+                    classes,
+                    staticTests,
+                    projectDirs);
         }
-        return learned(timings, metrics, mod, TaskNames.RUN_TESTS, 1, staticTests, projectDirs);
+        return learned(timings, metrics, mod, suite, 1, staticTests, projectDirs);
     }
 
     /** True when weight is absent or only a token (no real compile/test/package work). */

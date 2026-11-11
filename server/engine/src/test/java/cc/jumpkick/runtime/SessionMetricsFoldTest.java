@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.StepTimings;
 import java.nio.file.Files;
@@ -80,7 +81,7 @@ class SessionMetricsFoldTest {
                     .isPresent();
             assertThat(StepTimings.load(StepTimings.defaultFile()).perUnit("/ws/app", "run-tests"))
                     .hasValue(12.5);
-            assertThat(EffortWeights.loadClassWalls("/ws/app"))
+            assertThat(EffortWeights.loadClassWalls("/ws/app", TaskNames.RUN_TESTS))
                     .containsEntry("com.example.AppTest", 900L)
                     .containsEntry("com.example.SlowTest", 5000L)
                     .doesNotContainKey("com.example.LibTest");
@@ -103,7 +104,9 @@ class SessionMetricsFoldTest {
         SessionContext.install(Session.defaults().withWorkingDir(work));
         BuildMetrics.clearSessionAggregatesMemo();
 
-        assertThat(EffortWeights.loadClassWalls("/ws/nowhere")).isEmpty();
-        assertThat(EffortWeights.loadClassWalls("/ws/lib")).containsOnlyKeys("com.example.LibTest");
+        assertThat(EffortWeights.loadClassWalls("/ws/nowhere", TaskNames.RUN_TESTS))
+                .isEmpty();
+        assertThat(EffortWeights.loadClassWalls("/ws/lib", TaskNames.RUN_TESTS))
+                .containsOnlyKeys("com.example.LibTest");
     }
 }

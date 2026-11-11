@@ -62,7 +62,7 @@ public final class MetricsHarvest {
             Stream.concat(FOREIGN_SECTIONS.stream(), Stream.of("calibration")).toList();
 
     private static final Pattern KEY_EQ_NUM =
-            Pattern.compile("(?m)^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
+            Pattern.compile("(?m)^([a-zA-Z0-9._:/@-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
 
     /** Joins a module's key spelling and a class name into one class-wall key. */
     private static final char CLASS_KEY_SEPARATOR = '\0';

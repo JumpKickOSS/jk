@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.runtime.base.StepTimings;
 import java.nio.file.Path;
@@ -44,7 +46,15 @@ class TestEffortTest {
     void class_walls_skip_method_product() {
         Map<String, Long> walls = Map.of("com.ex.A", 1000L, "com.ex.B", 2000L);
         long ms = TestEffort.wallMillis(
-                "/m", walls, List.of("com.ex.A", "com.ex.B"), /*methodCount*/ 9999, null, List.of(), null, 1);
+                TaskNames.RUN_TESTS,
+                "/m",
+                walls,
+                List.of("com.ex.A", "com.ex.B"), /*methodCount*/
+                9999,
+                null,
+                List.of(),
+                null,
+                1);
         // startup + 3000; method count must not be used
         assertThat(ms).isGreaterThanOrEqualTo(3000);
         assertThat(ms).isLessThan(3000 + 9999 * 40L); // would be huge if methods used
@@ -53,16 +63,49 @@ class TestEffortTest {
     @Test
     void incomplete_class_walls_uses_method_count() {
         Map<String, Long> walls = Map.of("com.ex.A", 1000L); // B missing
-        long withMethods =
-                TestEffort.wallMillis("/m", walls, List.of("com.ex.A", "com.ex.B"), 10, null, List.of(), null, 1);
-        long noMethods =
-                TestEffort.wallMillis("/m", walls, List.of("com.ex.A", "com.ex.B"), 0, null, List.of(), null, 1);
+        long withMethods = TestEffort.wallMillis(
+                TaskNames.RUN_TESTS, "/m", walls, List.of("com.ex.A", "com.ex.B"), 10, null, List.of(), null, 1);
+        long noMethods = TestEffort.wallMillis(
+                TaskNames.RUN_TESTS, "/m", walls, List.of("com.ex.A", "com.ex.B"), 0, null, List.of(), null, 1);
         assertThat(withMethods).isGreaterThan(noMethods);
+    }
+
+    /**
+     * A suite is priced from the history of the selection it runs. A module whose default tier ran
+     * in 54 s has no wall for its integration tier, and that tier is not priced at 54 s.
+     */
+    @Test
+    void a_tier_is_never_priced_from_another_tiers_wall(@TempDir Path dir) throws Exception {
+        Path metricsFile = dir.resolve("metrics.json");
+        String mod = "/ws/cli";
+        BuildMetrics.record(
+                metricsFile,
+                new BuildMetrics.Outcome(
+                        "test",
+                        mod,
+                        null,
+                        true,
+                        false,
+                        54_000,
+                        List.of(new BuildMetrics.StepSample(mod, TaskNames.RUN_TESTS, "SUCCESS", 54_000))),
+                1_000L);
+        BuildMetrics metrics = BuildMetrics.load(metricsFile);
+        Calibration none = Calibration.absentForTest();
+
+        long fast = TestEffort.wallMillis(
+                TaskNames.RUN_TESTS, mod, Map.of(), List.of(), 0, null, List.of(), metrics, 1, none);
+        long integration = TestEffort.wallMillis(
+                "run-tests@integration", mod, Map.of(), List.of(), 0, null, List.of(), metrics, 1, none);
+
+        assertThat(fast).as("the default tier reads its own wall").isEqualTo(54_000);
+        assertThat(integration)
+                .as("the integration tier has no wall of its own, and reads none of the default tier's")
+                .isNotEqualTo(54_000);
     }
 
     @Test
     void empty_selection_does_not_require_method_count() {
-        long ms = TestEffort.wallMillis("/m", Map.of(), List.of(), 0, null, List.of(), null, 1);
+        long ms = TestEffort.wallMillis(TaskNames.RUN_TESTS, "/m", Map.of(), List.of(), 0, null, List.of(), null, 1);
         assertThat(ms).isPositive();
     }
 
@@ -83,13 +126,15 @@ class TestEffortTest {
         int methods = 1000;
         Calibration cold = Calibration.absentForTest();
         long startup = TestEffort.suiteStartupMs(cold);
-        long serial = TestEffort.wallMillis("/cold", Map.of(), List.of(), methods, null, List.of(), null, 1, cold);
+        long serial = TestEffort.wallMillis(
+                TaskNames.RUN_TESTS, "/cold", Map.of(), List.of(), methods, null, List.of(), null, 1, cold);
         double perMethod = (serial - startup) / (double) methods;
         assertThat(perMethod)
                 .as("effective cold ms/method vs the calibration baseline")
                 .isBetween(Calibration.BASELINE_METHOD_MS / 2.0, Calibration.BASELINE_METHOD_MS * 2.0);
 
-        long sharded = TestEffort.wallMillis("/cold", Map.of(), List.of(), methods, null, List.of(), null, 4, cold);
+        long sharded = TestEffort.wallMillis(
+                TaskNames.RUN_TESTS, "/cold", Map.of(), List.of(), methods, null, List.of(), null, 4, cold);
         assertThat(sharded - startup)
                 .as("runners divide the cold body")
                 .isBetween((serial - startup) / 5, (serial - startup) / 3);
@@ -110,10 +155,10 @@ class TestEffortTest {
                 200,
                 15,
                 20);
-        assertThat(TestEffort.methodMs("/cold", null, List.of(), learned))
+        assertThat(TestEffort.methodMs(TaskNames.RUN_TESTS, "/cold", null, List.of(), learned))
                 .as("the machine's measured rate, not the 45 ms baseline")
                 .isEqualTo(500.0);
-        assertThat(TestEffort.methodMs("/cold", null, List.of(), Calibration.absentForTest()))
+        assertThat(TestEffort.methodMs(TaskNames.RUN_TESTS, "/cold", null, List.of(), Calibration.absentForTest()))
                 .as("and the baseline when it has measured nothing")
                 .isBetween(Calibration.BASELINE_METHOD_MS / 2.0, Calibration.BASELINE_METHOD_MS * 2.0);
     }
@@ -139,7 +184,7 @@ class TestEffortTest {
         StepTimings timings = StepTimings.load(tmp);
         assertThat(timings.hostAvgTestMethodMs()).isPresent();
 
-        double ms = TestEffort.methodMs("/ws/untrained", timings, List.of("/ws/a", "/ws/b"));
+        double ms = TestEffort.methodMs(TaskNames.RUN_TESTS, "/ws/untrained", timings, List.of("/ws/a", "/ws/b"));
         // Median(2.0, 4.0) = 3.0 × MS_PER_WEIGHT — not the 999 host absolute.
         assertThat(ms).isEqualTo(3.0 * EffortWeights.MS_PER_WEIGHT);
     }

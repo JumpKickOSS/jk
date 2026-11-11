@@ -229,9 +229,12 @@ public final class BuildMetrics {
             byModule = Map.copyOf(byModule);
         }
 
-        /** The walls harvested for {@code moduleDir} (an absolute module path), or empty. */
-        public Map<String, Long> forModule(String moduleDir) {
-            return byModule.getOrDefault(AggregatedMetrics.sanitize(moduleDir), Map.of());
+        /**
+         * The walls harvested for {@code step}'s suite of {@code moduleDir} (an absolute module
+         * path), or empty: a tier's walls sit under the module's key with its selection appended.
+         */
+        public Map<String, Long> forModule(String moduleDir, String step) {
+            return byModule.getOrDefault(AggregatedMetrics.sanitize(moduleDir) + TaskNames.suiteScope(step), Map.of());
         }
 
         static ClassWallIndex of(AggregatedMetrics agg) {
@@ -683,7 +686,7 @@ public final class BuildMetrics {
         // normalized wall — the same shape the harvested `wall1-ms` gives production.
         Map<String, Long> wall1 = new LinkedHashMap<>();
         for (Entry e : ph.values()) {
-            if (TaskNames.RUN_TESTS.equals(e.step()) && e.ok().count() > 0) {
+            if (e.step() != null && TaskNames.isRunTests(e.step()) && e.ok().count() > 0) {
                 wall1.put(e.dir() + SEP + e.step(), e.ok().avgMillis());
             }
         }

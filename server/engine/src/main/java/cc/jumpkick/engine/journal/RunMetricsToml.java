@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TaskPhases;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
+import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.io.IOException;
@@ -65,10 +66,12 @@ final class RunMetricsToml {
         Map<String, Long> phaseTotals = new LinkedHashMap<>();
         Map<String, Map<String, Long>> modulePhaseTotals = new LinkedHashMap<>();
         boolean coldWorker = ColdWorkerRuns.cold(finished.requestId());
+        // Each module's suite as it ran (its selection), found again by the class walls below.
+        Map<String, String> suiteSteps = new LinkedHashMap<>();
         if (finished.steps() != null) {
             for (BuildRecord.Task s : finished.steps()) {
                 if (coldWorker && isCompile(s)) continue;
-                appendStepMetrics(sb, s, root, root, phaseTotals, modulePhaseTotals);
+                appendStepMetrics(sb, s, root, root, phaseTotals, modulePhaseTotals, suiteSteps);
             }
         }
         if (finished.modules() != null) {
@@ -77,7 +80,7 @@ final class RunMetricsToml {
                 for (BuildRecord.Task s : m.steps()) {
                     // A compile on a worker still warming up is not this module's compile cost.
                     if (coldWorker && isCompile(s)) continue;
-                    appendStepMetrics(sb, s, m.dir(), root, phaseTotals, modulePhaseTotals);
+                    appendStepMetrics(sb, s, m.dir(), root, phaseTotals, modulePhaseTotals, suiteSteps);
                 }
             }
         }
@@ -100,10 +103,10 @@ final class RunMetricsToml {
             }
         }
         // Test-class walls buffered during run-tests (FQCN → ms); train harvest without recounting methods.
-        appendTestClassWalls(sb, root, root);
+        appendTestClassWalls(sb, root, root, suiteSteps);
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
-                if (m != null) appendTestClassWalls(sb, m.dir(), root);
+                if (m != null) appendTestClassWalls(sb, m.dir(), root, suiteSteps);
             }
         }
         if (sb.length() > 40) {
@@ -116,16 +119,20 @@ final class RunMetricsToml {
      * ({@link MetricsFile}). Written after every scalar row: a row after a header is one of that
      * package's classes.
      */
-    private static void appendTestClassWalls(StringBuilder sb, String moduleDir, String root) {
+    private static void appendTestClassWalls(
+            StringBuilder sb, String moduleDir, String root, Map<String, String> suiteSteps) {
         if (moduleDir == null || moduleDir.isBlank()) return;
-        Map<String, Long> walls = TestClassWalls.take(moduleDir);
+        // A tier's walls sit under the module's key with its selection appended: its classes are
+        // its own, and a default-tier run must not read an integration class's wall as its own.
+        String step = suiteSteps.getOrDefault(moduleDir, TaskNames.RUN_TESTS);
+        Map<String, Long> walls = TestClassWalls.take(moduleDir, step);
         if (walls.isEmpty()) return;
         Map<String, String> rows = new LinkedHashMap<>();
         for (var e : walls.entrySet()) {
             if (e.getKey() == null || e.getValue() == null || e.getValue() <= 0) continue;
             rows.put(sanitize(e.getKey()), Long.toString(e.getValue()));
         }
-        MetricsFile.appendClassWalls(sb, ModuleKeys.relative(moduleDir, root), rows);
+        MetricsFile.appendClassWalls(sb, ModuleKeys.relative(moduleDir, root) + TaskNames.suiteScope(step), rows);
     }
 
     private static boolean isCompile(BuildRecord.Task s) {
@@ -138,13 +145,28 @@ final class RunMetricsToml {
             String moduleDir,
             String root,
             Map<String, Long> phaseTotals,
-            Map<String, Map<String, Long>> modulePhaseTotals) {
+            Map<String, Map<String, Long>> modulePhaseTotals,
+            Map<String, String> suiteSteps) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
+        // A suite's wall is kept under the selection that ran it. A --class run measured only some
+        // of the suite's classes, and leaves no suite wall at all.
+        String suiteStep = null;
+        if (TaskNames.RUN_TESTS.equals(s.name())) {
+            var suite = moduleDir == null ? null : TestSuiteTiers.take(moduleDir);
+            if (suite != null) {
+                suiteSteps.put(moduleDir, suite.step());
+                if (suite.partial()) {
+                    TestSuiteRunners.take(moduleDir);
+                    return;
+                }
+                suiteStep = suite.step();
+            }
+        }
         // A compile of part of the sources is a different cost from a whole one: kept apart.
         String name = TaskNames.COMPILE_JAVA.equals(s.name()) && TaskNames.compiledPart(s.detail())
                 ? TaskNames.COMPILE_JAVA_INCREMENTAL
-                : s.name();
+                : suiteStep != null ? suiteStep : s.name();
         String task = sanitize(name);
         // Cache-restore / token hits can land as SUCCESS with absurdly short walls (e.g. native-image
         // 32ms). Those poison ETA means — never teach heavy steps below a floor.
@@ -185,7 +207,7 @@ final class RunMetricsToml {
             }
             // A suite wall is only re-usable next time if we also say how many runners produced it,
             // and the re-usable form is the *normalized* one — see TestSuiteScaling.
-            if (TaskNames.RUN_TESTS.equals(task)) {
+            if (TaskNames.isRunTests(task)) {
                 int runners = TestSuiteRunners.take(moduleDir);
                 if (runners > 0) {
                     sb.append("module.")
@@ -229,6 +251,6 @@ final class RunMetricsToml {
         if (s == null) return "unknown";
         // Forward slashes first so Windows paths stay one key family with Unix; a POSIX
         // backslash name is NOT a separator and folds to '_' like any other odd character.
-        return DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
+        return DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/@-]+", "_");
     }
 }

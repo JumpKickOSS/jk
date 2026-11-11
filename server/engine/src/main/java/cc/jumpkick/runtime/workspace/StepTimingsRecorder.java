@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
+import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -51,14 +52,19 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     private final @Nullable Supplier<TestSummary> testSummary;
     /** Optional continuous host calibration samples (may be null). */
     private final @Nullable List<HostLearnedRates.HostSample> hostSink;
+    /** The suite this module's {@code run-tests} runs: its selection, and whether it is all of the suite. */
+    private final TestSuiteTiers.Suite suite;
+
+    /** The default selection's whole suite. */
+    private static final TestSuiteTiers.Suite DEFAULT_SUITE = new TestSuiteTiers.Suite(TaskNames.RUN_TESTS, false);
 
     public StepTimingsRecorder(String moduleKey, List<StepTimings.Sample> sink) {
-        this(moduleKey, sink, null, null);
+        this(moduleKey, sink, null, null, DEFAULT_SUITE);
     }
 
     public StepTimingsRecorder(
             String moduleKey, List<StepTimings.Sample> sink, @Nullable Supplier<TestSummary> testSummary) {
-        this(moduleKey, sink, testSummary, null);
+        this(moduleKey, sink, testSummary, null, DEFAULT_SUITE);
     }
 
     @Override
@@ -112,11 +118,23 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         if (sum != null && sum.succeeded() > 0) {
             methods = (int) Math.min(Integer.MAX_VALUE, sum.succeeded());
         }
+        // Where the module's tests are found again: the selection they ran under.
+        TestSuiteTiers.put(moduleKey, suite);
+        // Per-class walls for next ETA (no method counting), under this selection: one tier's
+        // classes are never priced from another's. Kept for a --class run too: a class's wall is
+        // a measurement whoever selected it.
+        if (sum != null && !sum.classWallMs().isEmpty()) {
+            TestClassWalls.put(moduleKey, suite.step(), sum.classWallMs());
+        }
+        // A --class run times the classes it ran, not the suite: leave no suite wall behind.
+        if (suite.partial()) return;
         double perMethod = EffortWeights.observedPerUnit(TaskNames.RUN_TESTS, ms, methods);
         if (perMethod > 0) {
-            sink.add(new StepTimings.Sample(moduleKey, TaskNames.RUN_TESTS, perMethod));
-            // Host-wide absolute ms/method for cold modules that have never run tests here.
-            if (methods > 0) {
+            sink.add(new StepTimings.Sample(moduleKey, suite.step(), perMethod));
+            // Host-wide absolute ms/method for cold modules that have never run tests here. Only the
+            // default selection teaches it: it is the host's rate for an ordinary test, and a slow
+            // tier would drag every cold module's prior up.
+            if (methods > 0 && TaskNames.RUN_TESTS.equals(suite.step())) {
                 double msPerMethod = ms / (double) methods;
                 if (msPerMethod > 0) {
                     sink.add(new StepTimings.Sample(StepTimings.HOST_METHOD_MS_DIR, "test-method-ms", msPerMethod));
@@ -137,12 +155,9 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         if (classes > 0) {
             double perClass = EffortWeights.observedPerUnit(TaskNames.RUN_TESTS, ms, classes);
             if (perClass > 0) {
-                sink.add(new StepTimings.Sample(moduleKey, "run-tests-class", perClass));
+                sink.add(new StepTimings.Sample(
+                        moduleKey, "run-tests-class" + TaskNames.suiteScope(suite.step()), perClass));
             }
-        }
-        // Per-class walls for next ETA (no method counting). Buffer for journal metrics.toml.
-        if (sum != null && !sum.classWallMs().isEmpty()) {
-            TestClassWalls.put(moduleKey, sum.classWallMs());
         }
         // The concurrency this wall was produced at, same hand-off. Without it the wall recorded
         // above is not a prediction of anything: it is one runner count's outcome. Capped at the

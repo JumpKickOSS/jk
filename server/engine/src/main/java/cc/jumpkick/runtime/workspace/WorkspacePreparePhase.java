@@ -2,6 +2,8 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
@@ -12,6 +14,8 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.runtime.base.SuiteSelection;
+import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -189,13 +193,21 @@ final class WorkspacePreparePhase {
         return ordered;
     }
 
+    /** The suite a module's {@code run-tests} runs under {@code session}: its selection, and whether it is partial. */
+    static TestSuiteTiers.Suite suiteOf(Session session) {
+        return new TestSuiteTiers.Suite(
+                SuiteSelection.step(session.testSelection(), session.profile()),
+                SuiteSelection.partial(session.testSelection()));
+    }
+
     private static void attachTimings(ModulePlan plan, WorkspaceResourcePhase.Resources resources) {
         plan.plan()
                 .addListener(new StepTimingsRecorder(
                         plan.dir().toString(),
                         resources.timingSamples(),
                         () -> plan.plan().get(BuildPlanner.TEST_RESULT).orElse(null),
-                        resources.hostSamples()));
+                        resources.hostSamples(),
+                        suiteOf(SessionContext.current())));
     }
 
     /** Assemble one dirty module and preserve its live over-reserved work weight. */

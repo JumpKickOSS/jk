@@ -10,6 +10,7 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import java.io.IOException;
@@ -60,15 +61,15 @@ class IdleHousekeepingTest {
 
     @Test
     void the_idle_boundary_keeps_test_walls_when_history_is_off() {
-        TestClassWalls.put("/w/idle-test", Map.of("com.example.SlowTest", 1_200L));
+        TestClassWalls.put("/w/idle-test", TaskNames.RUN_TESTS, Map.of("com.example.SlowTest", 1_200L));
 
         IdleHousekeeping.dropHeapResidue(false);
-        assertThat(TestClassWalls.get("/w/idle-test"))
+        assertThat(TestClassWalls.get("/w/idle-test", TaskNames.RUN_TESTS))
                 .as("no harvest wrote these walls anywhere else")
                 .containsEntry("com.example.SlowTest", 1_200L);
 
         IdleHousekeeping.dropHeapResidue(true);
-        assertThat(TestClassWalls.get("/w/idle-test"))
+        assertThat(TestClassWalls.get("/w/idle-test", TaskNames.RUN_TESTS))
                 .as("with history on the finish path already harvested them")
                 .isEmpty();
     }

@@ -6,6 +6,7 @@ import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -37,19 +38,27 @@ public final class RecentClassWalls {
 
     private RecentClassWalls() {}
 
-    /** FQCN → wall-ms. Empty when this module has never recorded a class wall. */
+    /**
+     * FQCN → wall-ms of the suite {@code step} runs, the tier the calling session selected. Empty
+     * when this module has never recorded a class wall for it.
+     */
     public static Map<String, Long> forModule(@Nullable Path moduleDir) {
+        return forModule(moduleDir, SuiteSelection.current());
+    }
+
+    /** {@link #forModule(Path)} for the suite {@code step}. */
+    public static Map<String, Long> forModule(@Nullable Path moduleDir, String step) {
         if (moduleDir == null) return Map.of();
-        Map<String, Long> live = live(moduleDir);
+        Map<String, Long> live = live(moduleDir, step);
         if (!live.isEmpty()) return live;
         try {
             Path module = moduleDir.toAbsolutePath().normalize();
             Path root = projectRoot(module);
-            String rel = ModuleKeys.relative(module.toString(), root.toString());
+            String rel = ModuleKeys.relative(module.toString(), root.toString()) + TaskNames.suiteScope(step);
             Map<String, Long> recent =
                     merged(ProjectBuilds.projectHome(root), root).get(rel);
             if (recent != null && !recent.isEmpty()) return Map.copyOf(recent);
-            return BuildMetrics.classWallsForSession().forModule(module.toString());
+            return BuildMetrics.classWallsForSession().forModule(module.toString(), step);
         } catch (RuntimeException e) {
             Log.debug("RecentClassWalls: " + moduleDir, e);
             return Map.of();
@@ -62,14 +71,14 @@ public final class RecentClassWalls {
         RUNS.clear();
     }
 
-    private static Map<String, Long> live(Path moduleDir) {
-        Map<String, Long> direct = TestClassWalls.get(moduleDir.toString());
+    private static Map<String, Long> live(Path moduleDir, String step) {
+        Map<String, Long> direct = TestClassWalls.get(moduleDir.toString(), step);
         if (!direct.isEmpty()) return direct;
         try {
             Path abs = moduleDir.toAbsolutePath().normalize();
-            Map<String, Long> normalized = TestClassWalls.get(abs.toString());
+            Map<String, Long> normalized = TestClassWalls.get(abs.toString(), step);
             if (!normalized.isEmpty()) return normalized;
-            return TestClassWalls.get(abs.toAbsolutePath().toString());
+            return TestClassWalls.get(abs.toAbsolutePath().toString(), step);
         } catch (RuntimeException e) {
             return Map.of();
         }

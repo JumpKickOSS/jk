@@ -22,6 +22,7 @@ import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.runtime.base.SuiteSelection;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
@@ -405,13 +406,20 @@ public final class BuildEta {
                     && StepWalls.stepOkAvgMillisOwn(
                                     metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.COMPILE_JAVA_INCREMENTAL)
                             > 0;
-            running.add(incremental ? TaskNames.COMPILE_JAVA_INCREMENTAL : s.name());
+            // The suite is priced from the history of the selection this run runs, not the module's
+            // other tiers'.
+            running.add(
+                    incremental
+                            ? TaskNames.COMPILE_JAVA_INCREMENTAL
+                            : TaskNames.RUN_TESTS.equals(s.name()) ? SuiteSelection.current() : s.name());
         }
         // Rebuild with an empty step list still means "all work" — fall back to plan shape.
         if (running.isEmpty() && distrust) {
             BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
                     mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
-            for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
+            for (Task s : ModulePipeline.throughPackage(inputs).steps()) {
+                running.add(TaskNames.RUN_TESTS.equals(s.name()) ? SuiteSelection.current() : s.name());
+            }
         }
         if (running.isEmpty()) {
             // A pure cascade recheck is one token for the whole module: every step hits its cache,
@@ -439,7 +447,8 @@ public final class BuildEta {
         // The share is a cap, not a demand: a suite with fewer classes than runners gets fewer.
         // The class count comes from the ledger when the module has run here; a cold module
         // is guessed at three methods a class.
-        int knownClasses = EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()));
+        int knownClasses =
+                EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()), SuiteSelection.current());
         int classGuess = knownClasses > 0 ? knownClasses : m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
         int testW = pricedTestWorkers(mdir, workers, share, classGuess);
         EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
