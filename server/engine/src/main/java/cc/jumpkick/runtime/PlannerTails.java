@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 import static cc.jumpkick.runtime.PlannerNative.nativeStep;
-import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
@@ -23,7 +22,6 @@ import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
@@ -284,6 +282,7 @@ public final class PlannerTails {
                     guarded.addAll(contributed);
                     guarded.addAll(depJars);
                     InputGuard guard = InputGuard.of(guarded);
+                    byte @Nullable [] assemblySbom = PackagingKeys.assemblySbom(project, lockFile);
                     PackagingKeys.Keyed keyed = PackagingKeys.assembly(
                             assemblyJar,
                             layout.moduleRoot(),
@@ -291,7 +290,8 @@ public final class PlannerTails {
                             assemblyAttrs,
                             guard.token(classes),
                             contributionsToken(contributed),
-                            ClasspathFingerprint.of(depJars));
+                            ClasspathFingerprint.of(depJars),
+                            assemblySbom);
                     String shTask = keyed.taskId();
                     String shKey = keyed.key();
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
@@ -302,9 +302,7 @@ public final class PlannerTails {
                     }
                     ctx.label("package " + assemblyJar.getFileName());
                     PackagedTree tree = packagedClasses(classes, contributed);
-                    byte[] assemblySbom = null;
-                    if (Files.exists(lockFile)) {
-                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile));
+                    if (assemblySbom != null) {
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
                         assemblyAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
                     }

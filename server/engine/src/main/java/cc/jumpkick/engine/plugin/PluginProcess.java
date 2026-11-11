@@ -361,7 +361,7 @@ public final class PluginProcess {
      * The one {@code ProcessBuilder} a worker is forked from: stderr merged, and the environment
      * replaced wholesale by what {@code env} composes — never the engine's own plus extras.
      */
-    private static ProcessBuilder builder(List<String> command, WorkerEnv env) {
+    public static ProcessBuilder builder(List<String> command, WorkerEnv env) {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         Map<String, String> environment = pb.environment();
         environment.clear();

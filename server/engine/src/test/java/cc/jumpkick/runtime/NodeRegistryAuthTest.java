@@ -8,6 +8,7 @@ import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -98,6 +99,7 @@ class NodeRegistryAuthTest {
         Files.writeString(web.resolve("build.js"), """
                 require('tiny');
                 require('fs').mkdirSync(require('path').join(__dirname, 'dist'), {recursive: true});
+                require('fs').writeFileSync(require('path').join(__dirname, 'dist', 'out.txt'), 'built');
                 """);
         LockfileWriter.write(
                 Lockfile.empty(JkVersion.VERSION).withNode(new NodePin(host.version(), null, null, Map.of())),
@@ -146,6 +148,27 @@ class NodeRegistryAuthTest {
                 assertThat(Files.readString(file, StandardCharsets.ISO_8859_1))
                         .as("%s never holds the token", file)
                         .doesNotContain(TOKEN);
+            }
+        }
+    }
+
+    @Test
+    void a_cached_rebuild_leaves_no_copy_of_the_credential_behind() throws Exception {
+        Path web = tmp.resolve("web");
+        Session session = Session.defaults().withCacheDir(tmp.resolve("cache")).withVariant("", Map.of());
+        assertThat(run(plan(web, session), session).errors()).isEmpty();
+        // The output gone, the build step runs again and restores it from the action cache.
+        PathUtil.deleteRecursively(web.resolve("dist"));
+
+        BuildPlanResult again = run(plan(web, session), session);
+
+        assertThat(again.errors()).isEmpty();
+        assertThat(web.resolve("dist/out.txt")).hasContent("built");
+        Path work = web.resolve("target/node");
+        if (Files.isDirectory(work)) {
+            try (Stream<Path> files = Files.list(work)) {
+                assertThat(files.map(p -> p.getFileName().toString()))
+                        .noneMatch(n -> n.startsWith(NodeNetwork.USERCONFIG_PREFIX));
             }
         }
     }

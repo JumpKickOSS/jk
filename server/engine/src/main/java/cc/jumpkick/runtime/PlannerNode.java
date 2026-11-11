@@ -369,7 +369,6 @@ final class PlannerNode {
                         if (!NodeCommands.locked(unit.nodeDir(), pkg)) throw PlannerNodeSteps.unlocked(unit, pkg, null);
                     }
                     NodeHome home = ctx.require(NODE_HOME);
-                    Map<String, String> env = unit.env(home, true);
                     NodeKeys.Keyed keyed = NodeKeys.build(
                             unit.nodeDir(),
                             unit.node(),
@@ -392,6 +391,8 @@ final class PlannerNode {
                         return;
                     }
                     ctx.label(describe(command));
+                    // Built only to run: it writes the registry credential to a file NodeProcess.run deletes.
+                    Map<String, String> env = unit.env(home, true);
                     List<String> argv = NodeCommands.command(home, command, List.of(), env.getOrDefault("PATH", ""));
                     NodeProcess.Result r = NodeProcess.run(ctx, argv, unit.nodeDir(), env);
                     if (!r.ok()) {
@@ -434,7 +435,6 @@ final class PlannerNode {
                         return;
                     }
                     NodeHome home = ctx.require(NODE_HOME);
-                    Map<String, String> env = unit.env(home, false);
                     NodeKeys.Keyed keyed = NodeKeys.test(
                             unit.nodeDir(),
                             unit.node(),
@@ -457,6 +457,7 @@ final class PlannerNode {
                     Files.deleteIfExists(NodeTestReport.jestJson(xml));
                     Files.createDirectories(xml.getParent());
                     NodeTestReport.Runner runner = NodeTestReport.runner(body);
+                    Map<String, String> env = unit.env(home, false);
                     NodeTestReport.Wiring wiring =
                             NodeTestReport.wiring(runner, xml, env.getOrDefault("NODE_OPTIONS", ""));
                     Map<String, String> runEnv = new LinkedHashMap<>(env);

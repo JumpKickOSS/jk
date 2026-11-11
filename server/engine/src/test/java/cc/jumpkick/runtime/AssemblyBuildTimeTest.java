@@ -70,7 +70,8 @@ class AssemblyBuildTimeTest {
                         PlannerTails.assemblyAttributes(project, Optional.of(worktree)),
                         "classes",
                         "contrib",
-                        "deps")
+                        "deps",
+                        null)
                 .key();
     }
 }

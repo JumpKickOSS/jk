@@ -12,7 +12,9 @@ import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -47,6 +49,7 @@ import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ProjectedFiles;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -63,6 +66,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -516,7 +520,10 @@ public final class PlannerKsp {
                     libs,
                     kotlinVersion,
                     round.processorCp());
-            String output = runKspProcess(ctx, in, cmd);
+            WorkerEnv kspEnv = WorkerEnv.forModule(
+                            project.build().env(), in.dir(), BuildLayout.moduleTargetDir(in.dir()))
+                    .withJavaHome(JavaHomes.runningJavaHome());
+            String output = runKspProcess(ctx, in.dir(), kspEnv, cmd);
             // A green round still has things to say. Processor `logger.warn`/`info` is how
             // an annotation-driven framework explains what it did and what to do
             // differently; dropping it on success meant guidance only ever appeared once
@@ -896,19 +903,19 @@ public final class PlannerKsp {
      * Fork KSP and return its output. Read on a drainer thread and bound the wait: on an internal
      * error KSP's JVM can linger (non-daemon compiler pools survive the main thread's exception),
      * which would hang a plain readAllBytes forever. A non-zero exit fails the step with the output.
+     * KSP runs third-party processors, so it starts with a compiler worker's environment, never the
+     * daemon's whole one; the bytes are decoded once, so a character split across reads survives.
      */
-    private static String runKspProcess(TaskContext ctx, BuildPlanner.Inputs in, List<String> cmd) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
+    static String runKspProcess(TaskContext ctx, Path dir, WorkerEnv env, List<String> cmd) throws Exception {
+        ProcessBuilder pb = PluginProcess.builder(cmd, WorkerEnv.strict().with(env.compilerEnvironment()))
+                .directory(dir.toFile());
         Process proc = JobWorkers.start(pb);
-        StringBuilder captured = new StringBuilder();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        Supplier<String> captured = () -> bytes.toString(StandardCharsets.UTF_8);
         // Byte pump for KSP's output; reads no session.
         Thread drainer = new Thread(() -> {
             try (var in2 = proc.getInputStream()) {
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = in2.read(buf)) >= 0) {
-                    captured.append(new String(buf, 0, n, StandardCharsets.UTF_8));
-                }
+                in2.transferTo(bytes);
             } catch (IOException ignored) {
                 // stream closed with the process
             }
@@ -919,7 +926,7 @@ public final class PlannerKsp {
         try {
             if (!proc.waitFor(15, TimeUnit.MINUTES)) {
                 proc.destroyForcibly();
-                ctx.error(TaskNames.KSP, "KSP timed out after 15 minutes\n" + captured);
+                ctx.error(TaskNames.KSP, "KSP timed out after 15 minutes\n" + captured.get());
                 throw new RuntimeException("KSP timed out");
             }
             exit = proc.exitValue();
@@ -929,7 +936,7 @@ public final class PlannerKsp {
             proc.destroyForcibly();
             throw new RuntimeException("interrupted waiting for KSP", e);
         }
-        String output = captured.toString();
+        String output = captured.get();
         if (exit != 0) {
             String killed = WorkerContainment.failure(exit, "");
             String body = output.isBlank() ? (killed.isEmpty() ? "KSP exited " + exit : "KSP " + killed) : output;

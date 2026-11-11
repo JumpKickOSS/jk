@@ -192,6 +192,24 @@ class GuardFixturesTest {
                 .isEqualTo(2);
     }
 
+    /** Break a fixture, then revert it: the reverted sources compile again rather than trust the emptied dir. */
+    @Test
+    void a_failed_compile_does_not_leave_the_last_good_key_behind(@TempDir Path root) throws Exception {
+        Path src = Files.createDirectories(root.resolve("fx"));
+        Path ok = Files.writeString(src.resolve("Ok.java"), "class Ok {}\n");
+        Path out = root.resolve("target/jk-guards/fixtures/classes");
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(), out)).isNull();
+
+        Files.writeString(ok, "class Ok {\n");
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(), out)).isNotNull();
+
+        Files.writeString(ok, "class Ok {}\n");
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(), out)).isNull();
+        assertThat(out.resolve("Ok.class"))
+                .as("the reverted fixture's class is there to load")
+                .exists();
+    }
+
     /** A tree case is the suite's text view rooted at the case; a TOML rule has no suite to fork, so it is judged over files only. */
     @Test
     void a_tree_fixture_on_a_toml_rule_is_an_error_and_compiles_nothing(@TempDir Path root, @TempDir Path store)

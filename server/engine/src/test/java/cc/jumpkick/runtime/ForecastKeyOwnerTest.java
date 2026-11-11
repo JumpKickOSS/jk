@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -410,11 +411,13 @@ class ForecastKeyOwnerTest {
         Path classes = Files.createDirectories(layout.classesDir());
         Files.write(classes.resolve("Main.class"), new byte[] {1, 2, 3});
 
+        byte[] sbom = PackagingKeys.assemblySbom(project, module.resolve("jk-lock.toml"));
         List<String> expectedTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "contrib:" + PlannerSupport.contributionsToken(List.of()),
                 "deps:" + ClasspathFingerprint.of(List.of()),
                 "main:t.Main",
+                "sbom:" + Hashing.sha256Hex(Objects.requireNonNull(sbom)),
                 "manifest:" + project.manifest(),
                 "relocate:" + PackagingKeys.relocate(project),
                 "packaging:fat");
@@ -428,7 +431,8 @@ class ForecastKeyOwnerTest {
                 project,
                 ClasspathFingerprint.entry(classes),
                 PlannerSupport.contributionsToken(List.of()),
-                ClasspathFingerprint.of(List.of()));
+                ClasspathFingerprint.of(List.of()),
+                sbom);
         assertThat(keyed.tokens()).isEqualTo(expectedTokens);
         assertThat(keyed.key()).isEqualTo(expectedKey);
 

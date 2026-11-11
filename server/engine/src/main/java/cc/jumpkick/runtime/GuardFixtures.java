@@ -608,6 +608,9 @@ public final class GuardFixtures {
                 && digest.equals(Files.readString(keyFile).strip())) return null;
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) return "no javac in the engine's JDK";
+        // The key goes before the classes it vouches for: a failed compile leaves neither, so the
+        // next compile of the sources that last succeeded runs again instead of trusting an empty dir.
+        Files.deleteIfExists(keyFile);
         if (Files.isDirectory(outDir)) PathUtil.deleteRecursivelyOrThrow(outDir);
         Files.createDirectories(outDir);
         List<String> args = new ArrayList<>(List.of("-d", outDir.toString(), "-proc:none", "-nowarn", "-Xlint:none"));

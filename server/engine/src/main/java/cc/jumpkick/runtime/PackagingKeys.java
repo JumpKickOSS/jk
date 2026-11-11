@@ -12,6 +12,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JavadocMode;
@@ -132,7 +133,13 @@ public final class PackagingKeys {
      * and in what shape, is derived here.
      */
     public static Keyed assembly(
-            Path assemblyJar, Path moduleDir, JkBuild project, String classesTok, String contribTok, String depsTok)
+            Path assemblyJar,
+            Path moduleDir,
+            JkBuild project,
+            String classesTok,
+            String contribTok,
+            String depsTok,
+            byte @Nullable [] sbom)
             throws IOException {
         return assembly(
                 assemblyJar,
@@ -141,7 +148,13 @@ public final class PackagingKeys {
                 assemblyAttributes(moduleDir, project),
                 classesTok,
                 contribTok,
-                depsTok);
+                depsTok,
+                sbom);
+    }
+
+    /** The SBOM the fat jar embeds, from {@code lockFile}; {@code null} when there is no lockfile. */
+    public static byte @Nullable [] assemblySbom(JkBuild project, Path lockFile) throws IOException {
+        return Files.exists(lockFile) ? PlannerPlugin.applicationSbom(project, LockfileReader.read(lockFile)) : null;
     }
 
     /**
@@ -159,15 +172,17 @@ public final class PackagingKeys {
             Map<String, String> attributes,
             String classesTok,
             String contribTok,
-            String depsTok) {
+            String depsTok,
+            byte @Nullable [] sbom) {
         // The fat jar is a pure function of the main classes, the plugin-contributed dirs merged
-        // over them, the bundled dependency jars' content, the main class, the manifest attributes
-        // it is written with and the package relocations.
+        // over them, the bundled dependency jars' content, the main class, the embedded SBOM, the
+        // manifest attributes it is written with and the package relocations.
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "contrib:" + contribTok,
                 "deps:" + depsTok,
                 "main:" + orEmpty(mainClass(moduleDir, project)),
+                "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
                 "manifest:" + attributes,
                 "relocate:" + relocate(project),
                 "packaging:fat"); // distinct from shrink / thin package-jar
@@ -228,7 +243,8 @@ public final class PackagingKeys {
                 project,
                 classesTok,
                 PlannerSupport.contributionsToken(PlannerSupport.packagedDirs(pkgDecls, layout, project)),
-                fingerprintDepJars(depJars, actionCache, restoredJarShas));
+                fingerprintDepJars(depJars, actionCache, restoredJarShas),
+                assemblySbom(project, lockFile));
         boolean hit = ForecastSteps.present(actionCache, keyed.key());
         if (Perf.enabled() && !hit) {
             // The tokens beside the record's own INPUT line are what tell a wiped jar nobody
