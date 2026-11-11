@@ -37,12 +37,26 @@ public final class ModuleHints {
         return withPrereqs(graph, selected);
     }
 
-    /** Same as {@link #withPrereqs(Path, JkBuild, Set)} against an already-resolved graph. */
+    /**
+     * Same as {@link #withPrereqs(Path, JkBuild, Set)} against an already-resolved graph: tests'
+     * edges included, which is {@link #withPrereqs(BuildGraph.Result, Set, boolean)} with tests on.
+     */
     public static Set<Path> withPrereqs(BuildGraph.Result graph, Set<Path> selected) {
+        return withPrereqs(graph, selected, false);
+    }
+
+    /**
+     * The selection cone: {@code selected} plus everything the graph builds before it. It walks
+     * the graph's own edges, so a sibling reached only through a locked published POM or a {@code
+     * [build].order-after} is in, which a walk over the manifests does not see. A sibling only a
+     * module's tests read is in unless {@code skipTests}. {@code jk build -m}, its explain and the
+     * dirty hint all take this one cone.
+     */
+    public static Set<Path> withPrereqs(BuildGraph.Result graph, Set<Path> selected, boolean skipTests) {
         if (selected == null || selected.isEmpty()) return Set.of();
         Set<Path> want = copyCanonical(selected);
         if (graph == null) return Set.copyOf(want);
-        var edges = graph.reads();
+        var edges = skipTests ? graph.edges() : graph.reads();
         ArrayDeque<Path> q = new ArrayDeque<>(want);
         while (!q.isEmpty()) {
             Path d = q.poll();

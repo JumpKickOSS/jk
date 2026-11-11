@@ -537,7 +537,7 @@ public final class BuildForecasting {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
-        Set<Path> cone = ModuleHints.withPrereqs(graph, selection);
+        Set<Path> cone = ModuleHints.withPrereqs(graph, selection, skipTests);
         return restrictToSelection(explainFromGraph(graph, cache, skipTests, null), cone);
     }
 

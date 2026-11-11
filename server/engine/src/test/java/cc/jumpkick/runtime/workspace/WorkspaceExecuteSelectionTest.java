@@ -4,10 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleOrder;
-import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
@@ -16,7 +13,6 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,40 +24,6 @@ class WorkspaceExecuteSelectionTest {
 
     @TempDir
     Path tmp;
-
-    @Test
-    void cone_includes_test_deps_when_tests_on_and_not_when_skip_tests() throws Exception {
-        Path core = module("jk-core", "core", "");
-        Path engine = module("jk-engine", "engine", """
-                [dependencies]
-                jk-core = { workspace = true }
-                """);
-        Path cli = module("jk-cli", "cli", """
-                [application]
-                main = "ex.Main"
-
-                [dependencies]
-                jk-core = { workspace = true }
-
-                [test-dependencies]
-                jk-engine = { workspace = true }
-
-                [native]
-                enabled = true
-                """);
-
-        Map<Path, JkBuild> mods = new LinkedHashMap<>();
-        mods.put(core, JkBuildParser.parse(core.resolve("jk.toml")));
-        mods.put(engine, JkBuildParser.parse(engine.resolve("jk.toml")));
-        mods.put(cli, JkBuildParser.parse(cli.resolve("jk.toml")));
-
-        Set<Path> withTests = WorkspaceCone.expand(mods, List.of(cli), List.of(Scope.values()));
-        assertThat(withTests).contains(core, engine, cli);
-
-        Set<Path> skip = WorkspaceCone.expand(mods, List.of(cli), ModuleOrder.PRODUCTION_SCOPES);
-        assertThat(skip).contains(core, cli);
-        assertThat(skip).doesNotContain(engine);
-    }
 
     @Test
     void assemble_plan_native_terminals_only_selected_module() throws Exception {
@@ -237,25 +199,89 @@ class WorkspaceExecuteSelectionTest {
 
     @Test
     void symlinked_seed_still_expands_prereqs() throws Exception {
-        // : cone identity is the canonical path — a seed reached through a symlink must
-        // still match its graph module and pull dirty prereqs into the cone.
+        // Cone identity is the canonical path: a seed reached through a symlink must still match
+        // its graph module and pull its prereqs into the cone.
         Path core = module("jk-core", "core", "");
-        Path cli = module("jk-cli", "cli", """
-                [application]
-                main = "ex.Main"
-
-                [dependencies]
-                jk-core = { workspace = true }
-                """);
-        Map<Path, JkBuild> mods = new LinkedHashMap<>();
-        mods.put(core, JkBuildParser.parse(core.resolve("jk.toml")));
-        mods.put(cli, JkBuildParser.parse(cli.resolve("jk.toml")));
+        Path cli = module("jk-cli", "cli", "");
+        var graph = new BuildGraph.Result(
+                List.of(unit(core, "ex:jk-core"), unit(cli, "ex:jk-cli")),
+                Map.of(BuildGraph.canonicalPath(cli), Set.of(BuildGraph.canonicalPath(core))),
+                Map.of(),
+                List.of());
 
         Path link = tmp.resolve("cli-link");
         Symlinks.create(link, cli);
 
-        Set<Path> cone = WorkspaceCone.expand(mods, List.of(link), List.of(Scope.values()));
-        assertThat(cone).contains(core, cli);
+        assertThat(ModuleHints.withPrereqs(graph, Set.of(link), false))
+                .containsExactlyInAnyOrder(BuildGraph.canonicalPath(core), BuildGraph.canonicalPath(cli));
+    }
+
+    /**
+     * The selection cone is the graph's own edges: a prereq the graph holds that the manifest does
+     * not name (a member reached through a locked published POM) is built under {@code -m}, and a
+     * test-only edge is in the cone unless tests are skipped.
+     */
+    @Test
+    void selection_cone_follows_the_graphs_edges_not_the_manifests() throws Exception {
+        Path lib = module("lib", "lib", "");
+        Path substituted = module("sub", "sub", "");
+        Path fixtures = module("fixtures", "fixtures", "");
+        Path app = module("app", "app", "");
+        BuildGraph.BuildUnit libUnit = unit(lib, "ex:lib");
+        BuildGraph.BuildUnit subUnit = unit(substituted, "ex:sub");
+        BuildGraph.BuildUnit fixturesUnit = unit(fixtures, "ex:fixtures");
+        BuildGraph.BuildUnit appUnit = unit(app, "ex:app");
+        // app's manifest names none of them; the graph holds lib -> sub as a substituted prereq.
+        var graph = new BuildGraph.Result(
+                List.of(subUnit, libUnit, fixturesUnit, appUnit),
+                Map.of(app, Set.of(lib), lib, Set.of(substituted), substituted, Set.of(), fixtures, Set.of()),
+                Map.of(app, Set.of(fixtures)),
+                List.of());
+
+        WorkspaceRequest withTests = selecting(app, false);
+        assertThat(WorkspacePreflightPhase.applySelectionCone(graph, withTests).topoOrder())
+                .extracting(BuildGraph.BuildUnit::dir)
+                .containsExactlyInAnyOrder(app, lib, substituted, fixtures);
+
+        WorkspaceRequest skipTests = selecting(app, true);
+        assertThat(WorkspacePreflightPhase.applySelectionCone(graph, skipTests).topoOrder())
+                .extracting(BuildGraph.BuildUnit::dir)
+                .containsExactlyInAnyOrder(app, lib, substituted);
+    }
+
+    /** Explain keeps the cone the build runs: the same edges, test edges only when tests run. */
+    @Test
+    void explain_and_build_agree_on_the_cone() throws Exception {
+        Path lib = module("lib", "lib", "");
+        Path fixtures = module("fixtures", "fixtures", "");
+        Path app = module("app", "app", "");
+        var graph = new BuildGraph.Result(
+                List.of(unit(lib, "ex:lib"), unit(fixtures, "ex:fixtures"), unit(app, "ex:app")),
+                Map.of(app, Set.of(lib), lib, Set.of(), fixtures, Set.of()),
+                Map.of(app, Set.of(fixtures)),
+                List.of());
+        for (boolean skipTests : new boolean[] {false, true}) {
+            Set<Path> built =
+                    WorkspacePreflightPhase.applySelectionCone(graph, selecting(app, skipTests)).topoOrder().stream()
+                            .map(BuildGraph.BuildUnit::dir)
+                            .collect(Collectors.toSet());
+            assertThat(ModuleHints.withPrereqs(graph, Set.of(app), skipTests))
+                    .as("skipTests=%s", skipTests)
+                    .containsExactlyInAnyOrderElementsOf(built);
+        }
+    }
+
+    private BuildGraph.BuildUnit unit(Path dir, String coord) throws Exception {
+        return new BuildGraph.BuildUnit(
+                BuildGraph.canonicalPath(dir),
+                JkBuildParser.parse(dir.resolve("jk.toml")),
+                coord,
+                BuildGraph.Origin.MODULE);
+    }
+
+    private WorkspaceRequest selecting(Path module, boolean skipTests) {
+        return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, skipTests, false, 0, null, true, true)
+                .withSpec(WorkspaceSpec.compile(Set.of(module)));
     }
 
     private Path module(String name, String dirName, String extra) throws Exception {

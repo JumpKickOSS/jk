@@ -3,9 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
@@ -14,7 +12,6 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -296,7 +293,7 @@ public final class WorkspacePreflightPhase {
         Optional<BuildForecasting.Preflight> preflight = Optional.empty();
         if (request.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
-            dirty = new LinkedHashSet<>(ModuleHints.withPrereqs(graph, request.dirtyHint()));
+            dirty = new LinkedHashSet<>(ModuleHints.withPrereqs(graph, request.dirtyHint(), request.skipTests()));
             // A module whose build logic runs on every build runs in a selected build too, as on
             // the forecast's path: the root's dist copy picks up what the selected modules produce.
             for (BuildGraph.BuildUnit u : units) {
@@ -412,12 +409,7 @@ public final class WorkspacePreflightPhase {
     static BuildGraph.Result applySelectionCone(BuildGraph.Result graph, WorkspaceRequest request) {
         WorkspaceSpec spec = request.spec();
         if (spec == null || !spec.hasSelection()) return graph;
-        Map<Path, JkBuild> byDir = new LinkedHashMap<>();
-        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
-            byDir.put(unit.dir(), unit.manifest());
-        }
-        var scopes = request.skipTests() ? ModuleOrder.PRODUCTION_SCOPES : List.of(Scope.values());
-        Set<Path> cone = WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
+        Set<Path> cone = ModuleHints.withPrereqs(graph, spec.selectedModules(), request.skipTests());
         return graph.restrict(cone);
     }
 
