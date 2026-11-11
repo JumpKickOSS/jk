@@ -2733,9 +2733,11 @@ button.run-chip:hover { filter: brightness(1.2); }
   cursor: pointer;
   position: relative;
 }
-/* Cancel hangs off the box's top-right corner, up and out: its bottom edge (top + 26px tall) stays
- * above the bar's top (8px padding + the bar's 8px margin), so it never covers the ticking clock. */
-.live-build > .live-cancel { position: absolute; top: -12px; right: -10px; z-index: 1; }
+/* Cancel sits mostly inside the box's top-right corner, poking a little up and out. Its bottom edge
+ * (top + 26px tall = 20px) stays above the bar's top (8px padding + the bar's 14px margin here),
+ * so it never covers the ticking clock at the bar's right end. */
+.live-build > .live-cancel { position: absolute; top: -6px; right: -5px; z-index: 1; }
+.live-build > .bhead { margin-top: 14px; }
 .live-line { display: flex; align-items: center; gap: 10px; color: var(--tx); font-size: 12px; }
 /* One row whatever the width: too long a line loses its left end behind a leading …, so the test
    class and method on the right always show. The rtl box puts the ellipsis on the left; the text
