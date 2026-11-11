@@ -26,6 +26,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
@@ -86,7 +87,8 @@ public final class PlannerNative {
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
-                .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s))))
+                .forecast(StepForecast.priced(
+                        s -> forecast(ForecastScope.of(s), jdksDir, graalHome, mainOverride, extra, allowShared)))
                 .stage(BuildStage.NATIVE)
                 .label("Native")
                 .kind(TaskKind.IO)
@@ -114,38 +116,37 @@ public final class PlannerNative {
             boolean allowShared,
             boolean persist)
             throws Exception {
-        Path javaHome = preflightNativeImageHome(ctx, graalHome, dir, jdksDir);
         JkBuild project = ctx.require(PROJECT);
-        JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt()
-                .orElseGet(() ->
-                        new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
         BuildLayout layout = ctx.require(LAYOUT);
         Path mainJar = layout.mainJar();
         if (!Files.exists(mainJar)) {
             ctx.error("native", "jar not found at " + mainJar);
             throw new RuntimeException("missing main jar for native-image");
         }
-        String mainClass = resolveMainClass(ctx, project, dir, layout, nativeCfg, mainOverride, allowShared);
-        boolean shared = mainClass == null;
-        Path out = outputPath(layout, nativeCfg, shared);
+        // The same resolution the forecast makes (forecast below), so both key one image alike.
+        KeyInputs in = keyInputs(
+                KeyEnv.of(ctx),
+                project,
+                dir,
+                layout,
+                cache,
+                lockFile,
+                jdksDir,
+                graalHome,
+                mainOverride,
+                extra,
+                allowShared);
+        Path javaHome = in.javaHome();
+        String mainClass = in.mainClass();
+        boolean shared = in.shared();
+        Path out = in.out();
         Files.createDirectories(out.getParent());
-        Path frameworkSources = frameworkSources(ctx, project, dir, cache, layout);
-        List<String> allArgs = imageArgs(ctx, project, dir, nativeCfg, extra, frameworkSources);
-        List<Path> classpath = imageClasspath(project, dir, cache, lockFile, layout, mainJar);
-        ReachabilityArgs reach =
-                withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
-        allArgs = reach.args();
+        Path frameworkSources = in.frameworkSources();
+        List<String> allArgs = in.args();
+        List<Path> classpath = in.classpath();
+        ReachabilityArgs reach = new ReachabilityArgs(allArgs, in.metadataDirs());
         InputGuard guard = InputGuard.of(classpath);
-        ImageKey key = imageKey(
-                javaHome,
-                classpath,
-                allArgs,
-                mainClass,
-                shared,
-                out,
-                frameworkSources,
-                trainReachabilityDir(layout),
-                reach.metadataDirs());
+        ImageKey key = imageKey(in, ClasspathFingerprint.ON_DISK);
         Perf.note("live-native " + out, "key", key.key());
         if (!shared && restorePackaged(cache, key.key(), out.getParent())) {
             // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
@@ -201,9 +202,8 @@ public final class PlannerNative {
      * knew.
      */
     private static Path preflightNativeImageHome(
-            TaskContext ctx, @Nullable Path graalHome, Path dir, @Nullable Path jdksDir) throws Exception {
-        GraalSearch search = searchNativeImageHome(
-                graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
+            KeyEnv ctx, JkBuild project, @Nullable Path graalHome, Path dir, @Nullable Path jdksDir) throws Exception {
+        GraalSearch search = searchNativeImageHome(graalHome, dir, jdksDir, project.graal());
         // The request's environment, not this process's. The engine is a daemon: System.getenv
         // here answers from whichever shell started it, possibly days ago, and a $GRAALVM_HOME or
         // a $PATH that the user's shell never had must not decide what a build links with — nor
@@ -221,7 +221,7 @@ public final class PlannerNative {
      * a unique main (allowShared=false).
      */
     private static @Nullable String resolveMainClass(
-            TaskContext ctx,
+            KeyEnv ctx,
             JkBuild project,
             Path dir,
             BuildLayout layout,
@@ -287,7 +287,7 @@ public final class PlannerNative {
      * CLI extras still apply: those are the user speaking, not jk guessing.
      */
     private static @Nullable Path frameworkSources(
-            TaskContext ctx, JkBuild project, Path dir, Path cache, BuildLayout layout) throws Exception {
+            KeyEnv ctx, JkBuild project, Path dir, Path cache, BuildLayout layout) throws Exception {
         Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
         if (frameworkSources == null && packagerDeclaresNativeSources(project, dir)) {
             // The packager owns the native invocation but its augment ran in
@@ -309,7 +309,7 @@ public final class PlannerNative {
      * expresses), then [native].args, then the CLI's trailing args.
      */
     private static List<String> imageArgs(
-            TaskContext ctx,
+            KeyEnv ctx,
             JkBuild project,
             Path dir,
             JkBuild.NativeConfig nativeCfg,
@@ -364,7 +364,7 @@ public final class PlannerNative {
      * repository dirs the flag names.
      */
     private static ReachabilityArgs withReachabilityMetadata(
-            TaskContext ctx,
+            KeyEnv ctx,
             Path dir,
             JkBuild project,
             BuildLayout layout,
@@ -381,6 +381,12 @@ public final class PlannerNative {
                 if (a.inAnyScope(ClasspathResolver.RUNTIME) && a.checksum() != null) {
                     runtimeArtifacts.add(a);
                 }
+            }
+            // Local only for the forecast: an unextracted repository is an input it cannot see, never
+            // "build without metadata" (the build would fetch it, and key the image with it).
+            Lockfile.NativeMetadata pin = metaLock.nativeMetadata();
+            if (!ctx.mayFetch() && pin != null && !ReachabilityMetadata.extracted(JkStores.store(), pin)) {
+                throw new NotLocal("reachability metadata " + pin.version() + " is not extracted yet");
             }
             cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, JkStores.storeCas());
             metadataDirs = ReachabilityMetadata.configDirs(
@@ -450,6 +456,21 @@ public final class PlannerNative {
      * metadata dir the args name — the trained one and each metadata-repository dir. Shared
      * libraries (+ generated C headers) aren't cached yet.
      */
+    /** The image's key from its resolved inputs, the classpath read through {@code identity}. */
+    static ImageKey imageKey(KeyInputs in, ClasspathFingerprint.EntryIdentity identity) throws Exception {
+        return imageKey(
+                in.javaHome(),
+                in.classpath(),
+                in.args(),
+                in.mainClass(),
+                in.shared(),
+                in.out(),
+                in.frameworkSources(),
+                in.trainReach(),
+                in.metadataDirs(),
+                identity);
+    }
+
     static ImageKey imageKey(
             Path javaHome,
             List<Path> classpath,
@@ -461,11 +482,40 @@ public final class PlannerNative {
             @Nullable Path trainReach,
             List<Path> metadataDirs)
             throws Exception {
+        return imageKey(
+                javaHome,
+                classpath,
+                allArgs,
+                mainClass,
+                shared,
+                out,
+                frameworkSources,
+                trainReach,
+                metadataDirs,
+                ClasspathFingerprint.ON_DISK);
+    }
+
+    /**
+     * The key, with each classpath entry read through {@code identity}: the step reads what is on
+     * disk; the forecast reads a wiped jar as the one the build restores before it keys on it.
+     */
+    static ImageKey imageKey(
+            Path javaHome,
+            List<Path> classpath,
+            List<String> allArgs,
+            @Nullable String mainClass,
+            boolean shared,
+            Path out,
+            @Nullable Path frameworkSources,
+            @Nullable Path trainReach,
+            List<Path> metadataDirs,
+            ClasspathFingerprint.EntryIdentity identity)
+            throws Exception {
         // The toolchain by its release file, as ActionKey.jdkToken spells a JDK; a home with no
         // release file keys its portable spelling, never the machine's path.
         String graalTok = ActionKey.jdkToken(javaHome);
         List<String> nativeTokens = new ArrayList<>(List.of(
-                "cp:" + ClasspathFingerprint.of(classpath),
+                "cp:" + ClasspathFingerprint.of(classpath, identity),
                 "args:" + ActionKey.optionsToken(allArgs),
                 "main:" + (mainClass == null ? "" : mainClass),
                 "shared:" + shared,
@@ -861,20 +911,190 @@ public final class PlannerNative {
      * cached under a rebuilt jar — else cached when the producer-keyed record the live step
      * restores from still hits. A cached binary absent on disk makes the module restore it.
      */
-    static TaskForecast.@Nullable Task forecast(ForecastScope s) throws Exception {
+    static TaskForecast.@Nullable Task forecast(
+            ForecastScope s,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
+            List<String> extra,
+            boolean allowShared)
+            throws Exception {
         ForecastScope.Prepared p = s.prepared();
         if (p.noSources()) return null;
         BuildLayout layout = p.layout();
-        TaskForecast.Task step = ForecastPackagingTails.nativeImage(
-                s.project,
-                s.dir,
-                layout,
-                s.lockFile,
-                s.actionCache,
-                s.cache,
-                s.restored,
-                s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty);
+        TaskForecast.Task step = forecastImage(s, layout, jdksDir, graalHome, mainOverride, extra, allowShared);
         s.nativeBinaryToRestore = step.cached() && !ForecastPackagingTails.nativeBinaryPresent(layout);
         return step;
+    }
+
+    /**
+     * The verdict, from the key the step itself would make: {@link #keyInputs} resolves every input
+     * exactly as the step does, quietly and without the network, and {@link #imageKey} spells it,
+     * a wiped jar read as the one the build restores. A jar or compile this build rewrites leaves
+     * the key unknowable until it has (provisional: it runs, priced so); an input the key needs
+     * that is not on this machine (no GraalVM, unextracted metadata, a packager's own image) runs
+     * too, and says why.
+     */
+    private static TaskForecast.Task forecastImage(
+            ForecastScope s,
+            BuildLayout layout,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
+            List<String> extra,
+            boolean allowShared) {
+        if (s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty) {
+            return run("rebuild · compile changed");
+        }
+        if (PluginBuild.shape(s.project, s.dir)
+                .map(PluginDescriptor.Packaging::classesRun)
+                .orElse(false)) return run("native-image · classes-run packager");
+        if (packagerDeclaresNativeSources(s.project, s.dir)) return run("native-image · packager builds its own image");
+        boolean binaryPresent = ForecastPackagingTails.nativeBinaryPresent(layout);
+        try {
+            KeyInputs in = keyInputs(
+                    KeyEnv.LOCAL,
+                    s.project,
+                    s.dir,
+                    layout,
+                    s.cache,
+                    s.lockFile,
+                    jdksDir,
+                    graalHome,
+                    mainOverride,
+                    extra,
+                    allowShared);
+            // A shared library is never restored from the cache: the step always links it.
+            if (in.shared()) return run("native-image · shared library");
+            ImageKey key =
+                    imageKey(in, jar -> PackagingKeys.fingerprintJarOrCached(jar, s.actionCache, s.restored.jarShas()));
+            Perf.note("forecast-native " + in.out(), "key", key.key());
+            if (s.actionCache.restorable(key.key()).isPresent()) {
+                return new TaskForecast.Task(
+                        TaskNames.NATIVE_IMAGE,
+                        TaskForecast.Status.CACHED,
+                        binaryPresent ? "" : "binary missing · restores from cache",
+                        null);
+            }
+            return run(binaryPresent ? "native-image · action cache miss" : "native-image · binary missing");
+        } catch (NotLocal e) {
+            return run("native-image · provisional: " + e.getMessage());
+        } catch (Exception | LinkageError e) {
+            Log.debug("native-image forecast: an input could not be resolved read-only", e);
+            return run("native-image · provisional: " + Errors.text(e));
+        }
+    }
+
+    private static TaskForecast.Task run(String why) {
+        return new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, why, null);
+    }
+
+    /**
+     * Where resolving the image's key reports, and whether it may reach the network. The step
+     * passes its task context; the forecast passes {@link #LOCAL}, which prints nothing and fetches
+     * nothing, so {@code jk explain} stays read-only while both resolve every input through the
+     * same code.
+     */
+    interface KeyEnv {
+        void label(String message);
+
+        void error(String code, String message);
+
+        boolean mayFetch();
+
+        static KeyEnv of(TaskContext ctx) {
+            return new KeyEnv() {
+                @Override
+                public void label(String message) {
+                    ctx.label(message);
+                }
+
+                @Override
+                public void error(String code, String message) {
+                    ctx.error(code, message);
+                }
+
+                @Override
+                public boolean mayFetch() {
+                    return true;
+                }
+            };
+        }
+
+        /** The forecast's: nothing printed, nothing fetched. */
+        KeyEnv LOCAL = new KeyEnv() {
+            @Override
+            public void label(String message) {}
+
+            @Override
+            public void error(String code, String message) {}
+
+            @Override
+            public boolean mayFetch() {
+                return false;
+            }
+        };
+    }
+
+    /** An input the key needs is not on this machine without the network or this build. */
+    static final class NotLocal extends Exception {
+        NotLocal(String why) {
+            super(why, null, false, false);
+        }
+    }
+
+    /** Every input the image's key is made of, as {@link #keyInputs} resolves them. */
+    record KeyInputs(
+            Path javaHome,
+            @Nullable String mainClass,
+            boolean shared,
+            Path out,
+            @Nullable Path frameworkSources,
+            List<String> args,
+            List<Path> classpath,
+            List<Path> metadataDirs,
+            @Nullable Path trainReach) {}
+
+    /**
+     * Resolve the image's key inputs: the GraalVM home, the main class, the output, a packager's
+     * framework sources, the args (plugins', {@code [native]}'s, the CLI's, then the metadata
+     * repository's), the classpath and the trained reachability tree. The step and the forecast
+     * both call this; only {@code env} differs.
+     */
+    static KeyInputs keyInputs(
+            KeyEnv env,
+            JkBuild project,
+            Path dir,
+            BuildLayout layout,
+            Path cache,
+            Path lockFile,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
+            List<String> extra,
+            boolean allowShared)
+            throws Exception {
+        Path javaHome = preflightNativeImageHome(env, project, graalHome, dir, jdksDir);
+        JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt()
+                .orElseGet(() ->
+                        new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
+        String mainClass = resolveMainClass(env, project, dir, layout, nativeCfg, mainOverride, allowShared);
+        boolean shared = mainClass == null;
+        Path out = outputPath(layout, nativeCfg, shared);
+        Path frameworkSources = frameworkSources(env, project, dir, cache, layout);
+        List<String> args = imageArgs(env, project, dir, nativeCfg, extra, frameworkSources);
+        List<Path> classpath = imageClasspath(project, dir, cache, lockFile, layout, layout.mainJar());
+        ReachabilityArgs reach =
+                withReachabilityMetadata(env, dir, project, layout, lockFile, javaHome, frameworkSources, args);
+        return new KeyInputs(
+                javaHome,
+                mainClass,
+                shared,
+                out,
+                frameworkSources,
+                reach.args(),
+                classpath,
+                reach.metadataDirs(),
+                trainReachabilityDir(layout));
     }
 }

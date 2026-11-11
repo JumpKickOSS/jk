@@ -145,6 +145,14 @@ public final class ReachabilityMetadata {
      * atomic move, with a marker check for the fast path. The locked checksum, when the lock carries
      * one, is verified against the zip before anything is unpacked.
      */
+    /**
+     * Whether {@code pin}'s repository is already extracted in the store: what a read-only caller
+     * (the forecast) may use without {@link #ensureExtracted} fetching it.
+     */
+    public static boolean extracted(Path storeRoot, Lockfile.NativeMetadata pin) {
+        return Files.isRegularFile(repositoryRoot(storeRoot, pin.version()).resolve(".complete"));
+    }
+
     public static Path ensureExtracted(Path storeRoot, RepoGroup repos, Lockfile.NativeMetadata pin)
             throws IOException, InterruptedException {
         String version = pin.version();
