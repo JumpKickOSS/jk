@@ -633,8 +633,9 @@ contributes = "sources"                                      # sources | resourc
   — the coordinate is the pin (bare = exact), its runtime closure is materialized into the CAS,
   and the closure's hash is in the action key. The body receives the jar or the closure directory
   by the entry's name and reads `Main-Class` from the jar named after the coordinate's artifact.
-- **Action key** = the inputs' glob bases (`In.projectFiles`) + the entry's config (`In.config()`,
-  which carries `args`, `main`, `tool`) + tool hashes + JDK + worker jar, plus a preset entry's
+- **Action key** = the inputs' glob bases (`In.projectFiles`) + every path the args name under
+  `${module.dir}/` (cut at a glob, the module root and `target` left out) + the entry's config
+  (`In.config()`, which carries `args`, `main`, `tool`) + tool hashes + JDK + worker jar, plus a preset entry's
   key probe when it reads something no file holds (`GeneratorEntry.keyProbe`, the jOOQ live
   schema); such an entry runs even when its inputs match no file. Unchanged inputs restore
   `${out}`; the step shows in `jk explain` and the results Deliverables table like any other.

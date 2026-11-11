@@ -2,9 +2,12 @@
 package cc.jumpkick.generate;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.OutputDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,6 +26,9 @@ final class Arguments {
 
     private static final Pattern VAR =
             Pattern.compile("\\$\\{(in|inputs|unpacked|out|module\\.dir|extra:[A-Za-z0-9._-]+)}");
+
+    /** A path under the module root named in an argument: what follows {@code ${module.dir}/} up to a separator. */
+    private static final Pattern MODULE_PATH = Pattern.compile("\\$\\{module\\.dir}/([^\\s:;,\"'=]+)");
 
     private Arguments() {}
 
@@ -55,6 +61,58 @@ final class Arguments {
             }
             return unpacked;
         }
+    }
+
+    /**
+     * The module-relative paths the arguments name through {@code ${module.dir}/…}, anywhere in an
+     * argument ({@code -catalog=${module.dir}/catalog.xml}, a path list), each cut at its first glob
+     * segment: what the tool reads that the inputs may not cover. The module root itself and the
+     * build output under it are left out, since every build rewrites them.
+     */
+    static List<String> moduleReads(List<String> args) {
+        Set<String> reads = new LinkedHashSet<>();
+        for (String arg : args) {
+            Matcher m = MODULE_PATH.matcher(arg);
+            while (m.find()) {
+                String base = Inputs.globBase(m.group(1));
+                String normal = Path.of(base).normalize().toString().replace('\\', '/');
+                if (normal.isEmpty() || normal.equals(OutputDirs.TARGET) || normal.startsWith(OutputDirs.TARGET + "/"))
+                    continue;
+                reads.add(normal);
+            }
+        }
+        return List.copyOf(reads);
+    }
+
+    /**
+     * {@code args} with the value of each flag in {@code pathFlags} ({@code -flag value} or {@code
+     * -flag=value}) anchored at the module root when it is a relative path: the tool runs in its
+     * output directory, so a path the user wrote relative to the module only resolves as {@code
+     * ${module.dir}/value}, which also puts it in the step's key.
+     */
+    static List<String> anchorPathFlags(List<String> args, Set<String> pathFlags) {
+        List<String> out = new ArrayList<>(args.size());
+        for (int i = 0; i < args.size(); i++) {
+            String arg = args.get(i);
+            int eq = arg.indexOf('=');
+            if (eq > 0 && pathFlags.contains(arg.substring(0, eq))) {
+                out.add(arg.substring(0, eq + 1) + anchored(arg.substring(eq + 1)));
+            } else if (pathFlags.contains(arg) && i + 1 < args.size()) {
+                out.add(arg);
+                out.add(anchored(args.get(++i)));
+            } else {
+                out.add(arg);
+            }
+        }
+        return out;
+    }
+
+    private static String anchored(String value) {
+        if (value.isEmpty() || value.contains("${") || value.startsWith("/") || value.startsWith("\\")) {
+            return value;
+        }
+        if (value.length() > 1 && value.charAt(1) == ':') return value;
+        return "${module.dir}/" + value;
     }
 
     static List<String> expand(List<String> args, Scope scope) {

@@ -30,7 +30,9 @@ contributes = "sources"                                      # sources | resourc
 | `discard` | Paths under the output, or globs over it, removed once the tool has run — what it writes beside its contribution, such as DGS codegen's example data fetchers under `generated-examples`. |
 
 Each entry is one step named `generate-<name>`. Its **action key** is the input files' content
-(a glob's whole base directory), the entry's config, the tool's jar hashes, the unpacked jar's
+(a glob's whole base directory), every path an argument names under `${module.dir}/` (a catalog,
+a template directory, a file outside the module's sources; never the module root or `target`),
+the entry's config, the tool's jar hashes, the unpacked jar's
 hash, the build JDK and the worker itself — so a changed spec, argument, tool version or JDK
 re-runs the generator, and nothing else does. An unchanged entry is restored from the cache.
 
@@ -328,7 +330,10 @@ jaxb-runtime = "4.0.9"                       # the JAXB implementation at run ti
 ```
 
 The step is `generate-jaxb`; a schema or binding edit re-runs it, and the classes join the
-compile. `jk import` writes the table from a POM's `jaxb2-maven-plugin` (MojoHaus) or
+compile. In `arguments`, the file after `-catalog` or `-b` is relative to the module, like the
+table's own paths, and it keys the step too, so an edited catalog re-runs xjc. The schemas a
+`schemaLocation` reaches are not read for the key: keep them under `src`, where every file is.
+`jk import` writes the table from a POM's `jaxb2-maven-plugin` (MojoHaus) or
 `maven-jaxb2-plugin` (jvnet) ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## GraphQL — a recipe, not a table

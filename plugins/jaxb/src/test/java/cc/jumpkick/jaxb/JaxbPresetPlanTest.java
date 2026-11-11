@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.generate.GeneratorEntry;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.build.In;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class JaxbPresetPlanTest {
                         "extension",
                         true,
                         "arguments",
-                        List.of("-npa", "-mark-generated"))));
+                        List.of("-npa", "-mark-generated", "-catalog", "../catalog/catalog.xml"))));
 
         assertThat(entry.inputs()).containsExactly("schemas/**/*.xsd", "src/main/xjb/**/*.xjb", "bindings/global.xjb");
         assertThat(entry.args())
@@ -72,6 +73,11 @@ class JaxbPresetPlanTest {
                         "-extension",
                         "-npa",
                         "-mark-generated",
+                        "-catalog",
+                        "${module.dir}/../catalog/catalog.xml",
                         "${module.dir}/schemas");
+        assertThat(entry.task().declaredInputs().stream().map(In::wireName))
+                .as("the catalog outside the module's schemas keys the step")
+                .contains("project:../catalog/catalog.xml");
     }
 }

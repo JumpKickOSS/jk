@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -211,11 +212,24 @@ public record GeneratorEntry(
         };
     }
 
-    /** Each input's path up to its first glob segment, then what the tool also reads, deduplicated in order. */
+    /**
+     * Each input's path up to its first glob segment, then what the tool also reads — the declared
+     * reads and the paths the arguments name under {@code ${module.dir}/} — deduplicated in order.
+     */
     List<String> inputBases() {
         LinkedHashSet<String> bases = new LinkedHashSet<>();
         for (String input : inputs) bases.add(Inputs.globBase(input));
         bases.addAll(reads);
+        bases.addAll(Arguments.moduleReads(args));
         return List.copyOf(bases);
+    }
+
+    /**
+     * {@code args} with the relative value of each of a tool's path flags ({@code -catalog}, {@code
+     * -b}) anchored at the module root, where the user wrote it relative to: the tool runs in its
+     * output directory, and an anchored path is also in the step's key.
+     */
+    public static List<String> anchorPathFlags(List<String> args, Set<String> pathFlags) {
+        return Arguments.anchorPathFlags(args, pathFlags);
     }
 }

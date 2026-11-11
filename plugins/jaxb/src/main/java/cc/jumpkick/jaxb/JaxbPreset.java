@@ -11,6 +11,7 @@ import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The JAXB preset's code layer: {@code [jaxb]} becomes one {@link GeneratorEntry} — xjc's {@code
@@ -24,6 +25,9 @@ public final class JaxbPreset implements Plugin, BuildExtension {
     static final String TOOL = "jaxb-xjc";
 
     static final String TOOL_COORDINATE = "org.glassfish.jaxb:jaxb-xjc";
+
+    /** xjc's options whose value is a file it reads: a catalog resolving schema imports, a binding. */
+    static final Set<String> PATH_FLAGS = Set.of("-catalog", "-b");
 
     /** xjc's command-line entry point; it exits with the run's status. */
     static final String MAIN = "com.sun.tools.xjc.Driver";
@@ -60,7 +64,7 @@ public final class JaxbPreset implements Plugin, BuildExtension {
         }
         config.stringOpt("encoding").ifPresent(encoding -> args.addAll(List.of("-encoding", encoding)));
         if (config.bool("extension", false)) args.add("-extension");
-        args.addAll(config.stringList("arguments"));
+        args.addAll(GeneratorEntry.anchorPathFlags(config.stringList("arguments"), PATH_FLAGS));
         args.add("${module.dir}/" + src);
         return new GeneratorEntry(
                 "jaxb",

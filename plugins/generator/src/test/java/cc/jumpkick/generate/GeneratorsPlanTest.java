@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -72,6 +73,61 @@ class GeneratorsPlanTest {
         assertThat(arrayOf(wire, "contributesTestSources")).containsExactly("generated/wire");
         assertThat(arrayOf(wire, "contributesSources")).isEmpty();
         assertThat(wire).contains("\"stage\":\"generate\"");
+    }
+
+    /**
+     * A path an argument names under the module root is read by the tool, so it keys the step like an
+     * input: a catalog beside the inputs, a template directory, one outside the module's sources. The
+     * module root itself and its build output are never keyed.
+     */
+    @Test
+    void the_paths_the_arguments_name_under_the_module_key_the_step(@TempDir Path dir) throws Exception {
+        List<String> lines = describe(
+                dir,
+                List.of(
+                        entry("api", "tool", "string", "\"org.acme:gen:1.0\""),
+                        entry("api", "inputs", "list", "[\"api/openapi.yaml\"]"),
+                        entry(
+                                "api",
+                                "args",
+                                "list",
+                                "[\"-i\",\"${in}\",\"-t\",\"${module.dir}/templates/**/*.mustache\","
+                                        + "\"--catalog=${module.dir}/../shared/catalog.xml\","
+                                        + "\"-cp\",\"${module.dir}/lib/a.jar:${module.dir}/lib/b.jar\","
+                                        + "\"--base\",\"${module.dir}\",\"--into\",\"${module.dir}/target/x\"]")));
+
+        assertThat(arrayOf(task(lines, "generate-api"), "inputs"))
+                .containsExactly(
+                        "project:api/openapi.yaml",
+                        "project:templates",
+                        "project:../shared/catalog.xml",
+                        "project:lib/a.jar",
+                        "project:lib/b.jar",
+                        "config");
+    }
+
+    @Test
+    void a_path_flags_relative_value_is_anchored_at_the_module() {
+        assertThat(GeneratorEntry.anchorPathFlags(
+                        List.of(
+                                "-catalog",
+                                "xsd/catalog.xml",
+                                "-b=bind.xjb",
+                                "-npa",
+                                "-b",
+                                "${module.dir}/x",
+                                "-b",
+                                "/abs"),
+                        Set.of("-catalog", "-b")))
+                .containsExactly(
+                        "-catalog",
+                        "${module.dir}/xsd/catalog.xml",
+                        "-b=${module.dir}/bind.xjb",
+                        "-npa",
+                        "-b",
+                        "${module.dir}/x",
+                        "-b",
+                        "/abs");
     }
 
     @Test
