@@ -151,6 +151,38 @@ class PreflightGraphMemoTest {
     }
 
     @Test
+    void tryLoadGraph_misses_when_a_sourced_root_gains_a_guard_script(@TempDir Path tmp) throws Exception {
+        writeWorkspace(tmp);
+        Files.createDirectories(tmp.resolve("src/main/java"));
+        Files.writeString(tmp.resolve("src/main/java/Root.java"), "class Root {}\n");
+        Files.createDirectories(tmp.resolve(".jk/scripts"));
+        Files.writeString(tmp.resolve(".jk/scripts/after-build.kts"), "println(1)\n");
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        PreflightMemo.storeGraph(tmp, BuildGraph.resolve(tmp, entry));
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+
+        // The root now runs after every member, which only a fresh resolve wires.
+        Files.writeString(tmp.resolve(".jk/scripts/guard.kts"), "println(2)\n");
+
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+    }
+
+    @Test
+    void tryLoadGraph_misses_when_a_member_gains_the_first_guard_suite(@TempDir Path tmp) throws Exception {
+        writeWorkspace(tmp);
+        Files.createDirectories(tmp.resolve("src/main/java"));
+        Files.writeString(tmp.resolve("src/main/java/Root.java"), "class Root {}\n");
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        PreflightMemo.storeGraph(tmp, BuildGraph.resolve(tmp, entry));
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+
+        Files.createDirectories(tmp.resolve("a/src/guard/java"));
+        Files.writeString(tmp.resolve("a/src/guard/java/RulesTest.java"), "class RulesTest {}\n");
+
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+    }
+
+    @Test
     void tryLoadGraph_misses_when_a_module_glob_gains_a_member(@TempDir Path tmp) throws Exception {
         writeWorkspace(tmp);
         Files.writeString(

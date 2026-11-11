@@ -603,6 +603,10 @@ public final class PreflightMemo {
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
             feed(md, "logic=" + (BuildLogicToml.resolve(root).isPresent() ? "1" : "0"));
             feedFile(md, GuardsPresence.rulesFile(root));
+            // A root guard script and guards switched on by a member's src/guard suite both give the
+            // root its after-every-member edges; neither edits a manifest.
+            feed(md, "guardScript=" + (BuildLogicToml.hasStem(root, "guard") ? "1" : "0"));
+            feed(md, "guards=" + (PlannerGuards.enabledAt(root) ? "1" : "0"));
             feedFile(md, ManifestPaths.manifestIn(root));
             // The manifest's bytes pin a literal module list; a glob's members are what it expands
             // to now, so a new member directory under `libs/*` moves the key without any edit.
