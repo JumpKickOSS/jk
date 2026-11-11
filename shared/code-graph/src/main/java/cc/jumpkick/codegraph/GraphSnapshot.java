@@ -138,28 +138,32 @@ public final class GraphSnapshot {
     private static @Nullable Loaded read(DataInputStream d) throws IOException {
         if (d.readInt() != MAGIC || d.readInt() != FORMAT) return null;
         Key key = readKey(d);
-        String[] s = new String[d.readInt()];
-        for (int i = 0; i < s.length; i++) s[i] = readString(d);
-        GraphNode[] nodes = new GraphNode[d.readInt()];
-        for (int i = 0; i < nodes.length; i++) {
-            String id = s[d.readInt()];
-            String label = s[d.readInt()];
-            String type = s[d.readInt()];
-            String file = s[d.readInt()];
-            String loc = s[d.readInt()];
+        // Every table grows as its rows are actually read, never sized from a count up front: a
+        // corrupted count then ends at end of file instead of asking for gigabytes.
+        int stringCount = count(d);
+        List<String> s = new ArrayList<>(Math.min(stringCount, INITIAL_ROWS));
+        for (int i = 0; i < stringCount; i++) s.add(readString(d));
+        int nodeCount = count(d);
+        List<GraphNode> nodes = new ArrayList<>(Math.min(nodeCount, INITIAL_ROWS));
+        for (int i = 0; i < nodeCount; i++) {
+            String id = s.get(d.readInt());
+            String label = s.get(d.readInt());
+            String type = s.get(d.readInt());
+            String file = s.get(d.readInt());
+            String loc = s.get(d.readInt());
             int extra = d.readInt();
-            nodes[i] = new GraphNode(id, label, type, file, loc, extra < 0 ? Map.of() : map(s[extra]));
+            nodes.add(new GraphNode(id, label, type, file, loc, extra < 0 ? Map.of() : map(s.get(extra))));
         }
         List<GraphEdge> edges = new ArrayList<>();
-        int count = d.readInt();
+        int count = count(d);
         Confidence[] confidences = Confidence.values();
         for (int i = 0; i < count; i++) {
-            String source = nodes[d.readInt()].id();
-            String target = nodes[d.readInt()].id();
-            String relation = s[d.readInt()];
+            String source = nodes.get(d.readInt()).id();
+            String target = nodes.get(d.readInt()).id();
+            String relation = s.get(d.readInt());
             Confidence confidence = confidences[d.readInt()];
-            String file = s[d.readInt()];
-            String loc = s[d.readInt()];
+            String file = s.get(d.readInt());
+            String loc = s.get(d.readInt());
             int context = d.readInt();
             int extra = d.readInt();
             double score = d.readFloat();
@@ -173,15 +177,15 @@ public final class GraphSnapshot {
                     file,
                     loc,
                     weight,
-                    context < 0 ? null : s[context],
-                    extra < 0 ? Map.of() : map(s[extra])));
+                    context < 0 ? null : s.get(context),
+                    extra < 0 ? Map.of() : map(s.get(extra))));
         }
         List<Modules.Module> modules = new ArrayList<>();
-        int moduleCount = d.readInt();
+        int moduleCount = count(d);
         for (int i = 0; i < moduleCount; i++) modules.add(new Modules.Module(readString(d), d.readBoolean()));
         List<StaleRef> stale = StaleRef.ofTree(MiniJson.parse(readString(d)));
         if (d.read() != -1) return null;
-        CodeGraph graph = CodeGraph.merge(List.of(new Fragment(List.of(nodes), edges)));
+        CodeGraph graph = CodeGraph.merge(List.of(new Fragment(nodes, edges)));
         graph.modules(new Modules(modules));
         graph.stale(stale);
         return new Loaded(key, graph);
@@ -204,10 +208,22 @@ public final class GraphSnapshot {
     }
 
     private static String readString(DataInputStream d) throws IOException {
-        byte[] b = new byte[d.readInt()];
-        d.readFully(b);
+        int length = count(d);
+        // readNBytes grows with what the stream holds, so a corrupted length stops at end of file.
+        byte[] b = d.readNBytes(length);
+        if (b.length != length) throw new EOFException("string cut short");
         return new String(b, StandardCharsets.UTF_8);
     }
+
+    /** A count or length; a negative one is a corrupted file. */
+    private static int count(DataInputStream d) throws IOException {
+        int n = d.readInt();
+        if (n < 0) throw new EOFException("negative count " + n);
+        return n;
+    }
+
+    /** The most rows a table reserves before it has read them. */
+    private static final int INITIAL_ROWS = 1 << 12;
 
     private static Map<String, Object> map(String json) {
         Map<String, Object> out = new LinkedHashMap<>();

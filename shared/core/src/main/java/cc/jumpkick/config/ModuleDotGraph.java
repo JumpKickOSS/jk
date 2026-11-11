@@ -334,10 +334,11 @@ public final class ModuleDotGraph {
     /** Escape text inside a Mermaid quoted node label {@code id["…"]}. */
     static String escapeMermaidLabel(String s) {
         if (s == null) s = "";
-        // Mermaid: " ends the label; # starts comments; < > can open HTML labels.
+        // Mermaid: " ends the label; # starts comments; < > can open HTML labels. # goes first, so
+        // the entities written after it are not escaped again.
         return s.replace("\\", "\\\\")
-                .replace("\"", "#quot;")
                 .replace("#", "#35;")
+                .replace("\"", "#quot;")
                 .replace("<", "#lt;")
                 .replace(">", "#gt;")
                 .replace("\n", " ");

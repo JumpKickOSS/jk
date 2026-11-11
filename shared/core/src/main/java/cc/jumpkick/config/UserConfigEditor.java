@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
@@ -46,14 +49,39 @@ public final class UserConfigEditor {
      * leaves the file as it is, when it already declares a repository of that name.
      */
     public static boolean addCredential(Path configFile, CredentialTable table) throws IOException {
-        String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
-        if (declaresRepository(text, table.name())) return false;
+        return edit(
+                configFile,
+                text -> {
+                    if (declaresRepository(text, table.name())) return null;
+                    return appendCredential(text, table);
+                },
+                "added the credential for repository " + table.name());
+    }
+
+    /** {@code text} rewritten, or {@code null} to leave the file as it is. */
+    @FunctionalInterface
+    private interface Rewrite {
+        @Nullable
+        String apply(String text) throws IOException;
+    }
+
+    /**
+     * Read, rewrite and replace {@code configFile} under its lock, so two editors never lose each
+     * other's change, and by rename, so a reader (the engine loading credentials) never sees half a
+     * file and a crash never truncates it. False when {@code rewrite} left it alone.
+     */
+    private static boolean edit(Path configFile, Rewrite rewrite, String summary) throws IOException {
         Path parent = configFile.getParent();
         if (parent != null) Files.createDirectories(parent);
-        String after = appendCredential(text, table);
-        Files.writeString(configFile, after, StandardCharsets.UTF_8);
-        ChangeJournal.noteEdit(configFile, "added the credential for repository " + table.name(), text, after);
-        return true;
+        Path lock = configFile.resolveSibling(configFile.getFileName() + ".lock");
+        return FileLocks.withLock(lock, () -> {
+            String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
+            String after = rewrite.apply(text);
+            if (after == null) return false;
+            AtomicWrites.replaceDurably(configFile, after);
+            ChangeJournal.noteEdit(configFile, summary, text, after);
+            return true;
+        });
     }
 
     /**
@@ -121,12 +149,7 @@ public final class UserConfigEditor {
     }
 
     private static Path setRoot(Path configFile, String key, String value) throws IOException {
-        Path parent = configFile.getParent();
-        if (parent != null) Files.createDirectories(parent);
-        String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
-        String after = upsertRoot(text, key, value);
-        Files.writeString(configFile, after, StandardCharsets.UTF_8);
-        ChangeJournal.noteEdit(configFile, "set " + key + " = " + value, text, after);
+        edit(configFile, text -> upsertRoot(text, key, value), "set " + key + " = " + value);
         return configFile;
     }
 

@@ -3,7 +3,10 @@ package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,6 +14,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class FileLocksTest {
@@ -112,6 +117,40 @@ class FileLocksTest {
         assertThat(Files.readString(counter).trim()).isEqualTo(Integer.toString(processes * perProcess));
     }
 
+    /** A probe refused by another process's hold leaves no descriptor of its own open on the file. */
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void a_probe_refused_by_another_process_closes_its_channel(@TempDir Path dir) throws Exception {
+        Path lock = dir.resolve("build.lock");
+        Process holder = fork(HoldMain.class, lock.toString());
+        try (BufferedReader out =
+                new BufferedReader(new InputStreamReader(holder.getInputStream(), StandardCharsets.UTF_8))) {
+            assertThat(out.readLine()).isEqualTo("holding");
+            assertThat(FileLocks.tryHold(lock)).isInstanceOf(FileLocks.Held.class);
+            assertThat(descriptorsOn(lock))
+                    .as("descriptors this JVM has open on the lock file")
+                    .isZero();
+        } finally {
+            holder.destroy();
+            holder.waitFor();
+        }
+    }
+
+    /** How many of this process's descriptors are open on {@code file}, read from /proc. */
+    private static long descriptorsOn(Path file) throws IOException {
+        Path real = file.toRealPath();
+        long[] n = {0};
+        PathUtil.forEachChild(Path.of("/proc/self/fd"), (fd, attrs) -> {
+            try {
+                if (Files.readSymbolicLink(fd).equals(real)) n[0]++;
+            } catch (IOException closedMeanwhile) {
+                // the listing's own descriptor, gone by now
+            }
+            return true;
+        });
+        return n[0];
+    }
+
     /** The one-shot probe {@link ProbeMain} answers: {@code held} or {@code free}. */
     private static String probeFromAnotherProcess(Path lock) throws IOException {
         Process p = fork(ProbeMain.class, lock.toString());
@@ -149,6 +188,16 @@ class FileLocksTest {
                     AtomicWrites.replace(counter, Integer.toString(current + 1));
                 });
             }
+        }
+    }
+
+    /** Subprocess body: take the lock, say so, and keep it until killed. */
+    public static final class HoldMain {
+        public static void main(String[] args) throws Exception {
+            FileLocks.Probe probe = FileLocks.tryHold(Path.of(args[0]));
+            System.out.println(probe instanceof FileLocks.Hold ? "holding" : "not holding: " + probe);
+            System.out.flush();
+            Thread.sleep(Long.MAX_VALUE);
         }
     }
 

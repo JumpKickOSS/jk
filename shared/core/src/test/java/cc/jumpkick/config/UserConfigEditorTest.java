@@ -209,4 +209,20 @@ class UserConfigEditorTest {
                 .doesNotContain("pa55-literal");
         assertThat(Files.readString(config)).contains("pa55-literal");
     }
+
+    /**
+     * An edit publishes a new file by rename instead of rewriting the old one in place, so a reader
+     * holding the old file (here a second name for its inode) never sees it truncated or half
+     * written.
+     */
+    @Test
+    void an_edit_replaces_the_file_rather_than_rewriting_it_in_place(@TempDir Path tmp) throws Exception {
+        Path config = Files.writeString(tmp.resolve("config.toml"), "color = \"auto\"\n");
+        Path reader = Files.createLink(tmp.resolve("reader-view"), config);
+
+        ChangeJournal.into(tmp.resolve("changes"), () -> UserConfigEditor.setNerdFont(config, NerdFontMode.ON));
+
+        assertThat(Files.readString(config)).contains("nerd-font");
+        assertThat(Files.readString(reader)).isEqualTo("color = \"auto\"\n");
+    }
 }

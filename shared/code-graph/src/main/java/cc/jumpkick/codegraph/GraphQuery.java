@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -132,26 +133,35 @@ public final class GraphQuery {
         return new Walk(visited, edges);
     }
 
+    /**
+     * Depth-first, keeping the shallowest depth each node was reached at: a node first met down a
+     * long path is expanded again when a shorter one reaches it, so everything within {@code depth}
+     * is found, and nothing is stepped to past it.
+     */
     Walk dfs(List<String> seeds, int depth, List<String> filters) {
         int hub = hubThreshold();
         Set<String> seedSet = new HashSet<>(seeds);
-        Set<String> visited = new LinkedHashSet<>();
+        Map<String, Integer> reached = new LinkedHashMap<>();
         List<String[]> edges = new ArrayList<>();
         Deque<Map.Entry<String, Integer>> stack = new ArrayDeque<>();
         for (int i = seeds.size() - 1; i >= 0; i--) stack.push(Map.entry(seeds.get(i), 0));
         while (!stack.isEmpty()) {
             Map.Entry<String, Integer> top = stack.pop();
             String n = top.getKey();
-            if (visited.contains(n) || top.getValue() > depth) continue;
-            visited.add(n);
-            if (!seedSet.contains(n) && graph.degree(n) >= hub) continue;
+            int d = top.getValue();
+            Integer before = reached.get(n);
+            if (before != null && before <= d) continue;
+            reached.put(n, d);
+            if (d == depth || (!seedSet.contains(n) && graph.degree(n) >= hub)) continue;
             for (String nb : neighbors(n, filters)) {
-                if (!visited.contains(nb)) {
-                    stack.push(Map.entry(nb, top.getValue() + 1));
+                Integer seen = reached.get(nb);
+                if (seen == null || seen > d + 1) {
+                    stack.push(Map.entry(nb, d + 1));
                     edges.add(new String[] {n, nb});
                 }
             }
         }
+        Set<String> visited = new LinkedHashSet<>(reached.keySet());
         completeInduced(visited, edges, filters);
         return new Walk(visited, edges);
     }

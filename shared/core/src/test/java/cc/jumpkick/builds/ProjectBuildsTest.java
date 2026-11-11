@@ -32,6 +32,17 @@ class ProjectBuildsTest {
     }
 
     @Test
+    void a_lost_run_counter_resumes_above_the_runs_on_disk(@TempDir Path root) throws Exception {
+        Path home = root.resolve("home");
+        Files.createDirectories(ProjectBuilds.runDir(home, 3));
+        Files.createDirectories(ProjectBuilds.runDir(home, 7));
+
+        assertThat(ProjectBuilds.allocateRunNumber(home))
+                .as("run-number is missing; 1 would reuse, and delete, a completed run")
+                .isEqualTo(8);
+    }
+
+    @Test
     void openRun_uses_build_number_as_directory(@TempDir Path root) throws Exception {
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
         assertThat(run.buildNumber()).isEqualTo(1);

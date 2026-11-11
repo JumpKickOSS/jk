@@ -211,6 +211,13 @@ public final class ProjectBuilds {
                 next = 1;
             }
         }
+        // A missing or unreadable counter must not hand out a number a run tree already has: the
+        // new run would delete it. The highest run on disk is the floor.
+        Path home = f.getParent();
+        if (home != null) {
+            List<Path> runs = listRuns(home);
+            if (!runs.isEmpty()) next = Math.max(next, runNumberOf(runs.getFirst()) + 1);
+        }
         if (next < 1) next = 1;
         // Durable, and the sharpest case for it: a lost increment lets a later run delete a completed
         // run tree, which is the hazard the flock around this exists for.

@@ -115,7 +115,11 @@ public final class FileLocks {
                 e.closeChannel();
                 return new Unavailable(noLock.toString());
             }
-            if (lock == null) return new Held();
+            if (lock == null) {
+                // Another process holds it; nothing of ours is using the channel.
+                e.closeChannel();
+                return new Held();
+            }
             e.os = lock;
             e.holders = 1;
             return new Hold(e);
@@ -182,10 +186,14 @@ public final class FileLocks {
 
     /**
      * The JVM's entry for {@code lockFile}, keyed by real path once the file exists so two
-     * spellings of one inode share one channel.
+     * spellings of one inode share one channel. A spelling seen before answers from the map, with no
+     * filesystem work: the lock file is never deleted, and the channel recreates it if it was.
      */
     private static Entry entry(Path lockFile) {
-        Path key = lockFile.toAbsolutePath().normalize();
+        Path spelling = lockFile.toAbsolutePath().normalize();
+        Entry known = ENTRIES.get(spelling);
+        if (known != null) return known;
+        Path key = spelling;
         try {
             if (OwnerOnlyFiles.inState(key)) {
                 OwnerOnlyFiles.touch(key);
@@ -202,7 +210,9 @@ public final class FileLocks {
         } catch (IOException | UnsupportedOperationException noFile) {
             // keyed by spelling; open() reports the tree's refusal to the caller
         }
-        return ENTRIES.computeIfAbsent(key, Entry::new);
+        Entry e = ENTRIES.computeIfAbsent(key, Entry::new);
+        ENTRIES.putIfAbsent(spelling, e);
+        return e;
     }
 
     /** One lock file as this JVM sees it: the queue in front of it, the channel, the OS lock. */

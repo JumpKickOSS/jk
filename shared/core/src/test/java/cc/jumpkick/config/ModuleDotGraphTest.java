@@ -279,4 +279,9 @@ class ModuleDotGraphTest {
         assertThat(data.nodes()).hasSize(2);
         assertThat(data.edges()).hasSize(1);
     }
+
+    @Test
+    void a_mermaid_label_escapes_each_character_once() {
+        assertThat(ModuleDotGraph.escapeMermaidLabel("a\"b#c<d>")).isEqualTo("a#quot;b#35;c#lt;d#gt;");
+    }
 }

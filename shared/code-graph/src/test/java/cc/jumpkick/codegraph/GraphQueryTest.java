@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class GraphQueryTest {
@@ -136,5 +137,32 @@ class GraphQueryTest {
         assertThat(tools.neighbors(".audit()", "", 2000))
                 .startsWith("'.audit()' matches 2 nodes; pass one id:\n")
                 .contains("  src/main/java/com/acme/shop/");
+    }
+
+    /**
+     * Two mirrored diamonds, so whichever neighbour the walk takes first, one side meets its far
+     * corner down the long path: that corner is still within reach by the short one.
+     */
+    @Test
+    void aDepthFirstWalkFindsEverythingInReachAndStepsNoFurther() {
+        List<GraphNode> nodes = new ArrayList<>();
+        for (String id : List.of("A", "B", "C", "E", "F", "G", "P", "Q", "R", "S", "T"))
+            nodes.add(new GraphNode(id, id, "code", "x.java", "1"));
+        List<GraphEdge> edges = new ArrayList<>();
+        for (String[] uv : new String[][] {
+            {"A", "B"}, {"A", "C"}, {"C", "E"}, {"E", "B"}, {"B", "F"}, {"F", "G"},
+            {"A", "P"}, {"A", "Q"}, {"P", "R"}, {"R", "Q"}, {"Q", "S"}, {"S", "T"}
+        }) {
+            edges.add(new GraphEdge(
+                    uv[0], uv[1], "calls", Confidence.EXTRACTED, 1.0, "x.java", "1", 1.0, null, Map.of()));
+        }
+        CodeGraph g = CodeGraph.merge(List.of(new Fragment(nodes, edges)));
+
+        GraphQuery.Walk walk = new GraphQuery(g).dfs(List.of("A"), 3, List.of());
+
+        assertThat(walk.nodes()).containsExactlyInAnyOrder("A", "B", "C", "E", "F", "G", "P", "Q", "R", "S", "T");
+        GraphQuery.Walk shallow = new GraphQuery(g).dfs(List.of("A"), 2, List.of());
+        assertThat(shallow.nodes()).containsExactlyInAnyOrder("A", "B", "C", "E", "F", "P", "Q", "R", "S");
+        for (String[] uv : shallow.edges()) assertThat(shallow.nodes()).contains(uv[0], uv[1]);
     }
 }
