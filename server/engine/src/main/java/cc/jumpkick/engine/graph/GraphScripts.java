@@ -6,6 +6,7 @@ import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -17,6 +18,7 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -27,15 +29,17 @@ import org.jspecify.annotations.Nullable;
 /**
  * What the graph worker reads JavaScript and TypeScript with when a workspace has a front end: the
  * Node.js its lock pins (provisioned the way a build provisions it) and oxc's parser and resolver,
- * installed once per version under the store's tools. A workspace without a Node.js pin, or an
+ * installed once per lock under the store's tools. The packages come from the {@code package.json}
+ * and {@code package-lock.json} shipped beside this class, installed with {@code npm ci}, so every
+ * tarball is checked against the sha512 the lock records. A workspace without a Node.js pin, or an
  * offline run with oxc not yet installed, gets none, and the worker's scanner reads its scripts.
  */
 final class GraphScripts {
 
     private GraphScripts() {}
 
-    static final String OXC_PARSER = "0.155.0";
-    static final String OXC_RESOLVER = "11.24.2";
+    /** The npm project oxc installs from, as resources beside this class. */
+    static final List<String> PROJECT_FILES = List.of("package.json", "package-lock.json");
 
     private static final ReentrantLock INSTALL = new ReentrantLock();
 
@@ -49,7 +53,7 @@ final class GraphScripts {
             NodePin pin = LockfileReader.read(lock).node();
             if (pin == null) return null;
             NodeHome home = PlannerNodeSetup.ensure(new NodeProvisioning(), pin, ToolProgress.NONE);
-            Path oxc = JkDirs.store().resolve("tools").resolve("graph-oxc").resolve(OXC_PARSER + "-" + OXC_RESOLVER);
+            Path oxc = JkDirs.store().resolve("tools").resolve("graph-oxc").resolve(lockId());
             if (!installed(oxc) && !install(home, oxc)) return null;
             ToolUse.record(JkDirs.store().resolve("tools"), "graph-oxc", oxc);
             return new Tools(home.node(), oxc);
@@ -67,7 +71,37 @@ final class GraphScripts {
         return Files.isDirectory(modules.resolve("oxc-parser")) && Files.isDirectory(modules.resolve("oxc-resolver"));
     }
 
-    /** npm-installs both packages into a sibling directory, then moves it into place. */
+    /** The install directory's name: the head of the shipped lock's SHA-256, so a new lock is a new install. */
+    static String lockId() throws IOException {
+        return Hashing.sha256Hex(resource("package-lock.json")).substring(0, 16);
+    }
+
+    /** Writes the shipped {@code package.json} and {@code package-lock.json} into {@code dir}. */
+    static void stage(Path dir) throws IOException {
+        for (String name : PROJECT_FILES) Files.write(dir.resolve(name), resource(name));
+    }
+
+    /** The install: exactly what the staged lock pins, each tarball checked against its integrity, no scripts run. */
+    static List<String> command(Path npm, Path staging) {
+        return List.of(
+                npm.toString(),
+                "ci",
+                "--no-audit",
+                "--no-fund",
+                // Nothing the packages declare runs: oxc ships prebuilt bindings.
+                "--ignore-scripts",
+                "--prefix",
+                staging.toString());
+    }
+
+    private static byte[] resource(String name) throws IOException {
+        try (InputStream in = GraphScripts.class.getResourceAsStream("oxc/" + name)) {
+            if (in == null) throw new IOException("the engine jar carries no oxc/" + name);
+            return in.readAllBytes();
+        }
+    }
+
+    /** npm-installs the shipped lock into a sibling directory, then moves it into place. */
     private static boolean install(NodeHome home, Path dir) throws IOException, InterruptedException {
         if (SessionContext.current().offline()) return false;
         // Interruptible: one workspace's install must not hold every other graph request uncancellable.
@@ -77,18 +111,8 @@ final class GraphScripts {
             Files.createDirectories(dir.getParent());
             Path staging = Files.createTempDirectory(dir.getParent(), dir.getFileName() + ".");
             try {
-                ProcessBuilder pb = new ProcessBuilder(List.of(
-                                home.npm().toString(),
-                                "install",
-                                "--no-audit",
-                                "--no-fund",
-                                "--no-package-lock",
-                                // Nothing the packages declare runs: oxc ships prebuilt bindings.
-                                "--ignore-scripts",
-                                "--prefix",
-                                staging.toString(),
-                                "oxc-parser@" + OXC_PARSER,
-                                "oxc-resolver@" + OXC_RESOLVER))
+                stage(staging);
+                ProcessBuilder pb = new ProcessBuilder(command(home.npm(), staging))
                         .directory(staging.toFile())
                         .redirectErrorStream(true)
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD);

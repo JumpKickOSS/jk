@@ -1,0 +1,8 @@
+{
+  "name": "jk-graph-oxc",
+  "private": true,
+  "dependencies": {
+    "oxc-parser": "0.155.0",
+    "oxc-resolver": "11.24.2"
+  }
+}
