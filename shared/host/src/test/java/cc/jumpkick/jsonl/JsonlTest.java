@@ -206,4 +206,17 @@ class JsonlTest {
                 .as("a value is not a key")
                 .isFalse();
     }
+
+    @Test
+    void a_nested_field_never_shadows_the_top_level_one() {
+        String json = "{\"detail\":{\"type\":\"inner\",\"code\":7,\"ok\":false,\"tags\":[\"x\"]},"
+                + "\"type\":\"outer\",\"code\":3,\"ok\":true,\"tags\":[\"y\"]}";
+        assertThat(Jsonl.str(json, "type")).isEqualTo("outer");
+        assertThat(Jsonl.intValue(json, "code", -1)).isEqualTo(3);
+        assertThat(Jsonl.bool(json, "ok", false)).isTrue();
+        assertThat(Jsonl.strArray(json, "tags")).containsExactly("y");
+        assertThat(Jsonl.str("{\"detail\":{\"only\":\"in\"}}", "only"))
+                .as("a key only a nested object carries still reads")
+                .isEqualTo("in");
+    }
 }

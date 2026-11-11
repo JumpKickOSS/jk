@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jsonl;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +18,11 @@ import org.jspecify.annotations.Nullable;
  * heap — {@link #maxLineForHeap}) and optional idle timeout that closes the socket on stall. The
  * timeout can be changed between reads, so one connection may start strict and relax once its
  * peer has spoken.
+ *
+ * <p>Reads fill a private buffer in blocks and scan it for the line end, so a line costs one lock,
+ * not one per char. The idle bound is one watchdog per reader: each {@link #readLine} moves its
+ * deadline, and the watchdog is scheduled again only when it fires before the deadline or a
+ * shorter bound needs it sooner, never once per line.
  */
 public final class BoundedLineReader extends BufferedReader {
 
@@ -28,15 +35,11 @@ public final class BoundedLineReader extends BufferedReader {
     /** Default gap between protocol lines before a stream is declared dead: 60 minutes. */
     public static final long DEFAULT_STREAM_IDLE_MS = 60L * 60_000L;
 
+    private static final int BUFFER_CHARS = 8192;
+
     private static final ScheduledThreadPoolExecutor WATCHDOG = watchdog();
 
-    /**
-     * One daemon thread whose cancelled tasks leave the queue immediately. Every {@link #readLine}
-     * under a live bound schedules a guard and cancels it once the line arrives; a cancelled task
-     * that stayed queued until its delay passed would pin one task and its captured peer per line
-     * for the length of the idle window, and the CLI reads every streamed event line under a
-     * 60-minute one.
-     */
+    /** One daemon thread shared by every reader; a cancelled watchdog leaves the queue at once. */
     private static ScheduledThreadPoolExecutor watchdog() {
         ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "jk-protocol-idle-watchdog");
@@ -47,15 +50,24 @@ public final class BoundedLineReader extends BufferedReader {
         return executor;
     }
 
-    /** Test seam: guards still queued, cancelled or not. */
-    static int pendingWatchdogs() {
-        return WATCHDOG.getQueue().size();
-    }
+    private final Reader source;
+    private final char[] buf = new char[BUFFER_CHARS];
+    private int pos;
+    private int limit;
+    /** The last line ended on {@code \r}; a {@code \n} right after it belongs to that line. */
+    private boolean skipLf;
 
     private final int maxLine;
     private final @Nullable Closeable onTimeout;
     private volatile long idleTimeoutMillis;
     private volatile boolean timedOut;
+
+    private final Object watch = new Object();
+    private boolean reading;
+    private long deadlineNanos;
+    private @Nullable ScheduledFuture<?> guard;
+    private long guardAtNanos;
+    private long guardSchedules;
 
     public BoundedLineReader(Reader in) {
         this(in, null, 0);
@@ -71,7 +83,8 @@ public final class BoundedLineReader extends BufferedReader {
 
     /** As above, with the line bound {@code maxLine} chars instead of {@link #DEFAULT_MAX_LINE}. */
     public BoundedLineReader(Reader in, @Nullable Closeable onTimeout, long idleTimeoutMillis, int maxLine) {
-        super(in);
+        super(in, 1);
+        this.source = in;
         this.maxLine = maxLine;
         this.onTimeout = onTimeout;
         this.idleTimeoutMillis = idleTimeoutMillis;
@@ -139,43 +152,21 @@ public final class BoundedLineReader extends BufferedReader {
         return (idleTimeoutMillis / 60_000L) + " minutes";
     }
 
+    /** Test seam: how many times this reader has scheduled its watchdog. */
+    long watchdogSchedules() {
+        synchronized (watch) {
+            return guardSchedules;
+        }
+    }
+
     @Override
     public @Nullable String readLine() throws IOException {
-        ScheduledFuture<?> guard = null;
-        Closeable peer = onTimeout;
         long idle = idleTimeoutMillis;
-        if (peer != null && idle > 0) {
-            guard = WATCHDOG.schedule(
-                    () -> {
-                        timedOut = true;
-                        try {
-                            peer.close();
-                        } catch (IOException ignored) {
-                        }
-                    },
-                    idle,
-                    TimeUnit.MILLISECONDS);
-        }
+        boolean bounded = onTimeout != null && idle > 0;
+        if (bounded) armWatchdog(idle);
         try {
-            StringBuilder line = new StringBuilder(128);
-            boolean sawAny = false;
-            while (true) {
-                int r = read();
-                if (r < 0) return sawAny ? line.toString() : null;
-                sawAny = true;
-                char c = (char) r;
-                if (c == '\n') return line.toString();
-                if (c == '\r') {
-                    // \r or \r\n both terminate; peek-consume a following \n.
-                    mark(1);
-                    int n = read();
-                    if (n >= 0 && n != '\n') reset();
-                    return line.toString();
-                }
-                line.append(c);
-                if (line.length() > maxLine) {
-                    throw new IOException("protocol line longer than " + maxLine + " chars; stopped reading");
-                }
+            synchronized (lock) {
+                return scanLine();
             }
         } catch (IOException e) {
             if (timedOut) {
@@ -184,7 +175,180 @@ public final class BoundedLineReader extends BufferedReader {
             }
             throw e;
         } finally {
+            if (bounded) disarmWatchdog();
+        }
+    }
+
+    /** One line without its terminator ({@code \n}, {@code \r} or {@code \r\n}); null at end of input. */
+    private @Nullable String scanLine() throws IOException {
+        StringBuilder line = null;
+        while (true) {
+            if (pos >= limit && !fill()) return line == null ? null : line.toString();
+            if (skipLf) {
+                skipLf = false;
+                if (buf[pos] == '\n') {
+                    pos++;
+                    continue;
+                }
+            }
+            int start = pos;
+            int end = start;
+            while (end < limit && buf[end] != '\n' && buf[end] != '\r') end++;
+            int had = line == null ? 0 : line.length();
+            if (had + (end - start) > maxLine) {
+                pos = end;
+                throw new IOException("protocol line longer than " + maxLine + " chars; stopped reading");
+            }
+            if (end < limit) {
+                skipLf = buf[end] == '\r';
+                pos = end + 1;
+                if (line == null) return new String(buf, start, end - start);
+                return line.append(buf, start, end - start).toString();
+            }
+            if (line == null) line = new StringBuilder(Math.max(128, 2 * (end - start)));
+            line.append(buf, start, end - start);
+            pos = end;
+        }
+    }
+
+    /** Refills the buffer from the wrapped reader; {@code false} at end of input. */
+    private boolean fill() throws IOException {
+        int n;
+        do {
+            n = source.read(buf, 0, buf.length);
+        } while (n == 0);
+        if (n < 0) return false;
+        pos = 0;
+        limit = n;
+        return true;
+    }
+
+    /** Drops a {@code \n} owed to a line that ended on {@code \r}; {@code false} at end of input. */
+    private boolean readyToRead() throws IOException {
+        if (pos >= limit && !fill()) return false;
+        if (skipLf) {
+            skipLf = false;
+            if (buf[pos] == '\n') {
+                pos++;
+                return pos < limit || fill();
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public int read() throws IOException {
+        synchronized (lock) {
+            if (!readyToRead()) return -1;
+            return buf[pos++];
+        }
+    }
+
+    @Override
+    public int read(char[] cbuf, int off, int len) throws IOException {
+        Objects.checkFromIndexSize(off, len, cbuf.length);
+        if (len == 0) return 0;
+        synchronized (lock) {
+            if (!readyToRead()) return -1;
+            int n = Math.min(len, limit - pos);
+            System.arraycopy(buf, pos, cbuf, off, n);
+            pos += n;
+            return n;
+        }
+    }
+
+    @Override
+    public long skip(long n) throws IOException {
+        if (n < 0) throw new IllegalArgumentException("skip value is negative");
+        long skipped = 0;
+        synchronized (lock) {
+            while (skipped < n && readyToRead()) {
+                int step = (int) Math.min(n - skipped, limit - pos);
+                pos += step;
+                skipped += step;
+            }
+        }
+        return skipped;
+    }
+
+    @Override
+    public boolean ready() throws IOException {
+        synchronized (lock) {
+            boolean onlyOwedLf = skipLf && pos + 1 == limit && buf[pos] == '\n';
+            if (pos < limit && !onlyOwedLf) return true;
+            return source.ready();
+        }
+    }
+
+    @Override
+    public boolean markSupported() {
+        return false;
+    }
+
+    @Override
+    public void mark(int readAheadLimit) throws IOException {
+        throw new IOException("mark() not supported");
+    }
+
+    @Override
+    public void reset() throws IOException {
+        throw new IOException("reset() not supported");
+    }
+
+    @Override
+    public void close() throws IOException {
+        synchronized (watch) {
             if (guard != null) guard.cancel(false);
+            guard = null;
+        }
+        synchronized (lock) {
+            source.close();
+        }
+    }
+
+    /** Moves the deadline to {@code idle} from now; schedules the watchdog only if none is due by then. */
+    private void armWatchdog(long idle) {
+        synchronized (watch) {
+            reading = true;
+            deadlineNanos = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(idle);
+            if (guard != null) {
+                if (guardAtNanos - deadlineNanos <= 0) return;
+                guard.cancel(false);
+            }
+            scheduleWatchdog(deadlineNanos);
+        }
+    }
+
+    private void disarmWatchdog() {
+        synchronized (watch) {
+            reading = false;
+        }
+    }
+
+    private void scheduleWatchdog(long atNanos) {
+        guardAtNanos = atNanos;
+        guardSchedules++;
+        guard = WATCHDOG.schedule(
+                this::watchdogFired, Math.max(0, atNanos - Clock.SYSTEM.nanos()), TimeUnit.NANOSECONDS);
+    }
+
+    /** A read past its deadline closes the peer; one with time left re-arms; no read ends the watch. */
+    private void watchdogFired() {
+        Closeable peer;
+        synchronized (watch) {
+            guard = null;
+            if (!reading) return;
+            if (deadlineNanos - Clock.SYSTEM.nanos() > 0) {
+                scheduleWatchdog(deadlineNanos);
+                return;
+            }
+            timedOut = true;
+            peer = onTimeout;
+        }
+        if (peer == null) return;
+        try {
+            peer.close();
+        } catch (IOException ignored) {
         }
     }
 }

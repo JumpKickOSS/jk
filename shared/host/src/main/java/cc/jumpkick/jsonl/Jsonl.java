@@ -114,14 +114,17 @@ public final class Jsonl {
     }
 
     /**
-     * Index of {@code "key"} that starts a field. When {@code topLevelOnly}, the match must sit in
-     * the root object (depth 1), so {@code throwable.class} does not shadow a missing top-level
-     * {@code class}.
+     * Index of {@code "key"} that starts a field. A field of the root object (depth 1) wins over
+     * one nested anywhere before it, so a nested object carrying the same key never shadows the
+     * top-level field. Without {@code topLevelOnly}, a key found only in a nested object is the
+     * answer; with it, the match must sit in the root object, so {@code throwable.class} does not
+     * stand in for a missing top-level {@code class}.
      */
     static int indexOfKey(@Nullable String json, @Nullable String key, boolean topLevelOnly) {
         if (json == null || key == null) return -1;
         int keyLen = key.length();
         int depth = 0;
+        int nestedAt = -1;
         boolean inString = false;
         for (int i = 0; i < json.length(); i++) {
             char c = json.charAt(i);
@@ -134,14 +137,18 @@ public final class Jsonl {
                 continue;
             }
             if (c == '"') {
-                boolean atRoot = !topLevelOnly || depth == 1;
-                if (atRoot
+                boolean atRoot = depth == 1;
+                boolean wanted = atRoot || (!topLevelOnly && nestedAt < 0);
+                if (wanted
                         && i + 1 + keyLen < json.length()
                         && json.regionMatches(i + 1, key, 0, keyLen)
                         && json.charAt(i + 1 + keyLen) == '"') {
                     int after = i + keyLen + 2;
                     while (after < json.length() && Character.isWhitespace(json.charAt(after))) after++;
-                    if (after < json.length() && json.charAt(after) == ':') return i;
+                    if (after < json.length() && json.charAt(after) == ':') {
+                        if (atRoot) return i;
+                        nestedAt = i;
+                    }
                 }
                 inString = true;
                 continue;
@@ -149,7 +156,7 @@ public final class Jsonl {
             if (c == '{' || c == '[') depth++;
             else if ((c == '}' || c == ']') && depth > 0) depth--;
         }
-        return -1;
+        return nestedAt;
     }
 
     /**

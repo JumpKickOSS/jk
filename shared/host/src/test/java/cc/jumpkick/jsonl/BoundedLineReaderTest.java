@@ -59,27 +59,91 @@ class BoundedLineReaderTest {
     }
 
     /**
-     * Every read with a live bound schedules a guard and cancels it once the line arrives. A
-     * cancelled guard must leave the scheduler queue at once: the CLI reads every streamed event
-     * line under a 60-minute bound, so a guard that lingered for its delay would pin one task and
-     * its captured peer per line for the length of a build.
+     * The CLI reads every streamed event line under a 60-minute bound. Each read moves the one
+     * watchdog's deadline instead of scheduling and cancelling a guard of its own, so a stream of
+     * a thousand lines schedules it once.
      */
     @Test
-    void a_cancelled_guard_leaves_the_queue_at_once() throws IOException {
+    void a_stream_of_lines_schedules_the_watchdog_once() throws IOException {
         int lines = 1000;
         StringBuilder text = new StringBuilder();
         for (int i = 0; i < lines; i++) text.append("event ").append(i).append('\n');
         Closeable peer = () -> {};
         BoundedLineReader reader = new BoundedLineReader(new StringReader(text.toString()), peer, 60L * 60_000L);
 
-        int before = BoundedLineReader.pendingWatchdogs();
         for (int i = 0; i < lines; i++) {
             assertThat(reader.readLine()).isEqualTo("event " + i);
         }
+        assertThat(reader.readLine()).isNull();
 
-        assertThat(BoundedLineReader.pendingWatchdogs())
-                .as("the queue stays flat across reads; a stalled read elsewhere may hold one")
-                .isLessThanOrEqualTo(before + 1);
+        assertThat(reader.watchdogSchedules()).isEqualTo(1);
+    }
+
+    /** A bound shortened after a long one still fires on time; the long watchdog does not hide it. */
+    @Test
+    void a_shorter_bound_after_a_long_one_still_fires() throws IOException {
+        try (ServerSocketChannel listener = ServerSocketChannel.open()) {
+            listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+            try (SocketChannel peer = SocketChannel.open(listener.getLocalAddress());
+                    SocketChannel accepted = listener.accept()) {
+                BoundedLineReader reader = new BoundedLineReader(
+                        new InputStreamReader(Channels.newInputStream(accepted), StandardCharsets.UTF_8),
+                        accepted,
+                        60L * 60_000L);
+                peer.write(ByteBuffer.wrap("hello\n".getBytes(StandardCharsets.UTF_8)));
+                assertThat(reader.readLine()).isEqualTo("hello");
+
+                reader.idleTimeout(100);
+                assertThatThrownBy(reader::readLine).hasMessageContaining("no answer from the engine for 1s");
+                assertThat(accepted.isOpen()).isFalse();
+            }
+        }
+    }
+
+    /** The bound is per read: a peer that keeps answering inside it never trips the watchdog. */
+    @Test
+    void lines_arriving_inside_the_bound_never_time_out() throws Exception {
+        try (ServerSocketChannel listener = ServerSocketChannel.open()) {
+            listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+            try (SocketChannel peer = SocketChannel.open(listener.getLocalAddress());
+                    SocketChannel accepted = listener.accept()) {
+                BoundedLineReader reader = new BoundedLineReader(
+                        new InputStreamReader(Channels.newInputStream(accepted), StandardCharsets.UTF_8),
+                        accepted,
+                        300);
+                for (int i = 0; i < 6; i++) {
+                    Thread.sleep(100);
+                    peer.write(ByteBuffer.wrap(("line " + i + "\n").getBytes(StandardCharsets.UTF_8)));
+                    assertThat(reader.readLine()).isEqualTo("line " + i);
+                }
+                assertThat(reader.timedOut()).isFalse();
+                assertThat(accepted.isOpen()).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void every_line_ending_terminates_a_line_and_plain_reads_see_the_rest() throws IOException {
+        BoundedLineReader reader = new BoundedLineReader(new StringReader("a\r\nb\rc\n\r\nd\r\nrest"));
+        assertThat(reader.readLine()).isEqualTo("a");
+        assertThat(reader.readLine()).isEqualTo("b");
+        assertThat(reader.readLine()).isEqualTo("c");
+        assertThat(reader.readLine()).isEqualTo("");
+        assertThat(reader.readLine()).isEqualTo("d");
+        assertThat(reader.read()).as("the \\n of a \\r\\n is not left behind").isEqualTo('r');
+        char[] tail = new char[8];
+        assertThat(reader.read(tail, 0, tail.length)).isEqualTo(3);
+        assertThat(new String(tail, 0, 3)).isEqualTo("est");
+        assertThat(reader.readLine()).isNull();
+    }
+
+    @Test
+    void a_line_longer_than_the_buffer_reads_whole() throws IOException {
+        String longLine = "y".repeat(50_000);
+        BoundedLineReader reader = new BoundedLineReader(new StringReader(longLine + "\n" + longLine));
+        assertThat(reader.readLine()).isEqualTo(longLine);
+        assertThat(reader.readLine()).isEqualTo(longLine);
+        assertThat(reader.readLine()).isNull();
     }
 
     /**
