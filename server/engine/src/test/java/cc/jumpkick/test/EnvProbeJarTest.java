@@ -49,4 +49,21 @@ class EnvProbeJarTest {
                 .as("cut once per runner content")
                 .isEqualTo(flag);
     }
+
+    /** The test JVM starts in the module, so the agent it is handed names its jar absolutely. */
+    @Test
+    void the_flag_names_the_agent_jar_absolutely_when_the_cache_is_relative(@TempDir Path tmp) throws Exception {
+        Path runner = tmp.resolve("runner.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(runner))) {
+            out.putNextEntry(new JarEntry("cc/jumpkick/testrunner/env/EnvProbe.class"));
+            out.write(new byte[] {(byte) 0xca, (byte) 0xfe});
+            out.closeEntry();
+        }
+        Path relativeCache = Path.of("").toAbsolutePath().relativize(tmp.resolve("cache"));
+
+        String flag = EnvProbeJar.flag(runner, relativeCache, tmp.resolve("reads"));
+
+        String jar = flag.substring("-javaagent:".length(), flag.indexOf('='));
+        assertThat(Path.of(jar)).isAbsolute().exists();
+    }
 }

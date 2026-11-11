@@ -59,7 +59,9 @@ public final class EnvProbeJar {
 
     /** The {@code -javaagent} flag that records into {@code recordDir}, cutting the jar into {@code cacheDir} when needed. */
     public static String flag(Path runnerJar, Path cacheDir, Path recordDir) throws IOException {
-        return "-javaagent:" + jar(runnerJar, cacheDir) + "=" + recordDir.toAbsolutePath();
+        // Absolute: the test JVM resolves the agent against its own working directory, the module,
+        // so a cache directory given relative (as a build root can be) would name no jar there.
+        return "-javaagent:" + jar(runnerJar, cacheDir).toAbsolutePath() + "=" + recordDir.toAbsolutePath();
     }
 
     static Path jar(Path runnerJar, Path cacheDir) throws IOException {
