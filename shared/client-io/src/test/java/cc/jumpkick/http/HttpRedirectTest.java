@@ -128,6 +128,16 @@ class HttpRedirectTest {
         }
     }
 
+    /** A redirect to a scheme no request can be sent to is refused as a redirect, not a crash. */
+    @Test
+    void a_redirect_to_a_non_http_scheme_is_refused() {
+        origin.redirect("/ftp", URI.create("ftp://files.example/a.jar"));
+
+        assertThatThrownBy(() -> http().get(origin.base().resolve("/ftp")))
+                .isInstanceOf(Http.RedirectRefusedException.class)
+                .hasMessageContaining("302");
+    }
+
     /** The success line is 2xx only; the whole range of it still passes through. */
     @Test
     void every_2xx_is_still_handed_back() throws Exception {

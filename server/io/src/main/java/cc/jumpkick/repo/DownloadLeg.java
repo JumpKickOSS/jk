@@ -8,8 +8,10 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.HostRateLimiter;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.TransferBoard;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -151,10 +153,18 @@ final class DownloadLeg {
         Streamed streamed = null;
         long ms;
         try {
-            streamed = rateLimited(uri, () -> {
-                checkAbort(abort, coord);
-                return stream(coord, relativePath, uri, tmp, vouch);
-            });
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    streamed = rateLimited(uri, () -> {
+                        checkAbort(abort, coord);
+                        return stream(coord, relativePath, uri, tmp, vouch);
+                    });
+                    break;
+                } catch (BodyCutShort cut) {
+                    if (attempt >= BODY_ATTEMPTS) throw cut;
+                    Log.debug("download of " + uri + " cut short; asking again", cut);
+                }
+            }
             ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
             verifyPin(coord, relativePath, streamed, expectedSha256);
             if (streamed.sidecars() != null && vouch != null) {
@@ -221,7 +231,7 @@ final class DownloadLeg {
             transfer.started(body.length());
             try (InputStream in = body.in();
                     OutputStream out = new DigestOutputStream(Files.newOutputStream(tmp), digest)) {
-                size = copy(in, out, transfer);
+                size = copyBody(uri, in, out, transfer);
             }
             // The row leaves now; the file is counted only once it verifies (the caller's finished).
             transfer.landed();
@@ -233,6 +243,51 @@ final class DownloadLeg {
         }
         // Counted as landed by the caller, once the bytes verify.
         return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars, transfer);
+    }
+
+    /** How many times one leg asks for a body whose transfer broke off after the response began. */
+    static final int BODY_ATTEMPTS = 3;
+
+    /** A body whose transfer broke off after the response began: a reset or a dropped connection. */
+    static final class BodyCutShort extends IOException {
+        BodyCutShort(URI uri, IOException cause) {
+            super("download of " + SafeUri.forMessage(uri) + " broke off: " + cause.getMessage(), cause);
+        }
+    }
+
+    /** {@link #copy}, with a read failure raised as {@link BodyCutShort} so the leg asks again. */
+    private static long copyBody(URI uri, InputStream in, OutputStream out, TransferBoard.Transfer transfer)
+            throws IOException {
+        try {
+            return copy(new ReadFailures(in), out, transfer);
+        } catch (ReadFailure e) {
+            throw new BodyCutShort(uri, e.cause);
+        }
+    }
+
+    /** Marks a failure of the body's read side, so a failure writing the temp file is not retried. */
+    private static final class ReadFailure extends IOException {
+        final IOException cause;
+
+        ReadFailure(IOException cause) {
+            super(cause);
+            this.cause = cause;
+        }
+    }
+
+    private static final class ReadFailures extends FilterInputStream {
+        ReadFailures(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            try {
+                return super.read(b, off, len);
+            } catch (IOException e) {
+                throw new ReadFailure(e);
+            }
+        }
     }
 
     /**

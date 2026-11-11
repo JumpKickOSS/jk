@@ -25,6 +25,7 @@ import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -84,6 +85,12 @@ public final class Http {
      * caller's own reading.
      */
     static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+
+    /**
+     * The longest {@code Retry-After} a 429 is waited out for within one request. A longer one is a
+     * quota window: the request fails and {@link HostCooldown} keeps later ones from asking.
+     */
+    static final Duration MAX_RETRY_AFTER_WAIT = Duration.ofSeconds(30);
 
     private final HttpClient client;
     private final Duration[] backoffs;
@@ -397,9 +404,10 @@ public final class Http {
      */
     public HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
         checkOffline(uri);
+        URI asked = uri;
         uri = centralMirror.route(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
-        for (Map.Entry<String, String> e : headers.entrySet()) {
+        for (Map.Entry<String, String> e : forOrigin(asked, uri, headers).entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
         // Opt into transport-level gzip unless the caller already set
@@ -436,9 +444,10 @@ public final class Http {
     public HttpResponse<InputStream> getStream(URI uri, Map<String, String> headers)
             throws IOException, InterruptedException {
         checkOffline(uri);
+        URI asked = uri;
         uri = centralMirror.route(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
-        for (Map.Entry<String, String> e : headers.entrySet()) {
+        for (Map.Entry<String, String> e : forOrigin(asked, uri, headers).entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
         if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
@@ -451,6 +460,20 @@ public final class Http {
                 body.transferTo(OutputStream.nullOutputStream());
             }
         });
+    }
+
+    /**
+     * The caller's {@code headers} for a request {@code asked} of one origin and sent to {@code
+     * routed}: all of them on the same origin, none of its credentials on another (the Central
+     * mirror), as a redirect to another origin carries none.
+     */
+    static Map<String, String> forOrigin(URI asked, URI routed, Map<String, String> headers) {
+        if (RepositorySpec.sameOrigin(asked, routed)) return headers;
+        Map<String, String> kept = new LinkedHashMap<>();
+        headers.forEach((name, value) -> {
+            if (!CREDENTIAL_HEADERS.contains(name.toLowerCase(Locale.ROOT))) kept.put(name, value);
+        });
+        return kept;
     }
 
     /**
@@ -598,6 +621,7 @@ public final class Http {
             throws IOException, InterruptedException {
         IOException lastIo = null;
         int lastStatus = -1;
+        boolean answered = false;
         for (int attempt = 0; attempt < backoffs.length + 1; attempt++) {
             if (attempt > 0) {
                 Thread.sleep(jittered(backoffs[attempt - 1]));
@@ -622,13 +646,13 @@ public final class Http {
             try {
                 HttpResponse<T> response = send(request, handler, drain);
                 int status = response.statusCode();
+                Optional<Duration> retryAfter = Optional.empty();
                 if (status == 429) {
+                    retryAfter = HostCooldown.parseRetryAfter(
+                            response.headers().firstValue("Retry-After").orElse(null), clock.instant());
                     // Record before rerouting: the limit is a fact about this host whether or not a
                     // mirror can rescue this particular request.
-                    cooldown.noteRateLimited(
-                            request.uri().getHost(),
-                            HostCooldown.parseRetryAfter(
-                                    response.headers().firstValue("Retry-After").orElse(null), clock.instant()));
+                    cooldown.noteRateLimited(request.uri().getHost(), retryAfter);
                 }
                 // Central refusing this host: its per-IP quota (429) or Cloudflare's block (403 with
                 // Cloudflare's headers). Open the mirror window and reissue this very request against
@@ -641,11 +665,11 @@ public final class Http {
                     if (drain != null) drain.handle(response);
                     throw new CentralMirror.BlockedException(request.uri());
                 }
-                if ((status == 429 || blocked) && centralMirror.matches(request.uri()) && !centralMirror.active()) {
-                    if (blocked) {
-                        centralMirror.noteBlocked();
-                    } else {
-                        centralMirror.noteRateLimited();
+                // A request routed before another one opened the window is reissued too.
+                if ((status == 429 || blocked) && centralMirror.matches(request.uri()) && centralMirror.enabled()) {
+                    if (!centralMirror.active()) {
+                        if (blocked) centralMirror.noteBlocked();
+                        else centralMirror.noteRateLimited();
                     }
                     URI mirrored = centralMirror.route(request.uri());
                     if (!mirrored.equals(request.uri())) {
@@ -660,8 +684,23 @@ public final class Http {
                         }
                         if (drain != null) drain.handle(reissued);
                         lastStatus = reissued.statusCode();
+                        answered = true;
                         continue;
                     }
+                }
+                // A host that asks for a short pause gets it, and the request is asked again; the
+                // last attempt hands the 429 back.
+                if (status == 429
+                        && attempt < backoffs.length
+                        && retryAfter
+                                .filter(d -> !d.isNegative() && !d.isZero())
+                                .filter(d -> d.compareTo(MAX_RETRY_AFTER_WAIT) <= 0)
+                                .isPresent()) {
+                    if (drain != null) drain.handle(response);
+                    Thread.sleep(retryAfter.get().toMillis());
+                    lastStatus = status;
+                    answered = true;
+                    continue;
                 }
                 if (status < 500) {
                     return response;
@@ -670,6 +709,7 @@ public final class Http {
                     drain.handle(response);
                 }
                 lastStatus = status;
+                answered = true;
             } catch (RedirectRefusedException | CentralMirror.BlockedException | DeniedHostException e) {
                 throw e; // a policy answer, not a network fault: the same answer would come back
             } catch (HttpConnectTimeoutException e) {
@@ -689,10 +729,10 @@ public final class Http {
                     }
                     if (drain != null) drain.handle(reissued);
                     lastStatus = reissued.statusCode();
+                    answered = true;
                     continue;
                 }
-                throw new NoAnswerException(
-                        verb + " " + SafeUri.forMessage(uri) + " got no answer within " + spoken(requestTimeout), e);
+                throw noAnswerWithin(verb, uri, request, e);
             } catch (IOException e) {
                 lastIo = e;
                 if (!retriesSilence) break;
@@ -701,7 +741,7 @@ public final class Http {
         // SafeUri, not the URI: a repository declared as https://user:token@host/ would otherwise
         // put its credential into every exhausted-retry message, which is journalled text.
         String shown = SafeUri.forMessage(uri);
-        if (lastIo != null) {
+        if (lastIo != null && !answered) {
             // Every attempt met a connect-level fault: nothing listens at the address, so the
             // address is remembered and asked nothing more until the memory lapses.
             String fault = ConnectFaults.describe(lastIo);
@@ -710,8 +750,19 @@ public final class Http {
                     verb + " " + shown + " failed after " + (retriesSilence ? backoffs.length + 1 : 1) + " attempts",
                     lastIo);
         }
-        throw new IOException(
+        // An address that answered at least once is up: a fault on another attempt is that
+        // request's, not the address's.
+        IOException failed = new IOException(
                 verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
+        if (lastIo != null) failed.initCause(lastIo);
+        throw failed;
+    }
+
+    /** The failure of a request that met silence for its whole timeout, naming the timeout it had. */
+    NoAnswerException noAnswerWithin(String verb, URI uri, HttpRequest request, HttpTimeoutException e) {
+        Duration timeout = request.timeout().orElse(requestTimeout);
+        return new NoAnswerException(
+                verb + " " + SafeUri.forMessage(uri) + " got no answer within " + spoken(timeout), e);
     }
 
     /** A timeout as a message names it: whole seconds as {@code 2 s}, anything finer as {@code 400 ms}. */
@@ -791,15 +842,22 @@ public final class Http {
         return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
     }
 
-    /** {@code Location} resolved against the request, or null when the response carries none usable. */
+    /**
+     * {@code Location} resolved against the request, or null when the response carries none usable:
+     * absent, malformed, or naming a scheme other than http and https, which no request can be sent to.
+     */
     private static @Nullable URI redirectTarget(URI from, HttpResponse<?> response) {
         Optional<String> location = response.headers().firstValue("Location");
         if (location.isEmpty() || location.get().isBlank()) return null;
+        URI target;
         try {
-            return from.resolve(location.get().trim());
+            target = from.resolve(location.get().trim());
         } catch (IllegalArgumentException e) {
             return null;
         }
+        String scheme = target.getScheme();
+        boolean web = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+        return web && target.getHost() != null ? target : null;
     }
 
     /** A redirect may upgrade to https or stay put; it may never drop from https to http. */
