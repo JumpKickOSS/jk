@@ -22,6 +22,8 @@ import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -350,5 +352,13 @@ class DecisionAlertsTest {
                 .newDocumentBuilder()
                 .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)))
                 .getDocumentElement();
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void output_larger_than_the_pipe_buffer_is_read_whole() {
+        String out =
+                new DecisionAlerts.Processes().output(List.of("sh", "-c", "head -c 200000 /dev/zero | tr '\\0' x"));
+        assertThat(out).hasSize(200_000);
     }
 }

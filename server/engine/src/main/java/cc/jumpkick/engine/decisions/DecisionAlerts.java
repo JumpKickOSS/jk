@@ -17,8 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -325,7 +328,7 @@ public final class DecisionAlerts implements AutoCloseable {
     }
 
     /** Real processes: output discarded, read briefly, or watched on a daemon thread. */
-    private static final class Processes implements Launcher {
+    static final class Processes implements Launcher {
 
         private static final long OUTPUT_WAIT_SECONDS = 3;
 
@@ -350,13 +353,21 @@ public final class DecisionAlerts implements AutoCloseable {
             } catch (IOException | RuntimeException e) {
                 return null;
             }
+            CompletableFuture<@Nullable String> output = new CompletableFuture<>();
+            SessionContext.startPlatform("jk-decision-output", () -> {
+                try (var in = p.getInputStream()) {
+                    output.complete(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                } catch (IOException e) {
+                    output.complete(null);
+                }
+            });
             try {
                 if (!p.waitFor(OUTPUT_WAIT_SECONDS, TimeUnit.SECONDS)) {
                     p.destroyForcibly();
                     return null;
                 }
-                return new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            } catch (IOException e) {
+                return output.get(OUTPUT_WAIT_SECONDS, TimeUnit.SECONDS);
+            } catch (ExecutionException | TimeoutException e) {
                 return null;
             } catch (InterruptedException e) {
                 p.destroyForcibly();

@@ -9,7 +9,6 @@ import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.docs.AgentSetup;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8ShortNames;
@@ -44,7 +43,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -636,23 +634,10 @@ public final class NewProjectOps {
         }
         args.add(url);
         args.add(staging.toString());
-        Process p = JobWorkers.start(new ProcessBuilder(args).redirectErrorStream(true));
-        String out;
-        try (var in = p.getInputStream()) {
-            out = new String(in.readAllBytes());
-        }
-        try {
-            if (!p.waitFor(120, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                throw new IOException("git clone timed out after 120s");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            p.destroyForcibly();
-            throw new IOException("git clone interrupted", e);
-        }
-        if (p.exitValue() != 0) {
+        TemplateClone.Result result = TemplateClone.run(args, TemplateClone.TIMEOUT);
+        if (result.exit() != 0) {
             PathUtil.deleteRecursivelyOrThrow(staging);
+            String out = result.output();
             throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
         }
         try {
