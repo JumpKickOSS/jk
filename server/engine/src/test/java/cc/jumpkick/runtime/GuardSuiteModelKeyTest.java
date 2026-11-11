@@ -67,7 +67,7 @@ class GuardSuiteModelKeyTest {
 
         // A dependency added to the manifest leaves every class file as it was.
         Files.writeString(
-                manifest, Files.readString(manifest) + "\n[dependencies]\n\"org.example:banned\" = \"1.0\"\n");
+                manifest, Files.readString(manifest) + "\n[dependencies]\nbanned = \"org.example:banned:1.0\"\n");
 
         assertThat(GuardKeys.probeModuleLane(root, root, layout, load, true).key())
                 .isNotEqualTo(key);

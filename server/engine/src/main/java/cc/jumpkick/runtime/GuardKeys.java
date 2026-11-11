@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.config.WorkspaceModules.expand;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
@@ -27,6 +29,7 @@ import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -35,6 +38,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -193,9 +197,7 @@ final class GuardKeys {
         Optional<String> main =
                 FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
         if (main.isEmpty()) return new LaneProbe(null, "guards · facts index stale");
-        List<String> tokens = new ArrayList<>();
-        tokens.add("module:" + WorkspaceModel.rel(root, dir));
-        tokens.add("facts:" + main.get());
+        List<String> tokens = moduleTokens(WorkspaceModel.rel(root, dir), main.get(), dir);
         Path testClasses = layout.testClassesDir();
         if (testsIndexed && Files.isDirectory(testClasses)) {
             Optional<String> test =
@@ -219,6 +221,26 @@ final class GuardKeys {
                         tokens,
                         baselineSlice(root, Lane.MODULE, WorkspaceModel.rel(root, dir), load.rules())),
                 "");
+    }
+
+    /**
+     * The head of a module lane's key, for the run and the forecast alike: the module, its facts
+     * digest, and what its type hierarchy resolves through besides its own classes — the JDK the
+     * engine runs on, whose platform classes answer every {@code java.*} supertype, and the ABI of
+     * each compile-scope sibling's classes tree, in closure order. An override or a subtype check
+     * moves with either, while the module's own facts do not. The siblings are read off the
+     * manifest on disk, so the run and the forecast name the same ones.
+     */
+    static List<String> moduleTokens(String module, String factsDigest, Path dir) throws IOException {
+        JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
+        List<String> tokens = new ArrayList<>();
+        tokens.add("module:" + module);
+        tokens.add("facts:" + factsDigest);
+        tokens.add("jdk:" + ActionKey.jdkToken(JavaHomes.runningJavaHome()));
+        WorkspaceClasspath.Result siblings =
+                WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
+        for (Path classes : siblings.siblingClosureClasses()) tokens.add("sibling:" + ClasspathAbi.token(classes));
+        return tokens;
     }
 
     /**

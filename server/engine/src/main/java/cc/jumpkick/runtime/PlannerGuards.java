@@ -329,7 +329,7 @@ final class PlannerGuards {
                             : null;
                     // Before this lane waits on anyone: a workspace suite elsewhere may be waiting on it.
                     cx.in().siblings().indexed();
-                    List<String> tokens = new ArrayList<>(List.of("module:" + module, "facts:" + main.bodyDigest()));
+                    List<String> tokens = GuardKeys.moduleTokens(module, main.bodyDigest(), moduleDir);
                     if (test != null) tokens.add("test-facts:" + test.bodyDigest());
                     // Without compiled tests the lane runs fewer rules; its verdict is not the build's.
                     if (!indexTests) tokens.add(GuardKeys.TESTS_NOT_COMPILED);
