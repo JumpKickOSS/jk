@@ -659,6 +659,33 @@ miss    = 'Jk.execute("install", "--m2-dir", m2.toString(), dir.toString());'
 instead = "pass --m2-dir into the test's own temp dir"
 why     = "an install test without --m2-dir publishes into the developer's real ~/.m2"
 
+# G128. The Maven local repository is resolved in one place: jk.m2.local, JK_M2_LOCAL,
+# maven.repo.local, settings.xml, then ~/.m2/repository. A second spelling of ~/.m2 skips every
+# override, so jk install writes one repository while reads consult another.
+[guards.local-repo-owner]
+kind     = "text"
+files    = ["**/src/main/java/**/*.java", "**/src/main/kotlin/**/*.kt"]
+blank    = "comments"
+patterns = ['"\.m2"', '"\.m2/', '\.resolve\("repository"\)']
+owner    = ["shared/client-io/src/main/java/cc/jumpkick/repo/M2Dirs.java"]
+fixture  = "server/guard/fixtures/local-repo-owner"
+hit      = 'Path.of(System.getProperty("user.home"), ".m2", "repository")'
+miss     = 'M2Dirs.repository(m2DirOverride)'
+instead  = "M2Dirs.localRepository(), or M2Dirs.repository(m2Dir) under an --m2-dir root"
+why      = "a second spelling of ~/.m2 skips the overrides, so one command writes a repository the next one never reads"
+
+[[guards.local-repo-owner.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/m2/MavenSettings.java"
+reason = "locates the user's settings.xml, which M2Dirs reads the repository from"
+
+[[guards.local-repo-owner.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/m2/SettingsValues.java"
+reason = "locates Maven's settings-security files beside settings.xml, not the repository"
+
+[[guards.local-repo-owner.allow]]
+in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery/MavenToolchainsProbe.java"
+reason = "locates Maven's toolchains.xml, not the repository"
+
 # G65. A tree walk in a build script that follows symbolic links can reach the JDK install behind a
 # stable pointer in a test home and delete it. Files.walkFileTree without FOLLOW_LINKS never enters a
 # link.

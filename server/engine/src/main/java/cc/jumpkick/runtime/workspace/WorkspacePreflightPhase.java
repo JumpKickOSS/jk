@@ -215,7 +215,6 @@ public final class WorkspacePreflightPhase {
     static List<String> installRefusals(WorkspaceRequest request, List<BuildGraph.BuildUnit> units) {
         if (request.target() != WorkspaceTarget.INSTALL) return List.of();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
-        Path m2Dir = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
         List<String> refused = new ArrayList<>();
         for (BuildGraph.BuildUnit unit : units) {
             Path dir = BuildGraph.canonicalPath(unit.dir());
@@ -225,8 +224,8 @@ public final class WorkspacePreflightPhase {
                 continue;
             }
             if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) continue;
-            String hidden =
-                    InstallPlans.shadowedByRelease(unit.manifest(), unit.dir(), m2Dir, spec.installDestination());
+            String hidden = InstallPlans.shadowedByRelease(
+                    unit.manifest(), unit.dir(), spec.m2Dir(), spec.installDestination());
             if (hidden != null) refused.add(hidden);
         }
         return refused;

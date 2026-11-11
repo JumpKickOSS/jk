@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -73,5 +74,21 @@ class WorkspacePreflightInstallRefusalTest {
 
         assertThat(WorkspacePreflightPhase.installRefusals(request(null), List.of(snapshot)))
                 .isEmpty();
+    }
+
+    @Test
+    void with_no_m2_dir_the_configured_local_repository_is_the_one_checked() throws Exception {
+        BuildGraph.BuildUnit snapshot = module("1.0.0-SNAPSHOT");
+        occupy("1.0.0");
+        System.setProperty(M2Dirs.LOCAL_PROPERTY, tmp.resolve("m2/repository").toString());
+        WorkspaceRequest request = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
+                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null, null));
+
+        assertThat(WorkspacePreflightPhase.installRefusals(request, List.of(snapshot)))
+                .as("an install with no --m2-dir goes where the configured local repository is")
+                .singleElement()
+                .asString()
+                .contains("would be hidden by the release ex:lib:1.0.0");
     }
 }

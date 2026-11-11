@@ -119,6 +119,23 @@ class M2DirsTest {
                 .isEqualTo(Path.of(System.getProperty("user.home"), ".m2", "repository"));
     }
 
+    @Test
+    void a_named_m2_dir_holds_the_repository_and_none_means_the_configured_one(@TempDir Path dir) {
+        System.setProperty("jk.m2.local", dir.resolve("configured").toString());
+
+        assertThat(M2Dirs.repository(dir.resolve("m2"))).isEqualTo(dir.resolve("m2/repository"));
+        assertThat(M2Dirs.repository(null)).isEqualTo(dir.resolve("configured"));
+    }
+
+    @Test
+    void the_user_repository_skips_the_test_redirects(@TempDir Path dir) throws Exception {
+        System.setProperty("jk.m2.local", dir.resolve("sandbox").toString());
+        System.setProperty(
+                "jk.m2.settings", settingsXml(dir, dir.resolve("from-settings")).toString());
+
+        assertThat(M2Dirs.userRepository()).isEqualTo(dir.resolve("from-settings"));
+    }
+
     private static Path settingsXml(Path dir, Path localRepository) throws Exception {
         Path settings = dir.resolve("settings.xml");
         Files.writeString(settings, "<settings><localRepository>" + localRepository + "</localRepository></settings>");

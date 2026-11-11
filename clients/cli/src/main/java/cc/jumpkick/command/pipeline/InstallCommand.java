@@ -43,6 +43,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.manifest.PluginModule;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlanResult;
@@ -435,8 +436,9 @@ public final class InstallCommand {
                 .withModules(tokens)
                 .withSpec(
                         reshelving
-                                ? WorkspaceSpec.reshelve(selected, m2Dir(), destinationOverride)
-                                : graal.onto(WorkspaceSpec.install(selected, Map.of(), m2Dir(), destinationOverride)));
+                                ? WorkspaceSpec.reshelve(selected, m2DirOverride, destinationOverride)
+                                : graal.onto(
+                                        WorkspaceSpec.install(selected, Map.of(), m2DirOverride, destinationOverride)));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
         // -O jsonl / --verbose. A hand-rolled listener here is what made a failed workspace
@@ -542,7 +544,7 @@ public final class InstallCommand {
         int installed = modules;
         List<ModuleOutcome.Installed> placed = outcomes;
         var tails = new WorkspaceRunView.Tails(
-                (r, planned) -> installTail(installed, placed, repositoryRoots(), start),
+                (r, planned) -> installTail(installed, placed, repositoryRoots(m2DirOverride), start),
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "install"), start));
         return run.settleLive(view, agg, result, elapsed, tails, settled -> {});
     }
@@ -589,7 +591,8 @@ public final class InstallCommand {
         }
         if (json) return 0;
         for (String line : applied.lines()) CliOutput.out(line);
-        CommandWedge.printOk("Install", installTail(applied.modules(), applied.outcomes(), repositoryRoots(), start));
+        CommandWedge.printOk(
+                "Install", installTail(applied.modules(), applied.outcomes(), repositoryRoots(m2DirOverride), start));
         return 0;
     }
 
@@ -654,9 +657,9 @@ public final class InstallCommand {
     }
 
     /** The directory each install target writes under, for the settle line. */
-    private Map<InstallDestination, Path> repositoryRoots() {
+    static Map<InstallDestination, Path> repositoryRoots(@Nullable Path m2Dir) {
         return Map.of(
-                InstallDestination.M2, m2Dir().resolve("repository"),
+                InstallDestination.M2, M2Dirs.repository(m2Dir),
                 InstallDestination.JK, JkDirs.store().resolve("repos").resolve(RepositorySpec.JK_LOCAL));
     }
 
@@ -1091,11 +1094,6 @@ public final class InstallCommand {
 
     private Path binDir() {
         return binDirOverride != null ? binDirOverride : JkDirs.binDir();
-    }
-
-    private Path m2Dir() {
-        if (m2DirOverride != null) return m2DirOverride;
-        return Path.of(System.getProperty("user.home", "."), ".m2");
     }
 
     private void announceInstall(String coord, Path launcher, Path binDir) {

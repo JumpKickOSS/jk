@@ -48,11 +48,27 @@ public final class M2Dirs {
         String prop = System.getProperty(LOCAL_PROPERTY);
         if (prop != null && !prop.isBlank()) return Path.of(prop.trim());
         if (override != null && !override.isBlank()) return Path.of(override.trim());
+        return userRepository();
+    }
+
+    /**
+     * The repository under a {@code .m2} directory the caller named ({@code jk install --m2-dir}),
+     * else {@link #localRepository()}.
+     */
+    public static Path repository(@Nullable Path m2Dir) {
+        return m2Dir == null ? localRepository() : m2Dir.resolve("repository");
+    }
+
+    /**
+     * The user's own repository: the resolution above without the two redirects a test JVM is
+     * given ({@code jk.m2.local}, {@code JK_M2_LOCAL}).
+     */
+    public static Path userRepository() {
         String mavenProp = System.getProperty("maven.repo.local");
         if (mavenProp != null && !mavenProp.isBlank()) return Path.of(mavenProp.trim());
         Path fromSettings = settingsLocalRepository();
         if (fromSettings != null) return fromSettings;
-        return Path.of(System.getProperty("user.home"), ".m2", "repository");
+        return defaultRepository();
     }
 
     /**

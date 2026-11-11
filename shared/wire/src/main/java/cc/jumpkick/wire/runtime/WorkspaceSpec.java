@@ -64,8 +64,8 @@ public record WorkspaceSpec(
     }
 
     /**
-     * {@code jk install}: {@code m2Dir} is the client-resolved local-repo root (null for {@code
-     * ~/.m2}); {@code destination} is the {@code --destination} override, null when none was given.
+     * {@code jk install}: {@code m2Dir} is the {@code --m2-dir} root, null for the configured Maven local
+     * repository; {@code destination} is the {@code --destination} override, null when none was given.
      */
     public static WorkspaceSpec install(
             Set<Path> selected,

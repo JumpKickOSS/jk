@@ -33,7 +33,7 @@ import java.util.TreeSet;
  * from Central per cold engine, and a Central that is throttling this host turns every one of them
  * red at once. Central's artifacts live in the Maven local repository, so the seed copies the JUnit
  * Platform trees from this machine's local repositories ({@link M2Dirs#localRepository()}, then
- * {@code ~/.m2/repository}) into the sandbox's own, writes the memos that vouch for them under the
+ * {@link M2Dirs#userRepository()}) into the sandbox's own, writes the memos that vouch for them under the
  * sandbox store's {@code repos/central}, and gives each artifact a version list naming exactly the
  * versions whose POM is there, written under the key the metadata cache reads for the Central URL.
  * A file is always copied, never linked: a sandbox runs arbitrary test code against its local
@@ -97,7 +97,7 @@ public final class TestStoreSeed {
     /**
      * Seed {@code sandboxStore} and {@code sandboxM2} — the local repository the sandbox's JVMs will
      * run with — from every other local repository on this machine that holds Central's JUnit
-     * Platform: this process's own, then {@code ~/.m2/repository}.
+     * Platform: this process's own, then the user's ({@link M2Dirs#userRepository()}).
      */
     public static int seed(Path sandboxStore, Path sandboxM2) throws IOException {
         Path target = sandboxM2.toAbsolutePath().normalize();
@@ -135,9 +135,7 @@ public final class TestStoreSeed {
     private static List<Path> sources(Path target) {
         List<Path> out = new ArrayList<>();
         Path own = M2Dirs.localRepository().toAbsolutePath().normalize();
-        Path user = Path.of(System.getProperty("user.home"), ".m2", "repository")
-                .toAbsolutePath()
-                .normalize();
+        Path user = M2Dirs.userRepository().toAbsolutePath().normalize();
         for (Path candidate : List.of(own, user)) {
             if (!candidate.equals(target) && !out.contains(candidate)) out.add(candidate);
         }

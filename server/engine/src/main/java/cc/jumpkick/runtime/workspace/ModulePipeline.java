@@ -129,7 +129,7 @@ public final class ModulePipeline {
         Path graal = GraalHomes.lookup(unit.dir(), spec.graalByDir());
         TailArgs args = spec.tail();
         return switch (target) {
-            case INSTALL -> InstallPlans.tail(unit.manifest(), cache, m2Dir(spec), spec.installDestination());
+            case INSTALL -> InstallPlans.tail(unit.manifest(), cache, spec.m2Dir(), spec.installDestination());
             case NATIVE -> {
                 TailArgs.Native a = args instanceof TailArgs.Native n ? n : new TailArgs.Native(null, List.of());
                 yield NativePlans.tail(graal, a.main(), a.extraArgs());
@@ -171,17 +171,13 @@ public final class ModulePipeline {
         if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) {
             return BuildPlan.builder("reshelve-skip").build();
         }
-        return InstallPlans.reshelveBuildPlan(unit.dir(), cache, m2Dir(spec), spec.installDestination());
+        return InstallPlans.reshelveBuildPlan(unit.dir(), cache, spec.m2Dir(), spec.installDestination());
     }
 
     private static boolean selected(WorkspaceSpec spec, Path dir) {
         return !spec.hasSelection()
                 || spec.selectedModules().stream()
                         .anyMatch(path -> BuildGraph.canonicalPath(path).equals(BuildGraph.canonicalPath(dir)));
-    }
-
-    private static Path m2Dir(WorkspaceSpec spec) {
-        return spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
     }
 
     /** The request-level knobs every module's {@link BuildPlanner.Inputs} carries. */
