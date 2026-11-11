@@ -3068,9 +3068,9 @@ main.activity-page { max-width: min(64rem, 100%); }
 .modal > .file-viewer-plain { flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto; }
 
 /* ---- The live build's top bar and fixed worker rows (buildhead.js), laid out as the terminal ---- */
-/* --halo outlines the white chip label and percentage in half-black so they read over any fill:
+/* --halo outlines the white chip label and percentage in 30% black so they read over any fill:
  * the stroke paints first (paint-order), so only its outer half shows around each glyph. */
-.bhead { --chev: 8px; --halo: 2px rgba(0, 0, 0, 0.5); display: flex; align-items: center; height: 20px; margin: 8px 0 4px; font-family: var(--mono); font-size: 11.5px; }
+.bhead { --chev: 8px; --halo: 2px rgba(0, 0, 0, 0.3); display: flex; align-items: center; height: 20px; margin: 8px 0 4px; font-family: var(--mono); font-size: 11.5px; }
 .bchip {
   display: inline-flex; align-items: center; gap: 7px; flex: none; height: 100%;
   padding: 0 calc(var(--chev) + 8px) 0 9px;
