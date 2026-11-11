@@ -112,7 +112,8 @@ final class HttpCoverageReport {
                 exchange.sendResponseHeaders(200, -1); // a 0 length arg would mean chunked, not empty
             } else {
                 exchange.sendResponseHeaders(200, size);
-                StaticContent.copyExactly(channel, exchange.getResponseBody(), size);
+                StaticContent.copyExactly(
+                        channel, new WriteDeadline(exchange.getResponseBody(), WriteDeadline.PER_WRITE), size);
             }
         }
     }

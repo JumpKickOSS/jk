@@ -15,6 +15,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -111,11 +112,20 @@ final class StaticContent {
      */
     private final String classpathEtag;
 
+    /** How long one write of a response body may wait on the client. */
+    private final Duration writeLimit;
+
     /**
      * @param disk the directory to serve ahead of the jar, or {@code null} for the jar alone; it need
      * not exist (the jar still serves)
      */
     StaticContent(JkHttpConfig.@Nullable WebDisk disk, String version) {
+        this(disk, version, WriteDeadline.PER_WRITE);
+    }
+
+    /** As above, each body write bounded by {@code writeLimit} rather than {@link WriteDeadline#PER_WRITE}. */
+    StaticContent(JkHttpConfig.@Nullable WebDisk disk, String version, Duration writeLimit) {
+        this.writeLimit = writeLimit;
         this.root = disk == null ? null : disk.dir().normalize();
         this.overlay = disk != null && disk.overlay();
         this.classpathEtag = "\"jk-" + version + "-" + classpathStamp() + "\"";
@@ -218,7 +228,7 @@ final class StaticContent {
                 exchange.sendResponseHeaders(200, -1); // a 0 length arg would mean chunked, not empty
             } else {
                 exchange.sendResponseHeaders(200, size);
-                copyExactly(channel, exchange.getResponseBody(), size);
+                copyExactly(channel, new WriteDeadline(exchange.getResponseBody(), writeLimit), size);
             }
         }
         return true;
@@ -253,7 +263,7 @@ final class StaticContent {
         }
         try (InputStream in = resource.openStream()) {
             exchange.sendResponseHeaders(200, 0); // chunked: length unknowable without buffering the asset
-            in.transferTo(exchange.getResponseBody());
+            in.transferTo(new WriteDeadline(exchange.getResponseBody(), writeLimit));
         }
         return true;
     }
