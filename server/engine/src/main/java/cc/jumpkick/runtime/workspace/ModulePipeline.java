@@ -91,6 +91,15 @@ public final class ModulePipeline {
             for (Task t : reshelve.steps()) all.add(t.name());
             return new Planned(reshelve, all);
         }
+        boolean skipTests = target.tests() == WorkspaceTarget.Tests.NOT_RUN || request.skipTests();
+        if (EnvPreflight.applies(target, skipTests, selected(spec, dir))) {
+            List<EnvPreflight.Missing> missing =
+                    EnvPreflight.missing(unit.manifest().build().env(), dir);
+            if (!missing.isEmpty()) {
+                return new Planned(
+                        EnvPreflight.failing(missing, EnvPreflight.manifest(request.entryDir(), dir)), Set.of());
+            }
+        }
         boolean nodeModule = NodeShape.kind(unit.manifest(), dir) == NodeShape.Kind.MODULE;
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         // A test run packages the jar a sibling compiles against: its suite reads it.

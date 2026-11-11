@@ -495,28 +495,31 @@
     },
     "env": {
       "type": "object",
-      "description": "[env] table: what this module's workers (the compiler, each test JVM, plugin steps) may take from the environment beyond jk's allow-list. Per module; not inherited from a workspace root. Not an action-key input by itself.",
+      "description": "[env] table: what this module's workers (the compiler, each test JVM, plugin steps) take from the environment beyond jk's allow-list. Per module; not inherited from a workspace root. The declared names' values key the module's suite.",
       "properties": {
-        "inherit": {
-          "type": "boolean",
-          "description": "true hands the module's workers the engine's whole environment, secrets included. Default false. Write the reason beside it."
+        "require": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Variables taken from the shell running jk (or .env) that the module cannot do without. A goal that runs the module's tests or launches it fails the module before it compiles when one is unset, naming the variable and this line. Their values key the suite by digest; a name that looks like a credential is masked in output too."
+        },
+        "optional": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Variables taken from the shell running jk (or .env) when set; absent, never empty, when not. Their values key the suite like require's."
         },
         "vars": {
           "type": "array",
-          "description": "The [test] env shape: a bare name forwards the caller's value when it is set; a table sets values outright (${VAR}, ${module} and ${target} expand; an unset ${VAR} is an error). Reaches every worker of the module; [test] env layers on top for test JVMs.",
+          "description": "Literal values, as tables: { TZ = \"UTC\" } (${VAR}, ${module} and ${target} expand; an unset ${VAR} is an error). A bare name is refused: declare it in optional or require. Reaches every worker of the module; [test] env layers on top for test JVMs.",
           "items": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "string"
-                }
-              }
-            ]
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
+        },
+        "inherit": {
+          "type": "boolean",
+          "description": "true hands the module's workers the whole environment of the shell running jk, secrets included, and keys its suite on all of it less what a shell changes per command. Default false. Costs cache hits; write the reason beside it."
         }
       },
       "additionalProperties": false

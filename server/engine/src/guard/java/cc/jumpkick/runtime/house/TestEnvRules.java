@@ -149,7 +149,7 @@ final class TestEnvRules {
             Set<String> names = new HashSet<>(rootProfiles);
             names.addAll(profileNames(build));
             for (EnvDecl d : build.build().testEnv()) names.add(d.name());
-            for (EnvDecl d : build.build().env().vars()) names.add(d.name());
+            names.addAll(build.build().env().declared());
             if (!build.project().nodeSpec().isEmpty()) names.add(NODE_HOME);
             Reach own = new Reach(build.build().env().inherit(), names);
             for (String set : List.of("test", "fixtures")) {

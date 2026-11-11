@@ -913,7 +913,7 @@ Failure lines include **module** (and **worker** when `W > 1`).
 
 A suite is replayed from its green marker only while everything it can see is unchanged. Most of
 that is keyed up front: its sources, classes, resources, runtime classpath, JDK, JVM flags, the
-values of its `[test] env` and `[env] vars`, the locale and terminal variables it inherits (`LANG`,
+values of its `[test] env` and `[env]` table (the declared names and `vars`), the locale and terminal variables it inherits (`LANG`,
 `LANGUAGE`, `LC_*`, `TERM`), with `[env] inherit` the whole environment, and JumpKick's test runner.
 
 The rest is found by watching the suite run. Every JVM that runs tests records, through Java

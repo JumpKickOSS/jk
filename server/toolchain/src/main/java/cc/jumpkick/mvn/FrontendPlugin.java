@@ -49,7 +49,7 @@ final class FrontendPlugin {
             @Nullable String version,
             NodeTable table,
             boolean failuresReport,
-            List<EnvDecl> env) {}
+            List<EnvDecl.Set> env) {}
 
     private static final List<String> INSTALL_GOALS = List.of(
             "install-node-and-npm",
@@ -428,8 +428,8 @@ final class FrontendPlugin {
         return out;
     }
 
-    private static List<EnvDecl> envDecls(Map<String, String> env) {
-        List<EnvDecl> out = new ArrayList<>();
+    private static List<EnvDecl.Set> envDecls(Map<String, String> env) {
+        List<EnvDecl.Set> out = new ArrayList<>();
         env.forEach((k, v) -> out.add(new EnvDecl.Set(k, v)));
         return out;
     }

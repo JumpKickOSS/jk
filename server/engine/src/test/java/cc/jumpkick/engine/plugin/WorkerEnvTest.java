@@ -234,7 +234,10 @@ class WorkerEnvTest {
     void declared_vars_resolve_through_the_build_s_environment(@TempDir Path tmp) {
         EnvConfig config = new EnvConfig(
                 false,
-                List.of(new EnvDecl.Set("SCRATCH", "${module}/scratch"), new EnvDecl.Forward("JK_UNSET_ON_PURPOSE")));
+                List.of(),
+                List.of("JK_UNSET_ON_PURPOSE"),
+                List.of(new EnvDecl.Set("SCRATCH", "${module}/scratch")),
+                Map.of());
 
         WorkerEnv env = WorkerEnv.forModule(config, tmp, null);
 

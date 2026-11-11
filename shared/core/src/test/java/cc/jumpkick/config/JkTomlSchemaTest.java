@@ -187,7 +187,7 @@ class JkTomlSchemaTest {
         String schema = Files.readString(SCHEMA);
         // By position, not by first textual match: [dev.sidecars.<name>] has its own `env` key earlier.
         String env = requireNonNull(memberOf(table(schema, "properties"), "env"), "env");
-        assertThat(keysOf(table(env, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.ENV_KEYS);
+        assertThat(keysOf(table(env, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestEnv.ENV_KEYS);
         // the table's own additionalProperties is its last one; the vars item's nested one comes first
         int last = env.lastIndexOf("\"additionalProperties\"");
         assertThat(env.substring(last).replaceAll("\\s", ""))

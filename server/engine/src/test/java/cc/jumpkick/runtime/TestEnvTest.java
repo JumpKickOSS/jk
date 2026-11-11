@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
@@ -441,6 +442,28 @@ class TestEnvTest {
         assertThat(env.extras()).containsEntry("TZ", "PST8PDT").containsEntry("LANG", "C");
         // Both tables key the run: a changed [env] var must retest as a changed [test] env does.
         assertThat(PlannerSupport.testStampExtras(tmp, project)).contains("test-env:TZ=PST8PDT", "test-env:LANG=C");
+    }
+
+    @Test
+    void declared_names_reach_the_test_jvm_from_the_request_and_key_the_suite_by_value(@TempDir Path tmp)
+            throws Exception {
+        JkBuild project = project(tmp, """
+                [env]
+                require = ["JK_DECLARED_PROBE"]
+                optional = ["%s"]
+                """.formatted(UNSET));
+        Map<String, String> shell = Map.of("PATH", "/bin", "JK_DECLARED_PROBE", "one");
+        WorkerEnv env =
+                RequestShell.where(shell, () -> TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project)));
+
+        assertThat(env.extras()).containsEntry("JK_DECLARED_PROBE", "one").doesNotContainKey(UNSET);
+        List<String> one = RequestShell.where(shell, () -> PlannerSupport.testStampExtras(tmp, project));
+        List<String> two = RequestShell.where(
+                Map.of("PATH", "/bin", "JK_DECLARED_PROBE", "two"), () -> PlannerSupport.testStampExtras(tmp, project));
+        assertThat(one)
+                .anyMatch(s -> s.startsWith("test-env:JK_DECLARED_PROBE="))
+                .noneMatch(s -> s.contains("one"));
+        assertThat(one).isNotEqualTo(two);
     }
 
     private static JkBuild project(Path dir, String extra) throws Exception {

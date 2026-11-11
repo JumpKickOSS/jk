@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.runtime.workspace.EnvPreflight;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -64,6 +65,11 @@ final class JkResultsHints {
                 yield byKey != null ? byKey : javacByShape(first, message);
             }
             case "kotlinc" -> kotlinc(first, message);
+            case EnvPreflight.CODE ->
+                new Hint(
+                        EnvPreflight.CODE,
+                        "export `" + d.key() + "` in the shell running jk or set it in `.env`;"
+                                + " a variable the module can do without belongs in `[env] optional`");
             default -> null;
         };
     }

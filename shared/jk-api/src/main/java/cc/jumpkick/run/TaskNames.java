@@ -148,6 +148,9 @@ public final class TaskNames {
     /** {@code -javadoc.jar} for a library, built from its Java sources beside the module jar. */
     public static final String PACKAGE_JAVADOC = "package-javadoc";
 
+    /** A module whose {@code [env] require} names are not all set fails here, before it compiles. */
+    public static final String ENV_CHECK = "env-check";
+
     public static final String PARSE_BUILD = "parse-build";
     public static final String PARSE_LOCK = "parse-lock";
     public static final String PARSE_SCRIPT = "parse-script";

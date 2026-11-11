@@ -13,18 +13,37 @@ import org.junit.jupiter.api.Test;
 class JkBuildParserEnvTest {
 
     @Test
-    void inherit_and_vars_are_read_and_vars_keep_manifest_order() {
+    void declared_names_values_and_inherit_are_read_in_manifest_order() {
         JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                 [env]
+                require = ["MY_TOKEN_VALUE"]
+                optional = ["FEATURE_X", "DOCKER_HOST"]
+                vars = [{ TZ = "UTC", LANG = "C" }]
                 inherit = true
-                vars = ["DOCKER_HOST", { TZ = "UTC", LANG = "C" }]
                 """);
         EnvConfig env = b.build().env();
         assertThat(env.inherit()).isTrue();
-        assertThat(env.vars())
-                .containsExactly(
-                        new EnvDecl.Forward("DOCKER_HOST"), new EnvDecl.Set("TZ", "UTC"), new EnvDecl.Set("LANG", "C"));
+        assertThat(env.require()).containsExactly("MY_TOKEN_VALUE");
+        assertThat(env.optional()).containsExactly("FEATURE_X", "DOCKER_HOST");
+        assertThat(env.vars()).containsExactly(new EnvDecl.Set("TZ", "UTC"), new EnvDecl.Set("LANG", "C"));
+        assertThat(env.declared()).containsExactly("MY_TOKEN_VALUE", "FEATURE_X", "DOCKER_HOST");
+    }
+
+    @Test
+    void each_declared_name_carries_the_manifest_line_it_is_written_on() {
+        String manifest = JkBuildParserFixtures.PROJECT + """
+
+                [env]
+                require = [
+                  "FIRST",
+                  "SECOND",
+                ]
+                """;
+        EnvConfig env = JkBuildParser.parse(manifest).build().env();
+        String[] lines = manifest.split("\n", -1);
+        assertThat(lines[env.line("FIRST") - 1]).contains("\"FIRST\"");
+        assertThat(lines[env.line("SECOND") - 1]).contains("\"SECOND\"");
     }
 
     @Test
@@ -34,21 +53,46 @@ class JkBuildParserEnvTest {
         EnvConfig empty = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\n")
                 .build()
                 .env();
-        assertThat(empty.inherit()).isFalse();
-        assertThat(empty.vars()).isEmpty();
+        assertThat(empty.isEmpty()).isTrue();
     }
 
     @Test
-    void test_env_layers_after_env_vars_for_the_test_jvm() {
+    void the_test_jvm_gets_the_declared_names_then_the_values_then_test_env() {
         JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                 [env]
+                optional = ["FEATURE_X"]
                 vars = [{ TZ = "UTC" }]
 
                 [test]
                 env = ["CI"]
                 """);
-        assertThat(b.build().testEnvDecls()).containsExactly(new EnvDecl.Set("TZ", "UTC"), new EnvDecl.Forward("CI"));
+        assertThat(b.build().testEnvDecls())
+                .containsExactly(
+                        new EnvDecl.Forward("FEATURE_X"), new EnvDecl.Set("TZ", "UTC"), new EnvDecl.Forward("CI"));
+    }
+
+    @Test
+    void a_bare_name_in_vars_is_refused_with_the_declaration_spelling() {
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [env]
+                        vars = ["DOCKER_HOST"]
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("optional = [\"DOCKER_HOST\"]");
+    }
+
+    @Test
+    void a_name_is_declared_once() {
+        assertThatThrownBy(() -> JkBuildParser.parse(
+                        JkBuildParserFixtures.PROJECT + "\n[env]\nrequire = [\"A\"]\noptional = [\"A\"]\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("A is declared twice");
+        assertThatThrownBy(() -> JkBuildParser.parse(
+                        JkBuildParserFixtures.PROJECT + "\n[env]\noptional = [\"A\"]\nvars = [{ A = \"1\" }]\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("A is declared and also set in vars");
     }
 
     @Test
@@ -64,16 +108,20 @@ class JkBuildParserEnvTest {
     }
 
     @Test
-    void inherit_must_be_a_boolean_and_vars_an_array() {
+    void shapes_are_checked() {
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\ninherit = \"yes\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[env] inherit must be true or false");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nvars = \"CI\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[env] vars must be an array");
-        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nvars = [\"TZ=UTC\"]\n"))
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nrequire = \"CI\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[env].vars[0]")
+                .hasMessageContaining("[env] require must be an array of names");
+        assertThatThrownBy(
+                        () -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\noptional = [\"TZ=UTC\"]\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[env].optional[0]")
                 .hasMessageContaining("is not a name; to set a value write { TZ = \"UTC\" }");
     }
 }

@@ -428,19 +428,36 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   `JK_ANDROID_FEED_URL`)
 
 Everything else — `SSH_AUTH_SOCK`, `GITHUB_TOKEN`, a repository's `JK_REPO_*_TOKEN` — is
-dropped unless the module asks for it:
+dropped unless the module declares it:
 
 ```toml
 [env]
-vars = ["SSH_AUTH_SOCK", { TZ = "UTC" }]   # forward a name, or set a value
+require = ["MY_TOKEN_VALUE"]   # the suite cannot run without it
+optional = ["FEATURE_X"]       # passed on when the shell sets it
+vars = [{ TZ = "UTC" }]        # a literal value
 ```
 
-`vars` has the `[test] env` shape: a bare name forwards the caller's value when it is set, a
-table sets literal values. A `${…}` reference is refused here, because `vars` reaches the
-compilers too and their keys do not carry the machine's environment; set the value in `[test]
-env`, or forward the name. `vars` reaches every worker of the module; `[test] env` layers on top for test JVMs
-only. The values of both are part of the run-tests key, so a forwarded variable that changes
-between two builds runs the suite again — [Test](test.md).
+A declared name takes its value from the shell running `jk`, then from the module's `.env`
+files ([Run § Environment](run.md#environment)); an `optional` name the shell does not set is
+absent in the worker, never empty. A goal that runs the module's tests or launches it (`jk test`,
+`jk build`, `jk install`, `jk run`, …) checks every `require` name first, and a module with one
+unset fails before anything of it compiles:
+
+```text
+MY_TOKEN_VALUE is not set; core/jk.toml:12 requires it
+```
+
+The same line, under the code `env-required` with the variable's name as its key, is what CI logs,
+`jk results` and an MCP answer carry. A goal that runs neither (`jk compile`, `jk build -S`) does
+not check. A name is declared once: in `require`, `optional`, or as a value in `vars`.
+
+`vars` sets literal values, as tables in the `[test] env` shape; a bare name there is refused with
+the `optional` spelling. A `${…}` reference is refused here, because `vars` reaches the compilers
+too and their keys do not carry the machine's environment; set the value in `[test] env`, or
+declare the name. The `[env]` table reaches every worker of the module; `[test] env` layers on top
+for test JVMs only. The declared names' values and both tables' values are part of the run-tests
+key, so a declared variable that changes between two builds runs the suite again, and one nothing
+declares cannot — [Test](test.md).
 
 ```toml
 [env]
@@ -452,7 +469,7 @@ secrets included, less what a shell changes per command (`PWD`, `_`, `SHLVL`, th
 session); its suite reruns when any of the rest changes. Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
-through `vars` or `[test] env`. What JumpKick itself decides reads the shell running `jk`, every
+through `[env]` or `[test] env`. What JumpKick itself decides reads the shell running `jk`, every
 variable of it: `CI`, repository credentials, the git agent, the CI profile, colour. So
 `CI=true jk guard` checks rather than writes, whichever shell started the engine. A request from
 MCP or the HTTP API has no shell of its own, and those decisions read the engine's.

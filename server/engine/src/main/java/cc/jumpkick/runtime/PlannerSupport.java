@@ -912,8 +912,8 @@ public final class PlannerSupport {
         // The launch-side directories are not passed: the mode, not the caller, decides what the
         // two path tokens mean, and this mode keeps them literal.
         var mode = new TestEnvValues.Mode.CacheKey(lookup, redactor);
-        var resolved = new LinkedHashMap<>(
-                TestEnvValues.resolve("[env].vars", build.env().vars(), null, null, mode));
+        var resolved =
+                new LinkedHashMap<>(TestEnvValues.resolve("[env]", build.env().decls(), null, null, mode));
         resolved.putAll(TestEnvValues.resolve("[test].env", build.testEnv(), null, null, mode));
         for (Map.Entry<String, String> e : resolved.entrySet()) {
             extras.add("test-env:" + e.getKey() + "=" + e.getValue());

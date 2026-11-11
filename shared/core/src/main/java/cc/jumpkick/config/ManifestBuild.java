@@ -8,7 +8,6 @@ import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.EnvConfig;
-import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
@@ -647,115 +646,7 @@ public final class ManifestBuild {
                 where + " must be a positive duration like \"60s\", \"2m\", \"500ms\", or seconds");
     }
 
-    /**
-     * {@code [test] env} — environment for each forked test JVM, an array whose element shape says
-     * which of the two statements it is.
-     *
-     * <pre>{@code
-     * env = [
-     *   "JK_WEB_JS_SKIP",                       # forward the caller's, if set
-     *   { TZ = "UTC", LANG = "C" },             # set these outright
-     * ]
-     * }</pre>
-     *
-     * <p>Values are stored exactly as written; {@code ${target}}, {@code ${module}} and {@code
-     * ${VAR}} are expanded later by {@link TestEnvValues}, because the forked JVM wants real values
-     * while the run-tests cache key wants portable tokens. This is one of the few positions where
-     * {@code ${VAR}} is legal at all — see {@link Interpolation}.
-     *
-     * <p>A bare string is a name and nothing else: it may not carry {@code =} or {@code ${…}}.
-     * Both are rejected rather than interpreted, because both are how the same idea is spelled in
-     * the two neighbouring formats a reader is likely arriving from — a {@code .env} file and a
-     * {@code docker run -e} flag — and quietly accepting either would make {@code "TZ=UTC"} a
-     * variable literally named {@code TZ=UTC}.
-     */
-    static List<EnvDecl> parseTestEnv(TomlTable root) {
-        TomlTable test = root.getTable("test");
-        if (test == null) return List.of();
-        return parseEnvDecls(test.get(List.of("env")), "[test]", "env");
-    }
-
-    /** The keys {@code [env]} may carry. */
-    public static final List<String> ENV_KEYS = List.of("inherit", "vars");
-
-    /**
-     * {@code [env]} — what this module's workers may take from the environment beyond jk's
-     * allow-list (docs/user/build.md). Unknown keys fail the parse: a variable written straight into
-     * the table is refused with the {@code vars} spelling, so a typo cannot silently become a knob.
-     *
-     * <pre>
-     * [env]
-     * vars = ["DOCKER_HOST", { TZ = "UTC" }]   # forward a name, or set a value — the [test] env shape
-     * inherit = true                            # the engine's whole environment; say why beside it
-     * </pre>
-     */
-    static EnvConfig parseEnv(TomlTable root) {
-        Object raw = root.get(List.of("env"));
-        if (raw == null) return EnvConfig.EMPTY;
-        if (!(raw instanceof TomlTable env)) {
-            throw new JkBuildParseException("[env] must be a table: [env] vars = [\"CI\", { TZ = \"UTC\" }]");
-        }
-        for (String key : env.keySet()) {
-            if (!ENV_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[env] unknown key `" + key + "`; to set a variable use vars = [{ " + key + " = \"…\" }]");
-            }
-        }
-        boolean inherit = false;
-        Object rawInherit = env.get(List.of("inherit"));
-        if (rawInherit != null) {
-            if (!(rawInherit instanceof Boolean b)) {
-                throw new JkBuildParseException("[env] inherit must be true or false");
-            }
-            inherit = b;
-        }
-        return new EnvConfig(inherit, parseEnvDecls(env.get(List.of("vars")), "[env]", "vars"));
-    }
-
-    /**
-     * The one parser for an environment array — {@code [test] env} and {@code [env] vars} share
-     * the shape: a bare name forwards, a table sets. {@code table} and {@code key} only spell the
-     * position in messages.
-     */
-    private static List<EnvDecl> parseEnvDecls(@Nullable Object raw, String table, String key) {
-        if (raw == null) return List.of();
-        if (!(raw instanceof TomlArray arr)) {
-            throw new JkBuildParseException(
-                    table + " " + key + " must be an array, e.g. " + key + " = [\"CI\", { TZ = \"UTC\" }]");
-        }
-        List<EnvDecl> out = new ArrayList<>();
-        for (int i = 0; i < arr.size(); i++) {
-            Object element = arr.get(i);
-            String where = table + "." + key + "[" + i + "]";
-            if (element instanceof String name) {
-                out.add(new EnvDecl.Forward(forwardName(name, where)));
-            } else if (element instanceof TomlTable values) {
-                for (String name : values.keySet()) {
-                    out.add(new EnvDecl.Set(name, scalar(values.get(List.of(name)), where + "." + name)));
-                }
-            } else {
-                throw new JkBuildParseException(where + " must be a variable name or a table of values");
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    /** A forwarded name is a name: no value half, no reference. */
-    private static String forwardName(String raw, String where) {
-        String name = raw.trim();
-        if (name.isEmpty()) throw new JkBuildParseException(where + " is an empty environment variable name");
-        if (name.indexOf('=') >= 0) {
-            throw new JkBuildParseException(where + ": \"" + raw + "\" is not a name; to set a value write { "
-                    + name.substring(0, name.indexOf('=')) + " = \""
-                    + name.substring(name.indexOf('=') + 1) + "\" }");
-        }
-        if (name.indexOf('$') >= 0) {
-            throw new JkBuildParseException(where + ": \"" + raw + "\" is not a name; ${…} works only in a table");
-        }
-        return name;
-    }
-
-    private static String scalar(@Nullable Object value, String where) {
+    static String scalar(@Nullable Object value, String where) {
         if (value instanceof String s) return s;
         if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
             return String.valueOf(value);

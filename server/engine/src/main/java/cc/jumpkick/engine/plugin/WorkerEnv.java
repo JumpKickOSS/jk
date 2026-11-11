@@ -28,9 +28,10 @@ import org.jspecify.annotations.Nullable;
  * <p>A worker does not inherit the engine's environment. The engine is a daemon started by some
  * shell, and whatever that shell exported — a repository token, a cloud key — would otherwise reach
  * every compiler worker and, through the test JVM, the project's own test code. Instead a worker
- * gets the {@link #allowed allow-list} of the engine's variables, then the module's {@code [env]
- * vars}, then whatever the fork site adds (a sandboxed {@code JK_HOME}, a spec path). A module that
- * needs more says {@code [env] inherit = true}, which hands it the whole shell that ran {@code jk};
+ * gets the {@link #allowed allow-list} of the engine's variables, then the module's {@code [env]}
+ * table (the names it declares, from the caller's shell, and its literal {@code vars}), then
+ * whatever the fork site adds (a sandboxed {@code JK_HOME}, a spec path). A module that needs more
+ * says {@code [env] inherit = true}, which hands it the whole shell that ran {@code jk};
  * docs/user/build.md spells out the list.
  */
 public final class WorkerEnv {
@@ -130,14 +131,15 @@ public final class WorkerEnv {
     }
 
     /**
-     * {@code [env] vars} resolved for a launch — the one expansion shared by every worker kind, so
-     * the test JVM's seed and the compiler's cannot disagree about an unset {@code ${VAR}}.
+     * The {@code [env]} table resolved for a launch: each declared name the caller has, then the
+     * literal {@code vars} — the one expansion shared by every worker kind, so the test JVM's seed
+     * and the compiler's cannot disagree about an unset {@code ${VAR}}.
      */
     public static Map<String, String> declared(EnvConfig config, Path moduleDir, @Nullable Path target) {
-        if (config.vars().isEmpty()) return Map.of();
+        if (config.decls().isEmpty()) return Map.of();
         Function<String, @Nullable String> env = BuildEnv.forModule(moduleDir);
         return TestEnvValues.resolve(
-                "[env].vars", config.vars(), moduleDir, target, new TestEnvValues.Mode.Launch(env::apply));
+                "[env]", config.decls(), moduleDir, target, new TestEnvValues.Mode.Launch(env::apply));
     }
 
     /** This policy with {@code more} laid on top of what the fork already adds; later wins. */

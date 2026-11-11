@@ -294,12 +294,13 @@ public record BuildBlock(
     }
 
     /**
-     * What every forked test JVM's environment is declared to get, in precedence order:
-     * {@code [env] vars} for every worker of the module, then {@code [test] env} on top.
+     * What every forked test JVM's environment is declared to get, in precedence order: the
+     * {@code [env]} table for every worker of the module, then {@code [test] env} on top.
      */
     public List<EnvDecl> testEnvDecls() {
-        if (env.vars().isEmpty()) return testEnv;
-        List<EnvDecl> all = new ArrayList<>(env.vars());
+        List<EnvDecl> module = env.decls();
+        if (module.isEmpty()) return testEnv;
+        List<EnvDecl> all = new ArrayList<>(module);
         all.addAll(testEnv);
         return List.copyOf(all);
     }

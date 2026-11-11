@@ -98,22 +98,27 @@ final class NodeTomlRenderer {
         }
     }
 
-    /** {@code [env]}: {@code inherit} and {@code vars}, a bare name forwarding and a table setting. */
+    /** {@code [env]}: the declared names, the literal values and {@code inherit}. */
     static void renderEnv(StringBuilder sb, EnvConfig env) {
         if (env.isEmpty()) return;
         sb.append("\n[env]\n");
-        if (env.inherit()) sb.append("inherit = true\n");
-        if (env.vars().isEmpty()) return;
-        List<String> parts = new ArrayList<>();
-        for (EnvDecl d : env.vars()) {
-            parts.add(
-                    switch (d) {
-                        case EnvDecl.Forward f -> quote(f.name());
-                        case EnvDecl.Set s ->
-                            "{ " + JkBuildRenderer.safeKey(s.name()) + " = " + quote(s.value()) + " }";
-                    });
+        names(sb, "require", env.require());
+        names(sb, "optional", env.optional());
+        if (!env.vars().isEmpty()) {
+            List<String> parts = new ArrayList<>();
+            for (EnvDecl.Set s : env.vars()) {
+                parts.add("{ " + JkBuildRenderer.safeKey(s.name()) + " = " + quote(s.value()) + " }");
+            }
+            sb.append("vars = [").append(String.join(", ", parts)).append("]\n");
         }
-        sb.append("vars = [").append(String.join(", ", parts)).append("]\n");
+        if (env.inherit()) sb.append("inherit = true\n");
+    }
+
+    private static void names(StringBuilder sb, String key, List<String> names) {
+        if (names.isEmpty()) return;
+        List<String> quoted = new ArrayList<>();
+        for (String name : names) quoted.add(quote(name));
+        sb.append(key).append(" = [").append(String.join(", ", quoted)).append("]\n");
     }
 
     private static boolean hasTable(JkBuild build) {

@@ -292,9 +292,14 @@ final class FrontendImport {
         BuildBlock block = build.build().withNode(table);
         if (f.failuresReport()) block = block.withTestFailures(TestFailureMode.REPORT);
         if (!f.env().isEmpty()) {
-            List<EnvDecl> vars = new ArrayList<>(block.env().vars());
+            List<EnvDecl.Set> vars = new ArrayList<>(block.env().vars());
             vars.addAll(f.env());
-            block = block.withEnv(new EnvConfig(block.env().inherit(), vars));
+            block = block.withEnv(new EnvConfig(
+                    block.env().inherit(),
+                    block.env().require(),
+                    block.env().optional(),
+                    vars,
+                    block.env().lines()));
         }
         return build.withProject(project.withNodeSpec(spec)).withBuild(block);
     }
