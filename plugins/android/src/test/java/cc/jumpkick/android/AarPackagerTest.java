@@ -156,6 +156,7 @@ class AarPackagerTest {
     private static FakeBuildIo library(Path root) throws Exception {
         FakeBuildIo io = AndroidIo.packager(Files.createDirectories(root), "lib-1.0.0.aar");
         io.config("library", Boolean.TRUE);
+        io.config("namespace", "com.example.lib"); // the package its classes and R live in
         FakeBuildIo.write(io.step("android-manifest").resolve("merged/AndroidManifest.xml"), MANIFEST);
         Path res = io.step("android-res");
         FakeBuildIo.write(res.resolve("packaged/R.txt"), "int string app_name 0x7f0f0000\n");
