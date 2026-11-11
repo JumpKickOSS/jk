@@ -525,7 +525,16 @@ A runner that prints nothing — no test started, none finished — for ten minu
 host is taken for hung and stopped, its class reported as the failure. The window stretches
 with the host's one-minute load average per processor (at most ten times), so a suite whose
 builds crawl under a loaded gate is slow, not hung; `JK_TEST_WORKER_IDLE_MS` sets it by hand,
-taken as written whatever the load, and `0` disables it.
+taken as written whatever the load, and `0` disables it. A suite run whole in a single JVM
+gets thirty minutes of silence before it is stopped.
+
+`[test] idle-timeout` sets the window for every test JVM of the module, pool runners and the one
+suite JVM alike, whatever the load:
+
+```toml
+[test]
+idle-timeout = "120m"   # "90s", "45m", or a number of seconds
+```
 
 ```bash
 jk test -w1          # debug flakes / one JVM per module

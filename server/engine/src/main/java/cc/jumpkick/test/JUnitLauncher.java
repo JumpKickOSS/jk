@@ -237,6 +237,15 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** {@code [test] idle-timeout} in milliseconds; 0 when the module sets none ({@link TestWorkerEnv}). */
+    long idleTimeoutMs;
+
+    /** {@code [test] idle-timeout}: the silence, in milliseconds, after which a test JVM is killed. */
+    public JUnitLauncher withIdleTimeout(long millis) {
+        this.idleTimeoutMs = Math.max(0, millis);
+        return this;
+    }
+
     /** {@code [test] assertions}: whether every test JVM this launcher forks runs with {@code -ea}. */
     private boolean assertions = true;
 
@@ -792,6 +801,7 @@ public final class JUnitLauncher {
                     crash.add(line);
                     aggregator.userOutput(line);
                 },
+                TestWorkerEnv.suiteIdleTimeoutMs(idleTimeoutMs),
                 heaps);
     }
 
@@ -1162,6 +1172,7 @@ public final class JUnitLauncher {
                     workDir(),
                     listing.handler(listener),
                     crash::add,
+                    0L,
                     heaps);
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the listing: a handler row, and no trust in the list.

@@ -49,6 +49,7 @@ final class BuildFields {
     boolean testNetworkAllowed;
     TestFailureMode testFailures;
     long testFastMethodBudgetMs;
+    long testIdleTimeoutMs;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
     List<EnvDecl> testEnv;
@@ -107,6 +108,7 @@ final class BuildFields {
         testNetworkAllowed = b.testNetworkAllowed();
         testFailures = b.testFailures();
         testFastMethodBudgetMs = b.testFastMethodBudgetMs();
+        testIdleTimeoutMs = b.testIdleTimeoutMs();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
         testEnv = b.testEnv();
@@ -154,6 +156,7 @@ final class BuildFields {
                 testNetworkAllowed,
                 testFailures,
                 testFastMethodBudgetMs,
+                testIdleTimeoutMs,
                 platformPolicy,
                 unmappedPolicy,
                 testEnv,

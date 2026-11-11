@@ -119,10 +119,15 @@ public final class PluginLoader {
                 workDir,
                 onProtocol,
                 onPassthrough,
+                0L,
                 LearnedHeaps.engine());
     }
 
-    /** As {@link #run(Path, String, List, String, List, WorkerEnv, Path, Consumer, Consumer)}, recording learned peaks on {@code heaps}. */
+    /**
+     * As {@link #run(Path, String, List, String, List, WorkerEnv, Path, Consumer, Consumer)},
+     * recording learned peaks on {@code heaps}; a child silent for {@code idleTimeoutMs} (when
+     * positive) is killed.
+     */
     public static int run(
             Path javaHome,
             String classpath,
@@ -133,6 +138,7 @@ public final class PluginLoader {
             @Nullable Path workDir,
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough,
+            long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
         return PluginProcess.run(
@@ -142,6 +148,7 @@ public final class PluginLoader {
                 prefix,
                 onProtocol,
                 onPassthrough,
+                idleTimeoutMs,
                 heaps);
     }
 

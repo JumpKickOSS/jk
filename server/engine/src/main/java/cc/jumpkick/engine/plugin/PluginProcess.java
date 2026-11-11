@@ -111,10 +111,14 @@ public final class PluginProcess {
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(command, env, workDir, prefix, onProtocol, onPassthrough, LearnedHeaps.engine());
+        return run(command, env, workDir, prefix, onProtocol, onPassthrough, 0L, LearnedHeaps.engine());
     }
 
-    /** As {@link #run(List, WorkerEnv, Path, String, Consumer, Consumer)}, recording learned peaks on {@code heaps}. */
+    /**
+     * As {@link #run(List, WorkerEnv, Path, String, Consumer, Consumer)}, recording learned peaks on
+     * {@code heaps}, with the inactivity watchdog of {@link #converse} when {@code idleTimeoutMs} is
+     * positive.
+     */
     public static int run(
             List<String> command,
             WorkerEnv env,
@@ -122,6 +126,7 @@ public final class PluginProcess {
             String prefix,
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough,
+            long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
@@ -132,7 +137,7 @@ public final class PluginProcess {
                 onProtocol,
                 onPassthrough,
                 null,
-                0L,
+                idleTimeoutMs,
                 (p, heap) -> JobWorkers.start(p, heap, heaps),
                 ORPHAN_DRAIN_GRACE_MS,
                 process -> null);

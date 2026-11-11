@@ -56,6 +56,19 @@ final class TestWorkerEnv {
         return idleTimeoutMs(prop, HostLoad.loadAverage(), HostProcessors.count());
     }
 
+    /** How long a suite run whole in one JVM may print nothing before it is killed as hung. */
+    static final long DEFAULT_SUITE_IDLE_MS = 30 * 60_000L;
+
+    /** The single suite JVM's window: {@code [test] idle-timeout} when set (positive), else {@link #DEFAULT_SUITE_IDLE_MS}. */
+    static long suiteIdleTimeoutMs(long setting) {
+        return setting > 0 ? setting : DEFAULT_SUITE_IDLE_MS;
+    }
+
+    /** A pull-mode worker's window: {@code [test] idle-timeout} when set (positive), else {@link #idleTimeoutMs()}. */
+    static long poolIdleTimeoutMs(long setting) {
+        return setting > 0 ? setting : idleTimeoutMs();
+    }
+
     /** {@link #idleTimeoutMs()} with its inputs explicit. */
     static long idleTimeoutMs(@Nullable String setting, double loadAverage, int processors) {
         if (setting != null && !setting.isBlank()) {

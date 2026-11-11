@@ -266,7 +266,7 @@ final class PullWorkerPool {
                         launcher.workDir(),
                         handler,
                         passthrough,
-                        TestWorkerEnv.idleTimeoutMs(),
+                        TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs),
                         launcher.heaps());
             }
             try {
@@ -282,7 +282,7 @@ final class PullWorkerPool {
                                 launcher.workDir(),
                                 handler,
                                 passthrough,
-                                TestWorkerEnv.idleTimeoutMs(),
+                                TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs),
                                 launcher.heaps()));
             } catch (IOException | InterruptedException | RuntimeException e) {
                 throw e;

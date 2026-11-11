@@ -105,6 +105,12 @@ public record BuildBlock(
          */
         long testFastMethodBudgetMs,
         /**
+         * {@code [test] idle-timeout}: how long, in milliseconds, a test JVM may go without printing
+         * a line (every test start and finish prints one) before it is taken for hung and killed;
+         * 0 means jk's default.
+         */
+        long testIdleTimeoutMs,
+        /**
          * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
          * {@link PlatformPolicy#ENFORCED}.
          */
@@ -228,6 +234,7 @@ public record BuildBlock(
             false,
             TestFailureMode.FAIL,
             0,
+            0,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
             List.of(),
@@ -258,6 +265,7 @@ public record BuildBlock(
         javac = javac == null ? JavacConfig.EMPTY : javac;
         testFailures = testFailures == null ? TestFailureMode.FAIL : testFailures;
         if (testFastMethodBudgetMs < 0) testFastMethodBudgetMs = 0;
+        if (testIdleTimeoutMs < 0) testIdleTimeoutMs = 0;
         extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
         testExtraSrc = testExtraSrc == null ? List.of() : List.copyOf(testExtraSrc);
         if (fixtures != null && fixtures.isBlank()) fixtures = null;

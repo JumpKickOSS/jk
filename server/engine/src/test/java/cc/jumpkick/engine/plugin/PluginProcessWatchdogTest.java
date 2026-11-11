@@ -47,6 +47,30 @@ class PluginProcessWatchdogTest {
     }
 
     @Test
+    void a_silent_one_shot_child_is_killed_after_the_idle_window() throws Exception {
+        Path sh = Path.of("/bin/sh");
+        assumeTrue(Files.isExecutable(sh), "POSIX shell required");
+
+        // The single suite JVM is a one-shot run, not a conversation; it has the same watchdog.
+        Instant start = Instant.now();
+        int exit = PluginProcess.run(
+                List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
+                WorkerEnv.strict(),
+                null,
+                "##JKT:",
+                json -> {},
+                null,
+                400L,
+                LearnedHeaps.engine());
+
+        assertThat(exit).isNotZero();
+        // LIVENESS: 15s is a hang detector for a 400ms watchdog, not a budget.
+        assertThat(Duration.between(start, Instant.now()))
+                .as("the 400ms watchdog fired instead of the run waiting out the sleep")
+                .isLessThan(Duration.ofSeconds(15));
+    }
+
+    @Test
     void an_orphan_holding_stdout_does_not_wedge_the_job() throws Exception {
         Path sh = Path.of("/bin/sh");
         assumeTrue(Files.isExecutable(sh), "POSIX shell required");

@@ -66,6 +66,7 @@ final class ManifestBuildTable {
         boolean testNetworkAllowed = false;
         TestFailureMode testFailures = TestFailureMode.FAIL;
         long testFastMethodBudgetMs;
+        long testIdleTimeoutMs;
         final List<String> testTools = new ArrayList<>();
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
@@ -294,6 +295,11 @@ final class ManifestBuildTable {
         if (test.contains("fast-method-budget")) {
             s.testFastMethodBudgetMs =
                     ManifestBuild.durationMillis(test.get(List.of("fast-method-budget")), "[test].fast-method-budget");
+        }
+        // [test] idle-timeout — how long a test JVM may print nothing before it is killed as hung.
+        if (test.contains("idle-timeout")) {
+            s.testIdleTimeoutMs =
+                    ManifestBuild.durationMillis(test.get(List.of("idle-timeout")), "[test].idle-timeout");
         }
         // [test] tools — external executables the suite shells out to, by the bare name the tests
         // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:
