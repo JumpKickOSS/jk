@@ -41,6 +41,7 @@ const {
   releaseDeferredEpochReload,
   events,
   isServerFrame,
+  post,
 } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')));
 
 beforeEach(() => {
@@ -198,4 +199,17 @@ test('isServerFrame tells an engine frame from a dropped connection', () => {
   assert.equal(isServerFrame({ type: 'error', data: '{}' }), true);
   assert.equal(isServerFrame({ type: 'error' }), false);
   assert.equal(isServerFrame(undefined), false);
+});
+
+test("a rejected post carries the server's reply: a stale form, a field's problem", async () => {
+  const reply = { error: 'stale', form: { rev: 'r2', fields: [] }, problems: [{ key: 'name', message: 'taken' }] };
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify(reply), { status: 409, headers: { 'Content-Type': 'application/json' } });
+  await assert.rejects(post('/api/new-project/preview', {}), (e) => {
+    assert.equal(e.status, 409);
+    assert.deepEqual(e.body.form, reply.form);
+    assert.equal(e.body.problems[0].message, 'taken');
+    return true;
+  });
+  assert.equal(reloads, 0);
 });

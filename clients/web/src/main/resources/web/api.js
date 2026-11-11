@@ -235,6 +235,8 @@ function throwHttp(resp, json) {
   const err = { status: resp.status };
   if (json && json.error) err.error = json.error;
   if (json && json.engineEpoch) err.engineEpoch = json.engineEpoch;
+  // The whole reply as well: a stale-form 409 carries the new form, a 422 its per-field problems.
+  if (json && typeof json === 'object') err.body = json;
   throw err;
 }
 
