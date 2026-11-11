@@ -4,30 +4,37 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.test.EnvReads;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 
 /**
  * Tells a run which environment variables its suite reads that the module never declares, and the
  * {@code [env]} line that would declare each. A test JVM gets only what the module declares, so
  * such a read sees nothing: the token a test needs, the switch a test checks.
  *
- * <p>Diagnostics only, never part of a key. The test classes' constant reads ({@link EnvReads})
- * are reported on every run that launched the suite. A failed suite reports more, since one
- * of them may be why: the main classes' and the dependencies' constant reads, and the classes that
- * read a computed name or the whole map.
+ * <p>Diagnostics only, never part of a key. Two signals. What each test JVM looked up as it ran
+ * (the test runner's probe, {@code EnvProbeJar}) names the variable and the test class exactly: a
+ * passing suite reports what its test classes and JUnit's conditions looked up, a failing one what
+ * anything looked up. The bytecode ({@link EnvReads}) stands in when no JVM was probed, and adds
+ * to a failing suite: the test and main classes' and the dependencies' constant reads, and the
+ * classes that read a computed name or the whole map.
  */
 public final class EnvReadReport {
 
@@ -55,12 +62,33 @@ public final class EnvReadReport {
             Path testClasses,
             List<Path> runtimeCp,
             TestSummary result) {
+        Path records = recordDir(in.dir());
+        boolean probed = probed(records);
+        List<Lookup> lookups = lookups(records);
+        PathUtil.deleteRecursively(records); // the next run records afresh
         if (testEnv.inherit()) return; // every variable reaches the suite
         boolean failed = result.failed() > 0 || !result.failures().isEmpty();
         String manifest = manifest(in.session().workingDir(), in.dir());
         Path mainClasses = ctx.require(BuildPlanner.LAYOUT).classesDir();
-        Findings f = findings(project, testEnv, testClasses, mainClasses, runtimeCp, in.cache(), failed);
-        f.undeclared().forEach((name, owner) -> ctx.keyedWarn(UNDECLARED, name, undeclared(owner, name, manifest)));
+        Map<String, String> looked = lookedUp(lookups, declared(project), testEnv, compiledInto(testClasses), failed);
+        // What the suite looked up as it ran is the exact answer; the bytecode stands in without it.
+        Findings f = probed && !failed
+                ? new Findings(Map.of(), Set.of())
+                : findings(project, testEnv, testClasses, mainClasses, runtimeCp, in.cache(), failed);
+        int told = 0;
+        for (Map.Entry<String, String> e : looked.entrySet()) {
+            if (told++ < MAX_TOLD) ctx.keyedWarn(UNDECLARED, e.getKey(), lookedUp(e.getValue(), e.getKey(), manifest));
+        }
+        for (Map.Entry<String, String> e : f.undeclared().entrySet()) {
+            if (looked.containsKey(e.getKey())) continue;
+            if (told++ < MAX_TOLD)
+                ctx.keyedWarn(UNDECLARED, e.getKey(), undeclared(e.getValue(), e.getKey(), manifest));
+        }
+        if (told > MAX_TOLD) {
+            ctx.warn(
+                    UNDECLARED,
+                    (told - MAX_TOLD) + " more undeclared variables read; jk results lists the first " + MAX_TOLD);
+        }
         if (!f.opaque().isEmpty()) {
             ctx.warn(
                     COMPUTED,
@@ -124,6 +152,82 @@ public final class EnvReadReport {
         for (EnvDecl d : project.build().testEnvDecls()) out.add(d.name());
         project.profiles().byName().values().forEach(p -> out.addAll(p.env().keySet()));
         return out;
+    }
+
+    /** How many undeclared variables one run names before it counts the rest. */
+    static final int MAX_TOLD = 8;
+
+    /** Where the suite's JVMs write the variables they looked up ({@code EnvProbeJar}); emptied each run. */
+    public static Path recordDir(Path moduleDir) {
+        return BuildLayout.moduleTargetDir(moduleDir).resolve(".jk").resolve("env-lookups");
+    }
+
+    /** One variable a test JVM looked up: the running test class, the class that asked, whether it was set. */
+    record Lookup(String test, String caller, String name, boolean set) {}
+
+    /** Every lookup recorded under {@code dir}, one file per JVM; empty when the probe wrote none. */
+    static List<Lookup> lookups(Path dir) {
+        List<Lookup> out = new ArrayList<>();
+        try {
+            PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+                for (String line : Files.readAllLines(file)) {
+                    String[] f = line.split("\t", -1);
+                    if (f.length == 4) out.add(new Lookup(f[0], f[1], f[2], "set".equals(f[3])));
+                }
+            });
+        } catch (IOException | RuntimeException e) {
+            return out; // a record the probe could not finish is a diagnostic not given
+        }
+        return out;
+    }
+
+    /**
+     * Each variable the suite looked up by name that does not reach it, with the class that looked
+     * it up: the test class running, else the class that asked. A lookup a test class made itself,
+     * or JUnit made for its condition, always counts; one the code under test or a library made
+     * counts when the suite {@code failed}, since a passing suite did without it. A whole-map read
+     * names nothing.
+     */
+    static Map<String, String> lookedUp(
+            List<Lookup> lookups,
+            Set<String> declared,
+            WorkerEnv testEnv,
+            Predicate<String> testClass,
+            boolean failed) {
+        Map<String, String> out = new TreeMap<>();
+        for (Lookup l : lookups) {
+            if (l.name().equals(WHOLE_MAP) || reaches(l.name(), declared, testEnv)) continue;
+            if (!failed && !testClass.test(l.caller()) && !l.caller().startsWith(JUNIT)) continue;
+            out.putIfAbsent(l.name(), l.test().isEmpty() ? l.caller() : l.test());
+        }
+        return out;
+    }
+
+    /** Whether {@code binaryName} was compiled into {@code testClasses}. */
+    static Predicate<String> compiledInto(Path testClasses) {
+        return binaryName -> !binaryName.isEmpty()
+                && Files.isRegularFile(testClasses.resolve(binaryName.replace('.', '/') + ".class"));
+    }
+
+    /** JUnit's own classes: they look a variable up for a test's {@code @EnabledIfEnvironmentVariable}. */
+    private static final String JUNIT = "org.junit.";
+
+    /** Whether a probed JVM wrote under {@code dir}: every one writes a file, empty when it looked nothing up. */
+    static boolean probed(Path dir) {
+        try {
+            return PathUtil.anyRegularFile(dir, d -> false, file -> true);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** The name the probe records a whole-map read under. */
+    private static final String WHOLE_MAP = "*";
+
+    /** The line a looked-up, undeclared variable is reported as: the test saw nothing, so it is required. */
+    static String lookedUp(String owner, String name, String manifest) {
+        return simple(owner) + " read " + name + ", which " + manifest + " does not declare; it saw no value."
+                + " Add to [env] require: \"" + name + "\"";
     }
 
     /** The one line an undeclared read is reported as, ending with the exact declaration. */

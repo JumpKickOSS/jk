@@ -643,7 +643,7 @@ public final class PlannerTest {
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec, settled)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto)
-                    .withReadRecording(reads.flag());
+                    .withRecording(reads.flag());
             try {
                 result = ctx.get(SUITE_RESOURCES)
                         .orElse(SuiteResources.NONE)

@@ -130,4 +130,6 @@ env = [
   # the sweep is disabled.
   "JK_NIA_SCRATCH",
   "JK_NIA_ROOT",
+  # Asserted unset by TestEnvTest: forwarded so that a stray export fails it rather than hiding.
+  "JK_UNSET_ON_PURPOSE",
 ]

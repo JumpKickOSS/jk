@@ -201,24 +201,28 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** The flag that records what each test-running JVM reads ({@link SuiteReads}); null to record nothing. */
-    private @Nullable String readRecording;
+    /**
+     * The flags that record what each test-running JVM does: the files it reads, the processes it
+     * starts and its sockets ({@link SuiteReads}), the environment variables it looks up ({@link
+     * EnvProbeJar}).
+     */
+    private final List<String> recordings = new ArrayList<>();
 
-    /** Record, in every JVM that runs tests, the files it reads, the processes it starts and its sockets. */
-    public JUnitLauncher withReadRecording(@Nullable String flag) {
-        this.readRecording = flag;
+    /** Start every JVM that runs tests with {@code flag}, a recording; null adds nothing. */
+    public JUnitLauncher withRecording(@Nullable String flag) {
+        if (flag != null) recordings.add(flag);
         return this;
     }
 
     /**
      * {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug,
-     * the JaCoCo agent on every test-running JVM of a coverage run, and the read recording.
+     * the JaCoCo agent on every test-running JVM of a coverage run, and the recordings.
      */
     List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir, role));
         if (role == JvmRole.SUITE && debug != null) flags.add(debug.agentArg());
         if (role != JvmRole.DISCOVERY && coverage != null) flags.add(coverage.agentArg());
-        if (role != JvmRole.DISCOVERY && readRecording != null) flags.add(readRecording);
+        if (role != JvmRole.DISCOVERY) flags.addAll(recordings);
         return flags;
     }
 

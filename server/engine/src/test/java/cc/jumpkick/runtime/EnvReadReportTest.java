@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -66,6 +67,41 @@ class EnvReadReportTest {
                                 false)
                         .undeclared())
                 .isEmpty();
+    }
+
+    @Test
+    void what_a_test_jvm_looked_up_and_was_not_given_is_named_with_its_test_class() throws Exception {
+        JkBuild project = JkBuildParser.parse(
+                "group = \"ex\"\nname = \"m\"\nversion = \"1.0.0\"\n\n[env]\noptional = [\"FEATURE_X\"]\n");
+        Path records = Files.createDirectories(tmp.resolve("records"));
+        Files.writeString(records.resolve("101.lookups"), """
+                ex.AccessSomeApiTest\tex.AccessSomeApiTest\tMY_TOKEN_VALUE\tunset
+                ex.AccessSomeApiTest\tcom.api.Client\tAPI_REGION\tunset
+                ex.AccessSomeApiTest\tex.AccessSomeApiTest\tFEATURE_X\tunset
+                ex.AccessSomeApiTest\tex.AccessSomeApiTest\tPATH\tset
+                \tcom.lib.Boot\tLIB_HOME\tunset
+                ex.Other\tcom.lib.Scan\t*\tset
+                ex.SlowTest\torg.junit.jupiter.api.condition.EnabledIfEnvironmentVariableCondition\tRUN_SLOW\tunset
+                """);
+        var lookups = EnvReadReport.lookups(records);
+        var declared = EnvReadReport.declared(project);
+        Predicate<String> testClass = "ex.AccessSomeApiTest"::equals;
+
+        assertThat(EnvReadReport.lookedUp(lookups, declared, WorkerEnv.strict(), testClass, false))
+                .as("a passing suite: what the test classes and JUnit's conditions looked up")
+                .isEqualTo(Map.of("MY_TOKEN_VALUE", "ex.AccessSomeApiTest", "RUN_SLOW", "ex.SlowTest"));
+        assertThat(EnvReadReport.probed(records)).isTrue();
+        assertThat(EnvReadReport.probed(tmp.resolve("unprobed"))).isFalse();
+        assertThat(EnvReadReport.lookedUp(lookups, declared, WorkerEnv.strict(), testClass, true))
+                .as("a failing suite: what the code under test and the libraries looked up too")
+                .isEqualTo(Map.of(
+                        "MY_TOKEN_VALUE", "ex.AccessSomeApiTest",
+                        "API_REGION", "ex.AccessSomeApiTest",
+                        "LIB_HOME", "com.lib.Boot",
+                        "RUN_SLOW", "ex.SlowTest"));
+        assertThat(EnvReadReport.lookedUp("ex.AccessSomeApiTest", "MY_TOKEN_VALUE", "core/jk.toml"))
+                .isEqualTo("AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare;"
+                        + " it saw no value. Add to [env] require: \"MY_TOKEN_VALUE\"");
     }
 
     /** A classes tree holding one class that reads {@code name} by a constant and {@code condition} by a condition. */

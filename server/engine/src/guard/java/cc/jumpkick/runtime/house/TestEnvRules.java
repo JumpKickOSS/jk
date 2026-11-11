@@ -128,9 +128,6 @@ final class TestEnvRules {
             in = "clients/cli/src/test/java/cc/jumpkick/command/Giter8Catalog.java | JK_TEMPLATES",
             reason = "a developer's template override must not steer the catalogue under test; unset by design")
     @Allow(
-            in = "server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java | JK_UNSET_ON_PURPOSE",
-            reason = "the test asserts the name is unset in its JVM")
-    @Allow(
             in = "server/io/src/test/java/cc/jumpkick/repo/SettingsXmlCredentialStubTest.java | JK_SETTINGS_STUB_PW",
             reason = "the test asserts the serving process does not have it; only the requesting shell does")
     void testEnvForwarded(Model model, Text text, Violations v) {

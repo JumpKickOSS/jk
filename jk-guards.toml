@@ -1004,6 +1004,10 @@ fixture    = "server/guard/fixtures/one-env-surface"
 instead    = "BuildEnv.get / ambient() / forModule(dir) for anything the request decides; ProcessEnv.get only for jk's own engine settings and whether the machine is a CI runner"
 why        = "the engine is a daemon: System.getenv answers from the shell that started it, not the `jk` command being served"
 
+[[guards.one-env-surface.allow]]
+in     = "cc.jumpkick.testrunner.env.EnvLookups"
+reason = "the test JVM's environment probe: it stands in for System.getenv in the suite's own classes and runs on the bootstrap class path, where jk's facade is not; it reads the test JVM's environment, never the engine's"
+
 # G117. A child process starts from a copy of the daemon's environment, so a read of
 # ProcessBuilder.environment() is a System.getenv by another name and a write that does not clear it
 # first hands the child whichever shell started the engine. The spawners that build a child's

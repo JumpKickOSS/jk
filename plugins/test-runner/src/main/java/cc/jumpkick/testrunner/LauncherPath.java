@@ -3,6 +3,7 @@ package cc.jumpkick.testrunner;
 
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.testrunner.env.EnvLookups;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -725,6 +726,10 @@ final class LauncherPath {
         @Override
         public void executionStarted(TestIdentifier id) {
             startNanos.put(id.getUniqueId(), System.nanoTime());
+            // The environment probe attributes each lookup to the class whose tests are running.
+            id.getSource()
+                    .filter(ClassSource.class::isInstance)
+                    .ifPresent(src -> System.setProperty(EnvLookups.CURRENT_TEST, ((ClassSource) src).getClassName()));
             Map<String, Object> p = identity(id);
             p.put("parent", id.getParentId().orElse(null));
             p.put("type", typeName(id));

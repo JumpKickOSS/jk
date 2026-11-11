@@ -47,6 +47,7 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.CoverageResults;
+import cc.jumpkick.test.EnvProbeJar;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestProgressListener;
@@ -453,7 +454,11 @@ final class TestLaunch {
                 .withClassPatterns(effectiveSel.classes())
                 .withExcludedClasses(projectUnderTest.build().testExcludeClasses(), settled)
                 .withDebug(in.session().debugJvm())
-                .withKeepOutput(in.verbose());
+                .withKeepOutput(in.verbose())
+                .withRecording(EnvProbeJar.prepare(
+                        in.cache(),
+                        EnvReadReport.recordDir(in.dir()),
+                        BuildLayout.of(in.dir(), projectUnderTest).classesDir()));
         if (jacoco != null && coverageExec != null) {
             launcher.withCoverage(new CoverageAgent(jacoco.agentJar(), coverageExec));
         }
