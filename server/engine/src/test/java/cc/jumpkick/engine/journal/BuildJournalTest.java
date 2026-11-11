@@ -5,6 +5,8 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.WorkModel;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -309,6 +311,56 @@ class BuildJournalTest {
         assertThat(parsed.success()).isTrue();
         // Memoized dir: a second call answers from the same single record file.
         assertThat(j.rawFinishedRecordByRequestId(9L)).isPresent();
+    }
+
+    /**
+     * A live run is finished in place, one file at a time: the remaining-work models its countdown
+     * was seeded from must be among the files that land, or the replay has nothing to read.
+     */
+    @Test
+    void a_completed_live_run_keeps_its_eta_models() {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord run = BuildRecord.running(28, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli");
+        String locator = requireNonNull(j.begin(run));
+        WorkModel model = WorkModel.of(
+                9_000, 2, false, true, List.of(new ModuleWorkCost(Path.of("/proj/app"), Set.of(), 20, 10)));
+        EtaModels.put(4242, model);
+        BuildRecord f = record(1_700_000_000_100L, true, "g:a").withBuildNumber(28);
+        BuildRecord done = new BuildRecord(
+                f.id(),
+                f.buildNumber(),
+                f.schema(),
+                f.kind(),
+                f.dir(),
+                f.coord(),
+                f.projectId(),
+                f.startedAt(),
+                f.finishedAt(),
+                f.millis(),
+                f.success(),
+                f.cancelled(),
+                f.exitCode(),
+                f.jkVersion(),
+                f.tests(),
+                f.modules(),
+                f.steps(),
+                f.diagnostics(),
+                f.trigger(),
+                f.session(),
+                f.commit(),
+                f.benefit(),
+                false,
+                f.io(),
+                4242L,
+                f.publish(),
+                f.coverage(),
+                f.delta(),
+                f.episode());
+
+        assertThat(j.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
+
+        assertThat(j.runDir(locator).map(p -> p.resolve(EtaModels.FILE)).filter(Files::isRegularFile))
+                .isPresent();
     }
 
     @Test

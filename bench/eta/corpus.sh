@@ -37,6 +37,8 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -x "$DIST/jk" ]] || { echo "--dist must name a dist directory holding jk" >&2; exit 2; }
 [[ -f "$WT/jk.toml" ]] || { echo "--worktree must name a jk checkout" >&2; exit 2; }
+WT="$(cd "$WT" && pwd)"
+DIST="$(cd "$DIST" && pwd)"
 case "$HOME_DIR" in "$HOME/.jk"|"$HOME/.jk/") echo "refusing the default home" >&2; exit 2 ;; esac
 
 LOGS="$HOME/src/scratch/eta-corpus/$LABEL"
@@ -131,6 +133,6 @@ done
 
 "$J" engine stop --now >/dev/null 2>&1 || true
 echo DONE | tee -a "$LOGS/progress.txt"
-python3 -I "$(dirname "$0")/score.py" --home "$JK_HOME" --manifest "$MANIFEST" --all --min-wall 0 \
+python3 -I "$(dirname "$0")/score.py" --home "$JK_HOME" --manifest "$MANIFEST" --min-wall 0 \
   --json "$LOGS/scores.jsonl" > "$LOGS/score.txt" 2>&1 || true
 echo "scored: $LOGS/score.txt"

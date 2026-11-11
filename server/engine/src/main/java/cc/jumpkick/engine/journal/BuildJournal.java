@@ -254,7 +254,6 @@ public final class BuildJournal {
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
                 } else {
                     RunMetricsToml.write(tmp, withIds);
-                    EtaModels.write(tmp, withIds.requestId());
                 }
                 if (Files.isDirectory(target)) {
                     // A live entry (its details.jsonl is being written) is only ever rewritten in
@@ -262,6 +261,9 @@ public final class BuildJournal {
                     PathUtil.deleteRecursively(tmp);
                     return complete(dirName, withIds, snapshot) ? dirName : null;
                 }
+                // After the live-entry branch: complete() drains the models into the entry it
+                // finishes, and a drain into this tmp would be deleted with it.
+                if (!record.running()) EtaModels.write(tmp, withIds.requestId());
                 OwnerOnlyFiles.seal(tmp);
                 move(tmp, target);
                 runs.touched(target);
@@ -402,6 +404,7 @@ public final class BuildJournal {
             if (!spilled) Files.deleteIfExists(target.resolve(DIAGNOSTICS_SPILL));
             Files.deleteIfExists(target.resolve(ENGINE_OWNER));
             moveIfPresent(tmp, target, ProjectBuilds.METRICS);
+            moveIfPresent(tmp, target, EtaModels.FILE);
             if (snapshot != null) {
                 if (snapshot.resultsMd() != null) moveIfPresent(tmp, target, RESULTS_MD);
                 if (snapshot.lockfile() != null) moveIfPresent(tmp, target, ManifestPaths.LOCK);
