@@ -363,22 +363,22 @@ export const notifyMethods = {
   },
   /** The card under the bell, for PREVIEW_MS unless hovered; it never takes focus. */
   showPreview(card) {
-    clearTimeout(this._previewTimer);
+    clearTimeout(this._bellPreviewTimer);
     this.preview = card;
-    this._previewTimer = setTimeout(() => this.dismissPreview(), PREVIEW_MS);
+    this._bellPreviewTimer = setTimeout(() => this.dismissPreview(), PREVIEW_MS);
   },
   /** Hovering the card keeps it. */
   holdPreview() {
-    clearTimeout(this._previewTimer);
+    clearTimeout(this._bellPreviewTimer);
   },
   /** Leaving it lets it go after the usual moment. */
   releasePreview() {
     if (!this.preview) return;
-    clearTimeout(this._previewTimer);
-    this._previewTimer = setTimeout(() => this.dismissPreview(), PREVIEW_MS);
+    clearTimeout(this._bellPreviewTimer);
+    this._bellPreviewTimer = setTimeout(() => this.dismissPreview(), PREVIEW_MS);
   },
   dismissPreview() {
-    clearTimeout(this._previewTimer);
+    clearTimeout(this._bellPreviewTimer);
     this.preview = null;
   },
   /** True while someone uses this tab. */

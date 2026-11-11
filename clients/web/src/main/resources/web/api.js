@@ -74,11 +74,16 @@ export function applyToken(value) {
   return true;
 }
 
-/** Drop a missing/invalid token so we stop sending a bad Authorization header. */
+/**
+ * Drop the token the engine just rejected so this tab stops sending it. The copy shared across tabs
+ * goes only when it is that same token: after a rotation another tab may already have stored the
+ * new one there, and a stale tab's 401 must not delete it.
+ */
 export function clearToken() {
+  const rejected = token();
   sessionStorage.removeItem(TOKEN_KEY);
   try {
-    localStorage.removeItem(TOKEN_KEY);
+    if (localStorage.getItem(TOKEN_KEY) === rejected) localStorage.removeItem(TOKEN_KEY);
   } catch {
     // private mode
   }

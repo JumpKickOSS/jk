@@ -42,6 +42,8 @@ const {
   events,
   isServerFrame,
   post,
+  clearToken,
+  token,
 } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')));
 
 beforeEach(() => {
@@ -212,4 +214,26 @@ test("a rejected post carries the server's reply: a stale form, a field's proble
     return true;
   });
   assert.equal(reloads, 0);
+});
+
+test("a stale tab's rejected token does not delete the newer one another tab stored", () => {
+  // The test shims share one store for both; split them for this case.
+  const local = new Map([['jk-http-token', 'new-token']]);
+  const session = new Map([['jk-http-token', 'old-token']]);
+  const saved = [globalThis.sessionStorage, globalThis.localStorage];
+  const shim = (m) => ({
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+  });
+  globalThis.sessionStorage = shim(session);
+  globalThis.localStorage = shim(local);
+  try {
+    clearToken();
+    assert.equal(token(), 'new-token');
+    clearToken();
+    assert.equal(token(), null, 'the rejected shared token goes');
+  } finally {
+    [globalThis.sessionStorage, globalThis.localStorage] = saved;
+  }
 });
