@@ -7,6 +7,7 @@ import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -27,6 +28,8 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -78,8 +81,17 @@ final class MemoInputs {
      * because the lanes that run there load every member's {@code jk-guards.toml}: a member rule
      * edit changes what the root lane would decide, so it has to schedule the root as well as the
      * member that owns the file.
+     *
+     * <p>A member with a module stem also carries what that stem's action key reads beyond its
+     * directory ({@link BuildLogicSupport#projectInputTokens}): the workspace root's {@code
+     * jk.toml} and {@code jk-lock.toml}, and the siblings its main compile reads. A sibling enters
+     * by its row in {@code fingerprints}, since the outputs the key hashes are a function of those
+     * inputs and may not exist yet.
+     *
+     * @param manifest the module's parsed manifest
+     * @param fingerprints every unit's input fingerprint by normalized directory
      */
-    static @Nullable String logicToken(Path moduleDir, Path root) {
+    static @Nullable String logicToken(Path moduleDir, Path root, JkBuild manifest, Map<Path, String> fingerprints) {
         try {
             MessageDigest md = Hashing.newSha256();
             PreflightMemo.feedFile(md, moduleDir.resolve(GuardsPresence.RULES_FILE));
@@ -87,6 +99,7 @@ final class MemoInputs {
                 PreflightMemo.feed(md, GuardRules.stamp(root));
             }
             feedLogic(md, moduleDir);
+            if (hasModuleScopedScript(moduleDir)) feedMember(md, moduleDir, manifest, fingerprints);
             if (hasWorkspaceScopedScript(moduleDir)) {
                 String scope = workspaceScopeDigest(moduleDir);
                 if (scope == null) return null;
@@ -138,6 +151,33 @@ final class MemoInputs {
             }
         }
         return false;
+    }
+
+    private static boolean hasModuleScopedScript(Path moduleDir) throws IOException {
+        for (Path dir : BuildLogicToml.dirs(moduleDir)) {
+            for (BuildLogicScripts.ScriptTask task : BuildLogicScripts.discover(dir)) {
+                if (!task.anchor().workspaceScoped()) return true;
+            }
+        }
+        return false;
+    }
+
+    /** The root manifest and lock, and each compile sibling's fingerprint, of a workspace member. */
+    private static void feedMember(MessageDigest md, Path moduleDir, JkBuild manifest, Map<Path, String> fingerprints)
+            throws IOException {
+        Path dir = moduleDir.toAbsolutePath().normalize();
+        Optional<Path> found = WorkspaceScan.findRoot(dir);
+        if (found.isEmpty()) return;
+        Path root = found.get().toAbsolutePath().normalize();
+        if (root.equals(dir)) return;
+        PreflightMemo.feedFile(md, ManifestPaths.manifestIn(root));
+        PreflightMemo.feedFile(md, root.resolve(ManifestPaths.LOCK));
+        for (Path sibling : WorkspaceClasspath.closureSiblings(dir, manifest, WorkspaceClasspath.COMPILE_SCOPES)
+                .keySet()) {
+            Path abs = sibling.toAbsolutePath().normalize();
+            PreflightMemo.feed(md, root.relativize(abs).toString().replace('\\', '/'));
+            PreflightMemo.feed(md, fingerprints.getOrDefault(abs, "absent"));
+        }
     }
 
     /**

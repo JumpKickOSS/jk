@@ -250,6 +250,10 @@ public final class PreflightMemo {
             Set<String> seen = new LinkedHashSet<>();
             Map<Path, String> saltByRoot = new LinkedHashMap<>();
             Map<Path, Fingerprint> current = ModuleFingerprints.all(units, skipTests, saltByRoot);
+            Map<Path, String> currentHex = new LinkedHashMap<>();
+            for (var e : current.entrySet()) {
+                if (e.getValue() instanceof Known k) currentHex.put(e.getKey(), k.hex());
+            }
             for (BuildGraph.BuildUnit u : units) {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 String rel = relKey(root, dir);
@@ -272,7 +276,7 @@ public final class PreflightMemo {
                     seen.add(rel);
                     continue;
                 }
-                String logic = MemoInputs.logicToken(dir, root);
+                String logic = MemoInputs.logicToken(dir, root, u.manifest(), currentHex);
                 if (logic == null) return miss("unreadable-logic", "module", rel);
                 seen.add(rel);
                 fps.put(dir, row.fp());
@@ -375,7 +379,7 @@ public final class PreflightMemo {
                     Log.debug("storeDirty: not stored, no fingerprint for a unit", "unit", dir);
                     return;
                 }
-                String logic = MemoInputs.logicToken(dir, root);
+                String logic = MemoInputs.logicToken(dir, root, u.manifest(), fingerprints);
                 if (logic == null) {
                     Log.debug("storeDirty: not stored, logic inputs unreadable", "unit", dir);
                     return;

@@ -4,7 +4,10 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.BuildLogicToml.Logic;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -12,6 +15,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
@@ -431,7 +435,8 @@ public final class BuildLogicSupport {
      * What a build-logic task can read through {@code projectDir}, as cache-key tokens: every
      * root the preflight memo fingerprints ({@link ModuleLayoutPlugins#fingerprintRoots} — the
      * layout's trees, {@code [build] extra-src}, {@code [test] extra-src}, {@code [test] fixtures},
-     * plugin-contributed roots) plus {@code jk.toml}/{@code jk-lock.toml}. Conservative on purpose
+     * plugin-contributed roots) plus {@code jk.toml}/{@code jk-lock.toml}, and for a workspace
+     * member what it can read beyond its directory ({@link #memberTokens}). Conservative on purpose
      * — a script declares no inputs, so the key covers every input it <em>could</em> consume.
      *
      * <p>The key is the <strong>sources</strong>, not {@code classesDir}, even for the anchors that
@@ -457,8 +462,41 @@ public final class BuildLogicSupport {
                 tokens.add("in:" + file + ":" + Hashing.sha256Hex(Files.readAllBytes(p)));
             }
         }
+        memberTokens(from, tokens);
         Collections.sort(tokens);
         return tokens;
+    }
+
+    /**
+     * What a workspace member's script can read outside its own directory: the root {@code
+     * jk.toml} and {@code jk-lock.toml}, which decide its versions and settings, and the classes
+     * trees of the siblings its main compile reads, which are whole before any of its anchors runs.
+     * A standalone project, or the root itself, adds none.
+     */
+    private static void memberTokens(Path moduleDir, List<String> tokens) throws IOException {
+        Optional<Path> found = WorkspaceLocator.findRoot(moduleDir);
+        if (found.isEmpty()) return;
+        Path root = found.get().toAbsolutePath().normalize();
+        if (root.equals(moduleDir)) return;
+        for (String file : new String[] {ManifestPaths.MANIFEST, ManifestPaths.LOCK}) {
+            Path p = root.resolve(file);
+            if (Files.isRegularFile(p)) {
+                tokens.add("root:" + file + ":" + Hashing.sha256Hex(Files.readAllBytes(p)));
+            }
+        }
+        Path manifest = ManifestPaths.manifestIn(moduleDir);
+        if (!Files.isRegularFile(manifest)) return;
+        JkBuild build = JkBuildParser.parse(manifest);
+        for (Path out : WorkspaceClasspath.resolve(moduleDir, build, WorkspaceClasspath.COMPILE_SCOPES)
+                .siblingClosureClasses()) {
+            Path abs = out.toAbsolutePath().normalize();
+            if (Files.isRegularFile(abs)) {
+                var attrs = Files.readAttributes(abs, BasicFileAttributes.class);
+                tokens.add("sibling:" + slashed(root.relativize(abs)) + ":" + FileHashMemo.contentHash(abs, attrs));
+            } else {
+                hashTree(root, abs, "sibling", tokens);
+            }
+        }
     }
 
     /**
