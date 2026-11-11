@@ -168,7 +168,10 @@ final class ForecastLangArms {
                         freshInputs,
                         FreshnessStamp.ClasspathTokens.of(PlannerLang.kotlinStampTokens(arm.classpath(), snapshotter)),
                         prepared.release(),
-                        arm.config().digest());
+                        arm.config().digest())
+                // As the build: a fresh stamp over a partly wiped tree is not up to date.
+                && ModuleOutputs.compileOutputsOnDisk(
+                        actionCache, prepared.layout().classesDir(), BuildStamps.KOTLIN);
     }
 
     /**

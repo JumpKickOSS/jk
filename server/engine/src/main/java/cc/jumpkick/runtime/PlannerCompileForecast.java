@@ -111,8 +111,13 @@ final class PlannerCompileForecast {
                 fresh = Optional.empty();
             }
         }
-        boolean stampFresh =
-                fresh.isPresent() && !s.compileDepDirty && StepWarnings.kept(layout, TaskNames.COMPILE_JAVA);
+        // The build's own condition (CompileUpToDate.java): the stamp vouches for the inputs AND the
+        // tree still holds every output the stamped record owns; a partly wiped tree falls through
+        // to the action cache, priced below by whether its record restores.
+        boolean stampFresh = fresh.isPresent()
+                && !s.compileDepDirty
+                && StepWarnings.kept(layout, TaskNames.COMPILE_JAVA)
+                && ModuleOutputs.compileOutputsOnDisk(s.actionCache, out);
         ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, s.compileDepDirty);
         if (stampFresh) {
             // The stamp names the compile that produced this tree; that record is what the tree is
