@@ -211,7 +211,7 @@ class VariantApplyTest {
                 signing = "release"
 
                 [variants.tier.free.android]
-                debuggable = true
+                application-id-suffix = ".free"
 
                 [android.signing.release]
                 store-file = "env:DEFINITELY_NOT_SET_ANYWHERE"
@@ -229,6 +229,19 @@ class VariantApplyTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("DEFINITELY_NOT_SET_ANYWHERE");
         assertThat(VariantApply.envRefs(build)).contains("DEFINITELY_NOT_SET_ANYWHERE");
+    }
+
+    @Test
+    void debuggable_is_not_an_android_key(@TempDir Path dir) {
+        assertThatThrownBy(() -> parse(dir, "debuggable = true\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("debuggable");
+        assertThatThrownBy(() -> parse(dir, """
+                [variants.build-type.release.android]
+                debuggable = true
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("debuggable");
     }
 
     @Test

@@ -346,6 +346,7 @@ public final class PluginTableRegistry {
 
     /** Schema-validate {@code table} (the raw {@code [<manifest.table>]} TOML) into a config. */
     public static PluginConfig validate(PluginDescriptor manifest, TomlTable table) {
+        rejectUnknownKeys(manifest, table);
         Map<String, Object> values = new LinkedHashMap<>();
         for (PluginDescriptor.SchemaKey key : manifest.schema().values()) {
             // A schema key sharing its name with a sub-table group: the TOML value decides which
@@ -425,6 +426,20 @@ public final class PluginTableRegistry {
             if (value != null) values.put(key.name(), value);
         }
         return values;
+    }
+
+    /**
+     * A key the plugin's schema does not declare is refused, as an overlay's is: a key nothing reads
+     * would otherwise pass for a setting that takes effect. Sub-table groups and, under an entry
+     * schema, entry tables are the table's other legal members.
+     */
+    private static void rejectUnknownKeys(PluginDescriptor manifest, TomlTable table) {
+        for (String raw : table.keySet()) {
+            if (manifest.schema().containsKey(raw) || manifest.subTables().containsKey(raw)) continue;
+            if (manifest.entrySchema() != null && readTable(table, raw) != null) continue;
+            throw new JkBuildParseException("[" + manifest.table() + "]." + raw + " is not a [" + manifest.table()
+                    + "] key (schema: " + manifest.schema().keySet() + ")");
+        }
     }
 
     private static @Nullable TomlTable readTable(TomlTable parent, String key) {
