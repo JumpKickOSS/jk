@@ -13,12 +13,17 @@ import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -173,5 +178,40 @@ class FreezerTest {
         assertThat(r.error()).contains("has no baseline = true");
         assertThat(r.accepted()).isZero();
         assertThat(GuardsPresence.baselineFile(p)).doesNotExist();
+    }
+
+    /** A freeze waits for whoever holds the baseline lock, so it never writes over their write. */
+    @Test
+    void freeze_waits_for_the_baseline_lock(@TempDir Path dir) throws Exception {
+        Path p = project(dir);
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = Thread.ofPlatform().start(() -> {
+            try {
+                FileLocks.withLock(GuardsPresence.baselineLock(p), () -> {
+                    held.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+        CompletableFuture<Freezer.Result> freeze = CompletableFuture.supplyAsync(() -> {
+            try {
+                return Freezer.freeze(p, "one-digest", "PGP needs SHA-1 by spec", false, false);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        Thread.sleep(500);
+        assertThat(freeze).as("the freeze waits while the lock is held").isNotDone();
+        release.countDown();
+        assertThat(freeze.get(30, TimeUnit.SECONDS).accepted()).isEqualTo(1);
+        holder.join();
     }
 }

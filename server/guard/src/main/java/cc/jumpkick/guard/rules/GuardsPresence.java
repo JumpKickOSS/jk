@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.rules;
 
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +35,15 @@ public final class GuardsPresence {
 
     public static Path baselineFile(Path root) {
         return root.resolve(BASELINE_FILE);
+    }
+
+    /**
+     * The {@link cc.jumpkick.util.FileLocks} lock every read-modify-write of the baseline holds — a
+     * lane tightening its slice, {@code jk guard freeze} — so neither writes over what the other
+     * just wrote, in this process or another. Under {@code target/}, out of the checkout's sight.
+     */
+    public static Path baselineLock(Path root) {
+        return BuildLayout.moduleTargetDir(root).resolve(".jk").resolve(BASELINE_FILE + ".lock");
     }
 
     /**

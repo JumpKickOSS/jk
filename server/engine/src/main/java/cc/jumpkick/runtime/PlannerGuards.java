@@ -72,6 +72,7 @@ import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.GuardBaselineMarker;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -921,7 +922,7 @@ final class PlannerGuards {
                             + Baselines.CI_MESSAGE);
             return false;
         }
-        mergeTightened(GuardsPresence.baselineFile(g.root()), result);
+        mergeTightened(g.root(), result);
         // The pre-commit hook lets a baseline through only behind this marker; a tightening is the
         // engine's own write, so it leaves the marker exactly as a freeze does.
         GuardBaselineMarker.leave(g.root(), "jk guard (tightened)");
@@ -944,8 +945,6 @@ final class PlannerGuards {
         }
     }
 
-    private static final Object BASELINE_LOCK = new Object();
-
     /**
      * Module lanes in flight at once: each holds a text pass beside its facts. A workspace of thirty
      * run with the build's parallelism would multiply that against the engine's heap.
@@ -958,11 +957,13 @@ final class PlannerGuards {
     /**
      * Module lanes run concurrently and each tightens only its own slice of a rule's baseline, so
      * the write re-reads the file and replaces just those slices: a lane never overwrites what
-     * another lane tightened a moment ago.
+     * another lane tightened a moment ago. The read and the write hold the {@link
+     * GuardsPresence#baselineLock baseline lock}, which {@code jk guard freeze} holds too, in this
+     * engine or another process.
      */
-    private static void mergeTightened(Path baselineFile, LaneRun.Result result) throws IOException {
-        synchronized (BASELINE_LOCK) {
-            Baseline latest = BaselineFile.read(baselineFile);
+    static void mergeTightened(Path root, LaneRun.Result result) throws IOException {
+        FileLocks.withLock(GuardsPresence.baselineLock(root), () -> {
+            Baseline latest = BaselineFile.read(GuardsPresence.baselineFile(root));
             for (RuleReport r : result.reports()) {
                 Reconciliation rec = r.reconciliation();
                 if (rec == null || !rec.tighteningNeeded()) continue;
@@ -971,8 +972,8 @@ final class PlannerGuards {
                 latest = latest.with(
                         r.id(), theirs.withLane(rec.lane(), mine.population(rec.lane()), mine.entries(rec.lane())));
             }
-            BaselineFile.write(baselineFile, latest);
-        }
+            BaselineFile.write(GuardsPresence.baselineFile(root), latest);
+        });
     }
 
     /** A red lane: the diagnostics already say why; this only fails the step. */

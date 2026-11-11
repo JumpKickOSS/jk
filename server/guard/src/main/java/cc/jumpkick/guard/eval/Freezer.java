@@ -19,6 +19,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,8 +49,19 @@ public final class Freezer {
 
     private Freezer() {}
 
+    /**
+     * Freeze or retire {@code ruleId}'s entries, holding the {@link GuardsPresence#baselineLock
+     * baseline lock} from the read to the write, so a lane tightening its slice meanwhile neither
+     * loses this write nor has its own lost.
+     */
     public static Result freeze(Path root, String ruleId, @Nullable String reason, boolean retire, boolean acceptScope)
             throws IOException {
+        return FileLocks.withLock(
+                GuardsPresence.baselineLock(root), () -> freezeLocked(root, ruleId, reason, retire, acceptScope));
+    }
+
+    private static Result freezeLocked(
+            Path root, String ruleId, @Nullable String reason, boolean retire, boolean acceptScope) throws IOException {
         String refusal = Baselines.freezeRefusal(retire ? "retire" : reason, Baselines.ciMode());
         if (refusal != null) return new Result(refusal, 0, 0, 0);
         Path baselineFile = GuardsPresence.baselineFile(root);
