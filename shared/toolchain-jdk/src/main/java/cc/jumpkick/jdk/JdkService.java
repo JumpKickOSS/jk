@@ -18,6 +18,22 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JdkService {
 
+    private final boolean jdkVerb;
+
+    /** The service for automatic provisioning; see {@link JdkInstaller#JdkInstaller}. */
+    public JdkService() {
+        this(false);
+    }
+
+    private JdkService(boolean jdkVerb) {
+        this.jdkVerb = jdkVerb;
+    }
+
+    /** The service behind {@code jk jdk install}; see {@link JdkInstaller#forJdkVerb}. */
+    public static JdkService forJdkVerb() {
+        return new JdkService(true);
+    }
+
     /**
      * Fetch the JDK catalog, mirroring the CLI's {@code fetch-catalog} step.
      *
@@ -88,7 +104,8 @@ public final class JdkService {
         Objects.requireNonNull(registry, "registry");
         JdkInstallListener l = listener != null ? listener : JdkInstallListener.NO_OP;
 
-        JdkInstaller installer = new JdkInstaller(new Http(), registry);
+        JdkInstaller installer =
+                jdkVerb ? JdkInstaller.forJdkVerb(new Http(), registry) : new JdkInstaller(new Http(), registry);
         InstalledJdk already = refresh ? null : installer.alreadyInstalled(entry);
         if (already != null) {
             l.onAlreadyInstalled(already);

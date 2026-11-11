@@ -14,18 +14,15 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.testing.Symlinks;
 import com.sun.net.httpserver.HttpServer;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,9 +31,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.zip.GZIPOutputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,7 +73,7 @@ class JdkInstallerTest {
 
     @Test
     void installs_tar_gz_archive(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz(
+        byte[] archive = TestArchives.tarGz(
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
@@ -90,22 +84,13 @@ class JdkInstallerTest {
         Path jdksRoot = tempDir.resolve("jdks");
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
 
-        JdkPackage pkg = new JdkPackage(
-                "temurin",
-                "21.0.5",
-                "x64",
-                "linux",
-                "tar.gz",
-                "OpenJDK21U.tar.gz",
-                base.resolve("/jdk.tar.gz"),
-                Hashing.sha256Hex(archive),
-                archive.length);
+        JdkCatalog.Entry pkg = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
 
         Path journal = tempDir.resolve("changes");
         InstalledJdk installed = ChangeJournal.into(
                 journal,
                 () -> ChangeActor.as(ChangeActor.shell(List.of("jdk", "install", "21")), () -> installer.install(pkg)));
-        assertThat(installed.identifier()).isEqualTo("21.0.5-tem-x64-linux");
+        assertThat(installed.identifier()).isEqualTo("temurin-21.0.5");
         assertThat(installed.home().resolve("bin/java")).exists();
         assertThat(installed.home().resolve("release")).exists();
 
@@ -118,7 +103,7 @@ class JdkInstallerTest {
 
     @Test
     void two_installs_of_one_jdk_into_one_root_both_succeed_and_one_installs(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
+        byte[] archive = TestArchives.tarGz("jdk-21.0.5+11", discoverableJdkFiles());
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
         JdkCatalog.Entry entry = new JdkCatalog.Entry(
@@ -175,7 +160,7 @@ class JdkInstallerTest {
     @Test
     void a_target_populated_by_a_finished_install_is_adopted_and_the_stage_removed(@TempDir Path tempDir)
             throws Exception {
-        byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
+        byte[] archive = TestArchives.tarGz("jdk-21.0.5+11", discoverableJdkFiles());
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
         JdkCatalog.Entry entry = new JdkCatalog.Entry(
@@ -223,7 +208,7 @@ class JdkInstallerTest {
 
     @Test
     void a_tree_at_the_target_that_is_not_a_jdk_is_not_answered_as_one(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz(
+        byte[] archive = TestArchives.tarGz(
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
@@ -340,7 +325,7 @@ class JdkInstallerTest {
 
     @Test
     void an_install_claims_the_name_an_empty_directory_was_holding(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
+        byte[] archive = TestArchives.tarGz("jdk-21.0.5+11", discoverableJdkFiles());
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
         JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
@@ -357,7 +342,7 @@ class JdkInstallerTest {
 
     @Test
     void stale_partial_downloads_are_swept_on_next_install(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz(
+        byte[] archive = TestArchives.tarGz(
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
@@ -376,16 +361,7 @@ class JdkInstallerTest {
         Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(Duration.ofDays(2))));
 
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
-        JdkPackage pkg = new JdkPackage(
-                "temurin",
-                "21.0.5",
-                "x64",
-                "linux",
-                "tar.gz",
-                "OpenJDK21U.tar.gz",
-                base.resolve("/jdk.tar.gz"),
-                Hashing.sha256Hex(archive),
-                archive.length);
+        JdkCatalog.Entry pkg = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
 
         installer.install(pkg);
 
@@ -417,20 +393,11 @@ class JdkInstallerTest {
 
     @Test
     void sha256_mismatch_aborts_install(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
+        byte[] archive = TestArchives.tarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
         served.put("/jdk.tar.gz", archive);
 
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(tempDir.resolve("jdks")));
-        JdkPackage pkg = new JdkPackage(
-                "temurin",
-                "21.0.5",
-                "x64",
-                "linux",
-                "tar.gz",
-                "OpenJDK21U.tar.gz",
-                base.resolve("/jdk.tar.gz"),
-                "deadbeef",
-                archive.length);
+        JdkCatalog.Entry pkg = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), "deadbeef");
 
         assertThatThrownBy(() -> installer.install(pkg))
                 .isInstanceOf(IOException.class)
@@ -442,7 +409,7 @@ class JdkInstallerTest {
         // A macOS-built tarball can carry ._<name> sidecars next to real
         // entries. Installer must drop them so single-top-level flattening
         // still triggers and no junk lands in the JDK install directory.
-        byte[] archive = buildTarGzRaw(new String[][] {
+        byte[] archive = TestArchives.tarGzRaw(new String[][] {
             {"jdk-21.0.5+11/", null},
             {"._jdk-21.0.5+11", "applesidecar"},
             {"jdk-21.0.5+11/bin/", null},
@@ -456,16 +423,7 @@ class JdkInstallerTest {
         served.put("/jdk.tar.gz", archive);
 
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(tempDir.resolve("jdks")));
-        JdkPackage pkg = new JdkPackage(
-                "temurin",
-                "21.0.5",
-                "x64",
-                "linux",
-                "tar.gz",
-                "OpenJDK21U.tar.gz",
-                base.resolve("/jdk.tar.gz"),
-                Hashing.sha256Hex(archive),
-                archive.length);
+        JdkCatalog.Entry pkg = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
 
         InstalledJdk installed = installer.install(pkg);
         assertThat(installed.home().resolve("bin/java")).exists();
@@ -481,7 +439,7 @@ class JdkInstallerTest {
         // d/l -> .. resolves to the extraction root; d/l/l2 -> .. is written through it, so it
         // lands in the root and points one level above; d/l/l2/pwn/ would then be created
         // beside the jdks root, and the file beneath it written there.
-        byte[] archive = buildTarGzRaw(new String[][] {
+        byte[] archive = TestArchives.tarGzRaw(new String[][] {
             {"jdk/", null},
             {"jdk/bin/", null},
             {"jdk/bin/java", "#!/fake"},
@@ -517,7 +475,7 @@ class JdkInstallerTest {
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
         Symlinks.create(dest.resolve("lib"), outside);
-        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), TestArchives.zip(new String[][] {
             {"lib/pwn/", null},
             {"lib/pwn/owned", "outside"},
         }));
@@ -535,7 +493,7 @@ class JdkInstallerTest {
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
         Symlinks.create(dest.resolve("lib"), outside);
-        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), TestArchives.zip(new String[][] {
             {"bin/java", "#!/fake"},
             {"lib/owned", "outside"},
         }));
@@ -553,7 +511,7 @@ class JdkInstallerTest {
     @Test
     void a_zip_entry_that_climbs_out_lexically_is_refused(@TempDir Path tempDir) throws Exception {
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
-        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), TestArchives.zip(new String[][] {
             {"../owned", "outside"},
         }));
 
@@ -566,7 +524,7 @@ class JdkInstallerTest {
     @Test
     void a_zip_unpacks_its_tree(@TempDir Path tempDir) throws Exception {
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
-        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), TestArchives.zip(new String[][] {
             {"jdk/", null},
             {"jdk/bin/", null},
             {"jdk/bin/java", "#!/fake"},
@@ -580,7 +538,7 @@ class JdkInstallerTest {
 
     @Test
     void an_entry_without_a_sha256_is_refused_before_anything_is_downloaded(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
+        byte[] archive = TestArchives.tarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
@@ -601,19 +559,10 @@ class JdkInstallerTest {
 
     @Test
     void second_install_is_idempotent(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "x", "bin/javac", "x"));
+        byte[] archive = TestArchives.tarGz("jdk", Map.of("bin/java", "x", "bin/javac", "x"));
         served.put("/jdk.tar.gz", archive);
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(tempDir.resolve("jdks")));
-        JdkPackage pkg = new JdkPackage(
-                "temurin",
-                "21.0.5",
-                "x64",
-                "linux",
-                "tar.gz",
-                "OpenJDK21U.tar.gz",
-                base.resolve("/jdk.tar.gz"),
-                Hashing.sha256Hex(archive),
-                archive.length);
+        JdkCatalog.Entry pkg = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
         InstalledJdk first = installer.install(pkg);
         InstalledJdk second = installer.install(pkg);
         assertThat(second.home()).isEqualTo(first.home());
@@ -621,7 +570,7 @@ class JdkInstallerTest {
 
     @Test
     void installs_jetbrains_catalog_entry(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz(
+        byte[] archive = TestArchives.tarGz(
                 "jdk-21.0.5",
                 Map.of(
                         "bin/java", "#!/fake/java",
@@ -643,7 +592,7 @@ class JdkInstallerTest {
     @Test
     void macos_entry_resolves_home_through_contents_home(@TempDir Path tempDir) throws Exception {
         // Tarball layout: jdk-21.0.5.jdk/Contents/Home/...
-        byte[] archive = buildTarGz(
+        byte[] archive = TestArchives.tarGz(
                 "jdk-21.0.5.jdk",
                 Map.of(
                         "Contents/Home/bin/java", "#!/fake/java",
@@ -694,7 +643,7 @@ class JdkInstallerTest {
     void a_link_that_leaves_the_lifted_root_refuses_the_install(@TempDir Path tempDir) throws Exception {
         // jdk/bin/x -> ../../other stays inside the staging directory while jdk/ wraps the tree;
         // installed, jdk/ becomes the root and the link points at a sibling of the install.
-        byte[] archive = buildTarGzRaw(new String[][] {
+        byte[] archive = TestArchives.tarGzRaw(new String[][] {
             {"jdk/", null},
             {"jdk/bin/", null},
             {"jdk/bin/java", "#!/fake"},
@@ -721,7 +670,7 @@ class JdkInstallerTest {
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void links_inside_the_lifted_root_install(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGzRaw(new String[][] {
+        byte[] archive = TestArchives.tarGzRaw(new String[][] {
             {"jdk/", null},
             {"jdk/bin/", null},
             {"jdk/bin/java", "#!/fake"},
@@ -752,8 +701,7 @@ class JdkInstallerTest {
         return home;
     }
 
-    private static JdkCatalog.Entry entry(
-            String os, String arch, String javaHomeSubpath, URI url, @Nullable String sha256) {
+    static JdkCatalog.Entry entry(String os, String arch, String javaHomeSubpath, URI url, @Nullable String sha256) {
         return new JdkCatalog.Entry(
                 "Eclipse",
                 "Temurin",
@@ -774,11 +722,6 @@ class JdkInstallerTest {
     }
 
     /**
-     * Build a gzipped tar in-memory using Commons Compress — same library the installer reads with —
-     * so the fixture matches what foojay serves without depending on a system {@code tar} binary (or
-     * its platform-specific quirks, e.g. macOS AppleDouble sidecars).
-     */
-    /**
      * A tree the install probe accepts on this host: {@code bin/java} plus {@code .exe} launchers
      * on Windows, so a lost race can still recognise the winner.
      */
@@ -792,95 +735,5 @@ class JdkInstallerTest {
             files.put("bin/javac.exe", "fake");
         }
         return files;
-    }
-
-    private static byte[] buildTarGz(String topLevelDir, Map<String, String> entries) throws IOException {
-        String[][] raw = new String[entries.size() + 1][];
-        raw[0] = new String[] {topLevelDir + "/", null};
-        int i = 1;
-        for (var e : entries.entrySet()) {
-            raw[i++] = new String[] {topLevelDir + "/" + e.getKey(), e.getValue()};
-        }
-        return buildTarGzRaw(raw);
-    }
-
-    /**
-     * Build a tar.gz with entries written verbatim — no implicit top-level dir wrapping. Entry value
-     * {@code null} means a directory entry.
-     */
-    /**
-     * Build a tar.gz using hand-rolled 512-byte TAR blocks — no external library. {@code null} body =
-     * directory entry; a third element makes the entry a symlink to that target.
-     */
-    private static byte[] buildTarGzRaw(String[][] rawEntries) throws IOException {
-        ByteArrayOutputStream raw = new ByteArrayOutputStream();
-        for (String[] e : rawEntries) {
-            String name = e[0];
-            String linkTarget = e.length > 2 ? e[2] : null;
-            byte[] data = e[1] != null ? e[1].getBytes(StandardCharsets.UTF_8) : null;
-            boolean isLink = linkTarget != null;
-            boolean isDir = data == null && !isLink;
-            byte[] header = new byte[512];
-            // name (0-99)
-            byte[] nameBytes = name.getBytes(StandardCharsets.US_ASCII);
-            System.arraycopy(nameBytes, 0, header, 0, Math.min(nameBytes.length, 99));
-            // mode (100-107)
-            putOctal(header, 100, 8, isDir ? 0755 : 0644);
-            // uid/gid (108-115, 116-123)
-            putOctal(header, 108, 8, 0);
-            putOctal(header, 116, 8, 0);
-            // size (124-135)
-            putOctal(header, 124, 12, data != null ? data.length : 0);
-            // mtime (136-147)
-            putOctal(header, 136, 12, 0);
-            // type (156)
-            header[156] = (byte) (isLink ? '2' : isDir ? '5' : '0');
-            // link target (157-256)
-            if (linkTarget != null) {
-                byte[] linkBytes = linkTarget.getBytes(StandardCharsets.US_ASCII);
-                System.arraycopy(linkBytes, 0, header, 157, Math.min(linkBytes.length, 99));
-            }
-            // ustar magic (257-262)
-            System.arraycopy("ustar ".getBytes(StandardCharsets.US_ASCII), 0, header, 257, 6);
-            header[263] = ' ';
-            header[264] = 0;
-            // checksum (148-155): fill with spaces first, then compute
-            Arrays.fill(header, 148, 156, (byte) ' ');
-            int sum = 0;
-            for (byte b : header) sum += (b & 0xFF);
-            putOctal(header, 148, 8, sum);
-            raw.write(header);
-            if (data != null && data.length > 0) {
-                raw.write(data);
-                int pad = 512 - (data.length % 512);
-                if (pad < 512) raw.write(new byte[pad]);
-            }
-        }
-        raw.write(new byte[1024]); // two zero blocks = end of archive
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (GZIPOutputStream gz = new GZIPOutputStream(bytes)) {
-            gz.write(raw.toByteArray());
-        }
-        return bytes.toByteArray();
-    }
-
-    /** A zip with the entries named verbatim; a {@code null} body is a directory entry. */
-    private static byte[] buildZip(String[][] entries) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            for (String[] e : entries) {
-                zip.putNextEntry(new ZipEntry(e[0]));
-                if (e[1] != null) zip.write(e[1].getBytes(StandardCharsets.UTF_8));
-                zip.closeEntry();
-            }
-        }
-        return bytes.toByteArray();
-    }
-
-    private static void putOctal(byte[] buf, int off, int len, long value) {
-        String octal = String.format("%0" + (len - 1) + "o", value);
-        byte[] oBytes = octal.getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(oBytes, 0, buf, off, Math.min(oBytes.length, len - 1));
-        buf[off + len - 1] = 0;
     }
 }

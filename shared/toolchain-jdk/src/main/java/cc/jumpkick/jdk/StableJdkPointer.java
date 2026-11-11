@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  * <p>The pointer and the install it aims at are two different things on disk, and this type never
  * confuses them: it will create, re-aim and retire the <em>pointer</em>, and it will not delete an
  * install to do so. Removing a JDK belongs to an explicit {@code jk jdk} verb. Where an install is
- * sitting on the pointer name it is moved aside, never removed — see {@link #ensure}.
+ * sitting on the pointer name it is moved aside, never removed — see {@link #ensureMovingAside}.
  */
 public final class StableJdkPointer {
 
@@ -62,10 +62,23 @@ public final class StableJdkPointer {
      * installDir} doesn't exist.
      *
      * <p>When some OTHER install holds the name — the bare-major case again, one release later —
-     * that install is moved aside to a name of its own so the pointer can aim at {@code installDir}.
-     * jk moves only a tree it installed; anything else still refuses, loudly.
+     * this refuses and leaves it there: the install may be the home of a running build, test JVM or
+     * IDE, and renaming it under them belongs to an explicit verb ({@link #ensureMovingAside}).
      */
     public void ensure(String pointerName, Path installDir) throws IOException {
+        ensure(pointerName, installDir, false);
+    }
+
+    /**
+     * {@link #ensure}, except that an install jk owns holding the name is moved aside to a name of
+     * its own so the pointer can aim at {@code installDir}. For {@code jk jdk install} and {@code jk
+     * jdk update}, where the user asked for the change; anything jk did not install still refuses.
+     */
+    public void ensureMovingAside(String pointerName, Path installDir) throws IOException {
+        ensure(pointerName, installDir, true);
+    }
+
+    private void ensure(String pointerName, Path installDir, boolean moveAside) throws IOException {
         Objects.requireNonNull(pointerName, "pointerName");
         Objects.requireNonNull(installDir, "installDir");
         if (!Files.exists(installDir)) return;
@@ -81,7 +94,7 @@ public final class StableJdkPointer {
             } catch (IOException dangling) {
                 // fall through and recreate
             }
-            freeTheName(pointer);
+            freeTheName(pointer, moveAside);
         }
 
         Files.createDirectories(jdksRoot);
@@ -140,7 +153,8 @@ public final class StableJdkPointer {
                         .map(Map.Entry::getValue);
 
         if (newest.isPresent()) {
-            ensure(pointerName, newest.get());
+            // Only the removal verbs heal, so an install on the name may be moved aside.
+            ensureMovingAside(pointerName, newest.get());
             return;
         }
         retire(pointerDir(pointerName));
@@ -175,7 +189,8 @@ public final class StableJdkPointer {
 
     /**
      * Free the pointer name for a re-aim: drop a link or an empty directory as {@link #retire}
-     * does, and move an install that is sitting on the name out to a name of its own.
+     * does, and, when {@code moveAside}, move an install that is sitting on the name out to a name
+     * of its own.
      *
      * <p>An install can hold the stable name because a feed reports some releases with no point
      * version at all — {@code jdk_version} is {@code "25"} for Oracle GraalVM 25, and {@code "27"}
@@ -185,12 +200,17 @@ public final class StableJdkPointer {
      * {@code JdkInstaller} treats a pointer as a convenience it failed silently, leaving the stable
      * name — the one an IDE is configured with — on the older install.
      */
-    private void freeTheName(Path pointer) throws IOException {
+    private void freeTheName(Path pointer, boolean moveAside) throws IOException {
         try {
             Files.delete(pointer);
         } catch (NoSuchFileException alreadyGone) {
             // nothing to free
         } catch (DirectoryNotEmptyException install) {
+            if (!JdkOwnership.isJkOwned(pointer)) throw populatedInstall(pointer);
+            if (!moveAside) {
+                throw new IOException("left " + pointer.getFileName() + " where it is: an install holds the name;"
+                        + " jk jdk update moves it aside");
+            }
             displace(pointer);
         }
     }
@@ -212,7 +232,6 @@ public final class StableJdkPointer {
      * {@link #pointerNameFor}.
      */
     private void displace(Path install) throws IOException {
-        if (!JdkOwnership.isJkOwned(install)) throw populatedInstall(install);
         Path aside = freeNameBeside(install);
         String oldId = install.getFileName().toString();
         Files.move(install, aside);

@@ -20,7 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
@@ -386,6 +388,72 @@ class ToolInstallerTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("outside the destination");
         assertThat(outside).isEmptyDirectory();
+    }
+
+    /**
+     * b -> d/l/../../.. is judged while d/l -> sub/deep and stays inside; d/l is then replaced by
+     * d/l -> ., and b climbs two levels above the tree. Two top-level entries: nothing is lifted.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_link_replaced_after_another_was_judged_through_it_refuses_a_multi_root_install(@TempDir Path tempDir)
+            throws Exception {
+        byte[] tar = buildTarGz(new String[][] {
+            {"d/", null},
+            {"d/sub/", null},
+            {"d/sub/deep/", null},
+            {"d/l", "sub/deep"},
+            {"b", "d/l/../../.."},
+            {"d/l", "."}
+        });
+        http.served().put("/maven.tar.gz", tar);
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist = new ToolDistribution(
+                BuildTool.MAVEN, "3.9.9", http.base().resolve("/maven.tar.gz"), "tar.gz", Hashing.sha256Hex(tar));
+
+        assertThatThrownBy(() -> installer.install(dist))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes the installed tree");
+        assertThat(tempDir.resolve("tools/maven/3.9.9")).doesNotExist();
+    }
+
+    /** A tar.gz of directories ({@code null}) and symlinks (the target), in order. */
+    private static byte[] buildTarGz(String[][] entries) throws IOException {
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        for (String[] e : entries) {
+            byte[] h = new byte[512];
+            byte[] name = e[0].getBytes(StandardCharsets.US_ASCII);
+            System.arraycopy(name, 0, h, 0, name.length);
+            octal(h, 100, 8, 0755);
+            octal(h, 108, 8, 0);
+            octal(h, 116, 8, 0);
+            octal(h, 124, 12, 0);
+            octal(h, 136, 12, 0);
+            h[156] = (byte) (e[1] == null ? '5' : '2');
+            if (e[1] != null) {
+                byte[] link = e[1].getBytes(StandardCharsets.US_ASCII);
+                System.arraycopy(link, 0, h, 157, link.length);
+            }
+            System.arraycopy("ustar ".getBytes(StandardCharsets.US_ASCII), 0, h, 257, 6);
+            h[263] = ' ';
+            Arrays.fill(h, 148, 156, (byte) ' ');
+            int sum = 0;
+            for (byte b : h) sum += b & 0xFF;
+            octal(h, 148, 8, sum);
+            raw.write(h);
+        }
+        raw.write(new byte[1024]);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(out)) {
+            gz.write(raw.toByteArray());
+        }
+        return out.toByteArray();
+    }
+
+    private static void octal(byte[] buf, int off, int len, long value) {
+        byte[] digits = String.format("%0" + (len - 1) + "o", value).getBytes(StandardCharsets.US_ASCII);
+        System.arraycopy(digits, 0, buf, off, len - 1);
+        buf[off + len - 1] = 0;
     }
 
     private static byte[] buildZip(String topLevelDir, Map<String, String> entries) throws IOException {

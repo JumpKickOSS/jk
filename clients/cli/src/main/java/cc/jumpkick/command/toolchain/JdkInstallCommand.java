@@ -156,7 +156,7 @@ public final class JdkInstallCommand implements CliCommand {
         // Kept in the CLI so every path — including the wizard and non-TTY
         // early-outs below — sweeps once, before any plan runs.
         JdkInstaller.sweepStaleScratch(registry.jdksRoot());
-        JdkService service = new JdkService();
+        JdkService service = JdkService.forJdkVerb();
 
         // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();

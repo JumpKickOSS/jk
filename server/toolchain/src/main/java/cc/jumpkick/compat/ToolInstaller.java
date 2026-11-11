@@ -409,14 +409,12 @@ public final class ToolInstaller {
         try (var stream = Files.list(stagingDir)) {
             stream.forEach(children::add);
         }
-        if (children.size() == 1 && Files.isDirectory(children.getFirst())) {
-            Path lifted = children.getFirst();
-            // Extraction judged every link against the staging directory; lifted one level, a link
-            // that reached up out of this directory would point outside the installed tree.
-            MinimalTar.requireSymlinksInside(lifted);
-            return lifted;
-        }
-        return stagingDir;
+        Path root = children.size() == 1 && Files.isDirectory(children.getFirst()) ? children.getFirst() : stagingDir;
+        // Extraction judged each link when it was written, against the staging directory; a later
+        // entry can replace a link an earlier one routed through, and a lifted root is one level
+        // lower than what was judged. The final tree is judged again as a whole, whatever its shape.
+        MinimalTar.requireSymlinksInside(root);
+        return root;
     }
 
     private static void deleteRecursively(Path root) {

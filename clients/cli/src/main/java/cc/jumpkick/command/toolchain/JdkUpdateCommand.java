@@ -186,7 +186,7 @@ public final class JdkUpdateCommand implements CliCommand {
     // --- apply --------------------------------------------------------------
 
     private boolean apply(JdkRegistry registry, List<Update> updates, boolean removeOld) {
-        JdkInstaller installer = new JdkInstaller(new Http(), registry);
+        JdkInstaller installer = JdkInstaller.forJdkVerb(new Http(), registry);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         Optional<String> currentDefault = defaults.defaultId();
         Optional<String> graalDefault = defaults.graalId();
@@ -275,7 +275,8 @@ public final class JdkUpdateCommand implements CliCommand {
         String pointer = StableJdkPointer.pointerNameFor(jdk.identifier()).orElse(null);
         if (pointer == null) return;
         try {
-            new StableJdkPointer(registry.jdksRoot()).ensure(pointer, IntellijJdkDir.installDirOf(jdk.home()));
+            new StableJdkPointer(registry.jdksRoot())
+                    .ensureMovingAside(pointer, IntellijJdkDir.installDirOf(jdk.home()));
         } catch (IOException ignored) {
             // Pointer is a convenience; the update itself already succeeded.
         }

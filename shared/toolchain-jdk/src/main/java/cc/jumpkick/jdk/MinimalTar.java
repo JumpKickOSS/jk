@@ -226,8 +226,9 @@ public final class MinimalTar {
      * installed root, and a link that reached up out of the top-level directory — {@code
      * jdk/bin/x -> ../../other}, which resolved to a sibling of {@code jdk/} inside staging — now
      * points outside the installed tree, where whatever later runs from the JDK follows it. So the
-     * lifted root is judged again as a whole before it is moved into place. Links that stay inside
-     * the top-level directory ({@code jre/lib -> ../lib}) resolve the same either way.
+     * lifted root is judged again as a whole before it is moved into place. So is a root that was not
+     * lifted: a later entry can replace a link an earlier link was judged through. Links that stay
+     * inside the top-level directory ({@code jre/lib -> ../lib}) resolve the same either way.
      */
     public static void requireSymlinksInside(Path root) throws IOException {
         Path rootReal = root.toRealPath();
@@ -240,9 +241,9 @@ public final class MinimalTar {
                     ? target
                     : resolveFollowingLinks(parent.toRealPath(), target, target.toString());
             if (!resolved.startsWith(rootReal)) {
-                throw new IOException("tar symlink escapes the installed tree once "
+                throw new IOException("tar symlink escapes the installed tree "
                         + root.getFileName()
-                        + " is lifted out of the extraction directory: "
+                        + ": "
                         + root.relativize(link)
                         + " -> "
                         + target);

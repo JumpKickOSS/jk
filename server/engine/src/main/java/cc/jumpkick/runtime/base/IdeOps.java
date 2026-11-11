@@ -389,7 +389,7 @@ public final class IdeOps {
         String stableName = vendor + "-" + major;
         String sdkName = "jk-" + stableName;
         if (seen.add(sdkName)) {
-            pointer.ensure(stableName, IntellijJdkDir.installDirOf(home));
+            pointer.ensureMovingAside(stableName, IntellijJdkDir.installDirOf(home));
             sdkEntries.add(sdkName + "|" + pointer.javaHome(stableName) + "|" + version);
         }
         int langLevel = module.project().javaRelease() > 0 ? module.project().javaRelease() : major;

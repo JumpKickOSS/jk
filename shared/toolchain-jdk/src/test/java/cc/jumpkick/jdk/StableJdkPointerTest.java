@@ -121,7 +121,7 @@ class StableJdkPointerTest {
     }
 
     @Test
-    void ensure_moves_our_own_install_off_the_pointer_name_rather_than_deleting_it(@TempDir Path tmp)
+    void ensure_moving_aside_moves_our_own_install_off_the_pointer_name_rather_than_deleting_it(@TempDir Path tmp)
             throws IOException {
         // A feed that reports a release with no point version — "25", as Oracle GraalVM 25 and six
         // other JDKs do — makes <vendor>-<version> and <vendor>-<major> the same string, so the
@@ -132,7 +132,7 @@ class StableJdkPointerTest {
         JdkOwnership.mark(ours);
         Path fresh = fakeJdk(jdks, "temurin-25.0.4", "25.0.4");
 
-        new StableJdkPointer(jdks).ensure("temurin-25", fresh);
+        new StableJdkPointer(jdks).ensureMovingAside("temurin-25", fresh);
 
         Path displaced = jdks.resolve("temurin-25-1");
         assertThat(JdkFingerprint.java(displaced))
@@ -155,7 +155,7 @@ class StableJdkPointerTest {
         JdkOwnership.mark(fakeJdk(jdks, "graalvm-25", "25"));
         Path next = fakeJdk(jdks, "graalvm-25.0.1", "25.0.1");
 
-        new StableJdkPointer(jdks).ensure("graalvm-25", next);
+        new StableJdkPointer(jdks).ensureMovingAside("graalvm-25", next);
 
         assertThat(jdks.resolve("graalvm-25-1")).isDirectory();
         assertThat(StableJdkPointer.pointerNameFor("graalvm-25-1"))
@@ -171,13 +171,13 @@ class StableJdkPointerTest {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         JdkOwnership.mark(fakeJdk(jdks, "temurin-25", "25"));
         StableJdkPointer ptr = new StableJdkPointer(jdks);
-        ptr.ensure("temurin-25", fakeJdk(jdks, "temurin-25.0.4", "25.0.4"));
+        ptr.ensureMovingAside("temurin-25", fakeJdk(jdks, "temurin-25.0.4", "25.0.4"));
 
         // The name is free again (it is a link now), so only a second install landing ON it is
         // displaced — recreate that shape rather than assume it.
         PathUtil.deleteRecursively(jdks.resolve("temurin-25"));
         JdkOwnership.mark(fakeJdk(jdks, "temurin-25", "25"));
-        ptr.ensure("temurin-25", fakeJdk(jdks, "temurin-25.0.5", "25.0.5"));
+        ptr.ensureMovingAside("temurin-25", fakeJdk(jdks, "temurin-25.0.5", "25.0.5"));
 
         assertThat(jdks.resolve("temurin-25-1")).isDirectory();
         assertThat(jdks.resolve("temurin-25-2")).isDirectory();
@@ -194,7 +194,7 @@ class StableJdkPointerTest {
         inventory.record(new InstalledJdk("graalvm-25", ours), false);
         inventory.setGraal(new InstalledJdk("graalvm-25", ours));
 
-        new StableJdkPointer(jdks).ensure("graalvm-25", fakeJdk(jdks, "graalvm-25.0.1", "25.0.1"));
+        new StableJdkPointer(jdks).ensureMovingAside("graalvm-25", fakeJdk(jdks, "graalvm-25.0.1", "25.0.1"));
 
         JdkInventory after = JdkInventory.of(jdks);
         assertThat(after.graalId())

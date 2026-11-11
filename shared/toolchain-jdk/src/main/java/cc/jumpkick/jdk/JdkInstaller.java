@@ -42,7 +42,7 @@ import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Downloads a {@link JdkPackage} and extracts it under the IntelliJ JDK directory ({@link
+ * Downloads a {@link JdkCatalog.Entry} and extracts it under the IntelliJ JDK directory ({@link
  * IntellijJdkDir}). Supports tar/tar.gz/zip with SHA-256 when present. {@link #download} and
  * {@link #extractInstalled} are separable for UI progress; {@link #install} stitches them.
  */
@@ -120,24 +120,29 @@ public final class JdkInstaller {
     private final Http http;
     private final JdkRegistry registry;
     private final JdkMirror mirror;
+    private final boolean moveAsideHeldPointer;
 
+    /**
+     * An installer for the automatic provisioning path: an install already holding the stable
+     * pointer name stays where it is, since a running build, test JVM or IDE may be using it.
+     */
     public JdkInstaller(Http http, JdkRegistry registry) {
+        this(http, registry, false);
+    }
+
+    private JdkInstaller(Http http, JdkRegistry registry, boolean moveAsideHeldPointer) {
         this.mirror = JdkMirror.current();
         this.http = mirror.authorized(Objects.requireNonNull(http, "http"));
         this.registry = Objects.requireNonNull(registry, "registry");
+        this.moveAsideHeldPointer = moveAsideHeldPointer;
     }
 
-    public InstalledJdk install(JdkPackage pkg) throws IOException, InterruptedException {
-        String identifier = pkg.installIdentifier();
-        Path target = registry.jdksRoot().resolve(identifier);
-        if (Files.exists(target)) {
-            return new InstalledJdk(identifier, target);
-        }
-        downloadAndExtractBuffered(pkg.downloadUri(), pkg.sha256(), pkg.filename(), pkg.archiveType(), target);
-        JdkOwnership.mark(target);
-        InstalledJdk installed = new InstalledJdk(identifier, target);
-        recordInventory(installed);
-        return installed;
+    /**
+     * An installer for {@code jk jdk install} and {@code jk jdk update}: an install of ours holding
+     * the stable pointer name is moved aside so the pointer can aim at the new one.
+     */
+    public static JdkInstaller forJdkVerb(Http http, JdkRegistry registry) {
+        return new JdkInstaller(http, registry, true);
     }
 
     /**
@@ -254,7 +259,12 @@ public final class JdkInstaller {
         // pinning a path) survives point-release upgrades. Best-effort — a
         // failure here must not fail the install itself.
         try {
-            new StableJdkPointer(registry.jdksRoot()).ensure(pointerName(entry), target);
+            StableJdkPointer pointer = new StableJdkPointer(registry.jdksRoot());
+            if (moveAsideHeldPointer) {
+                pointer.ensureMovingAside(pointerName(entry), target);
+            } else {
+                pointer.ensure(pointerName(entry), target);
+            }
         } catch (IOException pointerFailed) {
             // Still not fatal — the install is on disk and usable by its own name. But silence was
             // the wrong answer: a stable name left aiming at an older install is a wrong answer
@@ -324,48 +334,6 @@ public final class JdkInstaller {
             }
         }
         return suggested;
-    }
-
-    /** Buffered download for the {@link JdkPackage} flow: no progress, no streaming. */
-    private void downloadAndExtractBuffered(
-            URI uri, @Nullable String sha256, String displayName, String archiveType, Path target)
-            throws IOException, InterruptedException {
-        String expected = requireDigest(sha256, displayName, uri);
-        uri = mirror.map(uri);
-        Path downloads = prepareDownloadDir();
-        Path archive = Files.createTempFile(downloads, DOWNLOAD_PREFIX, "-" + extensionFor(archiveType));
-        try {
-            HttpResponse<byte[]> response = http.get(uri);
-            if (response.statusCode() != 200) {
-                throw new IOException("JDK download " + uri + " returned " + response.statusCode());
-            }
-            byte[] body = response.body();
-            String actual = Hashing.sha256Hex(body);
-            if (!actual.equalsIgnoreCase(expected)) {
-                throw new IOException(
-                        "sha256 mismatch for " + displayName + " — expected " + expected + ", got " + actual);
-            }
-            Files.write(archive, body);
-            SessionContext.current().io().remoteDown(archive);
-
-            // Stage under the jdks root so the final rename is on the same
-            // filesystem as the target. Otherwise (/tmp on tmpfs vs. $HOME on
-            // ext4/btrfs) Files.move falls into the cross-device branch and
-            // fails with DirectoryNotEmptyException on the first non-empty
-            // subdir of the JDK.
-            StaleScratch.sweep(registry.jdksRoot(), STAGE_PREFIX);
-            Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), STAGE_PREFIX);
-            IN_FLIGHT.add(stagingDir);
-            try {
-                extract(archive, stagingDir, archiveType);
-            } catch (IOException | RuntimeException e) {
-                discardStaging(stagingDir);
-                throw e;
-            }
-            moveIntoPlace(stagingDir, target, target);
-        } finally {
-            Files.deleteIfExists(archive);
-        }
     }
 
     /**
@@ -669,14 +637,12 @@ public final class JdkInstaller {
         try (var stream = Files.list(stagingDir)) {
             stream.forEach(children::add);
         }
-        if (children.size() == 1 && Files.isDirectory(children.getFirst())) {
-            Path lifted = children.getFirst();
-            // Extraction judged every link against the staging directory; lifted one level, a link
-            // that reached up out of this directory would point outside the installed tree.
-            MinimalTar.requireSymlinksInside(lifted);
-            return lifted;
-        }
-        return stagingDir;
+        Path root = children.size() == 1 && Files.isDirectory(children.getFirst()) ? children.getFirst() : stagingDir;
+        // Extraction judged each link when it was written, against the staging directory; a later
+        // entry can replace a link an earlier one routed through, and a lifted root is one level
+        // lower than what was judged. The final tree is judged again as a whole, whatever its shape.
+        MinimalTar.requireSymlinksInside(root);
+        return root;
     }
 
     /** Delete a staging tree and stop tracking it — the two always happen together. */
