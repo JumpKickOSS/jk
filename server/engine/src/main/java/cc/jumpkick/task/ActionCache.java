@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
@@ -257,6 +258,7 @@ public final class ActionCache {
                     files.add(file);
                 }
             }
+            if (!DiskGuard.admits(root, files)) return new ActionRecord(taskId, actionKey, inputs, Map.of());
             deposit(files, outputDir, outputs, executables);
         }
         // Refuse empty success records, whatever the inputs look like: an action that produced
@@ -312,18 +314,11 @@ public final class ActionCache {
     /** Hash one output, put it in the CAS, and record its relative path. */
     private void depositOne(Path file, Path outputDir, Map<String, String> hashes, Set<String> executableRel)
             throws IOException {
-        // Through the memo, not Hashing directly: on a warm rebuild this answers from
-        // the map and the output is never read at all, where the old direct hash read
-        // every one of them (6,733 class files in this checkout). putFile's own exists()
-        // then skips the copy for a blob already present, so a warm store costs one stat
-        // per output.
+        // Through the memo: a warm rebuild answers from the map without reading the output, and
+        // putFile skips the copy for a blob already present.
         String hex = FileHashMemo.contentHash(file);
         cas.putFile(file, hex);
-        // Seed the memo with the digest we just established. Without this every
-        // downstream ClasspathFingerprint re-hashed the whole tree from cold, because
-        // contentHash refuses to record a file written inside its settle window — which
-        // is exactly what rememberContent exists to bypass, and it was only ever called
-        // on the restore paths.
+        // Seed the memo, which refuses a file written inside its settle window on its own.
         FileHashMemo.rememberContent(file, hex);
         String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
         hashes.put(relPath, hex);
@@ -400,13 +395,16 @@ public final class ActionCache {
     public ActionRecord storeWithOutputs(
             String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs)
             throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null, List.of());
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, List.of());
     }
 
     /** As {@link #storeWithOutputs(String, String, Map, Map)}, keeping what the action {@linkplain ActionRecord#said() said}. */
     public ActionRecord storeWithOutputs(
             String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs, List<String> said)
             throws IOException {
+        long bytes = new HashSet<>(outputs.values())
+                .stream().mapToLong(this::blobSize).sum();
+        if (!DiskGuard.admits(root, bytes)) return new ActionRecord(taskId, actionKey, inputs, Map.of());
         return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null, said);
     }
 
@@ -822,6 +820,7 @@ public final class ActionCache {
         Path root = Objects.requireNonNull(baseDir, "baseDir");
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
+        if (!DiskGuard.admits(this.root, artifacts)) return new ActionRecord(taskId, actionKey, inputs, Map.of());
         for (Path a : artifacts) {
             if (!Files.isRegularFile(a)) {
                 throw new IOException("not caching an action whose output was not written: " + a);

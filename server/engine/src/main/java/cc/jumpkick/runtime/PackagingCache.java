@@ -105,7 +105,7 @@ final class PackagingCache {
             JkBuild project = ctx.get(BuildPlanner.PROJECT).orElse(null);
             if (project != null && !project.build().cacheHeavyOutputs()) return false;
         }
-        if (DiskGuard.admits(cacheRoot, sizeOf(artifacts))) return true;
+        if (DiskGuard.admits(cacheRoot, artifacts)) return true;
         ctx.warn(
                 DISK_LOW,
                 "not cached: the disk is nearly full (" + DiskGuard.describe(DiskGuard.space(cacheRoot))
@@ -126,18 +126,6 @@ final class PackagingCache {
             }
         }
         return largest;
-    }
-
-    private static long sizeOf(List<Path> artifacts) {
-        long total = 0;
-        for (Path a : artifacts) {
-            try {
-                if (Files.isRegularFile(a)) total += Files.size(a);
-            } catch (IOException unreadable) {
-                // a file that cannot be sized is stored or refused by the store itself
-            }
-        }
-        return total;
     }
 
     private static void storeRecord(

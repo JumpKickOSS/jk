@@ -2,7 +2,10 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.time.Clock;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -80,6 +83,19 @@ public final class DiskGuard {
         return false;
     }
 
+    /** As {@link #admits(Path, long)} for {@code files} about to be written; a file that cannot be sized counts nothing. */
+    public static boolean admits(Path path, Collection<Path> files) {
+        long total = 0;
+        for (Path f : files) {
+            try {
+                if (Files.isRegularFile(f)) total += Files.size(f);
+            } catch (IOException unreadable) {
+                // a file that cannot be sized is stored or refused by the store itself
+            }
+        }
+        return admits(path, total);
+    }
+
     /** A write was refused for want of space: wake whatever prunes ({@link #onRefused}). */
     public static void refused() {
         for (Runnable l : LISTENERS) {
@@ -120,7 +136,7 @@ public final class DiskGuard {
     }
 
     /** Test seam: what a probe of {@code path} answers until it ages out. */
-    static void putProbeForTest(Path path, JkCacheConfig.@Nullable DiskSpace space) {
+    public static void putProbeForTest(Path path, JkCacheConfig.@Nullable DiskSpace space) {
         PROBES.put(path, new Probe(clock.getAsLong(), space));
     }
 }
