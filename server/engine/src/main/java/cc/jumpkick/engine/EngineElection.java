@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -460,15 +461,14 @@ final class EngineElection {
         if (EngineTransport.useLoopbackTcp()) {
             int port = Integer.parseInt(Files.readString(socket).trim());
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
-            Path token = EnginePaths.tokenFor(socket);
-            BufferedWriter w =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            // The auth envelope, exactly as the CLI client sends it — authenticate accepts
-            // nothing else (a raw token line here once broke takeover/election on TCP).
-            w.write(ProtoLifecycle.auth(Files.readString(token).trim()));
-            w.write('\n');
-            w.flush();
-            return ch;
+            try {
+                EngineHandshake.client(
+                        ch, Files.readString(EnginePaths.tokenFor(socket)).trim(), EngineHandshake.ACK_TIMEOUT_MILLIS);
+                return ch;
+            } catch (IOException | RuntimeException e) {
+                ch.close();
+                throw e;
+            }
         }
         return SocketChannel.open(UnixDomainSocketAddress.of(socket));
     }

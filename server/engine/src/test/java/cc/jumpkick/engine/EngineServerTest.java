@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.AuthFrame;
+import cc.jumpkick.wire.protocol.AuthProofFrame;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
@@ -112,13 +115,20 @@ class EngineServerTest extends EngineServerHarness {
             String token = Files.readString(EnginePaths.tokenFor(liveSocket)).trim();
             assertThat(token).isNotBlank();
 
-            // Wrong token: the server closes the connection without ever replying.
+            // A client without the token: the engine proves itself, then refuses the client's
+            // proof with a typed error and dispatches nothing.
             try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port))) {
                 BufferedWriter w = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =
                         new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-                w.write(ProtoLifecycle.auth("not-the-real-token"));
+                w.write(new AuthFrame("client-nonce").encode());
+                w.write('\n');
+                w.flush();
+                String ack = r.readLine();
+                assertThat(EngineProtocol.typeOf(ack)).isEqualTo(EngineProtocol.AUTH_ACK);
+                assertThat(ack).doesNotContain(token);
+                w.write(new AuthProofFrame("not-the-real-proof").encode());
                 w.write('\n');
                 w.write(ProtoLifecycle.ping());
                 w.write('\n');
@@ -130,14 +140,13 @@ class EngineServerTest extends EngineServerHarness {
                 assertThat(r.readLine()).isNull(); // and nothing was dispatched
             }
 
-            // Correct token: the connection behaves exactly like the Unix-domain-socket transport.
+            // The token: the connection behaves exactly like the Unix-domain-socket transport.
             try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port))) {
+                EngineHandshake.client(ch, token, EngineHandshake.ACK_TIMEOUT_MILLIS);
                 BufferedWriter w = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =
                         new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-                w.write(ProtoLifecycle.auth(token));
-                w.write('\n');
                 w.write(ProtoLifecycle.ping());
                 w.write('\n');
                 w.flush();

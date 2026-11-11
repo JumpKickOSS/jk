@@ -19,6 +19,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.secret.RequestKeychain;
 import cc.jumpkick.task.WorkCounters;
+import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobControlAckFrame;
 import cc.jumpkick.wire.protocol.JobControlFrame;
@@ -32,14 +33,13 @@ import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Serve one accepted socket: the loopback-TCP auth line, framing, and one wire request at a time to
+ * Serve one accepted socket: the loopback-TCP handshake, framing, and one wire request at a time to
  * one reply — or to a job that then owns the rest of the connection. Always typed, never silence:
  * a silently dropped request wedges a streaming client waiting for a terminal event. A client
  * speaking a newer protocol is refused and closed; an unparseable line or an unknown type is refused
@@ -123,7 +123,7 @@ final class EngineConnection {
             WireWriter.bind(writer, REPLY_IDLE_MS);
             try {
                 String expected = ctx.expectedToken();
-                if (expected != null && !authenticate(reader, expected)) {
+                if (expected != null && !authenticate(reader, writer, expected)) {
                     // Typed refusal (then close): a silent close is indistinguishable from a crash.
                     WireWriter.sendQuiet(
                             writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
@@ -140,14 +140,15 @@ final class EngineConnection {
         if (reader.timedOut()) ctx.idleDropped().run();
     }
 
-    /** Loopback-TCP transport only: the connection's first line must be a matching {@link EngineProtocol#AUTH}. */
-    private boolean authenticate(BoundedLineReader reader, String expected) throws IOException {
-        String line = reader.readLine();
-        if (line == null || !EngineProtocol.AUTH.equals(EngineProtocol.typeOf(line))) return false;
-        String presented = Jsonl.str(line, "token");
-        if (presented == null) return false;
-        return MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
+    /**
+     * Loopback-TCP transport only: the {@link EngineHandshake}, in which this engine proves it holds
+     * the token before the client sends anything, then the client proves the same.
+     */
+    private boolean authenticate(BoundedLineReader reader, BufferedWriter writer, String expected) throws IOException {
+        EngineHandshake.Challenge challenge = EngineHandshake.challenge(expected, reader.readLine());
+        if (challenge == null) return false;
+        WireWriter.send(writer, challenge.ack());
+        return challenge.accepts(reader.readLine());
     }
 
     private void serveConnection(BoundedLineReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {

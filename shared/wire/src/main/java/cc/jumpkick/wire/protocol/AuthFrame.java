@@ -3,13 +3,13 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
 
-/** Client → server: the socket token (see {@link EngineProtocol#AUTH}). */
-public record AuthFrame(String token) {
+/** Client → server: the client's handshake nonce (see {@link EngineProtocol#AUTH}). */
+public record AuthFrame(String nonce) {
     public String encode() {
-        return RequestJson.request(EngineProtocol.AUTH).string("token", token).finish();
+        return RequestJson.request(EngineProtocol.AUTH).string("nonce", nonce).finish();
     }
 
     public static AuthFrame decode(String json) {
-        return new AuthFrame(Jsonl.requiredStr(json, "token"));
+        return new AuthFrame(Jsonl.requiredStr(json, "nonce"));
     }
 }

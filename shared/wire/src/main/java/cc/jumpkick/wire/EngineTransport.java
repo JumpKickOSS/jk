@@ -8,8 +8,9 @@ import java.util.Base64;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Engine transport seam: Unix domain socket on macOS/Linux, loopback TCP + shared-secret token on
- * Windows. Request handling only sees a connected {@code SocketChannel}.
+ * Engine transport seam: Unix domain socket on macOS/Linux, loopback TCP on Windows, where both
+ * sides prove they hold a shared-secret token ({@link EngineHandshake}). Request handling only sees
+ * a connected {@code SocketChannel}.
  */
 public final class EngineTransport {
 

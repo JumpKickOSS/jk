@@ -26,10 +26,20 @@ public final class EngineProtocol {
     public static final String TEST_CLASS_FIELD = "testClass";
 
     /**
-     * Client → server first line on loopback TCP only: shared secret from {@code paths.token}.
-     * Never used on the Unix-domain socket (filesystem perms gate access).
+     * Client → server first line on loopback TCP only: the client's nonce, opening the handshake
+     * {@link cc.jumpkick.wire.EngineHandshake} runs. The token itself never crosses the wire. Never
+     * used on the Unix-domain socket (filesystem perms gate access).
      */
     public static final String AUTH = "auth";
+
+    /**
+     * Server → client reply to {@link #AUTH}: the engine's nonce and an HMAC of both nonces under the
+     * token, which the client checks before it writes anything else.
+     */
+    public static final String AUTH_ACK = "auth-ack";
+
+    /** Client → server after a verified {@link #AUTH_ACK}: the client's own HMAC of both nonces. */
+    public static final String AUTH_PROOF = "auth-proof";
 
     /** Client → server, once per connection: announces the client's jk version. */
     public static final String HELLO = "hello";

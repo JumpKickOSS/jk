@@ -418,6 +418,7 @@ public final class EventCatalog {
         }
         for (String request : List.of(
                 EngineProtocol.AUTH,
+                EngineProtocol.AUTH_PROOF,
                 EngineProtocol.HELLO,
                 EngineProtocol.PING,
                 EngineProtocol.STATUS,
@@ -426,6 +427,7 @@ public final class EventCatalog {
             out.put(request, "client to engine: a request of the connection");
         }
         for (String reply : List.of(
+                EngineProtocol.AUTH_ACK,
                 EngineProtocol.HELLO_ACK,
                 EngineProtocol.PONG,
                 EngineProtocol.STATUS_ACK,

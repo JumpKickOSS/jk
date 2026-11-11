@@ -7,10 +7,10 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
-import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -266,13 +266,6 @@ public final class EngineWire {
     }
 
     /**
-     * Package-visible: {@link #stream} opens a fresh long-lived connection per request. On
-     * the loopback-TCP transport (Windows — see {@link cc.jumpkick.wire.EngineTransport}), {@code
-     * socket} holds the port number (not a real socket path) and this also sends the required
-     * {@link EngineProtocol#AUTH} line before returning, so every caller authenticates transparently
-     * without needing its own knowledge of the transport.
-     */
-    /**
      * How long a connect may wait for the engine to take it. An engine that stopped accepting
      * (stopped, swapping, in a GC death spiral) leaves each connect in its listen queue, and once
      * that is full a blocking connect waits forever, the one in {@code jk engine stop -n} included.
@@ -318,6 +311,13 @@ public final class EngineWire {
         return m != null && (m.contains("temporarily unavailable") || m.contains("EAGAIN"));
     }
 
+    /**
+     * A connected channel to the engine at {@code endpoint}; {@link #stream} opens one per request. On
+     * the loopback-TCP transport (Windows — see {@link cc.jumpkick.wire.EngineTransport}), {@code
+     * socket} holds the port number (not a real socket path) and this also runs the {@link
+     * EngineHandshake} before returning: the engine proves it holds the token before any request
+     * line, shell or secret is written, and every caller is covered without knowing the transport.
+     */
     static SocketChannel connect(@Nullable Path endpoint) throws IOException {
         if (endpoint == null) throw new IOException("no engine endpoint to connect to");
         Path socket = endpoint;
@@ -335,11 +335,7 @@ public final class EngineWire {
             String token = Files.readString(EnginePaths.tokenFor(socket)).trim();
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             try {
-                BufferedWriter authWriter = new BufferedWriter(
-                        new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-                authWriter.write(ProtoLifecycle.auth(token));
-                authWriter.write('\n');
-                authWriter.flush();
+                EngineHandshake.client(ch, token, EngineHandshake.ACK_TIMEOUT_MILLIS);
                 return ch;
             } catch (Throwable t) {
                 try {

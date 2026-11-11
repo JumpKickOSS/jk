@@ -1,19 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
-import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
-import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -30,7 +26,7 @@ final class EngineSockets {
 
     private EngineSockets() {}
 
-    /** Connect to the engine at {@code socket}, sending the auth envelope when the transport wants one. */
+    /** Connect to the engine at {@code socket}, running the handshake when the transport wants one. */
     static SocketChannel connect(Path socket) throws IOException {
         if (!EngineTransport.useLoopbackTcp()) {
             SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX);
@@ -40,13 +36,12 @@ final class EngineSockets {
         int port = port(socket);
         String token = Files.readString(EnginePaths.tokenFor(socket)).trim();
         SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
-        // The auth envelope is the first line on the wire; the engine refuses everything else
-        // until it has seen a matching token.
-        BufferedWriter auth =
-                new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-        auth.write(ProtoLifecycle.auth(token));
-        auth.write('\n');
-        auth.flush();
+        try {
+            EngineHandshake.client(ch, token, EngineHandshake.ACK_TIMEOUT_MILLIS);
+        } catch (IOException e) {
+            ch.close();
+            throw e;
+        }
         return ch;
     }
 

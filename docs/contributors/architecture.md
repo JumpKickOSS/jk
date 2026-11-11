@@ -287,7 +287,7 @@ for a `-SNAPSHOT` build and is ignored by a release; the rules, the gate and the
 
 `[http] enabled = false` still disables the whole server, MCP included.
 
-Transport: Unix domain socket on macOS/Linux; loopback TCP + shared-secret token on Windows.
+Transport: Unix domain socket on macOS/Linux; loopback TCP on Windows, where each side proves it holds a shared-secret token.
 Protocol is internal (same-version client/server), JSONL (one JSON object per line).
 
 ### Wire freeze vocabulary (pre-1.0)
@@ -297,7 +297,7 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 | Rule | Shape |
 |---|---|
 | Envelope | One JSON object per line; discriminator field `"type"` (same as CLI JSONL / SSE / MCP) |
-| Auth (TCP only) | First line `{"type":"auth","token":…}` — never a raw token line |
+| Auth (TCP only) | `auth` (client nonce) → `auth-ack` (engine nonce + HMAC-SHA256 of both under the token) → `auth-proof` (the client's HMAC). The client checks the engine's proof before it writes anything else; the token never crosses the wire (`EngineHandshake`) |
 | Handshake | `hello` / `hello-ack` carry `version`, `proto` (`EngineProtocol.PROTOCOL`), `purpose` (`connect`\|`probe`); `hello-ack` uses `startedAt` (millis) |
 | Handover | Displaced predecessor yields HTTP on `shutdown` / `bye`, stops writing sessions on `stop-sessions` / `sessions-stopped`, then sends `drain-status` / `drain-done` to the successor |
 | Errors | `{"type":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |

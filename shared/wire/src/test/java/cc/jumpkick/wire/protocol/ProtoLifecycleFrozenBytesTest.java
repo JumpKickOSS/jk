@@ -15,7 +15,10 @@ import org.junit.jupiter.api.Test;
 class ProtoLifecycleFrozenBytesTest {
     @Test
     void handshake_lines() {
-        assertThat(ProtoLifecycle.auth("t0k")).isEqualTo("{\"type\":\"auth\",\"token\":\"t0k\"}");
+        assertThat(new AuthFrame("n0").encode()).isEqualTo("{\"type\":\"auth\",\"nonce\":\"n0\"}");
+        assertThat(new AuthAckFrame("n1", "p1").encode())
+                .isEqualTo("{\"type\":\"auth-ack\",\"nonce\":\"n1\",\"proof\":\"p1\"}");
+        assertThat(new AuthProofFrame("p2").encode()).isEqualTo("{\"type\":\"auth-proof\",\"proof\":\"p2\"}");
         assertThat(ProtoLifecycle.hello("0.13.0"))
                 .isEqualTo("{\"type\":\"hello\",\"version\":\"0.13.0\",\"proto\":1,\"purpose\":\"connect\"}");
         assertThat(ProtoLifecycle.hello("0.13.0", "probe"))

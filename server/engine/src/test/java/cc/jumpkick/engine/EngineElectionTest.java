@@ -10,6 +10,7 @@ import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -99,6 +100,7 @@ class EngineElectionTest {
         private final FileChannel lockChannel;
         private final FileLock lock;
         private final Thread thread;
+        private final @Nullable String token;
 
         FakeIncumbent(EnginePaths.Paths paths, int generation, String version, String buildId) throws IOException {
             this(paths, generation, version, buildId, false);
@@ -116,9 +118,11 @@ class EngineElectionTest {
                 this.listener = ServerSocketChannel.open();
                 this.listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
                 int port = ((InetSocketAddress) this.listener.getLocalAddress()).getPort();
-                OwnerOnlyFiles.write(requireNonNull(gen.token().getParent()), gen.token(), EngineTransport.newToken());
+                this.token = EngineTransport.newToken();
+                OwnerOnlyFiles.write(requireNonNull(gen.token().getParent()), gen.token(), token);
                 Files.writeString(gen.socket(), Integer.toString(port));
             } else {
+                this.token = null;
                 this.listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
                 this.listener.bind(UnixDomainSocketAddress.of(gen.socket()));
             }
@@ -132,12 +136,17 @@ class EngineElectionTest {
                                         new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
                                 BufferedWriter w = new BufferedWriter(
                                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-                                String first = r.readLine();
-                                if (first == null) continue;
-                                // TCP clients send the auth envelope before hello; UDS clients do not.
-                                if (EngineProtocol.AUTH.equals(EngineProtocol.typeOf(first)) && r.readLine() == null) {
-                                    continue;
+                                // TCP clients run the handshake before hello; UDS clients do not.
+                                if (token != null) {
+                                    EngineHandshake.Challenge challenge =
+                                            EngineHandshake.challenge(token, r.readLine());
+                                    if (challenge == null) continue;
+                                    w.write(challenge.ack());
+                                    w.write('\n');
+                                    w.flush();
+                                    if (!challenge.accepts(r.readLine())) continue;
                                 }
+                                if (r.readLine() == null) continue;
                                 w.write(ProtoLifecycle.helloAck(version, 424242L, 1L, draining, buildId));
                                 w.write('\n');
                                 w.flush();

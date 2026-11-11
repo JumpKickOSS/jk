@@ -602,11 +602,19 @@ class EngineProtocolTest {
     }
 
     @Test
-    void auth_envelope_is_typed_token_not_a_raw_line() {
-        String line = ProtoLifecycle.auth("secret-token");
-        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.AUTH);
-        assertThat(Jsonl.str(line, "token")).isEqualTo("secret-token");
-        assertThat(line).startsWith("{\"type\":");
+    void auth_frames_round_trip_and_carry_no_token() {
+        String auth = new AuthFrame("n-client").encode();
+        assertThat(EngineProtocol.typeOf(auth)).isEqualTo(EngineProtocol.AUTH);
+        assertThat(AuthFrame.decode(auth)).isEqualTo(new AuthFrame("n-client"));
+        assertThat(Jsonl.str(auth, "token")).isNull();
+
+        String ack = new AuthAckFrame("n-engine", "p-engine").encode();
+        assertThat(EngineProtocol.typeOf(ack)).isEqualTo(EngineProtocol.AUTH_ACK);
+        assertThat(AuthAckFrame.decode(ack)).isEqualTo(new AuthAckFrame("n-engine", "p-engine"));
+
+        String proof = new AuthProofFrame("p-client").encode();
+        assertThat(EngineProtocol.typeOf(proof)).isEqualTo(EngineProtocol.AUTH_PROOF);
+        assertThat(AuthProofFrame.decode(proof)).isEqualTo(new AuthProofFrame("p-client"));
     }
 
     @Test

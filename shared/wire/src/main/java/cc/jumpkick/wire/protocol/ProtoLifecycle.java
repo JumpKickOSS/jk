@@ -21,10 +21,6 @@ public final class ProtoLifecycle {
         return Jsonl.str(json, EngineProtocol.TYPE_FIELD);
     }
 
-    public static String auth(String token) {
-        return new AuthFrame(token).encode();
-    }
-
     public static String hello(String version) {
         return hello(version, "connect");
     }

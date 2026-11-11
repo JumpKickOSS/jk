@@ -16,8 +16,6 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -34,9 +32,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * The loopback-TCP transport (Windows' lane), forced via -Djk.engine.transport=tcp so the auth
- * handshake is exercised off-Windows. Regression: engine→engine signalling (helloProbe /
- * EngineElection.askPredecessorToYield) once sent a raw token line where the server requires the {@code auth} envelope,
- * so same-version election and takeover drain silently failed on TCP.
+ * handshake is exercised off-Windows, engine→engine signalling (helloProbe, the predecessor's
+ * yield) included: without it same-version election and takeover drain fail on TCP.
  */
 @Tag("integration")
 class EngineTcpTransportTest {
@@ -59,25 +56,19 @@ class EngineTcpTransportTest {
         JvmOptions.resetSharedPlanForTests();
     }
 
-    /** Hello over TCP the way any client must: auth envelope first, then the hello. */
+    /** Hello over TCP the way any client must: the handshake first, then the hello. */
     private static @Nullable String tcpHelloVersion(Path socketFile) {
-        try {
-            int port = Integer.parseInt(Files.readString(socketFile).trim());
-            String token = Files.readString(EnginePaths.tokenFor(socketFile)).trim();
-            try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port))) {
-                BufferedWriter w = new BufferedWriter(
-                        new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-                BufferedReader r =
-                        new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-                w.write(ProtoLifecycle.auth(token));
-                w.write('\n');
-                w.write(ProtoLifecycle.hello("probe"));
-                w.write('\n');
-                w.flush();
-                String ack = r.readLine();
-                if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
-                return Jsonl.str(ack, "version");
-            }
+        try (SocketChannel ch = EngineSockets.connect(socketFile)) {
+            BufferedWriter w =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader r =
+                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+            w.write(ProtoLifecycle.hello("probe"));
+            w.write('\n');
+            w.flush();
+            String ack = r.readLine();
+            if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
+            return Jsonl.str(ack, "version");
         } catch (IOException | RuntimeException e) {
             return null;
         }
@@ -101,8 +92,8 @@ class EngineTcpTransportTest {
             assertThat(tcpHelloVersion(EnginePaths.activeSocket(p))).isEqualTo("1.0.0-test");
 
             // The second same-version instance must LOSE the election — which only happens when
-            // its helloProbe authenticates correctly over TCP. Before the auth-envelope fix this
-            // probe silently failed and the second instance won a fresh generation instead.
+            // its helloProbe passes the handshake over TCP; a failed probe would let the second
+            // instance win a fresh generation instead.
             EngineServer second = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
             assertThat(second.run())
                     .as("same-version spawn race loses the election over TCP")
