@@ -477,10 +477,11 @@ it reruns whenever any other variable changes: an escape hatch that costs cache 
 reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
-through `[env]` or `[test] env`. What JumpKick itself decides reads the shell running `jk`, every
-variable of it: `CI`, repository credentials, the git agent, the CI profile, colour. So
-`CI=true jk guard` checks rather than writes, whichever shell started the engine. A request from
-MCP or the HTTP API has no shell of its own, and those decisions read the engine's.
+through `[env]` or `[test] env`. What JumpKick itself decides reads the shell running `jk`: `CI`,
+repository credentials, the git agent, the CI profile, colour. So `CI=true jk guard` checks rather
+than writes, whichever shell started the engine. The client sends the engine only what it reads
+and what is declared, not the whole shell ([Engine § Process environment](engine.md#process-environment)). A
+request from MCP or the HTTP API has no shell of its own, and those decisions read the engine's.
 
 A compiler worker never gets `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS` or `JDK_JAVA_OPTIONS`, under
 `inherit = true` or through `vars`: the JVM reads its options from them, and a `-Duser.language`

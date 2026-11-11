@@ -13,6 +13,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -229,6 +230,31 @@ class VariantApplyTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("DEFINITELY_NOT_SET_ANYWHERE");
         assertThat(VariantApply.envRefs(build)).contains("DEFINITELY_NOT_SET_ANYWHERE");
+    }
+
+    @Test
+    void env_refs_name_what_env_declares_and_an_inheriting_module_asks_for_the_whole_shell() {
+        JkBuild declares = JkBuildParser.parse("""
+                group = "ex"
+                name = "a"
+                version = "1.0.0"
+
+                [env]
+                require = ["MY_TOKEN_VALUE"]
+                optional = ["FEATURE_X"]
+                vars = [{ URL = "https://api.example/v1" }]
+                """);
+        JkBuild inherits = JkBuildParser.parse("""
+                group = "ex"
+                name = "b"
+                version = "1.0.0"
+
+                [env]
+                inherit = true
+                """);
+
+        assertThat(VariantApply.envRefs(declares)).containsExactlyInAnyOrder("MY_TOKEN_VALUE", "FEATURE_X");
+        assertThat(VariantApply.envRefs(List.of(declares, inherits))).contains(VariantApply.WHOLE_SHELL);
     }
 
     @Test

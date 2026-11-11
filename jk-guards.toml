@@ -526,6 +526,10 @@ in     = "shared/client-io/src/main/java/cc/jumpkick/winhost/WindowsSetup.java"
 reason = "hands RootDiscovery the APPDATA folder where the IDEs keep their recent-project lists"
 
 [[guards.single-home-root.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/RequestEnvNames.java"
+reason = "names the desktop session and Windows profile variables (XDG_*, APPDATA, LOCALAPPDATA) the client forwards for the engine's own lookups; it lays out no jk directory"
+
+[[guards.single-home-root.allow]]
 in     = "shared/host/src/test/java/cc/jumpkick/host/JkDirsTest.java"
 reason = "asserts that the retired XDG / AppData variables are ignored"
 

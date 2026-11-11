@@ -644,9 +644,19 @@ and forge tokens stay behind: a resident engine outlives the shell that started 
 inherited once would be every later terminal's truth. Workers are narrowed again —
 [Build § Worker environment](build.md#worker-environment-env).
 
-Every request carries the whole environment of the shell running `jk`, and the engine decides the
-request from that rather than from its own: `CI`, repository and cloud credentials, the CI
-profile, colour. A variable you leave unset reads as unset. git, which JumpKick runs for git
+Every request carries the part of the shell running `jk` the engine reads, and the engine decides
+the request from that rather than from its own: `CI`, repository and cloud credentials, the CI
+profile, colour. That part is the machine and the terminal (`PATH`, `HOME`, `TERM*`, `LC_*`, the
+proxy and display variables), every `JK_*` setting, the toolchains and version managers
+(`JAVA_*`, `GRAALVM_*`, `MAVEN_*`, `GRADLE_*`, `ANDROID_*`, `SDKMAN_*`, …), git, ssh and gpg
+(`GIT_*`, `SSH_*`, `GPG_*`), the cloud SDKs (`AWS_*`, `CLOUDSDK_*`, `GOOGLE_*`, `AZURE_*`), the
+container runtime and the CI servers (`GITHUB_*`, `GITLAB_*`, `JENKINS_*`, …), plus every name a
+project declares (its `[env]`, `[test] env` and `env:` references) and every `${NAME}` in your
+`~/.jk/config.toml` and `${env.NAME}` in your `settings.xml`. Anything else in your shell —
+`DATABASE_URL`, `MY_TOKEN_VALUE` — stays there until something declares it. The whole shell rides
+only when something needs all of it: a module that says `[env] inherit = true`, a `${cmd:…}`
+credential helper in `~/.jk/config.toml` (it runs under your environment), and `jk import`, whose
+Gradle or Maven build reads what it likes. A variable you leave unset reads as unset. git, which JumpKick runs for git
 dependencies, gets your `GIT_*` settings (`GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_SSL_CAINFO`,
 tracing) and your SSH agent, but never the variables that name a repository (`GIT_DIR`,
 `GIT_INDEX_FILE`, …), so `jk` run from a git hook cannot point JumpKick's checkouts at yours. MCP and HTTP

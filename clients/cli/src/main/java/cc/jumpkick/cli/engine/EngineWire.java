@@ -31,7 +31,10 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -359,13 +362,35 @@ public final class EngineWire {
     }
 
     /**
-     * {@code requestLine} carrying this shell's environment, which the engine decides the request
-     * by, and what this command read from the keychain ({@link ClientKeychain}).
+     * {@code requestLine} carrying what the engine is told of this shell ({@link #shellFor}), and
+     * what this command read from the keychain ({@link ClientKeychain}).
      */
     static String withShell(String requestLine) {
         ClientKeychain.Carried keychain = ClientKeychain.carried();
         return ProtoSession.withKeychain(
-                ProtoSession.withShell(requestLine, ClientEnvForward.shell()), keychain.secrets(), keychain.refused());
+                ProtoSession.withShell(requestLine, shellFor(requestLine)), keychain.secrets(), keychain.refused());
+    }
+
+    /** The request whose engine side runs a foreign build, which reads whatever it likes. */
+    private static final String IMPORT = "import";
+
+    /**
+     * The part of this shell a request carries. The whole of it when something needs all of it: a
+     * module of the project says {@code [env] inherit = true}, a {@code ${cmd:…}} credential helper
+     * in {@code ~/.jk/config.toml} runs under it, or the request is an import, whose Gradle or
+     * Maven build reads what it likes. Otherwise the variables the engine reads for itself and the
+     * names the project and this user's configuration declare ({@link ClientEnvForward#forwarded}).
+     */
+    static Map<String, String> shellFor(String requestLine) {
+        if (IMPORT.equals(EngineProtocol.typeOf(requestLine))
+                || ProjectInfos.wantsWholeShell()
+                || ClientEnvForward.userRefs().wholeShell()) {
+            return ClientEnvForward.wholeShell();
+        }
+        Set<String> declared = new HashSet<>(ProjectInfos.declaredNames());
+        Map<String, String> resolved = SessionContext.current().clientEnv();
+        if (resolved != null) declared.addAll(resolved.keySet());
+        return ClientEnvForward.forwarded(declared);
     }
 
     /**

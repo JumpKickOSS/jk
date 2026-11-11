@@ -3,9 +3,12 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -84,12 +87,31 @@ public final class ProjectInfos {
         return info;
     }
 
-    /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */
+    /**
+     * Every environment name a project this command described declares ({@link ProjectInfo#envRefs}),
+     * for the requests that follow to carry. Empty until a summary has been asked for.
+     */
+    public static Set<String> declaredNames() {
+        Set<String> out = new HashSet<>();
+        for (ProjectInfo info : MEMO.values()) out.addAll(info.envRefs());
+        out.remove(VariantApply.WHOLE_SHELL);
+        return out;
+    }
+
+    /** True when a project this command described has a module that inherits the caller's whole environment. */
+    public static boolean wantsWholeShell() {
+        for (ProjectInfo info : MEMO.values()) {
+            if (info.envRefs().contains(VariantApply.WHOLE_SHELL)) return true;
+        }
+        return false;
+    }
+
     /** The engine's own answer for a directory with no manifest, given without asking it. */
     private static String noManifest(Path dir) {
         return "no jk.toml in " + dir;
     }
 
+    /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */
     public static void forget() {
         MEMO.clear();
     }

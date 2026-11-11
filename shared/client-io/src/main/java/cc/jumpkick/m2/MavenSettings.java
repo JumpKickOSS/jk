@@ -411,6 +411,16 @@ public final class MavenSettings {
         return userSettingsPath(BuildEnv.ambient());
     }
 
+    /** The user file and the installation's file as {@code env} places them, those that apply. */
+    public static List<Path> settingsFiles(Function<String, @Nullable String> env) {
+        List<Path> out = new ArrayList<>(2);
+        Path user = userSettingsPath(env);
+        if (user != null) out.add(user);
+        Path global = globalSettingsPath(env);
+        if (global != null) out.add(global);
+        return List.copyOf(out);
+    }
+
     static @Nullable Path userSettingsPath(Function<String, @Nullable String> env) {
         String prop = System.getProperty(SETTINGS_PROPERTY);
         if (prop != null && !prop.isBlank()) return Path.of(prop.strip());

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Os;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -157,11 +158,25 @@ class ClientEnvForwardTest {
         assertThat(ClientEnvForward.names()).doesNotContain("JK_JDKS_DIR");
     }
 
-    /** The engine decides by the caller's whole shell; a name off every forward list still rides it. */
+    /**
+     * The engine is told what it reads for itself and what something declares; a variable nothing
+     * names stays in the shell running jk.
+     */
     @Test
-    void the_shell_carries_what_no_forward_list_names() {
+    void a_request_carries_what_the_engine_reads_and_what_is_declared_and_nothing_else() {
         System.setProperty("jk.env.CI", "true");
-        assertThat(ClientEnvForward.shell()).containsEntry("CI", "true");
-        assertThat(ClientEnvForward.resolve()).doesNotContainKey("CI");
+        System.setProperty("jk.env.MY_APP_SECRET_PROBE", "s3cr3t-value");
+        try {
+            assertThat(ClientEnvForward.forwarded(List.of()))
+                    .containsEntry("CI", "true")
+                    .doesNotContainKey("MY_APP_SECRET_PROBE");
+            assertThat(ClientEnvForward.forwarded(List.of("MY_APP_SECRET_PROBE")))
+                    .containsEntry("MY_APP_SECRET_PROBE", "s3cr3t-value");
+            assertThat(ClientEnvForward.wholeShell()).containsEntry("MY_APP_SECRET_PROBE", "s3cr3t-value");
+            assertThat(ClientEnvForward.resolve()).doesNotContainKey("CI");
+        } finally {
+            System.clearProperty("jk.env.CI");
+            System.clearProperty("jk.env.MY_APP_SECRET_PROBE");
+        }
     }
 }

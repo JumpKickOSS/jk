@@ -2,10 +2,23 @@
 package cc.jumpkick.cli.api;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.RequestEnvNames;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.m2.MavenSettings;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -111,11 +124,11 @@ public final class ClientEnvForward {
     }
 
     /**
-     * This shell's whole environment, with every {@code jk.env.*} override applied: what the engine
-     * reads to decide the request ({@code CI}, credentials, a git agent). Unlike {@link #resolve()}
-     * it reaches no forked process by itself.
+     * This shell's whole environment, with every {@code jk.env.*} override applied. Sent only when
+     * something needs all of it: a module that says {@code [env] inherit = true}, a {@code ${cmd:…}}
+     * credential helper in {@code ~/.jk/config.toml}, or an import that runs a foreign build.
      */
-    public static Map<String, String> shell() {
+    public static Map<String, String> wholeShell() {
         Map<String, String> out = new LinkedHashMap<>(System.getenv());
         for (String property : System.getProperties().stringPropertyNames()) {
             if (!property.startsWith(SEAM)) continue;
@@ -123,6 +136,64 @@ public final class ClientEnvForward {
             if (value != null) out.put(property.substring(SEAM.length()), value);
         }
         return Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * What the engine is told of this shell on a request: the variables it reads to decide the
+     * request itself ({@link RequestEnvNames}), the names {@code declared} (what the project's
+     * manifests need, {@code ProjectInfo.envRefs}) and the names this user's own configuration
+     * references ({@link #userRefs()}). A name the shell does not set is simply absent, which the
+     * engine reads as unset.
+     */
+    public static Map<String, String> forwarded(Collection<String> declared) {
+        Set<String> named = new HashSet<>(declared);
+        named.addAll(userRefs().names());
+        boolean windows = Os.isWindows();
+        Map<String, String> out = new LinkedHashMap<>();
+        wholeShell().forEach((name, value) -> {
+            if (named.contains(name) || RequestEnvNames.engineReads(name, windows)) out.put(name, value);
+        });
+        return Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * The environment references in this user's own configuration, which the engine expands when
+     * it reaches a repository or a mirror: {@code ${NAME}} and {@code ${env:NAME}} in {@code
+     * ~/.jk/config.toml}, {@code ${env.NAME}} in {@code settings.xml}. A {@code ${cmd:…}} helper
+     * runs with the caller's whole environment, so its presence asks for all of it. Read once per
+     * command.
+     */
+    public static UserRefs userRefs() {
+        return SessionContext.perInvocation(USER_REFS, ClientEnvForward::readUserRefs);
+    }
+
+    /** The names {@link #userRefs()} found, and whether a credential helper wants the whole shell. */
+    public record UserRefs(Set<String> names, boolean wholeShell) {}
+
+    private static final Object USER_REFS = new Object();
+
+    private static final Pattern CONFIG_REF = Pattern.compile("\\$\\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)}");
+    private static final Pattern SETTINGS_REF = Pattern.compile("\\$\\{env\\.([A-Za-z_][A-Za-z0-9_]*)}");
+
+    private static UserRefs readUserRefs() {
+        Set<String> names = new HashSet<>();
+        String config = readQuietly(JkDirs.userConfigFile());
+        Matcher m = CONFIG_REF.matcher(config);
+        while (m.find()) names.add(m.group(1));
+        for (Path settings : MavenSettings.settingsFiles(System::getenv)) {
+            Matcher s = SETTINGS_REF.matcher(readQuietly(settings));
+            while (s.find()) names.add(s.group(1));
+        }
+        return new UserRefs(Set.copyOf(names), config.contains("${cmd:"));
+    }
+
+    private static String readQuietly(@Nullable Path file) {
+        if (file == null) return "";
+        try {
+            return Files.isRegularFile(file) ? Files.readString(file) : "";
+        } catch (IOException | RuntimeException unreadable) {
+            return ""; // the engine reports an unreadable file when it parses it
+        }
     }
 
     /** Whether {@code name} is under a front-end framework's public prefix. */

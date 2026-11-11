@@ -252,28 +252,27 @@ public final class VariantApply {
     }
 
     /**
+     * The entry {@link #envRefs} carries when a module says {@code [env] inherit = true}: the
+     * workspace needs the caller's whole environment, not a list of names.
+     */
+    public static final String WHOLE_SHELL = "*";
+
+    /**
      * Every environment variable name this manifest depends on, for the client to resolve and ship
-     * with the request.
+     * with the request — the client sends the engine nothing else of the caller's shell beyond
+     * what the engine reads for itself ({@code RequestEnvNames}).
      *
-     * <p>Two vocabularies, one list: {@code env:NAME} in a plugin config (signing credentials), and
-     * {@code [test] env} — both the bare names it forwards and the {@code ${NAME}} references in the
-     * values it sets. The second half was the gap: {@code [test] env} resolved through
-     * {@code BuildEnv}, which falls back to the engine's own environment, and the engine is a daemon
-     * started by some earlier shell. So {@code JK_WEB_JS_SKIP=1 jk build} did nothing, while the
-     * same variable exported before the daemon started worked — and kept working for every later
-     * build in that daemon, which is the worse of the two failures.
+     * <p>One list over every vocabulary a manifest has: the names {@code [env]} declares, the
+     * {@code ${NAME}} references in its values and in {@code [test] env}'s, the bare names {@code
+     * [test] env} forwards, and {@code env:NAME} in a plugin's table. {@link #WHOLE_SHELL} when the
+     * manifest inherits the caller's environment.
      */
     public static List<String> envRefs(JkBuild build) {
         return envRefs(List.of(build));
     }
 
     /**
-     * The union over several manifests — what a workspace needs, not just its root.
-     *
-     * <p>A workspace root's own manifest declares almost nothing; the module that wants a variable
-     * is one of its members. Resolving only the root is why {@code JK_WEB_JS_SKIP=1 jk build} still
-     * did nothing after {@code [test] env} learned to declare it: the name was in
-     * {@code clients/web/jk.toml}, and the client was reading the root. The union is over every
+     * The union over several manifests — what a workspace needs, not just its root. Over every
      * loaded module rather than the {@code -m} selection, so that narrowing a build cannot narrow
      * what the environment is allowed to say — an undeclared name resolves to nothing anyway.
      */
@@ -284,6 +283,7 @@ public final class VariantApply {
     }
 
     private static void collectEnvRefs(JkBuild build, LinkedHashSet<String> names) {
+        if (build.build().env().inherit()) names.add(WHOLE_SHELL);
         for (PluginConfig config : build.pluginConfigs().values()) {
             collectEnvRefs(config.values(), names);
         }
