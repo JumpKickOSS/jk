@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Lexical node search: per query term an exact label match is worth 1000, a
@@ -94,7 +93,9 @@ public final class GraphSearch {
 
     private final CodeGraph graph;
     private final Scope scope;
-    private final Map<String, Double> idf = new HashMap<>();
+    private final SearchIndex index;
+    private final Map<List<String>, Scores> scored = new HashMap<>();
+    private int scoringPasses;
 
     public GraphSearch(CodeGraph graph) {
         this(graph, Scope.ALL);
@@ -104,6 +105,7 @@ public final class GraphSearch {
     public GraphSearch(CodeGraph graph, Scope scope) {
         this.graph = graph;
         this.scope = scope;
+        this.index = graph.searchIndex();
     }
 
     /** Ranked matches plus, per term, its single best node. */
@@ -159,21 +161,18 @@ public final class GraphSearch {
      */
     List<String> members(List<String> terms) {
         Map<String, List<String>> typesByLabel = new HashMap<>();
-        for (GraphNode n : graph.nodes()) {
-            if (n.fileType().equals("code") && !n.label().endsWith(")") && scope.contains(n)) {
-                typesByLabel
-                        .computeIfAbsent(n.normLabel(), k -> new ArrayList<>())
-                        .add(n.id());
+        for (SearchIndex.Entry e : index.entries()) {
+            GraphNode n = e.node();
+            if (e.code() && !n.label().endsWith(")") && scope.contains(n)) {
+                typesByLabel.computeIfAbsent(e.norm(), k -> new ArrayList<>()).add(n.id());
             }
         }
         List<String> out = new ArrayList<>();
         for (int i = 0; i + 1 < terms.size(); i++) {
             for (String type : typesByLabel.getOrDefault(terms.get(i), List.of())) {
                 for (String member : graph.neighbors(type)) {
-                    GraphNode m = graph.node(member);
-                    if (m != null
-                            && stripParens(m.normLabel()).equals("." + terms.get(i + 1))
-                            && !out.contains(member)) {
+                    SearchIndex.Entry m = index.entry(member);
+                    if (m != null && m.bare().equals("." + terms.get(i + 1)) && !out.contains(member)) {
                         out.add(member);
                     }
                 }
@@ -185,7 +184,7 @@ public final class GraphSearch {
     /** {@code terms} with every run of two or three that names a symbol joined into one. */
     List<String> compounds(List<String> terms) {
         if (terms.size() < 2) return terms;
-        Set<String> labels = labels();
+        Set<String> labels = index.labels();
         List<String> out = new ArrayList<>();
         int i = 0;
         while (i < terms.size()) {
@@ -204,39 +203,36 @@ public final class GraphSearch {
         return out;
     }
 
-    private @Nullable Set<String> labels;
-
-    /** Whether the question being scored asks about tests. */
-    private boolean aboutTests;
-
-    /** Every code node's label folded and stripped of {@code .} and {@code ()}. */
-    private Set<String> labels() {
-        Set<String> have = labels;
-        if (have != null) return have;
-        Set<String> built = new HashSet<>();
-        for (GraphNode n : graph.nodes()) {
-            String l = stripParens(n.normLabel());
-            built.add(l.startsWith(".") ? l.substring(1) : l);
-        }
-        labels = built;
-        return built;
+    /** How many passes over the nodes {@link #score} has made; the same terms score once. */
+    int scoringPasses() {
+        return scoringPasses;
     }
 
     Scores score(List<String> terms) {
-        aboutTests = terms.stream().anyMatch(TEST_WORDS::contains);
+        Scores have = scored.get(terms);
+        if (have != null) return have;
+        Scores s = scoreAll(terms);
+        scored.put(List.copyOf(terms), s);
+        return s;
+    }
+
+    private Scores scoreAll(List<String> terms) {
+        scoringPasses++;
+        boolean aboutTests = terms.stream().anyMatch(TEST_WORDS::contains);
         List<String> norm = new ArrayList<>(new LinkedHashSet<>(
                 terms.stream().flatMap(t -> GraphText.searchTokens(t).stream()).toList()));
         String joined = String.join(" ", norm);
-        double joinedWeight = norm.stream().mapToDouble(this::idf).max().orElse(1.0);
+        double joinedWeight = norm.stream().mapToDouble(index::idf).max().orElse(1.0);
         List<Scored> ranked = new ArrayList<>();
         Map<String, BestSeed> best = new HashMap<>();
-        for (GraphNode n : graph.nodes()) {
+        for (SearchIndex.Entry e : index.entries()) {
+            GraphNode n = e.node();
             if (!scope.contains(n)) continue;
             // A question that does not ask about tests does not start at one: a test named as a
             // sentence shares words with every question about the code it tests. The walk still
             // reaches tests through their edges.
             if (!aboutTests && isTest(n)) continue;
-            double score = scoreNode(n, norm, joined, joinedWeight, best);
+            double score = scoreNode(e, norm, joined, joinedWeight, best);
             if (score > 0) ranked.add(new Scored(score, n.id()));
         }
         ranked.sort(Comparator.comparingDouble((Scored s) -> -s.score())
@@ -252,18 +248,17 @@ public final class GraphSearch {
     }
 
     private double scoreNode(
-            GraphNode n, List<String> terms, String joined, double joinedWeight, Map<String, BestSeed> best) {
-        String label = n.normLabel();
-        String bare = stripParens(label);
-        String tokens = String.join(" ", GraphText.searchTokens(n.label()));
-        String source = n.sourceFile().toLowerCase(Locale.ROOT);
-        String attrs = attributeText(n);
-        String doc = docText(n);
-        String id = n.id().toLowerCase(Locale.ROOT);
-        List<String> words = GraphText.searchTokens(splitCamel(n.label())).stream()
-                .map(GraphSearch::stem)
-                .toList();
-        double kind = n.fileType().equals("code") ? 1.0 : NON_CODE;
+            SearchIndex.Entry e, List<String> terms, String joined, double joinedWeight, Map<String, BestSeed> best) {
+        GraphNode n = e.node();
+        String label = e.norm();
+        String bare = e.bare();
+        String tokens = e.tokens();
+        String source = e.source();
+        String attrs = e.attrs();
+        String doc = e.doc();
+        String id = e.id();
+        List<String> words = e.words();
+        double kind = e.code() ? 1.0 : NON_CODE;
         double score = 0;
         if (!joined.isEmpty()) {
             if (joined.equals(label) || joined.equals(bare) || joined.equals(tokens) || joined.equals(id)) {
@@ -275,7 +270,7 @@ public final class GraphSearch {
         int matched = 0;
         double tiered = 0;
         for (String t : terms) {
-            double w = idf(t);
+            double w = index.idf(t);
             String st = stem(t);
             double tier = 0;
             double flat = 0;
@@ -332,28 +327,14 @@ public final class GraphSearch {
         return seeds;
     }
 
-    private double idf(String term) {
-        return idf.computeIfAbsent(term, t -> {
-            long df = graph.nodes().stream()
-                    .filter(n -> n.normLabel().contains(t))
-                    .count();
-            return Math.log(1 + (double) Math.max(graph.size(), 1) / (1 + df));
-        });
-    }
-
     private String seedKey(String id) {
-        GraphNode n = graph.node(id);
-        return n == null || n.normLabel().isEmpty() ? id : n.normLabel();
+        SearchIndex.Entry e = index.entry(id);
+        return e == null || e.norm().isEmpty() ? id : e.norm();
     }
 
     private int labelLength(String id) {
         GraphNode n = graph.node(id);
         return n == null ? id.length() : n.label().length();
-    }
-
-    private static String docText(GraphNode n) {
-        String doc = Decl.doc(n);
-        return doc == null ? "" : " " + String.join(" ", GraphText.searchTokens(doc)) + " ";
     }
 
     /**
@@ -366,16 +347,17 @@ public final class GraphSearch {
         if (terms.isEmpty()) return List.of();
         record Near(int distance, int length, String label, String id) {}
         Map<String, Near> best = new HashMap<>();
-        for (GraphNode n : graph.nodes()) {
-            if (!n.fileType().equals("code") || n.sourceFile().isEmpty() || !scope.contains(n)) continue;
-            String label = stripParens(n.normLabel());
+        for (SearchIndex.Entry e : index.entries()) {
+            GraphNode n = e.node();
+            if (!e.code() || n.sourceFile().isEmpty() || !scope.contains(n)) continue;
+            String label = e.bare();
             if (label.startsWith(".")) label = label.substring(1);
             if (label.isEmpty()) continue;
             int d = Integer.MAX_VALUE;
             for (String t : terms) {
                 int edits = edits(t, label, Math.max(1, t.length() / 3));
                 if (edits >= 0) d = Math.min(d, edits);
-                for (String part : GraphText.searchTokens(splitCamel(n.label()))) {
+                for (String part : e.parts()) {
                     if (part.startsWith(t) || t.startsWith(part) && part.length() >= 4) d = Math.min(d, 1);
                 }
             }
@@ -432,11 +414,6 @@ public final class GraphSearch {
         return common >= 6 && common * 4 >= shorter * 3;
     }
 
-    /** {@code OrderService} → {@code Order Service}. */
-    private static String splitCamel(String label) {
-        return label.replaceAll("(?<=[a-z0-9])(?=[A-Z])", " ");
-    }
-
     /** Levenshtein distance between {@code a} and {@code b}, or {@code -1} once it exceeds {@code max}. */
     static int edits(String a, String b, int max) {
         if (Math.abs(a.length() - b.length()) > max) return -1;
@@ -457,17 +434,6 @@ public final class GraphSearch {
             cur = t;
         }
         return prev[b.length()] <= max ? prev[b.length()] : -1;
-    }
-
-    private static String attributeText(GraphNode n) {
-        Object attrs = n.extra().get("attributes");
-        return attrs == null ? "" : GraphText.fold(String.valueOf(attrs));
-    }
-
-    private static String stripParens(String label) {
-        int end = label.length();
-        while (end > 0 && (label.charAt(end - 1) == '(' || label.charAt(end - 1) == ')')) end--;
-        return label.substring(0, end);
     }
 
     private static boolean searchable(String term) {

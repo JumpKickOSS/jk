@@ -24,6 +24,7 @@ public final class CodeGraph {
     private final Map<String, List<GraphEdge>> incident = new HashMap<>();
     private Modules modules = Modules.NONE;
     private List<StaleRef> stale = List.of();
+    private volatile @Nullable SearchIndex searchIndex;
 
     private CodeGraph(Map<String, GraphNode> nodes, List<GraphEdge> edges) {
         this.nodes = nodes;
@@ -163,6 +164,20 @@ public final class CodeGraph {
             }
         }
         return out;
+    }
+
+    /** The search text of every node, folded on first use and shared by every search of this graph. */
+    SearchIndex searchIndex() {
+        SearchIndex have = searchIndex;
+        if (have != null) return have;
+        synchronized (this) {
+            have = searchIndex;
+            if (have == null) {
+                have = new SearchIndex(this);
+                searchIndex = have;
+            }
+            return have;
+        }
     }
 
     /** The workspace's modules, {@link Modules#NONE} until a build or a reader sets them. */

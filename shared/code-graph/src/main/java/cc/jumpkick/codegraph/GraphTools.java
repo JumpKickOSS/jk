@@ -64,8 +64,9 @@ public final class GraphTools {
         String wanted = name.strip();
         if (graph.has(wanted)) return new Resolved(wanted, null);
         String folded = GraphText.fold(wanted);
-        List<String> anywhere = graph.nodes().stream()
-                .filter(n -> bare(n.normLabel()).equals(bare(folded)))
+        List<String> anywhere = graph.searchIndex().entries().stream()
+                .filter(e -> bare(e.norm()).equals(bare(folded)))
+                .map(SearchIndex.Entry::node)
                 .map(GraphNode::id)
                 .sorted()
                 .toList();
@@ -394,8 +395,9 @@ public final class GraphTools {
         if (dot <= 0 || dot == wanted.length() - 1) return null;
         String owner = wanted.substring(0, dot);
         String typeName = GraphText.fold(owner.substring(owner.lastIndexOf('.') + 1));
-        for (GraphNode type : graph.nodes()) {
-            if (type.label().startsWith(".") || !bare(type.normLabel()).equals(typeName)) continue;
+        for (SearchIndex.Entry t : graph.searchIndex().entries()) {
+            GraphNode type = t.node();
+            if (type.label().startsWith(".") || !bare(t.norm()).equals(typeName)) continue;
             TreeSet<String> names = new TreeSet<>();
             for (GraphEdge e : graph.incident(type.id())) {
                 if (e.source().equals(type.id()) && e.relation().equals(Relations.METHOD))
@@ -423,13 +425,14 @@ public final class GraphTools {
         String qualifier =
                 owner.contains(".") ? owner.substring(0, owner.lastIndexOf('.')).replace('.', '/') : "";
         List<String> out = new ArrayList<>();
-        for (GraphNode type : graph.nodes()) {
-            if (type.label().startsWith(".") || !bare(type.normLabel()).equals(typeName)) continue;
+        for (SearchIndex.Entry t : graph.searchIndex().entries()) {
+            GraphNode type = t.node();
+            if (type.label().startsWith(".") || !bare(t.norm()).equals(typeName)) continue;
             if (!qualifier.isEmpty() && !type.sourceFile().replace('\\', '/').contains(qualifier)) continue;
             for (GraphEdge e : graph.incident(type.id())) {
                 if (!e.source().equals(type.id()) || !e.relation().equals(Relations.METHOD)) continue;
-                GraphNode m = graph.node(e.target());
-                if (m != null && bare(m.normLabel()).equals(member)) out.add(m.id());
+                SearchIndex.Entry m = graph.searchIndex().entry(e.target());
+                if (m != null && bare(m.norm()).equals(member)) out.add(m.node().id());
             }
         }
         List<String> scoped = out.stream()
