@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +22,20 @@ import org.junit.jupiter.api.io.TempDir;
  * a build unit here.
  */
 class BuildGraphTest {
+
+    /** A {@code current -> releases/N} link retargeted between builds names the new release. */
+    @Test
+    void a_symlink_retargeted_between_builds_canonicalizes_to_its_new_target(@TempDir Path tmp) throws Exception {
+        Path one = Files.createDirectories(tmp.resolve("releases/1"));
+        Path two = Files.createDirectories(tmp.resolve("releases/2"));
+        Path current = Symlinks.create(tmp.resolve("current"), one);
+        assertThat(BuildGraph.canonicalPath(current)).isEqualTo(one.toRealPath());
+
+        Files.delete(current);
+        Symlinks.create(current, two);
+
+        assertThat(BuildGraph.canonicalPath(current)).isEqualTo(two.toRealPath());
+    }
 
     private static BuildGraph.Result resolve(Path entryDir) throws IOException {
         JkBuild entry = JkBuildParser.parse(Files.readString(entryDir.resolve("jk.toml")));

@@ -42,6 +42,26 @@ class GitBackendFetchTest {
                 .contains("v1.0.0");
     }
 
+    /** A tag is cloned at depth 1 pinned to the tag, so one behind the default branch's tip resolves. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")
+    void fetches_a_tag_behind_the_default_branch_tip(String name, BackendFactory factory, @TempDir Path tempDir)
+            throws Exception {
+        UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
+        upstream.commitAndRetag("later work\n", "unrelated", false);
+        GitBackend backend = factory.create(tempDir.resolve("jk-git"));
+        GitSource source = GitSource.of(
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
+                new GitRefSpec.Tag("v1.0.0"));
+
+        GitFetcher.Fetched fetched = backend.fetch(source, false);
+
+        assertThat(fetched.sha()).isEqualTo(upstream.taggedSha());
+        assertThat(Files.readString(fetched.checkoutPath().resolve("README.md")))
+                .contains("v1.0.0");
+    }
+
     /** A checkout a cancel or timeout cut short has no completion mark: the next fetch rebuilds it. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")

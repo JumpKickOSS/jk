@@ -3,7 +3,10 @@ package cc.jumpkick.giter8;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +18,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class Giter8ApplyTest {
+
+    @Test
+    void an_executable_template_file_renders_executable(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "execute bits are POSIX-only");
+        Path template = g8(tmp, "name=demo\n");
+        Path g8 = template.resolve("src/main/g8");
+        Files.writeString(g8.resolve("mvnw"), "#!/bin/sh\necho $name$\n");
+        assertThat(g8.resolve("mvnw").toFile().setExecutable(true)).isTrue();
+        Files.writeString(g8.resolve("README.md"), "# $name$\n");
+
+        Path dest = tmp.resolve("out");
+        Giter8Apply.apply(template, dest, Map.of("name", "widget"));
+
+        assertThat(PathUtil.isRunnable(dest.resolve("mvnw"))).isTrue();
+        assertThat(PathUtil.isRunnable(dest.resolve("README.md"))).isFalse();
+    }
 
     @Test
     void substitutes_paths_and_content(@TempDir Path tmp) throws Exception {

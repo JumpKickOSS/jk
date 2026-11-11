@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -14,6 +15,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -24,7 +26,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolves the build graph for an entry project: the workspace root + its modules, as one
@@ -479,26 +480,25 @@ public final class BuildGraph {
      * looking nodes/edges up by client-supplied dirs must canonicalize with this same function —
      * a normalize-only lookup silently misses under symlinked checkouts.
      */
-    /**
-     * Successful {@code toRealPath} resolutions, memoized — the preflight path canonicalizes the
-     * same module dirs repeatedly (restrict: per unit + per edge endpoint; assemblePlan:
-     * selection × dirty modules; GraalHomes: per lookup miss), each an uncached syscall
-     *. Failed resolutions (path does not exist yet) are NOT cached so a later create
-     * resolves fresh; clear-on-overflow bounds the map (ProjectIds idiom). Mid-build symlink
-     * retargeting was never supported — the syscall answer would have changed mid-build anyway.
-     */
-    private static final ConcurrentHashMap<Path, Path> CANONICAL_CACHE = new ConcurrentHashMap<>();
-
     public static Path canonicalPath(Path p) {
-        Path hit = CANONICAL_CACHE.get(p);
-        if (hit != null) return hit;
+        // Successful resolutions are memoized for one request: the preflight canonicalizes the same
+        // module dirs many times. A failed one (the path does not exist yet) is not, so a later
+        // create resolves fresh, and the next build sees a symlink retargeted between builds.
         try {
-            Path real = p.toRealPath();
-            if (CANONICAL_CACHE.size() >= 4_096) CANONICAL_CACHE.clear();
-            CANONICAL_CACHE.put(p, real);
-            return real;
-        } catch (IOException e) {
+            return RequestScope.current().get(new Canonical(p), k -> realPath(k.path()));
+        } catch (UncheckedIOException unresolved) {
             return p.toAbsolutePath().normalize();
+        }
+    }
+
+    /** The request-scoped key of {@link #canonicalPath}. */
+    private record Canonical(Path path) {}
+
+    private static Path realPath(Path p) {
+        try {
+            return p.toRealPath();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 }

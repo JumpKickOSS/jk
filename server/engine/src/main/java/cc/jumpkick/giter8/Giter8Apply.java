@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkVersion;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -95,6 +97,8 @@ public final class Giter8Apply {
                 } else {
                     Files.writeString(out, Giter8Render.content(text, props), StandardCharsets.UTF_8);
                 }
+                // A template's mvnw or bin/*.sh must stay runnable in the project it renders.
+                if (!Os.isWindows() && PathUtil.isRunnable(file)) out.toFile().setExecutable(true, false);
                 count[0]++;
                 return FileVisitResult.CONTINUE;
             }

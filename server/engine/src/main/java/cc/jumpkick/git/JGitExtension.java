@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -248,6 +249,13 @@ public final class JGitExtension implements GitBackend {
                             .setDirectory(staging.toFile())
                             .setNoCheckout(true)
                             .call()) {
+                        // The no-checkout clone leaves an empty index and tree under a HEAD at the
+                        // default branch's tip, where a checkout of any other commit conflicts with
+                        // every file: lay the commit down first, then detach onto it.
+                        g.reset()
+                                .setMode(ResetCommand.ResetType.HARD)
+                                .setRef(sha)
+                                .call();
                         g.checkout().setName(sha).call();
                     } catch (GitAPIException | RuntimeException e) {
                         throw new IOException("checkout failed: " + e.getMessage(), e);
