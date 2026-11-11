@@ -172,6 +172,11 @@ final class PlannerTestForecast {
      */
     static TaskForecast.@Nullable Task runTests(ForecastScope s) throws Exception {
         if (s.skipTests || !s.haveTests()) return null;
+        // As the run decides it first: a module --exclusive left out runs no suite.
+        if (!PlannerTest.selectedForTests(SessionContext.current().testSelection(), s.dir)) {
+            return new TaskForecast.Task(
+                    TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, TaskNames.TESTS_NOT_SELECTED, null);
+        }
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
         boolean compact = prepared.compact();
@@ -179,6 +184,13 @@ final class PlannerTestForecast {
         int estimated = TestSupport.estimateAllSuiteTestCount(s.dir, compact);
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
+        // The run's own rule (PlannerTest.forcedRunReason): a rebuild, debug or coverage run never
+        // replays a green marker, so neither does its forecast.
+        String forced = PlannerTest.forcedRunReason(SessionContext.current(), s.project);
+        if (forced != null) {
+            return new TaskForecast.Task(
+                    TaskNames.RUN_TESTS, TaskForecast.Status.RUN, "run tests · " + forced + " · " + tests, null);
+        }
         // A sibling on the test classpath is rebuilding: the suite re-runs even when the main
         // compile stays cached.
         if (s.compileDirty || s.testDirty || s.testDepDirty || s.kspRuns()) {
