@@ -8,9 +8,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -344,6 +346,10 @@ public final class McpBridge {
         } catch (RuntimeException e) {
             return error(message, "jk mcp: " + e.getMessage());
         } catch (IOException first) {
+            // Sent again only when it never reached the engine: a read timeout or a reset after
+            // the request went out may be a build or a publish already running, and a second send
+            // would run it twice.
+            if (!neverDelivered(first)) return error(message, "jk engine unreachable: " + first.getMessage());
             endpoint = null;
             try {
                 return oneLine(send(message, fresh));
@@ -357,6 +363,11 @@ public final class McpBridge {
             Thread.currentThread().interrupt();
             return error(message, "interrupted");
         }
+    }
+
+    /** A failure to connect at all: the engine moved (a restart on a new port) or is gone, and nothing was sent. */
+    static boolean neverDelivered(IOException e) {
+        return e instanceof ConnectException || e instanceof HttpConnectTimeoutException;
     }
 
     /**

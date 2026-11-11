@@ -12,6 +12,7 @@ import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.tool.TrustedSources;
 import cc.jumpkick.tool.UrlRewriter;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -75,11 +76,9 @@ final class UrlToolSource {
         URI uri = URI.create(raw);
         Path dir = CacheTree.TOOL_SRC.under(cacheDir).resolve(Hashing.sha256Hex(raw.getBytes(StandardCharsets.UTF_8)));
 
-        if (!refresh && Files.isDirectory(dir)) {
-            List<Path> cached = topLevelFiles(dir);
-            for (Path c : cached) {
-                if (isRunnable(c.getFileName().toString())) return c;
-            }
+        if (!refresh) {
+            Path cached = cachedEntry(dir);
+            if (cached != null) return cached;
         }
 
         Http http = new Http();
@@ -116,7 +115,31 @@ final class UrlToolSource {
                 Files.write(target, get(http, sibling));
             }
         }
-        return file;
+        return markComplete(dir, file);
+    }
+
+    /**
+     * Written last into a fetched script's cache directory: the entry's name. It marks the fetch
+     * complete (a directory without it is fetched again) and says which file runs, where the
+     * first runnable file by name could be a helper the entry script pulled in.
+     */
+    static final String ENTRY = ".entry";
+
+    private static Path markComplete(Path dir, Path entry) throws IOException {
+        AtomicWrites.replace(dir.resolve(ENTRY), entry.getFileName().toString().getBytes(StandardCharsets.UTF_8));
+        return entry;
+    }
+
+    /** The entry a complete cache directory names, or null to fetch again. */
+    static @Nullable Path cachedEntry(Path dir) {
+        try {
+            String name =
+                    Files.readString(dir.resolve(ENTRY), StandardCharsets.UTF_8).strip();
+            Path entry = dir.resolve(name).normalize();
+            return !name.isEmpty() && entry.startsWith(dir) && Files.isRegularFile(entry) ? entry : null;
+        } catch (IOException missing) {
+            return null;
+        }
     }
 
     /**
@@ -145,8 +168,8 @@ final class UrlToolSource {
             throws IOException, InterruptedException {
         Path dir =
                 CacheTree.TOOL_SRC.under(cacheDir).resolve(Hashing.sha256Hex(pageUrl.getBytes(StandardCharsets.UTF_8)));
-        if (!refresh && Files.isDirectory(dir)) {
-            Path cached = pickGistEntry(dir);
+        if (!refresh) {
+            Path cached = cachedEntry(dir);
             if (cached != null) return cached;
         }
         Http http = new Http();
@@ -163,7 +186,7 @@ final class UrlToolSource {
         if (count == 0) throw new IOException("gist " + id + " has no files (or the API response was unreadable)");
         Path entry = pickGistEntry(dir);
         if (entry == null) throw new IOException("gist " + id + " has no runnable file (.java/.kt/.kts/.jar)");
-        return entry;
+        return markComplete(dir, entry);
     }
 
     private static @Nullable Path pickGistEntry(Path dir) throws IOException {

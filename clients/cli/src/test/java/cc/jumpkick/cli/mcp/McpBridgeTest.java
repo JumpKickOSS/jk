@@ -12,9 +12,12 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -326,5 +329,17 @@ class McpBridgeTest {
             assertThat(bridge.forward("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
                     .isEmpty();
         }
+    }
+
+    /** Only a call that never reached the engine is sent again; one that timed out waiting may already be running. */
+    @Test
+    void only_an_undelivered_call_is_sent_again() {
+        assertThat(McpBridge.neverDelivered(new ConnectException("refused"))).isTrue();
+        assertThat(McpBridge.neverDelivered(new HttpConnectTimeoutException("connect")))
+                .isTrue();
+        assertThat(McpBridge.neverDelivered(new HttpTimeoutException("request timed out")))
+                .isFalse();
+        assertThat(McpBridge.neverDelivered(new IOException("connection reset")))
+                .isFalse();
     }
 }

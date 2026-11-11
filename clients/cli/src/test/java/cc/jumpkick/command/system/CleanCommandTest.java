@@ -106,4 +106,14 @@ class CleanCommandTest {
         assertThat(stats.bytes()).as("bytes removed").isEqualTo(6);
         assertThat(locked.resolve("file.txt")).exists();
     }
+
+    /** A manifest with a [workspace] table is recognised without the engine, so a clean that cannot list members says so. */
+    @Test
+    void a_workspace_manifest_is_recognised_without_the_engine(@TempDir Path tmp) throws Exception {
+        Path ws = Files.writeString(tmp.resolve("ws.toml"), "name = \"root\"\n\n[workspace]\nmodules = [\"lib\"]\n");
+        Path single = Files.writeString(tmp.resolve("single.toml"), "name = \"app\"\n");
+
+        assertThat(CleanCommand.declaresWorkspace(ws)).isTrue();
+        assertThat(CleanCommand.declaresWorkspace(single)).isFalse();
+    }
 }

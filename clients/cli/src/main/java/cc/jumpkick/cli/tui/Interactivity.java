@@ -19,7 +19,7 @@ public final class Interactivity {
     private static volatile @Nullable Boolean canPromptCache;
 
     /** {@code true} when {@code CI} is truthy ({@code 1}/{@code true}/{@code yes}), {@code JK_NONINTERACTIVE} is set, or {@code TERM=dumb}. */
-    private static boolean forcedNonInteractive() {
+    static boolean forcedNonInteractive() {
         if (EnvValues.isCi(System::getenv)) {
             return true;
         }

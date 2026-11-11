@@ -122,6 +122,11 @@ public final class CleanCommand implements CliCommand {
                     "Clean", stuckMessage(stuck, workspaceRoot, files, stats, FileHolders::of, enginePid));
             return 1;
         }
+        if (warnings.contains(MODULES_UNKNOWN)) {
+            CommandWedge.printFail(
+                    "Clean", "removed " + stats + " from the root only; run jk clean again once the engine starts");
+            return 1;
+        }
         if (files == 0) {
             CommandWedge.printOk("Clean", "Nothing to remove");
         } else {
@@ -283,12 +288,30 @@ public final class CleanCommand implements CliCommand {
         Path rootToml = ManifestPaths.manifestIn(workspaceRoot);
         if (!Files.exists(rootToml)) return dirs;
         var info = ProjectInfos.orNull(workspaceRoot);
+        if (info == null && declaresWorkspace(rootToml)) {
+            // No engine to list the members: the root is cleaned, and the run says it was only that.
+            warnings.add(MODULES_UNKNOWN);
+            return dirs;
+        }
         if (info != null && info.workspaceRoot()) {
             for (Path moduleDir : resolveModuleDirs(workspaceRoot, info.moduleDirs(), warnings)) {
                 if (Files.isDirectory(moduleDir)) dirs.add(moduleDir);
             }
         }
         return dirs;
+    }
+
+    /** What a clean that could not list a workspace's members says, and fails on. */
+    static final String MODULES_UNKNOWN =
+            "could not list this workspace's modules (the engine did not answer); only the root was cleaned";
+
+    /** Whether {@code manifest} opens a {@code [workspace]} table, read without the engine. */
+    static boolean declaresWorkspace(Path manifest) {
+        try {
+            return Files.readString(manifest).lines().map(String::strip).anyMatch(l -> l.startsWith("[workspace"));
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**
