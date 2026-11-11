@@ -1405,7 +1405,7 @@ reason = "the memory-pressure watcher outlives any one request and ends only idl
 
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
-reason = "polls the output directory for finished class files"
+reason = "one engine-lifetime thread drains output-tree file events for every compile and hashes settled files"
 
 # G108. A module's manifest is named through ManifestPaths.manifestIn, which answers the shadow of a
 # directory built from its pom.xml; a raw dir.resolve(ManifestPaths.MANIFEST) reads a file that is

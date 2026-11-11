@@ -91,7 +91,7 @@ nested `of()` that walked the covering parent), `src/` is `recursed` and
 
 Bypass (read-through, do not record as input): output probes
 (`classesDirHasContent`), `FormatFreshnessIndex` stats **after** format writes,
-`CasPrewriter` polling live compiler output, `JdkFingerprint`, `SourceWatch`.
+`CasPrewriter` watching live compiler output, `JdkFingerprint`, `SourceWatch`.
 
 ### Interning
 

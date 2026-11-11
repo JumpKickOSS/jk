@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -24,14 +26,11 @@ import org.junit.jupiter.api.io.TempDir;
 class CasPrewriterTest {
 
     /**
-     * The background poller's only externally observable effect: a two-poll-stable file is hashed
-     * and its blob copied into the CAS. Polling for the blob is what the three tests below used to
-     * approximate with {@code Thread.sleep(350)} — 3.5 poll intervals, which was simultaneously a
-     * guess about this machine and no assertion at all. Two of them ({@code
-     * finish_uses_latest_content_...}, {@code finish_rehashes_when_content_changes_...}) claim to
-     * exercise a rewrite <em>after</em> pre-processing, and would have passed unchanged if
-     * pre-processing had never happened, because {@code finish} content-hashes regardless. Waiting
-     * on the blob makes the precondition an assertion.
+     * The watcher's only externally observable effect: a file that held still for a tick is hashed
+     * and its blob copied into the CAS. Two tests ({@code finish_uses_latest_content_...}, {@code
+     * finish_rehashes_when_content_changes_...}) exercise a rewrite <em>after</em> pre-processing
+     * and would pass unchanged if pre-processing never happened, because {@code finish}
+     * content-hashes regardless; waiting on the blob makes the precondition an assertion.
      */
     private static void awaitPreprocessed(Cas cas, String... contents) throws InterruptedException {
         for (String content : contents) {
@@ -45,7 +44,7 @@ class CasPrewriterTest {
 
     /**
      * {@code finish} walks and hashes the whole output tree and can fail on what a dying compiler
-     * left behind; {@code close} only stops the poller. The compile's failure path uses close so a
+     * left behind; {@code close} only stops the watch. The compile's failure path uses close so a
      * walk failure cannot replace the compiler's own exception.
      */
     @Test
@@ -93,14 +92,13 @@ class CasPrewriterTest {
     }
 
     @Test
-    void finish_catches_files_missed_by_the_poller(@TempDir Path tempDir) throws IOException {
+    void finish_catches_files_the_watch_has_not_settled(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Cas cas = new Cas(tempDir.resolve("cas"));
 
         CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
-        // Write the file just before finish — poller won't have had time
-        // to see it twice, so the final pass should handle it.
+        // Written just before finish: no tick has seen it hold still, so the final pass handles it.
         Files.writeString(classes.resolve("Late.class"), "late-content");
 
         Map<String, String> outputs = prewriter.finish();
@@ -173,7 +171,10 @@ class CasPrewriterTest {
 
         CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
         try {
-            awaitPreprocessed(cas, "AAAAAA"); // the poller settled the first content
+            // A rewrite the watch settles; a file untouched since watching began is finish's alone.
+            Files.writeString(file, "AAAAAA");
+            Files.setLastModifiedTime(file, mtime);
+            awaitPreprocessed(cas, "AAAAAA");
             Files.writeString(file, "BBBBBB");
             Files.setLastModifiedTime(file, mtime);
         } finally {
@@ -205,5 +206,57 @@ class CasPrewriterTest {
         assertThat(FileHashMemo.contentReads())
                 .as("every file answered from the memo")
                 .isZero();
+    }
+
+    /** However long the compile runs, the tree is walked to watch its directories and in finish. */
+    @Test
+    void a_compile_spanning_many_ticks_walks_the_tree_twice(@TempDir Path tempDir) throws Exception {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Files.createDirectories(classes.resolve("pkg"));
+        Cas cas = new Cas(tempDir.resolve("cas"));
+
+        CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
+        Map<String, String> outputs;
+        try {
+            // Each file is ingested before the next is written, so the compile spans many ticks.
+            for (int i = 0; i < 5; i++) {
+                Files.writeString(classes.resolve("pkg/C" + i + ".class"), "class " + i);
+                awaitPreprocessed(cas, "class " + i);
+            }
+            // A package directory the compiler creates mid-compile is watched too.
+            Files.createDirectories(classes.resolve("fresh/sub"));
+            Files.writeString(classes.resolve("fresh/sub/D.class"), "class D");
+            awaitPreprocessed(cas, "class D");
+        } finally {
+            outputs = prewriter.finish();
+        }
+
+        assertThat(outputs).containsKeys("pkg/C0.class", "pkg/C4.class", "fresh/sub/D.class");
+        assertThat(prewriter.treeWalks())
+                .as("one walk to watch the directories, one in finish")
+                .isEqualTo(2);
+    }
+
+    /** Compiles in flight at once share one watcher thread rather than starting one each. */
+    @Test
+    void compiles_in_flight_share_one_thread(@TempDir Path tempDir) throws Exception {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        List<CasPrewriter> open = new ArrayList<>();
+        try {
+            for (int i = 0; i < 3; i++) {
+                Path classes = Files.createDirectories(tempDir.resolve("m" + i + "/classes"));
+                open.add(CasPrewriter.watching(cas, classes));
+                Files.writeString(classes.resolve("A.class"), "module " + i);
+            }
+            awaitPreprocessed(cas, "module 0", "module 1", "module 2");
+            long threads = Thread.getAllStackTraces().keySet().stream()
+                    .filter(t -> t.isAlive() && CasPrewriter.THREAD_NAME.equals(t.getName()))
+                    .count();
+            assertThat(threads)
+                    .as("prewriter threads with three compiles in flight")
+                    .isEqualTo(1);
+        } finally {
+            for (CasPrewriter p : open) p.close();
+        }
     }
 }

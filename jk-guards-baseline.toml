@@ -41,7 +41,7 @@ population = { files = 2203 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1685, sites = 120806 }
+"server/engine" = { classes = 1729, sites = 123326 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -391,10 +391,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.CacheRetention#sweepFiles(Ljava/nio/file/Path;Lcc/jumpkick/task/Bound;JJZLcc/jumpkick/task/CacheRetention$Probe;)Lcc/jumpkick/task/CacheRetention$Tally; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.CasPrewriter#pollOnce()V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -2011,6 +2007,9 @@ population = { poms = 38 }
 
 [repository-names]
 population = { constants = 5, files = 2266, literals = 44269 }
+
+[request-env-forwarded]
+population = { examined = 78 }
 
 [request-thread-carries-session]
 population = { files = 572 }

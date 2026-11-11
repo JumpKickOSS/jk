@@ -9,83 +9,97 @@ import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.host.time.Clock;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
+import java.nio.file.ClosedWatchServiceException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Background CAS ingest of an output dir while a compiler still writes it. Stable {@code (size,
- * mtime)} across polls is hashed and copied into CAS; {@link #finish} re-checks drift and is the
- * authoritative pass.
+ * Background CAS ingest of an output dir while a compiler still writes it. The directories of the
+ * tree are watched for file events; a file an event names is hashed and copied into the CAS once
+ * its {@code (size, mtime)} holds still across one {@value #SETTLE_MILLIS} ms tick. {@link #finish}
+ * walks the tree once, re-checks drift and is the authoritative pass, so an event the watch service
+ * drops or delivers late costs only the head start.
  *
- * <p>Every walk here carries the attributes the tree walk already read, and every poll rejects an
- * ingested file on the in-memory map before it looks at the filesystem. A poll runs every {@value
- * #POLL_INTERVAL_MILLIS} ms for the whole compile over a tree that only grows, so a single stat
- * per file per poll is hundreds of stats per file — on NTFS that costs more than the compile.
+ * <p>One process-wide thread serves every compile in flight, and between events it stats only the
+ * files still settling: the tree is walked twice per compile, at start to watch its directories and
+ * at {@code finish}, however long the compile runs.
  */
 public final class CasPrewriter implements AutoCloseable {
 
-    private static final long POLL_INTERVAL_MILLIS = 100;
+    /** How long a file's size and mtime must hold still before it is hashed. */
+    static final long SETTLE_MILLIS = 100;
+
+    /** The name of the one thread that serves every prewriter in the process. */
+    static final String THREAD_NAME = "jk-cas-prewriter";
 
     private final Cas cas;
-    private final Path outputDir;
-    private final ScheduledExecutorService scheduler;
-    private final ConcurrentMap<Path, Snapshot> tracked = new ConcurrentHashMap<>();
+    private final Path root;
     private final ConcurrentMap<Path, String> processed = new ConcurrentHashMap<>();
-    /** Files already there when the compile began: {@link #finish} answers them, usually from the memo. */
-    private final Set<Path> preexisting = ConcurrentHashMap.newKeySet();
+    /** Files an event named, with what the last tick saw of them; the watcher thread alone touches it. */
+    private final Map<Path, @Nullable Snapshot> pending = new LinkedHashMap<>();
 
-    private final long startedMillis = Clock.SYSTEM.millis();
-    private volatile boolean running = true;
+    private final ConcurrentLinkedQueue<WatchKey> keys = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger treeWalks = new AtomicInteger();
+    /** Guarded by {@code this}: once false, the watcher thread neither hashes nor watches for it. */
+    private boolean running = true;
 
     private CasPrewriter(Cas cas, Path outputDir) {
         this.cas = cas;
-        this.outputDir = outputDir;
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            // Polls the output directory for finished class files; reads no session.
-            Thread t = new Thread(r, "jk-cas-prewriter");
-            t.setDaemon(true);
-            return t;
-        });
+        this.root = outputDir.toAbsolutePath().normalize();
     }
 
     /**
      * Start a prewriter watching {@code outputDir}. The caller's responsibility to call {@link
-     * #finish} before reading the result — {@code finish} also stops the background poller.
+     * #finish} before reading the result, or {@link #close} on a failed compile; either stops the
+     * watch.
      */
     public static CasPrewriter watching(Cas cas, Path outputDir) {
         CasPrewriter p = new CasPrewriter(cas, outputDir);
-        p.scheduler.scheduleWithFixedDelay(
-                p::pollOnce, POLL_INTERVAL_MILLIS, POLL_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
+        if (Watcher.SERVICE != null && Files.isDirectory(p.root)) {
+            Watcher.ACTIVE.add(p);
+            p.treeWalks.incrementAndGet();
+            try {
+                // Directories only: a file already here is answered by finish, mostly from the memo.
+                PathUtil.forEachEntry(p.root, dir -> false, (path, attrs) -> {
+                    if (attrs.isDirectory()) p.watch(path);
+                    return true;
+                });
+            } catch (IOException ignored) {
+                // Best-effort: what the watch misses, finish ingests.
+            }
+        }
         return p;
     }
 
     /**
-     * Stop polling and run the final correctness pass. Returns the {@code (relPath → hex)} map ready
+     * Stop watching and run the final correctness pass. Returns the {@code (relPath → hex)} map ready
      * for {@link ActionCache#storeWithOutputs}.
      */
     public Map<String, String> finish() throws IOException {
-        running = false;
-        scheduler.shutdown();
-        try {
-            scheduler.awaitTermination(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
+        stop();
         Map<String, String> outputs = new TreeMap<>();
-        if (!Files.exists(outputDir)) return outputs;
-        Path root = outputDir.toAbsolutePath().normalize();
+        if (!Files.exists(root)) return outputs;
+        treeWalks.incrementAndGet();
         PathUtil.forEachRegularFile(root, (file, attrs) -> {
             String relPath = root.relativize(file).toString().replace(File.separatorChar, '/');
             // What ActionCache.store would keep of the same tree.
@@ -107,70 +121,99 @@ public final class CasPrewriter implements AutoCloseable {
 
     @Override
     public void close() {
-        if (running) {
-            running = false;
-            scheduler.shutdownNow();
-        }
+        stop();
     }
 
-    // --- polling ---------------------------------------------------------
+    /** Whole-tree walks this prewriter made: one to watch the directories, one in {@link #finish}. */
+    int treeWalks() {
+        return treeWalks.get();
+    }
 
-    private void pollOnce() {
-        if (!running) return;
-        if (!Files.isDirectory(outputDir)) return;
-        try {
-            Files.walkFileTree(outputDir, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (!running) return FileVisitResult.TERMINATE;
-                    // Cheapest rejections first: the walk already paid for `attrs`, and an
-                    // already-ingested file must cost a map lookup rather than a syscall.
-                    if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
-                    if (processed.containsKey(file) || preexisting.contains(file)) return FileVisitResult.CONTINUE;
-                    if (BuildStamps.isStampFile(file.getFileName().toString())) return FileVisitResult.CONTINUE;
-                    handleCandidate(file, attrs);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                    // A file that vanished mid-walk is the compiler's business, not ours.
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } catch (IOException ignored) {
-            // Polling is best-effort — a transient walk failure just delays
-            // processing until the next tick or the final pass.
+    private void stop() {
+        synchronized (this) {
+            if (!running) return;
+            running = false;
         }
+        Watcher.ACTIVE.remove(this);
+        for (WatchKey key : keys) Watcher.release(key, this);
+        keys.clear();
+    }
+
+    private void watch(Path dir) {
+        WatchKey key = Watcher.register(dir, this);
+        if (key != null) keys.add(key);
+    }
+
+    // --- on the watcher thread --------------------------------------------
+
+    /** A file event under {@code dir}: queue the file, or watch and scan a directory that appeared. */
+    private synchronized void onEvent(Path dir, WatchEvent<?> event) {
+        if (!running || event.kind() == StandardWatchEventKinds.OVERFLOW) return;
+        if (!(event.context() instanceof Path name)) return;
+        Path child = dir.resolve(name);
+        if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
+            pending.remove(child);
+            processed.remove(child);
+            return;
+        }
+        Optional<BasicFileAttributes> attrs = PathUtil.stat(child);
+        if (attrs.isEmpty()) return;
+        if (attrs.get().isDirectory()) {
+            // Its files may have landed before the watch did, so the new subtree is read once.
+            try {
+                PathUtil.forEachEntry(child, d -> false, (path, a) -> {
+                    if (a.isDirectory()) watch(path);
+                    else offer(path, a);
+                    return true;
+                });
+            } catch (IOException ignored) {
+                // finish ingests what this scan could not read.
+            }
+            return;
+        }
+        offer(child, attrs.get());
+    }
+
+    private void offer(Path file, BasicFileAttributes attrs) {
+        if (!attrs.isRegularFile() || BuildStamps.isStampFile(file.getFileName().toString())) return;
+        // A rewrite of an ingested file is ingested again.
+        processed.remove(file);
+        if (!pending.containsKey(file)) pending.put(file, null);
     }
 
     /**
-     * Two-poll stability rule: if a file's (size, mtime) matches what we saw last poll, it's been
-     * quiet for at least one interval — safe to hash. Otherwise update the snapshot and revisit next
-     * tick. {@code attrs} comes from the walk, so deciding this costs no filesystem call.
+     * One tick over the files still settling: a file whose {@code (size, mtime)} matches what the
+     * last tick saw has been quiet for a whole tick and is hashed; any other records what it saw.
      */
-    private void handleCandidate(Path file, BasicFileAttributes attrs) {
-        long size = attrs.size();
-        long mtime = attrs.lastModifiedTime().toMillis();
-        // Untouched by this compile: an incremental compile of one source leaves thousands of
-        // these, and hashing each here would read them all for a CAS that already holds them.
-        if (mtime < startedMillis - 1_000) {
-            preexisting.add(file);
-            return;
+    private synchronized void settle() {
+        if (!running) return;
+        for (Iterator<Map.Entry<Path, @Nullable Snapshot>> it =
+                        pending.entrySet().iterator();
+                it.hasNext(); ) {
+            Map.Entry<Path, @Nullable Snapshot> entry = it.next();
+            Path file = entry.getKey();
+            Optional<BasicFileAttributes> attrs = PathUtil.stat(file);
+            if (attrs.isEmpty() || !attrs.get().isRegularFile()) {
+                it.remove();
+                continue;
+            }
+            Snapshot now = new Snapshot(
+                    attrs.get().size(), attrs.get().lastModifiedTime().toMillis());
+            if (!now.equals(entry.getValue())) {
+                entry.setValue(now);
+                continue;
+            }
+            it.remove();
+            try {
+                processed.put(file, hashAndCopy(file));
+            } catch (IOException ignored) {
+                // The file vanished or could not be read; finish picks it up.
+            }
         }
-        Snapshot prev = tracked.get(file);
-        if (prev == null || prev.size != size || prev.mtime != mtime) {
-            tracked.put(file, new Snapshot(size, mtime));
-            return;
-        }
-        try {
-            String hex = hashAndCopy(file);
-            processed.put(file, hex);
-            tracked.remove(file);
-        } catch (IOException ignored) {
-            // Skip; either the file vanished mid-poll or we hit a permission
-            // hiccup. The final pass will pick it up.
-        }
+    }
+
+    private synchronized boolean settling() {
+        return running && !pending.isEmpty();
     }
 
     /**
@@ -184,4 +227,100 @@ public final class CasPrewriter implements AutoCloseable {
     }
 
     private record Snapshot(long size, long mtime) {}
+
+    /**
+     * The process's one watch service and the one daemon thread that drains it for every prewriter.
+     * Without a watch service (a file system that offers none) no prewriting happens and {@link
+     * #finish} ingests the whole tree.
+     */
+    private static final class Watcher {
+
+        static final @Nullable WatchService SERVICE = open();
+
+        static final Set<CasPrewriter> ACTIVE = ConcurrentHashMap.newKeySet();
+
+        /** Which prewriters a key serves: two output trees may share a directory. */
+        private static final Map<WatchKey, List<CasPrewriter>> OWNERS = new ConcurrentHashMap<>();
+
+        private static final Object LOCK = new Object();
+
+        private static @Nullable WatchService open() {
+            WatchService service;
+            try {
+                service = FileSystems.getDefault().newWatchService();
+            } catch (IOException | UnsupportedOperationException e) {
+                return null;
+            }
+            // Engine-lifetime: drains file events and hashes settled files; reads no session.
+            Thread.ofPlatform().daemon().name(THREAD_NAME).start(() -> drain(service));
+            return service;
+        }
+
+        static @Nullable WatchKey register(Path dir, CasPrewriter owner) {
+            WatchService service = SERVICE;
+            if (service == null) return null;
+            synchronized (LOCK) {
+                try {
+                    WatchKey key = dir.register(
+                            service,
+                            StandardWatchEventKinds.ENTRY_CREATE,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            StandardWatchEventKinds.ENTRY_DELETE);
+                    OWNERS.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>())
+                            .add(owner);
+                    return key;
+                } catch (IOException | ClosedWatchServiceException e) {
+                    // Out of watches, or the directory went away: finish covers it.
+                    return null;
+                }
+            }
+        }
+
+        static void release(WatchKey key, CasPrewriter owner) {
+            synchronized (LOCK) {
+                List<CasPrewriter> owners = OWNERS.get(key);
+                if (owners == null) return;
+                owners.remove(owner);
+                if (owners.isEmpty()) {
+                    OWNERS.remove(key);
+                    key.cancel();
+                }
+            }
+        }
+
+        private static void drain(WatchService service) {
+            long lastTick = Clock.SYSTEM.nanos();
+            long tick = TimeUnit.MILLISECONDS.toNanos(SETTLE_MILLIS);
+            while (true) {
+                try {
+                    boolean settling = ACTIVE.stream().anyMatch(CasPrewriter::settling);
+                    long wait = Math.max(0, lastTick + tick - Clock.SYSTEM.nanos());
+                    WatchKey key = settling ? service.poll(wait, TimeUnit.NANOSECONDS) : service.take();
+                    for (; key != null; key = service.poll()) dispatch(key);
+                    if (Clock.SYSTEM.nanos() - lastTick >= tick) {
+                        for (CasPrewriter p : ACTIVE) p.settle();
+                        lastTick = Clock.SYSTEM.nanos();
+                    }
+                } catch (InterruptedException | ClosedWatchServiceException e) {
+                    return;
+                } catch (RuntimeException e) {
+                    // One prewriter's failure must not stop the others' ingest; finish is authoritative.
+                }
+            }
+        }
+
+        private static void dispatch(WatchKey key) {
+            List<CasPrewriter> owners;
+            // Taken so a key's first events wait until register has recorded who it serves.
+            synchronized (LOCK) {
+                owners = OWNERS.getOrDefault(key, List.of());
+            }
+            List<WatchEvent<?>> events = key.pollEvents();
+            key.reset();
+            if (!(key.watchable() instanceof Path dir)) return;
+            for (CasPrewriter owner : owners) {
+                for (WatchEvent<?> event : events) owner.onEvent(dir, event);
+            }
+        }
+    }
 }
