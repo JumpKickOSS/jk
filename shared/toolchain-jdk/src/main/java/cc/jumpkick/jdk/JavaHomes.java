@@ -46,7 +46,7 @@ public final class JavaHomes {
     }
 
     public static Path resolveJavaHome(Path projectDir) {
-        return resolveJavaHome(projectDir, new JdkRegistry());
+        return resolveJavaHome(projectDir, JdkEnsure.sharedRegistry(null, projectDir));
     }
 
     /**

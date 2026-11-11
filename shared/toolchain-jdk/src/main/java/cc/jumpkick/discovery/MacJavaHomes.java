@@ -2,13 +2,10 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.PathUtil;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /** The JDK homes macOS's {@code /usr/libexec/java_home -V} lists, including ones outside the system root. */
 final class MacJavaHomes {
@@ -22,26 +19,8 @@ final class MacJavaHomes {
     /** Run {@code java_home -V}; empty when the tool is absent, fails, or times out. */
     static List<Path> list() {
         if (!PathUtil.isRunnable(JAVA_HOME_TOOL)) return List.of();
-        try {
-            Process p = new ProcessBuilder(JAVA_HOME_TOOL.toString(), "-V")
-                    .redirectErrorStream(true)
-                    .start();
-            p.getOutputStream().close();
-            String out;
-            try (InputStream in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            if (!p.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return List.of();
-            }
-            return parse(out);
-        } catch (IOException e) {
-            return List.of();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return List.of();
-        }
+        String out = ToolOutput.run(List.of(JAVA_HOME_TOOL.toString(), "-V"), Duration.ofSeconds(TIMEOUT_SECONDS));
+        return out == null ? List.of() : parse(out);
     }
 
     /**

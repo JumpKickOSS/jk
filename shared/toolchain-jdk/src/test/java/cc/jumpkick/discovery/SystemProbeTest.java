@@ -8,8 +8,10 @@ import cc.jumpkick.jdk.JdkUninstallPolicy;
 import cc.jumpkick.testing.FakeJdk;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -76,22 +78,34 @@ class SystemProbeTest {
 
     @Test
     void registry_java_home_and_adoptium_msi_path_are_hits_and_a_missing_key_adds_nothing() throws IOException {
-        Map<String, Map<String, String>> registry = Map.of(
-                "SOFTWARE\\JavaSoft\\JDK|JavaHome",
-                Map.of("SOFTWARE\\JavaSoft\\JDK\\21", "C:\\Program Files\\Java\\jdk-21"),
-                "SOFTWARE\\Eclipse Adoptium\\JDK|Path",
-                Map.of(
-                        "SOFTWARE\\Eclipse Adoptium\\JDK\\25.0.1.8\\hotspot\\MSI",
-                        "C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot\\",
-                        "SOFTWARE\\Eclipse Adoptium\\JDK\\25.0.1.8\\openj9\\MSI",
-                        "C:\\ignored"));
+        // Each value as `reg query <key> /s /v <name>` reports it: under every key above its subkey.
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("SOFTWARE\\JavaSoft\\JDK\\21|JavaHome", "C:\\Program Files\\Java\\jdk-21");
+        values.put("SOFTWARE\\JavaSoft\\JRE Tools\\8|JavaHome", "C:\\not-a-listed-key");
+        values.put(
+                "SOFTWARE\\Eclipse Adoptium\\JDK\\25.0.1.8\\hotspot\\MSI|Path",
+                "C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot\\");
+        values.put("SOFTWARE\\Eclipse Adoptium\\JDK\\25.0.1.8\\openj9\\MSI|Path", "C:\\ignored");
+        AtomicInteger queries = new AtomicInteger();
+        WindowsJavaRegistry.Reader recursive = (key, name) -> {
+            queries.incrementAndGet();
+            Map<String, String> found = new LinkedHashMap<>();
+            values.forEach((subkeyAndName, value) -> {
+                String[] parts = subkeyAndName.split("\\|");
+                if (parts[1].equals(name) && parts[0].startsWith(key + "\\")) found.put(parts[0], value);
+            });
+            return found;
+        };
 
-        List<Path> homes = WindowsJavaRegistry.homes((key, name) -> registry.getOrDefault(key + "|" + name, Map.of()));
+        List<Path> homes = WindowsJavaRegistry.homes(recursive);
 
         assertThat(homes)
                 .containsExactly(
                         Path.of("C:\\Program Files\\Java\\jdk-21"),
                         Path.of("C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot\\"));
+        assertThat(queries)
+                .as("one query per JavaSoft root, not per key")
+                .hasValue(WindowsJavaRegistry.JAVA_HOME_ROOTS.size() + WindowsJavaRegistry.MSI_PATH_KEYS.size());
         assertThat(WindowsJavaRegistry.homes((key, name) -> Map.of())).isEmpty();
     }
 

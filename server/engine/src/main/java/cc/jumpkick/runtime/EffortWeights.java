@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -782,7 +783,7 @@ public final class EffortWeights {
             JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
-            JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            JdkRegistry registry = JdkEnsure.sharedRegistry(jdksDir, dir);
             // The request's environment, not the daemon's.
             var env = BuildEnv.forModule(dir);
             var req = new JdkResolution.Request(

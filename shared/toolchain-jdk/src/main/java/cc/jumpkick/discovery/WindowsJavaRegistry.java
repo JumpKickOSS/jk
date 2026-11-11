@@ -2,15 +2,13 @@
 package cc.jumpkick.discovery;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -48,11 +46,23 @@ final class WindowsJavaRegistry {
 
     private WindowsJavaRegistry() {}
 
+    /**
+     * The roots {@link #JAVA_HOME_KEYS} sit under: one recursive query per root answers every key
+     * beneath it, where a query per key started a process for each.
+     */
+    static final List<String> JAVA_HOME_ROOTS = List.of("SOFTWARE\\JavaSoft", "SOFTWARE\\Wow6432Node\\JavaSoft");
+
     /** Every home the registry names, in key order. */
     static List<Path> homes(Reader reader) throws IOException {
         List<Path> homes = new ArrayList<>();
+        Map<String, String> javaHomes = new LinkedHashMap<>();
+        for (String root : JAVA_HOME_ROOTS) javaHomes.putAll(reader.values(root, "JavaHome"));
         for (String key : JAVA_HOME_KEYS) {
-            reader.values(key, "JavaHome").values().forEach(v -> add(homes, v));
+            String prefix = key.toLowerCase(Locale.ROOT) + "\\";
+            javaHomes.forEach((subkey, v) -> {
+                if (subkey.equalsIgnoreCase(key)
+                        || subkey.toLowerCase(Locale.ROOT).startsWith(prefix)) add(homes, v);
+            });
         }
         for (String key : MSI_PATH_KEYS) {
             reader.values(key, "Path").forEach((subkey, v) -> {
@@ -73,27 +83,10 @@ final class WindowsJavaRegistry {
     }
 
     private static Map<String, String> regQuery(String key, String valueName) {
-        try {
-            Process p = new ProcessBuilder("reg", "query", "HKLM\\" + key, "/s", "/v", valueName)
-                    .redirectErrorStream(true)
-                    .start();
-            p.getOutputStream().close();
-            String out;
-            try (InputStream in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            if (!p.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return Map.of();
-            }
-            // Exit 1 is a missing key.
-            return p.exitValue() == 0 ? parse(out, valueName) : Map.of();
-        } catch (IOException e) {
-            return Map.of();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return Map.of();
-        }
+        String out = ToolOutput.run(
+                List.of("reg", "query", "HKLM\\" + key, "/s", "/v", valueName), Duration.ofSeconds(TIMEOUT_SECONDS));
+        // A missing key exits 1.
+        return out == null ? Map.of() : parse(out, valueName);
     }
 
     /**

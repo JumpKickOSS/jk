@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -898,7 +899,7 @@ public final class Calibration {
 
     private static Optional<Path> resolveJavaHome(@Nullable Path jdksDir) {
         try {
-            JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+            JdkRegistry registry = JdkEnsure.sharedRegistry(jdksDir, null);
             // No module context here, so the ambient layer: request env, then this process's.
             var env = BuildEnv.ambient();
             var req = new JdkResolution.Request(

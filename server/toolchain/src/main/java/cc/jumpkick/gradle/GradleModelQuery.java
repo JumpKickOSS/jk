@@ -17,7 +17,6 @@ import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInstallListener;
-import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.resolver.StallWatch;
 import java.io.BufferedReader;
@@ -113,7 +112,7 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
                     dist.version(),
                     runningHome,
                     Runtime.version().feature(),
-                    () -> new JdkRegistry().listHits(),
+                    () -> JdkEnsure.sharedRegistry(null, null).listHits(),
                     major -> installJdk(major, dist.version(), progress));
             return new Launch(
                     List.of(result.tool().binary().toString()),

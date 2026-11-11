@@ -66,8 +66,6 @@ public final class JdkResolver {
      */
     public static Optional<InstalledJdk> forProject(Path projectDir, @Nullable Path jdksDirOverride)
             throws IOException {
-        JdkRegistry registry = jdksDirOverride != null ? new JdkRegistry(jdksDirOverride) : new JdkRegistry();
-        Optional<InstalledJdk> resolved = new JdkResolver(registry).resolve(projectDir);
-        return resolved;
+        return new JdkResolver(JdkEnsure.sharedRegistry(jdksDirOverride, projectDir)).resolve(projectDir);
     }
 }

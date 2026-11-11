@@ -18,6 +18,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.ToolchainLockStamp;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -363,7 +364,7 @@ public final class LockPipeline {
         // exact coordinate pins before the solver runs (git-source-deps.md).
         // One probe-chain registry serves both the JDK walk here and the toolchain
         // stamp below — no second filesystem scan per lock.
-        JdkRegistry jdkRegistry = new JdkRegistry();
+        JdkRegistry jdkRegistry = JdkEnsure.sharedRegistry(null, lockDir);
         Path javaHome = JavaHomes.resolveJavaHome(lockDir, jdkRegistry);
         GitSourceResolution.Prepared prep =
                 GitSourceResolution.prepare(effective, baseRepos, cas, javaHome, jkVersion, lockedShas);

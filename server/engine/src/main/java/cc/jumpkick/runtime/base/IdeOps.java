@@ -14,6 +14,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
@@ -115,7 +116,7 @@ public final class IdeOps {
         }
 
         // Per-module JDK/SDK handles.
-        JdkRegistry jdkRegistry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+        JdkRegistry jdkRegistry = JdkEnsure.sharedRegistry(jdksDir, null);
         StableJdkPointer pointer = jdksDir != null ? new StableJdkPointer(jdksDir) : StableJdkPointer.atDefaultRoot();
         List<String> sdkEntries = new ArrayList<>(); // "name|home|version"
         Set<String> seenSdk = new LinkedHashSet<>();

@@ -11,6 +11,7 @@ import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkInstaller;
@@ -171,7 +172,7 @@ public final class McpMachine {
     }
 
     public static Map<String, Object> jdkList() {
-        return jdkList(new JdkRegistry());
+        return jdkList(JdkEnsure.sharedRegistry(null, null));
     }
 
     static Map<String, Object> jdkList(JdkRegistry registry) {
@@ -193,7 +194,7 @@ public final class McpMachine {
 
     public static Map<String, Object> jdkAction(
             String action, @Nullable String spec, @Nullable Integer olderThan, boolean confirm) {
-        return jdkAction(action, spec, olderThan, confirm, new JdkRegistry());
+        return jdkAction(action, spec, olderThan, confirm, JdkEnsure.sharedRegistry(null, null));
     }
 
     static Map<String, Object> jdkAction(

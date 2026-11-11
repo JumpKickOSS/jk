@@ -5,6 +5,7 @@ import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
@@ -53,7 +54,7 @@ public final class GraalHomeLookup {
      * non-blank one wins and decides the outcome by itself.
      */
     public static Optional<Path> installed(Path projectDir, @Nullable Path jdksDir, @Nullable String... specs) {
-        JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
+        JdkRegistry registry = JdkEnsure.sharedRegistry(jdksDir, projectDir);
         String effective = firstNonBlank(specs);
         if (effective != null) return bySpec(registry, effective);
         GraalPin pin = ToolchainPins.scan(projectDir).graal();

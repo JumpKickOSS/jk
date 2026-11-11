@@ -280,7 +280,7 @@ public final class JdkEnsure {
      * than the client that just pre-flighted the download. The host probes stay in the chain
      * either way; only an explicit override walks its one directory alone.
      */
-    static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride, @Nullable Path projectDir) {
+    public static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride, @Nullable Path projectDir) {
         Path root = (jdksDirOverride != null ? jdksDirOverride : requestJdksRoot())
                 .toAbsolutePath()
                 .normalize();
