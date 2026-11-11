@@ -4,7 +4,7 @@ package cc.jumpkick.http;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;

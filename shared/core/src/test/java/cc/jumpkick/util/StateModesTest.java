@@ -3,6 +3,9 @@ package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.channels.FileChannel;

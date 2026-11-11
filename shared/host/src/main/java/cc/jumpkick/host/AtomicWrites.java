@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.util;
+package cc.jumpkick.host;
 
-import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -156,6 +155,23 @@ public final class AtomicWrites {
         return true;
     }
 
+    /**
+     * Copy {@code source} over {@code target} atomically: through a staging sibling and
+     * {@link #moveInto}, so a reader sees the old file or the whole new one, and a running program
+     * that holds the old file open keeps it.
+     */
+    public static void copy(Path source, Path target) throws IOException {
+        Path tmp = staging(target);
+        boolean moved = false;
+        try {
+            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+            moveInto(tmp, target);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
+        }
+    }
+
     /** As {@link #replaceIfChanged(Path, byte[])} for UTF-8 text. */
     public static boolean replaceIfChanged(Path target, String content) throws IOException {
         return replaceIfChanged(target, content.getBytes(StandardCharsets.UTF_8));
@@ -304,11 +320,11 @@ public final class AtomicWrites {
     }
 
     /**
-     * Atomically install {@code staging} as {@code target}, which must not already exist (no
-     * {@code REPLACE_EXISTING} — concurrent publish races surface as exists/not-empty errors).
-     * {@code staging} must be on {@code target}'s filesystem.
+     * Atomically install {@code staging}, a file or a directory tree, as {@code target}, which must
+     * not already exist (no {@code REPLACE_EXISTING} — concurrent publish races surface as
+     * exists/not-empty errors). {@code staging} must be on {@code target}'s filesystem.
      */
-    public static void publishDir(Path staging, Path target) throws IOException {
+    public static void publish(Path staging, Path target) throws IOException {
         try {
             Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException e) {

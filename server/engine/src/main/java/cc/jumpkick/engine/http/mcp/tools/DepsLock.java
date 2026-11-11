@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.runtime.LockFlow;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;

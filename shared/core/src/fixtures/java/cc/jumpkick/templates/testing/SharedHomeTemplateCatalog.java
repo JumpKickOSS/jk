@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.templates.testing;
 
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;

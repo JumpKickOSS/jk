@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.testing.Symlinks;

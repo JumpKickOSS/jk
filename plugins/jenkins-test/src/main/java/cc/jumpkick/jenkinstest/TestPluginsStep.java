@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jenkinstest;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.RepositoryRoute;
@@ -13,7 +14,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -99,13 +99,19 @@ final class TestPluginsStep {
                     http.getStream(uri, auth == null ? Map.of() : Map.of("Authorization", auth));
             try (InputStream body = response.body()) {
                 if (response.statusCode() == 200) {
-                    Path part = to.resolveSibling(to.getFileName() + ".part");
-                    // On the run's download board, like every other body the build fetches.
-                    long length = response.headers()
-                            .firstValueAsLong("Content-Length")
-                            .orElse(-1L);
-                    Transfers.copy(body, part, entry.gav() + "!hpi", length);
-                    Files.move(part, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    Path part = AtomicWrites.staging(to);
+                    boolean moved = false;
+                    try {
+                        // On the run's download board, like every other body the build fetches.
+                        long length = response.headers()
+                                .firstValueAsLong("Content-Length")
+                                .orElse(-1L);
+                        Transfers.copy(body, part, entry.gav() + "!hpi", length);
+                        AtomicWrites.moveInto(part, to);
+                        moved = true;
+                    } finally {
+                        if (!moved) Files.deleteIfExists(part);
+                    }
                     return;
                 }
             }

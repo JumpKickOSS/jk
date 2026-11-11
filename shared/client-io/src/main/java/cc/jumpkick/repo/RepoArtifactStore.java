@@ -2,7 +2,9 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
@@ -11,9 +13,7 @@ import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AccessLedger;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.net.URI;

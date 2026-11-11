@@ -3,8 +3,8 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;

@@ -3,9 +3,9 @@ package cc.jumpkick.http;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;

@@ -2,10 +2,10 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.PackageIndex;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

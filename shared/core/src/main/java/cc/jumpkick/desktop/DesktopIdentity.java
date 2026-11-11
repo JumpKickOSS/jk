@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.desktop;
 
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -131,7 +131,7 @@ public final class DesktopIdentity {
             }
         } else {
             writeIcon("jumpkick.png", png());
-            replace(entry, desktopEntry().getBytes(StandardCharsets.UTF_8));
+            AtomicWrites.replace(entry, desktopEntry().getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -314,14 +314,8 @@ public final class DesktopIdentity {
         try (InputStream in = DesktopIdentity.class.getResourceAsStream(resource)) {
             if (in == null) throw new IOException("this build carries no " + resource);
             Files.createDirectories(iconDir());
-            replace(target, in.readAllBytes());
+            AtomicWrites.replace(target, in.readAllBytes());
         }
-    }
-
-    private static void replace(Path target, byte[] bytes) throws IOException {
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.write(tmp, bytes);
-        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static boolean runProcess(List<String> argv) {

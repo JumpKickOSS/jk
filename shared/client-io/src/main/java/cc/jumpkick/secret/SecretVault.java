@@ -3,9 +3,9 @@ package cc.jumpkick.secret;
 
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

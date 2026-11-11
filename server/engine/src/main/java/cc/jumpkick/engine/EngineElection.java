@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;

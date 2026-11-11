@@ -1,21 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -335,30 +332,15 @@ final class GeneratedProvenance {
     }
 
     private void write(Map<Path, Set<Path>> prov) throws IOException {
-        List<String> lines = new ArrayList<>(prov.size());
+        StringBuilder out = new StringBuilder();
         for (Map.Entry<Path, Set<Path>> e : prov.entrySet()) {
-            StringBuilder sb = new StringBuilder(escape(e.getKey().toString()));
-            for (Path origin : e.getValue()) sb.append('\t').append(escape(origin.toString()));
-            lines.add(sb.toString());
+            out.append(escape(e.getKey().toString()));
+            for (Path origin : e.getValue()) out.append('\t').append(escape(origin.toString()));
+            out.append('\n');
         }
-        // Nothing else may have created target/incremental yet on a module's first compile.
-        Path dir = Objects.requireNonNull(file.getParent(), "the ledger lives in target/incremental");
-        Files.createDirectories(dir);
         // Written beside and renamed over: a compile killed mid-write leaves last run's map, not
         // a truncated one whose missing rows would read as classes nobody generated.
-        Path tmp = Files.createTempFile(dir, "." + file.getFileName() + "-", ".tmp");
-        boolean moved = false;
-        try {
-            Files.write(tmp, lines, StandardCharsets.UTF_8);
-            try {
-                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-            moved = true;
-        } finally {
-            if (!moved) Files.deleteIfExists(tmp);
-        }
+        AtomicWrites.replace(file, out.toString());
     }
 
     /**

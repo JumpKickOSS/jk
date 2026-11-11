@@ -3,6 +3,8 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -11,13 +13,11 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.FileLocks;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
@@ -147,7 +147,7 @@ public final class TestStorePool {
                     if (!isLink(entry)) PathUtil.deleteRecursivelyOrThrow(entry);
                     else if (Os.isWindows()) Files.delete(entry); // a junction cannot be renamed over
                 }
-                Files.move(staged, entry, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                AtomicWrites.moveInto(staged, entry);
                 placed++;
             } finally {
                 Files.deleteIfExists(staged);
@@ -299,7 +299,7 @@ public final class TestStorePool {
             if (Files.getLastModifiedTime(unit, LinkOption.NOFOLLOW_LINKS).toMillis() >= idleBefore) return false;
             Path doomed = Files.createDirectories(trash)
                     .resolve(ProcessHandle.current().pid() + "-" + SEQ.incrementAndGet() + "-" + unit.getFileName());
-            Files.move(unit, doomed, StandardCopyOption.ATOMIC_MOVE);
+            AtomicWrites.publish(unit, doomed);
             PathUtil.deleteRecursively(doomed);
             return true;
         } catch (IOException | RuntimeException e) {

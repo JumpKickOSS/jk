@@ -545,7 +545,7 @@ class EngineInstallTest {
     }
 
     /**
-     * The pointer is one of the four files {@link cc.jumpkick.util.AtomicWrites} names as written
+     * The pointer is one of the four files {@link cc.jumpkick.host.AtomicWrites} names as written
      * durably: torn, it names no jar and the install cannot start. An fsync is not observable from
      * a test, so this pins the call the way the durable variant itself is pinned.
      */

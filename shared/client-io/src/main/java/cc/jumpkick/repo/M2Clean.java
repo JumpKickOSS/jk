@@ -2,12 +2,12 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.SafePoint;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.util.AccessLedger;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;

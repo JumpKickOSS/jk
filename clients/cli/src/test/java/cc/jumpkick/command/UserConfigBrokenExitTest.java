@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedHome;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

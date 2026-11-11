@@ -2,7 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.host.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
@@ -14,7 +15,6 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.util.FileLocks;
-import cc.jumpkick.util.JkDirs;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

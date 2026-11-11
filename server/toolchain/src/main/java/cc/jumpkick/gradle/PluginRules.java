@@ -2,12 +2,12 @@
 package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.manifest.GradleImports;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalYaml;
 import java.io.IOException;
 import java.io.StringReader;

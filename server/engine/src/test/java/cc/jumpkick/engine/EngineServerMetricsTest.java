@@ -4,9 +4,9 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.MetricsRequest;

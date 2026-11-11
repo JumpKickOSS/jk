@@ -2,8 +2,8 @@
 package cc.jumpkick.secret;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.SearchPath;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

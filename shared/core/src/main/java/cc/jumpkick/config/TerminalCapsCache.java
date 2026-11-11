@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -248,15 +248,7 @@ public final class TerminalCapsCache {
                             .append("\"\n");
                 }
             }
-            Path file = Objects.requireNonNull(this.file);
-            Files.createDirectories(file.getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, sb.toString(), StandardCharsets.UTF_8);
-            try {
-                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException atomicUnsupported) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicWrites.replace(Objects.requireNonNull(this.file), sb.toString());
             return true;
         } catch (IOException | RuntimeException e) {
             return false;

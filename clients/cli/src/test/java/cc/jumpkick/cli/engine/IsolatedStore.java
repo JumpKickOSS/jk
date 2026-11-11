@@ -23,7 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *
  * <p>The state root has its own twin, {@link IsolatedState}; a class may carry both.
  *
- * <p>Mechanics: sets the {@code jk.env.JK_STORE_DIR} overlay ({@link cc.jumpkick.util.JkDirs}
+ * <p>Mechanics: sets the {@code jk.env.JK_STORE_DIR} overlay ({@link cc.jumpkick.host.JkDirs}
  * test seam) to a per-method temp dir. Engine identity is keyed by (state, store), so commands
  * spawn a dedicated engine; it is force-stopped after each test before the overlay is cleared
  * and the temp store deleted.

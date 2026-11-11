@@ -727,7 +727,7 @@ class ActionCacheTest {
      * A record this build could not publish costs the next build a rebuild, not this build a
      * failure. Windows denies a replace while any handle has the target open — even one opened
      * with {@code FILE_SHARE_DELETE} — so a concurrent {@code lookup} of the same key can outlast
-     * what {@link cc.jumpkick.util.AtomicWrites} is willing to retry. The step has already
+     * what {@link cc.jumpkick.host.AtomicWrites} is willing to retry. The step has already
      * succeeded and its outputs are already in the CAS by then; throwing would discard both.
      *
      * <p>Reached here through an unwritable keys directory and a spoofed {@code os.name}, the way

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -59,7 +59,7 @@ public final class ExplodedArchives {
             throw e;
         }
         try {
-            AtomicWrites.publishDir(staging, dir);
+            AtomicWrites.publish(staging, dir);
         } catch (IOException e) {
             PathUtil.deleteRecursively(staging);
             if (!Files.isDirectory(dir)) throw e; // lost a race — the winner's dir serves

@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.base.HostLearnedRates;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

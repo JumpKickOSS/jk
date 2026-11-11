@@ -5,9 +5,9 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedHome;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.RecordingProxy;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

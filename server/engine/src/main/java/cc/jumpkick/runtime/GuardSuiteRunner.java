@@ -5,6 +5,7 @@ import cc.jumpkick.guard.api.runtime.GuardConfig;
 import cc.jumpkick.guard.eval.GuardModelSnapshot;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.WorkspaceModules;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.test.JUnitLauncher;
@@ -14,7 +15,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -228,8 +228,7 @@ final class GuardSuiteRunner {
                                 "true"),
                         listener,
                         null);
-        if (Files.isRegularFile(part))
-            Files.move(part, report, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        if (Files.isRegularFile(part)) AtomicWrites.moveInto(part, report);
         else Files.deleteIfExists(report);
         long reported = Files.isRegularFile(report) ? Files.readAllLines(report).size() : 0;
         // What the fork said, next to the report it left: the place to look when a guard is missing from it.

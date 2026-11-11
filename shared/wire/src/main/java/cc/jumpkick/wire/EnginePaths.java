@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -324,7 +323,7 @@ public final class EnginePaths {
         Files.deleteIfExists(staging);
         Files.createSymbolicLink(staging, target);
         try {
-            Files.move(staging, link, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.moveInto(staging, link);
         } finally {
             Files.deleteIfExists(staging);
         }

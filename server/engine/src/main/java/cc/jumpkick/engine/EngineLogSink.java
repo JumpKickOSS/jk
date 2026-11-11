@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;

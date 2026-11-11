@@ -3,12 +3,12 @@ package cc.jumpkick.templates;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AttemptWindow;
 import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitVersion;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.host.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
-import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.zip.ZipEntry;
@@ -83,10 +82,7 @@ public final class PackageIndex {
     /** Written beside then moved into place, so a reader never sees a half list. */
     private static void write(Path file, Set<String> packages) {
         try {
-            Files.createDirectories(file.getParent());
-            Path tmp = Files.createTempFile(file.getParent(), file.getFileName().toString(), ".tmp");
-            Files.write(tmp, List.copyOf(packages), StandardCharsets.UTF_8);
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicWrites.replace(file, String.join("\n", packages) + (packages.isEmpty() ? "" : "\n"));
         } catch (IOException e) {
             // The list is a cache; the next lookup lists the jar again.
         }

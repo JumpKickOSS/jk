@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import org.junit.jupiter.api.Test;
 
 /** The kept lock's file is named by the project id, which must never escape the history directory. */

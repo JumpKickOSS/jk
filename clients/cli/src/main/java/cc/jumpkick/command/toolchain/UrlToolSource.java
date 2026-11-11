@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.Confirm;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.WorkingDirectory;
@@ -12,7 +13,6 @@ import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.tool.TrustedSources;
 import cc.jumpkick.tool.UrlRewriter;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

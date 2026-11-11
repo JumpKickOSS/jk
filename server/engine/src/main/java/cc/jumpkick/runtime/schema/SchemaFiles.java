@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.schema;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockSchemas;
@@ -10,7 +11,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.SchemaEntry;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -19,7 +19,6 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -125,7 +124,7 @@ public final class SchemaFiles {
         }
         PathUtil.deleteRecursivelyOrThrow(dir);
         try {
-            Files.move(staging, dir, StandardCopyOption.ATOMIC_MOVE);
+            AtomicWrites.publish(staging, dir);
         } catch (FileAlreadyExistsException | DirectoryNotEmptyException raced) {
             PathUtil.deleteRecursivelyOrThrow(staging);
         }

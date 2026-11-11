@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.library.LibraryCatalog;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.AttemptWindow;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

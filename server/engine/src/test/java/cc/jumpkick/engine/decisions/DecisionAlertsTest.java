@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.form.Form;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
@@ -11,7 +12,6 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.scala.ScalaResolver;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

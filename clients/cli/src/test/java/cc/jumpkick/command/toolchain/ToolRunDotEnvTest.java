@@ -4,10 +4,10 @@ package cc.jumpkick.command.toolchain;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;

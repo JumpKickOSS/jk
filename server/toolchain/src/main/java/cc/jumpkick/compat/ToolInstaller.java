@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StaleScratch;
@@ -144,7 +145,7 @@ public final class ToolInstaller {
                 Path effectiveRoot = flattenedRoot(stagingDir);
                 PackageManagerShims.write(dist.tool(), effectiveRoot);
                 try {
-                    Files.move(effectiveRoot, target, StandardCopyOption.ATOMIC_MOVE);
+                    AtomicWrites.publish(effectiveRoot, target);
                 } catch (IOException moveFailed) {
                     // A concurrent provision published first — its tree is complete; use it.
                     if (!Files.isDirectory(target)) throw moveFailed;

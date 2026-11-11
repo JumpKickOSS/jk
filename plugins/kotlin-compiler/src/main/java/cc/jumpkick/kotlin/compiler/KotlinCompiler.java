@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.kotlin.compiler;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Linking;
@@ -17,7 +18,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -228,15 +228,10 @@ public final class KotlinCompiler implements Plugin {
                     try {
                         snapshotter.snapshot(entry.toPath(), staging);
                         try {
-                            Files.move(
-                                    staging,
-                                    snapshot,
-                                    StandardCopyOption.ATOMIC_MOVE,
-                                    StandardCopyOption.REPLACE_EXISTING);
+                            AtomicWrites.moveInto(staging, snapshot);
                         } catch (IOException moveFailed) {
-                            if (!Files.isRegularFile(snapshot)) {
-                                Files.move(staging, snapshot, StandardCopyOption.REPLACE_EXISTING);
-                            }
+                            // Another compile published the same snapshot first.
+                            if (!Files.isRegularFile(snapshot)) throw moveFailed;
                         }
                     } finally {
                         Files.deleteIfExists(staging);

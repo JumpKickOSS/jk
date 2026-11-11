@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.InstallDestination;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;

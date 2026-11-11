@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AppInstallConfig;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -446,11 +445,7 @@ public final class EngineInstall {
             try (FileChannel ch = FileChannel.open(jarTmp, StandardOpenOption.WRITE)) {
                 ch.force(true);
             }
-            try {
-                Files.move(jarTmp, dest, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(jarTmp, dest);
-            }
+            AtomicWrites.publish(jarTmp, dest);
         } finally {
             Files.deleteIfExists(jarTmp);
         }

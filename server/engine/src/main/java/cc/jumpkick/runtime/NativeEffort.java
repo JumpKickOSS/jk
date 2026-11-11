@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -11,7 +12,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostLearnedRates;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

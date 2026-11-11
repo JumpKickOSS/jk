@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -190,9 +190,9 @@ public final class ReachabilityMetadata {
         }
         Files.writeString(tmp.resolve(".complete"), version);
         try {
-            AtomicWrites.publishDir(tmp, root);
+            AtomicWrites.publish(tmp, root);
         } catch (IOException e) {
-            // Another build won the race (publishDir handles a non-atomic FS itself): fine if the
+            // Another build won the race (publish handles a non-atomic FS itself): fine if the
             // winner completed.
             PathUtil.deleteRecursively(tmp);
             if (!Files.isRegularFile(marker)) throw e;

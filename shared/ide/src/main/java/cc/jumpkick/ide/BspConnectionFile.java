@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.ide;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
 import java.nio.file.Files;

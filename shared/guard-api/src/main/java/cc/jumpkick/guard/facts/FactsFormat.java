@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.facts;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,10 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -72,24 +71,9 @@ public final class FactsFormat {
     }
 
     public static void write(Path file, FactsIndex index) throws IOException {
-        Path dir = file.toAbsolutePath().getParent();
-        Files.createDirectories(dir);
-        byte[] bytes = toBytes(index);
         // A staging name of this writer's own: two writers of one index never share a temp file,
         // so neither can rename or delete the other's.
-        Path tmp = Files.createTempFile(dir, file.getFileName() + ".", ".tmp");
-        boolean moved = false;
-        try {
-            Files.write(tmp, bytes);
-            try {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-            moved = true;
-        } finally {
-            if (!moved) Files.deleteIfExists(tmp);
-        }
+        AtomicWrites.replace(file, toBytes(index));
     }
 
     /** Serialize; the body digest in the header is recomputed from the class table. */

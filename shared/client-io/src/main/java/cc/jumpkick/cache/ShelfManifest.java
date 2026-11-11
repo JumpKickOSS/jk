@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
@@ -134,11 +133,7 @@ public record ShelfManifest(
             // Another engine's shelf becomes the previous one; the shelf before it is no longer pinned.
             Optional<ShelfManifest> existing = read(file);
             if (existing.isPresent() && !existing.get().pins(engineSha256)) {
-                Files.move(
-                        file,
-                        file.resolveSibling(PREVIOUS_FILE_NAME),
-                        StandardCopyOption.REPLACE_EXISTING,
-                        StandardCopyOption.ATOMIC_MOVE);
+                AtomicWrites.moveInto(file, file.resolveSibling(PREVIOUS_FILE_NAME));
             }
             ShelfManifest manifest = new ShelfManifest(
                     engineSha256,

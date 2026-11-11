@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.RepositorySpec;
@@ -8,7 +9,6 @@ import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EmptyArchive;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;

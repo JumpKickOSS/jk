@@ -2,10 +2,10 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.host.DiskRoom;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;

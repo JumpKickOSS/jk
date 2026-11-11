@@ -19,7 +19,10 @@ import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.ShippedTemplates;
 import cc.jumpkick.giter8.TemplateAnswers;
 import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.lock.ManifestPaths;
@@ -28,13 +31,10 @@ import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.scaffold.NewProjectSeed;
 import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -641,7 +641,7 @@ public final class NewProjectOps {
             throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
         }
         try {
-            Files.move(staging, dest, StandardCopyOption.ATOMIC_MOVE);
+            AtomicWrites.publish(staging, dest);
         } catch (IOException raced) {
             // Another process renamed first — its clone is equivalent; keep it.
             if (Files.isDirectory(dest) && !isEmptyDir(dest)) {

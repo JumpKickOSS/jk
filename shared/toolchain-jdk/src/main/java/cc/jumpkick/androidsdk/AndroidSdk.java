@@ -2,9 +2,9 @@
 package cc.jumpkick.androidsdk;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jdk.DirLinks;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

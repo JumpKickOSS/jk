@@ -3,7 +3,7 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import org.junit.jupiter.api.Test;
 
 /** A relative {@code JK_*_DIR} is a usage error however deep it was first read. */

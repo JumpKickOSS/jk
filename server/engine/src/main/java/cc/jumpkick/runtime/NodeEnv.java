@@ -3,12 +3,12 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeHome;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

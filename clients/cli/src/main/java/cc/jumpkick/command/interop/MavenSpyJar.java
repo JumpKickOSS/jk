@@ -6,18 +6,18 @@ import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -148,15 +148,8 @@ public final class MavenSpyJar {
     public Path fetch(ReleaseArtifacts.Progress progress) throws IOException {
         ReleaseArtifacts.Verified jar = ReleaseArtifacts.fetch(
                 release.base(), version, jarName(), "Maven spy jar", release.verifier(), progress);
-        Files.createDirectories(lib);
         Path target = expected();
-        Path tmp = Files.createTempFile(lib, jarName() + ".", ".tmp");
-        try {
-            Files.write(tmp, jar.bytes());
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } finally {
-            Files.deleteIfExists(tmp);
-        }
+        AtomicWrites.replace(target, jar.bytes());
         progress.done(target);
         return target;
     }

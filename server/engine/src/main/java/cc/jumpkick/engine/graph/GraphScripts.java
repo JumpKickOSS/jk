@@ -5,6 +5,8 @@ import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockPaths;
@@ -13,12 +15,10 @@ import cc.jumpkick.lock.NodePin;
 import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.runtime.PlannerNodeSetup;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -107,7 +107,7 @@ final class GraphScripts {
                     throw e;
                 }
                 if (p.exitValue() != 0 || !installed(staging)) return false;
-                Files.move(staging, dir, StandardCopyOption.ATOMIC_MOVE);
+                AtomicWrites.publish(staging, dir);
                 return true;
             } finally {
                 PathUtil.deleteRecursively(staging);

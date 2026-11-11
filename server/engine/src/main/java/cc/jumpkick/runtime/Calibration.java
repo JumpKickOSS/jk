@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -14,8 +16,6 @@ import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.HostLearnedRates;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;

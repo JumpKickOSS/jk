@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.util;
+package cc.jumpkick.host;
 
-import cc.jumpkick.host.Os;
-import cc.jumpkick.host.ProcessEnv;
-import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -271,7 +268,7 @@ public final class JkDirs {
 
     /** User config file: {@code <home>/config.toml}. */
     public Path userConfigFilePath() {
-        return homeDir().resolve(ManifestPaths.CONFIG);
+        return homeDir().resolve(ManifestNames.CONFIG);
     }
 
     /**

@@ -3,12 +3,12 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.rules.GuardPacks;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

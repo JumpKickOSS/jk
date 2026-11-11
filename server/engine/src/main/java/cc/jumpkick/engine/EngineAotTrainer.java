@@ -5,18 +5,18 @@ import cc.jumpkick.compile.JavacTrainingSources;
 import cc.jumpkick.config.EngineAotCache;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -164,10 +164,7 @@ final class EngineAotTrainer {
                 log.accept("jk engine: engine startup cache not recorded; the next engine starts without it");
                 return;
             }
-            Files.createDirectories(cache.getParent());
-            Path tmp = cache.resolveSibling(cache.getFileName() + ".tmp");
-            Files.copy(recorded, tmp, StandardCopyOption.REPLACE_EXISTING);
-            Files.move(tmp, cache, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicWrites.copy(recorded, cache);
             dropOthers(cache);
             log.accept("jk engine: recorded engine startup cache (" + (Files.size(cache) >> 20) + " MiB, "
                     + (Clock.SYSTEM.millis() - start) / 1000 + " s); the next engine maps it");

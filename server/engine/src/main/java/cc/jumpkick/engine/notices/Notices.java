@@ -3,9 +3,9 @@ package cc.jumpkick.engine.notices;
 
 import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

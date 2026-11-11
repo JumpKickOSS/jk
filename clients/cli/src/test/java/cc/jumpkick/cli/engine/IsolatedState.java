@@ -19,11 +19,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * That is not hypothetical: two classes once planted and swept the same {@code state/aot} keys
  * from concurrent forks, and the assertion lost the race.
  *
- * <p>Annotate any class that reads or writes {@link cc.jumpkick.util.JkDirs#state()} — the
+ * <p>Annotate any class that reads or writes {@link cc.jumpkick.host.JkDirs#state()} — the
  * {@code :cli} guard {@code checkTestRootsDeclared} requires it. Classes that only need a throwaway
  * artifact store want {@link IsolatedStore}; a class may carry both.
  *
- * <p>Mechanics: sets the {@code jk.env.JK_STATE_DIR} overlay ({@link cc.jumpkick.util.JkDirs} test
+ * <p>Mechanics: sets the {@code jk.env.JK_STATE_DIR} overlay ({@link cc.jumpkick.host.JkDirs} test
  * seam) to a per-method temp dir. Engine identity is keyed by (state, store), so commands spawn a
  * dedicated engine; it is force-stopped after each test before the overlay is cleared and the temp
  * root deleted.

@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;

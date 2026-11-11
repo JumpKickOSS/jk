@@ -3,16 +3,16 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.ToolIdentity;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;

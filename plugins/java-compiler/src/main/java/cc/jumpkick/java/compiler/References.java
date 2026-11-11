@@ -2,6 +2,7 @@
 package cc.jumpkick.java.compiler;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import com.sun.source.doctree.DocCommentTree;
 import com.sun.source.doctree.ReferenceTree;
@@ -27,7 +28,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -188,10 +188,7 @@ final class References implements TaskListener {
                         .append('\n');
                 previous = r.start();
             }
-            Files.createDirectories(target.getParent());
-            Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-            Files.writeString(tmp, out, StandardCharsets.UTF_8);
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicWrites.replace(target, out.toString());
         }
     }
 

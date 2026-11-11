@@ -7,7 +7,7 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Every {@code jk.env.*} system property: {@link cc.jumpkick.util.JkDirs}'s in-process overlay
+ * Every {@code jk.env.*} system property: {@link cc.jumpkick.host.JkDirs}'s in-process overlay
  * over the environment. A test points one at its own store, cache, state or home; one left set
  * would send every later class in the JVM there.
  */

@@ -6,21 +6,21 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -346,12 +346,6 @@ public final class BuildLogicGroovyHost {
             throw new IOException("sha256 mismatch for " + out.getFileName() + " under " + out.getParent()
                     + " — expected " + sha256 + ", got " + actual);
         }
-        Path tmp = Files.createTempFile(out.getParent(), out.getFileName().toString() + ".", ".tmp");
-        try {
-            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-            Files.move(tmp, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } finally {
-            Files.deleteIfExists(tmp);
-        }
+        AtomicWrites.copy(source, out);
     }
 }

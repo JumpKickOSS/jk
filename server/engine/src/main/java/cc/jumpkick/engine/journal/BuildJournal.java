@@ -4,16 +4,15 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -1139,11 +1138,7 @@ public final class BuildJournal {
     }
 
     private static void move(Path from, Path to) throws IOException {
-        try {
-            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(from, to);
-        }
+        AtomicWrites.publish(from, to);
     }
 
     private static boolean isArtifactName(String name) {

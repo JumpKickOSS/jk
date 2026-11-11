@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.node.DiscoveredNode;
 import cc.jumpkick.node.NodeDiscovery;
@@ -15,7 +16,6 @@ import cc.jumpkick.node.NodeSpec;
 import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.node.PackageManagerSpec;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;

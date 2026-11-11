@@ -130,6 +130,17 @@ reason = "executableBit wants the POSIX bit itself and is already skipped on Win
 in     = "cc.jumpkick.engine.plugin.WorkerSession"
 reason = "probes /usr/bin/setsid once at class load, behind Os.isWindows(); the text guard exempted the same line by that shape"
 
+# G125. A file is moved over another in one place. Windows denies a replace while any handle has the
+# target open, whatever sharing it was opened with (78% of attempts against one looping reader);
+# AtomicWrites retries that denial, and a hand-rolled ATOMIC_MOVE fails the write instead.
+[guards.atomic-move-owner]
+kind       = "forbid"
+signatures = ["java.nio.file.StandardCopyOption#ATOMIC_MOVE"]
+owner      = "cc.jumpkick.host.AtomicWrites"
+fixture    = "server/guard/fixtures/atomic-move-owner"
+instead    = "AtomicWrites.replace / copy for content, moveInto to put a staged file or link over a target, publish to install a new file or tree"
+why        = "a hand-rolled atomic move skips the Windows retry, so a reader holding the target open fails the write"
+
 # G122. A virtual thread that loads a class or computes pins its carrier; a fresh engine preparing a
 # wide workspace on them deadlocked. The engine and the plan executor never use io(); the
 # repository layer's network fan-outs are the waiters it is for, each listed.
@@ -438,7 +449,7 @@ patterns = [
 ]
 hit      = "the data root"
 miss     = "the store root"
-instead  = "resolve paths through cc.jumpkick.util.JkDirs (JK_HOME, plus JK_STORE_DIR / JK_CACHE_DIR / JK_STATE_DIR / JK_JDKS_DIR)"
+instead  = "resolve paths through cc.jumpkick.host.JkDirs (JK_HOME, plus JK_STORE_DIR / JK_CACHE_DIR / JK_STATE_DIR / JK_JDKS_DIR)"
 why      = "JumpKick has one home; a layout it does not have, named anywhere, misleads the reader"
 
 [[guards.single-home-root.allow]]
@@ -502,7 +513,7 @@ in     = "shared/client-io/src/main/java/cc/jumpkick/winhost/WindowsSetup.java"
 reason = "hands RootDiscovery the APPDATA folder where the IDEs keep their recent-project lists"
 
 [[guards.single-home-root.allow]]
-in     = "shared/core/src/test/java/cc/jumpkick/util/JkDirsTest.java"
+in     = "shared/host/src/test/java/cc/jumpkick/host/JkDirsTest.java"
 reason = "asserts that the retired XDG / AppData variables are ignored"
 
 [[guards.single-home-root.allow]]

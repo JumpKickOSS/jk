@@ -3,12 +3,12 @@ package cc.jumpkick.forge;
 
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.secret.SecretBackendException;
 import cc.jumpkick.secret.SecretItems;
 import cc.jumpkick.secret.SecretVault;
 import cc.jumpkick.task.RunNotices;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;

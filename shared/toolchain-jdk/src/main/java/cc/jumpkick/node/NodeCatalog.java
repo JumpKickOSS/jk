@@ -2,11 +2,11 @@
 package cc.jumpkick.node;
 
 import cc.jumpkick.compat.DownloadOrigin;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;

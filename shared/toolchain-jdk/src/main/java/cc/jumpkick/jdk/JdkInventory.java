@@ -3,10 +3,10 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.discovery.ToolHealth;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.util.MinimalToml;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;

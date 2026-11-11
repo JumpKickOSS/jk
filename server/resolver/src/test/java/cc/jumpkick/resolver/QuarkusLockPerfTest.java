@@ -6,13 +6,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.util.JkDirs;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.file.Files;

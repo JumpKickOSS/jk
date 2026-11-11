@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ToolsGc;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
@@ -20,7 +21,6 @@ import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
@@ -229,7 +229,7 @@ final class ToolClosures {
             }
             if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
             try {
-                AtomicWrites.publishDir(staging, dir);
+                AtomicWrites.publish(staging, dir);
             } catch (IOException e) {
                 if (!complete(dir)) throw e;
                 PathUtil.deleteRecursively(staging);

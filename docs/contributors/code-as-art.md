@@ -369,7 +369,8 @@ dependency of both `:core` and `:plugin-sdk`. A primitive that must be
 callable from a plugin worker, the native CLI **and** the engine goes
 there and nowhere else — today that is `Hashing`, `PathUtil`, `Errors`,
 `Os`, `Classpaths`, `DeterministicZip`, `BuildStamps`, `CacheTree`,
-`AotCacheFiles`, `DomXml`, `EnvValues`, `JdkFingerprint`, the JSONL codec
+`AotCacheFiles`, `DomXml`, `EnvValues`, `JdkFingerprint`, `AtomicWrites` (with
+the `OwnerOnlyFiles` modes and the `JkDirs` layout it applies them by), the JSONL codec
 and the `Exit`/command vocabulary.
 
 Two of those kept their original package when they moved
@@ -986,6 +987,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G122 | engine or plan-executor code handing work to `JkThreads.io()`: planning, hashing, packaging, a module's build and an estimate load classes and compute, and a virtual thread doing either pins its carrier | ban over `server/engine` and `shared/jk-api`; the resolver and repository fan-outs, which only wait on the network, are outside the scope | `engine-off-virtual-threads` (forbid) |
 | G123 | docs prose (`README.md`, `docs/`) that names the product `jk` instead of JumpKick, outside code spans, fenced blocks, link targets and URLs | phrase scan over the Markdown prose view | `product-name-in-docs` (text) |
 | G124 | a `clients/cli` file that hands the terminal to a child through `CliOutput.handOffTerminal` and waits on a bare `waitFor()`: only `ProcessTrees.awaitExit` stops the child when JumpKick is signalled, so an IDE stop button, a `kill` or a `timeout` leaves it running — comment-blind, plus a self-fail arm on too few handoff files | ban, no allowlist | guard test `cli-handoff-awaited` |
+| G125 | a `StandardCopyOption.ATOMIC_MOVE` outside `cc.jumpkick.host.AtomicWrites` — Windows denies a replace while any handle has the target open, and only `AtomicWrites.moveInto` retries that denial; a hand-rolled move fails the write | ban over main bytecode, owner `AtomicWrites` (`replace`, `copy`, `moveInto`, `publish`) | `atomic-move-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1017,6 +1019,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 |---|---|---|
 | archive-instant-owner | forbid | an archive stamped through the default timezone is a function of the build host's TZ |
 | archive-stream-owner | text | an archive written over an unbuffered sink pays one system call per 512 bytes |
+| atomic-move-owner | forbid | a hand-rolled atomic move skips the Windows retry, so a reader holding the target open fails the write |
 | blind-tree-walks | forbid | re-resolving each path to ask again is the dominant cost of walking a large tree |
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |

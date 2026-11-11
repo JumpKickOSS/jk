@@ -3,12 +3,12 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.run.ContextPropagator;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;

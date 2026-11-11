@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

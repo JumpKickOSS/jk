@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.nio.file.Path;

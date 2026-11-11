@@ -4,8 +4,8 @@ package cc.jumpkick.jdk;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.testing.Symlinks;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

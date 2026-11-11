@@ -2,9 +2,9 @@
 package cc.jumpkick.templates.testing;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.RepoRoot;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.io.UncheckedIOException;

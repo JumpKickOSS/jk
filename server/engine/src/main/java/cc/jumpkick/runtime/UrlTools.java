@@ -3,9 +3,9 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;

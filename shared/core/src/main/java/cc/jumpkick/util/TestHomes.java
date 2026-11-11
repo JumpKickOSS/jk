@@ -2,6 +2,7 @@
 package cc.jumpkick.util;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;

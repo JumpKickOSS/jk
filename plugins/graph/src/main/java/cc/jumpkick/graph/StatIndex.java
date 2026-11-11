@@ -2,9 +2,9 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.cache.GraphCacheKeys;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

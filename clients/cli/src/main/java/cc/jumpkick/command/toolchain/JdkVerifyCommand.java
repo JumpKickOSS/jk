@@ -4,12 +4,12 @@ package cc.jumpkick.command.toolchain;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkInventory.Finding;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.List;
 

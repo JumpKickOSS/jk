@@ -2,12 +2,12 @@
 package cc.jumpkick.giter8;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.scaffold.NewProjectStep;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileSystem;

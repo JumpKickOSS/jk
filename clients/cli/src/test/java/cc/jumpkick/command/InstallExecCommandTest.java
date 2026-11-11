@@ -7,10 +7,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;

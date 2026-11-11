@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.git;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 
 /**
@@ -58,11 +57,7 @@ final class GitCacheDirs {
         JGitExtension.deleteRecursively(staging);
         try {
             build.into(staging);
-            try {
-                Files.move(staging, dir, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(staging, dir);
-            }
+            AtomicWrites.publish(staging, dir);
             Files.createFile(marker(dir));
             return dir;
         } finally {

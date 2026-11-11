@@ -3,6 +3,7 @@ package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.PathUtil;
 import java.io.BufferedReader;
 import java.io.IOException;

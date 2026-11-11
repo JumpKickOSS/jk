@@ -2,8 +2,8 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.io.InputStream;

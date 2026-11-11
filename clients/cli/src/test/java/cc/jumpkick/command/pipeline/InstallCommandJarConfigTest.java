@@ -3,8 +3,8 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.util.AppInstallConfig;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;

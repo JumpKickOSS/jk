@@ -3,11 +3,11 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.HostLearnedRates;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;

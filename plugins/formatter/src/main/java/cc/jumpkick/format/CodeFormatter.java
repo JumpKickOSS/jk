@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.HostProcessors;
@@ -28,11 +29,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFileAttributeView;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -317,24 +315,8 @@ public final class CodeFormatter implements Plugin {
      * killed mid-write leaves the file whole, old or new, never truncated.
      */
     static void writeAtomically(Path link, byte[] bytes) throws IOException {
-        // A symlinked source stays a link: its target is what is rewritten.
-        Path file = link.toRealPath();
-        Path dir = file.getParent();
-        Path tmp = Files.createTempFile(dir, "." + file.getFileName() + ".", ".jkfmt");
-        try {
-            Files.write(tmp, bytes);
-            // The replacement keeps the file's mode; a temporary file is created owner-only.
-            if (Files.getFileStore(file).supportsFileAttributeView(PosixFileAttributeView.class)) {
-                Files.setPosixFilePermissions(tmp, Files.getPosixFilePermissions(file));
-            }
-            try {
-                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(tmp);
-        }
+        // A symlinked source stays a link: its target is what is rewritten, keeping its mode.
+        AtomicWrites.replace(link.toRealPath(), bytes);
     }
 
     /**

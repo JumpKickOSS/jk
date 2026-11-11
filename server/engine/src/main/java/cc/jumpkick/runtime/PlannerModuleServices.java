@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.W_RESOURCES;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.ModuleDescriptors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.StepForecast;
@@ -15,7 +16,6 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.MirroredOutputs;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.lang.module.InvalidModuleDescriptorException;
 import java.lang.module.ModuleDescriptor;

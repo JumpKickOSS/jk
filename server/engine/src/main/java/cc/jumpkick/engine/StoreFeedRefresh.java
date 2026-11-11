@@ -2,6 +2,8 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.compat.LibraryRegistryMirror;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
@@ -9,8 +11,6 @@ import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.repo.LibraryRegistrySync;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.net.URI;

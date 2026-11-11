@@ -2,9 +2,9 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -2,12 +2,12 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.ToolsGc;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.task.FileHashMemo;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +65,7 @@ final class ToolArchives {
             else JdkInstaller.extractZip(archive, staging, matching(include));
             Files.writeString(staging.resolve(COMPLETE), archive.getFileName() + "\n");
             if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
-            AtomicWrites.publishDir(staging, dir);
+            AtomicWrites.publish(staging, dir);
         } catch (IOException e) {
             PathUtil.deleteRecursively(staging);
             if (Files.isRegularFile(dir.resolve(COMPLETE))) return dir;

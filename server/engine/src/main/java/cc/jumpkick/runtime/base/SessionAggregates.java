@@ -3,9 +3,9 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;

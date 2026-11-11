@@ -2,13 +2,13 @@
 package cc.jumpkick.androidsdk;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StaleScratch;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.task.TransferBoard;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.io.InputStream;
@@ -260,7 +260,7 @@ public final class AndroidSdkInstaller {
      */
     static void publishOrAccept(Path extracted, Path dir) throws IOException {
         try {
-            AtomicWrites.publishDir(extracted, dir);
+            AtomicWrites.publish(extracted, dir);
         } catch (IOException raced) {
             if (!Files.isDirectory(dir)) throw raced;
         }

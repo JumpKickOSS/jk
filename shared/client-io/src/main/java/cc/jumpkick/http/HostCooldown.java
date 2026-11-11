@@ -2,8 +2,8 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;

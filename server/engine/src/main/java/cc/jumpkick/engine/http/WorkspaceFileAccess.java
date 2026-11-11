@@ -2,11 +2,11 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.ProjectIds;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;

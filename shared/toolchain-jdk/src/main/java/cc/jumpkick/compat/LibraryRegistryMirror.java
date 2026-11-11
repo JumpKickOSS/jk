@@ -2,10 +2,10 @@
 package cc.jumpkick.compat;
 
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.repo.LibraryRegistryClient;
-import cc.jumpkick.util.JkDirs;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;

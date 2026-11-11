@@ -6,7 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.runtime.CacheInventoryOps;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import cc.jumpkick.wire.protocol.CacheInventoryRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;

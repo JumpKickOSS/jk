@@ -2,9 +2,9 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.ReleaseVerifier;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.version.Versions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

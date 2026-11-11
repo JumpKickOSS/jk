@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.util;
+package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIOException;
@@ -170,14 +170,14 @@ class AtomicWritesTest {
     }
 
     @Test
-    void publishDir_installs_a_tree_into_a_fresh_target(@TempDir Path dir) throws IOException {
+    void publish_installs_a_tree_into_a_fresh_target(@TempDir Path dir) throws IOException {
         Path staging = Files.createDirectory(dir.resolve(".staging"));
         Files.writeString(staging.resolve("top.txt"), "top");
         Files.createDirectories(staging.resolve("sub"));
         Files.writeString(staging.resolve("sub/nested.txt"), "nested");
 
         Path target = dir.resolve("published");
-        AtomicWrites.publishDir(staging, target);
+        AtomicWrites.publish(staging, target);
 
         assertThat(Files.readString(target.resolve("top.txt"))).isEqualTo("top");
         assertThat(Files.readString(target.resolve("sub/nested.txt"))).isEqualTo("nested");
@@ -185,7 +185,7 @@ class AtomicWritesTest {
     }
 
     @Test
-    void publishDir_refuses_to_clobber_an_existing_target(@TempDir Path dir) throws IOException {
+    void publish_refuses_to_clobber_an_existing_target(@TempDir Path dir) throws IOException {
         Path target = Files.createDirectory(dir.resolve("published"));
         Files.writeString(target.resolve("keep.txt"), "original");
 
@@ -193,7 +193,7 @@ class AtomicWritesTest {
         Files.writeString(staging.resolve("new.txt"), "intruder");
 
         // Never replaces: a pre-existing target throws, and its contents are left untouched.
-        assertThatIOException().isThrownBy(() -> AtomicWrites.publishDir(staging, target));
+        assertThatIOException().isThrownBy(() -> AtomicWrites.publish(staging, target));
         assertThat(Files.readString(target.resolve("keep.txt"))).isEqualTo("original");
         assertThat(Files.exists(target.resolve("new.txt"))).isFalse();
         assertThat(Files.exists(staging)).isTrue(); // staging survives so the caller can discard it
@@ -411,8 +411,8 @@ class AtomicWritesTest {
 
         // The cheap path must remain the cheap path: if replace ever delegated to replaceDurably,
         // every advisory write in the tree would start paying for durability nobody consumes.
-        String source = Files.readString(RepoRoot.dir(AtomicWritesTest.class, "shared/core")
-                .resolve("src/main/java/cc/jumpkick/util/AtomicWrites.java"));
+        String source = Files.readString(RepoRoot.dir(AtomicWritesTest.class, "shared/host")
+                .resolve("src/main/java/cc/jumpkick/host/AtomicWrites.java"));
         int replaceBody = source.indexOf("public static void replace(Path target, byte[] bytes)");
         // Bound at this method's own closing brace: replaceDurably sits between the two replace
         // overloads, so slicing to the next one would read its javadoc and always match.

@@ -2,9 +2,9 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.config.DiskGuard;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.giter8.Giter8Apply;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.host.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

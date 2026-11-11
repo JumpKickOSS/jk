@@ -2,17 +2,17 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.io.InputStream;

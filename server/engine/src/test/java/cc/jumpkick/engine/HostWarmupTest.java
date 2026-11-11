@@ -4,10 +4,10 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.testing.RepoRoot;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;

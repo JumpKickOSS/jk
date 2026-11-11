@@ -3,10 +3,10 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.config.ReferenceResolver;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoCredentialResolver;
-import cc.jumpkick.util.JkDirs;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;

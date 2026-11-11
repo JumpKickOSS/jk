@@ -2,12 +2,12 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.winhost.HostFacts;
 import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.winhost.SetupMemo;

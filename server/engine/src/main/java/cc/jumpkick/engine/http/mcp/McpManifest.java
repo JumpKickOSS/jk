@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.guard.eval.MutationCheck;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.library.LibraryCatalog;
@@ -10,7 +11,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.StableVersions;
-import cc.jumpkick.util.AtomicWrites;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
