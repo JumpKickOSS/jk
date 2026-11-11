@@ -457,7 +457,12 @@ too and their keys do not carry the machine's environment; set the value in `[te
 declare the name. The `[env]` table reaches every worker of the module; `[test] env` layers on top
 for test JVMs only. The declared names' values and both tables' values are part of the run-tests
 key, so a declared variable that changes between two builds runs the suite again, and one nothing
-declares cannot — [Test](test.md).
+declares cannot — [Test](test.md). A value taken from the environment enters the key as its
+SHA-256, never as text, so the key can travel to another machine. A declared name that reads as
+a credential — its name says `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
+`CREDENTIAL` — has its value masked as `***` in test output, errors and `jk results`, as a
+repository credential is. `jk run` launches the app from the shell itself and caches nothing, so
+there is no run key; it does check `require`.
 
 ```toml
 [env]
@@ -466,7 +471,10 @@ inherit = true   # the legacy build scripts read a dozen CI variables; listing t
 
 `inherit = true` hands the module's workers the whole environment of the shell running `jk`,
 secrets included, less what a shell changes per command (`PWD`, `_`, `SHLVL`, the terminal
-session); its suite reruns when any of the rest changes. Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
+session). Its suite is keyed on a digest of all the rest, less what differs between two terminals
+of one machine (window size, terminal, multiplexer and login session ids, the SSH connection), so
+it reruns whenever any other variable changes: an escape hatch that costs cache hits. Write the
+reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
 through `[env]` or `[test] env`. What JumpKick itself decides reads the shell running `jk`, every

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -138,8 +139,22 @@ public final class WorkerEnv {
     public static Map<String, String> declared(EnvConfig config, Path moduleDir, @Nullable Path target) {
         if (config.decls().isEmpty()) return Map.of();
         Function<String, @Nullable String> env = BuildEnv.forModule(moduleDir);
-        return TestEnvValues.resolve(
+        Map<String, String> resolved = TestEnvValues.resolve(
                 "[env]", config.decls(), moduleDir, target, new TestEnvValues.Mode.Launch(env::apply));
+        fileSecrets(moduleDir, config.declared(), resolved);
+        return resolved;
+    }
+
+    /**
+     * Files the value of every declared name that reads as a credential ({@link
+     * BuildEnv#looksSecret}) with the workspace's redactor, so a test that prints it, an error that
+     * quotes it and the journal show {@code ***} instead.
+     */
+    public static void fileSecrets(Path moduleDir, Iterable<String> declared, Map<String, String> resolved) {
+        for (String name : declared) {
+            String value = resolved.get(name);
+            if (value != null && BuildEnv.looksSecret(name)) ResolvedSecrets.recordFor(moduleDir, value);
+        }
     }
 
     /** This policy with {@code more} laid on top of what the fork already adds; later wins. */

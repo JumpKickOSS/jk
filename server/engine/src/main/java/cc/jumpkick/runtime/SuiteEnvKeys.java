@@ -49,10 +49,10 @@ final class SuiteEnvKeys {
             if (value != null) out.add("machine-env:" + name + "=" + value);
         }
         if (build.env().inherit()) {
-            // The whole environment reaches the suite: every value keys it, by digest.
-            Map<String, String> inherited = new TreeMap<>(BuildEnv.callerEnv());
-            inherited.putAll(BuildEnv.fromRequest());
-            out.add("inherited-env:" + Hashing.sha256Hex(inherited.toString()));
+            // The whole environment reaches the suite: every value keys it, by digest, less what
+            // differs between two terminals of one machine.
+            out.add("inherited-env:"
+                    + Hashing.sha256Hex(BuildEnv.inheritedFingerprintEnv().toString()));
         }
         // The runner that launches the suite and reads its outcome is part of every run.
         try {

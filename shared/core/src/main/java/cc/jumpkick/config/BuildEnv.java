@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -241,6 +242,65 @@ public final class BuildEnv {
 
     private static final Set<String> PER_INVOCATION =
             Set.of("_", "PWD", "OLDPWD", "SHLVL", "TERM_SESSION_ID", "WT_SESSION", "WINDOWID");
+
+    /**
+     * {@link #callerEnv()} as a suite that says {@code [env] inherit} is keyed on: less what differs
+     * between two terminals, two multiplexer panes or two logins on one machine — the session and
+     * window ids, the window size, the SSH connection's ports and terminal. Handed on, a test may
+     * still read them; keyed, they would rerun an inheriting suite on every new tab.
+     */
+    public static Map<String, String> inheritedFingerprintEnv() {
+        Map<String, String> out = new TreeMap<>(callerEnv());
+        out.putAll(fromRequest());
+        out.keySet().removeIf(BuildEnv::sessionChurn);
+        return Collections.unmodifiableMap(out);
+    }
+
+    /** True for a variable a terminal, multiplexer or remote login sets per session or window. */
+    static boolean sessionChurn(String name) {
+        if (SESSION_CHURN.contains(name)) return true;
+        for (String prefix : SESSION_CHURN_PREFIXES) {
+            if (name.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    private static final Set<String> SESSION_CHURN = Set.of(
+            "COLUMNS",
+            "LINES",
+            "ITERM_SESSION_ID",
+            "TMUX",
+            "TMUX_PANE",
+            "STY",
+            "WINDOW",
+            "KITTY_WINDOW_ID",
+            "KITTY_PID",
+            "ALACRITTY_WINDOW_ID",
+            "WEZTERM_PANE",
+            "SECURITYSESSIONID",
+            "SSH_CLIENT",
+            "SSH_CONNECTION",
+            "SSH_TTY",
+            "GPG_TTY",
+            "TERM_PROGRAM_VERSION");
+
+    private static final List<String> SESSION_CHURN_PREFIXES = List.of("VSCODE_GIT_", "Apple_PubSub_");
+
+    /**
+     * True when a variable a manifest declares reads as a credential by its name: one that says
+     * token, secret, key, password or credential. A declared variable is filed with the redactor
+     * on that evidence alone; nothing undeclared is guessed at.
+     */
+    public static boolean looksSecret(String name) {
+        String upper = name.toUpperCase(Locale.ROOT);
+        for (String word : SECRET_WORDS) {
+            if (upper.contains(word)) return true;
+        }
+        return false;
+    }
+
+    private static final List<String> SECRET_WORDS =
+            List.of("TOKEN", "SECRET", "KEY", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL");
 
     /**
      * {@code clientEnv} over the request's shell when one is bound, else over this process's own
