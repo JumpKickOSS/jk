@@ -155,12 +155,13 @@ in     = "clients/intellij/src/test/java/cc/jumpkick/idea/InstalledJk.java"
 reason = "the IntelliJ plugin is wire-only, with no edge to any workspace module, so AtomicWrites is not on its test classpath; the seed copy renames over a file no reader holds open"
 
 # G122. A virtual thread that loads a class or computes pins its carrier; a fresh engine preparing a
-# wide workspace on them deadlocked. The engine and the plan executor never use io(); the
-# repository layer's network fan-outs are the waiters it is for, each listed.
+# wide workspace on them deadlocked. The engine, the plan executor and the resolver's solves never
+# use io() or a virtual-thread executor of their own; the repository and resolver network fan-outs
+# are the waiters io() is for, each listed.
 [guards.engine-off-virtual-threads]
 kind       = "forbid"
-signatures = ["cc.jumpkick.run.JkThreads#io(**)"]
-scope      = ["server/engine", "shared/jk-api", "server/io"]
+signatures = ["cc.jumpkick.run.JkThreads#io(**)", "java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor(**)"]
+scope      = ["server/engine", "shared/jk-api", "server/io", "server/resolver"]
 owner      = "cc.jumpkick.repo.ArtifactFanOut"
 instead    = "JkThreads.cpu() for work that computes; JkThreads.platform() for a body that also waits on other work"
 why        = "a virtual thread that loads a class or computes pins its carrier, and with every carrier pinned the engine stops"
@@ -176,6 +177,18 @@ reason = "fetches the .sha256 and .sha1 sidecars beside the artifact download: a
 [[guards.engine-off-virtual-threads.allow]]
 in     = "cc.jumpkick.repo.EffectivePomBuilder"
 reason = "fetches parent and import POMs concurrently: a wait on the network per POM"
+
+[[guards.engine-off-virtual-threads.allow]]
+in     = "cc.jumpkick.resolver.CacheSync"
+reason = "downloads the lock's artifacts into the store: a wait on the network per artifact"
+
+[[guards.engine-off-virtual-threads.allow]]
+in     = "cc.jumpkick.resolver.ArtifactMaterializer"
+reason = "fetches the artifacts a lock names: a wait on the network per artifact"
+
+[[guards.engine-off-virtual-threads.allow]]
+in     = "cc.jumpkick.resolver.MavenPackageSource"
+reason = "prefetches version metadata ahead of the solve: a wait on the network per module"
 
 # G45. A blind walk discards the attributes it already read and re-resolves each path to ask again;
 # a ratchet, because two hundred sites each need their own read (directories, depth, ordering).

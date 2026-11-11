@@ -10,10 +10,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 /**
- * Runs the member solves of a lock's partition pass a few at a time. A solve is latency-bound on
- * POM fetches, so several overlap well; each is charged an estimate of the heap its graph holds,
+ * Runs the member solves of a lock's partition pass a few at a time. A solve waits on POM fetches,
+ * so several overlap well, and computes between them, so each runs on a platform thread of a pool
+ * no wider than its slots: a computing virtual thread pins its carrier, and on a small host the
+ * solves would hold every carrier the engine's request and job threads need. Each is charged an
+ * estimate of the heap its graph holds,
  * and one starts only while the charges in flight fit the heap the lock could spare when the pass
  * began. Solves start in the order given and their results come back in that order, so the lock
  * they assemble is the one a one-at-a-time pass writes. A failure is the first in that order.
@@ -75,7 +79,9 @@ final class MemberSolves {
     /** Every job's result, in order; the first job in order to fail throws, and the rest are cancelled. */
     <T> List<T> runAll(List<Job<T>> jobs) throws IOException, InterruptedException {
         List<Future<T>> futures = new ArrayList<>(jobs.size());
-        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+        ThreadFactory threads =
+                Thread.ofPlatform().daemon().name("jk-member-solve-", 0).factory();
+        try (ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(slots, jobs.size())), threads)) {
             for (int i = 0; i < jobs.size(); i++) {
                 int index = i;
                 Job<T> job = jobs.get(i);

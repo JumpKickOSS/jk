@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -37,6 +39,22 @@ class MemberSolvesTest {
         MemberSolves solves = new MemberSolves(3, 1024 * MIB);
         solves.runAll(gated(10, MIB, 3));
         assertThat(solves.peak()).isEqualTo(3);
+    }
+
+    /** A solve computes, so it holds a platform thread, and the pool is no wider than the slots. */
+    @Test
+    void solves_run_on_no_more_platform_threads_than_the_slots() throws Exception {
+        Set<Thread> ran = ConcurrentHashMap.newKeySet();
+        List<MemberSolves.Job<Integer>> jobs = new ArrayList<>();
+        for (MemberSolves.Job<Integer> job : gated(10, MIB, 3)) {
+            jobs.add(new MemberSolves.Job<>(job.bytes(), () -> {
+                ran.add(Thread.currentThread());
+                return job.task().call();
+            }));
+        }
+        new MemberSolves(3, 1024 * MIB).runAll(jobs);
+        assertThat(ran).as("threads the solves ran on").noneMatch(Thread::isVirtual);
+        assertThat(ran).as("threads the solves ran on").hasSizeLessThanOrEqualTo(3);
     }
 
     @Test
