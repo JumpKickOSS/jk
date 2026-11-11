@@ -35,6 +35,22 @@ you touch them.
 This is not a license to skip tests, leave a half-migrated tree, or
 ignore Done criteria. Break it *completely*.
 
+**A change that needs the new engine lands with it.** When the client,
+engine, workers or test runner must change together, change them
+together and reinstall: `jk snapshot -S && jk engine stop -A`, then run
+the tests and gates under the engine you just built. No stepping stone,
+no fallback, and never back a change out because the installed engine
+is older than the tree. Cache invalidation, a changed key, a changed
+default or an internal API change across callers is not a reason to
+defer a fix either.
+
+**A structural fix may land without a red race test.** When a change
+removes a hazard outright (an atomic write in place of a torn one, one
+render in place of two racing writers, an fsync that was missing) and no
+deterministic test can show the old race, land it with the tests that do
+exist and say so in the commit. A behavioural fix still needs a
+regression test that fails without it.
+
 Keep protocol **version numbers** at 1 until 1.0 (see Anti-goals).
 Change the shape in place — never mint a v2 and keep v1 alive.
 
