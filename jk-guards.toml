@@ -132,14 +132,27 @@ reason = "probes /usr/bin/setsid once at class load, behind Os.isWindows(); the 
 
 # G125. A file is moved over another in one place. Windows denies a replace while any handle has the
 # target open, whatever sharing it was opened with (78% of attempts against one looping reader);
-# AtomicWrites retries that denial, and a hand-rolled ATOMIC_MOVE fails the write instead.
+# AtomicWrites retries that denial, and a hand-rolled ATOMIC_MOVE fails the write instead. Read as
+# text so the test and fixture trees, which a module lane does not always compile, are held to it too.
 [guards.atomic-move-owner]
-kind       = "forbid"
-signatures = ["java.nio.file.StandardCopyOption#ATOMIC_MOVE"]
-owner      = "cc.jumpkick.host.AtomicWrites"
-fixture    = "server/guard/fixtures/atomic-move-owner"
-instead    = "AtomicWrites.replace / copy for content, moveInto to put a staged file or link over a target, publish to install a new file or tree"
-why        = "a hand-rolled atomic move skips the Windows retry, so a reader holding the target open fails the write"
+kind    = "text"
+files   = [
+  "**/src/main/java/**/*.java", "**/src/main/kotlin/**/*.kt",
+  "**/src/test/java/**/*.java", "**/src/test/kotlin/**/*.kt",
+  "**/src/fixtures/java/**/*.java", "**/src/e2e/java/**/*.java",
+]
+blank   = "comments+strings"
+pattern = '\bATOMIC_MOVE\b'
+owner   = ["shared/host/src/main/java/cc/jumpkick/host/AtomicWrites.java"]
+fixture = "server/guard/fixtures/atomic-move-owner"
+hit     = 'Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);'
+miss    = 'AtomicWrites.moveInto(tmp, target);'
+instead = "AtomicWrites.replace / copy for content, moveInto to put a staged file or link over a target, publish to install a new file or tree"
+why     = "a hand-rolled atomic move skips the Windows retry, so a reader holding the target open fails the write"
+
+[[guards.atomic-move-owner.allow]]
+in     = "clients/intellij/src/test/java/cc/jumpkick/idea/InstalledJk.java"
+reason = "the IntelliJ plugin is wire-only, with no edge to any workspace module, so AtomicWrites is not on its test classpath; the seed copy renames over a file no reader holds open"
 
 # G122. A virtual thread that loads a class or computes pins its carrier; a fresh engine preparing a
 # wide workspace on them deadlocked. The engine and the plan executor never use io(); the

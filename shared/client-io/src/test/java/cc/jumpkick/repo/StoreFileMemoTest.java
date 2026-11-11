@@ -3,10 +3,10 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AtomicWrites;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -37,7 +37,7 @@ class StoreFileMemoTest {
         // The store writes a sibling and renames it over the old name, as here: same size, a new file.
         Path next = Files.writeString(tmp.resolve("a.pom.part"), "two");
         Files.setLastModifiedTime(next, Files.getLastModifiedTime(file));
-        Files.move(next, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        AtomicWrites.moveInto(next, file);
 
         assertThat(memo.get(file, READ)).hasValue("two");
         assertThat(memo.reads()).isEqualTo(2);
