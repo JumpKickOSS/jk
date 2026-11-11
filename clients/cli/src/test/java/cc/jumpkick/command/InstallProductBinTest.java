@@ -24,7 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 class InstallProductBinTest {
 
     @Test
-    void the_built_binary_replaces_jk_and_jkx_and_parks_the_previous_client(@TempDir Path tmp) throws Exception {
+    void the_built_binary_replaces_jk_and_jkx_parking_the_previous_client_only_on_windows(@TempDir Path tmp)
+            throws Exception {
         Path bin = Files.createDirectories(tmp.resolve("bin"));
         String nativeName = BuildLayout.nativeExecutableFileName("jk");
         Files.writeString(bin.resolve(nativeName), "old client");
@@ -38,7 +39,13 @@ class InstallProductBinTest {
         assertThat(bin.resolve(nativeName)).hasContent("new client");
         String jkxName = Os.isWindows() ? "jkx.exe" : "jkx";
         assertThat(bin.resolve(jkxName)).hasContent("new client");
-        assertThat(bin.resolve(nativeName + ".old")).hasContent("old client");
+        // POSIX renames the new client straight over the live one; only Windows, which cannot
+        // replace a running executable, parks the previous client aside.
+        if (Os.isWindows()) {
+            assertThat(bin.resolve(nativeName + ".old")).hasContent("old client");
+        } else {
+            assertThat(bin.resolve(nativeName + ".old")).doesNotExist();
+        }
         // The bin entry is not an alias of target/: rebuilding there leaves the install alone.
         Files.writeString(built, "next build");
         assertThat(bin.resolve(nativeName)).hasContent("new client");
