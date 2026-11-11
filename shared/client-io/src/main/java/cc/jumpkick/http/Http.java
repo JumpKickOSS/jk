@@ -124,6 +124,9 @@ public final class Http {
     /** The {@code Authorization} a request for a URI carries, by its origin; none by default. */
     private final Function<URI, Optional<String>> authorization;
 
+    /** How long a read of a streamed body waits for its next byte before it fails. */
+    private final Duration bodyIdle;
+
     /**
      * A comma-separated list of hosts this process must not reach; a request to one fails at once
      * with {@link DeniedHostException}, redirects and the Central failover included. {@value
@@ -275,7 +278,8 @@ public final class Http {
                 deniedHosts,
                 requestTimeout,
                 true,
-                NO_AUTHORIZATION);
+                NO_AUTHORIZATION,
+                StalledBodyGuard.NO_BYTES);
     }
 
     private Http(
@@ -288,7 +292,8 @@ public final class Http {
             Set<String> deniedHosts,
             Duration requestTimeout,
             boolean retriesSilence,
-            Function<URI, Optional<String>> authorization) {
+            Function<URI, Optional<String>> authorization,
+            Duration bodyIdle) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
@@ -299,6 +304,7 @@ public final class Http {
         this.requestTimeout = requestTimeout;
         this.retriesSilence = retriesSilence;
         this.authorization = authorization;
+        this.bodyIdle = bodyIdle;
     }
 
     /**
@@ -317,7 +323,8 @@ public final class Http {
                 deniedHosts,
                 requestTimeout,
                 false,
-                authorization);
+                authorization,
+                bodyIdle);
     }
 
     /**
@@ -335,7 +342,8 @@ public final class Http {
                 deniedHosts,
                 requestTimeout,
                 retriesSilence,
-                Objects.requireNonNull(authorization, "authorization"));
+                Objects.requireNonNull(authorization, "authorization"),
+                bodyIdle);
     }
 
     /**
@@ -353,7 +361,27 @@ public final class Http {
                 deniedHosts,
                 timeout,
                 retriesSilence,
-                authorization);
+                authorization,
+                bodyIdle);
+    }
+
+    /**
+     * This client failing a streamed body's read after {@code idle} without a byte rather than
+     * {@link StalledBodyGuard#NO_BYTES}, so a test proves a stalled body in milliseconds.
+     */
+    public Http withBodyIdle(Duration idle) {
+        return new Http(
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                retriesSilence,
+                authorization,
+                idle);
     }
 
     /** The {@link #DENY_HOSTS_ENV} entry for every host but this one. */
@@ -429,8 +457,9 @@ public final class Http {
      * propagate to the caller (no resume).
      *
      * <p>{@link #REQUEST_TIMEOUT} bounds the wait for the response headers alone: the body streams
-     * for as long as the caller reads it, so a JDK archive of hundreds of megabytes is not cut off
-     * on a slow link, while a repository that accepts a POM request and never answers is.
+     * for as long as bytes keep coming, so a JDK archive of hundreds of megabytes is not cut off on
+     * a slow link, while a repository that accepts a POM request and never answers is. A read that
+     * waits {@link StalledBodyGuard#NO_BYTES} for its next byte fails.
      */
     public HttpResponse<InputStream> getStream(URI uri) throws IOException, InterruptedException {
         return getStream(uri, Map.of());
@@ -455,7 +484,7 @@ public final class Http {
         }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
         // Drain the streamed body before each retry so the connection can be reused.
-        return sendWithRetry("GET", uri, request, gzipAwareInputStream(), response -> {
+        return sendWithRetry("GET", uri, request, stallGuarded(gzipAwareInputStream(), uri, bodyIdle), response -> {
             try (var body = response.body()) {
                 body.transferTo(OutputStream.nullOutputStream());
             }
@@ -538,7 +567,8 @@ public final class Http {
                 deniedHosts,
                 requestTimeout,
                 false,
-                authorization);
+                authorization,
+                bodyIdle);
         return once.sendWithRetry("POST", uri, postRequest(uri, body, headers), gzipAwareByteArray(), null);
     }
 
@@ -965,6 +995,12 @@ public final class Http {
                 }
             });
         };
+    }
+
+    /** {@code handler}'s body read through a {@link StalledBodyGuard} for {@code uri}. */
+    private static BodyHandler<InputStream> stallGuarded(BodyHandler<InputStream> handler, URI uri, Duration idle) {
+        return responseInfo ->
+                BodySubscribers.mapping(handler.apply(responseInfo), in -> new StalledBodyGuard(in, uri, idle));
     }
 
     private static boolean isGzipped(HttpResponse.ResponseInfo info) {

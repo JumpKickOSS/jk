@@ -70,6 +70,12 @@ project package registry asked for Central's artifacts is the usual case. A repo
 stands in for is the exception: the mirror is the only route to it, so its silence stops the
 resolve.
 
+### Transfer limits
+
+A download that stops mid-body fails once 60 s pass with no bytes, naming the URL, rather than
+hanging the build; a repository artifact is then asked for again, up to three times in all. The
+same bound covers JDK, Android SDK and tool downloads.
+
 ### When Central refuses this host
 
 Maven Central refuses a host two ways, and both are sticky for hours: Sonatype's per-IP quota
@@ -90,7 +96,6 @@ from Central with a checksum note. A file the lock pins is verified against its 
 no checksum at all, so a cold-cache build from a lockfile asks Central for none of its artifacts.
 While the window is open the mirror's own checksums stand in for Central's, and the results say
 how many files were verified that way (`N files from central verified by the mirror's checksums only`).
-
 The window is a transport fact, not a repository: the lock records `central` at Central's own URL
 and is byte-identical to one written directly. The results say what happened, once per lock,
 under **Lock notes**:

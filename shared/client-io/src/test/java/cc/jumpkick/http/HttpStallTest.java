@@ -142,6 +142,59 @@ class HttpStallTest {
                 .isGreaterThan(timeout);
     }
 
+    /** A body that stops arriving fails the read that waits on it, naming the URL, instead of hanging. */
+    @Test
+    @Timeout(30)
+    void a_streamed_body_that_stops_arriving_fails_the_read() throws Exception {
+        byte[] head = "first bytes".getBytes(StandardCharsets.UTF_8);
+        server.createContext("/stalled/body.jar", exchange -> {
+            exchange.sendResponseHeaders(200, head.length + 100);
+            try (var out = exchange.getResponseBody()) {
+                out.write(head);
+                out.flush();
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Http http = new Http(Http.standardClient(), new Duration[0]).withBodyIdle(Duration.ofMillis(500));
+        URI uri = base.resolve("/stalled/body.jar");
+
+        HttpResponse<InputStream> response = http.getStream(uri);
+        try (InputStream in = response.body()) {
+            assertThat(in.readNBytes(head.length)).isEqualTo(head);
+            assertThatThrownBy(in::read)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining(uri.toString())
+                    .hasMessageContaining("no bytes")
+                    .hasMessageContaining("500 ms");
+        }
+        assertThat(Thread.currentThread().isInterrupted())
+                .as("the watchdog's interrupt ends with the read")
+                .isFalse();
+    }
+
+    /** Time the caller spends between reads is its own: only a read waiting on the server counts. */
+    @Test
+    @Timeout(30)
+    void a_slow_reader_is_not_a_stalled_body() throws Exception {
+        server.createContext("/whole/body.jar", exchange -> {
+            byte[] body = "abc".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (var out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        Http http = new Http(Http.standardClient(), new Duration[0]).withBodyIdle(Duration.ofMillis(200));
+
+        HttpResponse<InputStream> response = http.getStream(base.resolve("/whole/body.jar"));
+        try (InputStream in = response.body()) {
+            assertThat(in.read()).isEqualTo('a');
+            Thread.sleep(600);
+            assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("bc");
+        }
+    }
+
     /** Headers later than a sub-second timeout fail the request, and the message names the budget it had. */
     @Test
     @Timeout(30)
