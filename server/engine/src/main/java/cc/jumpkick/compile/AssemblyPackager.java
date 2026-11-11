@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -46,6 +47,10 @@ public final class AssemblyPackager {
     public Path packageAssembly(AssemblyRequest request) throws IOException {
         Files.createDirectories(request.outputJar().getParent());
         Manifest manifest = buildManifest(request);
+        // META-INF/versions/** is copied from the inputs, and read only under this attribute.
+        if (anyMultiRelease(request.dependencyJars())) {
+            manifest.getMainAttributes().put(new Attributes.Name("Multi-Release"), "true");
+        }
         DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
 
         try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
@@ -169,6 +174,7 @@ public final class AssemblyPackager {
             if (name.equals(HELIDON_MANIFEST)) return new LineUnion(HELIDON_MANIFEST_HEADER);
             if (name.equals(HELIDON_SERVICE_LOADER)) return new LineUnion(null);
             if (HELIDON_JSON_ARRAYS.contains(name)) return new JsonArrayConcatenation();
+            if (name.equals(Log4j2PluginCache.PATH)) return new Log4j2Plugins();
             return new Concatenation();
         }
     }
@@ -227,6 +233,21 @@ public final class AssemblyPackager {
         @Override
         public byte[] render() {
             return ("[" + String.join(",", elements) + "]").getBytes(StandardCharsets.UTF_8);
+        }
+    }
+
+    /** Log4j 2's binary plugin cache, its categories and entries unioned. */
+    private static final class Log4j2Plugins implements MergedFile {
+        private final Log4j2PluginCache cache = new Log4j2PluginCache();
+
+        @Override
+        public void add(byte[] data) throws IOException {
+            cache.add(data);
+        }
+
+        @Override
+        public byte[] render() {
+            return cache.render();
         }
     }
 
@@ -348,7 +369,12 @@ public final class AssemblyPackager {
     static boolean isMergeFile(String name) {
         if (name.startsWith("META-INF/services/") && !name.endsWith("/")) return true;
         return isPropertiesMergeFile(name)
-                || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports")
+                // Every Spring imports file is a line list each jar adds to, not only Boot's
+                // auto-configuration one; Akka, Pekko and Play defaults are HOCON, which merges
+                // files laid one after another; Log4j finds its plugins through one cache per jar.
+                || (name.startsWith("META-INF/spring/") && name.endsWith(".imports"))
+                || name.equals(REFERENCE_CONF)
+                || name.equals(Log4j2PluginCache.PATH)
                 || name.equals(HELIDON_MANIFEST)
                 || name.equals(HELIDON_SERVICE_LOADER)
                 || name.equals(HELIDON_SERIAL_CONFIG)
@@ -359,8 +385,12 @@ public final class AssemblyPackager {
     static boolean isPropertiesMergeFile(String name) {
         return name.equals("META-INF/spring.handlers")
                 || name.equals("META-INF/spring.schemas")
-                || name.equals("META-INF/spring.factories");
+                || name.equals("META-INF/spring.factories")
+                || name.equals("META-INF/spring/aot.factories");
     }
+
+    /** The HOCON defaults Typesafe Config reads from every jar at once. */
+    static final String REFERENCE_CONF = "reference.conf";
 
     /**
      * Signature blocks, JPMS module descriptors from deps, per-dependency Maven metadata, and other
@@ -384,6 +414,18 @@ public final class AssemblyPackager {
                 || upper.endsWith(".DSA")
                 || upper.endsWith(".EC")
                 || upper.startsWith("META-INF/SIG-");
+    }
+
+    private static boolean anyMultiRelease(List<Path> jars) throws IOException {
+        for (Path jar : jars) {
+            if (!Files.isRegularFile(jar)) continue;
+            try (JarFile jf = new JarFile(jar.toFile(), false)) {
+                Manifest m = jf.getManifest();
+                // The JDK reads the attribute this way: "true" in any case, anything else off.
+                if (m != null && Boolean.parseBoolean(m.getMainAttributes().getValue("Multi-Release"))) return true;
+            }
+        }
+        return false;
     }
 
     /** The same manifest a thin jar gets, in the same attribute order; see {@link JarPackager#manifest}. */
