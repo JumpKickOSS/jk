@@ -292,10 +292,8 @@ public final class GlobalConfig {
     private static Parsed parsed(Path file) {
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
         // No stamp is either "no file" (no config) or a stat failure on a file that is there, and
-        // only the second one is worth an uncached read. An unsettled stamp may not tell this
-        // version from the next, so it is read again too.
+        // only the second one is worth an uncached read.
         if (stamp == null) return Files.exists(file) ? read(file) : Parsed.ABSENT;
-        if (!stamp.settled()) return read(file);
         return CONFIG_CACHE.get(file.toAbsolutePath().toString(), stamp, () -> read(file));
     }
 

@@ -90,9 +90,6 @@ public final class TomlScan {
         Path key = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return List.of();
-        if (!stamp.settled()) {
-            return headOnly ? readHead(key) : read(key);
-        }
         List<String> hit =
                 headOnly ? HEADS.get(key, stamp, () -> readHead(key)) : LINES.get(key, stamp, () -> read(key));
         return hit == null ? List.of() : hit;

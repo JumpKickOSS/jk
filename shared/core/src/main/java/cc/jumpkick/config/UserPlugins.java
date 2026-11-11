@@ -48,7 +48,6 @@ public final class UserPlugins {
             CACHE.forget(abs); // absent or not stat-able: no memo, so a later recreate is not served stale
             return read(abs);
         }
-        if (!stamp.settled()) return read(abs);
         return CACHE.get(abs, stamp, () -> read(abs));
     }
 

@@ -325,7 +325,7 @@ public final class MavenSettings {
         Path user = userSettingsPath(env);
         Path global = globalSettingsPath(env);
         String key = user + "\n" + global;
-        List<StampedMemo.FileStamp> stamp = List.of(
+        Stamp stamp = new Stamp(
                 Objects.requireNonNullElse(StampedMemo.FileStamp.of(user), ABSENT),
                 Objects.requireNonNullElse(StampedMemo.FileStamp.of(global), ABSENT));
         return CURRENT.get(key, stamp, () -> Parsed.of(env)).current(env).warn();
@@ -393,7 +393,15 @@ public final class MavenSettings {
     /** The stamp of a file that is not there, so an absent file is a state and not a cache miss. */
     private static final StampedMemo.FileStamp ABSENT = new StampedMemo.FileStamp(new StatIdentity(-1, 0, 0, ""));
 
-    private static final StampedMemo<String, List<StampedMemo.FileStamp>, Parsed> CURRENT = StampedMemo.create();
+    /** Both settings files' stamps; settled only when both are. */
+    private record Stamp(StampedMemo.FileStamp user, StampedMemo.FileStamp global) implements StampedMemo.Settling {
+        @Override
+        public boolean settled() {
+            return user.settled() && global.settled();
+        }
+    }
+
+    private static final StampedMemo<String, Stamp, Parsed> CURRENT = StampedMemo.create();
 
     /**
      * The user settings file: the {@code jk.m2.settings} system property, then {@code

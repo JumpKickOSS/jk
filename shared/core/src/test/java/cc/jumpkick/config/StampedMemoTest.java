@@ -3,9 +3,11 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -74,6 +76,32 @@ class StampedMemoTest {
 
         assertThat(StampedMemo.FileStamp.of(dir.resolve("nope"))).isNull();
         assertThat(StampedMemo.FileStamp.of(null)).isNull();
+    }
+
+    @Test
+    void an_unsettled_file_stamp_is_computed_every_time_and_recorded_only_once_settled(@TempDir Path dir)
+            throws Exception {
+        Path f = dir.resolve("x.toml");
+        Files.writeString(f, "aaa");
+        StampedMemo.FileStamp stamp = Objects.requireNonNull(StampedMemo.FileStamp.of(f), "stamp of an existing file");
+        StampedMemo<Path, StampedMemo.FileStamp, String> memo = StampedMemo.create();
+        AtomicInteger computes = new AtomicInteger();
+
+        memo.get(f, stamp, () -> "v" + computes.incrementAndGet());
+        assertThat(memo.get(f, stamp, () -> "v" + computes.incrementAndGet())).isEqualTo("v2");
+        assertThat(memo.size())
+                .as("a write inside the settle window is never recorded")
+                .isZero();
+
+        try {
+            Settled.aheadForTests(Duration.ofMillis(Settled.WINDOW_MS + 1_000));
+            memo.get(f, stamp, () -> "v" + computes.incrementAndGet());
+            assertThat(memo.get(f, stamp, () -> "v" + computes.incrementAndGet()))
+                    .isEqualTo("v3");
+            assertThat(memo.size()).isEqualTo(1);
+        } finally {
+            Settled.aheadForTests(null);
+        }
     }
 
     // ---- the fold ----------------------------------------------------------

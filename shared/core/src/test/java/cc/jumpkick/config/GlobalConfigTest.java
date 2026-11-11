@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -434,15 +436,25 @@ class GlobalConfigTest {
     void the_network_table_is_read_once_per_version_of_the_file(@TempDir Path dir) throws IOException {
         Path file = write(dir, "[network]\nproxy = \"http://proxy.corp:3128\"\n");
 
-        NetworkConfig first = GlobalConfig.network(file);
+        NetworkConfig fresh = GlobalConfig.network(file);
         assertThat(GlobalConfig.network(file))
-                .as("an unchanged file is answered from the memo, not parsed again")
-                .isSameAs(first);
+                .as("a file written inside the settle window is parsed again")
+                .isNotSameAs(fresh);
 
-        Files.writeString(file, "[network]\nproxy = \"http://other-proxy.corp:3128\"\n");
-        assertThat(GlobalConfig.network(file).proxy())
-                .as("off a request, an edit is seen by the next ask")
-                .isEqualTo("http://other-proxy.corp:3128");
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            NetworkConfig first = GlobalConfig.network(file);
+            assertThat(GlobalConfig.network(file))
+                    .as("an unchanged settled file is answered from the memo, not parsed again")
+                    .isSameAs(first);
+
+            Files.writeString(file, "[network]\nproxy = \"http://other-proxy.corp:3128\"\n");
+            assertThat(GlobalConfig.network(file).proxy())
+                    .as("off a request, an edit is seen by the next ask")
+                    .isEqualTo("http://other-proxy.corp:3128");
+        } finally {
+            Settled.aheadForTests(null);
+        }
     }
 
     @Test

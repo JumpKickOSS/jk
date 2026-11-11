@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import cc.jumpkick.host.Settled;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -189,8 +191,13 @@ class SecretVaultTest {
         assertThat(sent).isEqualTo("from-client");
         assertThat(keychain.calls).isEmpty();
 
-        assertThat(vault.resolve(pointer, record)).contains("from-keychain");
-        assertThat(vault.resolve(pointer, record)).contains("from-keychain");
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            assertThat(vault.resolve(pointer, record)).contains("from-keychain");
+            assertThat(vault.resolve(pointer, record)).contains("from-keychain");
+        } finally {
+            Settled.aheadForTests(null);
+        }
         assertThat(keychain.calls).containsExactly("read repo/nexus");
     }
 

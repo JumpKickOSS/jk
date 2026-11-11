@@ -37,10 +37,6 @@ public final class FileContentStamp {
     public static @Nullable String of(Path file) {
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
         if (stamp == null || !Files.isRegularFile(file)) return null;
-        if (!stamp.settled()) {
-            // Unsettled: hash the bytes and do not record a stamp this write could still share.
-            return read(file);
-        }
         String hash = HASHES.get(file, stamp, () -> read(file));
         // Bytes that changed under the read are not left filed under the stat taken before it.
         if (!stamp.equals(StampedMemo.FileStamp.of(file))) HASHES.forget(file);

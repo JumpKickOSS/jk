@@ -87,9 +87,11 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
     /**
      * The value for {@code key}, computed at {@code stamp}. A stored entry is served only when its
      * stamp {@link Object#equals equals} this one; otherwise {@code compute} runs and its result
-     * replaces the entry.
+     * replaces the entry. A {@link Settling} stamp that is not yet settled vouches for nothing: the
+     * value is computed and neither served from nor recorded in the memo.
      */
     public V get(K key, S stamp, Supplier<V> compute) {
+        if (stamp instanceof Settling settling && !settling.settled()) return compute.get();
         Entry<S, V> hit = entries.get(key);
         if (hit != null && hit.stamp().equals(stamp)) return hit.value();
         V fresh = compute.get();
@@ -131,12 +133,22 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
     }
 
     /**
+     * A stamp read off a file's stat, which can only vouch for the bytes once the file has
+     * {@link Settled settled}: two writes inside one timestamp tick can share it.
+     */
+    public interface Settling {
+
+        /** Whether the files this stamp was taken from were written long enough ago to trust it. */
+        boolean settled();
+    }
+
+    /**
      * A file's {@link StatIdentity} as a staleness stamp — the rule for files jk only reads, where one
      * stat is cheaper than the parse it guards. Size, nanosecond mtime, change time and file id: a
      * coarser stamp can only ever serve a stale parse, and an mtime-preserving copy moves the change
      * time.
      */
-    public record FileStamp(StatIdentity identity) {
+    public record FileStamp(StatIdentity identity) implements Settling {
 
         /** The stamp for {@code file}, or {@code null} when it is null, absent, or cannot be stat'ed. */
         public static @Nullable FileStamp of(@Nullable Path file) {
@@ -152,6 +164,7 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
         }
 
         /** Whether the file was written long enough ago for this stamp to vouch for it: {@link Settled}. */
+        @Override
         public boolean settled() {
             return Settled.is(identity);
         }
