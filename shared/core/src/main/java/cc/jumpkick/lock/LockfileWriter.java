@@ -73,7 +73,7 @@ public final class LockfileWriter {
         // The identity comes from the lock in memory: reading a megabyte lock back through the TOML
         // parser to learn the id this method just wrote is what pushed the engine past its heap.
         try {
-            LockfileReader.clearCache();
+            LockfileReader.forget(file);
             TomlScan.forget(file);
             refreshMemoizedId(owner);
             ProjectIdentity identity = ProjectIdentity.resolve(owner, stamped);

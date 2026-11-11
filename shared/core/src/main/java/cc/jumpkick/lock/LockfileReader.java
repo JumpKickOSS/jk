@@ -77,6 +77,11 @@ public final class LockfileReader {
         PARSES.set(0);
     }
 
+    /** Drop {@code file}'s parsed lock, so its next read parses what was just written; other locks keep theirs. */
+    public static void forget(Path file) {
+        READ_CACHE.forget(file.toAbsolutePath().normalize());
+    }
+
     private static final AtomicLong PARSES = new AtomicLong();
 
     /** Test seam: lock texts parsed since the last {@link #clearCache()}. */
