@@ -75,6 +75,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.BUN, root -> overStoreBudget(root, CacheTree.BUN, "react@19.0.0@@@1/package.json", 2L << 30));
         m.put(CacheTree.YARN, root -> overStoreBudget(root, CacheTree.YARN, "cache/react-npm-19.0.0.zip", 2L << 30));
         m.put(CacheTree.KTS, root -> in(root, CacheTree.KTS, "dead.jar", "x", OLD));
+        m.put(CacheTree.TOOL_SCRIPTS, root -> subtree(root, CacheTree.TOOL_SCRIPTS, "deadkey", OLD));
         // Bookkeeping entries seed a file that must SURVIVE; see the dedicated test below.
         m.put(CacheTree.LAST_PRUNED, root -> null);
         m.put(CacheTree.PRUNE_LOCK, root -> null);
@@ -192,6 +193,20 @@ class CacheRetentionCoverageTest {
         Path used = in(root, CacheTree.KTS, "used.jar", "x", Duration.ofDays(29).toMillis());
         Path unused =
                 in(root, CacheTree.KTS, "unused.jar", "x", Duration.ofDays(31).toMillis());
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(used).exists();
+        assertThat(unused).doesNotExist();
+    }
+
+    /** A script run this month keeps its classes; one nobody has run for a month loses them. */
+    @Test
+    void a_compiled_tool_script_goes_only_after_a_month_unused(@TempDir Path root) throws IOException {
+        Path used = subtree(
+                root, CacheTree.TOOL_SCRIPTS, "usedkey", Duration.ofDays(29).toMillis());
+        Path unused = subtree(
+                root, CacheTree.TOOL_SCRIPTS, "unusedkey", Duration.ofDays(31).toMillis());
 
         CacheRetention.sweep(root, new Cas(root), Set.of(), false);
 

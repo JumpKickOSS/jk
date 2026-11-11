@@ -87,6 +87,8 @@ public enum CacheTree {
     YARN("yarn"),
     /** Compiled {@code .kts} build-logic scripts, one jar per script content hash. */
     KTS("kts"),
+    /** Compiled {@code jk tool run} scripts, one classes tree per script cache key. */
+    TOOL_SCRIPTS("tool-scripts"),
 
     /** Cadence bookkeeping for the prune itself: {@code <millis> <finalActionBytes>}. */
     LAST_PRUNED(".last-pruned", "constant-size cadence sentinel"),

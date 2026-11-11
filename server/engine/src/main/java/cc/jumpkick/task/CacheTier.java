@@ -99,6 +99,11 @@ public final class CacheTier {
             // mtime is a use clock: a script nobody has run for a month goes, and costs one recompile.
             case KTS -> Bound.files(Duration.ofDays(30), Bound.countCap(256));
 
+            // One classes tree per script key, its `.used` stamped on every run, so the newest mtime
+            // in a tree is its last use: a script nobody has run for a month goes, and costs one
+            // recompile.
+            case TOOL_SCRIPTS -> Bound.subtrees(Duration.ofDays(30), Bound.none());
+
             // Bookkeeping, not cache: the reason is CacheTree's, because it is the same fact that
             // keeps `jk cache nuke` off these entries.
             case LAST_PRUNED, PRUNE_LOCK, STATUS_USAGE, CENTRAL_RATE_LIMITED -> Bound.unbounded(tree.bookkeeping());

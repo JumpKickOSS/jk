@@ -236,13 +236,7 @@ final class ScriptRunner {
         return EngineClient.runScriptPrepare(
                 EnginePaths.current(),
                 new EngineRequests.ScriptPrepareRequest(
-                        mode,
-                        WorkingDirectory.resolve(file),
-                        cacheDir(),
-                        stateDir(),
-                        repoUrl,
-                        forceRecompile,
-                        extraDeps),
+                        mode, WorkingDirectory.resolve(file), cacheDir(), repoUrl, forceRecompile, extraDeps),
                 steps -> BuildPlanConsole.chooseConsoleListener("script", steps, consoleMode));
     }
 

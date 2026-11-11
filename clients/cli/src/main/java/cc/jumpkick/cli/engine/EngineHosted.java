@@ -284,7 +284,6 @@ final class EngineHosted {
                                 req.mode(),
                                 req.script().toString(),
                                 req.cache().toString(),
-                                req.stateDir() != null ? req.stateDir().toString() : null,
                                 req.repoUrl() != null ? req.repoUrl().toString() : null,
                                 req.forceRecompile(),
                                 req.with())

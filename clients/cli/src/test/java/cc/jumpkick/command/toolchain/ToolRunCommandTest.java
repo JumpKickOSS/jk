@@ -63,7 +63,7 @@ class ToolRunCommandTest {
         assertThat(exit).isEqualTo(0);
 
         // Cache dir was populated.
-        Path scriptCache = tempDir.resolve("home/script-cache");
+        Path scriptCache = tempDir.resolve("home/cache/tool-scripts");
         assertThat(scriptCache).exists();
         assertThat(Files.list(scriptCache).findAny()).isPresent();
     }
@@ -556,7 +556,7 @@ class ToolRunCommandTest {
         assertThat(firstExit).isEqualTo(0);
 
         // Find the cache directory created by the first run.
-        Path scriptCache = tempDir.resolve("home/script-cache");
+        Path scriptCache = tempDir.resolve("home/cache/tool-scripts");
         Path hashDir = Files.list(scriptCache).findFirst().orElseThrow();
         Path classFile = hashDir.resolve("classes/Cached.class");
         // Backdate the class file a clear minute, so ANY recompile moves its mtime. The
@@ -593,7 +593,7 @@ class ToolRunCommandTest {
                 "--state-dir",
                 tempDir.resolve("home").toString(),
                 script.toString());
-        Path scriptCache = tempDir.resolve("home/script-cache");
+        Path scriptCache = tempDir.resolve("home/cache/tool-scripts");
         Path classFile = Files.list(scriptCache).findFirst().orElseThrow().resolve("classes/Forced.class");
         long firstMtime = backdate(classFile);
 

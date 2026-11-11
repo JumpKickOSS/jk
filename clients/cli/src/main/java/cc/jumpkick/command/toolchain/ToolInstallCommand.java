@@ -475,7 +475,7 @@ public final class ToolInstallCommand implements CliCommand {
             prep = EngineClient.runScriptPrepare(
                     EnginePaths.current(),
                     new EngineRequests.ScriptPrepareRequest(
-                            mode, WorkingDirectory.resolve(file), cacheDir, stateDir, repoUrl, false, with),
+                            mode, WorkingDirectory.resolve(file), cacheDir, repoUrl, false, with),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, consoleMode));
         } catch (IOException e) {
             CommandWedge.printFail("Tool", e.getMessage());

@@ -13,7 +13,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -85,34 +84,30 @@ public final class ScriptPlans {
         return plan.get(CLASSPATH).orElse(List.of());
     }
 
-    /** {@code classes/} for compiled output, under the state dir, keyed by the source bytes' hash. */
-    public static Path classesDirFor(Path stateDir, byte[] sourceBytes) {
-        return stateDir.resolve("script-cache")
-                .resolve(Hashing.sha256Hex(sourceBytes))
-                .resolve("classes");
+    /**
+     * {@code classes/} for a script's compiled output: one {@link CacheTree#TOOL_SCRIPTS} entry per
+     * {@link ScriptCacheKey}, collected once nothing has used it for 30 days.
+     */
+    static Path classesDirFor(Path cacheDir, String key) {
+        return CacheTree.TOOL_SCRIPTS.under(cacheDir).resolve(key).resolve("classes");
     }
 
     // --- .java -----------------------------------------------------------
 
     /** {@code parse-script → resolve-deps → compile-java} for a {@code .java} script. */
-    public static BuildPlan javaScriptBuildPlan(
-            Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile) throws IOException {
-        return javaScriptBuildPlan(script, cacheDir, stateDir, repoUrl, forceRecompile, List.of());
+    public static BuildPlan javaScriptBuildPlan(Path script, Path cacheDir, URI repoUrl, boolean forceRecompile)
+            throws IOException {
+        return javaScriptBuildPlan(script, cacheDir, repoUrl, forceRecompile, List.of());
     }
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
     public static BuildPlan javaScriptBuildPlan(
-            Path script,
-            Path cacheDir,
-            Path stateDir,
-            @Nullable URI repoUrl,
-            boolean forceRecompile,
-            List<Dependency> extraDeps)
+            Path script, Path cacheDir, @Nullable URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
             throws IOException {
         byte[] bytes = Files.readAllBytes(script);
         ScriptHeader header =
                 withExtras(ScriptHeaderParser.parse(new String(bytes, StandardCharsets.UTF_8)), extraDeps);
-        Path classesDir = classesDirFor(stateDir, bytes);
+        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps));
         String mainClass = header.main() != null ? header.main() : simpleMainClassName(script, ".java");
 
         Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
@@ -124,6 +119,7 @@ public final class ScriptPlans {
                     ctx.put(MAIN_CLASS, mainClass);
                     ctx.put(CLASSES_DIR, classesDir);
                     Files.createDirectories(cacheDir);
+                    ScriptCacheKey.stampUse(classesDir);
                     ctx.progress(1);
                 })
                 .build();
@@ -212,25 +208,20 @@ public final class ScriptPlans {
     // --- .kt -------------------------------------------------------------
 
     /** {@code parse-script → (resolve-deps ∥ resolve-kotlinc) → compile-kt} for a {@code .kt} script. */
-    public static BuildPlan kotlinScriptBuildPlan(
-            Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile) throws IOException {
-        return kotlinScriptBuildPlan(script, cacheDir, stateDir, repoUrl, forceRecompile, List.of());
+    public static BuildPlan kotlinScriptBuildPlan(Path script, Path cacheDir, URI repoUrl, boolean forceRecompile)
+            throws IOException {
+        return kotlinScriptBuildPlan(script, cacheDir, repoUrl, forceRecompile, List.of());
     }
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
     public static BuildPlan kotlinScriptBuildPlan(
-            Path script,
-            Path cacheDir,
-            Path stateDir,
-            @Nullable URI repoUrl,
-            boolean forceRecompile,
-            List<Dependency> extraDeps)
+            Path script, Path cacheDir, @Nullable URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
             throws IOException {
         byte[] bytes = Files.readAllBytes(script);
         // parseKotlin: // directives + @file:DependsOn/@file:Repository annotations.
         ScriptHeader header =
                 withExtras(ScriptHeaderParser.parseKotlin(new String(bytes, StandardCharsets.UTF_8)), extraDeps);
-        Path classesDir = classesDirFor(stateDir, bytes);
+        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps));
         String mainClass = header.main() != null ? header.main() : kotlinMainClassName(script);
 
         Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
@@ -242,6 +233,7 @@ public final class ScriptPlans {
                     ctx.put(MAIN_CLASS, mainClass);
                     ctx.put(CLASSES_DIR, classesDir);
                     Files.createDirectories(cacheDir);
+                    ScriptCacheKey.stampUse(classesDir);
                     ctx.progress(1);
                 })
                 .build();

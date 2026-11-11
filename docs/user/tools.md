@@ -45,6 +45,11 @@ force the catalog's. Asking for a version (`name@selector`), or passing `--with`
 is a request the install did not record, so those resolve fresh instead of using the
 installed pin.
 
+A `.java` or `.kt` script compiles once and runs from its cached classes under
+`$JK_CACHE_DIR/tool-scripts/` until the script, a `//SOURCES` file it names, its `--with`
+dependencies or the JDK that compiles it changes; `--force` compiles it again. Classes no run has
+used for 30 days are removed.
+
 `jk install g:a:v` outside a project is the same jkx-style install (coordinate on PATH).
 Trust gates stay on the CLI — MCP `install action=list` shows installed tools but does
 not perform tool installs.

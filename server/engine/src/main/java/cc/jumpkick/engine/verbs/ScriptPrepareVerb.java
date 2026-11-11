@@ -4,7 +4,6 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -57,8 +56,6 @@ public final class ScriptPrepareVerb implements HostedVerb {
                 String mode = String.valueOf(req.mode());
                 Path script = Path.of(req.script());
                 Path cache = Path.of(req.cache());
-                String stateDirStr = req.stateDir();
-                Path stateDir = stateDirStr != null ? Path.of(stateDirStr) : JkDirs.state();
                 URI repoUrl = req.repoUrl() == null ? null : URI.create(req.repoUrl());
                 boolean forceRecompile = req.forceRecompile();
                 Files.createDirectories(cache);
@@ -73,11 +70,9 @@ public final class ScriptPrepareVerb implements HostedVerb {
                 BuildPlan plan =
                         switch (mode) {
                             case "java" ->
-                                ScriptPlans.javaScriptBuildPlan(
-                                        script, cache, stateDir, repoUrl, forceRecompile, extraDeps);
+                                ScriptPlans.javaScriptBuildPlan(script, cache, repoUrl, forceRecompile, extraDeps);
                             case "kt" ->
-                                ScriptPlans.kotlinScriptBuildPlan(
-                                        script, cache, stateDir, repoUrl, forceRecompile, extraDeps);
+                                ScriptPlans.kotlinScriptBuildPlan(script, cache, repoUrl, forceRecompile, extraDeps);
                             case "kts" -> ScriptPlans.ktsScriptBuildPlan(script, cache, repoUrl, extraDeps);
                             case "jar" -> ScriptPlans.jarBuildPlan(script, cache, repoUrl);
                             default -> throw new IllegalArgumentException("unknown script mode: " + mode);

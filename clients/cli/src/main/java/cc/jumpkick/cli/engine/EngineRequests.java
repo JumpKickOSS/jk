@@ -381,20 +381,14 @@ public final class EngineRequests {
 
     /**
      * Everything an engine-hosted script/jar preparation needs ({@code jk tool run <file>}).
-     * {@code mode} = {@code java}/{@code kt}/{@code kts}/{@code jar}; {@code stateDir}/{@code
-     * repoUrl} may be {@code null} (defaults).
+     * {@code mode} = {@code java}/{@code kt}/{@code kts}/{@code jar}; {@code repoUrl} may be
+     * {@code null} (the default repositories).
      */
     public record ScriptPrepareRequest(
-            String mode,
-            Path script,
-            Path cache,
-            Path stateDir,
-            @Nullable URI repoUrl,
-            boolean forceRecompile,
-            List<String> with) {
+            String mode, Path script, Path cache, @Nullable URI repoUrl, boolean forceRecompile, List<String> with) {
         public ScriptPrepareRequest(
-                String mode, Path script, Path cache, Path stateDir, @Nullable URI repoUrl, boolean forceRecompile) {
-            this(mode, script, cache, stateDir, repoUrl, forceRecompile, List.of());
+                String mode, Path script, Path cache, @Nullable URI repoUrl, boolean forceRecompile) {
+            this(mode, script, cache, repoUrl, forceRecompile, List.of());
         }
     }
 
