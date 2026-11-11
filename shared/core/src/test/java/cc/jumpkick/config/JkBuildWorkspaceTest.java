@@ -107,6 +107,33 @@ class JkBuildWorkspaceTest {
         assertThat(modules).containsKey(tempDir.resolve("libs/a"));
     }
 
+    /** A loaded member and a resolved parse of it agree on profiles: one declared only at the root resolves for both. */
+    @Test
+    void workspace_loader_members_inherit_the_roots_profiles_as_the_resolved_parse_does(@TempDir Path tempDir)
+            throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "root"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = ["libs/a"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+                """);
+        Files.createDirectories(tempDir.resolve("libs/a"));
+        Files.writeString(tempDir.resolve("libs/a/jk.toml"), "name = \"a\"\n");
+
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        JkBuild loaded = Objects.requireNonNull(
+                WorkspaceLoader.loadModules(tempDir, root).get(tempDir.resolve("libs/a")));
+        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("libs/a/jk.toml"));
+
+        assertThat(loaded.profiles().byName()).containsKey("integration");
+        assertThat(loaded.profiles()).isEqualTo(parsed.profiles());
+    }
+
     @Test
     void workspace_loader_hands_members_the_roots_image_registry_facts(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """

@@ -194,7 +194,12 @@ public final class WorkspaceLoader {
             throw new JkBuildParseException(
                     "nested workspace: module `" + module + "` has its own [workspace]; remove it");
         }
-        JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
+        // The same inheritance the resolved parse applies (WorkspaceResolve), so a graph built from
+        // these members and one rebuilt from its memo carry one shape: a profile declared only at
+        // the root resolves for every member either way.
+        JkBuild member = inheritImage(
+                inheritPublish(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root), root, moduleDir);
+        member = JkBuildParser.reapplyPlatformContributions(moduleDir, member);
         NodeShape.check(member, moduleDir);
         PluginJavaFloor.check(member, moduleDir);
         return new Member(module, moduleDir, member);
