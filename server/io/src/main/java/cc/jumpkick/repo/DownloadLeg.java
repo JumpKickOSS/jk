@@ -10,6 +10,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.TransferBoard;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -90,6 +91,17 @@ final class DownloadLeg {
     /** Authenticate every later request with {@code fresh}. */
     void credential(RepoCredential fresh) {
         this.credential = Objects.requireNonNull(fresh, "fresh");
+    }
+
+    /**
+     * The credential a request for {@code uri} carries: this repository's on its own origin, none on
+     * another server (Central's mirror), which never sees a credential that was not issued for it.
+     * A URL naming no server (an object store's, a {@code file:} tree's) keeps this repository's.
+     */
+    RepoCredential credentialFor(URI uri) {
+        boolean elsewhere =
+                uri.getHost() != null && baseUrl.getHost() != null && !RepositorySpec.sameOrigin(baseUrl, uri);
+        return elsewhere ? RepoCredential.ANONYMOUS : credential;
     }
 
     /**
@@ -217,7 +229,7 @@ final class DownloadLeg {
     private Streamed stream(Coordinate coord, String relativePath, URI uri, Path tmp, @Nullable Vouch vouch)
             throws IOException, InterruptedException {
         // The sidecars travel beside the body, so the check costs no round trip of its own.
-        ChecksumSidecars sidecars = vouch != null ? vouch.start(transport, credential) : null;
+        ChecksumSidecars sidecars = vouch != null ? vouch.start(transport, credentialFor(vouch.artifact())) : null;
         MessageDigest digest = Hashing.newSha256();
         long size;
         TransferBoard board = SessionContext.current().io().transfers();
@@ -226,7 +238,7 @@ final class DownloadLeg {
                 artifactFile(coord, relativePath) ? board.openArtifact(label) : board.open(label);
         try {
             RepoTransport.Body body = transport
-                    .fetchBody(uri, credential)
+                    .fetchBody(uri, credentialFor(uri))
                     .orElseThrow(() -> new MavenRepo.ArtifactNotFoundException("not found in " + name + ": " + uri));
             transfer.started(body.length());
             try (InputStream in = body.in();
@@ -398,7 +410,7 @@ final class DownloadLeg {
             MavenRepo.Leg leg,
             boolean requirePublished)
             throws IOException, InterruptedException {
-        ChecksumSidecars sidecars = vouch.start(transport, credential);
+        ChecksumSidecars sidecars = vouch.start(transport, credentialFor(vouch.artifact()));
         Optional<ChecksumSidecars.Published> published;
         try {
             published = sidecars.strongest();

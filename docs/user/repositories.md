@@ -96,6 +96,7 @@ from Central with a checksum note. A file the lock pins is verified against its 
 no checksum at all, so a cold-cache build from a lockfile asks Central for none of its artifacts.
 While the window is open the mirror's own checksums stand in for Central's, and the results say
 how many files were verified that way (`N files from central verified by the mirror's checksums only`).
+A credential configured for Central goes to Central alone: the mirror is always asked anonymously.
 The window is a transport fact, not a repository: the lock records `central` at Central's own URL
 and is byte-identical to one written directly. The results say what happened, once per lock,
 under **Lock notes**:

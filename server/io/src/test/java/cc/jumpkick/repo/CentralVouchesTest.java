@@ -168,6 +168,32 @@ class CentralVouchesTest {
     }
 
     @Test
+    void a_credential_for_central_goes_to_central_alone(@TempDir Path tmp) throws Exception {
+        publishJar(JAR_BYTES, JAR_BYTES);
+        RepoCredential token = new RepoCredential.Bearer("central-token");
+
+        repo(tmp, CentralMirror.isolated(tmp.resolve("cache"), true), token).fetchArtifact(WIDGET);
+
+        assertThat(transport.credentials)
+                .containsEntry(MIRROR + JAR, RepoCredential.ANONYMOUS)
+                .containsEntry(CENTRAL + JAR + ".sha1", token);
+    }
+
+    @Test
+    void while_central_refuses_its_credential_goes_nowhere(@TempDir Path tmp) throws Exception {
+        publishJar(JAR_BYTES, JAR_BYTES);
+        transport.publish(MIRROR + JAR + ".sha1", sha1(JAR_BYTES));
+        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
+        window.noteRateLimited();
+
+        repo(tmp, window, new RepoCredential.Bearer("central-token")).fetchArtifact(WIDGET);
+
+        assertThat(transport.credentials)
+                .containsOnlyKeys(MIRROR + JAR, MIRROR + JAR + ".sha1")
+                .allSatisfy((url, credential) -> assertThat(credential).isEqualTo(RepoCredential.ANONYMOUS));
+    }
+
+    @Test
     void metadata_stays_on_central(@TempDir Path tmp) throws Exception {
         transport.publish(CENTRAL + METADATA, "<metadata/>".getBytes(StandardCharsets.UTF_8));
 
@@ -234,12 +260,16 @@ class CentralVouchesTest {
     }
 
     private MavenRepo repo(Path tmp, CentralMirror window) {
+        return repo(tmp, window, RepoCredential.ANONYMOUS);
+    }
+
+    private MavenRepo repo(Path tmp, CentralMirror window, RepoCredential credential) {
         return MavenRepo.overTransport(
                         "central",
                         CENTRAL,
                         transport,
                         new Cas(tmp.resolve("cas")),
-                        RepoCredential.ANONYMOUS,
+                        credential,
                         null,
                         false,
                         false,
@@ -255,6 +285,7 @@ class CentralVouchesTest {
     private static final class FakeTransport implements RepoTransport {
         private final Map<String, byte[]> files = new ConcurrentHashMap<>();
         final List<String> requests = new CopyOnWriteArrayList<>();
+        final Map<String, RepoCredential> credentials = new ConcurrentHashMap<>();
 
         void publish(String url, byte[] body) {
             files.put(url, body);
@@ -263,6 +294,7 @@ class CentralVouchesTest {
         @Override
         public Optional<byte[]> fetch(URI uri, RepoCredential credential) {
             requests.add(uri.toString());
+            credentials.put(uri.toString(), credential);
             return Optional.ofNullable(files.get(uri.toString()));
         }
 
