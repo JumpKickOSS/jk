@@ -76,7 +76,14 @@ public record In(Kind kind, @Nullable String step) {
          * its key carries the goal, so a full build never restores a recompile's output. A step
          * that does not declare it is keyed and run the same under either goal.
          */
-        RECOMPILE
+        RECOMPILE,
+        /**
+         * The module's configured source roots: its layout's main roots and {@code [build]
+         * extra-src}, and the default suite's test roots and {@code [test] extra-src}, those that
+         * exist. For a step that hands a tool the sources the classes came from; the engine
+         * fingerprints each root's content.
+         */
+        SOURCE_ROOTS
     }
 
     public In {
@@ -149,6 +156,14 @@ public record In(Kind kind, @Nullable String step) {
     /** The module's routed remote repositories — read in the body via {@code exec.repositories()}. */
     public static In repositories() {
         return new In(Kind.REPOSITORIES, null);
+    }
+
+    /**
+     * The module's configured source roots — read in the body via {@code exec.sourceRoots()} and
+     * {@code exec.testSourceRoots()}.
+     */
+    public static In sourceRoots() {
+        return new In(Kind.SOURCE_ROOTS, null);
     }
 
     /**

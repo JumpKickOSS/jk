@@ -68,10 +68,9 @@ final class HelidonBinding {
         List<Path> classpath = new ArrayList<>();
         classpath.add(out);
         classpath.addAll(exec.runtimeClasspath());
-        Path module = exec.moduleDir();
         List<String> args = new ArrayList<>(List.of("--scope", "production"));
-        args.addAll(sourceRoots("--main-source-root", module.resolve("src/main/java")));
-        args.addAll(sourceRoots("--source-root", module.resolve("src/main/java")));
+        args.addAll(sourceRootArgs("--main-source-root", exec.sourceRoots()));
+        args.addAll(sourceRootArgs("--source-root", exec.sourceRoots()));
         fork(exec, settings, binding, classpath, out, exec.outputDir(HelidonPlugin.GENERATED), args);
     }
 
@@ -91,10 +90,9 @@ final class HelidonBinding {
             if (jar != null) classpath.add(jar);
         }
         classpath.add(exec.classesDir());
-        Path module = exec.moduleDir();
         List<String> args = new ArrayList<>(List.of("--scope", "test", "--binding-class", "TestApplicationBinding"));
-        args.addAll(sourceRoots("--main-source-root", module.resolve("src/main/java")));
-        args.addAll(sourceRoots("--source-root", module.resolve("src/test/java")));
+        args.addAll(sourceRootArgs("--main-source-root", exec.sourceRoots()));
+        args.addAll(sourceRootArgs("--source-root", exec.testSourceRoots()));
         fork(exec, settings, true, List.copyOf(classpath), out, exec.outputDir(HelidonPlugin.TEST_GENERATED), args);
         // The generator restates the scope's registry file at the test classes' own location with
         // no services (it gathers no descriptors of its own); beside the test classes it would only
@@ -233,8 +231,11 @@ final class HelidonBinding {
         return -1;
     }
 
-    private static List<String> sourceRoots(String flag, Path root) {
-        return Files.isDirectory(root) ? List.of(flag, root.toString()) : List.of();
+    /** {@code flag <root>} for each of the module's configured roots, in order. */
+    static List<String> sourceRootArgs(String flag, List<Path> roots) {
+        List<String> args = new ArrayList<>();
+        for (Path root : roots) args.addAll(List.of(flag, root.toString()));
+        return args;
     }
 
     /** The fetched tool as a classpath: the jar itself, or every jar of its materialized closure. */

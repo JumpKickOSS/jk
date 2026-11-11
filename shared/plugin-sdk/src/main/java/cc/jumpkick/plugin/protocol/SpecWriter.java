@@ -223,6 +223,26 @@ public final class SpecWriter {
     }
 
     /**
+     * One of the module's configured source roots, for a step that declared {@code
+     * In.sourceRoots()}: {@code test} false for a main root, true for a test root.
+     */
+    public SpecWriter sourceRoots(List<Path> main, List<Path> test) {
+        lines.add(JsonFields.object().string(PluginProtocol.T, "source-roots").finish());
+        for (Path dir : main) sourceRoot(dir, false);
+        for (Path dir : test) sourceRoot(dir, true);
+        return this;
+    }
+
+    private SpecWriter sourceRoot(Path dir, boolean test) {
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "source-root")
+                .string("dir", String.valueOf(dir))
+                .bool("test", test)
+                .finish());
+        return this;
+    }
+
+    /**
      * The build is a recompile — the compile goal alone, which is what {@code jk compile} and
      * {@code jk dev}'s rebuild on change run — so a step may take a cheaper path whose output still
      * runs. Written only for a recompile.

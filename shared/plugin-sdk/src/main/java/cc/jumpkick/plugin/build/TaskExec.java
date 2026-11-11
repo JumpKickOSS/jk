@@ -43,6 +43,19 @@ public interface TaskExec {
         throw new IllegalStateException("no test classes were handed to this step — declare In.testClasses()");
     }
 
+    /**
+     * The module's configured main source roots that exist — {@link In#sourceRoots()}. A step that
+     * did not declare the input has none to read.
+     */
+    default List<Path> sourceRoots() {
+        throw new IllegalStateException("no source roots were handed to this step — declare In.sourceRoots()");
+    }
+
+    /** The module's configured test source roots that exist — {@link In#sourceRoots()}. */
+    default List<Path> testSourceRoots() {
+        throw new IllegalStateException("no source roots were handed to this step — declare In.sourceRoots()");
+    }
+
     /** The resolved production RUNTIME classpath — {@link In#runtimeClasspath()}. */
     List<Path> runtimeClasspath();
 

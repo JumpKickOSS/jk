@@ -263,6 +263,9 @@ public final class PlannerPlugin {
         }
         // Told only to a step that declared it, so no other step's key moves with the goal.
         if (src.recompile() && step.inputs().contains(In.recompile().wireName())) specWriter.recompile();
+        if (step.inputs().contains(In.sourceRoots().wireName())) {
+            specWriter.sourceRoots(src.sourceRoots().main(), src.sourceRoots().test());
+        }
         for (var tool : toolExtras.entrySet()) {
             specWriter.extra(tool.getKey(), tool.getValue());
         }
@@ -305,7 +308,9 @@ public final class PlannerPlugin {
             /** The routed remotes of a declared {@code repositories} input ({@link PluginRepositories}). */
             PluginRepositories repositories,
             /** The build is the compile goal alone: a declared {@code recompile} input's value. */
-            boolean recompile) {
+            boolean recompile,
+            /** The module's configured source roots, when a {@code source-roots} input is declared. */
+            PluginSourceRoots sourceRoots) {
 
         /** The sources of a full build (every packager's, and a step's outside a recompile). */
         InputSources(
@@ -328,7 +333,8 @@ public final class PlannerPlugin {
                     moduleDir,
                     siblingFiles,
                     repositories,
-                    false);
+                    false,
+                    PluginSourceRoots.NONE);
         }
     }
 
@@ -396,6 +402,13 @@ public final class PlannerPlugin {
                 case REPOSITORIES ->
                     tokens.add("repositories:" + src.repositories().token());
                 case RECOMPILE -> tokens.add("recompile:" + src.recompile());
+                case SOURCE_ROOTS -> {
+                    // Which roots, in order, and what each holds: a moved or edited source re-runs.
+                    List<String> roots = new ArrayList<>();
+                    for (Path dir : src.sourceRoots().main()) roots.add("main=" + ClasspathFingerprint.entry(dir));
+                    for (Path dir : src.sourceRoots().test()) roots.add("test=" + ClasspathFingerprint.entry(dir));
+                    tokens.add("source-roots:" + (roots.isEmpty() ? "none" : String.join(",", roots)));
+                }
                 case SIBLING_PROJECT_FILES -> {
                     // Include order is part of the artifact (the first root to answer an import
                     // wins), so the token is the ordered join, not a sorted set.
@@ -620,7 +633,8 @@ public final class PlannerPlugin {
                             in.dir(),
                             siblingFiles,
                             repositories,
-                            in.compileOnly() && recompiled(ctx));
+                            in.compileOnly() && recompiled(ctx),
+                            PluginSourceRoots.forInputs(step.inputs(), in.dir(), project));
                     List<String> tokens = new ArrayList<>(declaredInputTokens(step.inputs(), sources));
                     tokens.addAll(stepTools.tokens());
                     tokens.add("facts:" + facts.token());

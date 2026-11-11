@@ -370,7 +370,12 @@ public final class BuildPluginHarness {
             Map<String, String> secrets,
             boolean offline,
             /** The build is the compile goal alone ({@link TaskExec#recompile()}). */
-            boolean recompile) {
+            boolean recompile,
+            /** The module's source roots, for a step that declared {@code In.sourceRoots()}; null otherwise. */
+            @Nullable SourceRoots sourceRoots) {
+
+        /** The module's configured main and test source roots, as the engine resolved them. */
+        record SourceRoots(List<Path> main, List<Path> test) {}
 
         static Spec read(Path file) throws IOException {
             String op = "";
@@ -404,6 +409,7 @@ public final class BuildPluginHarness {
             // Absent means offline: a worker launched without a stated policy must not reach out.
             boolean offline = true;
             boolean recompile = false;
+            @Nullable SourceRoots sourceRoots = null;
 
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
@@ -459,6 +465,7 @@ public final class BuildPluginHarness {
                                 required(Jsonl.str(line, "value"), "secret.value"));
                     case PluginProtocol.OFFLINE -> offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                     case "recompile" -> recompile = true;
+                    case "source-roots", "source-root" -> sourceRoots = sourceRoot(line, t, sourceRoots);
                     default -> throw new IOException("spec line kind `" + t + "` is not one this harness reads");
                 }
             }
@@ -487,7 +494,18 @@ public final class BuildPluginHarness {
                     commandArgs,
                     secrets,
                     offline,
-                    recompile);
+                    recompile,
+                    sourceRoots);
+        }
+
+        /** The roots after a {@code source-roots} line (the step declared them) or a {@code source-root} line (one root). */
+        private static SourceRoots sourceRoot(String line, String t, @Nullable SourceRoots roots) throws IOException {
+            SourceRoots out = roots != null ? roots : new SourceRoots(new ArrayList<>(), new ArrayList<>());
+            if (t.equals("source-root")) {
+                (Jsonl.bool(line, "test", false) ? out.test() : out.main())
+                        .add(Path.of(required(Jsonl.str(line, "dir"), "source-root.dir")));
+            }
+            return out;
         }
 
         /** A {@code config} line: a top-level value, or one leaf of a nested entry: key → entry → field. */
@@ -587,6 +605,18 @@ public final class BuildPluginHarness {
         @Override
         public boolean recompile() {
             return spec.recompile();
+        }
+
+        @Override
+        public List<Path> sourceRoots() {
+            Spec.SourceRoots roots = spec.sourceRoots();
+            return roots == null ? TaskExec.super.sourceRoots() : List.copyOf(roots.main());
+        }
+
+        @Override
+        public List<Path> testSourceRoots() {
+            Spec.SourceRoots roots = spec.sourceRoots();
+            return roots == null ? TaskExec.super.testSourceRoots() : List.copyOf(roots.test());
         }
 
         @Override

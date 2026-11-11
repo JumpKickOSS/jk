@@ -59,7 +59,7 @@ public final class HelidonPlugin implements Plugin, BuildExtension, TestExtensio
     public void build(BuildContext ctx) {
         if (!HelidonSettings.of(ctx.config()).bindingStep()) return;
         ctx.named(BINDING_STEP)
-                .inputs(In.classes(), In.runtimeClasspath(), In.config(), In.recompile())
+                .inputs(In.classes(), In.runtimeClasspath(), In.config(), In.recompile(), In.sourceRoots())
                 .outputs(CLASSES, GENERATED)
                 .transformsClasses(CLASSES)
                 .run(HelidonBinding::production);
@@ -69,7 +69,7 @@ public final class HelidonPlugin implements Plugin, BuildExtension, TestExtensio
     public void test(TestContext ctx) {
         if (!HelidonSettings.of(ctx.config()).testBinding()) return;
         ctx.named(TEST_BINDING_STEP)
-                .inputs(In.testClasses(), In.classes(), In.testRuntimeEntries(), In.config())
+                .inputs(In.testClasses(), In.classes(), In.testRuntimeEntries(), In.config(), In.sourceRoots())
                 .outputs(TEST_CLASSES, TEST_GENERATED)
                 .contributesTestClasspath(TEST_CLASSES)
                 .run(HelidonBinding::test);

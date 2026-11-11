@@ -369,6 +369,7 @@ class PluginActionKeyTokensTest {
             case SIBLING_PROJECT_FILES -> In.siblingProjectFiles("src").wireName();
             case REPOSITORIES -> In.repositories().wireName();
             case RECOMPILE -> In.recompile().wireName();
+            case SOURCE_ROOTS -> In.sourceRoots().wireName();
         };
     }
 }

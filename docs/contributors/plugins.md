@@ -516,6 +516,12 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   full build never restores a recompile's output, and a step that does not declare it is keyed the
   same under either goal. `[helidon]`'s binding step keeps the empty binding on a recompile rather
   than scanning the classpath on every edit.
+- **Source roots** — a step that hands a tool the sources the classes came from declares
+  `In.sourceRoots()` and reads `TaskExec.sourceRoots()` and `TaskExec.testSourceRoots()`: the
+  module's configured roots that exist, the layout's (`src/main/{java,kotlin,groovy,scala}`, or
+  `src/` in the simple layout) and `[build] extra-src` for main, the default suite's and `[test]
+  extra-src` for test. Its key moves with what each root holds. `[helidon]`'s binding steps read
+  them rather than assuming `src/main/java`.
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - **Repositories** — a step whose own resolver fetches outside the lock (a framework's build-time

@@ -115,6 +115,7 @@ class PluginTestClassesInputTest {
                 tmp,
                 Map.of(),
                 PluginRepositories.NONE,
-                recompile);
+                recompile,
+                PluginSourceRoots.NONE);
     }
 }
