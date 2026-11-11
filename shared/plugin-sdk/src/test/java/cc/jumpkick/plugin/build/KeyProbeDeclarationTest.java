@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,7 +24,8 @@ class KeyProbeDeclarationTest {
         ctx.task(TaskSpec.named("live")
                 .inputs(In.config())
                 .outputs("out")
-                .keyProbe(new KeyProbe("com.acme.Digest", List.of("driver"), List.of("--url", "jdbc:x")))
+                .keyProbe(new KeyProbe(
+                        "com.acme.Digest", List.of("driver"), List.of("--url", "jdbc:x"), Map.of("PW", "pw")))
                 .run(exec -> {}));
         ctx.task(TaskSpec.named("files").inputs(In.config()).outputs("out").run(exec -> {}));
     };
@@ -48,7 +50,8 @@ class KeyProbeDeclarationTest {
                 .anyMatch(l -> l.contains("\"name\":\"live\"")
                         && l.contains("\"probeMain\":\"com.acme.Digest\"")
                         && l.contains("\"probeTools\":[\"driver\"]")
-                        && l.contains("\"probeArgs\":[\"--url\",\"jdbc:x\"]"))
+                        && l.contains("\"probeArgs\":[\"--url\",\"jdbc:x\"]")
+                        && l.contains("\"probeEnv\":{\"PW\":\"pw\"}"))
                 .anyMatch(l -> l.contains("\"name\":\"files\"") && !l.contains("probeMain"));
     }
 }

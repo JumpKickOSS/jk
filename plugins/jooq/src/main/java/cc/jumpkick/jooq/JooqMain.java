@@ -3,6 +3,7 @@ package cc.jumpkick.jooq;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -22,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  * jOOQ's {@code GenerationTool} as the Maven plugin drives it: {@code --out <dir> --package <name>
  * [--schema PUBLIC] [--name-case as_is|upper|lower] [--includes <regex>] [--excludes <regex>]
  * [--no-records] [--pojos] [--daos] [--fluent-setters] [--property k=v]… [--jdbc-url <url>
- * [--jdbc-user <u>] [--jdbc-password <p>]] <script>…} writes the generator's XML configuration and
+ * [--jdbc-user <u>]] <script>…} writes the generator's XML configuration and
  * runs it. Without a JDBC URL the scripts are read by {@code DDLDatabase}: copied into one
  * directory, applied to an in-memory H2 database in semantic version order ({@code V1__},
  * {@code V2__}, …), the resulting schema generated from. With one, the live database is read and
@@ -30,11 +31,16 @@ import org.jspecify.annotations.Nullable;
  * generator's closure on the classpath and reaches it by reflection, so this worker compiles
  * against nothing of jOOQ's and the forked JVM needs nothing of jk's.
  *
- * <p>{@code --schema-digest --jdbc-url <url> [--jdbc-user <u>] [--jdbc-password <p>] [--schema
- * PUBLIC]} prints, as its last line, the SHA-256 of jOOQ's own DDL export of the input schema: the
+ * <p>{@code --schema-digest --jdbc-url <url> [--jdbc-user <u>] [--schema PUBLIC]} prints, as its last line, the SHA-256 of jOOQ's own DDL export of the input schema: the
  * step's key probe, so a schema change regenerates and an unchanged one is a cache hit.
+ *
+ * <p>The JDBC password is read from {@value #PASSWORD_ENV} in the environment, never from the
+ * command line, which other users of the host can read.
  */
 public final class JooqMain {
+
+    /** The environment variable the JDBC password arrives in. */
+    static final String PASSWORD_ENV = "JK_JOOQ_JDBC_PASSWORD";
 
     private static final String GENERATION_TOOL = "org.jooq.codegen.GenerationTool";
     private static final String DDL_DATABASE = "org.jooq.meta.extensions.ddl.DDLDatabase";
@@ -87,6 +93,11 @@ public final class JooqMain {
     }
 
     static Options parse(String[] args) {
+        return parse(args, ProcessEnv.get(PASSWORD_ENV));
+    }
+
+    /** As {@link #parse(String[])} with {@code password} the value of {@link #PASSWORD_ENV}, null when unset. */
+    static Options parse(String[] args, @Nullable String password) {
         @Nullable String out = null;
         @Nullable String pkg = null;
         String schema = "PUBLIC";
@@ -100,7 +111,6 @@ public final class JooqMain {
         Map<String, String> properties = new LinkedHashMap<>();
         @Nullable String url = null;
         @Nullable String user = null;
-        @Nullable String password = null;
         List<Path> scripts = new ArrayList<>();
         boolean digest = false;
         for (int i = 0; i < args.length; i++) {
@@ -123,7 +133,6 @@ public final class JooqMain {
                 }
                 case "--jdbc-url" -> url = value(args, ++i);
                 case "--jdbc-user" -> user = value(args, ++i);
-                case "--jdbc-password" -> password = value(args, ++i);
                 case "--schema-digest" -> digest = true;
                 default -> {
                     if (args[i].startsWith("--")) throw new IllegalArgumentException("unknown option " + args[i]);

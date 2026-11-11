@@ -20,10 +20,17 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class KeyProbesTest {
 
-    /** The probe: prints a preamble, then its arguments joined as the measurement; {@code fail} exits 3. */
+    /**
+     * The probe: prints a preamble, then its arguments joined as the measurement; {@code fail} exits 3,
+     * {@code env} measures {@code PROBE_SECRET} and {@code HOME} from its environment instead.
+     */
     public static final class Measure {
         public static void main(String[] args) {
             System.out.println("connecting");
+            if (List.of(args).contains("env")) {
+                System.out.println(System.getenv("PROBE_SECRET") + " " + System.getenv("HOME"));
+                return;
+            }
             if (List.of(args).contains("fail")) {
                 System.out.println("no such database");
                 System.exit(3);
@@ -53,9 +60,19 @@ class KeyProbesTest {
     @Test
     void a_closure_the_step_does_not_receive_is_refused(@TempDir Path tmp) {
         KeyProbe probe = new KeyProbe(Measure.class.getName(), List.of("jdbc-driver"), List.of());
-        assertThatThrownBy(() -> KeyProbes.token(probe, JAVA_HOME, ownClasses(), Map.of(), tmp))
+        assertThatThrownBy(() -> KeyProbes.token(probe, JAVA_HOME, ownClasses(), Map.of(), tmp, Map.of()))
                 .hasMessageContaining("`jdbc-driver`")
                 .hasMessageContaining("does not receive");
+    }
+
+    /** A probe's secret reaches it through its environment, which carries nothing the engine's own shell does. */
+    @Test
+    void the_probe_reads_its_secret_from_an_environment_it_does_not_inherit(@TempDir Path tmp) throws Exception {
+        KeyProbe probe =
+                new KeyProbe(Measure.class.getName(), List.of(), List.of("env"), Map.of("PROBE_SECRET", "s3cret"));
+
+        assertThat(KeyProbes.token(probe, JAVA_HOME, ownClasses(), Map.of(), tmp, Map.of("LANG", "C")))
+                .isEqualTo(token(List.of("s3cret", "null"), tmp));
     }
 
     @Test
@@ -64,14 +81,16 @@ class KeyProbesTest {
                 List.of(
                         "{\"t\":\"task\",\"name\":\"generate-jooq\",\"inputs\":[\"config\"],\"outputs\":[\"generated/jooq\"],"
                                 + "\"probeMain\":\"cc.jumpkick.jooq.JooqMain\",\"probeTools\":[\"jooq-codegen\"],"
-                                + "\"probeArgs\":[\"--schema-digest\",\"--jdbc-url\",\"jdbc:h2:mem:x\"]}",
+                                + "\"probeArgs\":[\"--schema-digest\",\"--jdbc-url\",\"jdbc:h2:mem:x\"],"
+                                + "\"probeEnv\":{\"JOOQ_JDBC_PASSWORD\":\"pw\"}}",
                         "{\"t\":\"task\",\"name\":\"generate-avro\",\"inputs\":[\"config\"],\"outputs\":[\"generated/avro\"]}"));
 
         assertThat(decls.steps().get(0).keyProbe())
                 .isEqualTo(new KeyProbe(
                         "cc.jumpkick.jooq.JooqMain",
                         List.of("jooq-codegen"),
-                        List.of("--schema-digest", "--jdbc-url", "jdbc:h2:mem:x")));
+                        List.of("--schema-digest", "--jdbc-url", "jdbc:h2:mem:x"),
+                        Map.of("JOOQ_JDBC_PASSWORD", "pw")));
         assertThat(decls.steps().get(1).keyProbe()).isNull();
         assertThat(PlannerPlugin.cachedForecast(decls.steps().get(0)).text()).contains("probed when the step runs");
         assertThat(PlannerPlugin.cachedForecast(decls.steps().get(1)).text()).isEmpty();
@@ -79,7 +98,12 @@ class KeyProbesTest {
 
     private static String token(List<String> args, Path cwd) throws Exception {
         return KeyProbes.token(
-                new KeyProbe(Measure.class.getName(), List.of(), args), JAVA_HOME, ownClasses(), Map.of(), cwd);
+                new KeyProbe(Measure.class.getName(), List.of(), args),
+                JAVA_HOME,
+                ownClasses(),
+                Map.of(),
+                cwd,
+                Map.of());
     }
 
     /** This module's compiled test classes, where {@link Measure} lives. */

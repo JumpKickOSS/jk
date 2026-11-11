@@ -98,21 +98,30 @@ class JooqMainTest {
                 .doesNotContain("<jdbc>");
     }
 
+    /** A password on the command line is one other users of the host can read: the main takes it from its environment. */
+    @Test
+    void a_password_argument_is_refused(@TempDir Path tmp) {
+        assertThatThrownBy(() -> JooqMain.parse(new String[] {
+                    "--out", tmp.toString(), "--package", "p", "--jdbc-url", "jdbc:x", "--jdbc-password", "pw"
+                }))
+                .hasMessageContaining("unknown option --jdbc-password");
+    }
+
     @Test
     void a_live_database_is_a_jdbc_block_and_no_ddl_database(@TempDir Path tmp) {
-        JooqMain.Options options = JooqMain.parse(new String[] {
-            "--out",
-            tmp.toString(),
-            "--package",
-            "com.acme.db",
-            "--jdbc-url",
-            "jdbc:postgresql://localhost/shop",
-            "--jdbc-user",
-            "shop",
-            "--jdbc-password",
-            "s&cret",
-            tmp.resolve("V1__a.sql").toString()
-        });
+        JooqMain.Options options = JooqMain.parse(
+                new String[] {
+                    "--out",
+                    tmp.toString(),
+                    "--package",
+                    "com.acme.db",
+                    "--jdbc-url",
+                    "jdbc:postgresql://localhost/shop",
+                    "--jdbc-user",
+                    "shop",
+                    tmp.resolve("V1__a.sql").toString()
+                },
+                "s&cret");
 
         String xml = JooqMain.configuration(options, null);
 

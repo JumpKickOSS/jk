@@ -35,9 +35,16 @@ final class KeyProbes {
 
     /**
      * {@code probe:<sha256>} for {@code probe} run on {@code javaHome} with {@code pluginJar} and the
-     * closures it names from {@code tools} on the classpath, in {@code cwd}.
+     * closures it names from {@code tools} on the classpath, in {@code cwd}, under exactly {@code
+     * environment} with the probe's own variables laid on top.
      */
-    static String token(KeyProbe probe, Path javaHome, Path pluginJar, Map<String, Path> tools, Path cwd)
+    static String token(
+            KeyProbe probe,
+            Path javaHome,
+            Path pluginJar,
+            Map<String, Path> tools,
+            Path cwd,
+            Map<String, String> environment)
             throws IOException, InterruptedException {
         List<Path> classpath = new ArrayList<>();
         classpath.add(pluginJar);
@@ -52,8 +59,11 @@ final class KeyProbes {
         List<String> command = new ArrayList<>(
                 List.of(JdkFingerprint.java(javaHome).toString(), "-cp", Classpaths.join(classpath), probe.main()));
         command.addAll(probe.args());
-        Process process =
-                Forks.start(new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true));
+        ProcessBuilder pb = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true);
+        pb.environment().clear();
+        pb.environment().putAll(environment);
+        pb.environment().putAll(probe.env());
+        Process process = Forks.start(pb);
         List<String> output = new ArrayList<>();
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {

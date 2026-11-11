@@ -635,8 +635,7 @@ public final class PlannerPlugin {
                     // outputs produced by the old code.
                     Path workerJar = PluginBuild.workerJarFor(active, in.cache());
                     tokens.add("worker:" + ClasspathFingerprint.entry(workerJar));
-                    probeToken(ctx, step, javaHome, workerJar, toolExtras, in.dir())
-                            .ifPresent(tokens::add);
+                    probeToken(ctx, step, javaHome, workerJar, toolExtras, in).ifPresent(tokens::add);
                     String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
                     String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
                     ActionCache actionCache = cx.actionCache();
@@ -721,15 +720,29 @@ public final class PlannerPlugin {
         return outcomes.isEmpty() || !outcomes.stream().allMatch(PlannerPackage::settledOutcome);
     }
 
-    /** The key token of an input no file holds (a live schema), measured before the lookup; empty without a probe. */
+    /**
+     * The key token of an input no file holds (a live schema), measured before the lookup under the
+     * module's worker environment; empty without a probe.
+     */
     private static Optional<String> probeToken(
-            TaskContext ctx, TaskDecl step, Path javaHome, Path workerJar, Map<String, Path> tools, Path dir)
+            TaskContext ctx,
+            TaskDecl step,
+            Path javaHome,
+            Path workerJar,
+            Map<String, Path> tools,
+            BuildPlanner.Inputs in)
             throws IOException, InterruptedException {
         KeyProbe probe = step.keyProbe();
         if (probe == null) return Optional.empty();
         ctx.label(step.name() + " probing");
         try {
-            return Optional.of(KeyProbes.token(probe, javaHome, workerJar, tools, dir));
+            return Optional.of(KeyProbes.token(
+                    probe,
+                    javaHome,
+                    workerJar,
+                    tools,
+                    in.dir(),
+                    workerEnv(ctx, in).environment()));
         } catch (IOException e) {
             ctx.error(step.name(), Errors.text(e));
             throw e;

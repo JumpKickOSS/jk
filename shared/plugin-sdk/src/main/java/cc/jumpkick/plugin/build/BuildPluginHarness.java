@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -245,7 +246,9 @@ public final class BuildPluginHarness {
                         .append(",\"probeTools\":")
                         .append(quoteArray(probe.tools()))
                         .append(",\"probeArgs\":")
-                        .append(quoteArray(probe.args()));
+                        .append(quoteArray(probe.args()))
+                        .append(",\"probeEnv\":")
+                        .append(Jsonl.map(new TreeMap<>(probe.env())));
             }
             b.append('}');
             out.emit(b.toString());

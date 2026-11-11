@@ -15,6 +15,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.security.CodeSource;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -52,7 +53,8 @@ public final class JooqPreset implements Plugin, BuildExtension {
      * The generator entry the table expands to: the scripts as the inputs and the cache key, the
      * main's options as the arguments, the scripts themselves at the end. A live database is the
      * {@code jdbc-*} keys; its schema joins the key through a probe that digests it over the same
-     * connection, so a schema change regenerates whether or not any scripts are named.
+     * connection, so a schema change regenerates whether or not any scripts are named. The password
+     * reaches the generator and the probe through their environment, never their command lines.
      */
     static GeneratorEntry entry(PluginConfig config, ProjectFacts project, List<Path> classpath) {
         String sql = config.stringOpt("sql").orElse("src/main/resources/db/migration/**/*.sql");
@@ -77,10 +79,11 @@ public final class JooqPreset implements Plugin, BuildExtension {
             args.addAll(List.of("--property", property.getKey() + "=" + property.getValue()));
         }
         List<String> jdbc = new ArrayList<>();
+        Map<String, String> env = new LinkedHashMap<>();
         config.stringOpt("jdbc-url").ifPresent(url -> {
             jdbc.addAll(List.of("--jdbc-url", url));
             config.stringOpt("jdbc-user").ifPresent(user -> jdbc.addAll(List.of("--jdbc-user", user)));
-            config.stringOpt("jdbc-password").ifPresent(pw -> jdbc.addAll(List.of("--jdbc-password", pw)));
+            config.stringOpt("jdbc-password").ifPresent(pw -> env.put(JooqMain.PASSWORD_ENV, pw));
         });
         args.addAll(jdbc);
         args.add("${inputs}");
@@ -88,7 +91,7 @@ public final class JooqPreset implements Plugin, BuildExtension {
         if (!jdbc.isEmpty()) {
             List<String> probeArgs = new ArrayList<>(List.of("--schema-digest", "--schema", schema));
             probeArgs.addAll(jdbc);
-            probe = new KeyProbe(JooqMain.class.getName(), List.of(TOOL), probeArgs);
+            probe = new KeyProbe(JooqMain.class.getName(), List.of(TOOL), probeArgs, env);
         }
         return new GeneratorEntry(
                 "jooq",
@@ -102,7 +105,9 @@ public final class JooqPreset implements Plugin, BuildExtension {
                 "generated/jooq",
                 classpath,
                 List.of(),
-                probe);
+                probe,
+                List.of(),
+                env);
     }
 
     /** This worker's own jar (or classes directory), which carries {@link JooqMain}. */

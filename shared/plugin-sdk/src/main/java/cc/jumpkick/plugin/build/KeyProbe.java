@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -15,12 +16,20 @@ import java.util.Objects;
  * @param main the class to run, in the plugin's jar or a named closure
  * @param tools step-dependency artifacts whose closures join the classpath
  * @param args the arguments, passed as written
+ * @param env variables laid on the probe's environment, never on its command line: a password the
+ *     probe connects with
  */
-public record KeyProbe(String main, List<String> tools, List<String> args) {
+public record KeyProbe(String main, List<String> tools, List<String> args, Map<String, String> env) {
 
     public KeyProbe {
         Objects.requireNonNull(main, "main");
         tools = List.copyOf(tools);
         args = List.copyOf(args);
+        env = Map.copyOf(env);
+    }
+
+    /** A probe that needs nothing in its environment. */
+    public KeyProbe(String main, List<String> tools, List<String> args) {
+        this(main, tools, args, Map.of());
     }
 }

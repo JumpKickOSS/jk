@@ -9,7 +9,8 @@ import java.util.List;
 /**
  * A generator stand-in the step forks for real: writes {@code argv.txt} and {@code Hello.java}
  * into the {@code -o} directory (and an example tree under {@code generated-examples} when told
- * {@code --example-dir}), prints one located line and one log line to stderr, and exits with the
+ * {@code --example-dir}, and the value of the variable after {@code --env} into {@code env.txt}),
+ * prints one located line and one log line to stderr, and exits with the
  * value after {@code --exit}.
  */
 public final class StubTool {
@@ -21,6 +22,10 @@ public final class StubTool {
         Path out = Path.of(argv.get(argv.indexOf("-o") + 1));
         Files.writeString(out.resolve("argv.txt"), String.join("\n", argv));
         Files.writeString(out.resolve("Hello.java"), "class Hello {}");
+        if (argv.contains("--env")) {
+            Files.writeString(
+                    out.resolve("env.txt"), String.valueOf(System.getenv(argv.get(argv.indexOf("--env") + 1))));
+        }
         if (argv.contains("--example-dir")) {
             Files.createDirectories(out.resolve("generated-examples/com/example"));
             Files.writeString(out.resolve("generated-examples/com/example/Example.java"), "class Example {}");

@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -124,6 +125,27 @@ class GeneratorStepTest {
                 .isRegularFile();
         assertThat(io.labels()).containsExactly("api (live input)");
         assertThat(probed.task().keyProbe()).isEqualTo(probed.keyProbe());
+    }
+
+    /** An entry's {@code env} reaches the forked tool's environment and nothing of it its command line. */
+    @Test
+    void the_entrys_env_reaches_the_tool_off_its_command_line(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+        GeneratorEntry entry = GeneratorEntry.fromConfig(
+                "api",
+                Map.of(
+                        "tool", "com.example:stub-gen:1.0",
+                        "inputs", List.of("api/a.yaml"),
+                        "args", List.of("-i", "${in}", "-o", "${out}", "--env", "DB_PASSWORD"),
+                        "env", Map.of("DB_PASSWORD", "s3cret")));
+
+        GeneratorStep.run(io, entry);
+
+        Path out = tmp.resolve("scratch/generated/api");
+        assertThat(out.resolve("env.txt")).hasContent("s3cret");
+        assertThat(Files.readString(out.resolve("argv.txt"))).doesNotContain("s3cret");
     }
 
     @Test

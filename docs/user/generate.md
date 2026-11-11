@@ -26,6 +26,7 @@ contributes = "sources"                                      # sources | resourc
 | `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${unpacked}` the extracted jar, `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
 | `contributes` | `sources` (default) folds the output into the compiler's source set; `test-sources` into the test compiler's, beside the suites' own sources; `resources` into the packaged resources. |
 | `out` | The output directory's name under the step's output root; default `generated/<name>`. |
+| `env` | Variables laid on the tool's environment, such as `{ DB_PASSWORD = "…" }`: a secret the tool reads from there stays off its command line, which other users of the machine can read. |
 | `discard` | Paths under the output, or globs over it, removed once the tool has run — what it writes beside its contribution, such as DGS codegen's example data fetchers under `generated-examples`. |
 
 Each entry is one step named `generate-<name>`. Its **action key** is the input files' content
@@ -411,7 +412,7 @@ jooq = "3.21.9"                          # the generated classes read it at run 
 The step is `generate-jooq`. A **live database** is opt-in: `jdbc-url` (with `jdbc-user`,
 `jdbc-password`) reads the schema over JDBC instead, jOOQ detecting the dialect from the
 connection, and `driver = "org.postgresql:postgresql:42.7.9"` puts its driver on the generator's
-classpath. Before the step looks itself up, every build connects through that driver and digests
+classpath. The password reaches the generator through its environment, never its command line. Before the step looks itself up, every build connects through that driver and digests
 jOOQ's own DDL export of the input `schema` into the step's key: an unchanged schema is a cache
 hit and a changed one regenerates, whether or not any scripts are named — a module with no
 migrations in the tree generates from the database alone. Scripts named in `sql` still key the

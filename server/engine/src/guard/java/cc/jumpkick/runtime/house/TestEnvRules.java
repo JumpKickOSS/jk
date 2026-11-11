@@ -119,6 +119,12 @@ final class TestEnvRules {
             in = "shared/plugin-sdk/src/test/java/cc/jumpkick/plugin/build/EnvEchoMain.java",
             reason = "a tool child process: it reads the environment its test hands the child")
     @Allow(
+            in = "plugins/generator/src/test/java/cc/jumpkick/generate/StubTool.java",
+            reason = "a generator child process: it reads the environment its test hands the child")
+    @Allow(
+            in = "server/engine/src/test/java/cc/jumpkick/runtime/KeyProbesTest.java | PROBE_SECRET",
+            reason = "read by the key-probe child process the test forks, from the environment the test hands it")
+    @Allow(
             in = "clients/cli/src/test/java/cc/jumpkick/command/Giter8Catalog.java | JK_TEMPLATES",
             reason = "a developer's template override must not steer the catalogue under test; unset by design")
     @Allow(

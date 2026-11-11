@@ -527,9 +527,10 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   carries. The body asks exactly these and never names Central itself. The action key carries the
   declared set, not the routing; a body that did not declare the input reads an empty list.
 - **Key probes** — an input no file holds (a live database schema) is `TaskSpec.keyProbe(new
-  KeyProbe(main, tools, args))`: before the lookup the engine runs `java <main> <args>` on the
-  build's JDK with the plugin's jar and the named step-dependency closures on the classpath, and
-  the SHA-256 of the last line it prints joins the action key. A non-zero exit fails the step with
+  KeyProbe(main, tools, args, env))`: before the lookup the engine runs `java <main> <args>` on the
+  build's JDK with the plugin's jar and the named step-dependency closures on the classpath, under
+  the module's worker environment with `env` (a password) laid on top, and the SHA-256 of the last
+  line it prints joins the action key. A non-zero exit fails the step with
   the probe's output. It runs on every build that reaches the step and never in a forecast, which
   says the input is probed when the step runs. The jOOQ preset's live schema is the one user.
 - **Diagnostics** — a body reports a located finding with `TaskExec.diagnostic(severity, file,
@@ -638,7 +639,8 @@ contributes = "sources"                                      # sources | resourc
   schema); such an entry runs even when its inputs match no file. Unchanged inputs restore
   `${out}`; the step shows in `jk explain` and the results Deliverables table like any other.
 - **Isolation**: `java -cp <tool> <main> <args>` forks on the build JDK with `${out}` as its
-  working directory. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
+  working directory and the entry's `env` (`GeneratorEntry.env`, a `[generate.x] env` table or a
+  preset's secret such as the jOOQ password) laid on its environment, never on its command line. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
   the module root.
 - **Diagnostics**: the tool's output is captured; lines matching `path:line[:col]: message` go
   through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the

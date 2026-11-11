@@ -1009,6 +1009,10 @@ in     = "cc.jumpkick.engine.plugin.WorkerCommands"
 reason = "attach adds one variable, the command channel's token, to an environment its spawner already composed through WorkerEnv: kept off the command line, where other users of the host could read it"
 
 [[guards.child-env-owner.allow]]
+in     = "cc.jumpkick.runtime.KeyProbes"
+reason = "a key probe runs under the module's WorkerEnv with its own secrets laid on top, kept off its command line: the inherited map is cleared before it is set"
+
+[[guards.child-env-owner.allow]]
 in     = "cc.jumpkick.config.CredentialHelpers"
 reason = "a ${cmd:} credential helper runs under exactly the request's shell (BuildEnv.callerEnv()): the inherited map is cleared before it is set"
 

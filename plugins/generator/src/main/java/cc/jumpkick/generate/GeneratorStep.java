@@ -66,7 +66,8 @@ final class GeneratorStep {
         exec.label(entry.name() + " (" + describe(inputs, entry) + ")");
 
         List<String> output = new ArrayList<>();
-        int exit = exec.java().classpath(classpath).mainClass(main).args(args).cwd(out).stream(output::add);
+        int exit = exec.java().classpath(classpath).mainClass(main).args(args).env(entry.env()).cwd(out).stream(
+                output::add);
         for (String line : output) {
             ToolDiagnostics.parse(line)
                     .ifPresent(d -> exec.diagnostic(

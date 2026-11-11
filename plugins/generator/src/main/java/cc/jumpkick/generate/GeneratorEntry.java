@@ -40,6 +40,8 @@ import org.jspecify.annotations.Nullable;
  *     key before it is looked up; with one, inputs that match no file do not skip the tool
  * @param reads module-relative files or directories the tool also reads (an import directory, the
  *     files a spec's references reach): in the step's key, never on its command line
+ * @param env variables laid on the forked tool's environment, never on its command line: a
+ *     password the tool reads there rather than from an argument other users of the host can see
  */
 public record GeneratorEntry(
         String name,
@@ -54,7 +56,8 @@ public record GeneratorEntry(
         List<Path> classpath,
         List<String> discard,
         @Nullable KeyProbe keyProbe,
-        List<String> reads) {
+        List<String> reads,
+        Map<String, String> env) {
 
     /** Where a generator's output joins the module. */
     public enum Contribution {
@@ -81,6 +84,7 @@ public record GeneratorEntry(
         classpath = List.copyOf(classpath);
         discard = List.copyOf(discard);
         reads = List.copyOf(reads);
+        env = Map.copyOf(env);
         if (inputs.isEmpty() && unpack == null && keyProbe == null) {
             throw new IllegalArgumentException("[generate." + name + "] declares no inputs; set inputs or unpack");
         }
@@ -116,7 +120,40 @@ public record GeneratorEntry(
                 classpath,
                 discard,
                 keyProbe,
-                List.of());
+                List.of(),
+                Map.of());
+    }
+
+    /** An entry whose tool reads {@code reads} beyond its {@code inputs} and needs nothing in its environment. */
+    public GeneratorEntry(
+            String name,
+            @Nullable String toolArtifact,
+            @Nullable String toolCoordinate,
+            @Nullable String main,
+            List<String> inputs,
+            @Nullable String unpack,
+            List<String> args,
+            Contribution contributes,
+            String out,
+            List<Path> classpath,
+            List<String> discard,
+            @Nullable KeyProbe keyProbe,
+            List<String> reads) {
+        this(
+                name,
+                toolArtifact,
+                toolCoordinate,
+                main,
+                inputs,
+                unpack,
+                args,
+                contributes,
+                out,
+                classpath,
+                discard,
+                keyProbe,
+                reads,
+                Map.of());
     }
 
     /** The entry as its validated {@code [generate.<name>]} table reads; the tool artifact is the name. */
@@ -136,7 +173,9 @@ public record GeneratorEntry(
                 (String) values.getOrDefault("out", "generated/" + name),
                 List.of(),
                 (List<String>) values.getOrDefault("discard", List.of()),
-                null);
+                null,
+                List.of(),
+                (Map<String, String>) values.getOrDefault("env", Map.of()));
     }
 
     /** The step's name on the plan: {@code generate-<name>}, the name a manifest's {@code for-step} uses. */

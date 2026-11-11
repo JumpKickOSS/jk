@@ -70,7 +70,11 @@ public record PluginDeclarations(
     private static @Nullable KeyProbe keyProbe(String line) {
         @Nullable String main = Jsonl.str(line, "probeMain");
         if (main == null || main.isBlank()) return null;
-        return new KeyProbe(main, Jsonl.strArray(line, "probeTools"), Jsonl.strArray(line, "probeArgs"));
+        return new KeyProbe(
+                main,
+                Jsonl.strArray(line, "probeTools"),
+                Jsonl.strArray(line, "probeArgs"),
+                Jsonl.strMap(line, "probeEnv"));
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {
