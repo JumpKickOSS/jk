@@ -221,7 +221,7 @@ public final class McpMachine {
             return m;
         }
         try {
-            JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+            JdkInstaller.sweepStaleScratch(registry.jdksRoot());
             InstalledJdk jdk = new JdkService()
                     .install(
                             spec,
@@ -245,7 +245,7 @@ public final class McpMachine {
             @Nullable String spec, @Nullable Integer olderThan, boolean confirm, JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+            JdkInstaller.sweepStaleScratch(registry.jdksRoot());
             List<Map<String, Object>> victims = new ArrayList<>();
             if (olderThan != null) {
                 for (JdkHit hit : registry.listHits()) {

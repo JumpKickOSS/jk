@@ -123,7 +123,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         // Reclaim any partial archive left by a previously canceled download.
-        JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+        JdkInstaller.sweepStaleScratch(registry.jdksRoot());
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         if (argument != null && !argument.isBlank()) {

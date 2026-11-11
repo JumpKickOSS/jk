@@ -9,6 +9,7 @@ import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.Symlinks;
@@ -17,6 +18,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -79,6 +82,29 @@ class ToolInstallerTest {
         if (Files.getFileStore(bin).supportsFileAttributeView("posix")) {
             assertThat(Files.isExecutable(bin)).isTrue();
         }
+    }
+
+    @Test
+    void an_orphaned_stage_is_no_installed_version_and_the_next_install_sweeps_it(@TempDir Path tempDir)
+            throws Exception {
+        Path tools = tempDir.resolve("tools");
+        Path orphan = Files.createDirectories(tools.resolve("maven").resolve(ToolRegistry.STAGE_PREFIX + "123/bin"));
+        Path orphanRoot = orphan.getParent();
+        Files.setLastModifiedTime(
+                orphanRoot, FileTime.from(Clock.SYSTEM.instant().minus(Duration.ofDays(2))));
+        ToolRegistry registry = new ToolRegistry(tools);
+        assertThat(registry.list(BuildTool.MAVEN, true)).isEmpty();
+
+        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
+        http.served().put("/maven.zip", zip);
+        new ToolInstaller(new Http(), registry)
+                .install(new ToolDistribution(
+                        BuildTool.MAVEN, "3.9.9", http.base().resolve("/maven.zip"), "zip", Hashing.sha256Hex(zip)));
+
+        assertThat(orphanRoot).doesNotExist();
+        assertThat(registry.list(BuildTool.MAVEN, true))
+                .extracting(InstalledTool::version)
+                .containsExactly("3.9.9");
     }
 
     @Test

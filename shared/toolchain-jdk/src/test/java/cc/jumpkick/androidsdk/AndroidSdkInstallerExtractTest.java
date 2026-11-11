@@ -4,11 +4,14 @@ package cc.jumpkick.androidsdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
@@ -30,6 +33,19 @@ class AndroidSdkInstallerExtractTest {
         AndroidSdkInstaller.extractZip(zip, dir);
 
         assertThat(dir.resolve("android.jar")).hasContent("jar");
+        assertThat(staging(platforms)).isEmpty();
+    }
+
+    @Test
+    void an_extract_orphaned_by_a_dead_process_is_swept_by_the_next_one(@TempDir Path tmp) throws Exception {
+        Path platforms = tmp.resolve("sdk/platforms");
+        Path orphan = Files.createDirectories(platforms.resolve(".extract-123/android-35"));
+        Files.setLastModifiedTime(
+                orphan.getParent(), FileTime.from(Clock.SYSTEM.instant().minus(Duration.ofDays(2))));
+        Path zip = Files.write(tmp.resolve("platform.zip"), zip("android-36/android.jar", "jar"));
+
+        AndroidSdkInstaller.extractZip(zip, platforms.resolve("android-36"));
+
         assertThat(staging(platforms)).isEmpty();
     }
 

@@ -38,6 +38,9 @@ public final class ToolRegistry {
     /** The environment spelling of {@link #ACCEPT_FLAG}, for a CI step that cannot edit the command. */
     public static final String ACCEPT_ENV = "JK_ACCEPT_UNVERIFIED_TOOL";
 
+    /** Prefix of the tree an install unpacks into beside its version dir; never an installed version. */
+    public static final String STAGE_PREFIX = "jk-tool-stage-";
+
     private final Path toolsRoot;
 
     public ToolRegistry(Path toolsRoot) {
@@ -123,7 +126,8 @@ public final class ToolRegistry {
         if (!Files.exists(slugDir)) return List.of();
         List<InstalledTool> result = new ArrayList<>();
         try (Stream<Path> stream = Files.list(slugDir)) {
-            stream.filter(p -> Files.isDirectory(p) || (includeBrokenLinks && Files.isSymbolicLink(p)))
+            stream.filter(p -> !p.getFileName().toString().startsWith(STAGE_PREFIX))
+                    .filter(p -> Files.isDirectory(p) || (includeBrokenLinks && Files.isSymbolicLink(p)))
                     .sorted(Comparator.comparing(Path::getFileName))
                     .forEach(p ->
                             result.add(new InstalledTool(tool, p.getFileName().toString(), p)));

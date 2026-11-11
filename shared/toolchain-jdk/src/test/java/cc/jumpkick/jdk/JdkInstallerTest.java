@@ -400,7 +400,7 @@ class JdkInstallerTest {
         Path jdksRoot = tempDir.resolve("jdks");
 
         // No scratch dir yet → must be a silent no-op, not an error.
-        JdkInstaller.sweepStaleDownloads(jdksRoot);
+        JdkInstaller.sweepStaleScratch(jdksRoot);
 
         Path downloads = Files.createDirectories(jdksRoot.resolve(".downloads"));
         Path stale = Files.writeString(downloads.resolve("jk-jdk-stale-.tar.gz"), "partial");
@@ -408,7 +408,7 @@ class JdkInstallerTest {
         Path unrelated = Files.writeString(downloads.resolve("keepme.txt"), "x");
         Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(Duration.ofDays(2))));
 
-        JdkInstaller.sweepStaleDownloads(jdksRoot);
+        JdkInstaller.sweepStaleScratch(jdksRoot);
 
         assertThat(stale).doesNotExist();
         assertThat(fresh).exists();

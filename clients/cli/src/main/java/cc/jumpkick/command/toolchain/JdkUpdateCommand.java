@@ -116,7 +116,7 @@ public final class JdkUpdateCommand implements CliCommand {
 
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         // Reclaim any partial archive left by a previously canceled download.
-        JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+        JdkInstaller.sweepStaleScratch(registry.jdksRoot());
 
         // Keyword specs → resolve to the major of the best installed match so
         // managedHits() can filter by that major (e.g. "lts" → "21").

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
@@ -314,7 +315,7 @@ public final class TestStorePool {
     static boolean staged(String name) {
         return (name.startsWith(".") && name.endsWith(".part"))
                 || (name.startsWith(".put-") && name.endsWith(".tmp"))
-                || name.startsWith("jk-tool-stage-")
+                || name.startsWith(ToolRegistry.STAGE_PREFIX)
                 || name.contains(".extract-")
                 || (name.startsWith("jk-sdk-") && name.endsWith(".zip"));
     }

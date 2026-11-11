@@ -126,7 +126,7 @@ public final class JdkService {
         Objects.requireNonNull(registry, "registry");
         JdkInstallListener l = listener != null ? listener : JdkInstallListener.NO_OP;
         // Reclaim any partial archive orphaned by a previously canceled download.
-        JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+        JdkInstaller.sweepStaleScratch(registry.jdksRoot());
 
         JdkCatalog catalog = fetchCatalog(feedUrl, cacheFile, refresh, null);
         JdkCatalog.Entry entry = resolveEntry(catalog, spec, os, arch)

@@ -46,7 +46,7 @@ population = { files = 2203 }
 "shared/core" = { classes = 446, sites = 26137 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 46, sites = 1921 }
-"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/toolchain-jdk" = { classes = 214, sites = 11356 }
 "shared/wire" = { classes = 115, sites = 4305 }
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
@@ -574,10 +574,6 @@ at     = "cc.jumpkick.jdk.JdkInstaller#flattenedRoot(Ljava/nio/file/Path;)Ljava/
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkInstaller#sweepDir(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkInventory#ownedInstallDirs()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -740,7 +736,7 @@ population = { examined = 4 }
 "shared/core" = { classes = 506, sites = 31724 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 51, sites = 2014 }
-"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/toolchain-jdk" = { classes = 214, sites = 11356 }
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.CliFailure#appendLog([Ljava/lang/String;Ljava/lang/Throwable;)V -> java.time.Instant#now()Ljava/time/Instant;"
@@ -1244,10 +1240,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkCatalogClient#loadBody(Z)[B -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkInstaller#sweepDir(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "shared/toolchain-jdk"
@@ -1807,6 +1799,7 @@ population = { examined = 5 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 168, sites = 9184 }
 "shared/core" = { classes = 506, sites = 31724 }
+"shared/toolchain-jdk" = { classes = 214, sites = 11356 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
@@ -1882,6 +1875,7 @@ population = { files = 2240 }
 "shared/client-io" = { classes = 136, sites = 0 }
 "shared/core" = { classes = 435, sites = 0 }
 "shared/dynamic-surface" = { classes = 11, sites = 0 }
+"shared/toolchain-jdk" = { classes = 214, sites = 0 }
 
 [one-recursive-delete]
 population = { files = 2203 }

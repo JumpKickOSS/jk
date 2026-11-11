@@ -6,6 +6,7 @@ import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StaleScratch;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.MinimalTar;
 import cc.jumpkick.node.PackageManagerShims;
@@ -135,7 +136,8 @@ public final class ToolInstaller {
             // — and a cross-filesystem /tmp (tmpfs) can't fail the per-directory moves
             // (Files.move of a non-empty dir across filesystems always throws).
             progress.installing(name);
-            Path stagingDir = Files.createTempDirectory(target.getParent(), "jk-tool-stage-");
+            StaleScratch.sweep(target.getParent(), ToolRegistry.STAGE_PREFIX);
+            Path stagingDir = Files.createTempDirectory(target.getParent(), ToolRegistry.STAGE_PREFIX);
             IN_FLIGHT.add(stagingDir);
             try {
                 extract(archive, stagingDir, dist.archiveType());

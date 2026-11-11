@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StaleScratch;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.AtomicWrites;
@@ -210,9 +211,13 @@ public final class AndroidSdkInstaller {
      * ({@code android-9/}, {@code platform-tools/}); its contents become the component dir —
      * matching sdkmanager's layout exactly.
      */
+    /** Prefix of the tree a component zip unpacks into beside its target before the rename. */
+    private static final String EXTRACT_PREFIX = ".extract-";
+
     static void extractZip(Path zip, Path dir) throws IOException {
-        Path staging = Files.createTempDirectory(
-                dir.getParent() == null ? zip.getParent() : mkdirs(dir.getParent()), ".extract-");
+        Path parent = dir.getParent() == null ? zip.getParent() : mkdirs(dir.getParent());
+        StaleScratch.sweep(parent, EXTRACT_PREFIX);
+        Path staging = Files.createTempDirectory(parent, EXTRACT_PREFIX);
         try {
             extractInto(zip, staging, dir);
         } finally {

@@ -155,7 +155,7 @@ public final class JdkInstallCommand implements CliCommand {
         // (Ctrl-C halts the JVM mid-download, skipping the inline cleanup).
         // Kept in the CLI so every path — including the wizard and non-TTY
         // early-outs below — sweeps once, before any plan runs.
-        JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
+        JdkInstaller.sweepStaleScratch(registry.jdksRoot());
         JdkService service = new JdkService();
 
         // Pre-plan sanity: when no spec and no TTY, we can't go further.

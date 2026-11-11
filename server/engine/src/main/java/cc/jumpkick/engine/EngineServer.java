@@ -43,6 +43,7 @@ import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -1026,8 +1027,9 @@ public final class EngineServer implements AutoCloseable {
         // A drained engine's last runs reach its successor before it goes: the report loop sees the
         // drain is over within a tick, then sends one last report and signs off.
         drain.awaitReported(4 * DrainReporter.TICK_MS);
-        // A tool install cut short by the shutdown leaves its archive and staging tree; reap them.
+        // A tool or JDK install cut short by the shutdown leaves its archive and staging tree; reap them.
         ToolInstaller.reapInFlight();
+        JdkInstaller.reapInFlight();
         // A trainer is this engine's child and must not outlive it or keep store jars open.
         if (!EngineAotTrainer.stop()) log.accept("jk engine: the engine startup-cache recording did not stop in time");
         List<Long> trainers = WorkerAotCache.stopTrainers();

@@ -9,6 +9,7 @@ import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StaleScratch;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.TransferBoard;
@@ -24,7 +25,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,7 +36,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongConsumer;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -60,8 +59,8 @@ public final class JdkInstaller {
     /** Prefix for the streamed archive temp file; recognised by the stale-download sweep. */
     private static final String DOWNLOAD_PREFIX = "jk-jdk-";
 
-    /** Age after which a partial download is treated as orphaned by {@link #sweepStaleDownloads}. */
-    private static final long STALE_DOWNLOAD_AGE_MILLIS = Duration.ofHours(6).toMillis();
+    /** Prefix for the tree an archive is unpacked into under the jdks root before its rename. */
+    private static final String STAGE_PREFIX = ".stage-";
 
     /**
      * Scratch this process created and has not finished with: the archive being streamed, and the
@@ -79,15 +78,10 @@ public final class JdkInstaller {
      *
      * <p>Ctrl-C ends in {@code Runtime.halt}, which neither runs shutdown hooks nor unwinds the
      * stack, so the {@code finally} blocks that normally delete this scratch never execute. The
-     * download's backstop — {@link #sweepStaleDownloads} — deliberately spares anything younger than
-     * six hours so it cannot yank a concurrent install's archive, which made "leave it for the sweep"
-     * the <em>normal</em> route for a cancel rather than a fallback for a crash: 563&nbsp;MB of
-     * partials accumulated in one session on the reporting machine. The staging tree had no backstop
-     * at all — nothing sweeps {@code .stage-*} — so a cancel mid-extract leaked a whole unpacked JDK.
-     *
-     * <p>Deleting a path we hold from its own creation cannot make that mistake, so this runs
-     * immediately on cancel and the age-based sweep goes back to being a fallback for the case it
-     * was written for: a process that died without getting here.
+     * scratch's backstop, {@link #sweepStaleScratch}, spares anything younger than six hours so it
+     * cannot yank a concurrent install's archive or stage. Deleting a path this process holds from
+     * its own creation cannot make that mistake, so this runs at once on cancel and the age-based
+     * sweep is the fallback for a process that died without getting here.
      *
      * <p>Never throws: it runs on the SIGINT thread, moments before the halt. On POSIX an unlink of a
      * file another thread still has open succeeds (the writer keeps its descriptor); on Windows it
@@ -106,7 +100,7 @@ public final class JdkInstaller {
                     Files.deleteIfExists(p);
                 }
             } catch (IOException | RuntimeException stillOpenOrGone) {
-                // Best-effort by contract; sweepStaleDownloads is the fallback.
+                // Best-effort by contract; sweepStaleScratch is the fallback.
                 Log.debug("reapInFlight: Best-effort by contract", stillOpenOrGone);
             }
         }
@@ -243,7 +237,8 @@ public final class JdkInstaller {
         Path target = registry.jdksRoot().resolve(installName);
         Path javaHome = javaHomeFor(entry, target);
         try {
-            Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), ".stage-");
+            StaleScratch.sweep(registry.jdksRoot(), STAGE_PREFIX);
+            Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), STAGE_PREFIX);
             IN_FLIGHT.add(stagingDir);
             try {
                 extract(dl.path(), stagingDir, entry.packageType());
@@ -358,7 +353,8 @@ public final class JdkInstaller {
             // ext4/btrfs) Files.move falls into the cross-device branch and
             // fails with DirectoryNotEmptyException on the first non-empty
             // subdir of the JDK.
-            Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), ".stage-");
+            StaleScratch.sweep(registry.jdksRoot(), STAGE_PREFIX);
+            Path stagingDir = Files.createTempDirectory(registry.jdksRoot(), STAGE_PREFIX);
             IN_FLIGHT.add(stagingDir);
             try {
                 extract(archive, stagingDir, archiveType);
@@ -462,46 +458,19 @@ public final class JdkInstaller {
     private Path prepareDownloadDir() throws IOException {
         Path dir = registry.jdksRoot().resolve(DOWNLOAD_DIR);
         Files.createDirectories(dir);
-        sweepDir(dir);
+        StaleScratch.sweep(dir, DOWNLOAD_PREFIX);
         return dir;
     }
 
     /**
-     * Delete partial archives orphaned by a canceled download under {@code <jdksRoot>/.downloads}.
-     * The download path runs this automatically, but it's also the public entry point for {@code jk
-     * jdk} commands that don't download (uninstall) or may early-return before downloading (install
-     * /update when the target is already present) — call it once per command so a leftover partial
-     * never outlives the user's next {@code jk jdk} action. No-op when the scratch dir is absent.
+     * Delete the scratch a killed or canceled install left under {@code jdksRoot}: partial archives
+     * under {@code .downloads} and half-unpacked {@code .stage-*} trees, each only once it is older
+     * than {@link StaleScratch#AGE}, so a concurrent install's scratch is never yanked. The install
+     * path sweeps on its own; {@code jk jdk} commands that do not download call this once each.
      */
-    public static void sweepStaleDownloads(Path jdksRoot) {
-        Path dir = jdksRoot.resolve(DOWNLOAD_DIR);
-        if (Files.isDirectory(dir)) sweepDir(dir);
-    }
-
-    /**
-     * Delete partial archives orphaned by a canceled download. Ctrl-C triggers {@code Runtime.halt},
-     * which terminates the JVM without running the finally-block cleanup in {@link #download}, so the
-     * partial archive is left behind; the next {@code jk jdk} command sweeps it. Only files older
-     * than {@link #STALE_DOWNLOAD_AGE_MILLIS} are removed, so a download in flight from a concurrent
-     * {@code jk jdk install} is never yanked out from under it. Best-effort: unreadable or vanished
-     * entries are left for the next sweep.
-     */
-    private static void sweepDir(Path downloadDir) {
-        long cutoff = System.currentTimeMillis() - STALE_DOWNLOAD_AGE_MILLIS;
-        try (Stream<Path> entries = Files.list(downloadDir)) {
-            entries.filter(p -> p.getFileName().toString().startsWith(DOWNLOAD_PREFIX))
-                    .forEach(p -> {
-                        try {
-                            if (Files.getLastModifiedTime(p).toMillis() < cutoff) {
-                                Files.deleteIfExists(p);
-                            }
-                        } catch (IOException ignored) {
-                            // vanished or unreadable — the next sweep catches it
-                        }
-                    });
-        } catch (IOException ignored) {
-            // can't list the dir — nothing here is load-bearing
-        }
+    public static void sweepStaleScratch(Path jdksRoot) {
+        StaleScratch.sweep(jdksRoot.resolve(DOWNLOAD_DIR), DOWNLOAD_PREFIX);
+        StaleScratch.sweep(jdksRoot, STAGE_PREFIX);
     }
 
     /**
