@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -60,11 +61,20 @@ public final class BridgingPlanListener implements BuildPlanListener {
      */
     private volatile @Nullable SecretRedactor redactor;
 
+    /** {@link ResolvedSecrets#generation()} when {@link #redactor} was built. */
+    private volatile long redactorGeneration;
+
+    /**
+     * The plan's redactor, built again when a secret was filed since: a step that resolves a
+     * credential or launches a suite with a declared token files it after the plan started.
+     */
     private SecretRedactor redactor() {
         var r = redactor;
-        if (r == null) {
+        long generation = ResolvedSecrets.generation();
+        if (r == null || generation != redactorGeneration) {
             r = EventRedaction.redactorFor(dir);
             redactor = r;
+            redactorGeneration = generation;
         }
         return r;
     }

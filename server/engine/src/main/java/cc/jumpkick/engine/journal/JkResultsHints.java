@@ -68,8 +68,8 @@ final class JkResultsHints {
             case EnvPreflight.CODE ->
                 new Hint(
                         EnvPreflight.CODE,
-                        "export `" + d.key() + "` in the shell running jk or set it in `.env`;"
-                                + " a variable the module can do without belongs in `[env] optional`");
+                        "export `" + d.key() + "` in the shell running jk or set it in a `.env` file, or move it"
+                                + " to `[env] optional` when the module can run without it");
             default -> null;
         };
     }

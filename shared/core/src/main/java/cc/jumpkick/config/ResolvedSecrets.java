@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,6 +40,9 @@ public final class ResolvedSecrets {
     /** Filed by workspace root — see the class note on scope. */
     private static final ConcurrentHashMap<Path, Set<String>> BY_WORKSPACE = new ConcurrentHashMap<>();
 
+    /** Moves whenever a value is filed, so a redactor built earlier knows it is missing one. */
+    private static final AtomicLong GENERATION = new AtomicLong();
+
     private static final int MAX_WORKSPACES = 32;
     private static final int MAX_PER_WORKSPACE = 64;
 
@@ -62,7 +66,7 @@ public final class ResolvedSecrets {
         if (key == null) return;
         if (BY_WORKSPACE.size() > MAX_WORKSPACES) BY_WORKSPACE.clear();
         Set<String> values = BY_WORKSPACE.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet());
-        if (values.size() < MAX_PER_WORKSPACE) values.add(value);
+        if (values.size() < MAX_PER_WORKSPACE && values.add(value)) GENERATION.incrementAndGet();
     }
 
     /**
@@ -75,6 +79,11 @@ public final class ResolvedSecrets {
         Set<String> values = key == null ? null : BY_WORKSPACE.get(key);
         if (values == null || values.isEmpty()) return base;
         return base.and(values);
+    }
+
+    /** A count that moves whenever a new value is filed for any workspace. */
+    public static long generation() {
+        return GENERATION.get();
     }
 
     /** Forget every recorded value. Nothing on the build path needs this; tests do. */

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.engine.api.HttpLive;
@@ -1123,7 +1124,7 @@ public final class BuildAccumulator {
                 root = SessionContext.current().workingDir();
             }
             if (root == null) return text;
-            return BuildEnv.secretsFor(root).redact(text);
+            return ResolvedSecrets.plus(root, BuildEnv.secretsFor(root)).redact(text);
         } catch (RuntimeException e) {
             return text;
         }

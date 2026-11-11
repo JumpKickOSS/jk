@@ -8,6 +8,9 @@ import static cc.jumpkick.test.TestEventFields.methodOf;
 import static cc.jumpkick.test.TestEventFields.progressLabel;
 import static cc.jumpkick.test.TestEventFields.xmlName;
 
+import cc.jumpkick.config.ResolvedSecrets;
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
@@ -47,6 +50,10 @@ final class ResultAggregator {
     private final @Nullable XmlTestReport xmlReport;
     private final @Nullable MarkdownTestReport mdReport;
     private final String moduleLabel;
+
+    /** The credentials filed for the workspace when the suite launched: what its printed lines must not show. */
+    private final SecretRedactor secrets = filedSecrets();
+
     private long succeeded;
     private long failed;
     private long skipped;
@@ -132,13 +139,24 @@ final class ResultAggregator {
     /**
      * A line the test JVM printed outside the protocol: shown to the listener as this worker's
      * output and, when a class is running, kept for that class's {@code system-out} in the XML
-     * report — so a failing test's diagnostic dump survives the temp dir it was printed from.
+     * report — so a failing test's diagnostic dump survives the temp dir it was printed from. A
+     * credential filed for the workspace is masked first, in every copy.
      */
-    synchronized void userOutput(String line) {
+    synchronized void userOutput(String raw) {
+        String line = secrets.redact(raw);
         listener.onUserOutput(workerId, line);
         if (runningClass == null) return;
         if (xmlReport != null) xmlReport.recordOutput(runningClass, line);
         if (mdReport != null) mdReport.recordOutput(runningClass, line);
+    }
+
+    /** The redactor over the credentials filed for the request's workspace; none off a request. */
+    private static SecretRedactor filedSecrets() {
+        try {
+            return ResolvedSecrets.plus(SessionContext.current().workingDir(), SecretRedactor.none());
+        } catch (RuntimeException noSession) {
+            return SecretRedactor.none();
+        }
     }
 
     private void acceptJson(String json) {
