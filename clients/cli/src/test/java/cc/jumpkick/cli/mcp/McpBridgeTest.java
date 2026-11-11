@@ -307,13 +307,15 @@ class McpBridgeTest {
 
     @Test
     void a_dead_endpoint_is_asked_for_again_once() throws IOException {
+        // An engine that restarted elsewhere leaves its old port refusing connections: nothing was
+        // delivered, so the bridge asks for the endpoint again. Port 0 refuses every connect at once,
+        // where a listener that accepts and drops would race the request (a drop after sending is a
+        // call that may already be running, and is rightly not sent again).
         AtomicInteger asked = new AtomicInteger();
-        String out;
-        try (DeadEndpoint dead = DeadEndpoint.open()) {
-            McpBridge.Endpoints endpoints =
-                    () -> asked.getAndIncrement() == 0 ? new McpBridge.Endpoint(dead.uri("/mcp"), "old") : live();
-            out = serve(new McpBridge(endpoints, "/ws"), "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}");
-        }
+        McpBridge.Endpoints endpoints = () -> asked.getAndIncrement() == 0
+                ? new McpBridge.Endpoint(URI.create("http://127.0.0.1:0/mcp"), "old")
+                : live();
+        String out = serve(new McpBridge(endpoints, "/ws"), "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}");
         assertThat(asked).hasValue(2);
         assertThat(out).contains("\"result\"");
         assertThat(tokens).containsExactly("Bearer t0k");
