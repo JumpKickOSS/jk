@@ -17,11 +17,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -221,7 +218,7 @@ public final class McpBridge {
                     : bridge.tokenPrefix + bridge.tokens.incrementAndGet();
             String key = idKey(id);
             bridge.outstanding.put(key, token);
-            return new Call(clientToken != null ? line : withProgressToken(m.json(), token), key, clientToken);
+            return new Call(clientToken != null ? line : withProgressToken(line, token), key, clientToken);
         }
 
         /** {@link #forward}, followed for progress when the client sent the token; no longer outstanding after. */
@@ -246,39 +243,87 @@ public final class McpBridge {
         if (!(m.json().get("params") instanceof Map<?, ?> params)) return message;
         Object requestId = params.get("requestId");
         String token = requestId == null ? null : outstanding.get(idKey(requestId));
-        return token == null ? message : withProgressToken(m.json(), token);
-    }
-
-    /** {@code json} with {@code params._meta.progressToken} set; integral numbers written whole. */
-    @SuppressWarnings("unchecked")
-    static String withProgressToken(Map<String, Object> json, String token) {
-        Map<String, Object> copy = (Map<String, Object>) Objects.requireNonNull(whole(json));
-        Map<String, Object> params =
-                copy.get("params") instanceof Map<?, ?> p ? (Map<String, Object>) p : new LinkedHashMap<>();
-        Map<String, Object> meta =
-                params.get("_meta") instanceof Map<?, ?> mm ? (Map<String, Object>) mm : new LinkedHashMap<>();
-        meta.put("progressToken", token);
-        params.put("_meta", meta);
-        copy.put("params", params);
-        return MiniJson.write(copy);
+        return token == null ? message : withProgressToken(message, token);
     }
 
     /**
-     * A mutable deep copy with every integral number as a {@code long}: the parser reads numbers as
-     * doubles, and an id or a count goes back as the client wrote it.
+     * {@code line}, a JSON object, with {@code params._meta.progressToken} set to {@code token}. The
+     * token is spliced into the text and every other byte goes as the client wrote it, so a number
+     * the parser would round (an id above 2^53) reaches the engine whole.
      */
-    private static @Nullable Object whole(@Nullable Object value) {
-        if (value instanceof Map<?, ?> m) {
-            Map<String, @Nullable Object> out = new LinkedHashMap<>();
-            for (var e : m.entrySet()) out.put(String.valueOf(e.getKey()), whole(e.getValue()));
-            return out;
+    static String withProgressToken(String line, String token) {
+        Map<String, Object> meta = Map.of("progressToken", token);
+        Map<String, Object> params = Map.of("_meta", meta);
+        int top = skipSpace(line, 0);
+        int[] paramsAt = member(line, top, "params");
+        if (paramsAt == null) return insert(line, top, Map.of("params", params));
+        if (line.charAt(paramsAt[0]) != '{') return replace(line, paramsAt, MiniJson.write(params));
+        int[] metaAt = member(line, paramsAt[0], "_meta");
+        if (metaAt == null) return insert(line, paramsAt[0], params);
+        if (line.charAt(metaAt[0]) != '{') return replace(line, metaAt, MiniJson.write(meta));
+        int[] tokenAt = member(line, metaAt[0], "progressToken");
+        return tokenAt == null ? insert(line, metaAt[0], meta) : replace(line, tokenAt, MiniJson.write(token));
+    }
+
+    /** The {@code [start, end)} of the value of {@code key} in the object opening at {@code open}; the last when repeated. */
+    private static int @Nullable [] member(String json, int open, String key) {
+        int[] found = null;
+        int i = skipSpace(json, open + 1);
+        while (json.charAt(i) != '}') {
+            int keyEnd = skipValue(json, i);
+            boolean match = key.equals(MiniJson.parse(json.substring(i, keyEnd)));
+            int valueStart = skipSpace(json, skipSpace(json, keyEnd) + 1);
+            int valueEnd = skipValue(json, valueStart);
+            if (match) found = new int[] {valueStart, valueEnd};
+            i = skipSpace(json, valueEnd);
+            if (json.charAt(i) == ',') i = skipSpace(json, i + 1);
         }
-        if (value instanceof List<?> l) {
-            List<@Nullable Object> out = new ArrayList<>();
-            for (Object o : l) out.add(whole(o));
-            return out;
+        return found;
+    }
+
+    /** {@code json} with {@code member}'s one entry first in the object opening at {@code open}. */
+    private static String insert(String json, int open, Map<String, Object> member) {
+        String written = MiniJson.write(member);
+        String entry = written.substring(1, written.length() - 1);
+        boolean empty = json.charAt(skipSpace(json, open + 1)) == '}';
+        return json.substring(0, open + 1) + entry + (empty ? "" : ",") + json.substring(open + 1);
+    }
+
+    private static String replace(String json, int[] span, String value) {
+        return json.substring(0, span[0]) + value + json.substring(span[1]);
+    }
+
+    private static int skipSpace(String json, int i) {
+        while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+        return i;
+    }
+
+    /** The index just past the JSON value starting at {@code i}; the text is known to parse. */
+    private static int skipValue(String json, int i) {
+        char c = json.charAt(i);
+        if (c == '"') {
+            int j = i + 1;
+            while (json.charAt(j) != '"') j += json.charAt(j) == '\\' ? 2 : 1;
+            return j + 1;
         }
-        return wholeId(value);
+        if (c == '{' || c == '[') {
+            int depth = 0;
+            int j = i;
+            do {
+                char d = json.charAt(j);
+                if (d == '"') {
+                    j = skipValue(json, j);
+                    continue;
+                }
+                if (d == '{' || d == '[') depth++;
+                if (d == '}' || d == ']') depth--;
+                j++;
+            } while (depth > 0);
+            return j;
+        }
+        int j = i;
+        while (j < json.length() && ",}] \t\r\n".indexOf(json.charAt(j)) < 0) j++;
+        return j;
     }
 
     /** A request id as a map key: {@code 5} and {@code 5.0} are one id, and a string is never a number. */

@@ -221,7 +221,31 @@ class McpBridgeConcurrencyTest {
 
     @Test
     void the_id_and_integral_arguments_go_to_the_engine_as_the_client_wrote_them() {
-        String sent = McpBridge.withProgressToken(parse(call(12, "quick")), "t-1");
+        String sent = McpBridge.withProgressToken(call(12, "quick"), "t-1");
         assertThat(sent).contains("\"id\":12,").contains("\"timeout_s\":60").contains("\"progressToken\":\"t-1\"");
+    }
+
+    @Test
+    void numbers_past_two_to_the_53_and_odd_spellings_reach_the_engine_byte_for_byte() {
+        String line = "{\"jsonrpc\":\"2.0\",\"id\":9007199254740993,\"method\":\"tools/call\",\"params\":"
+                + "{\"name\":\"q\\\"}\",\"arguments\":{\"n\":12345678901234567891,\"f\":1.50e3,\"l\":[1, {}]}}}";
+        String sent = McpBridge.withProgressToken(line, "t-2");
+        assertThat(sent).isEqualTo(line.replace("\"params\":{", "\"params\":{\"_meta\":{\"progressToken\":\"t-2\"},"));
+    }
+
+    @Test
+    void the_token_lands_in_params_meta_whatever_the_line_already_carries() {
+        assertThat(McpBridge.withProgressToken("{\"id\":1}", "t"))
+                .isEqualTo("{\"params\":{\"_meta\":{\"progressToken\":\"t\"}},\"id\":1}");
+        assertThat(McpBridge.withProgressToken("{\"id\":1,\"params\":{}}", "t"))
+                .isEqualTo("{\"id\":1,\"params\":{\"_meta\":{\"progressToken\":\"t\"}}}");
+        assertThat(McpBridge.withProgressToken("{\"params\":{\"_meta\":{\"other\":2}}}", "t"))
+                .isEqualTo("{\"params\":{\"_meta\":{\"progressToken\":\"t\",\"other\":2}}}");
+        assertThat(McpBridge.withProgressToken("{\"params\":{\"_meta\":{\"progressToken\":7}}}", "t"))
+                .isEqualTo("{\"params\":{\"_meta\":{\"progressToken\":\"t\"}}}");
+        assertThat(McpBridge.withProgressToken("{\"params\":[1]}", "t"))
+                .isEqualTo("{\"params\":{\"_meta\":{\"progressToken\":\"t\"}}}");
+        assertThat(parse(McpBridge.withProgressToken(" { \"id\" : 3 , \"params\" : { \"_meta\" : { } } } ", "t")))
+                .containsEntry("params", Map.of("_meta", Map.of("progressToken", "t")));
     }
 }
