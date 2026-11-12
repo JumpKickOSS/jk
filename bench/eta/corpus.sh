@@ -4,7 +4,7 @@
 #
 #   bench/eta/corpus.sh --dist <checkout>/target/dist --worktree <checkout pinned to the workload>
 #                       [--home DIR] [--label NAME] [--logs DIR] [--iterations N] [--only S3,S8]
-#                       [--keep-home]
+#                       [--keep-home] [--no-fail-fast]
 #
 # --dist      the engine under test: a `jk build` dist (client + engine jar), installed into --home
 # --worktree  the tree the corpus builds; edits are applied to fixed files and reverted at the end.
@@ -12,6 +12,11 @@
 # --home      the private JK_HOME (default ~/src/scratch/eta-home); wiped first unless --keep-home,
 #             so S1 is a first build on an empty ledger
 # --logs      where the logs, manifest and scores go (default ~/src/scratch/eta-corpus/<label>)
+#
+# Every run is spot-checked the moment it finishes (score.py --spot): its R0, ETA and bar errors
+# print beside its exit, and the corpus stops at the first run that shows a broken estimate (no ETA,
+# no rung on any task-finish, a warm ETA off by more than half late in the run), so a regression
+# surfaces after minutes, not after the whole corpus. --no-fail-fast reports and runs on.
 #
 # Every edit is unique to its run (a counter in a private method's name), so a repeat never comes
 # back as a cache hit. The manifest (run dir, scenario, iteration) lands in the logs directory;
@@ -25,6 +30,7 @@ LABEL="$(date +%Y%m%d-%H%M)"
 ITER=3
 ONLY=""
 KEEP=0
+FAIL_FAST=1
 LOGS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --iterations) ITER="$2"; shift 2 ;;
     --only) ONLY=",$2,"; shift 2 ;;
     --keep-home) KEEP=1; shift ;;
+    --no-fail-fast) FAIL_FAST=0; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -112,7 +119,19 @@ scored() {
   rc=$?
   set -e
   echo "   exit=$rc $(date +%T)" | tee -a "$LOGS/progress.txt"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$(run_dir_of_last)" "$scenario" "$iteration" "$rc" "$started" >> "$MANIFEST"
+  local run warm=()
+  run="$(run_dir_of_last)"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$run" "$scenario" "$iteration" "$rc" "$started" >> "$MANIFEST"
+  [[ "$iteration" != 1 ]] && warm=(--warm)
+  set +e
+  python3 -I "$(dirname "$0")/score.py" --spot "$run" "${warm[@]}" | tee -a "$LOGS/progress.txt"
+  local spot=${PIPESTATUS[0]}
+  set -e
+  if [[ "$spot" == 3 && "$FAIL_FAST" == 1 ]]; then
+    echo "STOPPED: $scenario #$iteration shows a broken estimate (--no-fail-fast to run on)" | tee -a "$LOGS/progress.txt"
+    "$J" engine stop --now >/dev/null 2>&1 || true
+    exit 3
+  fi
 }
 
 want() { [[ -z "$ONLY" || "$ONLY" == *",$1,"* ]]; }
