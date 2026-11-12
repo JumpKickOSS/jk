@@ -561,7 +561,7 @@ class JdkInstallerTest {
 
     @Test
     void second_install_is_idempotent(@TempDir Path tempDir) throws Exception {
-        byte[] archive = TestArchives.tarGz("jdk", Map.of("bin/java", "x", "bin/javac", "x"));
+        byte[] archive = TestArchives.tarGz("jdk", discoverableJdkFiles());
         served.put("/jdk.tar.gz", archive);
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(tempDir.resolve("jdks")));
         JdkCatalog.Entry pkg = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
