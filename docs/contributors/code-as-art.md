@@ -1004,6 +1004,10 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G139 | a static-only runtime holder (no instance field, every method static, constructors private) reached by more than fifteen runtime classes | ratchet, metric per holder, baselined | `runtime-static-holder-fan-in` (coupling) |
 | G140 | a `@KeyOwner` only one side calls: a shared owner with no build-side or no forecast-side caller, or one declared `unpaired` that both call. A caller is forecast-side when its outermost class's name contains `Forecast`, its method's name `forecast` or `predict` (a lambda carries its method's name), or its descriptor takes `ForecastScope` / `StepForecast.Scope` or returns `TaskForecast.Task`; every other caller is build-side, and a call from the owner's own class is followed to its callers | bytecode call graph over server/engine's main classes | guard test `forecast-key-owner-callers` |
 | G141 | an unpaired `@KeyOwner` whose `forecastsStep` misstates what its step's factory declares (`priced` or `always` names a verdict, `RIDES` or nothing does not), or that names a step no `Task.builder` builds; the factory is the owner itself when it builds the task, else the members handing `Task.builder` that name, its own class's first | bytecode over server/engine's main classes, the builder and the forecast declaration anywhere in one member | guard test `forecast-key-unpaired-claim` |
+| G142 | a `VariantApply.apply` in server/engine outside `EffectiveManifest`: a second variant overlay is a manifest the forecast keys differently from the build | ban | `variant-apply-owner` (forbid) |
+| G143 | a `CompileSupport.resolveLanguages` or `Languages.resolve` in server/engine outside `ModuleShape`: a raw language read forgets the javac a Kotlin module's processors or a plugin's generated Java need | ban; subsystems that key nothing (worker forks, the Kotlin warm-up, the headless builder, the IDE model) are allow entries | `module-languages-owner` (forbid) |
+| G144 | a `PlannerSupport.testStampExtras` or `NodeTestStamp.testStampExtras` outside `TestStampInputs`: run-tests extras composed elsewhere are a stamp the forecast does not look up | ban, no allowlist | `test-stamp-extras-owner` (forbid) |
+| G145 | a `WorkspaceClasspath.resolve`, `ClasspathResolver.classpathFor` / `testRuntimeClasspathFor` or `ProvidedClasspath` derivation in server/engine outside `ModuleClasspaths` and the classpath step around it (`PlannerSetup`: sibling requires, processor errors, the provided fetch) | ban; the forecast's provided fetch and subsystems that key nothing (exec, IDE, plugin closures, guard fixtures, build-logic, the headless builder) are allow entries | `module-classpath-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1065,6 +1069,8 @@ by id, kind and why. This block is a `generated` guard's rendering
 | manifest-names | vocabulary | a file JumpKick owns is named once, in ManifestNames |
 | manifest-reader-owner | text | a directory built from its pom.xml has no jk.toml; manifestIn is what answers its shadow |
 | method-size | metric | a member that no longer fits a screen no longer fits a reviewer |
+| module-classpath-owner | forbid | a classpath derived twice is a compile or test key the forecast computes over different entries than the build |
+| module-languages-owner | forbid | a raw language read is a second answer to which compilers run, and the forecast prices what it says |
 | named-exit-codes | text | an exit code is the one integer a user's script sees, and a bare one is a meaning nobody wrote down |
 | no-agent-trailers | commit | attribution trailers are noise in blame |
 | no-closed-port-endpoints | text | a closed loopback port is refused instantly on one host and hangs to the connect timeout on another |
@@ -1113,9 +1119,11 @@ by id, kind and why. This block is a `generated` guard's rendering
 | target-dir | vocabulary | the output directory is named once; renaming it must not miss a spelling |
 | task-names | vocabulary | a step name typed by hand is an edge that quietly does not exist |
 | test-paths-from-checkout-root | text | a path from the working directory differs between a module-rooted test run and a workspace `jk build` |
+| test-stamp-extras-owner | forbid | stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up |
 | tests-skip-symlinks-on-windows | text | a test that creates a symlink is red for every Windows contributor without Developer Mode |
 | thread-local-owner | forbid | a thread-local is left on a pool thread by one request and missing on the next thread the work hops to |
 | tree-copy-owner | text | a hand-rolled tree copy is the shape twelve callers got wrong the same three ways |
+| variant-apply-owner | forbid | a second variant overlay is a manifest the forecast keys differently from the build |
 | wire-prefix-pairs | text | a protocol prefix has exactly two ends: one writes it, one reads it |
 | wire-types | vocabulary | a wire type typed by hand is an event nobody handles |
 | worker-offline-from-spec | text | a worker reading the daemon's environment answers from the shell that started the engine |

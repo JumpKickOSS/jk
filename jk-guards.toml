@@ -842,6 +842,125 @@ baseline   = true
 instead    = "move the functions to the type whose data they read, so callers depend on that type rather than a namespace"
 why        = "a static holder everything leans on is a namespace for functions that belong with their data"
 
+# G142. A module's variant overlay is folded in one place. EffectiveManifest is the manifest the
+# plan, its step bodies and its forecast all read; a second VariantApply is a manifest the forecast
+# keys differently from the build.
+[guards.variant-apply-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.plugin.manifest.VariantApply#apply(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = "cc.jumpkick.runtime.EffectiveManifest"
+fixture    = "server/engine/guard-fixtures/variant-apply-owner"
+instead    = "EffectiveManifest.of(parsed, dir, selection), or the plan's own EffectiveManifest"
+why        = "a second variant overlay is a manifest the forecast keys differently from the build"
+
+# G143. Which compilers a module runs is answered once. ModuleShape composes the plan and prices
+# the forecast's compiles; a raw language read is a second answer that forgets the javac a Kotlin
+# module's processors or a plugin's generated Java need.
+[guards.module-languages-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.runtime.base.CompileSupport#resolveLanguages(**)", "cc.jumpkick.layout.Languages#resolve(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = ["cc.jumpkick.runtime.ModuleShape", "cc.jumpkick.runtime.base.CompileSupport"]
+fixture    = "server/engine/guard-fixtures/module-languages-owner"
+instead    = "ModuleShape.of(project, dir, decls), or the plan's own ModuleShape"
+why        = "a raw language read is a second answer to which compilers run, and the forecast prices what it says"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.BuildForks"
+reason = "forks the workers a workspace's modules need before any of them plans; it keys nothing"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.KotlinAbiWarmup"
+reason = "picks a Kotlin consumer to warm the compiler worker for; it keys nothing"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.LocalProjectBuilder"
+reason = "a headless build of a project outside any plan: nothing forecasts it"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.base.IdeOps"
+reason = "the IDE model lists a module's source roots; it keys nothing"
+
+# G144. The run-tests stamp's identity tokens are composed in one place. TestStampInputs derives
+# them for the live run, the forecast and the preflight memo alike; a second caller of the
+# composer is a stamp that can drift from the one the green run was stored under.
+[guards.test-stamp-extras-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.runtime.PlannerSupport#testStampExtras(**)", "cc.jumpkick.runtime.NodeTestStamp#testStampExtras(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = ["cc.jumpkick.runtime.TestStampInputs", "cc.jumpkick.runtime.NodeTestStamp"]
+instead    = "TestStampInputs.of(facts, identity).extras(), or its key(...)"
+why        = "stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up"
+
+# G145. A module's classpaths are derived once, by ModuleClasspaths.derive, for the build and the
+# forecast alike; the classpath step (PlannerSetup) keeps the side effects around it: awaiting the
+# siblings, the unresolved-processor errors and the plugins' provided fetch. Subsystems that resolve
+# a classpath for something other than a module's plan are allow entries.
+[guards.module-classpath-owner]
+kind       = "forbid"
+signatures = [
+  "cc.jumpkick.config.WorkspaceClasspath#resolve(**)",
+  "cc.jumpkick.compile.ClasspathResolver#classpathFor(**)",
+  "cc.jumpkick.compile.ClasspathResolver#testRuntimeClasspathFor(**)",
+  "cc.jumpkick.runtime.ProvidedClasspath#contributed(**)",
+  "cc.jumpkick.runtime.ProvidedClasspath#forecast(**)",
+  "cc.jumpkick.runtime.ProvidedClasspath#providedJars(**)",
+]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = ["cc.jumpkick.runtime.ModuleClasspaths", "cc.jumpkick.runtime.PlannerSetup"]
+fixture    = "server/engine/guard-fixtures/module-classpath-owner"
+instead    = "ModuleClasspaths.derive(..., mode), or the classpaths the plan's classpath step publishes"
+why        = "a classpath derived twice is a compile or test key the forecast computes over different entries than the build"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.ForecastScope"
+reason = "the forecast's read-only provided fetch, handed to ModuleClasspaths.derive as the classpath step hands it the build's"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.BuildLogicSupport"
+reason = "build-logic scripts key the workspace members they read, outside any module's plan"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.GuardKeys"
+reason = "the guard lane keys its module's sibling edges, not a classpath a step compiles against"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.GuardFixtures"
+reason = "guard fixtures compile and run against the suite's own classpath, outside any module's plan"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.LocalProjectBuilder"
+reason = "a headless build of a project outside any plan: nothing forecasts it"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.PluginBuild"
+reason = "a plugin's worker closure and production entries, resolved for the plugin it runs, not a step key"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.PluginSdkFloor"
+reason = "checks the plugin SDK a module compiles against; it keys nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.workspace.ExecPlans"
+reason = "jk exec and jshell launch a classpath; they key nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.base.IdeOps"
+reason = "the IDE model lists a module's sibling edges; it keys nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.engine.verbs.IdeModelVerb"
+reason = "the IDE model lists the provided jars; it keys nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.engine.http.mcp.tools.IdeTool"
+reason = "the IDE tool lists the provided jars; it keys nothing"
+
 # G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway
 # enforces nullness only where the package says so, and a package that forgets the marker is a
 # package where every finding is silently off. The scope is every module NullMarking.enforcedRoots
