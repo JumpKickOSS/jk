@@ -18,6 +18,7 @@ targets in TARGETS. Exit status is 1 when any group that a target applies to mis
     score.py --home ~/.jk --last 50                       # the latest 50 runs
     score.py --home H --manifest corpus/manifest.tsv      # group by scenario, warm/cold
     score.py --home H --json out.jsonl                    # one line per run, appended
+    score.py --spot RUN_DIR [--warm]                       # judge one run the moment it finishes
 """
 
 from __future__ import annotations
@@ -314,7 +315,56 @@ def judge(group: list[RunScore], warm: bool) -> dict[str, tuple[float, bool]]:
     return res
 
 
+# A spot check's limits: what no warm run should ever show, so a corpus stops at the first one
+# instead of an hour later. Looser than TARGETS: a spot check catches a broken estimate, not a
+# borderline one.
+SPOT_MIN_WALL_MS = 20_000
+SPOT_ETA_LIMIT = 0.50
+SPOT_LATE = (0.50, 0.75, 0.90)
+
+
+def spot(run_dir: Path, warm: bool) -> int:
+    """One run, judged as soon as it finishes; exit status 3 when it shows a broken estimate.
+
+    Broken: no ETA at any checkpoint of a run long enough to have one; a seed that priced steps
+    whose task-finish events name no rung (the attribution would be blind); or, for a warm run, the
+    ETA off by more than half at two or more of the 50/75/90% checkpoints.
+    """
+    s = score_run(run_dir, warm=warm)
+    if s is None:
+        print(f"   spot: {run_dir.name}: no record to score")
+        return 0
+    p = {pt.at: pt for pt in s.points}
+    line = (
+        f"   spot: run {s.run} {s.wall_ms / 1000:.0f}s R0 {pct(s.r0_err)} ETA "
+        + " ".join(pct(p[f].eta_err) for f in CHECKPOINTS)
+        + " bar "
+        + " ".join(pts(p[f].bar_err) for f in SCORED)
+    )
+    problems = []
+    priced = [r for r in s.steps if r[2] > 0]
+    ev = load_events(run_dir / "details.jsonl")
+    rungs = sum(1 for e in ev if e.get("type") == "task-finish" and e.get("rung"))
+    line += f" rungs {rungs}/{len(priced)}"
+    if priced and rungs == 0:
+        problems.append("no task-finish names a rung")
+    if s.wall_ms >= SPOT_MIN_WALL_MS and s.success:
+        if all(pt.eta_err is None for pt in s.points):
+            problems.append("no ETA at any checkpoint")
+        late = [p[f].eta_err for f in SPOT_LATE if p[f].eta_err is not None]
+        if warm and sum(1 for e in late if abs(e) > SPOT_ETA_LIMIT) >= 2:
+            problems.append(f"warm ETA off by more than {SPOT_ETA_LIMIT:.0%} late in the run")
+    print(line + ("  ! " + "; ".join(problems) if problems else ""))
+    return 3 if problems else 0
+
+
 def main(argv: list[str]) -> int:
+    if argv and argv[0] == "--spot":
+        sp = argparse.ArgumentParser(prog="score.py --spot")
+        sp.add_argument("run", type=Path)
+        sp.add_argument("--warm", action="store_true")
+        b = sp.parse_args(argv[1:])
+        return spot(b.run.expanduser(), b.warm)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--home", type=Path, required=True, help="JK_HOME, a project home, or a runs dir")
     ap.add_argument("--manifest", type=Path, help="corpus manifest (run dir, scenario, iteration)")
