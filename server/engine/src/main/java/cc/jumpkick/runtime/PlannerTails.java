@@ -16,9 +16,6 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.PackagedTree;
-import cc.jumpkick.config.JkBuildParseException;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -35,7 +32,6 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -78,72 +74,67 @@ public final class PlannerTails {
         // plan for tails to hang off, and re-rooting the terminal would run packaging (or
         // fail validation) under `jk test` / `jk compile`.
         if (in.testOnly() || in.compileOnly()) return;
-        try {
-            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
-            // A coordinator root is the third plan with no package-jar to hang a tail off. Its
-            // unit exists to run the workspace's own build logic; re-rooting the
-            // terminal here would require a step its plan never had.
-            if (CompileSupport.coordinatorOnly(project, in.dir())) return;
-            List<String> leaves = new ArrayList<>();
-            // The join sits at the latest stage it joins. Hard-coding PACKAGE made a plan with
-            // both an assembly tail and a native tail fail validation — the join would be
-            // requiring native-image, which is a later stage than itself.
-            BuildStage joinStage = BuildStage.PACKAGE;
-            // A guard run packages the jars the output lane reads and delivers nothing beside them.
-            boolean deliver = !in.session().lanesOnly();
-            if (deliver && project.assembly()) {
-                b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
-                leaves.add(TaskNames.PACKAGE_ASSEMBLY);
-            }
-            if (deliver && PlannerWar.declared(project)) {
-                b.addTask(PlannerWar.warStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
-                leaves.add(TaskNames.PACKAGE_WAR);
-            }
-            if (deliver && PlannerLibDir.declared(project)) {
-                b.addTask(PlannerLibDir.libDirStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
-                leaves.add(TaskNames.PACKAGE_LIB_DIR);
-            }
-            if (deliver && PlannerJlink.declared(project)) {
-                b.addTask(PlannerJlink.jlinkStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
-                leaves.add(TaskNames.PACKAGE_JLINK);
-            }
-            if (deliver && project.minified()) {
-                b.addTask(minifiedStep(in, graalHome));
-                leaves.add(TaskNames.PACKAGE_MINIFIED);
-            }
-            if (deliver && allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
-                b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
-                leaves.add(TaskNames.NATIVE_IMAGE);
-                joinStage = BuildStage.NATIVE;
-            }
-            // A library ships what Maven Central requires beside its jar: sources and javadoc.
-            if (deliver && PackagingKeys.libraryArtifacts(project, in.dir())) {
-                b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
-                leaves.add(TaskNames.PACKAGE_SOURCES);
-                if (PackagingKeys.javadocJar(project, in.dir(), in.session())) {
-                    b.addTask(javadocStep(in.cache(), !in.ephemeralActions()));
-                    leaves.add(TaskNames.PACKAGE_JAVADOC);
-                }
-            }
-            // The output lane reads what the tails wrote, so it hangs off every packaging leaf and
-            // re-roots the terminal; a plan without an output rule never plans it.
-            List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
-            boolean outputLane = PlannerResources.invocationRoot(in.dir()) && PlannerGuards.outputLaneWanted(in);
-            if (outputLane) {
-                b.addTask(PlannerGuards.outputStep(PlannerGuards.env(in), joined.toArray(String[]::new)));
-                joined = new ArrayList<>(List.of(TaskNames.GUARD_OUTPUT));
-                if (joinStage.ordinal() < BuildStage.NATIVE.ordinal()) joinStage = BuildStage.NATIVE;
-            }
-            join(b, in, joined, joinStage, !leaves.isEmpty() || outputLane);
-        } catch (UserConfigParseException unparsed) {
-            throw unparsed; // config.toml's own error, with its position — never this site's fallback
-        } catch (JkBuildParseException | IOException ignored) {
-            // Core planning parses the same file and has already reported an unreadable or
-            // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
-            // else must propagate — swallowing it silently dropped -all.jar/-min.jar/native
-            // tails from the plan while the build still reported success.
+        // The effective manifest the core plan was built from, its packaging override and its
+        // variant folded in. A plan without one could not read jk.toml, and parse-build says why.
+        JkBuild project = b.fact(JkBuild.class).orElse(null);
+        if (project == null) return;
+        // A coordinator root is the third plan with no package-jar to hang a tail off. Its
+        // unit exists to run the workspace's own build logic; re-rooting the
+        // terminal here would require a step its plan never had.
+        if (CompileSupport.coordinatorOnly(project, in.dir())) return;
+        List<String> leaves = new ArrayList<>();
+        // The join sits at the latest stage it joins. Hard-coding PACKAGE made a plan with
+        // both an assembly tail and a native tail fail validation — the join would be
+        // requiring native-image, which is a later stage than itself.
+        BuildStage joinStage = BuildStage.PACKAGE;
+        // A guard run packages the jars the output lane reads and delivers nothing beside them.
+        boolean deliver = !in.session().lanesOnly();
+        if (deliver && project.assembly()) {
+            b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_ASSEMBLY);
         }
+        if (deliver && PlannerWar.declared(project)) {
+            b.addTask(PlannerWar.warStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_WAR);
+        }
+        if (deliver && PlannerLibDir.declared(project)) {
+            b.addTask(PlannerLibDir.libDirStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_LIB_DIR);
+        }
+        if (deliver && PlannerJlink.declared(project)) {
+            b.addTask(PlannerJlink.jlinkStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_JLINK);
+        }
+        if (deliver && project.minified()) {
+            b.addTask(minifiedStep(in, graalHome));
+            leaves.add(TaskNames.PACKAGE_MINIFIED);
+        }
+        if (deliver && allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
+            b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
+            leaves.add(TaskNames.NATIVE_IMAGE);
+            joinStage = BuildStage.NATIVE;
+        }
+        // A library ships what Maven Central requires beside its jar: sources and javadoc.
+        if (deliver && PackagingKeys.libraryArtifacts(project, in.dir())) {
+            b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_SOURCES);
+            if (PackagingKeys.javadocJar(project, in.dir(), in.session())) {
+                b.addTask(javadocStep(in.cache(), !in.ephemeralActions()));
+                leaves.add(TaskNames.PACKAGE_JAVADOC);
+            }
+        }
+        // The output lane reads what the tails wrote, so it hangs off every packaging leaf and
+        // re-roots the terminal; a plan without an output rule never plans it.
+        List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
+        boolean outputLane = PlannerResources.invocationRoot(in.dir()) && PlannerGuards.outputLaneWanted(in);
+        if (outputLane) {
+            b.addTask(PlannerGuards.outputStep(PlannerGuards.env(in), joined.toArray(String[]::new)));
+            joined = new ArrayList<>(List.of(TaskNames.GUARD_OUTPUT));
+            if (joinStage.ordinal() < BuildStage.NATIVE.ordinal()) joinStage = BuildStage.NATIVE;
+        }
+        join(b, in, joined, joinStage, !leaves.isEmpty() || outputLane);
     }
+
     /**
      * A test run's plan for a module whose jar a sibling compiles against: {@code package-jar}
      * and the tests, and none of the delivery tails — the sibling reads the jar, never the javadoc,

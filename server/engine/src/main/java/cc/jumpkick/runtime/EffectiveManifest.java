@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.VariantApply;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -40,6 +43,20 @@ public record EffectiveManifest(JkBuild build, Map<String, String> secrets) {
             Session session = SessionContext.current();
             return new Selection(session, session.variant(), session.clientEnv());
         }
+    }
+
+    /**
+     * The manifest the plan of {@code in} reads: its {@code jk.toml}, re-read once a locked plugin's
+     * descriptor is materialized so the plugin's table validates and contributes on the first build
+     * after {@code jk sync}, under the plan's selection. Throws as {@link JkBuildParser#parse} and
+     * {@link #of} do.
+     */
+    static EffectiveManifest read(BuildPlanner.Inputs in) throws IOException {
+        JkBuild parsed = JkBuildParser.parse(in.buildFile());
+        if (!parsed.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
+            parsed = JkBuildParser.reparse(in.buildFile());
+        }
+        return of(parsed, in.dir(), Selection.of(in));
     }
 
     /**

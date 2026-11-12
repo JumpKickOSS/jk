@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildLogicToml;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
@@ -17,7 +16,6 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.SourceRefs;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Path;
@@ -73,6 +71,8 @@ final class CorePlan {
                 .addTask(s.parseBuild())
                 .addTask(s.syncDeps())
                 .addTask(s.ensureJdk());
+        // The declared tails plan from the manifest this plan was built from.
+        if (parsedBuild != null) b.fact(JkBuild.class, parsedBuild);
         if (nodeKind != NodeShape.Kind.NONE || testNode) b.addTask(PlannerNodeSetup.ensureNodeStep());
         if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, cx);
         if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx);
@@ -88,16 +88,9 @@ final class CorePlan {
 
     private void readManifest() {
         try {
-            var jkBuild = JkBuildParser.parse(in.buildFile());
-            // Third-party plugin pre-flight: extract any locked-but-unmaterialized manifests
-            // from the CAS and re-parse, so a declared plugin's table validates (and its
-            // contributions apply) on the very first build after `jk sync`.
-            if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
-                jkBuild = JkBuildParser.reparse(in.buildFile());
-            }
             // The plan is built from the effective manifest under Inputs.session (not ambient
             // SessionContext): single-build constructs the plan outside SessionContext.where.
-            EffectiveManifest effective = EffectiveManifest.of(jkBuild, in.dir(), EffectiveManifest.Selection.of(in));
+            EffectiveManifest effective = EffectiveManifest.read(in);
             variantSecrets = effective.secrets();
             parsedBuild = effective.build();
             nodeKind = NodeShape.kind(parsedBuild, in.dir());

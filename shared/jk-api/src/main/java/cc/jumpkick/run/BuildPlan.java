@@ -857,6 +857,7 @@ public final class BuildPlan {
         private final List<String[]> reroots = new ArrayList<>();
 
         private final List<String> alsoKept = new ArrayList<>();
+        private final Map<Class<?>, Object> facts = new HashMap<>();
         private Clock clock = Clock.SYSTEM;
 
         Builder(String name) {
@@ -954,6 +955,22 @@ public final class BuildPlan {
          */
         public @Nullable String currentTerminal() {
             return terminal;
+        }
+
+        /**
+         * Record {@code value} as this plan's {@code type}: a fact the planner derived while adding
+         * steps, one per type, for a later planning pass over this builder to read instead of
+         * deriving it again. The run never sees it.
+         */
+        public <T> Builder fact(Class<T> type, T value) {
+            facts.put(type, Objects.requireNonNull(value, type.getName()));
+            return this;
+        }
+
+        /** The {@code type} fact recorded for this plan, or empty when the planner recorded none. */
+        public <T> Optional<T> fact(Class<T> type) {
+            Object value = facts.get(type);
+            return value == null ? Optional.empty() : Optional.of(type.cast(value));
         }
 
         /** The names of the steps added so far, before any terminal prune. */
