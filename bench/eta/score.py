@@ -70,6 +70,56 @@ class RunScore:
     plateau: float = 0.0
     tail: float = 0.0
     tail_ms: int = 0
+    # Per step the seed priced or the run ran: [module dir, step, priced ms, ran ms] (attribution).
+    steps: list[list] = field(default_factory=list)
+
+
+# A step judged for systematic error: priced or run for at least this long, in this many warm runs.
+ATTRIBUTION_MIN_MS = 1000
+ATTRIBUTION_MIN_RUNS = 3
+ATTRIBUTION_LIMIT = 0.25
+# Systematic, not noise: the step misses the same way in this share of its runs. Forced-build
+# compiles swing 0.7-3.9 s run to run under contention, missing high in one run and low in the next.
+ATTRIBUTION_SAME_SIGN = 0.8
+MS_PER_WEIGHT = 150  # WorkModel.MS_PER_WEIGHT: the unit of a step's price in eta-model.jsonl
+
+
+def attribute(run_dir: Path, ev: list[dict]) -> list[list]:
+    """What the seed priced each step at (eta-model.jsonl's first model) beside what it ran for.
+
+    A step priced and never run ran for 0 ms; a step run and never priced was priced at 0 ms.
+    """
+    model = run_dir / "eta-model.jsonl"
+    if not model.is_file():
+        return []
+    try:
+        first = json.loads(model.read_text(encoding="utf-8").splitlines()[0])
+    except (ValueError, IndexError):
+        return []
+    priced: dict[tuple[str, str], int] = {}
+    for d, steps in (first.get("steps") or {}).items():
+        for s in steps:
+            priced[(d, s[0])] = priced.get((d, s[0]), 0) + int(s[1]) * MS_PER_WEIGHT
+    dir_of: dict[str, str] = {}
+    ran: dict[tuple[str, str], int] = {}
+    for e in ev:
+        t = e.get("type")
+        if t == "module-start" and e.get("coord") and e.get("dir"):
+            dir_of[e["coord"]] = e["dir"]
+        elif t == "task-finish" and e.get("task"):  # a cache hit's wall is wall too
+            d = e.get("dir") or dir_of.get(e.get("module") or "")
+            if d:
+                # A wait for a worker lease is a hold, not the step's work (JK-VYJ4X).
+                work = int(e.get("millis") or 0) - int(e.get("waitMillis") or 0)
+                ran[(d, e["task"])] = ran.get((d, e["task"]), 0) + max(0, work)
+    if not priced:
+        return []
+    root = os.path.commonpath(list({d for d, _ in priced} | {d for d, _ in ran})) if ran else ""
+    out = []
+    for key in sorted(set(priced) | set(ran)):
+        rel = os.path.relpath(key[0], root) if root else key[0]
+        out.append([rel, key[1], priced.get(key, 0), ran.get(key, 0)])
+    return out
 
 
 def load_events(path: Path) -> list[dict]:
@@ -140,6 +190,7 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
         r0_err = (r0 - r0_true) / r0_true if r0_true > 0 else None
 
     s = RunScore(run_dir.name, argv, scenario or argv, warm, wall, success, r0, r0_true, r0_err)
+    s.steps = attribute(run_dir, ev)
 
     for f in CHECKPOINTS:
         at = t0 + f * wall
@@ -352,7 +403,43 @@ def main(argv: list[str]) -> int:
             print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} warm checkpoints (target 70-90%){'' if ok else ' !'}")
         else:
             print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} cold checkpoints")
+    failed |= not attribution(scores)
     return 1 if failed else 0
+
+
+def attribution(scores: list[RunScore]) -> bool:
+    """Steps whose seed price misses their wall the same way across warm runs (JK-E8CGE).
+
+    Per (verb, module, step) over the warm runs where it was priced or ran for a second or more, the median of (priced - ran) / ran: a step priced and never run reads as +inf, one
+    run and never priced as -100%. A step whose median misses by more than 25% over three or more
+    runs, the same way in 80% of them, is a systematic error, and fails the score.
+    """
+    by: dict[tuple[str, str, str], list[float]] = {}
+    for s in scores:
+        if not s.warm:
+            continue
+        verb = s.argv.split(" ", 1)[0]
+        for d, step, priced, ran in s.steps:
+            if max(priced, ran) < ATTRIBUTION_MIN_MS:
+                continue
+            err = (priced - ran) / ran if ran > 0 else float("inf")
+            by.setdefault((verb, d, step), []).append(err)
+    judged = {k: v for k, v in by.items() if len(v) >= ATTRIBUTION_MIN_RUNS}
+
+    def systematic(v: list[float]) -> bool:
+        m = statistics.median(v)
+        same = sum(1 for e in v if (e > 0) == (m > 0)) / len(v)
+        return abs(m) > ATTRIBUTION_LIMIT and same >= ATTRIBUTION_SAME_SIGN
+
+    bad = {k: statistics.median(v) for k, v in judged.items() if systematic(v)}
+    print(
+        f"step attribution: {len(bad)} of {len(judged)} steps (>= {ATTRIBUTION_MIN_MS / 1000:.0f} s, "
+        f"{ATTRIBUTION_MIN_RUNS}+ warm runs) off by more than {ATTRIBUTION_LIMIT:.0%}{' !' if bad else ''}"
+    )
+    for (verb, d, step), m in sorted(bad.items(), key=lambda kv: -abs(kv[1])):
+        n = len(by[(verb, d, step)])
+        print(f"   {verb:6s} {d[:44]:44s} {step:24s} {'priced, never ran' if m == float('inf') else f'{m:+.0%}'}  ({n} runs)")
+    return not bad
 
 
 if __name__ == "__main__":
