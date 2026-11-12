@@ -21,6 +21,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceScheduler;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NullMarked;
@@ -92,47 +94,64 @@ final class WorkspaceRunPhase {
         long scheduleStart = Perf.start();
         long executeStartMs = clock.millis();
         ModuleOutcome failure = null;
+        // A sibling's classes tree is read once per compile that keys on it; once its module has
+        // published it, nothing this build runs writes it, so one reading answers the rest.
+        ClasspathFingerprint.EntryMemo entries = ClasspathFingerprint.EntryMemo.onceSealed(siblings::classesSealed);
         if (!resources.dirtyUnits().isEmpty()) {
-            failure = WorkspaceScheduler.run(
-                    resources.dirtyUnits(),
-                    BuildGraph.BuildUnit::dir,
-                    // The transitive closure, so a dependent is admitted only once every module on
-                    // its compile classpath — not only the ones it names — has published.
-                    siblings.edges(),
-                    (unit, publish) -> runModule(
-                            Objects.requireNonNull(
-                                    prepared.plans().get(unit.dir()),
-                                    () -> "admitted a unit with no prepared plan: " + unit.dir()),
-                            listener,
-                            testClassesConsumed.contains(unit.dir()),
-                            unit.manifest().relocates(),
-                            // A module with Kotlin consumers has its classes tree snapshotted for
-                            // them before they are admitted, so their compile keys are memo lookups.
-                            KotlinAbiWarmup.before(
-                                    resources.preflight().graph(), unit, request.cache(), JkStores.storeCas(), publish),
-                            siblings,
-                            resources::classesPublished,
-                            clock),
-                    (ready, results, _) ->
-                            collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
-                    // A test step parks on siblings a later level holds, which the batch-per-level
-                    // schedule would never start; such a graph takes the streaming one, uncapped.
-                    request.maxModuleConcurrency() <= 0 && siblings.hasTestReads()
-                            ? resources.dirtyUnits().size()
-                            : request.maxModuleConcurrency(),
-                    SessionCancel::cancelled,
-                    // The root's after-build scripts read what the members produced, native
-                    // tails included, so the root waits for the members to finish, not to publish.
-                    unit -> unit.origin() == BuildGraph.Origin.ROOT,
-                    // Fail-fast stops the siblings still building and waits for them, so every
-                    // module that started is in the record, the stopped ones as stopped.
-                    unit -> {
-                        ModulePlan sibling = prepared.plans().get(unit.dir());
-                        if (sibling != null) sibling.plan().stop();
-                    },
-                    siblings);
+            failure = schedule(
+                    entries,
+                    () -> WorkspaceScheduler.run(
+                            resources.dirtyUnits(),
+                            BuildGraph.BuildUnit::dir,
+                            // The transitive closure, so a dependent is admitted only once every module on
+                            // its compile classpath — not only the ones it names — has published.
+                            siblings.edges(),
+                            (unit, publish) -> runModule(
+                                    Objects.requireNonNull(
+                                            prepared.plans().get(unit.dir()),
+                                            () -> "admitted a unit with no prepared plan: " + unit.dir()),
+                                    listener,
+                                    testClassesConsumed.contains(unit.dir()),
+                                    unit.manifest().relocates(),
+                                    // A module with Kotlin consumers has its classes tree snapshotted for
+                                    // them before they are admitted, so their compile keys are memo lookups.
+                                    KotlinAbiWarmup.before(
+                                            resources.preflight().graph(),
+                                            unit,
+                                            request.cache(),
+                                            JkStores.storeCas(),
+                                            publish),
+                                    siblings,
+                                    resources::classesPublished,
+                                    clock),
+                            (ready, results, _) -> collect(
+                                    request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
+                            // A test step parks on siblings a later level holds, which the batch-per-level
+                            // schedule would never start; such a graph takes the streaming one, uncapped.
+                            request.maxModuleConcurrency() <= 0 && siblings.hasTestReads()
+                                    ? resources.dirtyUnits().size()
+                                    : request.maxModuleConcurrency(),
+                            SessionCancel::cancelled,
+                            // The root's after-build scripts read what the members produced, native
+                            // tails included, so the root waits for the members to finish, not to publish.
+                            unit -> unit.origin() == BuildGraph.Origin.ROOT,
+                            // Fail-fast stops the siblings still building and waits for them, so every
+                            // module that started is in the record, the stopped ones as stopped.
+                            unit -> {
+                                ModulePlan sibling = prepared.plans().get(unit.dir());
+                                if (sibling != null) sibling.plan().stop();
+                            },
+                            siblings));
         }
-        Perf.end("ws-schedule-run", scheduleStart);
+        Perf.end(
+                "ws-schedule-run",
+                scheduleStart,
+                "entry-walks",
+                entries.walks(),
+                "entry-dir-readings",
+                entries.dirReadings(),
+                "entries-sealed",
+                entries.remembered());
         long executeWallMs = Math.max(0L, clock.millis() - executeStartMs);
         return new Run(
                 prepared,
@@ -141,6 +160,19 @@ final class WorkspaceRunPhase {
                 List.copyOf(observedRates),
                 executeWallMs,
                 SessionCancel.cancelled());
+    }
+
+    /** The schedule, with every classpath entry its plans read through {@code entries}. */
+    private static @Nullable ModuleOutcome schedule(
+            ClasspathFingerprint.EntryMemo entries, Callable<@Nullable ModuleOutcome> run) {
+        try {
+            return ClasspathFingerprint.withEntryMemo(entries, run);
+        } catch (RuntimeException | Error direct) {
+            throw direct;
+        } catch (Exception impossible) {
+            // The schedule declares nothing checked; the memo scope's signature does.
+            throw new IllegalStateException(impossible);
+        }
     }
 
     private static @Nullable ModuleOutcome collect(
@@ -328,7 +360,11 @@ final class WorkspaceRunPhase {
      * against, but they land in the same tree, as a script's output may, and a dependent that
      * fingerprints the tree while either is being written would memoize a token under an identity
      * no later build will see. {@code module-services} joins them: a dependent's processor
-     * path finds a sibling's processors through the services files it writes. A module that {@code relocates} packages is compiled
+     * path finds a sibling's processors through the services files it writes. So do {@code
+     * build-info}, which writes its properties files into the tree after the compile, and the
+     * {@code before-package} scripts, whose output merges into it: a tree published before them
+     * would move under a dependent that read it, and the build's memo of sealed trees would
+     * answer for the old one. A module that {@code relocates} packages is compiled
      * against through its {@code -all.jar}, so its {@code package-assembly} joins the set. A plan
      * with none of these (a sourceless root) publishes on completion.
      */
@@ -343,7 +379,9 @@ final class WorkspaceRunPhase {
                 TaskNames.ASSEMBLE_CLASSES,
                 TaskNames.COPY_RESOURCES,
                 TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                TaskNames.MODULE_SERVICES)) {
+                TaskNames.MODULE_SERVICES,
+                TaskNames.BUILD_INFO,
+                TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)) {
             if (present.contains(step)) wait.add(step);
         }
         if (relocates && present.contains(TaskNames.PACKAGE_ASSEMBLY)) wait.add(TaskNames.PACKAGE_ASSEMBLY);

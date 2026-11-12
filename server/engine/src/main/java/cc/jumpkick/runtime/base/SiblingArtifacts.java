@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Collection;
@@ -212,6 +213,24 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
     /** {@code dir}'s classes tree is whole: what a sibling's test compile reads of it. */
     public void compiled(Path dir) {
         complete(compiled, dir);
+    }
+
+    /**
+     * Whether {@code entry} is a module's main classes tree that nothing this build still runs
+     * writes: a module of this graph the build does not schedule, or one whose classes publish (or
+     * completion) has fired. A jar, a test classes tree or a tree of no module here never is: a
+     * jar is packaged after the publish, and test classes are written past it.
+     */
+    public boolean classesSealed(Path entry) {
+        Path abs = entry.toAbsolutePath().normalize();
+        Optional<Path> classes = BuildLayout.compiledClassesOf(abs);
+        if (classes.isEmpty() || !classes.get().equals(abs)) return false;
+        Path target = abs.getParent();
+        Path module = target == null ? null : target.getParent();
+        if (module == null || !abs.equals(BuildLayout.classesDir(module))) return false;
+        if (!prereqs.containsKey(module)) return false;
+        CompletableFuture<Void> f = compiled.get(module);
+        return f == null || f.isDone();
     }
 
     /** {@code dir}'s fixtures are compiled, or it has none to compile. */

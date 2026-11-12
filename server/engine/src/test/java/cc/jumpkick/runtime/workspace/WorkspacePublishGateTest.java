@@ -110,6 +110,32 @@ class WorkspacePublishGateTest {
                         TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }
 
+    /**
+     * {@code build-info} writes its properties files into the classes tree after the compile, and
+     * the {@code before-package} scripts merge their output into it, so neither may land after
+     * dependents have read the tree.
+     */
+    @Test
+    void the_classes_publish_waits_for_build_info_and_the_before_package_scripts() {
+        BuildPlan plan = planWith(
+                TaskNames.COPY_RESOURCES,
+                TaskNames.COMPILE_JAVA,
+                TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                TaskNames.MODULE_SERVICES,
+                TaskNames.BUILD_INFO,
+                TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                TaskNames.PACKAGE_JAR);
+
+        assertThat(WorkspaceRunPhase.classesWaitSet(plan, false))
+                .containsExactlyInAnyOrder(
+                        TaskNames.COPY_RESOURCES,
+                        TaskNames.COMPILE_JAVA,
+                        TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                        TaskNames.MODULE_SERVICES,
+                        TaskNames.BUILD_INFO,
+                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+    }
+
     /** A plan whose only tree writer is its compiler publishes there; one that compiles nothing publishes on completion. */
     @Test
     void the_classes_publish_takes_what_the_plan_has() {

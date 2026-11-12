@@ -206,7 +206,12 @@ public final class BuildLayout {
      * then jk merges the result here.
      */
     public Path classesDir() {
-        return buildDir().resolve(CLASSES);
+        return classesDir(moduleRoot);
+    }
+
+    /** {@link #classesDir()} of the module at {@code moduleRoot}. */
+    public static Path classesDir(Path moduleRoot) {
+        return moduleTargetDir(moduleRoot).resolve(CLASSES);
     }
 
     /**

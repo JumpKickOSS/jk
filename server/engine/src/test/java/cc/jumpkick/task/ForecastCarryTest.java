@@ -37,7 +37,7 @@ class ForecastCarryTest {
     void a_lane_shares_the_forecasts_entry_memo(@TempDir Path dir) throws Exception {
         Path jar = dir.resolve("lib.jar");
 
-        String onLane = ClasspathFingerprint.withEntryMemo(() -> {
+        String onLane = ClasspathFingerprint.withEntryMemo(ClasspathFingerprint.EntryMemo.everything(), () -> {
             String first = ClasspathFingerprint.entry(jar);
             Files.writeString(jar, "now there");
             assertThat(first).startsWith("missing:");

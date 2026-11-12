@@ -16,6 +16,9 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
@@ -34,30 +37,93 @@ public final class ClasspathFingerprint {
 
     private ClasspathFingerprint() {}
 
-    /** The read-only reader's memo of {@link #entry} tokens, bound only inside {@link #withEntryMemo}. */
-    private static final ScopedValue<Map<Path, String>> ENTRY_MEMO = ScopedValue.newInstance();
+    /** The memo of {@link #entry} tokens, bound only inside {@link #withEntryMemo}. */
+    private static final ScopedValue<EntryMemo> ENTRY_MEMO = ScopedValue.newInstance();
 
     static {
         ContextPropagator.carry(ENTRY_MEMO);
     }
 
     /**
-     * Run {@code body} with {@link #entry} memoized per path.
+     * Run {@code body} with {@link #entry} read through {@code memo}.
      *
-     * <p>Only for a reader that writes nothing while it runs. A forecast reads one classpath entry
-     * once per module that names it — for this repository, 19,103 readings of 376 distinct entries
-     * — and a directory entry is a whole tree walk, so the repetition is most of what the walk
-     * costs. Nothing can move under the memo because the walk is read-only; a live build must
-     * never bind it, since its steps rewrite the very trees they key on.
+     * <p>A forecast reads one classpath entry once per module that names it — for this repository,
+     * 19,103 readings of 376 distinct entries — and a live build reads each sibling classes tree
+     * once per compile that keys on it; a directory entry is a whole tree walk, so the repetition
+     * is most of what the reading costs.
      *
-     * <p>Bound as a {@link ScopedValue}, not a static, because two jobs can forecast at once in one
-     * engine and must not share one. {@link ContextPropagator Carried}, so a reader's pool lanes
-     * share its memo.
+     * <p>Bound as a {@link ScopedValue}, not a static, because two jobs can run at once in one
+     * engine and must not share one. {@link ContextPropagator Carried}, so the pool lanes share it.
      */
-    public static <T> T withEntryMemo(Callable<T> body) throws Exception {
-        return ScopedValue.where(ENTRY_MEMO, new ConcurrentHashMap<Path, String>())
-                .<T, Exception>call(body::call);
+    public static <T extends @Nullable Object> T withEntryMemo(EntryMemo memo, Callable<T> body) throws Exception {
+        return ScopedValue.where(ENTRY_MEMO, memo).<T, Exception>call(body::call);
     }
+
+    /**
+     * {@link #entry} tokens remembered per path, under a policy for which entries may be.
+     *
+     * <p>{@link #everything} is for a reader that writes nothing while it runs, a forecast: nothing
+     * can move under it. A live build rewrites the very trees it keys on, so its memo is {@link
+     * #onceSealed}: an entry is remembered only when, before it is read, nothing the build still
+     * runs will write it. Either way the token is the one an unmemoized read gives.
+     */
+    public static final class EntryMemo {
+        private final Map<Path, String> tokens = new ConcurrentHashMap<>();
+        private final Predicate<Path> remember;
+        private final AtomicLong walks = new AtomicLong();
+        private final AtomicLong dirReadings = new AtomicLong();
+
+        private EntryMemo(Predicate<Path> remember) {
+            this.remember = remember;
+        }
+
+        /** Remembers every entry it reads. */
+        public static EntryMemo everything() {
+            return new EntryMemo(entry -> true);
+        }
+
+        /**
+         * Remembers an entry only when {@code sealed} answers true for its absolute, normalized
+         * path before it is read: a reading that began while the tree could still move is not
+         * kept.
+         */
+        public static EntryMemo onceSealed(Predicate<Path> sealed) {
+            return new EntryMemo(sealed);
+        }
+
+        /** Directory trees this memo has walked; a remembered one is walked once. */
+        public long walks() {
+            return walks.get();
+        }
+
+        /** Directory trees read through this memo, walked or remembered: what an unmemoized reader walks. */
+        public long dirReadings() {
+            return dirReadings.get();
+        }
+
+        /** Entries this memo holds a token for. */
+        public int remembered() {
+            return tokens.size();
+        }
+
+        private String entry(Path abs) throws IOException {
+            String hit = tokens.get(abs);
+            if (hit != null) {
+                if (hit.startsWith(DIR)) dirReadings.incrementAndGet();
+                return hit;
+            }
+            boolean keep = remember.test(abs);
+            String token = entryOf(abs);
+            if (token.startsWith(DIR)) {
+                walks.incrementAndGet();
+                dirReadings.incrementAndGet();
+            }
+            if (keep) tokens.put(abs, token);
+            return token;
+        }
+    }
+
+    private static final String DIR = "dir:";
 
     /**
      * How one classpath entry's content identity is read. {@link #ON_DISK} reads what is there;
@@ -94,7 +160,7 @@ public final class ClasspathFingerprint {
      */
     public static String entryFromOutputDigests(Map<String, String> relPathToSha256) {
         if (relPathToSha256 == null || relPathToSha256.isEmpty()) {
-            return "dir:" + Hashing.sha256Hex("");
+            return DIR + Hashing.sha256Hex("");
         }
         List<String> files = new ArrayList<>();
         for (Map.Entry<String, String> e : relPathToSha256.entrySet()) {
@@ -104,7 +170,7 @@ public final class ClasspathFingerprint {
             files.add(rel + ":" + e.getValue());
         }
         files.sort(Comparator.naturalOrder());
-        return "dir:" + Hashing.sha256Hex(String.join("\n", files));
+        return DIR + Hashing.sha256Hex(String.join("\n", files));
     }
 
     /**
@@ -197,13 +263,8 @@ public final class ClasspathFingerprint {
         if (projected != null) {
             return projected.isEmpty() ? "missing:" + PortablePath.of(abs) : entryFromOutputDigests(projected);
         }
-        Map<Path, String> memo = ContextPropagator.get(ENTRY_MEMO);
-        if (memo == null) return entryOf(abs);
-        String hit = memo.get(abs);
-        if (hit != null) return hit;
-        String token = entryOf(abs);
-        memo.put(abs, token);
-        return token;
+        EntryMemo memo = ContextPropagator.get(ENTRY_MEMO);
+        return memo == null ? entryOf(abs) : memo.entry(abs);
     }
 
     /** {@link #entry} without the memo; {@code abs} is already absolute and normalized. */

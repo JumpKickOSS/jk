@@ -108,8 +108,9 @@ public final class TaskForecaster {
         try {
             // The walk reads the same classpath entry once per module that names it, and a
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
-            // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
+            // same answer: the forecast's memo remembers everything (ClasspathFingerprint.EntryMemo).
             return JavaCompilerHost.scoped(() -> ClasspathFingerprint.withEntryMemo(
+                    ClasspathFingerprint.EntryMemo.everything(),
                     () -> forecastModules(graph, cas, resolver, actionCache, cache, knobs, worker, only, planner)));
         } catch (RuntimeException | Error direct) {
             throw direct;
