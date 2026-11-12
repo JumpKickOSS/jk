@@ -34,7 +34,6 @@ import cc.jumpkick.runtime.base.ProcessedResources;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
-import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -51,14 +50,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -224,7 +221,7 @@ public final class TaskForecaster {
         // Read once on the caller: the lanes run on pool threads the scoped value does not reach.
         ModuleProgress progress = PROGRESS.isBound() ? PROGRESS.get() : null;
         AtomicInteger priced = new AtomicInteger();
-        ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), laneContext(), u -> {
+        ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), u -> {
             one.accept(u);
             if (seeds.contains(u.dir())) dirty.add(u.dir());
             if (progress != null) progress.moduleDone(priced.incrementAndGet(), walked.size());
@@ -258,21 +255,6 @@ public final class TaskForecaster {
 
     static int lanes(int modules) {
         return Math.clamp(modules / MIN_MODULES_PER_LANE, 1, Math.min(MAX_LANES, JkThreads.CPU_THREADS / 2));
-    }
-
-    /**
-     * What a lane carries over from the caller. {@link JkThreads#cpu()}, whose threads are platform
-     * threads, rather than the io pool: an arm's dominant cost is reading directories, a native call
-     * the virtual-thread scheduler does not compensate for. The pool carries the session and its
-     * cancel token, the run's io ledger and the request scope a compile prediction forks its plan
-     * worker under; the entry memo is a {@code ScopedValue}, which does not ride a pool hop, so it
-     * and {@link JavaCompile#PLAN_WORKERS} are handed across explicitly.
-     */
-    private static UnaryOperator<Callable<@Nullable Void>> laneContext() {
-        Map<Path, String> memo = ClasspathFingerprint.entryMemo();
-        JavaCompile.PlanWorkers planWorkers = JavaCompile.PLAN_WORKERS.orElse(JavaCompile.PlanWorkers.ANY);
-        return body -> () -> ScopedValue.where(JavaCompile.PLAN_WORKERS, planWorkers)
-                .call(() -> ClasspathFingerprint.withEntryMemo(memo, body));
     }
 
     /** Wait for every lane of a wave, re-raising the first failure as the serial walk would have. */

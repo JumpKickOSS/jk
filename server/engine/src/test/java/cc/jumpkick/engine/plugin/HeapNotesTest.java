@@ -3,12 +3,15 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -21,7 +24,6 @@ class HeapNotesTest {
     @AfterEach
     void forget() {
         HeapNotes.clear();
-        StepScope.open(null);
     }
 
     @Test
@@ -35,16 +37,28 @@ class HeapNotesTest {
         TaskContext appTests = recording(appWarnings);
         TaskContext libTests = recording(libWarnings);
 
-        StepScope.open(appTests);
-        HeapNotes.note(HeapNotes.line(256L << 20, 128L << 20, false));
-        StepScope.open(libTests);
-        HeapNotes.note(HeapNotes.line(1L << 30, 512L << 20, false));
-
-        // The app's suite finishes first and flushes; the library's suite is still running.
-        StepScope.open(appTests);
-        HeapNotes.flush(appTests);
-        StepScope.open(libTests);
-        HeapNotes.flush(libTests);
+        // Both suites retry; the app's finishes first and flushes while the library's still runs.
+        CountDownLatch bothNoted = new CountDownLatch(2);
+        CountDownLatch appFlushed = new CountDownLatch(1);
+        Thread app = SessionContext.startVirtual(
+                "app-tests",
+                () -> StepScope.run(appTests, () -> {
+                    HeapNotes.note(HeapNotes.line(256L << 20, 128L << 20, false));
+                    bothNoted.countDown();
+                    await(bothNoted);
+                    HeapNotes.flush(appTests);
+                    appFlushed.countDown();
+                }));
+        Thread lib = SessionContext.startVirtual(
+                "lib-tests",
+                () -> StepScope.run(libTests, () -> {
+                    HeapNotes.note(HeapNotes.line(1L << 30, 512L << 20, false));
+                    bothNoted.countDown();
+                    await(appFlushed);
+                    HeapNotes.flush(libTests);
+                }));
+        join(app);
+        join(lib);
 
         assertThat(appWarnings).containsExactly("heap-retry retried with 256 MiB heap after running out of 128 MiB");
         assertThat(libWarnings).containsExactly("heap-retry retried with 1.0 GiB heap after running out of 512 MiB");
@@ -54,13 +68,29 @@ class HeapNotesTest {
     void a_step_that_ends_without_flushing_leaves_no_notes_behind() {
         TaskContext step = recording(new ArrayList<>());
         JobWorkers.runAs(REQUEST, () -> {
-            StepScope.open(step);
-            HeapNotes.note("retried with 256 MiB heap after running out of 128 MiB");
-            StepScope.close();
+            StepScope.run(step, () -> HeapNotes.note("retried with 256 MiB heap after running out of 128 MiB"));
 
-            StepScope.open(step);
-            assertThat(HeapNotes.drain()).isEmpty();
+            StepScope.run(step, () -> assertThat(HeapNotes.drain()).isEmpty());
         });
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
+    }
+
+    private static void join(Thread t) {
+        try {
+            t.join(TimeUnit.SECONDS.toMillis(10));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
+        assertThat(t.isAlive()).isFalse();
     }
 
     private static TaskContext recording(List<String> warnings) {

@@ -20,16 +20,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /** The byte ledger: order, clamp, cancel, and release. */
 class WorkerLeasesTest {
-
-    @AfterEach
-    void reset() {
-        StepScope.close();
-    }
 
     @Test
     void fork_cap_follows_the_host_when_nothing_quotas_the_cgroup() {
@@ -385,20 +379,17 @@ class WorkerLeasesTest {
         AtomicReference<String> label = new AtomicReference<>("compiling");
         List<String> output = new CopyOnWriteArrayList<>();
         AtomicInteger waitedCalls = new AtomicInteger();
-        StepScope.open(recording(label, output, waitedCalls));
         try (WorkerLeases.Grant held = ledger.acquireBytes(40, false, 3L)) {
             CompletableFuture<WorkerLeases.Grant> waiting = new CompletableFuture<>();
-            Thread.ofVirtual().start(() -> {
-                StepScope.open(recording(label, output, waitedCalls));
-                try {
-                    waiting.complete(ledger.acquireBytes(40, false, 3L));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    waiting.completeExceptionally(e);
-                } finally {
-                    StepScope.close();
-                }
-            });
+            Thread.ofVirtual()
+                    .start(() -> StepScope.run(recording(label, output, waitedCalls), () -> {
+                        try {
+                            waiting.complete(ledger.acquireBytes(40, false, 3L));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            waiting.completeExceptionally(e);
+                        }
+                    }));
             awaitQueued(ledger, 1);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (output.stream().noneMatch(l -> l.startsWith("waiting for memory: need"))) {

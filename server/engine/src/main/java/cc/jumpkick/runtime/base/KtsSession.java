@@ -433,13 +433,7 @@ final class KtsSession {
         // Not registered for request cancel: this host outlives the build that started it and is
         // reused by later builds. The idle reaper and the shutdown hook own it. It is still contained.
         // The scope is what files the host's peak when it exits, so the next start is learned.
-        HeapScope.Key key = heapKey();
-        HeapScope.Key previous = HeapScope.bind(key);
-        try {
-            return startBound();
-        } finally {
-            HeapScope.restore(previous);
-        }
+        return HeapScope.fork(heapKey(), KtsSession::startBound);
     }
 
     private static KtsSession startBound() throws IOException, InterruptedException {

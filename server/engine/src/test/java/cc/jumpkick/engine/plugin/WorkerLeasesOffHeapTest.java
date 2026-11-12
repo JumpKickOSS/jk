@@ -41,7 +41,17 @@ class WorkerLeasesOffHeapTest {
         WorkerLeases.Ledger ledger = new WorkerLeases.Ledger(
                 () -> budget, () -> 8, id -> false, OverbookSignals.off(), MemoryProbe::rssBytes);
         List<String> warnings = new CopyOnWriteArrayList<>();
-        StepScope.open(recording(warnings));
+        StepScope.call(recording(warnings), () -> {
+            try {
+                forkOverLease(ledger, warnings);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            return null;
+        });
+    }
+
+    private static void forkOverLease(WorkerLeases.Ledger ledger, List<String> warnings) throws Exception {
         Process hog = null;
         CompletableFuture<WorkerLeases.Grant> next = null;
         try {
@@ -83,7 +93,6 @@ class WorkerLeasesOffHeapTest {
                 hog.waitFor(5, TimeUnit.SECONDS);
             }
             if (next != null) next.cancel(true);
-            StepScope.close();
         }
     }
 

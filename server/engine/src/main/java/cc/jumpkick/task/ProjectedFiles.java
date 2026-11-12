@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.run.ContextPropagator;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,11 +24,16 @@ import org.jspecify.annotations.Nullable;
  * stale root is the key the build computes once the root is back.
  *
  * <p>Bound as a {@link ScopedValue}, never a static: two forecasts can run at once in one engine,
- * and a live build, which writes the very roots, must never see one.
+ * and a live build, which writes the very roots, must never see one. {@link ContextPropagator
+ * Carried}, so a forecast's pool tasks answer from the same projection.
  */
 public final class ProjectedFiles {
 
     private static final ScopedValue<ProjectedFiles> CURRENT = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(CURRENT);
+    }
 
     /** Projected root (absolute, normalized) to its files, forward-slash relative path to sha. */
     private final Map<Path, Map<String, String>> roots = new ConcurrentHashMap<>();
@@ -54,16 +61,18 @@ public final class ProjectedFiles {
      * projection names {@code dir} as a root, so the caller reads the disk.
      */
     public static @Nullable Map<String, String> at(Path dir) {
-        if (!CURRENT.isBound()) return null;
-        Map<String, String> files = CURRENT.get().roots.get(dir.toAbsolutePath().normalize());
+        ProjectedFiles bound = ContextPropagator.get(CURRENT);
+        if (bound == null) return null;
+        Map<String, String> files = bound.roots.get(dir.toAbsolutePath().normalize());
         return files == null ? null : new TreeMap<>(files);
     }
 
     /** The projected sha of {@code file}, under a projected root; null when no root holds it. */
     public static @Nullable String contentHash(Path file) {
-        if (!CURRENT.isBound()) return null;
+        ProjectedFiles bound = ContextPropagator.get(CURRENT);
+        if (bound == null) return null;
         Path abs = file.toAbsolutePath().normalize();
-        for (Map.Entry<Path, Map<String, String>> root : CURRENT.get().roots.entrySet()) {
+        for (Map.Entry<Path, Map<String, String>> root : bound.roots.entrySet()) {
             if (!abs.startsWith(root.getKey())) continue;
             String rel = root.getKey().relativize(abs).toString().replace('\\', '/');
             return root.getValue().get(rel);
@@ -79,7 +88,7 @@ public final class ProjectedFiles {
     public static @Nullable Path blob(Path file) {
         String sha = contentHash(file);
         if (sha == null) return null;
-        Path blob = CURRENT.get().blobs.apply(sha);
+        Path blob = Objects.requireNonNull(ContextPropagator.get(CURRENT)).blobs.apply(sha);
         return Files.isRegularFile(blob) ? blob : null;
     }
 
@@ -108,9 +117,10 @@ public final class ProjectedFiles {
     }
 
     private static boolean underRoot(Path file) {
-        if (!CURRENT.isBound()) return false;
+        ProjectedFiles bound = ContextPropagator.get(CURRENT);
+        if (bound == null) return false;
         Path abs = file.toAbsolutePath().normalize();
-        for (Path root : CURRENT.get().roots.keySet()) {
+        for (Path root : bound.roots.keySet()) {
             if (abs.startsWith(root)) return true;
         }
         return false;

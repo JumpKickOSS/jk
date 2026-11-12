@@ -479,15 +479,17 @@ public final class PlannerPlugin {
             Path javaHome,
             StepDiagnostics said)
             throws IOException, InterruptedException {
-        HeapScope.Key previous = HeapScope.bind(new HeapScope.Key(
+        HeapScope.Key key = new HeapScope.Key(
                 in.dir(),
                 project.project().group() + ":" + project.project().name(),
                 HeapScope.PLUGIN,
-                JvmOptions.hostFeature(javaHome)));
+                JvmOptions.hostFeature(javaHome));
         try {
-            PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, said::forward);
+            HeapScope.fork(key, () -> {
+                PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, said::forward);
+                return null;
+            });
         } finally {
-            HeapScope.restore(previous);
             HeapNotes.flush(ctx);
         }
     }

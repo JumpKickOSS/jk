@@ -9,6 +9,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.run.ContextPropagator;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,6 +92,10 @@ public final class JavaCompile {
 
     /** Bound by a forecast that limits which workers it plans on; unbound is {@link PlanWorkers#ANY}. */
     public static final ScopedValue<PlanWorkers> PLAN_WORKERS = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(PLAN_WORKERS);
+    }
 
     public enum Outcome {
         CACHE_HIT,
@@ -429,7 +434,7 @@ public final class JavaCompile {
         if (!Files.isRegularFile(stateDir.resolve(ProducerAnalyses.ANALYSIS_FILE))) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "no zinc analysis");
         }
-        PlanWorkers planWorkers = PLAN_WORKERS.orElse(PlanWorkers.ANY);
+        PlanWorkers planWorkers = Objects.requireNonNullElse(ContextPropagator.get(PLAN_WORKERS), PlanWorkers.ANY);
         if (planWorkers != PlanWorkers.NONE && workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);

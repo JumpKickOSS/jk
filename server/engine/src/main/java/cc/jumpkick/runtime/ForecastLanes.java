@@ -12,14 +12,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -44,22 +42,21 @@ final class ForecastLanes {
     private ForecastLanes() {}
 
     /**
-     * Visit {@code units} in dependency order by {@code order} (dir → prereq dirs). {@code bind}
-     * carries the caller's scoped values onto a lane; a single lane runs on the caller. The first
+     * Visit {@code units} in dependency order by {@code order} (dir → prereq dirs). A lane carries
+     * the caller's scoped values as every {@link JkThreads} task does; a single lane runs on the caller. The first
      * failure stops the walk (modules being visited finish, none start) and is re-raised here.
      */
     static void walk(
             List<BuildGraph.BuildUnit> units,
             Map<Path, Set<Path>> order,
             int lanes,
-            UnaryOperator<Callable<@Nullable Void>> bind,
             Consumer<BuildGraph.BuildUnit> visit) {
         Graph g = Graph.of(units, order);
         if (lanes <= 1) {
             walkSerial(g, visit);
             return;
         }
-        new Parallel(g, visit).run(lanes, bind);
+        new Parallel(g, visit).run(lanes);
     }
 
     /** Kahn's order on the caller, the longest chain first. */
@@ -92,14 +89,14 @@ final class ForecastLanes {
             this.visit = visit;
         }
 
-        void run(int laneCount, UnaryOperator<Callable<@Nullable Void>> bind) {
+        void run(int laneCount) {
             List<Item> roots = g.roots();
             if (roots.isEmpty()) return;
             this.lanes = laneCount;
             open.set(roots.size());
             ready.addAll(roots);
             List<Future<?>> pending = new ArrayList<>(laneCount);
-            for (int i = 0; i < laneCount; i++) pending.add(JkThreads.cpu().submit(bind.apply(this::lane)));
+            for (int i = 0; i < laneCount; i++) pending.add(JkThreads.cpu().submit(this::lane));
             TaskForecaster.joinWave(pending);
             Throwable failed = failure.get();
             if (failed instanceof Error error) throw error;

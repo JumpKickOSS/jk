@@ -557,7 +557,10 @@ public final class BuildPlan {
                 step.name(), this, initialTicks, weight, step.hasExplicitWeight(), expectedNanos, startNanos);
         boolean ticked = ctx.interpolating();
         if (ticked) easing.add(ctx);
-        StepScope.open(ctx);
+        return StepScope.call(ctx, () -> runInScope(step, ctx, ticked, start, startNum));
+    }
+
+    private TaskStatus runInScope(Task step, DefaultTaskContext ctx, boolean ticked, Instant start, long startNum) {
         try {
             step.execute(ctx);
             // Stop interpolating before auto-fill so no late tick races the top-up.
@@ -620,8 +623,6 @@ public final class BuildPlan {
             stepsComplete.incrementAndGet();
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
-        } finally {
-            StepScope.close();
         }
     }
 

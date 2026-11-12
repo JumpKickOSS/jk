@@ -651,7 +651,7 @@ public final class PlannerNative {
         // Graal's output feeds progress parsing, the durable report and the plan output channel,
         // which the CLI buffers for Ctrl-O peek and --verbose streams live.
         List<String> log = Collections.synchronizedList(new ArrayList<>());
-        int exit = HeapScope.call(
+        int exit = HeapScope.fork(
                 key,
                 () -> NativeImageDriver.run(request, listener, line -> {
                     log.add(line);

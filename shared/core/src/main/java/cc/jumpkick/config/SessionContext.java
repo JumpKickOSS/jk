@@ -15,9 +15,9 @@ import org.jspecify.annotations.Nullable;
  * builds each see their own session; then the session of the enclosing CLI invocation
  * ({@link #invocation}); otherwise a process-wide static.
  *
- * <p>One {@link ScopedValue} carries both the session and the request, and one {@link
- * ContextPropagator} carries that binding onto {@link cc.jumpkick.run.JkThreads} workers, as {@link
- * #startVirtual}/{@link #startPlatform} carry it onto the threads they start. A bare thread sees
+ * <p>One {@link ScopedValue} carries both the session and the request, registered with {@link
+ * ContextPropagator} so that binding follows work onto {@link cc.jumpkick.run.JkThreads} workers and
+ * onto the threads {@link #startVirtual}/{@link #startPlatform} start. A bare thread sees
  * neither: it reads the invocation's or the static session and no request.
  *
  * <p>{@link #install}/{@link #installConfig} write the invocation's session when one is open, so
@@ -51,23 +51,9 @@ public final class SessionContext {
     private static volatile Session current = Session.defaults();
 
     static {
-        // ScopedValue does not reach pre-existing shared executors: capture on the submitting thread,
-        // bind on the worker. A submitter off a request hands the worker no request, whatever an
-        // earlier task left behind. Added beside, not bound over, whatever another subsystem
-        // registered first: class-initialization order must not decide which context survives.
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                Bound b = capture();
-                return () -> ScopedValue.where(SCOPED, b).run(r);
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                Bound b = capture();
-                return () -> ScopedValue.where(SCOPED, b).call(c::call);
-            }
-        });
+        // Carried pinned: a worker reads the submitter's session even when it came from the
+        // invocation or the static, and a submitter off a request hands the worker no request.
+        ContextPropagator.carry(SCOPED, SessionContext::capture);
     }
 
     /** The calling thread's session, pinned, and its request: what a hop to another thread carries. */
@@ -168,16 +154,15 @@ public final class SessionContext {
     }
 
     /**
-     * Start a virtual thread that runs {@code body} under the calling thread's session and request. A
-     * bare {@code Thread.ofVirtual().start} carries no {@link ScopedValue} binding, so code on it
+     * Start a virtual thread that runs {@code body} under the calling thread's session, request and
+     * every other {@link ContextPropagator carried} value. A bare {@code Thread.ofVirtual().start}
+     * carries no {@link ScopedValue} binding, so code on it
      * reads the process default and no request — a worker JVM forked from such a thread is sized and
      * flagged without the request's tuning, runs without its cancel token, and is not the request's
      * to kill on cancel.
      */
     public static Thread startVirtual(String name, Runnable body) {
-        Bound b = capture();
-        return Thread.ofVirtual().name(name).start(() -> ScopedValue.where(SCOPED, b)
-                .run(body));
+        return Thread.ofVirtual().name(name).start(ContextPropagator.wrapRunnable(body));
     }
 
     /**
@@ -186,9 +171,7 @@ public final class SessionContext {
      * scheduler would otherwise hand to the work that saturates it.
      */
     public static Thread startPlatform(String name, Runnable body) {
-        Bound b = capture();
-        return Thread.ofPlatform().daemon().name(name).start(() -> ScopedValue.where(SCOPED, b)
-                .run(body));
+        return Thread.ofPlatform().daemon().name(name).start(ContextPropagator.wrapRunnable(body));
     }
 
     /**

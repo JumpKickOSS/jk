@@ -4,10 +4,12 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.run.JkThreads;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -178,6 +181,25 @@ class MavenMetadataCacheTest {
         // Conditional GET (304) — still a network hop, not a pure TTL hit.
         assertThat(hits.get()).isEqualTo(2);
         assertThat(lastIfNoneMatch).isEqualTo(ETAG);
+    }
+
+    @Test
+    void force_revalidate_reaches_the_pools_and_threads_its_body_starts() throws Exception {
+        List<Boolean> seen = MavenMetadataCache.withForceRevalidate(() -> {
+            List<Boolean> out = new ArrayList<>();
+            out.add(JkThreads.io().submit(MavenMetadataCache::forceRevalidate).get());
+            out.add(JkThreads.cpu().submit(MavenMetadataCache::forceRevalidate).get());
+            AtomicBoolean onThread = new AtomicBoolean();
+            SessionContext.startVirtual("revalidate-probe", () -> onThread.set(MavenMetadataCache.forceRevalidate()))
+                    .join();
+            out.add(onThread.get());
+            return out;
+        });
+
+        assertThat(seen).containsExactly(true, true, true);
+        assertThat(MavenMetadataCache.forceRevalidate()).isFalse();
+        assertThat(JkThreads.io().submit(MavenMetadataCache::forceRevalidate).get())
+                .isFalse();
     }
 
     @Test

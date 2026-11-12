@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Proves that a {@code where()}-bound {@link Session} — and its per-request cancel token — propagates
- * to tasks dispatched to the shared {@link JkThreads} pools via the {@code ContextPropagator} seam
- * that {@link SessionContext}'s static initializer installs. Without propagation a pool worker would
+ * to tasks dispatched to the shared {@link JkThreads} pools, as {@link SessionContext} registers its
+ * binding with {@code ContextPropagator}. Without propagation a pool worker would
  * read the process-static session instead, so two concurrent requests could not be isolated.
  */
 class SessionPropagationTest {

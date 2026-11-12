@@ -258,15 +258,15 @@ public final class WarmWorkers {
         YieldHook hook = new YieldHook();
         // Bound for the start only: the scope is what files the worker's peak when it exits.
         HeapScope.Key heapKey = launch.heapKey();
-        HeapScope.@Nullable Key previous = heapKey != null ? HeapScope.bind(heapKey) : HeapScope.get();
+        WorkerLeases.Resident resident = new WorkerLeases.Resident(launch.name(), hook);
         Process process;
         try {
-            process = JobWorkers.startResident(pb, new WorkerLeases.Resident(launch.name(), hook));
+            process = heapKey != null
+                    ? HeapScope.call(heapKey, () -> JobWorkers.startResident(pb, resident))
+                    : JobWorkers.startResident(pb, resident);
         } catch (IOException | RuntimeException e) {
             commands.close();
             throw e;
-        } finally {
-            HeapScope.restore(previous);
         }
         PluginProcess.closeStdin(process);
         Worker w = new Worker(launch.name(), key, launch.heap(), process, commands);

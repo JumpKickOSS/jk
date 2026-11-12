@@ -62,65 +62,31 @@ public final class EffortWeights {
     private EffortWeights() {}
 
     /**
-     * When set, jar-derived tails (native / assembly / OCI) over-reserve full learned walls even if
-     * outputs look mtime-fresh vs the pre-build jar. Dirty-module prepare always sets this —
+     * When bound, jar-derived tails (native / assembly / OCI) over-reserve full learned walls even if
+     * outputs look mtime-fresh vs the pre-build jar. Dirty-module prepare always binds it —
      * upstream-dirty recompile rewrites the jar without touching local source stamps, which is
-     * exactly when a naïve freshness check under-counted native-image to weight 0.
+     * exactly when a naïve freshness check under-counted native-image to weight 0. Carried, because
+     * {@link BuildPlan} evaluates weight suppliers on pool workers.
      */
-    private static final ThreadLocal<Boolean> OVER_RESERVE_TAILS = new ThreadLocal<>();
+    private static final ScopedValue<Boolean> OVER_RESERVE_TAILS = ScopedValue.newInstance();
 
     static {
-        // BuildPlan.estimatedTotalWeight()/run() evaluate weight suppliers on JkThreads pool
-        // workers; the flag must ride that hop like the session context does. Capture
-        // happens on the submitting thread (inside withOverReserveTails), restore on the worker;
-        // remove() in finally keeps shared cpu() workers clean.
-        // SessionContext's static init uses bind() (displaces); force it to land before our add().
-        SessionContext.current();
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                if (!overReserveTails()) return r;
-                return () -> {
-                    OVER_RESERVE_TAILS.set(Boolean.TRUE);
-                    try {
-                        r.run();
-                    } finally {
-                        OVER_RESERVE_TAILS.remove();
-                    }
-                };
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                if (!overReserveTails()) return c;
-                return () -> {
-                    OVER_RESERVE_TAILS.set(Boolean.TRUE);
-                    try {
-                        return c.call();
-                    } finally {
-                        OVER_RESERVE_TAILS.remove();
-                    }
-                };
-            }
-        });
+        ContextPropagator.carry(OVER_RESERVE_TAILS);
     }
 
     /** Run {@code body} with jar-derived tails forced to full bar weight (dirty prepare / run). */
     public static <T> T withOverReserveTails(Callable<T> body) {
-        OVER_RESERVE_TAILS.set(Boolean.TRUE);
         try {
-            return body.call();
+            return ScopedValue.where(OVER_RESERVE_TAILS, Boolean.TRUE).<T, Exception>call(body::call);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException(e);
-        } finally {
-            OVER_RESERVE_TAILS.remove();
         }
     }
 
     static boolean overReserveTails() {
-        return Boolean.TRUE.equals(OVER_RESERVE_TAILS.get());
+        return Boolean.TRUE.equals(ContextPropagator.get(OVER_RESERVE_TAILS));
     }
 
     /**

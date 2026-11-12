@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.run.ContextPropagator;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Manifest text read in place of the files on disk while a {@link #reading} call runs on its thread:
- * how {@code jk update} resolves pin moves nobody has accepted without writing them. {@link
- * JkBuildParser} and the rules-file reader consult it; while one is bound, {@link RequestScope}
- * remembers nothing, so no fact derived from the overlay outlives it and none from disk leaks in.
+ * Manifest text read in place of the files on disk while a {@link #reading} call runs, on its thread
+ * and the pool tasks and threads it starts ({@link ContextPropagator carried}): how {@code jk update}
+ * resolves pin moves nobody has accepted without writing them. {@link JkBuildParser} and the
+ * rules-file reader consult it; while one is bound, {@link RequestScope} remembers nothing, so no
+ * fact derived from the overlay outlives it and none from disk leaks in.
  */
 public final class ManifestOverlay {
 
     private static final ScopedValue<Map<Path, String>> TEXTS = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(TEXTS);
+    }
 
     private ManifestOverlay() {}
 
@@ -33,12 +39,13 @@ public final class ManifestOverlay {
 
     /** The text the bound overlay holds for {@code file}, or {@code null} to read the file. */
     public static @Nullable String text(Path file) {
-        return TEXTS.isBound() ? TEXTS.get().get(key(file)) : null;
+        Map<Path, String> texts = ContextPropagator.get(TEXTS);
+        return texts == null ? null : texts.get(key(file));
     }
 
     /** True while a {@link #reading} call runs on this thread. */
     public static boolean active() {
-        return TEXTS.isBound();
+        return ContextPropagator.get(TEXTS) != null;
     }
 
     private static Path key(Path file) {

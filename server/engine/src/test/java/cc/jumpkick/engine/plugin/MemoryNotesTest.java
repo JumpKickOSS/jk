@@ -21,22 +21,18 @@ class MemoryNotesTest {
         List<String> output = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         TaskContext ctx = recording(output, warnings);
-        StepScope.open(ctx);
-        try {
+        StepScope.run(ctx, () -> {
             MemoryNotes.recordWait(ctx, 200_000_000L);
             MemoryNotes.recordWait(ctx, 2_000_000_000L);
             MemoryNotes.recordWait(ctx, 1_000_000_000L);
-        } finally {
-            StepScope.close();
-        }
+        });
         assertThat(output).containsExactly("waited 2s for memory", "waited 1s for memory");
         String phrase = MemoryNotes.waitedPhrase(3_000_000_000L);
         if (WorkerContainment.leaseBudget().source() == WorkerContainment.BudgetSource.OVERRIDE) {
             phrase = phrase + " (" + WorkerContainment.BUDGET_ENV + ")";
         }
         assertThat(warnings).containsExactly("memory-wait " + phrase);
-        StepScope.open(ctx);
-        StepScope.close();
+        StepScope.run(ctx, () -> {});
         assertThat(warnings).hasSize(1);
     }
 

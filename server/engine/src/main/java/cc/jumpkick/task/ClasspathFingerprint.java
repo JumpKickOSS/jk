@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.TreeContent;
+import cc.jumpkick.run.ContextPropagator;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +15,6 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
@@ -36,6 +36,10 @@ public final class ClasspathFingerprint {
     /** The read-only reader's memo of {@link #entry} tokens, bound only inside {@link #withEntryMemo}. */
     private static final ScopedValue<Map<Path, String>> ENTRY_MEMO = ScopedValue.newInstance();
 
+    static {
+        ContextPropagator.carry(ENTRY_MEMO);
+    }
+
     /**
      * Run {@code body} with {@link #entry} memoized per path.
      *
@@ -46,27 +50,12 @@ public final class ClasspathFingerprint {
      * never bind it, since its steps rewrite the very trees they key on.
      *
      * <p>Bound as a {@link ScopedValue}, not a static, because two jobs can forecast at once in one
-     * engine and must not share one. A binding does not follow work onto a pre-existing pool's
-     * threads, so a reader that fans out passes {@link #entryMemo()} to each lane.
+     * engine and must not share one. {@link ContextPropagator Carried}, so a reader's pool lanes
+     * share its memo.
      */
     public static <T> T withEntryMemo(Callable<T> body) throws Exception {
-        return withEntryMemo(new ConcurrentHashMap<Path, String>(), body);
-    }
-
-    /**
-     * As {@link #withEntryMemo(Callable)} sharing an existing memo — what {@link #entryMemo()}
-     * returned on the thread that forked this one. A {@code ScopedValue} binding does not ride a
-     * pre-existing pool's thread hop, so a reader that fans out has to carry it across by hand or
-     * each lane starts cold.
-     */
-    public static <T> T withEntryMemo(@Nullable Map<Path, String> memo, Callable<T> body) throws Exception {
-        if (memo == null) return body.call();
-        return ScopedValue.where(ENTRY_MEMO, memo).<T, Exception>call(body::call);
-    }
-
-    /** The memo bound around this thread, or {@code null}; for handing to a lane via {@link #withEntryMemo}. */
-    public static @Nullable Map<Path, String> entryMemo() {
-        return ENTRY_MEMO.isBound() ? ENTRY_MEMO.get() : null;
+        return ScopedValue.where(ENTRY_MEMO, new ConcurrentHashMap<Path, String>())
+                .<T, Exception>call(body::call);
     }
 
     /**
@@ -197,8 +186,8 @@ public final class ClasspathFingerprint {
         if (projected != null) {
             return projected.isEmpty() ? "missing:" + PortablePath.of(abs) : entryFromOutputDigests(projected);
         }
-        if (!ENTRY_MEMO.isBound()) return entryOf(abs);
-        Map<Path, String> memo = ENTRY_MEMO.get();
+        Map<Path, String> memo = ContextPropagator.get(ENTRY_MEMO);
+        if (memo == null) return entryOf(abs);
         String hit = memo.get(abs);
         if (hit != null) return hit;
         String token = entryOf(abs);

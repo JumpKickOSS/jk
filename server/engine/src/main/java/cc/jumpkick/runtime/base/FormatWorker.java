@@ -164,13 +164,13 @@ public final class FormatWorker {
         if (heap == null) {
             last = tally.attempt(launch.command(null), spec, key);
         } else {
-            last = scoped(key, () -> tally.attempt(launch.command(heap), spec, key));
+            last = HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key));
             WorkerFate.Cause cause = last.exit() == 0 || last.exit() == 1
                     ? WorkerFate.Cause.OTHER
                     : WorkerFate.classify(last.exit(), last.output());
             if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
-                last = scoped(key, () -> tally.attempt(launch.command(heap), spec, key));
+                last = HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key));
             } else if (cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
                 List<Long> ranOut = new ArrayList<>(List.of(heap));
                 while (true) {
@@ -182,7 +182,7 @@ public final class FormatWorker {
                         break;
                     }
                     HeapNotes.note(HeapNotes.line(bigger, failed, false));
-                    last = scoped(key, () -> tally.attempt(launch.command(bigger), spec, key));
+                    last = HeapScope.fork(key, () -> tally.attempt(launch.command(bigger), spec, key));
                     if (!WorkerFate.heapExhausted(last.exit(), last.output())) {
                         heaps.good(key, bigger);
                         break;
@@ -285,21 +285,6 @@ public final class FormatWorker {
             observer.onFile(path, status, Jsonl.str(json, "msg"), index.incrementAndGet(), total);
             ctx.progress(1);
         }
-    }
-
-    private static Attempt scoped(HeapScope.Key key, AttemptBody body) throws IOException, InterruptedException {
-        try {
-            return HeapScope.call(key, body::run);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException(e);
-        }
-    }
-
-    @FunctionalInterface
-    private interface AttemptBody {
-        Attempt run() throws Exception;
     }
 
     /**

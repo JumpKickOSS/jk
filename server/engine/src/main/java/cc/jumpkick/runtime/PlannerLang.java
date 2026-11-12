@@ -250,12 +250,7 @@ public final class PlannerLang {
         KotlinClasspathAbi.Snapshotter snapshotter() {
             return entries -> {
                 KotlincRequest req = request();
-                HeapScope.Key previous = HeapScope.bind(heapKey);
-                try {
-                    return KotlincSnapshots.snapshot(req, entries, env);
-                } finally {
-                    HeapScope.restore(previous);
-                }
+                return HeapScope.call(heapKey, () -> KotlincSnapshots.snapshot(req, entries, env));
             };
         }
 
@@ -679,15 +674,13 @@ public final class PlannerLang {
     }
 
     private static <T> T learning(TaskContext ctx, Path project, String kind, Callable<T> body) throws IOException {
-        HeapScope.Key previous = HeapScope.bind(heapKey(project, ctx.require(PROJECT), kind));
         try {
-            return body.call();
+            return HeapScope.call(heapKey(project, ctx.require(PROJECT), kind), body::call);
         } catch (IOException | RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new IOException(e);
         } finally {
-            HeapScope.restore(previous);
             HeapNotes.flush(ctx);
         }
     }
