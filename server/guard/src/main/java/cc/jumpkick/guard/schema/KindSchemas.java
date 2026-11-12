@@ -125,6 +125,39 @@ final class KindSchemas {
                 why    = "an entity outside the model package is a repository leak"
                 """);
         define(
+                Kind.STATICS,
+                InsteadRule.OPTIONAL,
+                List.of(
+                        optional(
+                                "reachable-from",
+                                STRING_OR_LIST,
+                                "modules whose dependency closure the rule judges; default every module in scope"),
+                        optional(
+                                "managed",
+                                STRING_LIST,
+                                "initializers whose value is managed, pkg.Class#method; such a field passes"),
+                        optional(
+                                "holders",
+                                STRING_LIST,
+                                "types beyond the JDK's collections that hold mutable state, pkg.Class or a glob"),
+                        optional(
+                                "ignore-types",
+                                STRING_LIST,
+                                "field types that never hold state (seams, loggers), pkg.Class or a glob"),
+                        optional(
+                                "reasons",
+                                STRING_LIST,
+                                "prefixes an allow entry's reason must start with; allow entries name pkg.Class#FIELD")),
+                List.of(),
+                """
+                [guards.no-static-caches]
+                kind    = "statics"
+                managed = ["com.acme.cache.Caches#bounded"]
+                reasons = ["live registry:", "content-keyed:"]
+                instead = "Caches.bounded(n), or an allow entry naming the field and why its lifetime is safe"
+                why     = "a static map in a long-lived service grows and goes stale for the life of the process"
+                """);
+        define(
                 Kind.LAYERS,
                 InsteadRule.ABSENT,
                 List.of(

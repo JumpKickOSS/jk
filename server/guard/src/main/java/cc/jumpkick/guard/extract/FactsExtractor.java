@@ -94,6 +94,9 @@ public final class FactsExtractor {
         final List<MethodFacts> methods = new ArrayList<>();
         final TreeSet<String> refs = new TreeSet<>();
 
+        /** Static field → the last call the static initializer made before assigning it. */
+        final Map<String, String> initializers = new LinkedHashMap<>();
+
         Collector() {
             super(Opcodes.ASM9);
         }
@@ -140,7 +143,7 @@ public final class FactsExtractor {
 
                 @Override
                 public void visitEnd() {
-                    fields.add(new FieldFacts(fname, desc, access, constant, fann));
+                    fields.add(new FieldFacts(fname, desc, access, constant, fann, null));
                 }
             };
         }
@@ -155,6 +158,15 @@ public final class FactsExtractor {
 
         ClassFacts finish() {
             refs.remove(name);
+            if (!initializers.isEmpty()) {
+                // Fields are visited before methods, so the initializer joins them here.
+                fields.replaceAll(f -> {
+                    String init = initializers.get(f.name());
+                    return init == null
+                            ? f
+                            : new FieldFacts(f.name(), f.desc(), f.access(), f.constantValue(), f.annotations(), init);
+                });
+            }
             return new ClassFacts(name, access, superName, interfaces, sourceFile, annotations, fields, methods, refs);
         }
 
@@ -194,6 +206,10 @@ public final class FactsExtractor {
 
             @Nullable
             String lastLdc;
+
+            /** In the static initializer, the last call made since the last field access. */
+            @Nullable
+            String lastCall;
 
             /** String constants loaded since the last invoke, field access or allocation: the argument window. */
             final List<String> window = new ArrayList<>();
@@ -248,12 +264,18 @@ public final class FactsExtractor {
                                 : prior.merged(line, lastLdc, window));
                 lastLdc = null;
                 window.clear();
+                lastCall = owner + '#' + name;
             }
 
             @Override
             public void visitFieldInsn(int opcode, String owner, String name, String fdesc) {
                 refInternal(owner);
                 refType(fdesc);
+                if (opcode == Opcodes.PUTSTATIC && mname.equals("<clinit>") && owner.equals(Collector.this.name)) {
+                    if (lastCall == null) initializers.remove(name);
+                    else initializers.put(name, lastCall);
+                }
+                lastCall = null;
                 boolean write = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
                 String key = owner + '#' + name + (write ? "=" : "");
                 FieldRef prior = fieldRefs.get(key);
@@ -277,6 +299,7 @@ public final class FactsExtractor {
             @Override
             public void visitInvokeDynamicInsn(String name, String idesc, Handle bsm, Object... args) {
                 refMethodDesc(idesc);
+                lastCall = null;
                 for (Object a : args) {
                     if (a instanceof Handle h) {
                         refInternal(h.getOwner());

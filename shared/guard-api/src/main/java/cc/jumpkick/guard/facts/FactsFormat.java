@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
 public final class FactsFormat {
 
     static final int MAGIC = 0x4A4B4746; // JKGF
-    static final int VERSION = 1;
+    static final int VERSION = 2;
 
     private FactsFormat() {}
 
@@ -220,6 +220,7 @@ public final class FactsFormat {
                 out.writeInt(f.access());
                 str(f.constantValue());
                 annotations(f.annotations());
+                str(f.initializer());
             }
             out.writeInt(c.methods().size());
             for (MethodFacts m : c.methods()) {
@@ -306,7 +307,7 @@ public final class FactsFormat {
             int nf = in.readInt();
             List<FieldFacts> fields = new ArrayList<>(nf);
             for (int i = 0; i < nf; i++) {
-                fields.add(new FieldFacts(req(), req(), in.readInt(), str(), annotations()));
+                fields.add(new FieldFacts(req(), req(), in.readInt(), str(), annotations(), str()));
             }
             int nm = in.readInt();
             List<MethodFacts> methods = new ArrayList<>(nm);

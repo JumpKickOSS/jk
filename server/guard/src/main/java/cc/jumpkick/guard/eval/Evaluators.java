@@ -30,6 +30,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.METRIC, new MetricEvaluator());
         BY_KIND.put(Kind.ANNOTATE, new AnnotateEvaluator());
         BY_KIND.put(Kind.CLASSES, new ClassesEvaluator());
+        BY_KIND.put(Kind.STATICS, new StaticsEvaluator());
         BY_KIND.put(Kind.LAYERS, new LayersEvaluator());
         BY_KIND.put(Kind.CYCLES, new CyclesEvaluator());
         BY_KIND.put(Kind.SPLIT_PACKAGE, new SplitPackageEvaluator());

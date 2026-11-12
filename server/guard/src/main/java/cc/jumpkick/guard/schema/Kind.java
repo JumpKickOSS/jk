@@ -14,6 +14,7 @@ public enum Kind {
     FORBID("forbid", Substrate.BYTECODE, Lane.MODULE, "ban a type, member, package or call shape outside an owner"),
     ANNOTATE("annotate", Substrate.BYTECODE, Lane.MODULE, "an annotation must or must not be present"),
     CLASSES("classes", Substrate.BYTECODE, Lane.MODULE, "classes that … should … with closed predicates"),
+    STATICS("statics", Substrate.BYTECODE, Lane.MODULE, "static fields holding mutable state outside a managed holder"),
     LAYERS("layers", Substrate.MODEL, Lane.MODEL, "package or module layering and visibility"),
     CYCLES("cycles", Substrate.BYTECODE, Lane.MODULE, "slices free of cycles"),
     SPLIT_PACKAGE("split-package", Substrate.BYTECODE, Lane.WORKSPACE, "one module owns a package"),

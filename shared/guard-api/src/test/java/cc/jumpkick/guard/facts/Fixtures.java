@@ -73,8 +73,8 @@ final class Fixtures {
     /** A hashing class: a constant, a method calling MessageDigest with a literal, a field read. */
     static ClassFacts hashing() {
         FieldFacts algo = new FieldFacts(
-                "ALGORITHM", "Ljava/lang/String;", ACC_PUBLIC | ACC_STATIC | ACC_FINAL, "SHA-256", List.of());
-        FieldFacts counter = new FieldFacts("calls", "I", ACC_STATIC, null, List.of());
+                "ALGORITHM", "Ljava/lang/String;", ACC_PUBLIC | ACC_STATIC | ACC_FINAL, "SHA-256", List.of(), null);
+        FieldFacts counter = new FieldFacts("calls", "I", ACC_STATIC, null, List.of(), null);
         CallSite digest = new CallSite(
                 "java/security/MessageDigest",
                 "getInstance",

@@ -5,18 +5,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
+import cc.jumpkick.guard.extract.fixture.Statics;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.Fingerprints;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.host.Hashing;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -225,5 +229,27 @@ class FactsExtractorTest {
         assertThat(FactsFormat.digestOf(idx.withStamps(Map.of("y.class", "9:9"), "")))
                 .isEqualTo(digest);
         assertThat(back.packageEdges()).containsKey("cc.jumpkick.guard.extract.fixture");
+    }
+
+    @Test
+    void a_static_field_carries_the_last_call_its_static_initializer_made_before_assigning_it() throws IOException {
+        ClassFacts c = FactsExtractor.extract(classBytes(Statics.class));
+        Map<String, String> init = new HashMap<>();
+        for (FieldFacts f : c.fields()) init.put(f.name(), f.initializer());
+        assertThat(init)
+                .containsEntry("MUTABLE", "java/util/concurrent/ConcurrentHashMap#<init>")
+                .containsEntry("FIXED", "java/util/List#of")
+                .containsEntry("WRAPPED", "java/util/Collections#unmodifiableMap")
+                .containsEntry("PATTERN", "java/util/regex/Pattern#compile")
+                .containsEntry("CONSTANT", null)
+                .containsEntry("ARRAY", null)
+                .containsEntry("lazy", null);
+
+        FactsIndex idx = new FactsIndex(Map.of(c.name(), c), Map.of(), "");
+        assertThat(FactsFormat.read(new ByteArrayInputStream(FactsFormat.toBytes(idx)))
+                        .classes()
+                        .get(c.name()))
+                .as("the initializer survives the index format")
+                .isEqualTo(c);
     }
 }

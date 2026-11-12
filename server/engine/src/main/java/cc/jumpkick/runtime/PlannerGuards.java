@@ -370,12 +370,14 @@ final class PlannerGuards {
                         List<Path> testIdx = new ArrayList<>();
                         List<Path> classDirs = new ArrayList<>();
                         if (workspace) {
+                            // Every member's index as this jk reads it: one an older jk wrote is
+                            // rebuilt from its classes rather than handed to a suite that cannot read it.
                             for (Path m : workspaceModules) {
                                 Path bd = BuildLayout.moduleTargetDir(m);
-                                Path idx = FactsIndexing.indexPath(bd, "main");
-                                if (Files.isRegularFile(idx)) factsIdx.add(idx);
-                                Path tidx = FactsIndexing.indexPath(bd, "test");
-                                if (Files.isRegularFile(tidx)) testIdx.add(tidx);
+                                FactsIndexing.readable(bd.resolve("classes"), FactsIndexing.indexPath(bd, "main"))
+                                        .ifPresent(factsIdx::add);
+                                FactsIndexing.readable(bd.resolve("test-classes"), FactsIndexing.indexPath(bd, "test"))
+                                        .ifPresent(testIdx::add);
                                 classDirs.add(bd.resolve("classes"));
                             }
                         } else {

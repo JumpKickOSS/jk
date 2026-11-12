@@ -1370,6 +1370,793 @@ population = { examined = 15 }
 [engine-off-virtual-threads.populations]
 "server/engine" = { classes = 1685, sites = 120806 }
 
+[engine-static-memo]
+[engine-static-memo.populations]
+"server/engine" = { classes = 1673 }
+"server/guard" = { classes = 190 }
+"server/io" = { classes = 74 }
+"server/resolver" = { classes = 125 }
+"server/toolchain" = { classes = 223 }
+"shared/client-io" = { classes = 227 }
+"shared/core" = { classes = 542 }
+"shared/host" = { classes = 107 }
+"shared/jk-api" = { classes = 203 }
+"shared/plugin-sdk" = { classes = 70 }
+"shared/toolchain-jdk" = { classes = 196 }
+"shared/wire" = { classes = 241 }
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.compile.ClasspathProcessors#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.compile.CompilerBudget#CEILINGS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.compile.CompilerPool#POOLS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.compile.KotlincSnapshots#RECORDING"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.EngineAotTrainer#recording"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.TerminalSignals#LINUX_NAMES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.api.BuildHistoryKinds#ALL"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.api.BuildJobFingerprint#EXCLUSIVE_KINDS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.api.WireWriter#STREAMS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.graph.GraphRunner#LOCKS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.graph.GraphRunner#PENDING"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.graph.GraphRunner#SLOTS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.graph.GraphRunner#compiler"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.CacheSnapshot#OWN_ROW"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.CacheSnapshot#m2Reading"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpPrompts#CATALOG"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.jobs.LastBuiltRoot#LAST"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.HostPressure#SHEDDERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.HostPressure#forTests"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.HostPressure#sysctlbyname"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.JvmOptions#PLANNED_HEAPS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.JvmOptions#enginePlan"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.MemoryProbe#cached"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.ProjectActivity#LAST"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.UserPluginPins#registered"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.UserPluginPins#seen"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WarmLinger#ciForTests"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WorkerContainment#state"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WorkerEnv#MACHINE_UPPER"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WorkerEnv#SHELL_UPPER"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WorkerLaunchClasspath#REPORTED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WorkerLeases#replaced"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectForm#PROJECT_KEYS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#CLONE_LOCKS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#versionLookup"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.git.GitCliExtension#cached"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#LANGS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#PICKER_MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.JkTemplateToml#REFUSED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.ShippedTemplates$Holder#SPECS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.BuildForks#STAGED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.Calibration#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.GuardKeys#PARSED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.GuardSuiteRunner#RUNS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.KotlinAbiWarmup#RECORDING"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.NativeEffort#LAST_INPUT_BYTES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerGuards#RULES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.SettledReads#SETTLED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ShadowManifests#GATES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ShadowManifests#PENDING_NOTES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ShadowManifests#PENDING_TIER3"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ShadowManifests#ROOT_OF"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ShadowManifests#pinRaises"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.TestGates#GATES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.TestSupport#COUNTED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.BuildLogicGroovyHost#verifiedJars"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.BuildMetrics#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.FormatPlans#JAVAC_EXPORTS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.KtsSession#cancelGrace"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.RecentClassWalls#CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.RecentClassWalls#RUNS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.RecentClassWalls#SCANNING"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.SessionAggregates#MEMOS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.StepTimings#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.TestStorePool#CHECKED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.BuildLogicEffort#COMPILE_ANCHORS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.MovedCoordinates#RENAMES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CasPrewriter$Watcher#ACTIVE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CasPrewriter$Watcher#OWNERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.PortablePath#OWNERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.PortablePath#ROOTS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.WorkerClosure#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.test.TestLauncherFailure#SIGNALS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.baseline.BaselineFile#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.ClassPredicates#DOTTED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.EvalContext#HIERARCHIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.EvalContext#MEMOS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.Evaluators#BY_KIND"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.GuardThrash#LAST_RUN"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.GuardThrash#STREAKS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.TypeHierarchy#JDK_SUPERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.WorkspaceModel#MANIFESTS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.WorkspaceModules#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.extract.FactsIndexing#WRITERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.extract.WorkspaceFacts#NAMES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.extract.WorkspaceFacts#OWNERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.rules.Rule#GLOBS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.schema.ExtractorVocabulary#EXTRACTORS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.schema.ExtractorVocabulary#TEMPLATES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.schema.KindSchemas#EXAMPLES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.schema.KindSchemas#GROUPS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.schema.KindSchemas#INSTEAD"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.schema.KindSchemas#KEYS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.DownloadSlots#LEGS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.GradleModuleMetadata#PARSE_CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.PomRuntimeClasspath#RESOLVE_CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.PomRuntimeClasspath#STORE_REPOS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.RepoGroup#ARTIFACT_HIT_CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.RepoGroup#POM_HIT_CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.RepoGroup#VERSIONS_CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.GradleMarkerAnswers#LOADED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.KmpRedirects#PROCESS_CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/toolchain"
+at     = "cc.jumpkick.gradle.GradleImporter#TIER3_KEYWORDS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/toolchain"
+at     = "cc.jumpkick.mvn.PluginFacts#COMPILER_CONFIG"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/toolchain"
+at     = "cc.jumpkick.mvn.PluginFacts#COMPILER_PROPERTIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/toolchain"
+at     = "cc.jumpkick.mvn.PluginFacts#MAIN_CLASS_PROPERTIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "server/toolchain"
+at     = "cc.jumpkick.mvn.ProfileMapping#COMPILER_LEVEL_PROPERTIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.FetchTimings#memo"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.LockTimings#memo"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.WindowsFileIdentity#closeHandle"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.WindowsFileIdentity#createFileW"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.WindowsFileIdentity#getFileInformationByHandle"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ClasspathResolver#COMPILE_MAIN"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ClasspathResolver#COMPILE_TEST"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ClasspathResolver#PROCESSOR_PATH"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ClasspathResolver#RUN"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ClasspathResolver#RUNTIME"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ClasspathResolver#TEST"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ModuleRoots#INHERITED_COMPILE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ModuleRoots#INHERITED_RUNTIME"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.compile.ModuleRoots#TEST_SCOPES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.Http#BACKOFFS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.Http#DENIED_BY_ENV"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.InFlightRequests#IN_FLIGHT"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.RepoArtifactStore#CLAIMS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.builds.ProjectIds#CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.BuildLogicStems#ALL"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.CredentialHelpers#SLOTS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.CredentialHelpers#runner"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.DiskGuard#LISTENERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.DiskGuard#PROBES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.FormatStyles#ALIASES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.GlobalConfig#lastAutoDetection"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.GlobalConfig#resolvedNerdFont"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.MacPrefs#cf"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.ManifestBuild#CORE_TABLES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.NerdFontNames#NERD_TOKENS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.RequestEnvNames#NAMES_UPPER"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.RequestScope#SCOPES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.ResolvedSecrets#BY_WORKSPACE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.SearchCeiling#last"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.SecretFiles#CACHE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.SecretRedactor#KNOWN"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.SecretRedactor#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.SessionContext#current"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.WorkspaceScan#SCANNED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.InputTrees#LAST"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.InputTrees#loadFailureForTest"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.InputTrees#resolved"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.InputTrees#testConfig"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.library.LibraryCatalog#FILE_LAYERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.library.LibraryCatalog#bundledLayer"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.BomExporter#MAIN_SCOPES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.BomExporter#TEST_SCOPES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.LockClosureStamp#JAR_DIGESTS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.LockManifestDigest#MEMO"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.ManifestPaths#shadows"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.ToolchainPins#FIELDS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#ARCHIVES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#BY_TABLE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#VERSIONS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.AccessLedger#OPEN"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.FileLocks#ENTRIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.PoolUse#POOLED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.PoolUse#STAMPED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.TestHomes#PASSES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.version.MavenVersion$StringItem#QUALIFIERS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.version.Versions#PARSED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.AtomicWrites#CREATE_MODE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.AtomicWrites#OWNER_ONLY"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.Forks#opener"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.Log$Backend#JK"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.OwnerOnlyFiles#OWNER_ONLY"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.OwnerOnlyFiles#OWNER_ONLY_DIR"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.WorkingDirectory#pinned"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.XmlEntities#BY_NAME"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.ContextPropagator#CARRIED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.JkThreads#cpu"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.JkThreads#cpuReal"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.JkThreads#io"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.JkThreads#ioReal"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.JkThreads#platform"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.JkThreads#platformReal"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.SessionCancel#hold"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/jk-api"
+at     = "cc.jumpkick.run.StepScope#ON_CLOSE"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/plugin-sdk"
+at     = "cc.jumpkick.plugin.build.Transfers#REPLIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.compat.PassthroughEnv#STRIPPED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkEnsure#REGISTRIES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkInventory#JVM_LOCKS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkInventory#SHARED"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/wire"
+at     = "cc.jumpkick.wire.protocol.CliSessionIdentity#current"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/wire"
+at     = "cc.jumpkick.wire.protocol.EventCatalog#MESSAGES"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+[[engine-static-memo.entries]]
+in     = "shared/wire"
+at     = "cc.jumpkick.wire.protocol.EventCatalog#ROWS"
+reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
+
 [file-size]
 population = { units = 4145 }
 

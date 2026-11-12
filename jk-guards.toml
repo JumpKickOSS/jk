@@ -1605,3 +1605,120 @@ owner      = [
 source-set = "main"
 instead    = "plan through ModulePipeline; a goal's work past PACKAGE is a Tail that extend()s the plan (docs/contributors/lifecycle.md)"
 why        = "a second planner is how build verbs drifted apart in which phases they ran"
+
+
+
+
+# G129. A static field the engine can reach that holds mutable state lives as long as the resident
+# engine, days, so "this cannot change while a build runs" is no reason to keep it. It is a bounded
+# or trimmable memo (StampedMemo, StoreFileMemo, LruMemo), or an allow entry naming the field says
+# why the engine's lifetime is safe, with a reason from the vocabulary below. Baselined at the
+# count found when the rule landed; the baseline only shrinks.
+[guards.engine-static-memo]
+kind           = "statics"
+reachable-from = "server/engine"
+scope          = ["shared/*", "server/*"]
+source-set     = "main"
+managed        = [
+  "cc.jumpkick.config.StampedMemo#*",
+  "cc.jumpkick.repo.StoreFileMemo#<init>",
+  "cc.jumpkick.repo.LruMemo#<init>",
+]
+holders        = [
+  "cc.jumpkick.config.StampedMemo",
+  "cc.jumpkick.repo.StoreFileMemo",
+  "cc.jumpkick.repo.LruMemo",
+]
+ignore-types   = ["java.util.function.*", "java.lang.Runnable", "cc.jumpkick.host.time.Clock"]
+reasons        = [
+  "live registry:",
+  "lock registry:",
+  "content-keyed:",
+  "engine-process fact:",
+  "TTL ",
+  "log-once:",
+  "deliberate negative:",
+]
+baseline       = true
+instead        = "StampedMemo.bounded(n) or a Request slot, or an allow entry naming the field: `<reason prefix>: why the engine's lifetime is safe`"
+why            = "a static memo in the resident engine outlives every build that filled it and goes stale or grows for days"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Interned#TABLE"
+reason = "content-keyed: an interned string is its own key; the idle trim empties the table"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Linking#LINKABLE"
+reason = "deliberate negative: two volumes that cannot hard-link stay that way; only the negative is kept"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.PathUtil#pathExt"
+reason = "engine-process fact: this process's own PATHEXT"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#FAILED"
+reason = "deliberate negative: a failed trainer is retried after the next engine start, not on every miss"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#TRAINING"
+reason = "live registry: the trainers running now"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#LIVE"
+reason = "live registry: trainer forks alive now; shutdown and a store wipe stop them"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.CompilerPool#LIVE"
+reason = "live registry: the pools not yet closed"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers#LIVE"
+reason = "live registry: every live worker; shutdown stops them all"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers#IDLE"
+reason = "live registry: the idle workers by launch key"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.WorkspaceModules#MATCHERS"
+reason = "content-keyed: one compiled matcher per glob segment's text"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.manifest.PluginDescriptorStore#BY_SHA"
+reason = "content-keyed: a parsed plugin manifest by its jar's sha256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.http.ConnectFaults#REFUSING"
+reason = "TTL per refusal: each entry lapses at the deadline recorded with it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.jobs.JobAdmit#UNGUARDED_NOTED"
+reason = "log-once: one note per checkout per engine"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.http.WorkspaceFileAccess#WRITE_LOCKS"
+reason = "lock registry: 64 striped monitors, bounded for ever"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.PreflightMemo#SHAPE_LOCKS"
+reason = "lock registry: 64 striped monitors, bounded for ever"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.LockGate#MONITORS"
+reason = "lock registry: 64 striped monitors, bounded for ever"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.jdk.JdkInstaller#IN_FLIGHT"
+reason = "live registry: scratch this process is writing now, reaped on cancel"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compat.ToolInstaller#IN_FLIGHT"
+reason = "live registry: scratch this process is writing now, reaped on cancel"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.EffectivePomBuilder#IN_FLIGHT"
+reason = "live registry: the POM walks running now"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.EffectivePomBuilder#WAITING_ON"
+reason = "live registry: the threads parked on a running walk"

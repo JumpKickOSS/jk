@@ -27,7 +27,7 @@ public final class GraphCacheKeys {
      * Bumped whenever what makes a fragment changes (any extractor, the mapping of compiled facts),
      * so fragments an older version cached are not reused.
      */
-    public static final String VERSION = "12";
+    public static final String VERSION = "13";
 
     /** The task a declarations record names. */
     public static final String DECLARATIONS = "graph-declarations";

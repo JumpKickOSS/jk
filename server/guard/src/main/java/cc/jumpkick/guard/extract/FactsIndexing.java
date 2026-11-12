@@ -82,6 +82,22 @@ public final class FactsIndexing {
         return ensure(classesDir, indexFile, FactsExtractor.identity());
     }
 
+    /**
+     * {@code indexFile} when it is an index this extractor wrote, rebuilt from {@code classesDir}
+     * first when another one wrote it (an older jk, another format); empty when there are no
+     * classes to index. One header read for an index that is current: whether its classes moved is
+     * the module's own lane's question, not a reader's.
+     */
+    public static Optional<Path> readable(Path classesDir, Path indexFile) throws IOException {
+        Optional<FactsFormat.Header> header = FactsFormat.readHeader(indexFile);
+        if (header.isPresent()
+                && FactsExtractor.identity().equals(header.get().stamps().get(EXTRACTOR_STAMP))) {
+            return Optional.of(indexFile);
+        }
+        if (!Files.isDirectory(classesDir)) return Optional.empty();
+        return ensure(classesDir, indexFile).tier() == Ensured.Tier.ABSENT ? Optional.empty() : Optional.of(indexFile);
+    }
+
     static Ensured ensure(Path classesDir, Path indexFile, String extractor) throws IOException {
         if (!Files.isDirectory(classesDir)) {
             return new Ensured(indexFile, "", 0, Ensured.Tier.ABSENT);
