@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -26,7 +27,10 @@ public final class RemoteClaim {
 
     private RemoteClaim() {}
 
-    /** Start asking now; read the verdict with {@link CompletableFuture#join} when it is needed. */
+    /**
+     * Start asking now, on a virtual thread that carries the caller's request; read the verdict with
+     * {@link CompletableFuture#join} when it is needed.
+     */
     public static CompletableFuture<Verdict> start(
             RepoTransport transport,
             URI repository,
@@ -38,16 +42,18 @@ public final class RemoteClaim {
         String base = repository.toString().endsWith("/") ? repository.toString() : repository + "/";
         URI pom = URI.create(base + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-"
                 + version + ".pom.sha1");
-        return CompletableFuture.supplyAsync(() -> {
-                    try {
-                        return transport.fetch(pom, credential).isPresent() ? Verdict.CLAIMED : Verdict.FREE;
-                    } catch (IOException unreachable) {
-                        return Verdict.UNKNOWN;
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        return Verdict.UNKNOWN;
-                    }
-                })
+        return CompletableFuture.supplyAsync(
+                        () -> {
+                            try {
+                                return transport.fetch(pom, credential).isPresent() ? Verdict.CLAIMED : Verdict.FREE;
+                            } catch (IOException unreachable) {
+                                return Verdict.UNKNOWN;
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                                return Verdict.UNKNOWN;
+                            }
+                        },
+                        JkThreads.io())
                 .completeOnTimeout(Verdict.UNKNOWN, timeout.toMillis(), TimeUnit.MILLISECONDS)
                 .exceptionally(failed -> Verdict.UNKNOWN);
     }

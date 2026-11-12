@@ -20,6 +20,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -157,7 +158,7 @@ public final class GraphBuild {
         Set<String> moved = ConcurrentHashMap.newKeySet();
         // A file that would not read contributes nothing, and its earlier fragment goes with it.
         Set<String> unreadable = ConcurrentHashMap.newKeySet();
-        stale.parallelStream().forEach(s -> {
+        ParallelMap.forEach(stale, 2, s -> {
             try {
                 byte[] bytes = Files.readAllBytes(s.path());
                 String sha = Hashing.sha256Hex(bytes);
@@ -210,7 +211,7 @@ public final class GraphBuild {
         AtomicInteger extracted = new AtomicInteger();
         Map<String, Fragment> fragments = new ConcurrentHashMap<>();
         Set<String> declarationKeys = ConcurrentHashMap.newKeySet();
-        sources.parallelStream().forEach(s -> {
+        ParallelMap.forEach(sources, 2, s -> {
             String sha = shas.get(s.rel());
             if (sha == null) return;
             String flavor = scripts.flavor(s.rel());

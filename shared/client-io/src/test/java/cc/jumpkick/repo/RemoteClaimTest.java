@@ -3,11 +3,15 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class RemoteClaimTest {
@@ -79,5 +83,30 @@ class RemoteClaimTest {
         long start = System.nanoTime();
         assertThat(ask(silent, Duration.ofMillis(200))).isEqualTo(RemoteClaim.Verdict.UNKNOWN);
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void the_probe_runs_under_the_request_that_asked() {
+        Request asking = Request.of(41, new IoLedger());
+        AtomicReference<@Nullable Request> seen = new AtomicReference<>();
+        RepoTransport recording = new RepoTransport() {
+            @Override
+            public Optional<byte[]> fetch(URI uri, RepoCredential credential) {
+                seen.set(Request.current());
+                return Optional.empty();
+            }
+
+            @Override
+            public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+                return 500;
+            }
+        };
+
+        RemoteClaim.Verdict verdict = asking.call(() -> ask(recording, Duration.ofSeconds(5)));
+
+        assertThat(verdict).isEqualTo(RemoteClaim.Verdict.FREE);
+        assertThat(seen.get())
+                .as("the probe meters on the asking request's ledger")
+                .isSameAs(asking);
     }
 }

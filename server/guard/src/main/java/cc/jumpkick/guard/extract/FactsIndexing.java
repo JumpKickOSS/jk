@@ -7,7 +7,7 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.host.ParallelMap;
+import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;

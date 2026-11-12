@@ -114,21 +114,18 @@ final class CompilerWorker {
     }
 
     /**
-     * Start the worker and its dispatcher, on threads that inherit nothing from the request that
-     * happened to need the worker first — no session, no job scope, no step: the worker belongs to
-     * its pool, binds its own scope before it forks, and each item brings its own session.
+     * Start the worker and its dispatcher on bare threads, which carry nothing of the request that
+     * happened to need the worker first: the worker belongs to its pool, binds its own scope before
+     * it forks, and each item brings its own session.
      */
     void start() {
         io = detached("jk-javac-worker-" + scope.id(), this::drive);
         detached("jk-javac-dispatch-" + scope.id(), this::dispatchLoop);
     }
 
-    /** A virtual thread with no inherited context. Reads no session of a request. */
+    /** A bare virtual thread: it carries no request and reads no session of one. */
     static Thread detached(String name, Runnable body) {
-        return Thread.ofVirtual()
-                .name(name)
-                .inheritInheritableThreadLocals(false)
-                .start(body);
+        return Thread.ofVirtual().name(name).start(body);
     }
 
     /** Whether the worker has said hello and not died: it can take items. */
