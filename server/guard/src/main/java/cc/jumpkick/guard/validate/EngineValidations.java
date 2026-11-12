@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.validate;
 
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
 import java.nio.file.Path;
 import java.util.List;
@@ -27,6 +28,14 @@ public final class EngineValidations {
 
     public static boolean applies(Lane lane) {
         return lane == Lane.MODEL || lane == Lane.MODULE;
+    }
+
+    /**
+     * Whether lane {@code lane} evaluating {@code rules} reaches a verdict, for its run and its
+     * forecast alike: with no rule and no validation it evaluates nothing and keeps nothing.
+     */
+    public static boolean judges(Lane lane, List<Rule> rules) {
+        return !rules.isEmpty() || applies(lane);
     }
 
     /** The model lane: the partition itself. */

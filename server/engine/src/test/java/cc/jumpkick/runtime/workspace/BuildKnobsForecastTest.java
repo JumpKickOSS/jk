@@ -120,10 +120,23 @@ class BuildKnobsForecastTest {
                 .withSpec(WorkspaceSpec.of(WorkspaceTarget.RUN));
         build(run, guard);
 
-        // The members' module lanes; the root's workspace and tree lanes are priced apart from them.
         assertThat(dirty(ws, cache, run, guard))
-                .as("the members' forecast right after jk run --guard")
-                .noneMatch(m -> m.startsWith("a ") || m.startsWith("b "));
+                .as("the forecast right after jk run --guard, the root's workspace and tree lanes included")
+                .isEmpty();
+    }
+
+    @Test
+    void a_guarded_build_forecasts_the_roots_lanes_cached() throws Exception {
+        Path ws = workspace();
+        Files.writeString(ws.resolve("jk-guards.toml"), ROOT_RULES);
+        Path cache = tmp.resolve("cache");
+        lock(ws, cache);
+        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+        build(request(ws, cache), guard);
+
+        assertThat(dirty(ws, cache, request(ws, cache), guard))
+                .as("the forecast right after jk build --guard, the root's workspace and tree lanes included")
+                .isEmpty();
     }
 
     private static final String RULES = """
@@ -132,6 +145,23 @@ class BuildKnobsForecastTest {
             signatures = ["com.example.Banned"]
             instead    = "nothing"
             why        = "a test rule"
+            """;
+
+    /** A rule on the workspace lane and one on the tree lane. */
+    private static final String ROOT_RULES = """
+            [guards.no-module-cycles]
+            kind           = "cycles"
+            matching       = "com.example.(**)"
+            across-modules = true
+            why            = "a test rule"
+
+            [guards.no-banned-word]
+            kind    = "text"
+            files   = ["**/*.java"]
+            pattern = '\\bBANNED_WORD\\b'
+            hit     = "int BANNED_WORD = 1;"
+            instead = "nothing"
+            why     = "a test rule"
             """;
 
     /** The modules the preflight's walk finds dirty or to restore under {@code request}, with no memo. */

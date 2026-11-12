@@ -18,7 +18,7 @@ class GuardTreeTokensTest {
     }
 
     private static List<String> rels(Path root) throws Exception {
-        return GuardKeys.treeTokens(root).stream()
+        return GuardKeys.treeLaneTokens(root).stream()
                 .map(t -> t.substring("tree:".length(), t.lastIndexOf(':')))
                 .toList();
     }
@@ -39,8 +39,8 @@ class GuardTreeTokensTest {
     void an_edit_under_a_package_named_target_moves_the_key(@TempDir Path root) throws Exception {
         Path foo = root.resolve("src/main/java/com/acme/target/Foo.java");
         write(foo, "class Foo {}\n");
-        List<String> before = GuardKeys.treeTokens(root);
+        List<String> before = GuardKeys.treeLaneTokens(root);
         write(foo, "class Foo { int x; }\n");
-        assertThat(GuardKeys.treeTokens(root)).isNotEqualTo(before);
+        assertThat(GuardKeys.treeLaneTokens(root)).isNotEqualTo(before);
     }
 }

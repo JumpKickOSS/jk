@@ -27,6 +27,7 @@ import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
@@ -320,7 +321,16 @@ final class GuardKeys {
         return tokens;
     }
 
-    /** The forecast's {@code guard-workspace} step at the workspace root, or empty. */
+    /**
+     * The workspace lane's tokens ahead of its rules', for its run and its forecast alike: every
+     * module's main index digest ({@link #workspaceTokens}).
+     */
+    @KeyOwner(step = TaskNames.GUARD_WORKSPACE)
+    static List<String> workspaceLaneTokens(Path root, List<Path> modules) throws IOException {
+        return workspaceTokens(root, modules);
+    }
+
+    /** The forecast's {@code guard-workspace} step at the workspace root, or empty when it has nothing to judge. */
     static Optional<TaskForecast.Task> forecastWorkspaceLane(Path root, ActionCache actionCache) {
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
         if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.guardRequested())) return Optional.empty();
@@ -329,7 +339,9 @@ final class GuardKeys {
             if (modules.isEmpty() || modules.equals(List.of(root))) return Optional.empty();
             LoadResult load = PlannerGuards.rules(g);
             if (load.hasErrors()) return Optional.of(workspace("guards · jk-guards.toml does not load"));
-            List<String> tokens = workspaceTokens(root, modules);
+            if (!EngineValidations.judges(Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, load.rules(), "")))
+                return Optional.empty();
+            List<String> tokens = workspaceLaneTokens(root, modules);
             addRuleTokens(tokens, load);
             String key = laneKey(
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root),
@@ -396,10 +408,11 @@ final class GuardKeys {
     }
 
     /**
-     * The tree lane's read set, for its run and its forecast alike: every file its text rules read,
-     * by the rules' own walk, with its content hash.
+     * The tree lane's tokens ahead of its rules', for its run and its forecast alike: every file its
+     * text rules read, by the rules' own walk, with its content hash.
      */
-    static List<String> treeTokens(Path root) throws IOException {
+    @KeyOwner(step = TaskNames.GUARD_TREE)
+    static List<String> treeLaneTokens(Path root) throws IOException {
         List<String> tokens = new ArrayList<>();
         TreeCorpus.walk(
                 root, (rel, file, attrs) -> tokens.add("tree:" + rel + ":" + FileHashMemo.contentHash(file, attrs)));
@@ -407,14 +420,19 @@ final class GuardKeys {
         return tokens;
     }
 
-    /** {@code guard-tree}, gate only: the text scan's verdict, keyed on the tree's inputs, rules and baseline. */
+    /**
+     * {@code guard-tree}, gate only: the text scan's verdict, keyed on the tree's inputs, rules and
+     * baseline; empty when no rule is on the tree lane.
+     */
     static Optional<TaskForecast.Task> forecastTreeLane(Path root, ActionCache actionCache) {
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
         if (!g.enabled() || !PlannerGuards.guardRequested()) return Optional.empty();
         try {
             LoadResult load = PlannerGuards.rules(g);
             if (load.hasErrors()) return Optional.of(tree("guards · jk-guards.toml does not load"));
-            List<String> tokens = new ArrayList<>(treeTokens(root));
+            if (!EngineValidations.judges(Lane.TREE, LaneRun.rulesFor(Lane.TREE, load.rules(), "")))
+                return Optional.empty();
+            List<String> tokens = treeLaneTokens(root);
             addRuleTokens(tokens, load);
             String key = laneKey(
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root),
