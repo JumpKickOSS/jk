@@ -3,13 +3,15 @@
 # score.py can hold every shape to the ETA targets with numbers instead of anecdotes.
 #
 #   bench/eta/corpus.sh --dist <checkout>/target/dist --worktree <checkout pinned to the workload>
-#                       [--home DIR] [--label NAME] [--iterations N] [--only S3,S8] [--keep-home]
+#                       [--home DIR] [--label NAME] [--logs DIR] [--iterations N] [--only S3,S8]
+#                       [--keep-home]
 #
 # --dist      the engine under test: a `jk build` dist (client + engine jar), installed into --home
 # --worktree  the tree the corpus builds; edits are applied to fixed files and reverted at the end.
 #             Use a dedicated worktree: the corpus edits, builds and tests in it.
 # --home      the private JK_HOME (default ~/src/scratch/eta-home); wiped first unless --keep-home,
 #             so S1 is a first build on an empty ledger
+# --logs      where the logs, manifest and scores go (default ~/src/scratch/eta-corpus/<label>)
 #
 # Every edit is unique to its run (a counter in a private method's name), so a repeat never comes
 # back as a cache hit. The manifest (run dir, scenario, iteration) lands in the logs directory;
@@ -23,12 +25,14 @@ LABEL="$(date +%Y%m%d-%H%M)"
 ITER=3
 ONLY=""
 KEEP=0
+LOGS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dist) DIST="$2"; shift 2 ;;
     --worktree) WT="$2"; shift 2 ;;
     --home) HOME_DIR="$2"; shift 2 ;;
     --label) LABEL="$2"; shift 2 ;;
+    --logs) LOGS="$2"; shift 2 ;;
     --iterations) ITER="$2"; shift 2 ;;
     --only) ONLY=",$2,"; shift 2 ;;
     --keep-home) KEEP=1; shift ;;
@@ -41,8 +45,9 @@ WT="$(cd "$WT" && pwd)"
 DIST="$(cd "$DIST" && pwd)"
 case "$HOME_DIR" in "$HOME/.jk"|"$HOME/.jk/") echo "refusing the default home" >&2; exit 2 ;; esac
 
-LOGS="$HOME/src/scratch/eta-corpus/$LABEL"
+LOGS="${LOGS:-$HOME/src/scratch/eta-corpus/$LABEL}"
 mkdir -p "$LOGS"
+LOGS="$(cd "$LOGS" && pwd)"
 MANIFEST="$LOGS/manifest.tsv"
 : > "$MANIFEST"
 echo "# run_dir	scenario	iteration	exit	started" >> "$MANIFEST"
