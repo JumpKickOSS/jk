@@ -28,18 +28,24 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 public class Replay {
 
     static final double[] CHECKPOINTS = {0.10, 0.25, 0.50, 0.75, 0.90};
     static final double[] SCORED = {0.25, 0.50, 0.75};
     static final int MS_PER_WEIGHT = 150;
+    /** A running step past its priced wall still keeps this share of it as remaining. */
+    static final double CLOCK_FLOOR = 0.05;
+    /** A suite's fork and engine start-up, priced on a filtered run beside its classes' walls. */
+    static final long SUITE_STARTUP_MS = 1500;
     /** Once a module runs past its estimate, at least this share of its elapsed time is assumed to remain. */
     static final double OVERRUN_SHARE = 0.25;
 
@@ -72,6 +78,16 @@ public class Replay {
         final Map<Path, Long> reported = new HashMap<>();
         /** Per module: the ticks resolve-deps reported (its whole weight, reported at once). */
         final Map<Path, Long> resolveTicks = new HashMap<>();
+        /** Per module: when its suite and its tail started (task-start). */
+        final Map<Path, Long> suiteStart = new HashMap<>();
+
+        final Map<Path, Long> tailStart = new HashMap<>();
+        /** Per module: when each step started, and the steps finished. */
+        final Map<Path, Map<String, Long>> stepStart = new HashMap<>();
+
+        final Map<Path, Set<String>> stepDone = new HashMap<>();
+        /** Per module: test classes finished so far, with their walls. */
+        final Map<Path, Map<String, Long>> classesDone = new HashMap<>();
 
         void seed(List<ModuleWorkCost> c, long r0, int conc, boolean serial, boolean pt, long at) {
             this.costs = c;
@@ -134,11 +150,17 @@ public class Replay {
             return 0;
         }
 
+        /** The priced modules this model schedules: the recorded seed's, unless a model prices its own. */
+        List<ModuleWorkCost> costs(State s) {
+            return s.costs;
+        }
+
         public long remaining(State s, long now) {
-            if (s.costs.isEmpty()) return -1;
+            List<ModuleWorkCost> costs = costs(s);
+            if (costs.isEmpty()) return -1;
             double scale = scaleMs(s);
             List<ModuleWorkCost> residual = new ArrayList<>();
-            for (ModuleWorkCost c : s.costs) {
+            for (ModuleWorkCost c : costs) {
                 if (s.done.contains(c.dir())) continue;
                 double left = left(s, c, now, scale);
                 ModuleWorkCost r = left >= 1.0 ? c : scaleCost(c, left);
@@ -284,6 +306,339 @@ public class Replay {
         }
     }
 
+    /**
+     * Step history across every replayed run: module dir -> step -> status -> (run, wall ms). The
+     * pricing candidates read it leave-one-out, so a run is never priced from itself.
+     */
+    static final Map<String, Map<String, Map<String, List<long[]>>>> HISTORY = new HashMap<>();
+
+    /** Class walls: module dir -> suite under its shape -> class -> (run, wall ms). */
+    static final Map<String, Map<String, Map<String, List<long[]>>>> CLASS_HISTORY = new HashMap<>();
+
+    /**
+     * A filtered run's selected classes, by module: the selection is resolved before the suite
+     * starts, so the pricer knows it; the replay reads it from the classes the run finished.
+     */
+    static final Map<Path, Map<String, Set<String>>> SELECTED = new HashMap<>();
+
+    /** Median wall of a class in the module's history, leave-one-out; -1 when none. */
+    static long classMs(String dir, String cls, long runId) {
+        long[] walls = CLASS_HISTORY.getOrDefault(dir, Map.of()).values().stream()
+                .flatMap(m -> m.getOrDefault(cls, List.of()).stream())
+                .filter(r -> r[0] != runId)
+                .mapToLong(r -> r[1])
+                .sorted()
+                .toArray();
+        return walls.length == 0 ? -1 : walls[walls.length / 2];
+    }
+
+    /** Each run's shape signature: profile, forced, filtered, and the frontier (modules that compile). */
+    static final Map<Long, String> SHAPE = new HashMap<>();
+
+    /** Each run's test profile ("" for the default tier). */
+    static final Map<Path, String> PROFILE = new HashMap<>();
+
+    /** The steps every run reported, by run: module dir -> (step, status, wall ms) in finish order. */
+    static final Map<Path, Map<String, List<String[]>>> RAN = new HashMap<>();
+
+    static void collectHistory(Path run, long runId) throws Exception {
+        Path details = run.resolve("details.jsonl");
+        if (!Files.isRegularFile(details)) return;
+        Map<String, String> dirOfCoord = new HashMap<>();
+        Map<String, List<String[]>> ran = new LinkedHashMap<>();
+        String profile = "";
+        boolean forced = false;
+        boolean filtered = false;
+        Map<String, Set<String>> classesRan = new HashMap<>();
+        for (String line : Files.readAllLines(details)) {
+            if (line.isBlank()) continue;
+            if (!(MiniJson.parseRelaxed(line) instanceof Map<?, ?> e)) continue;
+            String type = String.valueOf(e.get("type"));
+            if (type.equals("session-start")) {
+                List<?> argv = e.get("argv") instanceof List<?> l ? l : List.of();
+                for (int i = 0; i < argv.size(); i++) {
+                    String a = String.valueOf(argv.get(i));
+                    if ((a.equals("-p") || a.equals("--profile")) && i + 1 < argv.size())
+                        profile = String.valueOf(argv.get(i + 1));
+                    if (a.equals("-F") || a.equals("--force") || a.equals("--rebuild")) forced = true;
+                    if (a.startsWith("--class") || a.startsWith("--method") || a.startsWith("--tag")) filtered = true;
+                }
+            } else if (type.equals("module-start") && e.get("dir") != null && e.get("coord") != null) {
+                dirOfCoord.put(e.get("coord").toString(), e.get("dir").toString());
+            } else if (type.equals("class-finish")) {
+                String dir = dirOf(e, dirOfCoord);
+                if (dir == null || e.get("testClass") == null || e.get("task") == null) continue;
+                classesRan
+                        .computeIfAbsent(dir, k -> new LinkedHashSet<>())
+                        .add(e.get("testClass").toString());
+                CLASS_HISTORY
+                        .computeIfAbsent(dir, k -> new HashMap<>())
+                        .computeIfAbsent(shapeKey(e.get("task").toString(), profile, forced), k -> new HashMap<>())
+                        .computeIfAbsent(e.get("testClass").toString(), k -> new ArrayList<>())
+                        .add(new long[] {runId, Math.max(0, num(e, "millis"))});
+            } else if (type.equals("task-finish")) {
+                String dir = dirOf(e, dirOfCoord);
+                if (dir == null || e.get("task") == null) continue;
+                String step = shapeKey(e.get("task").toString(), profile, forced);
+                // A filtered suite is not the suite: it never enters the suite's own history.
+                if (filtered && TaskNames.isRunTests(e.get("task").toString())) step = step + "?filtered";
+                String status = String.valueOf(e.get("status"));
+                long ms = Math.max(0, num(e, "millis"));
+                ran.computeIfAbsent(dir, k -> new ArrayList<>()).add(new String[] {step, status, Long.toString(ms)});
+                HISTORY.computeIfAbsent(dir, k -> new HashMap<>())
+                        .computeIfAbsent(step, k -> new HashMap<>())
+                        .computeIfAbsent(status, k -> new ArrayList<>())
+                        .add(new long[] {runId, ms});
+            }
+        }
+        RAN.put(run, ran);
+        PROFILE.put(run, profile);
+        // The frontier: the modules whose main compile ran (the forecast names them before the seed).
+        Set<String> frontier = new TreeSet<>();
+        for (var e : ran.entrySet()) {
+            for (String[] r : e.getValue()) {
+                if ((r[0].startsWith(TaskNames.COMPILE_JAVA) || r[0].startsWith("compile-kotlin"))
+                        && r[1].equals("SUCCESS")) frontier.add(e.getKey());
+            }
+        }
+        String sig = profile + "|" + forced + "|" + filtered + "|" + String.join(",", frontier);
+        SHAPE.put(runId, sig);
+        if (filtered) SELECTED.put(run, classesRan);
+    }
+
+    /**
+     * The step under the build's shape, as the pricer's key must name it: a suite under its test
+     * profile (the integration tier is not the default tier), a compile or native image as forced
+     * or incremental (a from-scratch link is not an incremental one). REPLAY_SHAPES=0 turns it off.
+     */
+    static String shapeKey(String step, String profile, boolean forced) {
+        if ("0".equals(System.getenv("REPLAY_SHAPES"))) return step;
+        if (TaskNames.isRunTests(step) && !profile.isEmpty()) return step + "@" + profile;
+        if ((step.startsWith("compile-") || step.equals(TaskNames.NATIVE_IMAGE)) && forced) return step + "!F";
+        return step;
+    }
+
+    /** Median wall of {@code step} in {@code dir} under {@code status} in runs other than {@code runId}; -1 when none. */
+    static long historyMs(String dir, String step, String status, long runId) {
+        List<long[]> rows =
+                HISTORY.getOrDefault(dir, Map.of()).getOrDefault(step, Map.of()).getOrDefault(status, List.of());
+        if (!"0".equals(System.getenv("REPLAY_FRONTIER"))) {
+            // First rung: runs of the same shape (same frontier, profile and flags).
+            String sig = SHAPE.get(runId);
+            long[] same = rows.stream()
+                    .filter(r -> r[0] != runId && sig != null && sig.equals(SHAPE.get(r[0])))
+                    .mapToLong(r -> r[1])
+                    .sorted()
+                    .toArray();
+            if (same.length > 0) return same[same.length / 2];
+        }
+        long[] walls = rows.stream()
+                .filter(r -> r[0] != runId)
+                .mapToLong(r -> r[1])
+                .sorted()
+                .toArray();
+        return walls.length == 0 ? -1 : walls[walls.length / 2];
+    }
+
+    static boolean gates(String step) {
+        return step.equals(TaskNames.PARSE_BUILD)
+                || step.equals(TaskNames.RESOLVE_DEPS)
+                || step.equals(TaskNames.COPY_RESOURCES)
+                || step.equals(TaskNames.COMPILE_JAVA)
+                || step.equals("compile-kotlin")
+                || step.equals("compile-groovy")
+                || step.equals("assemble-classes")
+                || step.equals("ksp");
+    }
+
+    /**
+     * The ceiling of own-history pricing: each module priced in ms from the steps this run really
+     * ran (oracle decisions), each step at its own median wall under the same status in the other
+     * runs (leave-one-out), falling back to this module's median for the step under any status,
+     * then nothing. Progress as V5b, no global scale.
+     */
+    static final class V7 extends V5 {
+        final List<ModuleWorkCost> priced = new ArrayList<>();
+        /** Per module: each step this run runs, bare name -> priced ms. */
+        final Map<Path, Map<String, Long>> stepMs = new HashMap<>();
+
+        final boolean clock;
+
+        V7(boolean clock) {
+            super(false);
+            this.clock = clock;
+        }
+
+        @Override
+        public String name() {
+            return clock
+                    ? "V7b oracle steps, own-history ms, V5b progress + clock"
+                    : "V7 oracle steps, own-history ms, V5b progress";
+        }
+
+        @Override
+        boolean clock() {
+            return clock;
+        }
+
+        @Override
+        List<ModuleWorkCost> costs(State s) {
+            return priced.isEmpty() ? s.costs : priced;
+        }
+
+        void price(Path run, long runId, List<ModuleWorkCost> seed) {
+            priced.clear();
+            stepMs.clear();
+            Map<String, List<String[]>> ran = RAN.getOrDefault(run, Map.of());
+            for (ModuleWorkCost c : seed) {
+                String dir = c.dir().toString();
+                long pre = 0, test = 0, tail = 0, gate = 0;
+                for (String[] r : ran.getOrDefault(dir, List.of())) {
+                    long ms = historyMs(dir, r[0], r[1], runId);
+                    Map<String, Set<String>> selected = SELECTED.get(run);
+                    if (selected != null && TaskNames.isRunTests(r[0].replaceAll("[@!?].*$", ""))) {
+                        // A filtered suite: its selected classes' walls, plus the suite's start-up.
+                        long sum = 0;
+                        for (String cls : selected.getOrDefault(dir, Set.of()))
+                            sum += Math.max(0, classMs(dir, cls, runId));
+                        ms = sum + SUITE_STARTUP_MS;
+                    }
+                    if (ms < 0) {
+                        long any = -1;
+                        for (String status : HISTORY.getOrDefault(dir, Map.of())
+                                .getOrDefault(r[0], Map.of())
+                                .keySet()) {
+                            any = Math.max(any, historyMs(dir, r[0], status, runId));
+                        }
+                        ms = Math.max(0, any);
+                    }
+                    String bare = r[0].replaceAll("[@!?].*$", "");
+                    stepMs.computeIfAbsent(c.dir(), k -> new LinkedHashMap<>()).merge(bare, ms, Long::sum);
+                    if (TaskNames.isRunTests(bare)) test += ms;
+                    else if (TaskNames.PACKAGING_TAILS.contains(bare)) tail = Math.max(tail, ms);
+                    else pre += ms;
+                    if (gates(bare)) gate += ms;
+                }
+                int u = MS_PER_WEIGHT;
+                priced.add(new ModuleWorkCost(
+                        c.dir(),
+                        c.prereqs(),
+                        (int) ((pre + test + tail) / u),
+                        (int) (test / u),
+                        (int) (tail / u),
+                        (int) Math.max(1, gate / u),
+                        0,
+                        0));
+            }
+        }
+    }
+
+    /**
+     * V7 with the suite counted down by class: its progress is the share of its expected class
+     * walls already finished (each class's median wall in the other runs of the same suite and
+     * profile, leave-one-out; a class with no history counts at its own wall). Once a quarter of it
+     * is done, the remainder follows the suite's observed rate instead of its priced wall, so a
+     * suite running slower than its history keeps a real remainder.
+     */
+    static final class V8 extends V5 {
+        final V7 pricing = new V7(false);
+        Path run;
+        long runId;
+
+        V8() {
+            super(false);
+        }
+
+        @Override
+        public String name() {
+            return "V8 oracle steps, own-history ms, suites by class walls";
+        }
+
+        @Override
+        List<ModuleWorkCost> costs(State s) {
+            return pricing.costs(s);
+        }
+
+        void price(Path run, long runId, List<ModuleWorkCost> seed) {
+            this.run = run;
+            this.runId = runId;
+            pricing.price(run, runId, seed);
+        }
+
+        /**
+         * The module's remaining ms is the sum over its steps: a finished one nothing, a running
+         * one its price less its elapsed time (held at a floor once it overruns; the suite by its
+         * classes), one not yet started its full price. As a share of the module's priced weight.
+         */
+        @Override
+        double left(State s, ModuleWorkCost c, long now, double scale) {
+            Map<String, Long> prices = pricing.stepMs.getOrDefault(c.dir(), Map.of());
+            double whole = c.weight() * scale;
+            if (prices.isEmpty() || whole <= 0) return super.left(s, c, now, scale);
+            Set<String> done = s.stepDone.getOrDefault(c.dir(), Set.of());
+            Map<String, Long> started = s.stepStart.getOrDefault(c.dir(), Map.of());
+            double pre = 0, test = 0, tail = 0;
+            for (var e : prices.entrySet()) {
+                String step = e.getKey();
+                double price = e.getValue();
+                double left;
+                if (done.contains(step)) left = 0;
+                else if (!started.containsKey(step)) left = price;
+                else if (TaskNames.isRunTests(step) && price > 0) left = price * suiteLeft(s, c, now, scale, 1.0);
+                else left = Math.max(CLOCK_FLOOR * price, price - (now - started.get(step)));
+                if (TaskNames.isRunTests(step)) test += left;
+                else if (TaskNames.PACKAGING_TAILS.contains(step)) tail = Math.max(tail, left);
+                else pre += left;
+            }
+            return Math.min(1.0, (pre + test + tail) / whole);
+        }
+
+        @Override
+        double suiteLeft(State s, ModuleWorkCost c, long now, double scale, double tickLeft) {
+            Long start = s.suiteStart.get(c.dir());
+            if (start == null || c.testWeight() <= 0) return tickLeft;
+            String step = shapeKey(TaskNames.RUN_TESTS, PROFILE.getOrDefault(run, ""), false);
+            Map<String, List<long[]>> hist =
+                    CLASS_HISTORY.getOrDefault(c.dir().toString(), Map.of()).getOrDefault(step, Map.of());
+            Map<String, Set<String>> selected = SELECTED.get(run);
+            if (selected != null) {
+                Map<String, List<long[]>> only = new HashMap<>();
+                for (String cls : selected.getOrDefault(c.dir().toString(), Set.of())) {
+                    long ms = classMs(c.dir().toString(), cls, runId);
+                    if (ms >= 0) only.put(cls, List.of(new long[] {-1, ms}));
+                }
+                hist = only;
+            }
+            Map<String, Long> done = s.classesDone.getOrDefault(c.dir(), Map.of());
+            double total = 0, finished = 0;
+            for (var e : hist.entrySet()) {
+                long[] walls = e.getValue().stream()
+                        .filter(r -> r[0] != runId)
+                        .mapToLong(r -> r[1])
+                        .sorted()
+                        .toArray();
+                if (walls.length == 0) continue;
+                double w = walls[walls.length / 2];
+                total += w;
+                if (done.containsKey(e.getKey())) finished += w;
+            }
+            for (var e : done.entrySet()) {
+                boolean known = hist.containsKey(e.getKey())
+                        && hist.get(e.getKey()).stream().anyMatch(r -> r[0] != runId);
+                if (!known) {
+                    total += e.getValue();
+                    finished += e.getValue();
+                }
+            }
+            if (total <= 0) return tickLeft;
+            double f = Math.min(1.0, finished / total);
+            double priced = c.testWeight() * scale;
+            double elapsed = Math.max(0, now - start);
+            double remainingMs = f >= 0.25 ? elapsed * (1 - f) / f : priced * (1 - f);
+            return Math.max(f >= 1.0 ? 0 : CLOCK_FLOOR * (1 - f), Math.min(1.0, remainingMs / priced));
+        }
+    }
+
     static boolean pre(String task) {
         return !TaskNames.isRunTests(task) && !TaskNames.PACKAGING_TAILS.contains(task);
     }
@@ -294,7 +649,7 @@ public class Replay {
      * classes): the pre-suite part by the share of its started steps that finished, the suite by its
      * reported ticks over the plan's ticks still unspent when it first reported, a tail by its own.
      */
-    static final class V5 extends Residual {
+    static class V5 extends Residual {
         final boolean globalScale;
 
         V5(boolean globalScale) {
@@ -309,6 +664,16 @@ public class Replay {
 
         double scaleMs(State s) {
             return globalScale ? s.weightToMs : MS_PER_WEIGHT;
+        }
+
+        /** Whether a running suite or tail also counts down by the clock against its priced wall. */
+        boolean clock() {
+            return false;
+        }
+
+        /** The running suite's remaining share; the ticks' answer unless a model reads more. */
+        double suiteLeft(State s, ModuleWorkCost c, long now, double scale, double tickLeft) {
+            return tickLeft;
         }
 
         double left(State s, ModuleWorkCost c, long now, double scale) {
@@ -338,6 +703,22 @@ public class Replay {
             double testLeft = suite <= 0 ? 1 : 1.0 - Math.min(1.0, testDone / (double) suite);
             long tailT = s.tailTicks.getOrDefault(c.dir(), 0L);
             double tailLeft = tailT <= 0 ? 1 : 1.0 - Math.min(1.0, tailDone / (double) tailT);
+            testLeft = suiteLeft(s, c, now, scale, testLeft);
+            if (clock()) {
+                // A running suite or tail also counts down by the clock against its priced wall,
+                // held at a small floor once it overruns.
+                Long ss = s.suiteStart.get(c.dir());
+                if (test > 0 && ss != null) {
+                    double clockLeft = 1.0 - (now - ss) / (test * scale);
+                    // Within its priced wall the clock bounds it; past it, its own progress decides.
+                    if (clockLeft > 0) testLeft = Math.min(testLeft, Math.max(CLOCK_FLOOR, clockLeft));
+                }
+                Long ts0 = s.tailStart.get(c.dir());
+                if (tail > 0 && ts0 != null) {
+                    double clockLeft = 1.0 - (now - ts0) / (tail * scale);
+                    if (clockLeft > 0) tailLeft = Math.min(tailLeft, Math.max(CLOCK_FLOOR, clockLeft));
+                }
+            }
             return (pre * (1 - preFrac) + test * testLeft + tail * tailLeft) / weight;
         }
     }
@@ -375,7 +756,13 @@ public class Replay {
             System.exit(2);
         }
         Map<String, List<double[]>> byModel = new TreeMap<>();
-        for (Path run : runs) replay(run, series, wanted, byModel);
+        long id = 0;
+        for (Path run : runs) collectHistory(run, id++);
+        id = 0;
+        for (Path run : runs) {
+            CURRENT_RUN_ID = id++;
+            replay(run, series, wanted, byModel);
+        }
         if (runs.size() > 1) {
             System.out.println(
                     "\nall runs: median |ETA err| and median bar err (pts) at 25/50/75%, share of runs inside ±20% / ±10 pts");
@@ -396,6 +783,8 @@ public class Replay {
             }
         }
     }
+
+    static long CURRENT_RUN_ID;
 
     static void replay(Path run, boolean series, Set<String> wanted, Map<String, List<double[]>> byModel)
             throws Exception {
@@ -427,6 +816,9 @@ public class Replay {
 
         V0 v0 = new V0();
         V6 v6 = new V6();
+        V7 v7 = new V7(false);
+        V7 v7b = new V7(true);
+        V8 v8 = new V8();
         List<Model> models = new ArrayList<>(List.of(
                 v0,
                 new V1(),
@@ -439,7 +831,10 @@ public class Replay {
                 new V4(false, true),
                 new V5(true),
                 new V5(false),
-                v6));
+                v6,
+                v7,
+                v7b,
+                v8));
         if (wanted != null) models.removeIf(m -> !wanted.contains(m.name().split(" ")[0]));
 
         State st = new State();
@@ -463,6 +858,9 @@ public class Replay {
                 st.frac.clear();
                 v0.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
                 v6.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
+                v7.price(run, CURRENT_RUN_ID, costs);
+                v7b.price(run, CURRENT_RUN_ID, costs);
+                v8.price(run, CURRENT_RUN_ID, costs);
             }
             String type = String.valueOf(e.get("type"));
             switch (type) {
@@ -483,11 +881,28 @@ public class Replay {
                         st.preStarted
                                 .computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>())
                                 .add(task.toString());
+                    if (TaskNames.isRunTests(task.toString())) st.suiteStart.putIfAbsent(Path.of(dir), ts);
+                    st.stepStart
+                            .computeIfAbsent(Path.of(dir), k -> new HashMap<>())
+                            .putIfAbsent(task.toString(), ts);
+                    if (TaskNames.PACKAGING_TAILS.contains(task.toString())) st.tailStart.putIfAbsent(Path.of(dir), ts);
+                }
+                case "class-finish" -> {
+                    String dir = dirOf(e, dirOfCoord);
+                    Object cls = e.get("testClass");
+                    if (dir != null && cls != null) {
+                        st.classesDone
+                                .computeIfAbsent(Path.of(dir), k -> new HashMap<>())
+                                .put(cls.toString(), Math.max(0, num(e, "millis")));
+                    }
                 }
                 case "task-finish" -> {
                     String dir = dirOf(e, dirOfCoord);
                     Object task = e.get("task");
                     if (dir == null || task == null) break;
+                    st.stepDone
+                            .computeIfAbsent(Path.of(dir), k -> new HashSet<>())
+                            .add(task.toString());
                     if (pre(task.toString()))
                         st.preFinished
                                 .computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>())
@@ -530,7 +945,8 @@ public class Replay {
                     if (v6.rw != null) {
                         long rt = st.resolveTicks.getOrDefault(p, 0L);
                         long d6 = den - rt;
-                        double f6 = d6 <= 0 ? f : Math.min(1.0, Math.max(0.0, (num(e, "numerator") - rt) / (double) d6));
+                        double f6 =
+                                d6 <= 0 ? f : Math.min(1.0, Math.max(0.0, (num(e, "numerator") - rt) / (double) d6));
                         v6.rw.moduleProgress(p, f6);
                     }
                     if (task != null && delta > 0) {
