@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.task.IoLedger;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
@@ -73,6 +76,9 @@ public final class RequestScope {
 
     private final AtomicLong weighedBytes = new AtomicLong();
 
+    /** The keys a {@link #getOnce} caller is computing now, each held while its fact is computed. */
+    private final KeyedLocks<Object> computing = new KeyedLocks<>();
+
     private RequestScope() {}
 
     /**
@@ -101,7 +107,7 @@ public final class RequestScope {
      * {@code compute}'s value for {@code key}, computed once per request. {@code compute} may ask
      * this scope for other facts: it runs outside the map, so a nested fact never re-enters the map
      * mid-update. Two threads racing on one key may both compute; the first value stored is the one
-     * every caller gets.
+     * every caller gets. A fact too heavy for that race is asked through {@link #getOnce}.
      */
     @SuppressWarnings("unchecked")
     public <K, V> V get(K key, Function<K, V> compute) {
@@ -132,6 +138,66 @@ public final class RequestScope {
         if (prior == null) return computed;
         weighedBytes.addAndGet(-cost);
         return (V) prior;
+    }
+
+    /**
+     * As {@link #get(Object, Function)} for a fact too heavy to compute twice: the first caller
+     * computes while every other caller of the same key waits for its answer, where {@code get}
+     * lets racing first callers each compute. A wide workspace's module list is one: every module a
+     * fresh request plans asks for it at once, and each racing caller would parse every member.
+     *
+     * <p>The wait is a lock per key, held only while the fact is computed. A compute may ask this
+     * scope for other facts, by {@code get} freely, and by {@code getOnce} only for a key of a lower
+     * tier than its own: the workspace index reads the units, the units read the module list, and
+     * the module list reads no heavy fact. Locks are therefore always taken down the tiers, never up,
+     * so no two threads can each hold the lock the other waits for. A compute must not wait on
+     * another thread that asks for its own key. The wait is a {@link ForkJoinPool#managedBlock}, so a
+     * pool worker parked here does not starve the pool the computing caller may fan out to.
+     */
+    public <K, V> V getOnce(K key, Function<K, V> compute) {
+        if (this == UNSCOPED) return compute.apply(key);
+        @SuppressWarnings("unchecked")
+        V known = (V) facts.get(key);
+        if (known != null) return known;
+        try (KeyedLocks.Held held = hold(key)) {
+            return get(key, compute);
+        }
+    }
+
+    /** As {@link #getOnce(Object, Function)} for a weighed fact ({@link #get(Object, Function, ToLongFunction)}). */
+    public <K, V> V getOnce(K key, Function<K, V> compute, ToLongFunction<? super V> bytes) {
+        if (this == UNSCOPED) return compute.apply(key);
+        @SuppressWarnings("unchecked")
+        V known = (V) facts.get(key);
+        if (known != null) return known;
+        try (KeyedLocks.Held held = hold(key)) {
+            return get(key, compute, bytes);
+        }
+    }
+
+    /** {@code key}'s compute lock, waited for as a blocker the pool can compensate for. */
+    private KeyedLocks.Held hold(Object key) {
+        var blocker = new ForkJoinPool.ManagedBlocker() {
+            KeyedLocks.@Nullable Held held;
+
+            @Override
+            public boolean block() {
+                held = computing.hold(key);
+                return true;
+            }
+
+            @Override
+            public boolean isReleasable() {
+                return held != null;
+            }
+        };
+        try {
+            ForkJoinPool.managedBlock(blocker);
+        } catch (InterruptedException e) {
+            // block() takes the lock uninterruptibly, so this is never thrown; keep the flag if it is.
+            Thread.currentThread().interrupt();
+        }
+        return Objects.requireNonNull(blocker.held, "compute lock");
     }
 
     private boolean reserve(long cost) {

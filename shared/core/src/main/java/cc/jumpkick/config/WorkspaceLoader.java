@@ -68,7 +68,7 @@ public final class WorkspaceLoader {
         MemoKey key = MemoKey.of(workspaceRoot, root);
         if (key == null) return Collections.unmodifiableMap(load(workspaceRoot, root));
         try {
-            return RequestScope.current().get(key, k -> {
+            return RequestScope.current().getOnce(key, k -> {
                 try {
                     return Collections.unmodifiableMap(load(workspaceRoot, root));
                 } catch (IOException e) {

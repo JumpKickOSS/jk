@@ -344,7 +344,7 @@ public final class WorkspaceClasspath {
         if (members == null) return computeIndex(root, rootManifest);
         try {
             return RequestScope.current()
-                    .get(
+                    .getOnce(
                             new IndexKey(members),
                             k -> {
                                 try {
@@ -419,7 +419,7 @@ public final class WorkspaceClasspath {
         if (members == null) return computeUnits(root, rootManifest);
         try {
             return RequestScope.current()
-                    .get(
+                    .getOnce(
                             new UnitsKey(members),
                             k -> {
                                 try {

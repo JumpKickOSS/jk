@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceLoaderMemoTest {
 
     private static final int MEMBERS = 30;
+
+    private static final int RACERS = 8;
 
     @AfterEach
     void clear() {
@@ -38,6 +42,42 @@ class WorkspaceLoaderMemoTest {
         inRequest(() -> manifests.forEach(WorkspaceLoaderMemoTest::parse));
         assertThat(WorkspaceLoader.loads() - before)
                 .as("one request, one module list, however many members it parses")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void racing_first_callers_of_one_request_load_the_module_list_once(@TempDir Path tmp) throws Exception {
+        Path root = workspace(tmp, MEMBERS);
+        JkBuild rootManifest = JkBuildParser.parseLocal(root.resolve("jk.toml"));
+        IoLedger ledger = new IoLedger();
+        CyclicBarrier start = new CyclicBarrier(RACERS);
+        List<Thread> racers = new ArrayList<>();
+        List<Throwable> failures = new CopyOnWriteArrayList<>();
+
+        long before = WorkspaceLoader.loads();
+        for (int i = 0; i < RACERS; i++) {
+            racers.add(Thread.ofPlatform().start(() -> {
+                try {
+                    Request.of(1, ledger)
+                            .run(() ->
+                                    SessionContext.runWhere(Session.defaults().withIo(ledger), () -> {
+                                        try {
+                                            start.await();
+                                            WorkspaceLoader.loadModules(root, rootManifest);
+                                        } catch (Exception e) {
+                                            failures.add(e);
+                                        }
+                                    }));
+                } catch (Throwable t) {
+                    failures.add(t);
+                }
+            }));
+        }
+        for (Thread t : racers) t.join();
+
+        assertThat(failures).isEmpty();
+        assertThat(WorkspaceLoader.loads() - before)
+                .as("%d first callers of one request racing on a cold scope", RACERS)
                 .isEqualTo(1);
     }
 
