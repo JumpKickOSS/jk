@@ -15,7 +15,29 @@ import java.util.Objects;
  * running then, and a suite that gets other than it was priced at is re-priced ({@link #scale(int,
  * int, long, long)}).
  */
-public record StepCost(String step, int weight, Kind kind, int low, int high, int workers) {
+public record StepCost(String step, int weight, Kind kind, int low, int high, int workers, Rung rung) {
+
+    /**
+     * Which layer of what the estimate knows priced the step, narrowest first (JK-9BSXK): the step's
+     * own recent walls replayed; this module's own rates (a filtered suite from its classes' walls,
+     * a compile from its own full rebuild); the project's (a compile from the other modules'); the
+     * host's means across projects; the host's calibration. {@link #TOKEN} is a touch, priced at
+     * nothing to learn from. The scorer attributes error per rung, so a layer that is
+     * systematically off shows as itself and not behind the steps it happens to price.
+     */
+    public enum Rung {
+        REPLAY,
+        MODULE,
+        PROJECT,
+        HOST,
+        CALIBRATION,
+        TOKEN;
+
+        /** Whether a price from this rung is a prior for work never measured, which a bias may correct. */
+        public boolean prior() {
+            return this == PROJECT || this == HOST || this == CALIBRATION;
+        }
+    }
 
     /** Where the step sits in {@code prefix + max(suite, tail, lane)}. */
     public enum Kind {
@@ -38,11 +60,22 @@ public record StepCost(String step, int weight, Kind kind, int low, int high, in
         low = Math.max(0, Math.min(low, weight));
         high = Math.max(weight, high);
         workers = Math.max(0, workers);
+        Objects.requireNonNull(rung, "rung");
+    }
+
+    /** A step priced from its own walls with its range and worker count. */
+    public StepCost(String step, int weight, Kind kind, int low, int high, int workers) {
+        this(step, weight, kind, low, high, workers, Rung.REPLAY);
     }
 
     /** A step priced with its range and no worker count. */
     public StepCost(String step, int weight, Kind kind, int low, int high) {
         this(step, weight, kind, low, high, 0);
+    }
+
+    /** This step at another price and worker count, from the same rung. */
+    public StepCost repriced(int weight, int low, int high, int workers) {
+        return new StepCost(step, weight, kind, low, high, workers, rung);
     }
 
     /** A step priced with no spread: its range is its price. */

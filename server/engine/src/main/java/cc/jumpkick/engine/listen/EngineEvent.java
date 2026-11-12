@@ -106,8 +106,24 @@ public sealed interface EngineEvent {
             @Nullable String exceptionClass)
             implements EngineEvent {}
 
-    record StepFinish(String dir, String step, String phase, String status, long millis, long waitMillis)
-            implements EngineEvent {}
+    /**
+     * A step's terminal, with what the run's estimate priced it at and the rung that priced it
+     * ({@code 0} and empty when it priced none).
+     */
+    record StepFinish(
+            String dir,
+            String step,
+            String phase,
+            String status,
+            long millis,
+            long waitMillis,
+            long predictedMs,
+            String rung)
+            implements EngineEvent {
+        public StepFinish(String dir, String step, String phase, String status, long millis, long waitMillis) {
+            this(dir, step, phase, status, millis, waitMillis, 0, "");
+        }
+    }
 
     record PlanFinishLine(String encodedWireLine) implements EngineEvent {}
 

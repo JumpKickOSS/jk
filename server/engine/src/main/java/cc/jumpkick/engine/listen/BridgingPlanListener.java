@@ -9,6 +9,8 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.wire.runtime.StepCost;
+import cc.jumpkick.wire.runtime.WorkModel;
 import java.time.Duration;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
         default void stepStarted(String dir, String step) {}
 
         default void stepFinished(String dir, String step, String phase, String status, long millis, long waitMillis) {}
+
+        /** What the run's estimate priced {@code step} at, or null when it priced none. */
+        default @Nullable StepCost priced(String dir, String step) {
+            return null;
+        }
 
         default void planFinished(String dir, BuildPlanResult result) {}
 
@@ -236,7 +243,19 @@ public final class BridgingPlanListener implements BuildPlanListener {
         long waitMillis = waited == null ? 0 : waited.toMillis();
         String phase = phaseWire(group);
         String st = status.name();
-        sink.emit(new EngineEvent.StepFinish(dir, step, phase, st, millis, waitMillis));
+        StepCost priced = hooks.priced(dir, step);
+        sink.emit(
+                priced == null
+                        ? new EngineEvent.StepFinish(dir, step, phase, st, millis, waitMillis)
+                        : new EngineEvent.StepFinish(
+                                dir,
+                                step,
+                                phase,
+                                st,
+                                millis,
+                                waitMillis,
+                                (long) priced.weight() * WorkModel.MS_PER_WEIGHT,
+                                priced.rung().name()));
         hooks.stepFinished(dir, step, phase, st, millis, waitMillis);
     }
 

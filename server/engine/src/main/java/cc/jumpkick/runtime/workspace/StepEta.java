@@ -139,7 +139,8 @@ public final class StepEta {
                         kind,
                         weightOf(priced.low()),
                         weightOf(priced.high()),
-                        suiteWorkers));
+                        suiteWorkers,
+                        priced.rung()));
             }
             for (StepCost c : own) {
                 if (c.kind() != StepCost.Kind.TEST) continue;
@@ -250,10 +251,8 @@ public final class StepEta {
                     continue;
                 }
                 double f = StepCost.scale(c.workers(), share, walls[0], walls[1]);
-                repriced.add(new StepCost(
-                        c.step(),
+                repriced.add(c.repriced(
                         (int) Math.max(1, Math.round(c.weight() * f)),
-                        c.kind(),
                         (int) Math.round(c.low() * f),
                         (int) Math.round(c.high() * f),
                         share));
@@ -275,22 +274,18 @@ public final class StepEta {
      * a third either side for a filtered suite priced from its classes' walls; half to twice for a
      * step priced from the module weights with no history of its own, which is a guess.
      */
-    record Priced(long ms, long low, long high, boolean cold) {
-        Priced(long ms, long low, long high) {
-            this(ms, low, high, false);
+    record Priced(long ms, long low, long high, boolean cold, StepCost.Rung rung) {
+        static Priced exact(long ms, StepCost.Rung rung) {
+            return new Priced(ms, ms, ms, false, rung);
         }
 
-        static Priced exact(long ms) {
-            return new Priced(ms, ms, ms);
-        }
-
-        static Priced spread(long ms, double down, double up) {
-            return new Priced(ms, Math.round(ms * down), Math.round(ms * up));
+        static Priced spread(long ms, double down, double up, StepCost.Rung rung) {
+            return new Priced(ms, Math.round(ms * down), Math.round(ms * up), false, rung);
         }
 
         /** A first build's price from the host's calibration: half to twice, a suite for one JVM. */
         static Priced cold(long ms) {
-            return new Priced(ms, Math.round(ms * 0.5), Math.round(ms * 2.0), true);
+            return new Priced(ms, Math.round(ms * 0.5), Math.round(ms * 2.0), true, StepCost.Rung.CALIBRATION);
         }
     }
 
@@ -332,12 +327,12 @@ public final class StepEta {
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
                 || TaskNames.RESTORE_OUTPUTS.equals(name)) {
-            return Priced.exact(EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT);
+            return Priced.exact(EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT, StepCost.Rung.TOKEN);
         }
         boolean runs = distrust || !t.cached();
         if (runs && shape.filtered() && TaskNames.isRunTests(name)) {
             OptionalLong narrowed = filteredSuiteMs(dir);
-            if (narrowed.isPresent()) return Priced.spread(narrowed.getAsLong(), 0.7, 1.3);
+            if (narrowed.isPresent()) return Priced.spread(narrowed.getAsLong(), 0.7, 1.3, StepCost.Rung.MODULE);
         }
         String status = runs ? "SUCCESS" : "SKIPPED";
         var own = ledger.price(dir.toString(), name, status, shape, frontier);
@@ -345,13 +340,18 @@ public final class StepEta {
             long ms = own.getAsLong();
             long[] range =
                     ledger.range(dir.toString(), name, status, shape, frontier).orElse(new long[] {ms, ms});
-            return new Priced(ms, range[0], range[1]);
+            return new Priced(ms, range[0], range[1], false, StepCost.Rung.REPLAY);
         }
-        if (!runs) return Priced.exact(0);
+        if (!runs) return Priced.exact(0, StepCost.Rung.TOKEN);
         if (name.startsWith("compile-") && t.status() != TaskForecast.Status.CACHED) {
             OptionalLong cold =
                     ledger.coldCompile(dir.toString(), name, status, shape, t.status() == TaskForecast.Status.PARTIAL);
-            if (cold.isPresent()) return Priced.spread(cold.getAsLong(), 0.5, 2.0);
+            // A full compile is read from this module's own full rebuild; a partial one from the
+            // project's other modules' (StepLedger.coldCompile).
+            boolean partial = t.status() == TaskForecast.Status.PARTIAL;
+            if (cold.isPresent())
+                return Priced.spread(
+                        cold.getAsLong(), 0.5, 2.0, partial ? StepCost.Rung.PROJECT : StepCost.Rung.MODULE);
             // Nothing of the step in the ledger: a first build's compile, from the host's calibration.
             // The test compiles' sources are not counted; a test class holds about five methods.
             int sources =
@@ -375,7 +375,7 @@ public final class StepEta {
         String metricsName = TaskNames.RUN_TESTS.equals(name) ? SuiteSelection.current() : name;
         EffortWeights.ModuleCost alone = EffortWeights.costFromRunningSteps(
                 dir, prereqs, List.of(metricsName), metrics, timings, projectDirs, counts);
-        return Priced.spread((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, 0.5, 2.0);
+        return Priced.spread((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, 0.5, 2.0, StepCost.Rung.HOST);
     }
 
     /**

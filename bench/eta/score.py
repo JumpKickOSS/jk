@@ -70,7 +70,8 @@ class RunScore:
     plateau: float = 0.0
     tail: float = 0.0
     tail_ms: int = 0
-    # Per step the seed priced or the run ran: [module dir, step, priced ms, ran ms] (attribution).
+    # Per step the seed priced or the run ran: [module dir, step, priced ms, ran ms, rung] (attribution);
+    # the rung is the layer that priced it (StepCost.Rung), empty for a step never priced.
     steps: list[list] = field(default_factory=list)
 
 
@@ -97,9 +98,12 @@ def attribute(run_dir: Path, ev: list[dict]) -> list[list]:
     except (ValueError, IndexError):
         return []
     priced: dict[tuple[str, str], int] = {}
+    rung: dict[tuple[str, str], str] = {}
     for d, steps in (first.get("steps") or {}).items():
         for s in steps:
             priced[(d, s[0])] = priced.get((d, s[0]), 0) + int(s[1]) * MS_PER_WEIGHT
+            if len(s) > 5 and s[5]:
+                rung[(d, s[0])] = s[5]
     dir_of: dict[str, str] = {}
     ran: dict[tuple[str, str], int] = {}
     for e in ev:
@@ -112,13 +116,15 @@ def attribute(run_dir: Path, ev: list[dict]) -> list[list]:
                 # A wait for a worker lease is a hold, not the step's work (JK-VYJ4X).
                 work = int(e.get("millis") or 0) - int(e.get("waitMillis") or 0)
                 ran[(d, e["task"])] = ran.get((d, e["task"]), 0) + max(0, work)
+                if e.get("rung"):  # the run's own word on which layer priced it wins
+                    rung[(d, e["task"])] = e["rung"]
     if not priced:
         return []
     root = os.path.commonpath(list({d for d, _ in priced} | {d for d, _ in ran})) if ran else ""
     out = []
     for key in sorted(set(priced) | set(ran)):
         rel = os.path.relpath(key[0], root) if root else key[0]
-        out.append([rel, key[1], priced.get(key, 0), ran.get(key, 0)])
+        out.append([rel, key[1], priced.get(key, 0), ran.get(key, 0), rung.get(key, "") if key in priced else ""])
     return out
 
 
@@ -404,7 +410,65 @@ def main(argv: list[str]) -> int:
         else:
             print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} cold checkpoints")
     failed |= not attribution(scores)
+    failed |= not rung_attribution(scores)
     return 1 if failed else 0
+
+
+# A rung judged for systematic error: this many priced steps of a kind that ran for a second or more.
+RUNG_MIN_STEPS = 5
+
+
+def step_kind(step: str) -> str:
+    """The kind of work a step is, which a rung's rates are kept per (JK-PMF9X)."""
+    if step.startswith("compile-"):
+        return "compile"
+    if step.startswith("run-tests"):
+        return "suite"
+    if step.startswith("package-") or step in ("native-image", "write-image"):
+        return "package"
+    if step.startswith("guard") or step == "compile-guard":
+        return "guard"
+    return "other"
+
+
+def rung_attribution(scores: list[RunScore]) -> bool:
+    """Error per pricing layer and step kind, over every run, warm and cold (JK-626GS).
+
+    Per (rung, kind), over the steps that layer priced and that ran for a second or more, the median
+    of (priced - ran) / ran and its quartiles. A step priced and never run is a decision error, not
+    a pricing one (JK-KSYZB), and is left to the step attribution; a touch (TOKEN) is not judged. A
+    rung whose median misses by more than 25% over five or more steps, the same way in 80% of them,
+    is systematically off: the layer itself, not the steps it happened to price, and fails the score.
+    """
+    by: dict[tuple[str, str], list[float]] = {}
+    for s in scores:
+        for d, step, priced, ran, *rest in s.steps:
+            rung = rest[0] if rest else ""
+            if not rung or rung == "TOKEN" or priced <= 0 or ran < ATTRIBUTION_MIN_MS:
+                continue
+            by.setdefault((rung, step_kind(step)), []).append((priced - ran) / ran)
+    if not by:
+        print("rung attribution: no priced steps carry a rung")
+        return True
+    order = {r: i for i, r in enumerate(("REPLAY", "MODULE", "PROJECT", "HOST", "CALIBRATION"))}
+    bad = 0
+    print("rung attribution (priced vs ran, steps >= 1 s, every run):")
+    print("   rung         kind         n   median    p25    p75  same-sign")
+    for (rung, kind), v in sorted(by.items(), key=lambda kv: (order.get(kv[0][0], 9), kv[0][1])):
+        v.sort()
+        m = statistics.median(v)
+        q = statistics.quantiles(v, n=4) if len(v) >= 2 else [v[0], m, v[0]]
+        same = sum(1 for e in v if (e > 0) == (m > 0)) / len(v)
+        off = len(v) >= RUNG_MIN_STEPS and abs(m) > ATTRIBUTION_LIMIT and same >= ATTRIBUTION_SAME_SIGN
+        bad += off
+        print(
+            f"   {rung:12s} {kind:10s} {len(v):4d}  {m:+6.0%} {q[0]:+6.0%} {q[2]:+6.0%}  {same:6.0%}{'  !' if off else ''}"
+        )
+    print(
+        f"   {bad} rung/kind pairs off by more than {ATTRIBUTION_LIMIT:.0%} the same way"
+        f" ({RUNG_MIN_STEPS}+ steps){' !' if bad else ''}"
+    )
+    return bad == 0
 
 
 def attribution(scores: list[RunScore]) -> bool:
@@ -419,7 +483,7 @@ def attribution(scores: list[RunScore]) -> bool:
         if not s.warm:
             continue
         verb = s.argv.split(" ", 1)[0]
-        for d, step, priced, ran in s.steps:
+        for d, step, priced, ran, *_ in s.steps:
             if max(priced, ran) < ATTRIBUTION_MIN_MS:
                 continue
             err = (priced - ran) / ran if ran > 0 else float("inf")

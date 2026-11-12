@@ -315,12 +315,29 @@ is a minute of machine-busy time, not a minute of javac. The wall stays the hone
 learned per-unit rates (`StepTimings`) train on `wall − wait`, so a rate never prices the queue
 as work. `task-finish` carries the same split as `waitMillis`, on the wire and in JSONL alike.
 
+`task-finish` also carries `predictedMs` and `rung` for a step the run's seed priced: the price,
+and the layer that set it (`StepCost.Rung`), narrowest first:
+
+| Rung | Priced from |
+|------|-------------|
+| `REPLAY` | the step's own recent walls under this run's shape |
+| `MODULE` | this module's own rates: a filtered suite from its classes' walls, a compile from its own full rebuild |
+| `PROJECT` | the project's other modules (a partial compile) |
+| `HOST` | the host's means across projects |
+| `CALIBRATION` | the host's calibration, for work never measured |
+| `TOKEN` | a touch: a cache restore or an order check |
+
 ## Measurement
 
 `bench/eta` holds the instrument: `score.py` scores a home's runs against their walls (seed error,
 ETA error and bar error at 10–90% of the wall, plateau, tail, range coverage), `Replay.java`
 replays a run's journal under candidate models, and `corpus.sh` runs a fixed set of scenarios on
 JumpKick's own tree into a private home. A change to the ETA lands with corpus numbers.
+
+`score.py` also attributes error per rung and step kind (compile, suite, package, guard) over every
+run, warm and cold. A rung whose median misses by more than 25% over five or more steps, the same
+way in 80% of them, fails the score: that is the layer itself being wrong, not the steps it happened
+to price. A step priced and never run is a decision error, not a pricing one, and is judged per step.
 
 ## Out of scope
 

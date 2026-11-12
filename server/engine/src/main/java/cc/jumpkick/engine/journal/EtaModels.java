@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The remaining-work models a run's countdown was seeded from, kept beside its record as {@code
@@ -54,6 +55,27 @@ public final class EtaModels {
         synchronized (seeds) {
             seeds.add(new Seed(Clock.SYSTEM.millis(), model));
         }
+    }
+
+    /**
+     * What {@code requestId}'s seed priced {@code step} in {@code dir} at: the first model that priced
+     * the module, the one the scorer attributes against; null when none did.
+     */
+    public static @Nullable StepCost priced(long requestId, String dir, String step) {
+        List<Seed> seeds = BY_REQUEST.get(requestId);
+        if (seeds == null) return null;
+        synchronized (seeds) {
+            for (Seed s : seeds) {
+                for (var e : s.model().steps().entrySet()) {
+                    if (!String.valueOf(e.getKey()).equals(dir)) continue;
+                    for (StepCost c : e.getValue()) {
+                        if (c.step().equals(step)) return c;
+                    }
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /** Drain {@code requestId}'s models into {@code runDir}; nothing is written when there were none. */
@@ -97,7 +119,13 @@ public final class EtaModels {
             for (var e : m.steps().entrySet()) {
                 List<Object> rows = new ArrayList<>();
                 for (StepCost c : e.getValue())
-                    rows.add(List.of(c.step(), c.weight(), c.kind().name(), c.low(), c.high()));
+                    rows.add(List.of(
+                            c.step(),
+                            c.weight(),
+                            c.kind().name(),
+                            c.low(),
+                            c.high(),
+                            c.rung().name()));
                 steps.put(String.valueOf(e.getKey()), rows);
             }
             out.put("steps", steps);

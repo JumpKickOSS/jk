@@ -30,6 +30,7 @@ import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.RemainingWork;
+import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
@@ -224,6 +225,11 @@ public final class EngineListeners {
             @Override
             public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
                 journal.accStepFinish(rid, d, step, phase, status, millis, waitMillis);
+            }
+
+            @Override
+            public @Nullable StepCost priced(String d, String step) {
+                return EtaModels.priced(rid, d, step);
             }
 
             @Override

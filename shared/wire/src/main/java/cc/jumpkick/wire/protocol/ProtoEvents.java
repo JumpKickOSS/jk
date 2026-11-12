@@ -424,6 +424,19 @@ public final class ProtoEvents {
         return new TaskFinishEvent(dir, step, phase, status, millis, waitMillis).encode();
     }
 
+    /** As {@link #stepFinish(String, String, String, String, long, long)}, with what the estimate priced it at. */
+    public static String stepFinish(
+            String dir,
+            String step,
+            String phase,
+            String status,
+            long millis,
+            long waitMillis,
+            long predictedMs,
+            String rung) {
+        return new TaskFinishEvent(dir, step, phase, status, millis, waitMillis, "", predictedMs, rung).encode();
+    }
+
     public static String planFinish(String dir, boolean success) {
         return planFinish(dir, success, false);
     }
