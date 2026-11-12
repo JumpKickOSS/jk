@@ -751,7 +751,7 @@ JumpKick's engine, cache, incremental compiler and results writer with Maven's e
 project model. No manifest migration; the loop arrives first, the `jk.toml` later or never.
 
 **Where the POM enters: a shadow manifest, not a second loader.** The engine has no manifest
-abstraction; about forty sites resolve `dir/jk.toml` on their own (`PlannerSetup`, `PreflightMemo`,
+abstraction; about forty sites resolve `dir/jk.toml` on their own (`SetupSteps`, `PreflightMemo`,
 `BuildGraph`, `ProjectCard`, `GraphOps`, `LockManifestDigest`, `WorkspaceLoader`, `ModuleLayout`,
 …), and the build verbs / `LockFlow` / `PreflightMemo` gate on the file existing. Virtualising all of
 them is churn without a product gain. Instead:

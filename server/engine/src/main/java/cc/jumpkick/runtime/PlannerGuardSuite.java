@@ -205,7 +205,7 @@ public final class PlannerGuardSuite {
                     }
                     // The suite compiles on the test compile classpath, which names the fixtures and
                     // test classes a sibling edge selects: wait until those exist.
-                    PlannerSetup.awaitSiblingTestCompile(ctx, in);
+                    SiblingWaits.awaitSiblingTestCompile(ctx, in);
                     Path root = WorkspaceScan.findRoot(in.dir()).orElse(in.dir());
                     Path library = GuardSuiteLibrary.locate(root, cas).path();
                     ModuleClasspaths classpaths = ctx.require(CLASSPATHS);

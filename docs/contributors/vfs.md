@@ -250,7 +250,7 @@ problem), not an engine refuse-to-discover.
 ## Call order (the I/O win)
 
 `coverModule` is the first VFS touch in the forecast's `ForecastScope.prepared` (before
-`collectJavaSources`), `PreflightMemo.fingerprintModule`, and `PlannerSetup`. Collecting sources
+`collectJavaSources`), `PreflightMemo.fingerprintModule`, and `SetupSteps`. Collecting sources
 first would exact-shadow `src/main/java` and force a second walk of `src/`.
 
 Traditional covering root: `src/`. Compact: `src/`, `test/`, named suite dirs

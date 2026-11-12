@@ -317,7 +317,7 @@ final class PlannerGuards {
                     Path moduleDir = cx.in().dir();
                     // The lane hangs off the compile steps, ahead of copy-resources, and runs the
                     // guard suite on the test runtime classpath — sibling jars included.
-                    PlannerSetup.awaitSiblingTestRuntime(ctx, cx.in());
+                    SiblingWaits.awaitSiblingTestRuntime(ctx, cx.in());
                     String module = WorkspaceModel.rel(g.root(), moduleDir);
                     Path buildDir = ctx.require(LAYOUT).buildDir();
                     FactsIndexing.Ensured main =

@@ -520,8 +520,8 @@ class ForecastKeyOwnerTest {
         Lockfile lock = new Lockfile(
                 Lockfile.CURRENT_VERSION, "test", Lockfile.RESOLUTION_ALGORITHM, null, null, List.of(), List.of());
 
-        List<String> defaults = PlannerSetup.effectiveJavacArgs(project, module, lock, null);
-        List<String> strict = PlannerSetup.effectiveJavacArgs(project, module, lock, "strict");
+        List<String> defaults = SetupSteps.effectiveJavacArgs(project, module, lock, null);
+        List<String> strict = SetupSteps.effectiveJavacArgs(project, module, lock, "strict");
 
         assertThat(defaults).doesNotContain("-Werror");
         assertThat(strict).endsWith("-Werror").containsAll(defaults);

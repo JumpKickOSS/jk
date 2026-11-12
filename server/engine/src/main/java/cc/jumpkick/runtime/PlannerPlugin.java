@@ -73,9 +73,9 @@ public final class PlannerPlugin {
     private static void awaitSiblings(TaskDecl step, TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
         if (beforeCompile(step)) return;
         if (pluginStage(step) == BuildStage.TEST || step.inputs().contains("test-runtime-entries")) {
-            PlannerSetup.awaitSiblingTestRuntime(ctx, in);
+            SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         } else {
-            PlannerSetup.awaitSiblingArtifacts(ctx, in);
+            SiblingWaits.awaitSiblingArtifacts(ctx, in);
         }
     }
 

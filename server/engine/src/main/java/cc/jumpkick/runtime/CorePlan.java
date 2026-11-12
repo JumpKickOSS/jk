@@ -246,9 +246,10 @@ final class CorePlan {
             Task assembleClasses) {}
 
     private Steps steps(BuildPlanner.Ctx cx) {
-        Task parseBuild = PlannerSetup.parseBuildStep(cx);
-        Task syncDeps = PlannerSetup.syncDepsStep(cx);
-        Task ensureJdk = PlannerSetup.ensureJdkStep(cx);
+        SetupSteps setup = new SetupSteps(cx);
+        Task parseBuild = setup.parseBuild();
+        Task syncDeps = setup.syncDeps();
+        Task ensureJdk = setup.ensureJdk();
         Task compileJava = PlannerCompile.compileJavaStep(cx, pluginDecls);
         Task compileKotlin = PlannerCompile.compileKotlinStep(cx, pluginDecls);
         Task compileGroovy = PlannerCompile.compileGroovyStep(cx, pluginDecls);

@@ -308,7 +308,7 @@ public final class ForecastScope implements StepForecast.Scope {
         // The build's own derivation, against the same lock and the same --profile: forecast
         // action keys must match the keys the build will actually use, and a profile whose
         // javac args differ from the default's keys a different compile.
-        List<String> javacArgs = PlannerSetup.effectiveJavacArgs(project, dir, lock, knobs.profile());
+        List<String> javacArgs = SetupSteps.effectiveJavacArgs(project, dir, lock, knobs.profile());
         // Resolved once: the declarations decide both the generated source roots compile-main
         // folds in and, at package time, whether jk packs the jar or a plugin does.
         ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);

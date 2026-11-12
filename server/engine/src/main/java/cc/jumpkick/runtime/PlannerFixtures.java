@@ -213,7 +213,7 @@ public final class PlannerFixtures {
                         ctx.progress(1);
                         return;
                     }
-                    PlannerSetup.awaitSiblingTestCompile(ctx, in);
+                    SiblingWaits.awaitSiblingTestCompile(ctx, in);
                     ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
                     List<Path> classpath = new ArrayList<>();
                     classpath.add(ctx.require(MAIN_CLASSES));

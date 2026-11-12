@@ -135,7 +135,7 @@ public final class PlannerTest {
                         ctx.progress(1);
                         return;
                     }
-                    PlannerSetup.awaitSiblingTestCompile(ctx, in);
+                    SiblingWaits.awaitSiblingTestCompile(ctx, in);
                     List<Path> baseCp = testCompileClasspath(ctx, cx, cas, src);
                     PlannerKsp.RoundOutcome round =
                             PlannerKsp.runTestRound(ctx, cx, src, baseCp, compiledSuites, pluginDecls);
@@ -555,12 +555,12 @@ public final class PlannerTest {
             return;
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
-        PlannerSetup.awaitSiblingTestRuntime(ctx, in);
+        SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         // Worker jars feed both the forked JVM and the TestStamp
         // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
         // matches what the suite actually loads — same set forecast uses.
         Map<String, String> workerJars =
-                PlannerSetup.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
+                SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
         List<Path> testRtCp = stamp.runtimeClasspath();
         Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());

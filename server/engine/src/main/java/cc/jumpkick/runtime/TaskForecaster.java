@@ -530,7 +530,7 @@ public final class TaskForecaster {
     }
 
     /**
-     * The JDK compile-main will run on, resolved exactly as {@code PlannerSetup.ensureJdkStep}
+     * The JDK compile-main will run on, resolved exactly as {@code SetupSteps.ensureJdk}
      * resolves it and with the same fallback — but with installs refused. {@code jk explain} is
      * read-only, so a pin that is not on disk raises here and the module forecasts a step that
      * will run rather than a key computed against whichever JDK happens to be on PATH.

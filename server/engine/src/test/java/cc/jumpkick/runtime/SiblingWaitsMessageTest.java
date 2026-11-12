@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * What a step says when a sibling's output it reads is absent: the sibling's failing step when the
  * schedule saw it fail, "not built" otherwise.
  */
-class PlannerSetupSiblingMessageTest {
+class SiblingWaitsMessageTest {
 
     private static final Path HOST = Path.of("/ws/shared/host");
     private static final Path GUARD = Path.of("/ws/server/guard");
@@ -27,11 +27,11 @@ class PlannerSetupSiblingMessageTest {
                 new SiblingArtifacts(Map.of(HOST, Set.of(), GUARD, Set.of(HOST)), List.of(HOST, GUARD));
         siblings.failed("cc.jumpkick:jk-host", "compile-test-fixtures");
 
-        assertThat(PlannerSetup.missingSiblingMessage(
+        assertThat(SiblingWaits.missingSiblingMessage(
                         "test dependency module not built: ", LABEL, siblings.gateFor(GUARD)))
                 .isEqualTo("test dependency module cc.jumpkick:jk-host failed at compile-test-fixtures"
                         + ": fixtures (expected at /ws/target/shared/host/test-fixtures/classes)");
-        assertThat(PlannerSetup.missingSiblingMessage(
+        assertThat(SiblingWaits.missingSiblingMessage(
                         "dependency module not built: ",
                         "cc.jumpkick:jk-host (expected at /ws/target/shared/host/lib/jk-host.jar)",
                         siblings.gateFor(GUARD)))
@@ -43,10 +43,10 @@ class PlannerSetupSiblingMessageTest {
         SiblingArtifacts siblings =
                 new SiblingArtifacts(Map.of(HOST, Set.of(), GUARD, Set.of(HOST)), List.of(HOST, GUARD));
 
-        assertThat(PlannerSetup.missingSiblingMessage(
+        assertThat(SiblingWaits.missingSiblingMessage(
                         "test dependency module not built: ", LABEL, siblings.gateFor(GUARD)))
                 .isEqualTo("test dependency module not built: " + LABEL);
-        assertThat(PlannerSetup.missingSiblingMessage(
+        assertThat(SiblingWaits.missingSiblingMessage(
                         "test dependency module not built: ", LABEL, SiblingArtifacts.NONE))
                 .as("outside a schedule nothing failed")
                 .isEqualTo("test dependency module not built: " + LABEL);

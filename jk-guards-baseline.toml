@@ -2215,7 +2215,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 279, edges = 1020 }
+"server/engine" = { classes = 280, edges = 1023 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
@@ -2260,11 +2260,6 @@ reason = "PlannerSupport split by concern: TestLaunch reads the language runtime
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin"
 value  = 19
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-efferent-coupling.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerSetup"
-value  = 16
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2557,8 +2552,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 44
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 45
+reason = "the sibling waits leave the setup steps for SiblingWaits, which reads the plan's inputs and project key from BuildPlanner as PlannerSetup did, so BuildPlanner keeps the reader it had before the node steps folded into NodeArm"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"
