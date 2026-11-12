@@ -2,9 +2,14 @@
 package cc.jumpkick.templates;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AttemptWindow;
 import cc.jumpkick.util.GitProxy;
@@ -18,7 +23,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -340,8 +345,13 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
-    /** The version of each git command asked for, once per process. */
-    private static final ConcurrentHashMap<String, GitVersion> VERSIONS = new ConcurrentHashMap<>();
+    /**
+     * The version each git command answered, stamped by the file the command runs: a git upgraded
+     * or replaced in place is asked again. Only an answer is remembered; a git that is missing,
+     * hangs or prints no version is asked again next time.
+     */
+    private static final StampedMemo<String, FileStamp, Optional<GitVersion>> VERSIONS =
+            StampedMemo.<String, FileStamp, Optional<GitVersion>>bounded(16).keeping(Optional::isPresent);
 
     /** The first git that reads {@code GIT_CONFIG_*}: what an unreadable answer is taken for. */
     private static final GitVersion READS_CONFIG_ENV = new GitVersion(2, 31);
@@ -352,10 +362,28 @@ public final class OfficialTemplatesFreshen {
      * name, which says more than a version guess would.
      */
     static GitVersion gitVersion(String exe) {
-        return VERSIONS.computeIfAbsent(exe, OfficialTemplatesFreshen::probeVersion);
+        FileStamp stamp = FileStamp.of(locate(exe));
+        if (stamp == null) return probeVersion(exe).orElse(READS_CONFIG_ENV);
+        return VERSIONS.get(exe, stamp, () -> probeVersion(exe)).orElse(READS_CONFIG_ENV);
     }
 
-    private static GitVersion probeVersion(String exe) {
+    /** The file {@code exe} runs: itself when it names a path, else its first match on this process's PATH. */
+    private static @Nullable Path locate(String exe) {
+        Path named = SearchPath.path(exe);
+        if (named != null && (named.isAbsolute() || named.getNameCount() > 1)) return named;
+        List<String> names = Os.isWindows() ? List.of(exe + ".exe", exe) : List.of(exe);
+        for (String dir : SearchPath.entries(ProcessEnv.get("PATH"))) {
+            Path d = SearchPath.path(dir);
+            if (d == null) continue;
+            for (String name : names) {
+                Path candidate = d.resolve(name);
+                if (Files.isRegularFile(candidate) && PathUtil.isRunnable(candidate)) return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static Optional<GitVersion> probeVersion(String exe) {
         try {
             Path out = Files.createTempFile("jk-git-version-", ".txt");
             try {
@@ -365,17 +393,17 @@ public final class OfficialTemplatesFreshen {
                         .start();
                 if (!proc.waitFor(5, TimeUnit.SECONDS)) {
                     kill(proc);
-                    return READS_CONFIG_ENV;
+                    return Optional.empty();
                 }
-                return GitVersion.parse(Files.readString(out)).orElse(READS_CONFIG_ENV);
+                return GitVersion.parse(Files.readString(out));
             } finally {
                 Files.deleteIfExists(out);
             }
         } catch (IOException notStarted) {
-            return READS_CONFIG_ENV;
+            return Optional.empty();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return READS_CONFIG_ENV;
+            return Optional.empty();
         }
     }
 

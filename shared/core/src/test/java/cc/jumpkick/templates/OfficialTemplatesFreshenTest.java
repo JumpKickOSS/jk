@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.util.GitProxy;
+import cc.jumpkick.util.GitVersion;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -503,5 +505,41 @@ class OfficialTemplatesFreshenTest {
         String b = OfficialTemplatesFreshen.parse(deep + "#v2").cacheKey();
         assertNotEquals(a, b, "a pin is part of the identity even when the key is truncated");
         assertTrue(a.length() <= 60 && b.length() <= 60);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_git_version_is_remembered_only_once_answered_and_only_while_the_file_is_unchanged(@TempDir Path dir)
+            throws Exception {
+        Path git = dir.resolve("git");
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            assertEquals(
+                    new GitVersion(2, 31),
+                    OfficialTemplatesFreshen.gitVersion(git.toString()),
+                    "a missing git is taken to read GIT_CONFIG_*");
+
+            fakeGit(git, "git version 2.20.0");
+            assertEquals(
+                    new GitVersion(2, 20),
+                    OfficialTemplatesFreshen.gitVersion(git.toString()),
+                    "the miss was not remembered");
+
+            Files.delete(git);
+            fakeGit(git, "git version 2.40.1");
+            assertEquals(new GitVersion(2, 40), OfficialTemplatesFreshen.gitVersion(git.toString()));
+        } finally {
+            Settled.aheadForTests(null);
+        }
+    }
+
+    private static void fakeGit(Path file, String versionLine) throws IOException {
+        Files.writeString(file, "#!/bin/sh\nprintf '%s\\n' '" + versionLine + "'\n");
+        Files.setPosixFilePermissions(
+                file,
+                EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE));
     }
 }
