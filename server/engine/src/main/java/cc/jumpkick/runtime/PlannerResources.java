@@ -430,9 +430,10 @@ public final class PlannerResources {
         Path classes = p.parsed().layout().classesDir();
         if (s.compileDirty || !Files.isDirectory(classes)) return null;
         // A KSP round that runs mirrors output nothing knows yet into the tree.
+        // The layout's overload: a copy the mirror would delete (a resource removed since) is drift too.
         s.mainResourceDrift = s.kspRuns()
                 || TaskForecaster.mainResourcesOutOfSync(
-                        s.dir, s.project, p.parsed().compact(), classes);
+                        s.dir, s.project, p.parsed().compact(), p.parsed().layout());
         BuildBlock.BuildInfo buildInfo = s.project.build().buildInfo();
         if (buildInfo != null) {
             // A rewritten git.properties changes the classes tree package-jar keys on, so the
