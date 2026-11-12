@@ -55,7 +55,6 @@ import org.jspecify.annotations.Nullable;
  */
 final class TestCompileSteps {
 
-    private final BuildPlanner.Ctx cx;
     private final BuildPlanner.Inputs in;
     private final Cas cas;
     private final ActionCache actionCache;
@@ -64,9 +63,9 @@ final class TestCompileSteps {
     private final boolean groovyModule;
     private final boolean hasFixtures;
     private final @Nullable PluginDeclarations pluginDecls;
+    private final KspArm ksp;
 
-    TestCompileSteps(BuildPlanner.Ctx cx, boolean hasFixtures, @Nullable PluginDeclarations pluginDecls) {
-        this.cx = cx;
+    TestCompileSteps(BuildPlanner.Ctx cx, boolean hasFixtures, @Nullable PluginDeclarations pluginDecls, KspArm ksp) {
         this.in = cx.in();
         this.cas = cx.cas();
         this.actionCache = cx.actionCache();
@@ -75,6 +74,7 @@ final class TestCompileSteps {
         this.groovyModule = cx.groovyModule();
         this.hasFixtures = hasFixtures;
         this.pluginDecls = pluginDecls;
+        this.ksp = ksp;
     }
 
     Task compileTest() {
@@ -123,8 +123,8 @@ final class TestCompileSteps {
         }
         SiblingWaits.awaitSiblingTestCompile(ctx, in);
         List<Path> baseCp = testCompileClasspath(ctx, src);
-        PlannerKsp.RoundOutcome round = PlannerKsp.runTestRound(ctx, cx, src, baseCp, compiledSuites, pluginDecls);
-        if (round != PlannerKsp.RoundOutcome.KEPT) {
+        KspArm.RoundOutcome round = ksp.runTestRound(ctx, src, baseCp, compiledSuites);
+        if (round != KspArm.RoundOutcome.KEPT) {
             src = TestSources.collect( // the round rewrote its generated sources
                     project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
         }
@@ -144,7 +144,7 @@ final class TestCompileSteps {
         long readClock = FreshnessStamp.clockNow(testClasses);
         // Kotlin first, then Groovy against its output (Gradle's order), then Java against
         // both. The step did no work when the round and every compiler restored.
-        boolean restored = round != PlannerKsp.RoundOutcome.RAN;
+        boolean restored = round != KspArm.RoundOutcome.RAN;
         StepWarnings warnings = new StepWarnings();
         restored &= compileKotlinTests(
                 ctx, warnings, src, baseCp, outs.kotlinOut(), testClasses, outs.mixedKotlin() && javaTests);

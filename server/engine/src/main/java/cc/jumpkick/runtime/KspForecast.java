@@ -5,7 +5,6 @@ import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -20,7 +19,7 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The forecast's reading of a module's KSP rounds, beside {@link PlannerKsp}: whether each round
+ * The forecast's reading of a module's KSP rounds, beside {@link KspArm}: whether each round
  * runs at all, and what it leaves in its output dirs by the time the compilers read them. The
  * build decides a round by its freshness stamp, then by the action record its inputs name, then
  * runs it; the forecast asks the same questions of the same inputs, the processor path digest
@@ -99,7 +98,7 @@ final class KspForecast {
         }
     }
 
-    /** The options, sources and paths one round is decided by, as the build's {@code runRound} reads them. */
+    /** The options, sources and paths one round is decided by, as {@link KspArm#runRound} reads them. */
     record Inputs(
             JkBuild project,
             Path dir,
@@ -171,15 +170,5 @@ final class KspForecast {
                 .orElse(null);
         State state = fresh ? State.FRESH : outputs != null ? State.RECORDED : State.RUNS;
         return new Round(state, outBase, outputs);
-    }
-
-    /**
-     * The ksp step's price: it runs when the main round's stamp is stale and no record answers its
-     * inputs (a processor bump, a source edit nothing has built); otherwise it rides with the
-     * module, restoring or skipping without work worth pricing.
-     */
-    static TaskForecast.@Nullable Task predict(ForecastScope s) throws Exception {
-        if (!s.prepared().mainRound().runs()) return null;
-        return new TaskForecast.Task(TaskNames.KSP, TaskForecast.Status.RUN, "KSP round · inputs changed", null);
     }
 }

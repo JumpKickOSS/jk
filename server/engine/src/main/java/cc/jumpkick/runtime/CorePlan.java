@@ -226,6 +226,7 @@ final class CorePlan {
             Task parseBuild,
             Task syncDeps,
             Task ensureJdk,
+            Task ksp,
             Task compileJava,
             Task compileKotlin,
             Task compileGroovy,
@@ -250,6 +251,8 @@ final class CorePlan {
         Task parseBuild = setup.parseBuild();
         Task syncDeps = setup.syncDeps();
         Task ensureJdk = setup.ensureJdk();
+        KspArm kspArm = new KspArm(cx, pluginDecls);
+        Task ksp = kspArm.ksp();
         Task compileJava = new CompileSteps(cx, pluginDecls).compileJava();
         LangCompileSteps langCompiles = new LangCompileSteps(cx, pluginDecls);
         Task compileKotlin = langCompiles.compileKotlin();
@@ -263,7 +266,7 @@ final class CorePlan {
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), shape.compact());
         Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact());
-        Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls).compileTest();
+        Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls, kspArm).compileTest();
         // In testOnly plans no package path exists to anchor the freshness stamps, so
         // run-tests carries them in its requires — otherwise the target-closure prune drops
         // them and the edit→test loop re-runs the main compile every invocation.
@@ -310,6 +313,7 @@ final class CorePlan {
                 parseBuild,
                 syncDeps,
                 ensureJdk,
+                ksp,
                 compileJava,
                 compileKotlin,
                 compileGroovy,
@@ -389,7 +393,7 @@ final class CorePlan {
         // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (cx.ksp()) {
-            b.addTask(PlannerKsp.kspStep(cx, pluginDecls));
+            b.addTask(s.ksp());
         }
         // Resources before any compile, as Maven's process-resources: a processor reads them from
         // the class output, and what it writes at a resource's path is what the jar keeps.

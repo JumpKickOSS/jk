@@ -2187,7 +2187,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 285, edges = 1051 }
+"server/engine" = { classes = 286, edges = 1054 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CompileSteps"
@@ -2222,11 +2222,6 @@ reason = "PlannerPackage becomes the per-plan PackageSteps and reaches the same 
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys"
 value  = 17
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-efferent-coupling.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp"
-value  = 16
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2271,7 +2266,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 285, edges = 1052 }
+"server/engine" = { classes = 286, edges = 1054 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2349,18 +2344,8 @@ value  = 2
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.KspForecast"
-value  = 14
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerFixtures"
 value  = 20
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerKsp"
-value  = 3
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2386,11 +2371,6 @@ reason = "the runtime packages as the coupling guard first measured them"
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.GuardKeys~cc.jumpkick.runtime.PlannerGuards"
 value  = 25
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.KspForecast~cc.jumpkick.runtime.PlannerKsp"
-value  = 10
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2449,11 +2429,6 @@ value  = 11
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp~cc.jumpkick.runtime.TestSources"
-value  = 3
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin~cc.jumpkick.runtime.PluginBuild"
 value  = 22
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2509,8 +2484,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 48
-reason = "the test steps split into TestCompileSteps and TestSteps, and both read the plan keys, the effort plan and the perf notes that PlannerTest and PlannerTestForecast read"
+value  = 49
+reason = "the KSP rounds run in the per-plan KspArm, which reads the plan keys from BuildPlanner as PlannerKsp's step bodies did, and PlannerKsp still reads them for the command line it derives"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"
