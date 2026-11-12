@@ -52,6 +52,23 @@ class CheckoutUntouchedTest {
     }
 
     @Test
+    void the_guard_baseline_the_engine_tightens_during_a_build_is_not_a_change(@TempDir Path repo) throws Exception {
+        assumeTrue(git(repo, "init", "-q") == 0, "git is on PATH");
+        Files.writeString(repo.resolve(CheckoutUntouched.GUARD_BASELINE), "[rules]\n");
+        Files.writeString(repo.resolve("jk.toml"), "a = 1\n");
+        assertThat(git(repo, "add", ".")).isZero();
+        assertThat(git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "init"))
+                .isZero();
+        CheckoutUntouched.Snapshot before = Objects.requireNonNull(CheckoutUntouched.take(repo, null));
+
+        Files.writeString(repo.resolve(CheckoutUntouched.GUARD_BASELINE), "[rules]\nband = 25\n");
+        Files.writeString(repo.resolve("jk.toml"), "a = 2\n");
+
+        CheckoutUntouched.Snapshot after = Objects.requireNonNull(CheckoutUntouched.take(repo, null));
+        assertThat(CheckoutUntouched.changed(before, after)).isEqualTo(List.of("jk.toml"));
+    }
+
+    @Test
     void an_untracked_file_under_the_scope_is_a_change_and_one_elsewhere_or_ignored_is_not(@TempDir Path repo)
             throws Exception {
         assumeTrue(git(repo, "init", "-q") == 0, "git is on PATH");
