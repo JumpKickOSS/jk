@@ -1,9 +1,11 @@
 {
   "name": "jumpkick",
   "displayName": "JumpKick",
-  "description": "JumpKick, the JVM build system built for coding agents: BSP install, tasks and status.",
+  "description": "JumpKick: the build system and agentic workbench for Java, an alternative to Maven and Gradle. The fastest recompiles and re-tests, plus code intelligence your coding agent can use, with live feedback on every build, test and agent run.",
   "version": "0.10.0",
   "publisher": "jumpkick",
+  "icon": "icon.png",
+  "homepage": "https://jumpkick.build",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -23,7 +25,9 @@
     "java",
     "kotlin",
     "bsp",
-    "build"
+    "build",
+    "maven",
+    "gradle"
   ],
   "activationEvents": [
     "workspaceContains:jk.toml"
@@ -104,7 +108,7 @@
     }
   },
   "scripts": {
-    "package": "vsce package --no-dependencies --allow-missing-repository"
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@vscode/vsce": "^3.2.1"

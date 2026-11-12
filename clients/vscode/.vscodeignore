@@ -4,5 +4,4 @@
 node_modules/**
 **/*.map
 *.vsix
-README.md
 package-lock.json
