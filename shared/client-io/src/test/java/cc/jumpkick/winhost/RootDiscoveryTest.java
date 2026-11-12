@@ -3,6 +3,7 @@ package cc.jumpkick.winhost;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +38,7 @@ class RootDiscoveryTest {
                 home().toString(),
                 tmp.resolve("Windows").toString(),
                 List.of(tmp.resolve("Program Files").toString()),
-                false);
+                Os.isWindows());
         return new RootDiscovery(profile(), profile().resolve("AppData/Roaming"), home(), drives, known, rules);
     }
 
@@ -145,11 +146,17 @@ class RootDiscoveryTest {
                 options.resolve("recentProjects.xml"),
                 "<map><entry key=\"" + ij.toString().replace('\\', '/') + "\"/></map>");
         Path storage = Files.createDirectories(profile().resolve("AppData/Roaming/Code/User/globalStorage"));
-        Files.writeString(
-                storage.resolve("storage.json"),
-                "{\"folderUri\":\"file:///" + vs.toString().substring(1) + "\"}");
+        Files.writeString(storage.resolve("storage.json"), "{\"folderUri\":\"" + vsCodeUri(vs) + "\"}");
         List<Path> recents = discovery(List.of(), List.of()).ideRecents();
         assertThat(recents).contains(ij, vs);
+    }
+
+    /** How VS Code writes a folder: {@code file:///c%3A/Users/…} on Windows. */
+    private static String vsCodeUri(Path dir) {
+        String s = dir.toString();
+        if (!Os.isWindows()) return "file://" + s;
+        return "file:///" + Character.toLowerCase(s.charAt(0)) + "%3A"
+                + s.substring(2).replace('\\', '/');
     }
 
     @Test
