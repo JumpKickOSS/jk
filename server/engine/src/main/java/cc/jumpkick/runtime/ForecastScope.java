@@ -298,6 +298,7 @@ public final class ForecastScope implements StepForecast.Scope {
         // folds in and, at package time, whether jk packs the jar or a plugin does.
         ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);
         @Nullable PluginDeclarations pkgDecls = plugin == null ? null : plugin.decls();
+        restored.projectContributedSources(projection, layout, pkgDecls);
         // The compilers the plan runs, from the declarations the plan reads too: a Kotlin or
         // Groovy module whose processors or plugin steps generate Java runs javac.
         ModuleShape shape = ModuleShape.of(project, dir, pkgDecls);

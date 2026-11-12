@@ -18,6 +18,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -127,6 +128,11 @@ public final class PlannerKsp {
         for (TaskDecl step : decls.steps()) {
             for (String rel : lane.apply(step)) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
+                List<Path> projected = ProjectedFiles.files(dir, suffix);
+                if (projected != null) {
+                    out.addAll(projected);
+                    continue;
+                }
                 if (!Files.isDirectory(dir)) continue;
                 List<Path> found = new ArrayList<>();
                 PathUtil.forEachRegularFile(dir, (file, attrs) -> {
@@ -139,14 +145,54 @@ public final class PlannerKsp {
         return out;
     }
 
-    /** Plugin steps' declared source-contribution dirs (existing ones only). */
+    /**
+     * Lay the sources each before-compile plugin step of {@code decls} contributes at its roots, for
+     * a forecast of a module whose step scratch is gone: the build restores the scratch from the
+     * step's record before any compile reads it, and the forecast prices the step as restored, so
+     * the files of the record the step's pointer names are what every compile keys on. A step with
+     * no record projects nothing: it runs, and what it writes cannot be described.
+     */
+    static void projectContributedSources(
+            ProjectedFiles projection,
+            BuildLayout layout,
+            @Nullable PluginDeclarations decls,
+            ActionCache actionCache) {
+        if (decls == null) return;
+        for (TaskDecl step : decls.steps()) {
+            if (!beforeCompile(step)) continue;
+            List<String> roots = new ArrayList<>(step.contributesSources());
+            roots.addAll(step.contributesTestSources());
+            if (roots.isEmpty()) continue;
+            Path scratch = PluginBuild.taskScratch(layout, step.name());
+            if (Files.isDirectory(scratch)) continue;
+            Map<String, String> outputs;
+            try {
+                var record = actionCache.lastFor(ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch));
+                if (record.isEmpty()) continue;
+                outputs = record.get().outputs();
+            } catch (IOException e) {
+                Log.debug("projectContributedSources: " + step.name() + " keys on the tree as it is", e);
+                continue;
+            }
+            for (String rel : roots) {
+                String prefix = rel.endsWith("/") ? rel : rel + "/";
+                Map<String, String> files = new TreeMap<>();
+                for (Map.Entry<String, String> e : outputs.entrySet()) {
+                    if (e.getKey().startsWith(prefix)) files.put(e.getKey().substring(prefix.length()), e.getValue());
+                }
+                projection.project(scratch.resolve(rel), files);
+            }
+        }
+    }
+
+    /** Plugin steps' declared source-contribution dirs (existing or projected ones only). */
     static List<Path> pluginContributedSourceDirs(BuildLayout layout, @Nullable PluginDeclarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (TaskDecl step : decls.steps()) {
             for (String rel : step.contributesSources()) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
-                if (Files.isDirectory(dir)) out.add(dir);
+                if (ProjectedFiles.isDirectory(dir)) out.add(dir);
             }
         }
         return out;
@@ -950,7 +996,7 @@ public final class PlannerKsp {
                 for (String rel : step.contributesSources()) {
                     Path contributed =
                             PluginBuild.taskScratch(layout, step.name()).resolve(rel);
-                    if (Files.isDirectory(contributed)) roots.add(contributed);
+                    if (ProjectedFiles.isDirectory(contributed)) roots.add(contributed);
                 }
             }
         }

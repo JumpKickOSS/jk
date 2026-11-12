@@ -2197,11 +2197,11 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 276, edges = 1031 }
+"server/engine" = { classes = 276, edges = 1033 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
-value  = 25
+value  = 24
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2256,7 +2256,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerTest"
-value  = 37
+value  = 36
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2286,7 +2286,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 276, edges = 1031 }
+"server/engine" = { classes = 276, edges = 1033 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2305,12 +2305,12 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.CorePlan"
-value  = 14
+value  = 13
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.PlannerTails"
-value  = 14
+value  = 12
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"

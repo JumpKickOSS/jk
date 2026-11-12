@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,14 +24,18 @@ public final class GroovycInputs {
 
     private GroovycInputs() {}
 
-    /** See the class note. Engine-side walks go through the request-scoped collectors (VFS). */
+    /**
+     * See the class note. Engine-side walks go through the request-scoped collectors (VFS); a
+     * projected root lists what the build lays there.
+     */
     public static List<Path> compileSet(GroovycRequest request) throws IOException {
         LinkedHashSet<Path> out = new LinkedHashSet<>();
         for (Path src : request.sources()) {
             out.add(src.toAbsolutePath().normalize());
         }
         for (Path root : request.javaSourceRoots()) {
-            List<Path> java = new ArrayList<>(CompileSupport.collectJavaSources(root));
+            List<Path> projected = ProjectedFiles.files(root, ".java");
+            List<Path> java = new ArrayList<>(projected != null ? projected : CompileSupport.collectJavaSources(root));
             java.sort(Comparator.comparing(Path::toString));
             for (Path p : java) out.add(p.toAbsolutePath().normalize());
         }

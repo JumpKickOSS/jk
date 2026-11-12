@@ -213,8 +213,9 @@ class ForecastRunParityMatrixTest {
     }
 
     /**
-     * As above; with {@code byKey}, between the two: once {@code a}'s freshness stamps are gone, the
-     * walk prices each of its compiles by the action key of the request the build made, and finds it.
+     * As above; with {@code byKey}, between the two: once {@code a}'s freshness stamps are gone, and
+     * again once its whole {@code target/} is, the walk prices each of its compiles by the action key
+     * of the request the build made, and finds it.
      */
     private void assertParity(Path ws, String edited, boolean byKey) throws Exception {
         Path cache = tmp.resolve("cache");
@@ -228,16 +229,17 @@ class ForecastRunParityMatrixTest {
 
         if (byKey) {
             Path a = ws.resolve("a");
-            PathUtil.deleteRecursively(
-                    BuildLayout.of(a, JkBuildParser.parse(a.resolve("jk.toml"))).compileStampDir());
-            List<String> compiles = walk(ws, cache).stream()
-                    .filter(m -> m.dir().getFileName().toString().equals("a"))
-                    .flatMap(m -> m.steps().stream())
-                    .filter(s -> COMPILES.contains(s.name()) && !s.cached())
-                    .map(s -> s.name() + " (" + s.text() + ")")
-                    .toList();
-            assertThat(compiles)
+            BuildLayout layout = BuildLayout.of(a, JkBuildParser.parse(a.resolve("jk.toml")));
+            PathUtil.deleteRecursively(layout.compileStampDir());
+            assertThat(uncachedCompiles(walk(ws, cache)))
                     .as("a's compiles without their freshness stamps")
+                    .isEmpty();
+
+            // Plugin-generated sources live in their step's scratch under target/: the build restores
+            // them before its compiles read them, and the walk keys the compiles on them as restored.
+            PathUtil.deleteRecursively(layout.moduleTargetDir());
+            assertThat(uncachedCompiles(walk(ws, cache)))
+                    .as("a's compiles once its target/ is gone")
                     .isEmpty();
         }
 
@@ -247,6 +249,16 @@ class ForecastRunParityMatrixTest {
         assertThat(dirtyNames(explain(ws, cache)))
                 .as("jk explain after editing a")
                 .containsExactly("a");
+    }
+
+    /** Module {@code a}'s compiles that are not cached, for the failure message. */
+    private static List<String> uncachedCompiles(List<TaskForecast.Module> modules) {
+        return modules.stream()
+                .filter(m -> m.dir().getFileName().toString().equals("a"))
+                .flatMap(m -> m.steps().stream())
+                .filter(s -> COMPILES.contains(s.name()) && !s.cached())
+                .map(s -> s.name() + " (" + s.text() + ")")
+                .toList();
     }
 
     private static final Set<String> COMPILES =

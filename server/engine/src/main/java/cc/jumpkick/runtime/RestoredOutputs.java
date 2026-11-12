@@ -3,11 +3,13 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -133,6 +135,15 @@ final class RestoredOutputs {
         } catch (IOException e) {
             Log.debug("projectFromRecord: compile-main keys on the tree as it is", e);
         }
+    }
+
+    /**
+     * Lay the sources a module's before-compile plugin steps contribute where the build restores
+     * them from the steps' records, for a module whose step scratch is gone ({@link
+     * PlannerKsp#projectContributedSources}).
+     */
+    void projectContributedSources(ProjectedFiles projection, BuildLayout layout, @Nullable PluginDeclarations decls) {
+        PlannerKsp.projectContributedSources(projection, layout, decls, actionCache);
     }
 
     /** True when {@code tree} is on disk or the build this walk prices restores it before it is read. */
