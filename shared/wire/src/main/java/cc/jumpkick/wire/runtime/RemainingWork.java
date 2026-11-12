@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import cc.jumpkick.host.time.Clock;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Live remaining wall-work {@code R(t)} for one build: the schedule of unfinished module costs,
@@ -25,6 +29,14 @@ import java.util.Objects;
  *   weightToMs = R0ms / ideal0                      // so ideal0 * weightToMs == R0ms
  *   remainingMs = WorkSchedule.schedule(residual) * weightToMs
  * </pre>
+ *
+ * <p>A model seeded with each module's steps ({@link #seedSteps}) is priced in ms at {@link
+ * WorkModel#MS_PER_WEIGHT}, with no scale from a seed it would have to match, and counts a module
+ * down step by step: a finished step leaves nothing, one not yet started its whole price, a running
+ * one its price less its elapsed time (held at {@link #OVERRUN_FLOOR} of it once it overruns), and
+ * a running suite the share of its class walls still to run, following its own rate once {@link
+ * #RATE_FROM} of it is done. The plan's tick fraction is not read for such a module: its ticks are
+ * spread evenly over steps of very different length.
  */
 public final class RemainingWork {
 
@@ -40,6 +52,23 @@ public final class RemainingWork {
     private final Map<Path, ModuleWorkCost> pending = new LinkedHashMap<>();
     /** In-flight fraction done within the module plan (0..1). */
     private final Map<Path, Double> doneFrac = new LinkedHashMap<>();
+
+    /** A running step past its price keeps this share of it as its remainder. */
+    public static final double OVERRUN_FLOOR = 0.05;
+
+    /** The share of a suite's class walls after which its remainder follows its observed rate. */
+    public static final double RATE_FROM = 0.25;
+
+    /** Per module, the steps it is priced to run; empty for a tick-fraction model. */
+    private final Map<Path, List<StepCost>> steps = new HashMap<>();
+    /** Per module, when each step started (ms). */
+    private final Map<Path, Map<String, Long>> started = new HashMap<>();
+    /** Per module, the steps that finished. */
+    private final Map<Path, Set<String>> finished = new HashMap<>();
+    /** Per module, its running suite's share of class walls done (0..1). */
+    private final Map<Path, Double> suiteDone = new HashMap<>();
+
+    private Clock clock = Clock.SYSTEM;
 
     private RemainingWork(
             long R0,
@@ -96,6 +125,61 @@ public final class RemainingWork {
         return new RemainingWork(r0, w2ms, concurrency, serial, parallelTests, costs);
     }
 
+    /**
+     * Seed from each module's steps: every module costs the sum of its step prices in weight units
+     * ({@code prefix + max(suite, tail)} via {@link WorkSchedule}), and {@link #R0()} is that
+     * schedule in ms at {@link WorkModel#MS_PER_WEIGHT}. {@code costs} supplies the graph (prereqs),
+     * gates and suite shapes; a module with no steps keeps its cost and its tick fraction.
+     */
+    public static RemainingWork seedSteps(
+            List<ModuleWorkCost> costs,
+            Map<Path, List<StepCost>> steps,
+            int concurrency,
+            boolean serial,
+            boolean parallelTests) {
+        Objects.requireNonNull(costs, "costs");
+        long ideal = WorkSchedule.schedule(costs, concurrency, serial, parallelTests);
+        RemainingWork rw = new RemainingWork(
+                ideal * WorkModel.MS_PER_WEIGHT, WorkModel.MS_PER_WEIGHT, concurrency, serial, parallelTests, costs);
+        if (steps != null) {
+            for (var e : steps.entrySet()) {
+                if (e.getKey() != null && e.getValue() != null && rw.pending.containsKey(e.getKey())) {
+                    rw.steps.put(e.getKey(), List.copyOf(e.getValue()));
+                }
+            }
+        }
+        return rw;
+    }
+
+    /** Test seam: the clock running steps count down against. */
+    public synchronized RemainingWork withClock(Clock clock) {
+        this.clock = Objects.requireNonNull(clock, "clock");
+        return this;
+    }
+
+    /** {@code step} of the module at {@code dir} started now. */
+    public synchronized void stepStart(Path dir, String step) {
+        if (dir == null || step == null || !steps.containsKey(dir)) return;
+        started.computeIfAbsent(dir, k -> new HashMap<>()).putIfAbsent(step, clock.millis());
+    }
+
+    /** {@code step} of the module at {@code dir} finished. */
+    public synchronized void stepFinish(Path dir, String step) {
+        if (dir == null || step == null || !steps.containsKey(dir)) return;
+        finished.computeIfAbsent(dir, k -> new HashSet<>()).add(step);
+    }
+
+    /** The running suite of the module at {@code dir} has run {@code fracDone} of its class walls. */
+    public synchronized void suiteProgress(Path dir, double fracDone) {
+        if (dir == null || !steps.containsKey(dir)) return;
+        suiteDone.put(dir, clamp01(fracDone));
+    }
+
+    /** Whether the module at {@code dir} is counted down by its steps. */
+    public synchronized boolean steps(Path dir) {
+        return steps.containsKey(dir);
+    }
+
     public long R0() {
         return R0;
     }
@@ -138,14 +222,61 @@ public final class RemainingWork {
         if (R0 <= 0) return 0;
         if (pending.isEmpty()) return 0;
         List<ModuleWorkCost> residual = new ArrayList<>(pending.size());
+        long now = steps.isEmpty() ? 0 : clock.millis();
         for (Map.Entry<Path, ModuleWorkCost> e : pending.entrySet()) {
-            double done = doneFrac.getOrDefault(e.getKey(), 0.0);
-            ModuleWorkCost r = e.getValue().residual(done);
+            List<StepCost> own = steps.get(e.getKey());
+            ModuleWorkCost r = own != null
+                    ? stepResidual(e.getValue(), own, now)
+                    : e.getValue().residual(doneFrac.getOrDefault(e.getKey(), 0.0));
             if (r.weight() > 0 || r.testWeight() > 0) residual.add(r);
         }
         if (residual.isEmpty()) return 0;
         long idealWeights = WorkSchedule.schedule(residual, concurrency, serial, parallelTests);
         return Math.max(0, Math.round(idealWeights * weightToMs));
+    }
+
+    /** The module's cost still to run, step by step (see the class comment). */
+    private ModuleWorkCost stepResidual(ModuleWorkCost c, List<StepCost> own, long now) {
+        Path dir = c.dir();
+        Set<String> done = finished.getOrDefault(dir, Set.of());
+        Map<String, Long> starts = started.getOrDefault(dir, Map.of());
+        double pre = 0, test = 0, tail = 0, prePriced = 0, testPriced = 0;
+        for (StepCost s : own) {
+            double w = s.weight();
+            if (s.kind() == StepCost.Kind.PRE) prePriced += w;
+            if (s.kind() == StepCost.Kind.TEST) testPriced += w;
+            double left;
+            if (done.contains(s.step())) left = 0;
+            else if (!starts.containsKey(s.step())) left = w;
+            else {
+                double elapsed = Math.max(0, now - starts.get(s.step())) / (double) WorkModel.MS_PER_WEIGHT;
+                Double f = s.kind() == StepCost.Kind.TEST ? suiteDone.get(dir) : null;
+                if (f != null && f > 0) {
+                    left = f >= RATE_FROM ? elapsed * (1 - f) / f : w * (1 - f);
+                    left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w * (1 - f), left);
+                } else {
+                    left = Math.max(OVERRUN_FLOOR * w, w - elapsed);
+                }
+            }
+            switch (s.kind()) {
+                case PRE -> pre += left;
+                case TEST -> test += left;
+                case TAIL -> tail = Math.max(tail, left);
+            }
+        }
+        int gate = c.gateWeight() == ModuleWorkCost.UNKNOWN_GATE
+                ? ModuleWorkCost.UNKNOWN_GATE
+                : (int) Math.round(Math.min(c.gateWeight(), pre));
+        int suiteWall1 = testPriced > 0 ? (int) Math.round(c.suiteWall1() * test / testPriced) : 0;
+        return new ModuleWorkCost(
+                dir,
+                c.prereqs(),
+                (int) Math.round(pre + test + tail),
+                (int) Math.round(test),
+                (int) Math.round(tail),
+                gate,
+                suiteWall1,
+                c.suiteClasses());
     }
 
     private static double clamp01(double v) {

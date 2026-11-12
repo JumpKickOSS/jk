@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
@@ -230,8 +231,51 @@ public final class SsePublisher implements SseEvents {
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
 
+    /**
+     * A module's step started or finished: a model priced step by step counts the module down by
+     * its steps ({@link RemainingWork#stepStart}); a weight-priced one ignores it.
+     */
+    public void trackStep(long requestId, String dir, String step, boolean started, @Nullable BufferedWriter writer) {
+        if (requestId <= 0 || dir == null || step == null) return;
+        RemainingWork rw = remaining(requestId);
+        if (rw == null) return;
+        Path p = Path.of(dir);
+        synchronized (rw) {
+            if (!rw.steps(p)) return;
+            if (started) rw.stepStart(p, step);
+            else rw.stepFinish(p, step);
+            tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+        }
+        emitWorkspaceProgress(requestId, writer, false);
+    }
+
+    /**
+     * A test class of a module's suite finished: the suite's progress is the share of its class
+     * walls done, each class at its recorded wall ({@link SuiteClassProgress}).
+     */
+    public void trackTestClass(
+            long requestId, String dir, String step, String className, long millis, @Nullable BufferedWriter writer) {
+        if (requestId <= 0 || dir == null || className == null) return;
+        RemainingWork rw = remaining(requestId);
+        if (rw == null) return;
+        Path p = Path.of(dir);
+        synchronized (rw) {
+            if (!rw.steps(p)) return;
+            double f = suiteProgress
+                    .computeIfAbsent(requestId + "\n" + dir, k -> SuiteClassProgress.of(dir, step))
+                    .finished(className, millis);
+            rw.suiteProgress(p, f);
+            tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+        }
+        emitWorkspaceProgress(requestId, writer, false);
+    }
+
+    /** Per request and module, its running suite's class progress. */
+    private final ConcurrentHashMap<String, SuiteClassProgress> suiteProgress = new ConcurrentHashMap<>();
+
     public void trackModuleComplete(long requestId, String dir, long lastDen, @Nullable BufferedWriter writer) {
         if (requestId <= 0) return;
+        if (dir != null) suiteProgress.remove(requestId + "\n" + dir);
         if (dir != null) sessions.moduleCompleted(requestId, dir);
         RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {

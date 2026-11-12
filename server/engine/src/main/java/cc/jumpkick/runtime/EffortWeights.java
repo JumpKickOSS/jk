@@ -1081,7 +1081,7 @@ public final class EffortWeights {
      * everything the plan orders ahead of it. A codegen plugin step sits in the compile stage and
      * gates too; a packaging or test plugin step does not.
      */
-    static boolean gatesDependents(String step) {
+    public static boolean gatesDependents(String step) {
         String s = metricsStepName(step);
         if (s.startsWith("plugin-")) return BuildStage.ofTaskName(s) == BuildStage.COMPILE;
         return switch (s) {

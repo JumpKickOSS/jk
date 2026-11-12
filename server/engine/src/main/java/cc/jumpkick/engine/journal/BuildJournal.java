@@ -254,6 +254,7 @@ public final class BuildJournal {
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
                 } else {
                     RunMetricsToml.write(tmp, withIds);
+                    RunStepLedger.record(home, withIds);
                 }
                 if (Files.isDirectory(target)) {
                     // A live entry (its details.jsonl is being written) is only ever rewritten in
@@ -391,6 +392,9 @@ public final class BuildJournal {
             writeRecord(tmp, toWrite);
             writeSnapshot(tmp, snapshot, previousRun(target));
             RunMetricsToml.write(tmp, toWrite);
+            // parent is the project's runs/ directory; the ledger sits in the project's home above it.
+            Path projectHome = parent.getParent();
+            if (projectHome != null) RunStepLedger.record(projectHome, toWrite);
             EtaModels.write(tmp, toWrite.requestId());
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling

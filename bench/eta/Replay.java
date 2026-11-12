@@ -18,10 +18,12 @@
 // The models other than V0 are candidate live models (plan P2), tried here before any of them
 // goes into the engine. Each is a pure function of the recorded seed and events.
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
+import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -593,23 +595,21 @@ public class Replay {
             return Math.min(1.0, (pre + test + tail) / whole);
         }
 
-        @Override
-        double suiteLeft(State s, ModuleWorkCost c, long now, double scale, double tickLeft) {
-            Long start = s.suiteStart.get(c.dir());
-            if (start == null || c.testWeight() <= 0) return tickLeft;
+        /** {total, finished} class walls of the module's suite this run (see {@link #suiteLeft}). */
+        double[] classTotals(State s, Path dirPath) {
             String step = shapeKey(TaskNames.RUN_TESTS, PROFILE.getOrDefault(run, ""), false);
             Map<String, List<long[]>> hist =
-                    CLASS_HISTORY.getOrDefault(c.dir().toString(), Map.of()).getOrDefault(step, Map.of());
+                    CLASS_HISTORY.getOrDefault(dirPath.toString(), Map.of()).getOrDefault(step, Map.of());
             Map<String, Set<String>> selected = SELECTED.get(run);
             if (selected != null) {
                 Map<String, List<long[]>> only = new HashMap<>();
-                for (String cls : selected.getOrDefault(c.dir().toString(), Set.of())) {
-                    long ms = classMs(c.dir().toString(), cls, runId);
+                for (String cls : selected.getOrDefault(dirPath.toString(), Set.of())) {
+                    long ms = classMs(dirPath.toString(), cls, runId);
                     if (ms >= 0) only.put(cls, List.of(new long[] {-1, ms}));
                 }
                 hist = only;
             }
-            Map<String, Long> done = s.classesDone.getOrDefault(c.dir(), Map.of());
+            Map<String, Long> done = s.classesDone.getOrDefault(dirPath, Map.of());
             double total = 0, finished = 0;
             for (var e : hist.entrySet()) {
                 long[] walls = e.getValue().stream()
@@ -630,6 +630,21 @@ public class Replay {
                     finished += e.getValue();
                 }
             }
+            return new double[] {total, finished};
+        }
+
+        /** The module's running suite's share of class walls done, as {@link #suiteLeft} reads it. */
+        double classShare(State s, Path dir) {
+            double[] tf = classTotals(s, dir);
+            return tf[0] <= 0 ? 0 : Math.min(1.0, tf[1] / tf[0]);
+        }
+
+        @Override
+        double suiteLeft(State s, ModuleWorkCost c, long now, double scale, double tickLeft) {
+            Long start = s.suiteStart.get(c.dir());
+            if (start == null || c.testWeight() <= 0) return tickLeft;
+            double[] tf = classTotals(s, c.dir());
+            double total = tf[0], finished = tf[1];
             if (total <= 0) return tickLeft;
             double f = Math.min(1.0, finished / total);
             double priced = c.testWeight() * scale;
@@ -845,6 +860,7 @@ public class Replay {
         for (Model m : models) points.put(m, new ArrayList<>());
         for (Map<?, ?> e : events) {
             long ts = num(e, "ts");
+            REPLAY_NOW[0] = ts;
             while (nextSeed < seeds.size() && num(seeds.get(nextSeed), "ts") <= ts) {
                 Map<?, ?> s = seeds.get(nextSeed++);
                 List<ModuleWorkCost> costs = costs(s);
@@ -856,7 +872,11 @@ public class Replay {
                         Boolean.TRUE.equals(s.get("parallelTests")),
                         num(s, "ts"));
                 st.frac.clear();
-                v0.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
+                Map<Path, List<StepCost>> seedSteps = steps(s);
+                v0.rw = seedSteps.isEmpty()
+                        ? RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests)
+                        : RemainingWork.seedSteps(costs, seedSteps, st.concurrency, st.serial, st.parallelTests)
+                                .withClock(REPLAY_CLOCK);
                 v6.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
                 v7.price(run, CURRENT_RUN_ID, costs);
                 v7b.price(run, CURRENT_RUN_ID, costs);
@@ -886,6 +906,7 @@ public class Replay {
                             .computeIfAbsent(Path.of(dir), k -> new HashMap<>())
                             .putIfAbsent(task.toString(), ts);
                     if (TaskNames.PACKAGING_TAILS.contains(task.toString())) st.tailStart.putIfAbsent(Path.of(dir), ts);
+                    if (v0.rw != null) v0.rw.stepStart(Path.of(dir), task.toString());
                 }
                 case "class-finish" -> {
                     String dir = dirOf(e, dirOfCoord);
@@ -894,6 +915,11 @@ public class Replay {
                         st.classesDone
                                 .computeIfAbsent(Path.of(dir), k -> new HashMap<>())
                                 .put(cls.toString(), Math.max(0, num(e, "millis")));
+                        // The engine's suite share reads the session's class walls; the replay's
+                        // closest stand-in is the other runs' (leave-one-out) through V8's reading.
+                        if (v0.rw != null && v0.rw.steps(Path.of(dir))) {
+                            v0.rw.suiteProgress(Path.of(dir), v8.classShare(st, Path.of(dir)));
+                        }
                     }
                 }
                 case "task-finish" -> {
@@ -903,6 +929,7 @@ public class Replay {
                     st.stepDone
                             .computeIfAbsent(Path.of(dir), k -> new HashSet<>())
                             .add(task.toString());
+                    if (v0.rw != null) v0.rw.stepFinish(Path.of(dir), task.toString());
                     if (pre(task.toString()))
                         st.preFinished
                                 .computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>())
@@ -1044,6 +1071,42 @@ public class Replay {
                         .add(new double[] {etaSum / nScored, barSum / nScored, etaOk ? 1 : 0, barOk ? 1 : 0});
             }
         }
+    }
+
+    /** The replay's clock: the timestamp of the event being replayed. */
+    static final long[] REPLAY_NOW = {0};
+
+    static final Clock REPLAY_CLOCK = new Clock() {
+        @Override
+        public long millis() {
+            return REPLAY_NOW[0];
+        }
+
+        @Override
+        public long nanos() {
+            return REPLAY_NOW[0] * 1_000_000;
+        }
+    };
+
+    /** A step-priced seed's steps, by module; empty for a weight-priced seed. */
+    static Map<Path, List<StepCost>> steps(Map<?, ?> s) {
+        Map<Path, List<StepCost>> out = new LinkedHashMap<>();
+        if (!(s.get("steps") instanceof Map<?, ?> m)) return out;
+        for (var e : m.entrySet()) {
+            List<StepCost> rows = new ArrayList<>();
+            if (e.getValue() instanceof List<?> l) {
+                for (Object o : l) {
+                    if (o instanceof List<?> r && r.size() >= 3 && r.get(1) instanceof Number n) {
+                        rows.add(new StepCost(
+                                String.valueOf(r.get(0)),
+                                n.intValue(),
+                                StepCost.Kind.valueOf(String.valueOf(r.get(2)))));
+                    }
+                }
+            }
+            out.put(Path.of(String.valueOf(e.getKey())), rows);
+        }
+        return out;
     }
 
     static List<ModuleWorkCost> costs(Map<?, ?> s) {

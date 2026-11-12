@@ -29,6 +29,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public interface Hooks {
         default void planProgress(String dir, BuildPlanView view) {}
 
+        /** A step started: the live remainder counts it down from its price. */
+        default void stepStarted(String dir, String step) {}
+
         default void stepFinished(String dir, String step, String phase, String status, long millis, long waitMillis) {}
 
         default void planFinished(String dir, BuildPlanResult result) {}
@@ -116,6 +119,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public void stepStart(String step, @Nullable String group, int ticks) {
         String phase = phaseWire(group);
         sink.emit(new EngineEvent.StepStart(dir, step, phase, ticks));
+        hooks.stepStarted(dir, step);
     }
 
     @Override

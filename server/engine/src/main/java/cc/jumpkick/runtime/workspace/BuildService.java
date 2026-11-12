@@ -13,6 +13,7 @@ import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -239,9 +240,31 @@ public final class BuildService {
             /** Full, whole-over-outputs or incremental: a {@link ScheduleBias} shape. */
             ScheduleBias.Shape shape,
             /** Whether the build started with a warm compiler worker: a {@link ScheduleBias} shape. */
-            boolean workerWarm) {
+            boolean workerWarm,
+            /**
+             * Per module, the steps it is priced to run with their own prices: a model priced step by
+             * step ({@code BuildEta.stepPriced}), whose live remainder counts each module down by its
+             * steps. Empty for a model priced by module weights.
+             */
+            Map<Path, List<StepCost>> steps) {
+        public EtaModel {
+            steps = steps == null ? Map.of() : Map.copyOf(steps);
+        }
+
         public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
-            this(etaMs, costs, concurrency, serial, 0, false, ScheduleBias.Shape.INCREMENTAL, true);
+            this(etaMs, costs, concurrency, serial, 0, false, ScheduleBias.Shape.INCREMENTAL, true, Map.of());
+        }
+
+        public EtaModel(
+                long etaMs,
+                List<EffortWeights.ModuleCost> costs,
+                int concurrency,
+                boolean serial,
+                long rawScheduleMs,
+                boolean measured,
+                ScheduleBias.Shape shape,
+                boolean workerWarm) {
+            this(etaMs, costs, concurrency, serial, rawScheduleMs, measured, shape, workerWarm, Map.of());
         }
 
         static EtaModel empty() {

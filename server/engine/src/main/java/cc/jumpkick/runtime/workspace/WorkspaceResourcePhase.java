@@ -4,10 +4,12 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.base.HostLearnedRates;
+import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -43,6 +45,7 @@ final class WorkspaceResourcePhase {
         List<HostLearnedRates.HostSample> hostSamples = Collections.synchronizedList(new ArrayList<>());
 
         Calibration.ensureAnnounced(incoming.jdksDir(), listener::onPreflight);
+        RunShapes.mark(JobWorkers.currentRequestId(), shape(incoming));
 
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
@@ -71,8 +74,8 @@ final class WorkspaceResourcePhase {
         BackgroundEta eta = BackgroundEta.deferred(
                 () -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests, workerWarm), model -> {
                     List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
-                    listener.onWorkModel(
-                            WorkModel.of(model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered));
+                    listener.onWorkModel(new WorkModel(
+                            model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered, model.steps()));
                     listener.onEtaEstimate(model.etaMs());
                 });
 
@@ -85,6 +88,17 @@ final class WorkspaceResourcePhase {
                 hostSamples,
                 eta,
                 parallelTests);
+    }
+
+    /**
+     * What shapes this build's step walls, for the step ledger its run is recorded into: the test
+     * profile, a forced or rebuild run, and a class filter that narrows the suites.
+     */
+    static RunShapes.Shape shape(WorkspaceRequest request) {
+        var session = SessionContext.current();
+        boolean forced = session.config().forceOr(false) || session.config().rebuildOr(false);
+        boolean filtered = !session.testSelection().classes().isEmpty();
+        return new RunShapes.Shape(request.profile() == null ? "" : request.profile(), forced, filtered);
     }
 
     /**

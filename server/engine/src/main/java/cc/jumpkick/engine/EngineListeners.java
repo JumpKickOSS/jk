@@ -172,6 +172,16 @@ public final class EngineListeners {
             }
 
             @Override
+            public void trackStep(String dir, String step, boolean started) {
+                sse.trackStep(rid, dir, step, started, writer);
+            }
+
+            @Override
+            public void trackTestClass(String dir, String step, String className, long millis) {
+                sse.trackTestClass(rid, dir, step, className, millis, writer);
+            }
+
+            @Override
             public BridgingPlanListener.Hooks planHooks(String dir) {
                 return EngineListeners.this.planHooks(rid, dir, writer, false);
             }

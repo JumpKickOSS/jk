@@ -134,6 +134,20 @@ public final class BuildEta {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
             Calibration.ensure(jdksDir);
+            if (StepEta.stepPriced()) {
+                return StepEta.model(
+                        plan,
+                        entryDir,
+                        cache,
+                        workers,
+                        jdksDir,
+                        profile,
+                        skipTests,
+                        verbose,
+                        parallelTests,
+                        maxModuleConcurrency,
+                        workerWarm);
+            }
             List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
                     plan, cache, workers, jdksDir, profile, skipTests, verbose, maxModuleConcurrency);
             int concurrency = etaConcurrency(maxModuleConcurrency);
@@ -317,10 +331,7 @@ public final class BuildEta {
                 jobsBudget,
                 "share",
                 share);
-        List<TaskForecast.Module> priced = new ArrayList<>();
-        for (TaskForecast.Module m : plan.modules()) {
-            if (distrust || m.dirty()) priced.add(m);
-        }
+        List<TaskForecast.Module> priced = pricedModules(plan, distrust);
         CostInputs in = new CostInputs(
                 plan,
                 cache,
@@ -337,6 +348,15 @@ public final class BuildEta {
                 share);
         List<EffortWeights.ModuleCost> costs = ModuleCosting.each(priced, m -> moduleCost(in, m));
         return costs;
+    }
+
+    /** The modules an estimate prices: every dirty one, or all of them on a forced run. */
+    static List<TaskForecast.Module> pricedModules(ExplainPlan plan, boolean distrust) {
+        List<TaskForecast.Module> priced = new ArrayList<>();
+        for (TaskForecast.Module m : plan.modules()) {
+            if (distrust || m.dirty()) priced.add(m);
+        }
+        return priced;
     }
 
     /** What pricing one module reads; shared, read-only, by every module priced in one estimate. */

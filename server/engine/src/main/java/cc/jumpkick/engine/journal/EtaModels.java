@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -85,6 +86,16 @@ public final class EtaModels {
             costs.add(row);
         }
         out.put("costs", costs);
+        if (!m.steps().isEmpty()) {
+            Map<String, Object> steps = new LinkedHashMap<>();
+            for (var e : m.steps().entrySet()) {
+                List<Object> rows = new ArrayList<>();
+                for (StepCost c : e.getValue())
+                    rows.add(List.of(c.step(), c.weight(), c.kind().name()));
+                steps.put(String.valueOf(e.getKey()), rows);
+            }
+            out.put("steps", steps);
+        }
         return out;
     }
 }

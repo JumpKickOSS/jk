@@ -52,6 +52,12 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
 
         default void trackModuleComplete(String dir, long lastDen) {}
 
+        /** A module's step started or finished: the live remainder counts modules down by their steps. */
+        default void trackStep(String dir, String step, boolean started) {}
+
+        /** A test class of a module's suite finished, with its wall. */
+        default void trackTestClass(String dir, String step, String className, long millis) {}
+
         default BridgingPlanListener.Hooks planHooks(String dir) {
             return new BridgingPlanListener.Hooks() {};
         }
@@ -169,7 +175,14 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             }
 
             @Override
+            public void stepStarted(String d, String step) {
+                hooks.trackStep(d, step, true);
+                nested.stepStarted(d, step);
+            }
+
+            @Override
             public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
+                hooks.trackStep(d, step, false);
                 nested.stepFinished(d, step, phase, status, millis, waitMillis);
             }
 
@@ -185,6 +198,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
 
             @Override
             public void testClass(String d, String step, TestClassResult result) {
+                hooks.trackTestClass(d, step, result.className(), result.durationMs());
                 nested.testClass(d, step, result);
             }
         };
