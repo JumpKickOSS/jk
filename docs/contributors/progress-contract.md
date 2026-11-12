@@ -55,21 +55,35 @@ no history, the step keeps only what changes its own work (a suite keeps to its 
 priced from a filtered run; a compile or native image keeps to a full rebuild or not) and prefers
 runs under its own load. A step seen only under the other load is read at the **load ratio**: the
 median, over the steps that ran under both, of their light wall over their full-rebuild wall (0.5
-until three steps have). A suite under a profile it never ran in borrows its default profile's wall
-as a floor, with a range up to three times it.
+until three steps have; suites do not teach it, their light runs being faster mostly for the test
+JVMs those runs give them). A suite under a profile it never ran in borrows its default profile's
+wall as a floor, with a range up to three times it. A compile is never read across loads: with no
+wall of its own under this load, a full compile reads its full rebuild's at the load ratio and a
+partial one the median of the project's compiles under this load, never above its own full compile.
+
+**Test JVMs.** The executor picks a suite's JVMs as it dispatches, the jobs budget over the modules
+in flight then. A suite priced from runs of another shape or work set ran on the JVMs that work left
+it; the schedule says how many modules are in flight at its dispatch, and the suite is read at that
+share through its class walls (`StepCost.scale`) and priced for it.
+
+**A first build.** A step the ledger knows nothing of is priced from the host's calibration: a
+compile at a fixed cost plus a cost per source, a suite at its JVM's fixed cost plus a cost per
+method on one JVM, then read at its dispatch share (`Calibration.coldCompileMs`, `coldSuiteMs`,
+fitted to JumpKick's own first build).
 
 A module's steps run in three branches after its prefix (the compiles and the jar): the suite, the
 packaging tails, and the guard chain (`compile-guard`, `guard`), which nothing waits for. A forced
 build's forecast lists a clean module with no steps; the estimate prices the steps the last run of
-the same shape ran there. A test run's estimate drops the packaging tails it never runs.
+the same shape ran there. A test run's estimate drops the packaging tails it never runs, but for a fat jar a sibling's suite
+launches.
 
 Steps the build starts before the estimate arrives are recorded on the request and replayed into the
 model when it does, each counted down from its real start.
 
 A step's status matters: a cache hit is a restore, priced from restores, never from runs. A filtered
 suite (`--class`) is priced as its test JVM plus the recorded walls of the classes it selects, or a
-touch in a module it selects nothing in. A step with no history of its own falls back to the
-module-weight price of that step alone.
+touch in a module it selects nothing in. Any other step with no history and no calibration of its
+own falls back to the module-weight price of that step alone.
 
 **A running suite.** Its classes run side by side and its last few alone, so the share of its class
 walls done runs ahead of its clock: the engine's suite was 84% done by class walls at 71% of its wall.
@@ -100,9 +114,21 @@ on 8).
 **Re-pricing.** The engine re-notes each live request's residual on every step and test-class event
 and once a second in between (`EtaStepTicker`), so a running step counts down between events.
 
+**Revisions.** Some verdicts wait on a sibling the build has yet to compile: the source-diff hint's
+`likely recompile` or `likely up to date`, a recompile `only if the compile runs`
+(`TaskForecast.Task.provisional`). When a module whose classes such a verdict reads publishes them,
+the build walks every scheduled module's forecast again off its threads, reading what has compiled
+from its outputs, and prices it under the seed's work set and shape (`BackgroundEta.reprice`, at
+most one at a time, triggers coalescing). The result reaches the engine as a `WorkModel` with a
+`revision`: it replaces the residual, its finished modules and steps replayed into it, and keeps
+the clock the seed anchored. `eta-model.jsonl` records each revision.
+
 **Before the estimate.** The estimate is priced beside the build and arrives within a second or two.
 Until it does, execute moves the bar at most to 15%: the plan's weights count a fully cached
-module's slice as done and would pin the bar far ahead of the clock.
+module's slice as done and would pin the bar far ahead of the clock. Nor does the bar move faster
+than 1% a second: preflight's band is a tenth of the bar, yet it is about a second of a minute's
+build, and a test run's bar read 17% when its estimate came at 1.4 s, then held there for 9.5 s
+while the clock caught up.
 
 **Likely range.** Each step's range is the 20th–80th percentile of the samples its price comes from,
 never narrower than 15% either side; a filtered suite's is ±30%; a step priced with no history of
@@ -112,7 +138,12 @@ as the last suite runs (it had, and half of warm checkpoints fell outside it). W
 is judged against the target; a cold run misses by more than any range it could honestly show.
 Surfaces show `~1m 32s` when the range is narrow and `1m 20s–1m 50s` once it spans more than 40% of
 what remains (and at least 10 s).
-`jk explain` prints `~1m 11s (likely 59s – 1m 30s)`.
+`jk explain` prints `~1m 11s (likely 59s – 1m 30s)` and the critical path the estimate rides on,
+`jk-core → jk-engine → jk-cli`: back from the module that finishes last, each admitted by the
+classes of the one before (`WorkSchedule.criticalPath`; MCP's explain carries it as `criticalPath`,
+and counts each module's `provisionalSteps`, the verdicts a revision will settle). jsonl and the wire carry the range beside
+`remainingMs`: `lowMs` and `highMs` on `eta`, `etaLowMs` and `etaHighMs` on `workspace-progress`; MCP's `status` gives each job in
+flight its `progress`, `remainingMs`, `etaLowMs` and `etaHighMs` under `estimates`.
 
 **On hold.** A fork that has waited half a second for a worker lease (`WorkerLeases`) puts its build
 on hold until the build's last waiting fork leaves the queue (`MemoryHolds`). While held, the

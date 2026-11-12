@@ -76,6 +76,33 @@ public final class BuildEta {
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
+        return estimateEtaModel(
+                plan,
+                entryDir,
+                cache,
+                workers,
+                jdksDir,
+                profile,
+                skipTests,
+                verbose,
+                parallelTests,
+                maxModuleConcurrency,
+                null);
+    }
+
+    /** As above; a re-pricing passes the build's {@code seed}, whose work set and shape it keeps. */
+    public static BuildService.EtaModel estimateEtaModel(
+            ExplainPlan plan,
+            Path entryDir,
+            Path cache,
+            int workers,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose,
+            boolean parallelTests,
+            int maxModuleConcurrency,
+            BuildService.@Nullable EtaModel seed) {
         try {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
@@ -90,7 +117,8 @@ public final class BuildEta {
                     skipTests,
                     verbose,
                     parallelTests,
-                    maxModuleConcurrency);
+                    maxModuleConcurrency,
+                    seed);
         } catch (RuntimeException e) {
             // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
             Log.warn("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());

@@ -70,6 +70,48 @@ class BackgroundEtaTest {
     }
 
     @Test
+    void a_guess_settled_mid_build_re_prices_from_the_seed_as_its_first_revision() throws Exception {
+        List<String> revisions = new CopyOnWriteArrayList<>();
+        CountDownLatch revised = new CountDownLatch(1);
+        BackgroundEta eta = BackgroundEta.of(model(100), m -> {}).repricing(seed -> model(seed.etaMs() + 1), (m, n) -> {
+            revisions.add(n + ":" + m.etaMs());
+            revised.countDown();
+        });
+        eta.reprice();
+        assertThat(revised.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(revisions).containsExactly("1:101");
+        eta.close();
+    }
+
+    @Test
+    void a_guess_settled_before_the_seed_is_priced_waits_for_it() throws Exception {
+        List<String> revisions = new CopyOnWriteArrayList<>();
+        CountDownLatch revised = new CountDownLatch(1);
+        BackgroundEta eta = BackgroundEta.deferred(() -> model(5), m -> {})
+                .repricing(seed -> model(seed.etaMs() + 1), (m, n) -> {
+                    revisions.add(n + ":" + m.etaMs());
+                    revised.countDown();
+                });
+        eta.reprice();
+        assertThat(revisions).isEmpty();
+        eta.begin();
+        assertThat(revised.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(revisions).containsExactly("1:6");
+        eta.close();
+    }
+
+    @Test
+    void nothing_is_re_priced_once_the_build_has_ended() throws Exception {
+        List<String> revisions = new CopyOnWriteArrayList<>();
+        BackgroundEta eta = BackgroundEta.of(model(100), m -> {})
+                .repricing(seed -> model(1), (m, n) -> revisions.add(n + ":" + m.etaMs()));
+        eta.close();
+        eta.reprice();
+        Thread.sleep(50);
+        assertThat(revisions).isEmpty();
+    }
+
+    @Test
     void an_estimate_in_hand_is_published_at_once() {
         List<BuildService.EtaModel> heard = new CopyOnWriteArrayList<>();
         BackgroundEta eta = BackgroundEta.of(model(7), heard::add);

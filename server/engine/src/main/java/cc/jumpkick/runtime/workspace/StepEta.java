@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.TestEffort;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -67,7 +68,8 @@ public final class StepEta {
             boolean skipTests,
             boolean verbose,
             boolean parallelTests,
-            int maxModuleConcurrency) {
+            int maxModuleConcurrency,
+            BuildService.@Nullable EtaModel seed) {
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         Set<String> frontier = new TreeSet<>();
@@ -86,9 +88,16 @@ public final class StepEta {
         }
         // A build that compiles most of its modules is a full rebuild whether or not it was forced:
         // the ledger records it as one (StepLedger.fullRebuild), so it is priced as one.
+        boolean fullRebuild = distrust || StepLedger.fullRebuild(compiling, compilable);
+        if (seed != null) {
+            // A re-pricing keeps the seed's work set and shape: the compiles that have finished
+            // since read as cached, and the run is still recorded under what it was priced with.
+            frontier = new TreeSet<>(seed.frontier());
+            fullRebuild = seed.fullRebuild();
+        }
         RunShapes.Shape shape = new RunShapes.Shape(
                 profile == null ? "" : profile,
-                distrust || StepLedger.fullRebuild(compiling, compilable),
+                fullRebuild,
                 !SessionContext.current().testSelection().classes().isEmpty());
         StepLedger ledger = StepLedger.load(ProjectBuilds.projectHome(entryDir));
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
@@ -97,6 +106,7 @@ public final class StepEta {
         Map<Path, long[]> suiteWalls = new HashMap<>();
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
+        Calibration calibration = Calibration.load();
         List<String> projectDirs =
                 plan.modules().stream().map(m -> m.dir().toString()).toList();
         for (TaskForecast.Module m : BuildEta.pricedModules(plan, distrust)) {
@@ -104,13 +114,25 @@ public final class StepEta {
             Set<Path> prereqs = plan.edges().getOrDefault(dir, Set.of());
             List<StepCost> own = new ArrayList<>();
             for (TaskForecast.Task t : stepsOf(m, distrust, ledger, shape)) {
-                Priced priced =
-                        stepMs(ledger, shape, frontier, dir, t, distrust, prereqs, metrics, timings, projectDirs, m);
+                Priced priced = stepMs(
+                        ledger,
+                        shape,
+                        frontier,
+                        dir,
+                        t,
+                        distrust,
+                        prereqs,
+                        metrics,
+                        timings,
+                        projectDirs,
+                        m,
+                        calibration);
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
-                int suiteWorkers = kind == StepCost.Kind.TEST && !shape.filtered()
-                        ? ledger.workers(dir.toString(), t.name(), "SUCCESS", shape, frontier)
-                        : 0;
+                // A cold suite is priced for one JVM and re-priced at its dispatch share below.
+                int suiteWorkers = kind != StepCost.Kind.TEST || shape.filtered()
+                        ? 0
+                        : priced.cold() ? 1 : ledger.workers(dir.toString(), t.name(), "SUCCESS", shape, frontier);
                 own.add(new StepCost(
                         t.name(),
                         weightOf(priced.ms()),
@@ -150,7 +172,8 @@ public final class StepEta {
                 ledger.runs(),
                 "frontier",
                 frontier.size());
-        return new BuildService.EtaModel(ms, costs, concurrency, serialEta, ledger.runs() > 0, steps, frontier, curves);
+        return new BuildService.EtaModel(
+                ms, costs, concurrency, serialEta, ledger.runs() > 0, steps, frontier, curves, fullRebuild);
     }
 
     /** A module's cost from its steps: {@code prefix + max(suite, tail, lane)}, the gate inside the prefix. */
@@ -234,13 +257,22 @@ public final class StepEta {
      * a third either side for a filtered suite priced from its classes' walls; half to twice for a
      * step priced from the module weights with no history of its own, which is a guess.
      */
-    record Priced(long ms, long low, long high) {
+    record Priced(long ms, long low, long high, boolean cold) {
+        Priced(long ms, long low, long high) {
+            this(ms, low, high, false);
+        }
+
         static Priced exact(long ms) {
             return new Priced(ms, ms, ms);
         }
 
         static Priced spread(long ms, double down, double up) {
             return new Priced(ms, Math.round(ms * down), Math.round(ms * up));
+        }
+
+        /** A first build's price from the host's calibration: half to twice, a suite for one JVM. */
+        static Priced cold(long ms) {
+            return new Priced(ms, Math.round(ms * 0.5), Math.round(ms * 2.0), true);
         }
     }
 
@@ -276,7 +308,8 @@ public final class StepEta {
             BuildMetrics metrics,
             StepTimings timings,
             List<String> projectDirs,
-            TaskForecast.Module m) {
+            TaskForecast.Module m,
+            Calibration calibration) {
         String name = t.name();
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
@@ -301,6 +334,19 @@ public final class StepEta {
             OptionalLong cold =
                     ledger.coldCompile(dir.toString(), name, status, shape, t.status() == TaskForecast.Status.PARTIAL);
             if (cold.isPresent()) return Priced.spread(cold.getAsLong(), 0.5, 2.0);
+            // Nothing of the step in the ledger: a first build's compile, from the host's calibration.
+            // The test compiles' sources are not counted; a test class holds about five methods.
+            int sources =
+                    switch (name) {
+                        case TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY ->
+                            m.sourceCount();
+                        case TaskNames.COMPILE_TEST -> m.testCount() / 5;
+                        default -> 1;
+                    };
+            return Priced.cold(calibration.coldCompileMs(sources));
+        }
+        if (TaskNames.RUN_TESTS.equals(name) && m.testCount() > 0) {
+            return Priced.cold(calibration.coldSuiteMs(m.testCount()));
         }
         Map<String, Integer> counts = new HashMap<>();
         if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());

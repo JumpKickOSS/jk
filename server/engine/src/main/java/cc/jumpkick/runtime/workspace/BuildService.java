@@ -247,7 +247,13 @@ public final class BuildService {
              * Per module dir, the curve its suite's class share is read as time through ({@code
              * SuiteCurve}): the latest its suite measured in the ledger.
              */
-            Map<String, int[]> curves) {
+            Map<String, int[]> curves,
+            /**
+             * Whether the run was priced as a full rebuild (forced, or compiling most modules): with
+             * {@link #frontier} the shape a re-pricing keeps, since a compile that has finished by
+             * then would read as cached and move both.
+             */
+            boolean fullRebuild) {
         public EtaModel {
             steps = steps == null ? Map.of() : Map.copyOf(steps);
             frontier = frontier == null ? Set.of() : Set.copyOf(frontier);
@@ -255,7 +261,7 @@ public final class BuildService {
         }
 
         public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
-            this(etaMs, costs, concurrency, serial, false, Map.of(), Set.of(), Map.of());
+            this(etaMs, costs, concurrency, serial, false, Map.of(), Set.of(), Map.of(), false);
         }
 
         static EtaModel empty() {

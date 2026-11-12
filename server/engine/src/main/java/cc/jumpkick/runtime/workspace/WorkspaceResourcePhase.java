@@ -22,9 +22,12 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Seeds host resources and the sole ETA/work model before module preparation. */
 @NullMarked
@@ -41,7 +44,44 @@ final class WorkspaceResourcePhase {
             List<StepTimings.Sample> timingSamples,
             List<HostLearnedRates.HostSample> hostSamples,
             BackgroundEta eta,
-            boolean parallelTests) {}
+            boolean parallelTests,
+            ProvisionalWatch provisional) {
+
+        /**
+         * {@code dir}'s classes are published: when a module the estimate priced on a guess reads
+         * them, its verdicts are lookups now, and the estimate is re-priced (JK-0PDBN).
+         */
+        void classesPublished(Path dir) {
+            if (provisional.waitsOn(dir)) eta.reprice();
+        }
+    }
+
+    /**
+     * The modules the latest pricing guessed at, each with the siblings it reads: their verdicts
+     * ({@link TaskForecast.Task#provisional}) wait on a sibling this build has yet to compile.
+     */
+    static final class ProvisionalWatch {
+        private volatile Map<Path, Set<Path>> waiting = Map.of();
+
+        /** The guesses of a pricing's {@code plan} replace the last one's. */
+        void priced(ExplainPlan plan) {
+            Map<Path, Set<Path>> next = new HashMap<>();
+            for (TaskForecast.Module m : plan.modules()) {
+                if (m.steps().stream().anyMatch(TaskForecast.Task::provisional)) {
+                    next.put(m.dir(), plan.edges().getOrDefault(m.dir(), Set.of()));
+                }
+            }
+            waiting = Map.copyOf(next);
+        }
+
+        /** Whether a module the latest pricing guessed at reads {@code dir}. */
+        boolean waitsOn(Path dir) {
+            for (Set<Path> reads : waiting.values()) {
+                if (reads.contains(dir)) return true;
+            }
+            return false;
+        }
+    }
 
     static Resources seed(WorkspacePreflightPhase.Context preflight, WorkspaceBuildListener listener) {
         WorkspaceRequest incoming = preflight.request();
@@ -74,14 +114,28 @@ final class WorkspaceResourcePhase {
         // The ETA walks the forecast of every scheduled module (seconds on a large workspace) and
         // nothing scheduling needs comes from it, so it is priced beside the build.
         WorkspaceRequest priced = request;
+        ProvisionalWatch provisional = new ProvisionalWatch();
         BackgroundEta eta = BackgroundEta.deferred(
-                () -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests), model -> {
-                    RunShapes.markPriced(requestId, model.frontier(), model.curves());
-                    List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
-                    listener.onWorkModel(new WorkModel(
-                            model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered, model.steps()));
-                    listener.onEtaEstimate(model.etaMs());
-                });
+                        () -> {
+                            ExplainPlan plan = etaPlan(preflight, priced, dirtyUnits);
+                            provisional.priced(plan);
+                            return estimate(plan, priced, incoming, parallelTests, null);
+                        },
+                        model -> {
+                            RunShapes.markPriced(requestId, model.frontier(), model.curves());
+                            listener.onWorkModel(workModel(model, dirtyUnits, parallelTests));
+                            listener.onEtaEstimate(model.etaMs());
+                        })
+                // A module the estimate guessed at has compiled: what its dependents run is read off
+                // its outputs now, every scheduled module's forecast walked again.
+                .repricing(
+                        seedModel -> {
+                            ExplainPlan plan = scheduledPlan(preflight, priced);
+                            provisional.priced(plan);
+                            return estimate(plan, priced, incoming, parallelTests, seedModel);
+                        },
+                        (model, n) -> listener.onWorkModel(
+                                workModel(model, dirtyUnits, parallelTests).asRevision(n)));
 
         return new Resources(
                 preflight,
@@ -91,7 +145,14 @@ final class WorkspaceResourcePhase {
                 timingSamples,
                 hostSamples,
                 eta,
-                parallelTests);
+                parallelTests,
+                provisional);
+    }
+
+    private static WorkModel workModel(
+            BuildService.EtaModel model, List<BuildGraph.BuildUnit> dirtyUnits, boolean parallelTests) {
+        List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
+        return new WorkModel(model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered, model.steps());
     }
 
     /**
@@ -112,12 +173,11 @@ final class WorkspaceResourcePhase {
      * the ETA recomputes that share, and passing it would look like an explicit pin.
      */
     static BuildService.EtaModel estimate(
-            WorkspacePreflightPhase.Context preflight,
+            ExplainPlan etaPlan,
             WorkspaceRequest request,
             WorkspaceRequest incoming,
-            List<BuildGraph.BuildUnit> dirtyUnits,
-            boolean parallelTests) {
-        ExplainPlan etaPlan = etaPlan(preflight, request, dirtyUnits);
+            boolean parallelTests,
+            BuildService.@Nullable EtaModel seed) {
         return BuildEta.estimateEtaModel(
                 etaPlan,
                 request.entryDir(),
@@ -128,7 +188,25 @@ final class WorkspaceResourcePhase {
                 request.skipTests(),
                 request.verbose(),
                 parallelTests,
-                request.maxModuleConcurrency());
+                request.maxModuleConcurrency(),
+                seed);
+    }
+
+    /**
+     * Every scheduled module's forecast as the disk stands now, for a re-pricing: the modules that
+     * have compiled since the seed answer from their outputs.
+     */
+    private static ExplainPlan scheduledPlan(WorkspacePreflightPhase.Context preflight, WorkspaceRequest request) {
+        ExplainPlan plan = BuildForecasting.scheduledPlan(
+                preflight.graph(), request.cache(), request.skipTests(), request.profile(), preflight.dirty());
+        return testRunPlan(BuildForecasting.restrictToSelection(plan, preflight.dirty()), preflight, request);
+    }
+
+    private static ExplainPlan testRunPlan(
+            ExplainPlan selected, WorkspacePreflightPhase.Context preflight, WorkspaceRequest request) {
+        return request.testOnly()
+                ? withoutPackagingTails(selected, WorkspacePreflightPhase.launchedAssemblies(preflight.graph()))
+                : selected;
     }
 
     private static ExplainPlan etaPlan(
@@ -156,10 +234,7 @@ final class WorkspaceResourcePhase {
             plan = BuildForecasting.explainFromGraph(
                     preflight.graph(), request.cache(), request.skipTests(), null, request.profile());
         }
-        ExplainPlan selected = BuildForecasting.restrictToSelection(plan, preflight.dirty());
-        return request.testOnly()
-                ? withoutPackagingTails(selected, WorkspacePreflightPhase.launchedAssemblies(preflight.graph()))
-                : selected;
+        return testRunPlan(BuildForecasting.restrictToSelection(plan, preflight.dirty()), preflight, request);
     }
 
     /**

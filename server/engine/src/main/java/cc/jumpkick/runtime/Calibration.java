@@ -87,6 +87,28 @@ public final class Calibration {
     static final long BASELINE_PACKAGE_JAR_MS = 90;
 
     /**
+     * A first build's compile on the reference host, priced when nothing of the step is known: a
+     * fixed cost per compile (the compiler worker, the classpath, javac's own start, the compiles
+     * beside it) and a cost per source. Fitted to every module of jk's own first build (2026-11-12
+     * corpus, 59 compiles): the per-source baseline alone priced the 59 at 31 s for 195 s, a nine-
+     * source compile at 0.1 s for 2.4 s. Not the learned per-source rate: that folds an incremental
+     * compile's fixed cost into its few sources, and would price an 800-source first compile at
+     * minutes (JK-D3785).
+     */
+    static final long BASELINE_COLD_COMPILE_FIXED_MS = 3_500;
+
+    static final long BASELINE_COLD_COMPILE_PER_SOURCE_MS = 35;
+
+    /**
+     * A first build's suite on one test JVM, on the reference host: its JVM, discovery and the
+     * classes' setup, then a cost per test method. Fitted to the same first build's 52 suites; the
+     * 280 ms startup baseline left every small suite at a fifth of its wall.
+     */
+    static final long BASELINE_COLD_SUITE_FIXED_MS = 8_000;
+
+    static final long BASELINE_COLD_METHOD_MS = 40;
+
+    /**
      * Reference-host cold Graal wall for a typical ~1–1.5 MiB-effective app when size is unknown.
      * Always × {@link #cpuScale()} via {@link #nativeImageMs()} — not used raw. Prefer {@link
      * NativeEffort} size model when classpath bytes are known. Dogfood at scale=1 is mid-30s.
@@ -443,6 +465,18 @@ public final class Calibration {
             case TaskNames.WRITE_IMAGE -> ociImageMs();
             default -> 0L;
         };
+    }
+
+    /** A first build's compile of {@code sources} sources ({@link #BASELINE_COLD_COMPILE_FIXED_MS}). */
+    public long coldCompileMs(int sources) {
+        return scaleBaseline(BASELINE_COLD_COMPILE_FIXED_MS, cpuScale())
+                + scaleBaseline(BASELINE_COLD_COMPILE_PER_SOURCE_MS, cpuScale()) * Math.max(1, sources);
+    }
+
+    /** A first build's suite of {@code methods} test methods on one JVM ({@link #BASELINE_COLD_SUITE_FIXED_MS}). */
+    public long coldSuiteMs(int methods) {
+        return scaleBaseline(BASELINE_COLD_SUITE_FIXED_MS, forkScale())
+                + scaleBaseline(BASELINE_COLD_METHOD_MS, cpuScale()) * Math.max(0, methods);
     }
 
     /** Cap cold within-module test parallel for ETA (not runtime). */

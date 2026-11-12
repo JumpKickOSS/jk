@@ -1065,13 +1065,16 @@ public class Replay {
             while (nextSeed < seeds.size() && num(seeds.get(nextSeed), "ts") <= ts) {
                 Map<?, ?> s = seeds.get(nextSeed++);
                 List<ModuleWorkCost> costs = costs(s);
+                // A revision (JK-0PDBN) replaces the residual and keeps the seed's clock, as the
+                // engine's does.
+                boolean revision = num(s, "revision") > 0 && st.seededAt > 0;
                 st.seed(
                         costs,
-                        num(s, "R0"),
+                        revision ? st.r0 : num(s, "R0"),
                         (int) num(s, "concurrency"),
                         Boolean.TRUE.equals(s.get("serial")),
                         Boolean.TRUE.equals(s.get("parallelTests")),
-                        num(s, "ts"));
+                        revision ? st.seededAt : num(s, "ts"));
                 st.frac.clear();
                 Map<Path, List<StepCost>> seedSteps = new LinkedHashMap<>();
                 // The suites priced at the JVMs the engine's ledger would assume (StepLedger.workers).

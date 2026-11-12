@@ -123,11 +123,15 @@ public final class EngineListeners {
                 if (MemoryHolds.onHold(rid)) rw.hold();
                 sessions.remaining(rid, rw);
                 var tracker = sessions.tracker(rid);
-                tracker.seedWall(model.R0(), model.costs().size());
+                // A revision re-prices what is left and keeps the clock the seed anchored: seeding
+                // again would restart the bar's countdown from the revision's moment.
+                if (model.revision() == 0)
+                    tracker.seedWall(model.R0(), model.costs().size());
+                long r0 = model.revision() == 0 || tracker.R0ms() <= 0 ? model.R0() : tracker.R0ms();
                 // A model that arrives mid-build already had the finished modules drained from it:
                 // the residual, not the from-scratch R0, is what is left.
                 synchronized (rw) {
-                    tracker.noteRemaining(rw.remaining(), model.R0());
+                    tracker.noteRemaining(rw.remaining(), r0);
                 }
                 sse.emitWorkspaceProgress(rid, writer, true);
                 if (!model.steps().isEmpty()) sse.tickSteps(rid);

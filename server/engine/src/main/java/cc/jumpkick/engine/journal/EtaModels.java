@@ -19,7 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * The remaining-work models a run's countdown was seeded from, kept beside its record as {@code
  * eta-model.jsonl}: one line per model the run received (a model that arrives mid-build is a second
- * line), each with the time it arrived, R0, the schedule knobs and every module's cost.
+ * line, and a re-pricing carries its {@code revision}), each with the time it arrived, R0, the
+ * schedule knobs and every module's cost.
  *
  * <p>With the run's {@code details.jsonl}, which carries every module's plan progress and finish,
  * this is everything the live residual read: {@code bench/eta/Replay.java} feeds the two back
@@ -48,7 +49,11 @@ public final class EtaModels {
         if (BY_REQUEST.size() >= MAX_REQUESTS && !BY_REQUEST.containsKey(requestId)) {
             BY_REQUEST.keySet().stream().min(Long::compare).ifPresent(BY_REQUEST::remove);
         }
-        BY_REQUEST.computeIfAbsent(requestId, k -> new ArrayList<>()).add(new Seed(Clock.SYSTEM.millis(), model));
+        List<Seed> seeds = BY_REQUEST.computeIfAbsent(requestId, k -> new ArrayList<>());
+        // A re-pricing arrives on its own thread (JK-0PDBN), beside the journal's drain.
+        synchronized (seeds) {
+            seeds.add(new Seed(Clock.SYSTEM.millis(), model));
+        }
     }
 
     /** Drain {@code requestId}'s models into {@code runDir}; nothing is written when there were none. */
@@ -67,6 +72,7 @@ public final class EtaModels {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ts", s.at());
         out.put("R0", m.R0());
+        if (m.revision() > 0) out.put("revision", m.revision());
         out.put("concurrency", m.concurrency());
         out.put("serial", m.serial());
         out.put("parallelTests", m.parallelTests());

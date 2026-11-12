@@ -38,6 +38,9 @@ public final class TaskForecast {
     /** Detail of a step that runs only if this module's own compile does: its dirtiness is a dependency's. */
     public static final String ONLY_IF_COMPILE_RUNS = "only if the compile runs";
 
+    /** A compile that reruns for a dirty dependency the hint cannot classify. */
+    public static final String DEPENDENCY_CHANGED = "dependency changed";
+
     /** compile-test's text when only its suites' resources drifted: it copies them, nothing recompiles. */
     public static final String TEST_RESOURCES_CHANGED = "test resources changed";
 
@@ -60,6 +63,18 @@ public final class TaskForecast {
             @Nullable String key) {
         public boolean cached() {
             return status == Status.CACHED;
+        }
+
+        /**
+         * Whether the verdict waits on a sibling this build has yet to compile: the source-diff
+         * hint's guess or a recompile that runs only if the sibling's API moved, which a lookup
+         * settles once the sibling has compiled (JK-0PDBN).
+         */
+        public boolean provisional() {
+            return text.contains(LIKELY_UP_TO_DATE)
+                    || text.contains(LIKELY_RECOMPILE)
+                    || text.contains(ONLY_IF_COMPILE_RUNS)
+                    || text.contains(DEPENDENCY_CHANGED);
         }
     }
 

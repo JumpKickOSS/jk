@@ -139,7 +139,7 @@ final class ForecastSteps {
 
     /** The text of a hit whose compile-scope dependency is rebuilding: the hint when there is one. */
     static String dependencyChanged(DepHint hint) {
-        return hint.text().isEmpty() ? "recompile · dependency changed" : hint.text();
+        return hint.text().isEmpty() ? "recompile · " + TaskForecast.DEPENDENCY_CHANGED : hint.text();
     }
 
     private static TaskForecast.Task compileStep(

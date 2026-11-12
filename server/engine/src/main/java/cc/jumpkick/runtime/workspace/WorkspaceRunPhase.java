@@ -37,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -110,6 +111,7 @@ final class WorkspaceRunPhase {
                             KotlinAbiWarmup.before(
                                     resources.preflight().graph(), unit, request.cache(), JkStores.storeCas(), publish),
                             siblings,
+                            resources::classesPublished,
                             clock),
                     (ready, results, _) ->
                             collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
@@ -218,6 +220,7 @@ final class WorkspaceRunPhase {
             boolean relocates,
             KotlinAbiWarmup.Warmup warmup,
             SiblingArtifacts siblings,
+            Consumer<Path> classesPublished,
             Clock clock) {
         BuildPlanListener moduleListener = listener.onModuleStart(module);
         if (moduleListener != null) module.plan().addListener(moduleListener);
@@ -225,6 +228,7 @@ final class WorkspaceRunPhase {
         watchClassesSteps(module.plan(), relocates, () -> {
             siblings.compiled(module.dir());
             admit.run();
+            classesPublished.accept(module.dir());
         });
         watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
         watchOrSignal(module.plan(), TaskNames.COMPILE_TEST_FIXTURES, () -> siblings.fixturesCompiled(module.dir()));

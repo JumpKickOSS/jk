@@ -9,7 +9,9 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -97,7 +99,91 @@ final class BackgroundEta {
         synchronized (lock) {
             if (!open || published) return;
             published = true;
+            seed = model;
             publish.accept(model);
+        }
+        Runnable waiting = pendingReprice;
+        if (waiting != null) waiting.run();
+    }
+
+    /** The published seed, which a re-pricing keeps the work set and shape of. */
+    private BuildService.@Nullable EtaModel seed;
+
+    /**
+     * What re-prices the estimate from the seed and what publishes each revision (numbered from
+     * 1), set by {@link #repricing}; null when the build re-prices nothing.
+     */
+    private @Nullable Function<BuildService.EtaModel, BuildService.EtaModel> repricer;
+
+    private @Nullable BiConsumer<BuildService.EtaModel, Integer> revise;
+    private int revisions;
+    private boolean repricingNow;
+    private boolean again;
+    private volatile @Nullable Runnable pendingReprice;
+
+    /**
+     * Re-price on {@link #reprice} with {@code repricer}, handing each revision to {@code revise}:
+     * a module the estimate guessed at has compiled and what its dependents run is a lookup now
+     * (JK-0PDBN).
+     */
+    BackgroundEta repricing(
+            Function<BuildService.EtaModel, BuildService.EtaModel> repricer,
+            BiConsumer<BuildService.EtaModel, Integer> revise) {
+        synchronized (lock) {
+            this.repricer = repricer;
+            this.revise = revise;
+        }
+        return this;
+    }
+
+    /**
+     * Re-price the estimate off the build's threads: at most one pricing at a time, and the
+     * triggers that arrive while one runs make one more pass after it. Before the seed is published
+     * the trigger waits for it; after {@link #close} it does nothing.
+     */
+    void reprice() {
+        synchronized (lock) {
+            if (!open || repricer == null) return;
+            if (!published) {
+                pendingReprice = this::reprice;
+                return;
+            }
+            pendingReprice = null;
+            if (repricingNow) {
+                again = true;
+                return;
+            }
+            repricingNow = true;
+        }
+        JkThreads.platform().submit(this::repriceLoop);
+    }
+
+    private void repriceLoop() {
+        while (true) {
+            BuildService.EtaModel from;
+            Function<BuildService.EtaModel, BuildService.EtaModel> how;
+            synchronized (lock) {
+                from = seed;
+                how = repricer;
+            }
+            BuildService.EtaModel revised = null;
+            if (from != null && how != null) {
+                try {
+                    BuildService.EtaModel seedModel = from;
+                    revised = ScopedValue.where(JavaCompile.PLAN_WORKERS, JavaCompile.PlanWorkers.NONE)
+                            .call(() -> how.apply(seedModel));
+                } catch (RuntimeException e) {
+                    Log.debug("eta re-pricing failed; the build keeps its estimate", e);
+                }
+            }
+            synchronized (lock) {
+                if (revised != null && open && revise != null) revise.accept(revised, ++revisions);
+                if (!open || !again) {
+                    repricingNow = false;
+                    return;
+                }
+                again = false;
+            }
         }
     }
 
