@@ -689,14 +689,13 @@ public final class JUnitLauncher {
             resolvedWorkers = preDiscovered.isEmpty()
                     ? 1
                     : TestWorkers.autoCount(share, inferredModuleDir, preDiscovered, preDiscovered.size());
-            if (preDiscovered.size() <= 1) resolvedWorkers = 1;
         } else if (!classNames.isEmpty()) {
             preDiscovered = classNames;
             resolvedWorkers = TestWorkers.resolve(wanted, preDiscovered.size(), TestWorkers.effectiveJobs());
-            if (preDiscovered.size() <= 1) resolvedWorkers = 1;
         } else if (wanted > 1) {
             resolvedWorkers = TestWorkers.resolve(wanted, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
         }
+        if (preDiscovered != null && preDiscovered.size() <= 1) resolvedWorkers = 1;
 
         // Tag every summary with the runner count that produced it, at the one place that count is
         // authoritative. The inner paths cannot: `runSingle` returns from two places and the
@@ -704,6 +703,7 @@ public final class JUnitLauncher {
         // it per-path recorded the concurrency for 2 modules out of 29, which is worse than not at
         // all — a forecast rescales the modules it has a count for and not the rest.
         if (resolvedWorkers <= 1) {
+            listener.onWorkers(1);
             return runSingle(javaHome, classpath, testClassesDir, listener, testResultsDir)
                     .withWorkers(1);
         }

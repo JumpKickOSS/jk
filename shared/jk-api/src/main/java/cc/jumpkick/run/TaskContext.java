@@ -99,6 +99,9 @@ public interface TaskContext {
     /** A test class finished; reported as it happens so a cut-short run keeps what completed. */
     default void testClass(TestClassResult result) {}
 
+    /** The step's test suite runs on {@code workers} test JVMs, decided as it starts. */
+    default void testWorkers(int workers) {}
+
     /** True when cancelled (sibling failure or Ctrl-C); poll in long loops. */
     boolean cancelled();
 

@@ -45,6 +45,9 @@ final class PullWorkerPool {
     private final String classpath;
     private final Path testClassesDir;
     private final TestProgressListener listener;
+    /** Whether the suite's JVM count was told to the listener: by its first pool only. */
+    private boolean announced;
+
     private final String moduleLabel;
 
     /** The classes the last {@link #run} left queued: every worker had ended before they were dispatched. */
@@ -72,6 +75,13 @@ final class PullWorkerPool {
         // some idle waiting for a class that'll never come.
         int actualWorkers = Math.min(workers, classes.size());
         actualWorkers = TestWorkers.clampByHeap(actualWorkers);
+        // The suite's first pool is the JVMs its classes run side by side on: the sharded pool's, or
+        // the serial-tag pool's one when every class is serial-tagged (the CLI's integration suite
+        // was handed 8 and ran its 119 classes one after the other).
+        if (!announced) {
+            announced = true;
+            listener.onWorkers(actualWorkers);
+        }
 
         undispatched = List.of();
         var queue = new ConcurrentLinkedDeque<>(classes);

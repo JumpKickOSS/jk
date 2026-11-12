@@ -23,14 +23,16 @@ Status: **normative** for TUI / wire progress. Implementations live under
 ```
 price(step)   = median wall of the step's latest samples (StepLedger), first rung that has any:
                 same shape + same work set, same shape, compatible shape + same load + same work set,
-                compatible shape + same load, other load × load ratio, (a suite) default profile as a floor
+                compatible shape + same load, other load × load ratio, (a suite) default profile as a floor;
+                of an even count's middle two, the newer; a suite's samples read at its newest's workers
 module(t)     = prefix + max(suite, packaging tails, guard chain)
 R0            = WorkSchedule of the scheduled modules' step prices, in ms
 R(t)          = WorkSchedule of what remains:
                   finished step       → 0
                   not started         → its price
                   running step        → max(5% of price, price − elapsed)
-                  running suite       → f = its class-wall share read through its curve (SuiteCurve);
+                  running suite       → price × its workers' scale (StepCost.scale) once it starts;
+                                        f = its class-wall share read through its curve (SuiteCurve);
                                         price × (1 − f), then past a quarter done the wall its rate
                                         projected at the last class (t_f / f) less elapsed, ≥ 5% of price
 range         = R(t) scheduled at each unfinished step's low, then high bound
@@ -70,10 +72,22 @@ module-weight price of that step alone.
 **A running suite.** Its classes run side by side and its last few alone, so the share of its class
 walls done runs ahead of its clock: the engine's suite was 84% done by class walls at 71% of its wall.
 Each finished suite records its **curve**, the share of its wall that had passed at each tenth of its
-class walls, into its run's ledger line; the next run reads its class share through the latest curve
-of the same shape and work set (else the same shape, else the same profile and filter), and that
-suite's curve holds from run to run. Between class finishes the suite counts down from the wall its
-rate last projected: a long last class reports nothing for seconds.
+class walls, into its run's ledger line; the next run reads its class share through the pointwise
+median of the latest five curves of the same shape and work set (else the same shape, else the same
+profile and filter). One run's curve is noisy where a long class ends (the engine's suite was 98%
+through its wall at 90% of its class walls in one run and 76% in the next two); curves of another
+work set are not mixed in, since what runs beside a suite shapes its curve. Between class finishes the
+suite counts down from the wall its rate last projected: a long last class reports nothing for seconds.
+
+**A suite's workers.** The build picks a suite's test JVMs as it starts, from what else is running
+then (`TestWorkers.liveShare`): the engine's integration suite got 2 in one run and 4 in the next and
+took 239 s and 145 s. Each run records each suite's JVMs (the sharded pool's, one when every class is
+serial-tagged) with its classes' recorded walls, their sum and the longest; a suite is priced at the
+JVMs its newest sample ran on, its other samples read at that count, and once it starts on another
+count it is re-priced at it. A wall goes with the suite's parallel bound, `max(longest class, class
+walls / JVMs)`, to the power 0.6 (`StepCost.scale`): JVM start and contention take a share, and a
+suite its longest class bounds gains nothing (the CLI's integration suite took 636 s on 2 and 631 s
+on 8).
 
 **Re-pricing.** The engine re-notes each live request's residual on every step and test-class event
 and once a second in between (`EtaStepTicker`), so a running step counts down between events.
@@ -156,11 +170,11 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set and suite curves; prices and ranges |
+| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers; prices and ranges |
 | `StepEta` | Prices every step the forecast runs; the step-priced `R0` |
 | `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its range, step by step |
 | `SuiteClassProgress` | A running suite's share of its class walls done, under the run's own tier, and its curve when it finishes |
-| `SuiteCurve` | A suite's class share read as the share of its wall: the curve its last run measured |
+| `SuiteCurve` | A suite's class share read as the share of its wall: the median of the curves its recent runs measured |
 | `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range's gaps |
 | `MemoryHolds` | Which builds are on hold for memory, and for how long |
 | Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `state`, `heldMs` |
@@ -228,7 +242,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
   projects/<id>/
     identity.toml
     project-metrics.toml
-    step-ledger.jsonl # the latest runs' step walls, shape, work set and suite curves (StepLedger)
+    step-ledger.jsonl # the latest runs' step walls, shape, work set, suite curves and workers (StepLedger)
     runs/<build-number>/
       record.json
       details.jsonl

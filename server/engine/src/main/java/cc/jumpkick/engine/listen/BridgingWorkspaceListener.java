@@ -58,6 +58,9 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
         /** A test class of a module's suite finished, with its wall. */
         default void trackTestClass(String dir, String step, String className, long millis) {}
 
+        /** A module's test suite runs on {@code workers} test JVMs. */
+        default void trackTestWorkers(String dir, String step, int workers) {}
+
         default BridgingPlanListener.Hooks planHooks(String dir) {
             return new BridgingPlanListener.Hooks() {};
         }
@@ -200,6 +203,12 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             public void testClass(String d, String step, TestClassResult result) {
                 hooks.trackTestClass(d, step, result.className(), result.durationMs());
                 nested.testClass(d, step, result);
+            }
+
+            @Override
+            public void testWorkers(String d, String step, int workers) {
+                hooks.trackTestWorkers(d, step, workers);
+                nested.testWorkers(d, step, workers);
             }
         };
         return new CoalescingBuildPlanListener(new BridgingPlanListener(dir, sink, planHooks));

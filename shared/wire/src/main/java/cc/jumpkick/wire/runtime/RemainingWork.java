@@ -194,6 +194,21 @@ public final class RemainingWork {
     private final Map<Path, Long> suiteAt = new HashMap<>();
 
     /**
+     * The running suite of the module at {@code dir} runs on {@code workers} test JVMs, its classes'
+     * recorded walls adding up to {@code classWallsMs}, the longest {@code longestClassMs}: a suite
+     * priced at another count is re-priced at this one ({@link StepCost#scale(int, int, long,
+     * long)}). The build picks the count as the suite starts, from what else is running; the
+     * engine's integration suite got 2 in one run and 4 in the next, and took 239 s and 145 s.
+     */
+    public synchronized void suiteWorkers(Path dir, int workers, long classWallsMs, long longestClassMs) {
+        if (dir == null || workers <= 0 || !steps.containsKey(dir)) return;
+        suiteWorkers.put(dir, new long[] {workers, classWallsMs, longestClassMs});
+    }
+
+    /** Each running suite's {@code {workers, classWallsMs, longestClassMs}}, as the build reported them. */
+    private final Map<Path, long[]> suiteWorkers = new HashMap<>();
+
+    /**
      * The build went on hold (a memory wait): running steps stop counting down until {@link
      * #resume}, which takes the time held off their elapsed time. A hold is not work.
      */
@@ -294,8 +309,12 @@ public final class RemainingWork {
         Set<String> done = finished.getOrDefault(dir, Set.of());
         Map<String, Long> starts = started.getOrDefault(dir, Map.of());
         double pre = 0, test = 0, tail = 0, lane = 0, prePriced = 0, testPriced = 0;
+        long[] running = suiteWorkers.get(dir);
         for (StepCost s : own) {
             double w = s.at(bound);
+            if (s.kind() == StepCost.Kind.TEST && running != null) {
+                w *= StepCost.scale(s.workers(), (int) running[0], running[1], running[2]);
+            }
             if (s.kind() == StepCost.Kind.PRE) prePriced += w;
             if (s.kind() == StepCost.Kind.TEST) testPriced += w;
             double left;

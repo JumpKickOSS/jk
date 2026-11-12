@@ -46,6 +46,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
         /** A test class finished, as it goes to the wire. */
         default void testClass(String dir, String step, TestClassResult result) {}
+
+        /** A step's test suite runs on {@code workers} test JVMs. */
+        default void testWorkers(String dir, String step, int workers) {}
     }
 
     private final String dir;
@@ -203,6 +206,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public void testClass(String step, TestClassResult result) {
         sink.emit(new EngineEvent.ClassFinish(dir, step, result));
         hooks.testClass(dir, step, result);
+    }
+
+    @Override
+    public void testWorkers(String step, int workers) {
+        hooks.testWorkers(dir, step, workers);
     }
 
     private TestFailureInfo redactFailureHoisted(TestFailureInfo f) {

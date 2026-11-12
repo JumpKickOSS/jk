@@ -542,6 +542,11 @@ public final class TestSupport {
             }
 
             @Override
+            public void onWorkers(int workers) {
+                ctx.testWorkers(workers);
+            }
+
+            @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
                 // Label at start so long-running tests/classes show as "current work" in the TUI
                 // tree (finish-only labels lag one event behind). Prefer Class > method when the

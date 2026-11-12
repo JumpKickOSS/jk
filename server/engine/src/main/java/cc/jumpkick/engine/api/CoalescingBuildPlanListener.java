@@ -274,6 +274,11 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
+    public void testWorkers(String step, int workers) {
+        structural(() -> delegate.testWorkers(step, workers));
+    }
+
+    @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         structural(() -> delegate.stepFinish(step, group, status, duration, waited));
     }

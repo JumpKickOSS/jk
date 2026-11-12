@@ -56,7 +56,11 @@ public final class RunShapes {
     }
 
     /** What a request's estimate was priced under, and what its run measured, by request id. */
-    private record Priced(Set<String> frontier, Map<String, int[]> curves, Map<String, int[]> measured) {}
+    private record Priced(
+            Set<String> frontier,
+            Map<String, int[]> curves,
+            Map<String, int[]> measured,
+            Map<String, long[]> workers) {}
 
     private static final Map<Long, Priced> PRICED = Collections.synchronizedMap(new LinkedHashMap<>() {
         @Override
@@ -67,7 +71,9 @@ public final class RunShapes {
 
     private static Priced priced(long requestId) {
         return PRICED.computeIfAbsent(
-                requestId, k -> new Priced(Set.of(), new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
+                requestId,
+                k -> new Priced(
+                        Set.of(), new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
     }
 
     /**
@@ -80,7 +86,7 @@ public final class RunShapes {
         synchronized (PRICED) {
             Priced was = priced(requestId);
             Map<String, int[]> read = new ConcurrentHashMap<>(curves == null ? Map.of() : curves);
-            PRICED.put(requestId, new Priced(Set.copyOf(frontier), read, was.measured()));
+            PRICED.put(requestId, new Priced(Set.copyOf(frontier), read, was.measured(), was.workers()));
         }
     }
 
@@ -108,6 +114,26 @@ public final class RunShapes {
     public static Map<String, int[]> curvesOf(long requestId) {
         Priced p = PRICED.get(requestId);
         return p == null ? Map.of() : Map.copyOf(p.measured());
+    }
+
+    /**
+     * {@code requestId}'s suite in {@code dir} runs on {@code workers} test JVMs, its classes'
+     * recorded walls adding up to {@code classWallsMs}, the longest {@code longestClassMs}.
+     */
+    public static void markWorkers(long requestId, String dir, int workers, long classWallsMs, long longestClassMs) {
+        if (requestId <= 0 || dir == null || workers <= 0) return;
+        synchronized (PRICED) {
+            priced(requestId).workers().put(dir, new long[] {workers, classWallsMs, longestClassMs});
+        }
+    }
+
+    /**
+     * The test JVMs {@code requestId}'s suites ran on, by module dir, each {@code {workers,
+     * classWallsMs, longestClassMs}}.
+     */
+    public static Map<String, long[]> workersOf(long requestId) {
+        Priced p = PRICED.get(requestId);
+        return p == null ? Map.of() : Map.copyOf(p.workers());
     }
 
     /** {@code requestId}'s shape, or the default shape when it was never marked. */

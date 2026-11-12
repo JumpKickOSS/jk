@@ -235,26 +235,71 @@ class StepLedgerTest {
     }
 
     @Test
-    void a_suite_reads_its_class_share_through_its_latest_curve_of_the_same_shape_first(@TempDir Path home) {
-        int[] build = {100, 200, 300, 400, 500, 600, 700, 800, 900};
+    void a_suite_reads_its_class_share_through_the_median_of_its_curves_of_the_nearest_kind(@TempDir Path home) {
+        int[] a = {100, 200, 300, 400, 500, 600, 700, 800, 980};
+        int[] b = {120, 210, 320, 410, 520, 610, 690, 740, 760};
+        int[] c = {110, 190, 310, 420, 510, 590, 710, 760, 750};
         int[] test = {300, 450, 520, 600, 650, 700, 750, 800, 810};
         int[] integration = {270, 400, 500, 600, 640, 700, 760, 820, 870};
         List<StepLedger.Sample> suite = List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 40_000));
-        StepLedger.append(home, DEFAULT, Set.of("/ws/engine"), Map.of("/ws/engine", build), suite);
+        Set<String> build = Set.of("/ws/engine");
+        StepLedger.append(home, DEFAULT, build, Map.of("/ws/engine", a), suite);
         StepLedger.append(home, DEFAULT, Set.of("/ws/engine", "/ws/cli"), Map.of("/ws/engine", test), suite);
+        StepLedger.append(home, DEFAULT, build, Map.of("/ws/engine", b), suite);
+        StepLedger.append(home, DEFAULT, build, Map.of("/ws/engine", c), suite);
         RunShapes.Shape tier = new RunShapes.Shape("integration", false, false);
-        StepLedger.append(home, tier, Set.of("/ws/engine"), Map.of("/ws/engine", integration), suite);
+        StepLedger.append(home, tier, build, Map.of("/ws/engine", integration), suite);
         StepLedger ledger = StepLedger.load(home);
 
-        assertThat(ledger.curve("/ws/engine", DEFAULT, Set.of("/ws/engine"))).containsExactly(build);
-        assertThat(ledger.curve("/ws/engine", DEFAULT, Set.of("/ws/other")))
-                .as("the same shape's latest")
-                .containsExactly(test);
-        assertThat(ledger.curve("/ws/engine", new RunShapes.Shape("", true, false), Set.of()))
-                .as("another shape of the same profile")
+        assertThat(ledger.curve("/ws/engine", DEFAULT, build))
+                .as("the pointwise median of the work set's three, never below the point before")
+                .containsExactly(110, 200, 310, 410, 510, 600, 700, 760, 760);
+        assertThat(ledger.curve("/ws/engine", DEFAULT, Set.of("/ws/engine", "/ws/cli")))
+                .as("the other work set's own, not mixed with the build's")
                 .containsExactly(test);
         assertThat(ledger.curve("/ws/engine", tier, Set.of())).containsExactly(integration);
+        assertThat(ledger.curve("/ws/engine", new RunShapes.Shape("", true, false), Set.of()))
+                .as("another shape of the same profile: the median of its four, the middle two's mean")
+                .containsExactly(115, 205, 315, 415, 515, 605, 705, 780, 785);
         assertThat(ledger.curve("/ws/cli", DEFAULT, Set.of())).isNull();
+    }
+
+    @Test
+    void a_suite_is_priced_at_the_workers_its_newest_sample_ran_on(@TempDir Path home) {
+        RunShapes.Shape forced = new RunShapes.Shape("", true, false);
+        Set<String> all = Set.of("/ws/engine", "/ws/cli");
+        // A first build gave the suite 2 JVMs; each forced build after it, 8.
+        record Ran(long ms, int workers) {}
+        for (Ran r : List.of(new Ran(72_800, 2), new Ran(38_000, 8), new Ran(36_700, 8))) {
+            StepLedger.append(
+                    home,
+                    forced,
+                    all,
+                    Map.of(),
+                    Map.of("/ws/engine", new long[] {r.workers(), 0, 0}),
+                    List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", r.ms())));
+        }
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.workers("/ws/engine", "run-tests", "SUCCESS", forced, all))
+                .isEqualTo(8);
+        assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", forced, all))
+                .as("the first build's 73 s on 2 JVMs reads as 32 s on 8; the median is 36.7 s")
+                .hasValue(36_700);
+        assertThat(ledger.workers("/ws/engine", "compile-java", "SUCCESS", forced, all))
+                .as("not a suite")
+                .isZero();
+    }
+
+    @Test
+    void an_even_count_of_samples_is_priced_at_the_newer_middle_one(@TempDir Path home) {
+        Set<String> build = Set.of("/ws/engine");
+        StepLedger.append(
+                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 72_000)));
+        StepLedger.append(
+                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 37_000)));
+        assertThat(StepLedger.load(home).price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, build))
+                .hasValue(37_000);
     }
 
     @Test
@@ -267,16 +312,16 @@ class StepLedgerTest {
                 new StepLedger.Sample("/ws/web", "compile-java", "SUCCESS", 30),
                 new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 56_000));
         StepLedger.append(
-                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 43_000)));
+                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 44_000)));
         StepLedger.append(home, DEFAULT, test, testRun);
         StepLedger.append(
-                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 44_000)));
+                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 43_000)));
         StepLedger ledger = StepLedger.load(home);
 
         assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, test))
                 .hasValue(56_000);
         assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, build))
-                .as("the upper median of the build's two")
-                .hasValue(44_000);
+                .as("the newer of the build's two")
+                .hasValue(43_000);
     }
 }

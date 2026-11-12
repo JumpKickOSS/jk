@@ -2,9 +2,11 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
+import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
@@ -70,7 +72,14 @@ public final class JobSessions {
 
     public void remaining(long id, RemainingWork rw) {
         JobSession s = open(id);
-        if (s != null) s.remaining(rw);
+        if (s == null) return;
+        s.remaining(rw);
+        // A suite that started while the model was priced has already said how many JVMs it got.
+        if (rw != null) {
+            synchronized (rw) {
+                RunShapes.workersOf(id).forEach((dir, w) -> rw.suiteWorkers(Path.of(dir), (int) w[0], w[1], w[2]));
+            }
+        }
     }
 
     /** Record a finished module for {@code id}; see {@link JobSession#moduleCompleted}. */

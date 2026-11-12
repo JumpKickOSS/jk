@@ -52,6 +52,50 @@ class RemainingWorkStepsTest {
     }
 
     @Test
+    void a_suite_on_other_workers_than_it_was_priced_at_is_repriced_at_them() {
+        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 96_000 / MS, 90_000 / MS, 0, 6_000 / MS);
+        RemainingWork rw = RemainingWork.seedSteps(
+                        List.of(cost),
+                        Map.of(
+                                A,
+                                List.of(
+                                        new StepCost("compile-java", 6_000 / MS, StepCost.Kind.PRE),
+                                        new StepCost(
+                                                "run-tests",
+                                                90_000 / MS,
+                                                StepCost.Kind.TEST,
+                                                90_000 / MS,
+                                                90_000 / MS,
+                                                2))),
+                        4,
+                        false,
+                        false)
+                .withClock(clock);
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.stepStart(A, "run-tests");
+        rw.suiteWorkers(A, 4, 0, 0);
+        assertThat(rw.remaining())
+                .as("priced on 2 JVMs, running on 4: (2/4)^0.6 of 90 s")
+                .isCloseTo(Math.round(90_000 * Math.pow(0.5, StepCost.WORKER_EXPONENT)), within((long) MS));
+
+        rw.suiteWorkers(A, 4, 600_000, 590_000);
+        assertThat(rw.remaining())
+                .as("a suite its longest class bounds gains nothing from more JVMs")
+                .isCloseTo(90_000, within((long) MS));
+    }
+
+    @Test
+    void a_suite_priced_with_no_worker_count_is_not_rescaled() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.stepStart(A, "run-tests");
+        rw.suiteWorkers(A, 8, 0, 0);
+        assertThat(rw.remaining()).isCloseTo(90_000, within((long) MS));
+    }
+
+    @Test
     void the_seed_is_the_step_prices_in_ms_with_no_scale() {
         RemainingWork rw = model();
         assertThat(rw.R0()).isEqualTo(96_000);

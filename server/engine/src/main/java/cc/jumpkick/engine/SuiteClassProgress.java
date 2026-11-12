@@ -67,6 +67,19 @@ final class SuiteClassProgress {
         return share;
     }
 
+    /**
+     * {@code {sum, longest}} of the suite's recorded class walls: how far more test JVMs can shorten
+     * it ({@link cc.jumpkick.wire.runtime.StepCost#scale(int, int, long, long)}); zeros when none are recorded.
+     */
+    synchronized long[] classWalls() {
+        long sum = 0, longest = 0;
+        for (long ms : expected.values()) {
+            sum += Math.max(0, ms);
+            longest = Math.max(longest, ms);
+        }
+        return new long[] {sum, longest};
+    }
+
     /** The suite started at {@code atMillis} on the build's clock. */
     synchronized void started(long atMillis) {
         if (startMillis < 0) startMillis = atMillis;

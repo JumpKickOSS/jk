@@ -289,6 +289,27 @@ public final class SsePublisher implements SseEvents {
     }
 
     /**
+     * A module's suite runs on {@code workers} test JVMs: the run records the count beside the
+     * suite's wall, and a model that priced the suite at another count re-prices it ({@link
+     * RemainingWork#suiteWorkers}).
+     */
+    public void trackTestWorkers(
+            long requestId, String dir, String step, int workers, @Nullable BufferedWriter writer) {
+        if (requestId <= 0 || dir == null || workers <= 0 || !TaskNames.isRunTests(step)) return;
+        long[] walls = suiteProgressOf(requestId, dir, step).classWalls();
+        RunShapes.markWorkers(requestId, dir, workers, walls[0], walls[1]);
+        RemainingWork rw = remaining(requestId);
+        if (rw == null) return;
+        Path p = Path.of(dir);
+        synchronized (rw) {
+            if (!rw.steps(p)) return;
+            rw.suiteWorkers(p, workers, walls[0], walls[1]);
+            tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+        }
+        emitWorkspaceProgress(requestId, writer, false);
+    }
+
+    /**
      * The build went on hold for memory ({@link MemoryHolds}): its clock and its running steps
      * stand still until it resumes, and the client and the dashboard are told.
      */

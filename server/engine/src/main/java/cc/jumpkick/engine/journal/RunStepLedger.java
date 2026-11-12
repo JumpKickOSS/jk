@@ -39,6 +39,7 @@ final class RunStepLedger {
                 RunShapes.of(finished.requestId()),
                 RunShapes.frontierOf(finished.requestId()),
                 RunShapes.curvesOf(finished.requestId()),
+                RunShapes.workersOf(finished.requestId()),
                 samples);
     }
 

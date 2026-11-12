@@ -10,9 +10,12 @@ import java.util.Objects;
  * length. {@link Kind} places it in the module's shape: the compile prefix, the suite, or a
  * packaging tail that runs beside the suite. {@code low} and {@code high} bound the price the way
  * the step's own recorded walls spread (the estimate's likely range, JK-4TEZ7); a step with no
- * spread has both at its price.
+ * spread has both at its price. {@code workers} is, for a suite, the test JVMs its price assumes
+ * ({@code 0} when unknown): the build picks the count when the suite starts, from what else is
+ * running then, and a suite that gets other than it was priced at is re-priced ({@link #scale(int,
+ * int, long, long)}).
  */
-public record StepCost(String step, int weight, Kind kind, int low, int high) {
+public record StepCost(String step, int weight, Kind kind, int low, int high, int workers) {
 
     /** Where the step sits in {@code prefix + max(suite, tail, lane)}. */
     public enum Kind {
@@ -34,11 +37,41 @@ public record StepCost(String step, int weight, Kind kind, int low, int high) {
         weight = Math.max(0, weight);
         low = Math.max(0, Math.min(low, weight));
         high = Math.max(weight, high);
+        workers = Math.max(0, workers);
+    }
+
+    /** A step priced with its range and no worker count. */
+    public StepCost(String step, int weight, Kind kind, int low, int high) {
+        this(step, weight, kind, low, high, 0);
     }
 
     /** A step priced with no spread: its range is its price. */
     public StepCost(String step, int weight, Kind kind) {
         this(step, weight, kind, weight, weight);
+    }
+
+    /**
+     * How a suite's wall goes with its test JVMs: as its parallel bound to this power. The engine's
+     * integration suite took 239 s on 2 workers and 145 s on 4 in jk's 2026-11-12 corpus, its unit
+     * suite 73 s on 2 in a first build and 37 s on 8 in a forced one: each sped up by less than its
+     * workers, JVM start and contention taking their share.
+     */
+    public static final double WORKER_EXPONENT = 0.6;
+
+    /**
+     * What a suite's wall measured on {@code from} workers comes to on {@code to}: the ratio of its
+     * parallel bounds, {@code max(longest class, class walls / workers)}, to {@link
+     * #WORKER_EXPONENT}; {@code 1} when either count is unknown. A suite its longest class bounds
+     * gains nothing from more workers: the CLI's integration suite took 636 s on 2 and 631 s on 8.
+     * With no class walls ({@code classWallsMs <= 0}) the bound is the count alone.
+     */
+    public static double scale(int from, int to, long classWallsMs, long longestClassMs) {
+        if (from <= 0 || to <= 0 || from == to) return 1;
+        if (classWallsMs <= 0) return Math.pow((double) from / to, WORKER_EXPONENT);
+        double longest = Math.max(0, longestClassMs);
+        double then = Math.max(longest, (double) classWallsMs / from);
+        double now = Math.max(longest, (double) classWallsMs / to);
+        return then <= 0 ? 1 : Math.pow(now / then, WORKER_EXPONENT);
     }
 
     /** The bound {@code which} picks: the price, the low or the high end of its range. */

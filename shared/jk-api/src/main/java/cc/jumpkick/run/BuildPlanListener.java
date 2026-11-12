@@ -71,6 +71,9 @@ public interface BuildPlanListener {
     /** A test class finished under {@code step}. */
     default void testClass(String step, TestClassResult result) {}
 
+    /** {@code step}'s test suite runs on {@code workers} test JVMs, decided as it starts. */
+    default void testWorkers(String step, int workers) {}
+
     /**
      * @param duration the step's wall clock, queue wait included
      * @param waited the part of that wall the step spent blocked on a shared resource ({@link

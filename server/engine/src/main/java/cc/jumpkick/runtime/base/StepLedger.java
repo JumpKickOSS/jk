@@ -5,12 +5,14 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.wire.runtime.StepCost;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,7 +32,8 @@ import org.jspecify.annotations.Nullable;
  * history the ETA prices a step from. One line per finished successful run in {@value #FILE} under
  * the project's home: the run's shape ({@link RunShapes.Shape}), its frontier (the work set its
  * estimate was priced under: the modules it runs a step in; the modules whose main compile ran when
- * it had no estimate), every step's status and wall, and each finished suite's {@link SuiteCurve}.
+ * it had no estimate), every step's status and wall, each finished suite's {@link SuiteCurve} and
+ * the test JVMs it ran on.
  *
  * <p>A step is priced at its median wall under the same status (a restore is not a run) and the
  * same shape where the shape changes the work: a suite under its own profile and never from a
@@ -71,9 +74,26 @@ public final class StepLedger {
     }
 
     /** One recorded run, newest last. */
-    record Run(RunShapes.Shape shape, Set<String> frontier, List<Sample> samples, Map<String, int[]> curves) {
+    record Run(
+            RunShapes.Shape shape,
+            Set<String> frontier,
+            List<Sample> samples,
+            Map<String, int[]> curves,
+            Map<String, long[]> workers) {
         Run(RunShapes.Shape shape, Set<String> frontier, List<Sample> samples) {
-            this(shape, frontier, samples, Map.of());
+            this(shape, frontier, samples, Map.of(), Map.of());
+        }
+
+        /** The test JVMs the suite of {@code dir} ran on in this run; {@code 0} when not recorded. */
+        int workersOf(String dir) {
+            long[] w = workers.get(dir);
+            return w == null ? 0 : (int) w[0];
+        }
+
+        /** {@code {classWallsMs, longestClassMs}} of the suite of {@code dir} in this run; zeros when not recorded. */
+        long[] classWallsOf(String dir) {
+            long[] w = workers.get(dir);
+            return w == null ? new long[2] : new long[] {w[1], w[2]};
         }
     }
 
@@ -166,6 +186,20 @@ public final class StepLedger {
             @Nullable Set<String> frontier,
             Map<String, int[]> curves,
             List<Sample> samples) {
+        append(projectHome, shape, frontier, curves, Map.of(), samples);
+    }
+
+    /**
+     * {@link #append(Path, RunShapes.Shape, Set, Map, List)}, with the test JVMs each suite ran on,
+     * by module dir.
+     */
+    public static void append(
+            Path projectHome,
+            RunShapes.Shape shape,
+            @Nullable Set<String> frontier,
+            Map<String, int[]> curves,
+            Map<String, long[]> workers,
+            List<Sample> samples) {
         List<Sample> kept = new ArrayList<>();
         for (Sample s : samples) {
             if (s.ms() >= MIN_MS) kept.add(s);
@@ -192,6 +226,14 @@ public final class StepLedger {
                 byDir.put(e.getKey(), points);
             }
             if (!byDir.isEmpty()) line.put("curves", byDir);
+        }
+        if (workers != null && !workers.isEmpty()) {
+            Map<String, Object> byDir = new TreeMap<>();
+            for (Map.Entry<String, long[]> e : workers.entrySet()) {
+                long[] w = e.getValue();
+                if (w != null && w.length == 3 && w[0] > 0) byDir.put(e.getKey(), List.of(w[0], w[1], w[2]));
+            }
+            if (!byDir.isEmpty()) line.put("workers", byDir);
         }
         Path file = projectHome.resolve(FILE);
         WRITE.lock();
@@ -266,7 +308,22 @@ public final class StepLedger {
                         if (ok) curves.put(String.valueOf(e.getKey()), curve);
                     }
                 }
-                runs.add(new Run(shape, frontier, samples, curves));
+                Map<String, long[]> workers = new HashMap<>();
+                if (m.get("workers") instanceof Map<?, ?> byDir) {
+                    for (Map.Entry<?, ?> e : byDir.entrySet()) {
+                        if (e.getValue() instanceof List<?> w
+                                && w.size() == 3
+                                && w.get(0) instanceof Number n
+                                && w.get(1) instanceof Number sum
+                                && w.get(2) instanceof Number longest
+                                && n.intValue() > 0) {
+                            workers.put(
+                                    String.valueOf(e.getKey()),
+                                    new long[] {n.longValue(), sum.longValue(), longest.longValue()});
+                        }
+                    }
+                }
+                runs.add(new Run(shape, frontier, samples, curves, workers));
             }
         } catch (IOException | RuntimeException e) {
             Log.debug("StepLedger.read: unreadable, priced from nothing", e);
@@ -309,7 +366,7 @@ public final class StepLedger {
         if (rung.samples().isEmpty()) return Optional.empty();
         List<Long> sorted = new ArrayList<>(rung.samples());
         sorted.sort(Long::compare);
-        long median = rung.at(median(sorted));
+        long median = rung.at(median(rung.samples()));
         long low = Math.min(rung.at(percentile(sorted, 0.2)), Math.round(median * (1 - rung.spreadBelow())));
         long high = Math.max(rung.at(percentile(sorted, 0.8)), Math.round(median * (1 + rung.spreadAbove())));
         return Optional.of(new long[] {Math.max(0, low), high});
@@ -327,13 +384,21 @@ public final class StepLedger {
      */
     static final double PROFILE_SPREAD_ABOVE = 2.0;
 
-    /** The samples {@link #price} reads, the factor it reads them at, and the least spread around them. */
-    private record Rung(List<Long> samples, double scale, double spreadBelow, double spreadAbove) {
-        static final Rung NONE = new Rung(List.of(), 1, MIN_SPREAD, MIN_SPREAD);
+    /**
+     * The test JVMs {@link #price} assumes for the suite of {@code dir}: the count its newest sample
+     * ran on, the count the build is likeliest to pick again; {@code 0} when not recorded or not a
+     * suite. The other samples are read at this count ({@link StepCost#scale}).
+     */
+    public int workers(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        return rung(dir, step, status, shape, frontier).workers();
+    }
 
-        static Rung of(List<Long> samples) {
-            return new Rung(samples, 1, MIN_SPREAD, MIN_SPREAD);
-        }
+    /**
+     * The samples {@link #price} reads, newest first, the factor it reads them at, the least spread
+     * around them, and for a suite the test JVMs they were read at.
+     */
+    private record Rung(List<Long> samples, double scale, double spreadBelow, double spreadAbove, int workers) {
+        static final Rung NONE = new Rung(List.of(), 1, MIN_SPREAD, MIN_SPREAD, 0);
 
         long at(long ms) {
             return Math.round(ms * scale);
@@ -361,19 +426,19 @@ public final class StepLedger {
         List<Indexed> rows = index.getOrDefault(key(dir, step, status), List.of());
         if (rows.isEmpty()) return Rung.NONE;
         boolean forcedMatters = loadChangesWork(step);
-        List<Long> sameShapeFrontier = new ArrayList<>();
-        List<Long> sameShape = new ArrayList<>();
-        List<Long> sameLoadFrontier = new ArrayList<>();
-        List<Long> sameLoad = new ArrayList<>();
-        List<Long> otherLoad = new ArrayList<>();
-        List<Long> defaultProfile = new ArrayList<>();
+        List<Indexed> sameShapeFrontier = new ArrayList<>();
+        List<Indexed> sameShape = new ArrayList<>();
+        List<Indexed> sameLoadFrontier = new ArrayList<>();
+        List<Indexed> sameLoad = new ArrayList<>();
+        List<Indexed> otherLoad = new ArrayList<>();
+        List<Indexed> defaultProfile = new ArrayList<>();
         for (int i = rows.size() - 1; i >= 0; i--) {
             Indexed r = rows.get(i);
             RunShapes.Shape s = r.run().shape();
             boolean frontierMatches = r.run().frontier().equals(frontier);
             if (sameShape(s, shape)) {
-                if (sameShapeFrontier.size() < SAME_FRONTIER && frontierMatches) sameShapeFrontier.add(r.ms());
-                if (sameShape.size() < ANY_FRONTIER) sameShape.add(r.ms());
+                if (sameShapeFrontier.size() < SAME_FRONTIER && frontierMatches) sameShapeFrontier.add(r);
+                if (sameShape.size() < ANY_FRONTIER) sameShape.add(r);
             }
             if (suite && s.filtered()) continue;
             if (suite && !s.profile().equals(shape.profile())) {
@@ -381,26 +446,51 @@ public final class StepLedger {
                     // Read at this run's load: a first build's suites ran beside every compile.
                     double atLoad =
                             s.forced() == shape.forced() ? 1 : shape.forced() ? 1 / lightOverHeavy() : lightOverHeavy();
-                    defaultProfile.add(Math.round(r.ms() * atLoad));
+                    defaultProfile.add(new Indexed(r.run(), Math.round(r.ms() * atLoad)));
                 }
                 continue;
             }
             if (s.forced() != shape.forced()) {
-                if (!forcedMatters && otherLoad.size() < ANY_FRONTIER) otherLoad.add(r.ms());
+                if (!forcedMatters && otherLoad.size() < ANY_FRONTIER) otherLoad.add(r);
                 continue;
             }
-            if (sameLoadFrontier.size() < SAME_FRONTIER && frontierMatches) sameLoadFrontier.add(r.ms());
-            if (sameLoad.size() < ANY_FRONTIER) sameLoad.add(r.ms());
+            if (sameLoadFrontier.size() < SAME_FRONTIER && frontierMatches) sameLoadFrontier.add(r);
+            if (sameLoad.size() < ANY_FRONTIER) sameLoad.add(r);
         }
-        for (List<Long> rung : List.of(sameShapeFrontier, sameShape, sameLoadFrontier, sameLoad)) {
-            if (!rung.isEmpty()) return Rung.of(rung);
+        for (List<Indexed> rung : List.of(sameShapeFrontier, sameShape, sameLoadFrontier, sameLoad)) {
+            if (!rung.isEmpty()) return read(rung, dir, suite, 1, MIN_SPREAD, MIN_SPREAD);
         }
         if (!otherLoad.isEmpty()) {
             double ratio = lightOverHeavy();
-            return new Rung(otherLoad, shape.forced() ? 1 / ratio : ratio, LOAD_SPREAD, LOAD_SPREAD);
+            return read(otherLoad, dir, suite, shape.forced() ? 1 / ratio : ratio, LOAD_SPREAD, LOAD_SPREAD);
         }
-        if (!defaultProfile.isEmpty()) return new Rung(defaultProfile, 1, MIN_SPREAD, PROFILE_SPREAD_ABOVE);
+        if (!defaultProfile.isEmpty()) return read(defaultProfile, dir, suite, 1, MIN_SPREAD, PROFILE_SPREAD_ABOVE);
         return Rung.NONE;
+    }
+
+    /**
+     * A rung of {@code rows}, newest first; a suite's walls read at the test JVMs of its newest
+     * sample that recorded any. A suite's wall is the answer for the JVMs it ran on: the engine's
+     * suite took 73 s on 2 in a first build and 37 s on 8 in each forced build after it, and the
+     * median of the two priced the next forced build at the first.
+     */
+    private static Rung read(List<Indexed> rows, String dir, boolean suite, double scale, double below, double above) {
+        int workers = 0;
+        long[] walls = new long[2];
+        if (suite) {
+            for (Indexed r : rows) {
+                if ((workers = r.run().workersOf(dir)) > 0) {
+                    walls = r.run().classWallsOf(dir);
+                    break;
+                }
+            }
+        }
+        List<Long> samples = new ArrayList<>(rows.size());
+        for (Indexed r : rows) {
+            double at = workers > 0 ? StepCost.scale(r.run().workersOf(dir), workers, walls[0], walls[1]) : 1;
+            samples.add(Math.round(r.ms() * at));
+        }
+        return new Rung(samples, scale, below, above, workers);
     }
 
     /** Whether a full rebuild changes the step's work, not only the load it runs beside. */
@@ -478,27 +568,45 @@ public final class StepLedger {
         return List.of();
     }
 
+    /** Curves {@link #curve} reads at most. */
+    static final int MAX_CURVES = 5;
+
     /**
-     * The latest curve the suite of {@code dir} measured ({@link SuiteCurve}): from a run of the
-     * same shape and work set, else the same shape, else the same profile and filter; {@code null} when none
-     * did. A suite's curve is its own, so one from a run of another shape still reads its class
-     * share as time far better than the share itself.
+     * The curve the suite of {@code dir} likely follows ({@link SuiteCurve}): the pointwise median
+     * of its latest curves from runs of the same shape and work set, else of the same shape, else
+     * of the same profile and filter; {@code null} when none did. One run's curve is noisy where a
+     * long class ends: the engine's suite was 98% through its wall at 90% of its class walls in one
+     * engine body edit and 76% in the next two. Curves of other work sets are not mixed in: what
+     * runs beside a suite shapes its curve, and replaying the 2026-11-12 corpus with them mixed in
+     * doubled the median run's ETA error.
      */
     public int @Nullable [] curve(String dir, RunShapes.Shape shape, Set<String> frontier) {
-        int[] sameShape = null;
-        int[] sameProfile = null;
+        List<int[]> sameWork = new ArrayList<>();
+        List<int[]> sameShape = new ArrayList<>();
+        List<int[]> sameProfile = new ArrayList<>();
         for (int i = runs.size() - 1; i >= 0; i--) {
             Run r = runs.get(i);
             int[] c = r.curves().get(dir);
             if (c == null) continue;
             if (sameShape(r.shape(), shape)) {
-                if (r.frontier().equals(frontier)) return c;
-                if (sameShape == null) sameShape = c;
-            } else if (sameProfile == null
-                    && r.shape().profile().equals(shape.profile())
-                    && r.shape().filtered() == shape.filtered()) sameProfile = c;
+                (r.frontier().equals(frontier) ? sameWork : sameShape).add(c);
+            } else if (r.shape().profile().equals(shape.profile()) && r.shape().filtered() == shape.filtered()) {
+                sameProfile.add(c);
+            }
         }
-        return sameShape != null ? sameShape : sameProfile;
+        List<int[]> tier = !sameWork.isEmpty() ? sameWork : !sameShape.isEmpty() ? sameShape : sameProfile;
+        if (tier.isEmpty()) return null;
+        List<int[]> read = tier.subList(0, Math.min(MAX_CURVES, tier.size()));
+        int[] out = new int[SuiteCurve.POINTS];
+        int[] at = new int[read.size()];
+        for (int p = 0; p < SuiteCurve.POINTS; p++) {
+            for (int i = 0; i < read.size(); i++) at[i] = read.get(i)[p];
+            Arrays.sort(at);
+            int n = at.length;
+            out[p] = n % 2 == 1 ? at[n / 2] : (at[n / 2 - 1] + at[n / 2]) / 2;
+            if (p > 0) out[p] = Math.max(out[p], out[p - 1]);
+        }
+        return out;
     }
 
     /** Two runs of one shape: the same profile, forced or not, filtered or not. */
@@ -506,10 +614,18 @@ public final class StepLedger {
         return a.profile().equals(b.profile()) && a.forced() == b.forced() && a.filtered() == b.filtered();
     }
 
+    /**
+     * The median of {@code values}, newest first; of an even count's middle two, the newer: with one
+     * old and one new sample the older is no likelier, and the upper of the two priced a forced
+     * build from the first build's slower walls.
+     */
     private static long median(List<Long> values) {
-        List<Long> sorted = new ArrayList<>(values);
-        sorted.sort(Long::compare);
-        return sorted.get(sorted.size() / 2);
+        List<Integer> order = new ArrayList<>(values.size());
+        for (int i = 0; i < values.size(); i++) order.add(i);
+        order.sort((a, b) -> Long.compare(values.get(a), values.get(b)));
+        int n = order.size();
+        if (n % 2 == 1) return values.get(order.get(n / 2));
+        return values.get(Math.min(order.get(n / 2 - 1), order.get(n / 2)));
     }
 
     private static String key(String dir, String step, String status) {

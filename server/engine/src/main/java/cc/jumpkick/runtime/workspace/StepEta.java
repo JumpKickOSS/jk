@@ -118,8 +118,16 @@ public final class StepEta {
                         stepMs(ledger, shape, frontier, dir, t, distrust, prereqs, metrics, timings, projectDirs, m);
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
+                int suiteWorkers = kind == StepCost.Kind.TEST && !shape.filtered()
+                        ? ledger.workers(dir.toString(), t.name(), "SUCCESS", shape, frontier)
+                        : 0;
                 own.add(new StepCost(
-                        t.name(), weightOf(priced.ms()), kind, weightOf(priced.low()), weightOf(priced.high())));
+                        t.name(),
+                        weightOf(priced.ms()),
+                        kind,
+                        weightOf(priced.low()),
+                        weightOf(priced.high()),
+                        suiteWorkers));
             }
             for (StepCost c : own) {
                 if (c.kind() != StepCost.Kind.TEST) continue;

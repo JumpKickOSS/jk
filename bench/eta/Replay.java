@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 
 public class Replay {
 
@@ -817,8 +818,27 @@ public class Replay {
 
     static long CURRENT_RUN_ID;
 
-    /** Per suite and profile, the curve its latest replayed run measured ({@link SuiteCurve}). */
-    static final Map<String, int[]> LAST_CURVE = new HashMap<>();
+    /**
+     * Per suite and profile, and per suite and work set, the curves its replayed runs measured
+     * ({@link SuiteCurve}), newest first.
+     */
+    static final Map<String, List<int[]>> CURVES = new HashMap<>();
+
+    /** Per suite and work set, then per suite and profile, the test JVMs its latest replayed run had. */
+    static final Map<String, Integer> LAST_WORKERS = new HashMap<>();
+
+    /** {@code dir}'s key in metrics.toml: the module's path under the workspace. */
+    static String metricsKey(Path run, String dir) {
+        int at = dir.indexOf("eta-corpus/");
+        return at < 0 ? dir : dir.substring(at + "eta-corpus/".length());
+    }
+
+    /** The test JVMs the engine would price the suite at: the latest of the same work set, else profile. */
+    static int pricedWorkers(Path run, String dir) {
+        Integer own = LAST_WORKERS.get(WORK_SET.getOrDefault(run, "") + '\n' + dir);
+        if (own != null) return own;
+        return LAST_WORKERS.getOrDefault(curveKey(run, dir), 0);
+    }
 
     /** The running replay's class shares per suite dir, each {@code {share, ts}}. */
     static final Map<String, List<double[]>> CURVE_POINTS = new HashMap<>();
@@ -829,15 +849,43 @@ public class Replay {
 
     static final Map<Path, String> WORK_SET = new HashMap<>();
 
-    /** The curve the engine would read: the same shape and work set's latest, else the profile's. */
+    /** The replayed run's suites' {@code {classWallsMs, longestClassMs}}, by module dir. */
+    static final Map<String, long[]> SUITE_WALLS = new HashMap<>();
+
+    /** The replayed run's suites' test JVMs, by metrics key. */
+    static final Map<String, Integer> RUN_WORKERS = new HashMap<>();
+
+    /**
+     * The curve the engine would read (StepLedger.curve): the pointwise median of the latest five
+     * of the same work set, else of the same shape, else of the profile.
+     */
     static int[] curveFor(Path run, String dir) {
-        int[] own = LAST_CURVE.get(WORK_SET.getOrDefault(run, "") + '\n' + dir);
-        return own != null ? own : LAST_CURVE.get(curveKey(run, dir));
+        List<int[]> work = CURVES.getOrDefault(WORK_SET.getOrDefault(run, "") + '\n' + dir, List.of());
+        String ws = WORK_SET.getOrDefault(run, "");
+        String shapeKey = String.join("|", Arrays.copyOf(ws.split("\\|", -1), 3)) + '\n' + dir;
+        List<int[]> tier = !work.isEmpty()
+                ? work
+                : CURVES.getOrDefault(shapeKey, List.of()).isEmpty()
+                        ? CURVES.getOrDefault(curveKey(run, dir), List.of())
+                        : CURVES.get(shapeKey);
+        List<int[]> read = tier.subList(0, Math.min(5, tier.size()));
+        if (read.isEmpty()) return null;
+        int[] out = new int[SuiteCurve.POINTS];
+        int[] at = new int[read.size()];
+        for (int p = 0; p < SuiteCurve.POINTS; p++) {
+            for (int i = 0; i < read.size(); i++) at[i] = read.get(i)[p];
+            Arrays.sort(at);
+            int n = at.length;
+            out[p] = n % 2 == 1 ? at[n / 2] : (at[n / 2 - 1] + at[n / 2]) / 2;
+            if (p > 0) out[p] = Math.max(out[p], out[p - 1]);
+        }
+        return out;
     }
 
     static void replay(Path run, boolean series, Set<String> wanted, Map<String, List<double[]>> byModel)
             throws Exception {
         CURVE_POINTS.clear();
+        RUN_WORKERS.clear();
         Path modelFile = run.resolve("eta-model.jsonl");
         Path details = run.resolve("details.jsonl");
         if (!Files.isRegularFile(modelFile) || !Files.isRegularFile(details)) {
@@ -855,6 +903,38 @@ public class Replay {
             if (o instanceof Map<?, ?> m) events.add(m);
         }
         if (events.isEmpty()) return;
+        // Each suite's class walls, sum and longest: the engine reads its recorded ones.
+        SUITE_WALLS.clear();
+        Map<String, String> coords = new HashMap<>();
+        for (Map<?, ?> e : events) {
+            if ("module-start".equals(e.get("type")) && e.get("coord") != null && e.get("dir") != null) {
+                coords.put(e.get("coord").toString(), e.get("dir").toString());
+            }
+        }
+        // Each suite's JVMs side by side, as the engine hears them (onWorkers): the worker ids its
+        // labels name, one when they name none.
+        Map<String, Set<String>> ids = new HashMap<>();
+        Pattern wid = Pattern.compile("\\[w(\\d+)\\]");
+        for (Map<?, ?> e : events) {
+            String type = String.valueOf(e.get("type"));
+            if (!type.equals("label") && !type.equals("class-finish")) continue;
+            if (!TaskNames.isRunTests(String.valueOf(e.get("task")))) continue;
+            String dir = dirOf(e, coords);
+            if (dir == null) continue;
+            Set<String> seen = ids.computeIfAbsent(metricsKey(run, dir), k -> new HashSet<>());
+            var m = wid.matcher(String.valueOf(e.get("label")));
+            if (m.find()) seen.add(m.group(1));
+        }
+        ids.forEach((dir, seen) -> RUN_WORKERS.put(dir, Math.max(1, seen.size())));
+        for (Map<?, ?> e : events) {
+            if (!"class-finish".equals(e.get("type"))) continue;
+            String dir = dirOf(e, coords);
+            if (dir == null) continue;
+            long[] w = SUITE_WALLS.computeIfAbsent(dir, k -> new long[2]);
+            long ms = Math.max(0, num(e, "millis"));
+            w[0] += ms;
+            w[1] = Math.max(w[1], ms);
+        }
         String argv = String.valueOf(events.get(0).get("argv"));
         long t0 = num(events.get(0), "ts");
         long end = t0;
@@ -907,7 +987,21 @@ public class Replay {
                         Boolean.TRUE.equals(s.get("parallelTests")),
                         num(s, "ts"));
                 st.frac.clear();
-                Map<Path, List<StepCost>> seedSteps = steps(s);
+                Map<Path, List<StepCost>> seedSteps = new LinkedHashMap<>();
+                // The suites priced at the JVMs the engine's ledger would assume (StepLedger.workers).
+                steps(s).forEach((dir, own) -> seedSteps.put(
+                        dir,
+                        own.stream()
+                                .map(c -> c.kind() == StepCost.Kind.TEST
+                                        ? new StepCost(
+                                                c.step(),
+                                                c.weight(),
+                                                c.kind(),
+                                                c.low(),
+                                                c.high(),
+                                                pricedWorkers(run, dir.toString()))
+                                        : c)
+                                .toList()));
                 v0.rw = seedSteps.isEmpty()
                         ? RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests)
                         : RemainingWork.seedSteps(costs, seedSteps, st.concurrency, st.serial, st.parallelTests)
@@ -948,6 +1042,12 @@ public class Replay {
                             .putIfAbsent(task.toString(), ts);
                     if (TaskNames.PACKAGING_TAILS.contains(task.toString())) st.tailStart.putIfAbsent(Path.of(dir), ts);
                     if (v0.rw != null) v0.rw.stepStart(Path.of(dir), task.toString());
+                    // The engine hears the suite's JVM count as it starts (onWorkers).
+                    Integer w = RUN_WORKERS.get(metricsKey(run, dir));
+                    if (v0.rw != null && w != null && TaskNames.isRunTests(task.toString())) {
+                        long[] walls = SUITE_WALLS.getOrDefault(dir, new long[2]);
+                        v0.rw.suiteWorkers(Path.of(dir), w, walls[0], walls[1]);
+                    }
                 }
                 case "class-finish" -> {
                     String dir = dirOf(e, dirOfCoord);
@@ -987,9 +1087,27 @@ public class Replay {
                         }
                         int[] curve = SuiteCurve.of(shares);
                         // A filtered suite's curve is its selection's, not the suite's.
-                        if (curve != null && SELECTED.get(run) == null) {
-                            LAST_CURVE.put(curveKey(run, dir), curve);
-                            LAST_CURVE.put(WORK_SET.getOrDefault(run, "") + '\n' + dir, curve);
+                        // The engine measures a curve only for a suite whose classes an earlier run
+                        // timed (SuiteClassProgress.UNKNOWN): a first build records none.
+                        boolean timedBefore = CLASS_HISTORY.getOrDefault(dir, Map.of()).values().stream()
+                                .flatMap(m -> m.values().stream())
+                                .flatMap(List::stream)
+                                .anyMatch(r -> r[0] < CURRENT_RUN_ID);
+                        if (curve != null && SELECTED.get(run) == null && timedBefore) {
+                            CURVES.computeIfAbsent(curveKey(run, dir), k -> new ArrayList<>())
+                                    .add(0, curve);
+                            String wsk = WORK_SET.getOrDefault(run, "");
+                            CURVES.computeIfAbsent(
+                                            String.join("|", Arrays.copyOf(wsk.split("\\|", -1), 3)) + '\n' + dir,
+                                            k -> new ArrayList<>())
+                                    .add(0, curve);
+                            CURVES.computeIfAbsent(WORK_SET.getOrDefault(run, "") + '\n' + dir, k -> new ArrayList<>())
+                                    .add(0, curve);
+                        }
+                        Integer ran = RUN_WORKERS.get(metricsKey(run, dir));
+                        if (ran != null && SELECTED.get(run) == null) {
+                            LAST_WORKERS.put(curveKey(run, dir), ran);
+                            LAST_WORKERS.put(WORK_SET.getOrDefault(run, "") + '\n' + dir, ran);
                         }
                     }
                     if (v0.rw != null) v0.rw.stepFinish(Path.of(dir), task.toString());

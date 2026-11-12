@@ -44,6 +44,11 @@ final class NoTestsGuard implements TestProgressListener {
     }
 
     @Override
+    public void onWorkers(int workers) {
+        delegate.onWorkers(workers);
+    }
+
+    @Override
     public void onTestStarted(String id, String display, boolean isTest, int workerId) {
         delegate.onTestStarted(id, display, isTest, workerId);
     }
