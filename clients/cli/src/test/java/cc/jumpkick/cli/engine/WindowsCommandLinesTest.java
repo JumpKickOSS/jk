@@ -84,7 +84,6 @@ class WindowsCommandLinesTest {
             assertThat(child.info().arguments())
                     .as("the platform gap this class exists to close")
                     .isEmpty();
-            WindowsCommandLines.resetForTests();
 
             String cmd = WindowsCommandLines.of(child.pid());
 
