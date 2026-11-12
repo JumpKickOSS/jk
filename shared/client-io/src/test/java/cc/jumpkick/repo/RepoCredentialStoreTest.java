@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.secret.FakeKeychain;
 import cc.jumpkick.secret.SecretBackendException;
@@ -212,7 +213,7 @@ class RepoCredentialStoreTest {
 
         ChangeJournal.into(
                 journal,
-                () -> ChangeActor.as(shell, () -> {
+                () -> Request.actingAs(shell, () -> {
                     store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss-literal"), NEXUS);
                     store.clear("corp-nexus");
                     return null;

@@ -45,7 +45,7 @@ class PackagedClassesTest {
         Path stage = Files.createDirectories(f.layout.moduleTargetDir().resolve("package-classes"));
         Files.writeString(stage.resolve("Stale.class"), "stale");
 
-        assertThat(contents(PlannerSupport.packagedClasses(f.classes, contributed(f))))
+        assertThat(contents(PackagedClasses.packagedClasses(f.classes, contributed(f))))
                 .containsExactly(Map.entry("Generated.class", "generated"), Map.entry("Kept.class", "kept"));
     }
 
@@ -57,7 +57,7 @@ class PackagedClassesTest {
         Files.createDirectories(f.contributed.resolve("com/example/aot"));
         Files.writeString(f.contributed.resolve("com/example/aot/Optimized.class"), "opt");
 
-        assertThat(contents(PlannerSupport.packagedClasses(f.classes, contributed(f))))
+        assertThat(contents(PackagedClasses.packagedClasses(f.classes, contributed(f))))
                 .containsEntry("com/example/App.class", "app")
                 .containsEntry("com/example/aot/Optimized.class", "opt");
     }
@@ -80,7 +80,7 @@ class PackagedClassesTest {
                 "# the sibling's own registration\ncc.jumpkick.boot.SpringBootPlugin\ncc.jumpkick.grails.GrailsPlugin\n");
         Files.writeString(f.contributed.resolve("Sibling.class"), "sib");
 
-        Map<String, String> tree = contents(PlannerSupport.packagedClasses(f.classes, contributed(f)));
+        Map<String, String> tree = contents(PackagedClasses.packagedClasses(f.classes, contributed(f)));
 
         assertThat(tree.get("META-INF/services/cc.jumpkick.plugin.Plugin"))
                 .as("the module's own provider first, the sibling's after it, each once")
@@ -110,7 +110,7 @@ class PackagedClassesTest {
         Files.createDirectories(f.contributed.resolve("cc/jumpkick/boot"));
         Files.writeString(f.contributed.resolve("cc/jumpkick/boot/BootJarPackager.class"), "vendored");
 
-        PackagedTree packaged = PlannerSupport.packagedClasses(f.classes, contributed(f));
+        PackagedTree packaged = PackagedClasses.packagedClasses(f.classes, contributed(f));
         Map<String, String> tree = contents(packaged);
 
         assertThat(tree.get("jk-plugin.toml")).contains("id = \"grails\"");
@@ -143,7 +143,7 @@ class PackagedClassesTest {
         Files.writeString(f.contributed.resolve("META-INF/native-image/reflect.json"), "[]");
         Files.writeString(f.contributed.resolve("application.yml"), "aot: true");
 
-        assertThat(contents(PlannerSupport.packagedClasses(f.classes, contributed(f))))
+        assertThat(contents(PackagedClasses.packagedClasses(f.classes, contributed(f))))
                 .containsEntry("META-INF/native-image/reflect.json", "[]")
                 .containsEntry("application.yml", "aot: true");
     }
@@ -155,7 +155,7 @@ class PackagedClassesTest {
         // The declared step exists but never ran, so its scratch dir is absent.
         PathUtil.deleteRecursivelyOrThrow(f.contributed);
 
-        PackagedTree tree = PlannerSupport.packagedClasses(f.classes, contributed(f));
+        PackagedTree tree = PackagedClasses.packagedClasses(f.classes, contributed(f));
 
         assertThat(tree.root()).isEqualTo(f.classes);
         assertThat(contents(tree)).containsExactly(Map.entry("Kept.class", "kept"));
@@ -171,7 +171,7 @@ class PackagedClassesTest {
         Files.createDirectories(f.contributed.resolve("META-INF/services"));
         Files.writeString(f.contributed.resolve("META-INF/services/p.Plugin"), "b.Sibling\n");
         Files.writeString(f.contributed.resolve("Gen.class"), "gen");
-        PackagedTree tree = PlannerSupport.packagedClasses(f.classes, contributed(f));
+        PackagedTree tree = PackagedClasses.packagedClasses(f.classes, contributed(f));
         Path onDisk = tmp.resolve("materialized");
         tree.copyInto(onDisk);
 
@@ -192,7 +192,7 @@ class PackagedClassesTest {
     }
 
     private static List<Path> contributed(Fixture f) {
-        return PlannerSupport.existingContributedDirs(f.decls, f.layout);
+        return PackagedClasses.existingContributedDirs(f.decls, f.layout);
     }
 
     private record Fixture(BuildLayout layout, Path classes, Path contributed, PluginDeclarations decls) {}

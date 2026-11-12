@@ -15,11 +15,11 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
-import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
@@ -151,11 +151,12 @@ class RepoGroupBuilderWireNoticeTest {
             return gate;
         }
 
-        @Override
-        public void bindEventRequestId(long id) {}
+        private final WorkerScopes workers = new WorkerScopes();
 
         @Override
-        public void unbindEventRequestId() {}
+        public WorkerScopes workers() {
+            return workers;
+        }
 
         @Override
         public IoLedger runIo(long id) {
@@ -170,17 +171,6 @@ class RepoGroupBuilderWireNoticeTest {
         @Override
         public @Nullable BuildAccumulator accumulatorOf(long id) {
             return null;
-        }
-
-        @Override
-        public void openResults(long id) {
-            BuildAccumulator a = accumulatorOf(id);
-            RunResults.open(a == null ? new RunResults() : a.results());
-        }
-
-        @Override
-        public void closeResults() {
-            RunResults.close();
         }
 
         @Override

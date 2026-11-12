@@ -15,7 +15,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.runtime.PlannerSupport;
+import cc.jumpkick.runtime.TestStampInputs;
 import cc.jumpkick.task.ClassAbi;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -141,7 +141,7 @@ public final class AffectedTestsCompute {
             Map<String, ClassAbi.Fingerprint> pre =
                     u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
             // A selection with no resolved tags takes this module's tiers, as its test step would.
-            TestSelection modSel = PlannerSupport.effectiveSelection(
+            TestSelection modSel = TestStampInputs.effectiveSelection(
                     sel, u.dir(), SessionContext.current().profile());
             var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, modSel);
             String coord =

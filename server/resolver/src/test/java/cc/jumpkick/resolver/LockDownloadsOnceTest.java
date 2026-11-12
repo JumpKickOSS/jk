@@ -16,6 +16,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,11 +53,18 @@ class LockDownloadsOnceTest {
                 .lock(project, "test", List.of(), true, ResolveObserver.NOOP);
 
         assertThat(lock.artifacts()).anyMatch(a -> a.name().startsWith("com.foo:shared:"));
-        assertThat(central.requested()).as("each file is asked for once").doesNotHaveDuplicates();
-        assertThat(central.requested())
-                .as("each jar is asked for once")
-                .filteredOn(path -> path.endsWith(".jar"))
-                .doesNotHaveDuplicates()
-                .contains(MavenStub.path("com.foo", "shared", "1.0", ".jar"));
+        List<String> requested = List.copyOf(central.requested());
+        assertThat(asked(requested, 2))
+                .as("each file is asked for once; asked in this order: %s", requested)
+                .isEmpty();
+        assertThat(requested).contains(MavenStub.path("com.foo", "shared", "1.0", ".jar"));
+    }
+
+    /** The paths {@code requested} holds at least {@code times} times, each once, in first-asked order. */
+    private static List<String> asked(List<String> requested, int times) {
+        return requested.stream()
+                .filter(path -> Collections.frequency(requested, path) >= times)
+                .distinct()
+                .toList();
     }
 }

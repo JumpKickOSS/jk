@@ -14,7 +14,7 @@ import java.util.Optional;
  */
 public final class McpPrompts {
 
-    private static final Map<String, String> CATALOG = catalog();
+    private static final Map<String, String> CATALOG = Collections.unmodifiableMap(catalog());
 
     private McpPrompts() {}
 

@@ -178,7 +178,7 @@ class UserConfigEditorTest {
 
         ChangeJournal.into(
                 journal,
-                () -> ChangeActor.as(
+                () -> Request.actingAs(
                         shell,
                         () -> UserConfigEditor.setNerdFont(
                                 config, NerdFontMode.parse("pill").orElseThrow())));

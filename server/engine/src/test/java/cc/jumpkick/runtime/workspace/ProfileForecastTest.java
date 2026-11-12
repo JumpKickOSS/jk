@@ -21,9 +21,10 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.PlannerTails;
+import cc.jumpkick.runtime.TestInputs;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -81,7 +82,7 @@ class ProfileForecastTest {
         SessionContext.runWhere(session, () -> {
             try {
                 BuildPlan lock = LockPlans.lockBuildPlan(
-                        project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
 
@@ -98,10 +99,20 @@ class ProfileForecastTest {
                         .as("the profile's -Werror keys a different compile")
                         .isFalse();
                 BuildForecasting.Preflight preflight = BuildForecasting.forecastWithFingerprints(
-                        graph, cache, false, project, WorkspaceTarget.PACKAGE, false, "strict");
+                        graph, cache, project, BuildKnobs.DEFAULTS.withProfile("strict"), false);
                 assertThat(preflight.dirty())
                         .as("the preflight schedules the module")
                         .contains(project);
+                assertThat(BuildService.explain(
+                                        project,
+                                        parsed,
+                                        cache,
+                                        BuildKnobs.DEFAULTS
+                                                .withProfile("strict")
+                                                .withSelection(Set.of(project)))
+                                .modules())
+                        .as("explain -m under the profile prices the compile the default record does not cover")
+                        .anyMatch(TaskForecast.Module::dirty);
 
                 BuildPlanResult profileBuild = build(project, cache, session, "strict");
                 assertThat(profileBuild.success()).isTrue();
@@ -118,22 +129,7 @@ class ProfileForecastTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache, Session session, @Nullable String profile) {
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                profile,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs inputs = TestInputs.of(project, cache, session).withProfileName(profile);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         PlannerTails.appendDeclaredTails(builder, inputs);
         return builder.build().run();
@@ -142,7 +138,7 @@ class ProfileForecastTest {
     private static List<TaskForecast.Module> forecast(BuildGraph.Result graph, Path cache, @Nullable String profile) {
         Cas cas = JkStores.storeCas();
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-        return ForecastWalk.of(graph, cas, actionCache, cache, false, WorkspaceTarget.PACKAGE, profile, null);
+        return ForecastWalk.of(graph, cas, actionCache, cache, BuildKnobs.DEFAULTS.withProfile(profile), null);
     }
 
     private static TaskForecast.Task compileMain(List<TaskForecast.Module> modules) {

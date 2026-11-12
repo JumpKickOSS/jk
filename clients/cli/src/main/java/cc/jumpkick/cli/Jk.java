@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.GlobalSuspend;
 import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
@@ -135,7 +136,7 @@ public final class Jk {
     public static int execute(String... args) {
         try {
             // What this invocation changes outside a project is journaled as this command line's doing.
-            return ChangeActor.as(shellActor(args), () -> SessionContext.invocation(() -> executeInvocation(args)));
+            return Request.actingAs(shellActor(args), () -> SessionContext.invocation(() -> executeInvocation(args)));
         } catch (RuntimeException | Error e) {
             throw e;
         } catch (Exception e) {

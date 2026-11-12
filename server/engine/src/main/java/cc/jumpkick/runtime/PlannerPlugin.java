@@ -41,7 +41,9 @@ import cc.jumpkick.runtime.schema.SchemaFiles;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -479,15 +481,17 @@ public final class PlannerPlugin {
             Path javaHome,
             StepDiagnostics said)
             throws IOException, InterruptedException {
-        HeapScope.Key previous = HeapScope.bind(new HeapScope.Key(
+        HeapScope.Key key = new HeapScope.Key(
                 in.dir(),
                 project.project().group() + ":" + project.project().name(),
                 HeapScope.PLUGIN,
-                JvmOptions.hostFeature(javaHome)));
+                JvmOptions.hostFeature(javaHome));
         try {
-            PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, said::forward);
+            HeapScope.fork(key, () -> {
+                PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, said::forward);
+                return null;
+            });
         } finally {
-            HeapScope.restore(previous);
             HeapNotes.flush(ctx);
         }
     }
@@ -571,6 +575,10 @@ public final class PlannerPlugin {
     /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
+    @KeyOwner(
+            step = "plugin-*",
+            unpaired = "a plugin step is priced by whether its module compiles, never by its key",
+            forecastsStep = true)
     static Task pluginTask(
             BuildPlanner.Ctx cx, @Nullable ActivePlugin declared, TaskDecl step, @Nullable TaskDecl transform) {
         // The step exists because this plugin declared it.
@@ -727,11 +735,11 @@ public final class PlannerPlugin {
      * With no compile outcome to read the build counts as one that wrote classes.
      */
     static boolean recompiled(TaskContext ctx) {
-        List<String> outcomes = new ArrayList<>();
-        ctx.get(BUILD_OUTCOME).ifPresent(outcomes::add);
-        ctx.get(KOTLIN_OUTCOME).ifPresent(outcomes::add);
-        ctx.get(GROOVY_OUTCOME).ifPresent(outcomes::add);
-        return outcomes.isEmpty() || !outcomes.stream().allMatch(PlannerPackage::settledOutcome);
+        List<CompileStamp> compiles = new ArrayList<>();
+        ctx.get(JAVA_COMPILE).ifPresent(compiles::add);
+        ctx.get(KOTLIN_COMPILE).ifPresent(compiles::add);
+        ctx.get(GROOVY_COMPILE).ifPresent(compiles::add);
+        return compiles.isEmpty() || !compiles.stream().allMatch(CompileStamp::settled);
     }
 
     /**

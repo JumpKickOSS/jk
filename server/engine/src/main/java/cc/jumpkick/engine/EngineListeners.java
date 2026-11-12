@@ -24,6 +24,7 @@ import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.workspace.BuildService;
+import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.TimelineEvent;
@@ -273,9 +274,13 @@ public final class EngineListeners {
         TestSummary testResult = realBuildPlan == null
                 ? null
                 : realBuildPlan.get(BuildPlanner.TEST_RESULT).orElse(null);
+        // A packaging step that wrote the artifact anew says so; otherwise compile-java's outcome is the module's.
         String buildOutcome = realBuildPlan == null
                 ? null
-                : realBuildPlan.get(BuildPlanner.BUILD_OUTCOME).orElse(null);
+                : realBuildPlan
+                        .get(BuildPlanner.BUILD_OUTCOME)
+                        .or(() -> realBuildPlan.get(BuildPlanner.JAVA_COMPILE).map(CompileStamp::outcome))
+                        .orElse(null);
         boolean cancelled = result.userCancelled();
         if (testResult == null && buildOutcome == null) {
             return ProtoEvents.planFinish(dir, result.success(), cancelled);

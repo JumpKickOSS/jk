@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import java.nio.file.Path;
 import java.util.Map;
@@ -16,27 +15,13 @@ class BuildPlannerInputsWitherTest {
     @Test
     void request_knob_withers_set_only_their_field() {
         Path dir = Path.of("/w/app");
-        BuildPlanner.Inputs base = new BuildPlanner.Inputs(
-                dir,
-                Path.of("/cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs base = TestInputs.of(dir, Path.of("/cache")).withSkipTests(true);
         SiblingArtifacts.Gate gate = cancelled -> {};
         BuildPlanner.Inputs decorated = base.withWorkerCount(6)
                 .withProfileName("ci")
                 .withProjectModules(Set.of(dir))
-                .withVariant("blue", Map.of("K", "v"))
+                .withVariant("blue")
+                .withClientEnv(Map.of("K", "v"))
                 .withEphemeralActions(true)
                 .withSiblings(gate);
         assertThat(base.siblings()).isSameAs(SiblingArtifacts.NONE);
@@ -51,5 +36,14 @@ class BuildPlannerInputsWitherTest {
         assertThat(decorated.dir()).isEqualTo(base.dir());
         assertThat(decorated.skipTests()).isEqualTo(base.skipTests());
         assertThat(decorated.compileOnly()).isEqualTo(base.compileOnly());
+    }
+
+    @Test
+    void an_absent_variant_or_client_env_reads_as_none() {
+        Path dir = Path.of("/w/app");
+        BuildPlanner.Inputs in =
+                TestInputs.of(dir, Path.of("/cache")).withVariant(null).withClientEnv(null);
+        assertThat(in.variant()).isEmpty();
+        assertThat(in.clientEnv()).isEmpty();
     }
 }

@@ -22,11 +22,11 @@ import org.jspecify.annotations.Nullable;
  * count bytes as they flow, so metering can never slow a transfer or truncate one on error. That
  * also means transport framing/compression is not counted — these are payload bytes.
  *
- * <p><strong>Ambient scope.</strong> The engine opens one ledger per request on the runner thread
- * ({@link #open}/{@link #close}); {@link cc.jumpkick.config.Session#defaults()} adopts it, so every
- * session derived inside that request — including work handed to the shared {@code JkThreads} pools,
- * which re-bind the session — accumulates into the same ledger. Outside a run (CLI, tests) a session
- * gets its own detached ledger and the numbers are simply discarded. Deep code meters through the
+ * <p><strong>One per request.</strong> The engine makes one ledger per request and the request
+ * carries it ({@code cc.jumpkick.config.Request#io}); {@code Session.defaults()} adopts the bound
+ * request's, so every session derived inside that request — including work handed to the shared
+ * {@code JkThreads} pools, which carry the request — accumulates into the same ledger. Outside a
+ * request a session gets its own detached ledger and the numbers are simply discarded. Deep code meters through the
  * session it already has: {@code SessionContext.current().io().remoteDown(size)}.
  *
  * <p>Thread-safe: four {@link LongAdder}s under concurrent module builds and parallel fetches.
@@ -37,21 +37,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IoLedger {
 
-    /**
-     * Inheritable so a request's runner thread — and any thread it forks — sees the run's ledger.
-     *
-     * <p>Shared {@code JkThreads} pools must not rely on that inheritance. {@code JkThreads.cpu()}
-     * is a lazily grown {@code ForkJoinPool}: workers are born inside whichever request first needed
-     * them and would keep that request's ledger for the engine's life. {@link
-     * cc.jumpkick.config.RequestScope} keys on the ledger, so a stale binding would serve one
-     * request's memoized scans to later requests.
-     *
-     * <p>{@code SessionContext}'s {@code ContextPropagator} captures the ambient ledger on the
-     * submitting thread and binds it around the task, clearing it when the submitter had none. A
-     * value read on a pool thread comes from that propagation, never from inheritance.
-     */
-    private static final InheritableThreadLocal<IoLedger> AMBIENT = new InheritableThreadLocal<>();
-
     private final LongAdder remoteUp = new LongAdder();
     private final LongAdder remoteDown = new LongAdder();
     private final LongAdder localUp = new LongAdder();
@@ -59,6 +44,9 @@ public final class IoLedger {
 
     /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
     private final TransferBoard transfers;
+
+    /** What this run has said once and where its notes go ({@link RunNotices}). */
+    private final RunNotices.Run notices = new RunNotices.Run();
 
     public IoLedger() {
         this(Clock.SYSTEM);
@@ -78,42 +66,6 @@ public final class IoLedger {
         public boolean isEmpty() {
             return remoteUp == 0 && remoteDown == 0 && localUp == 0 && localDown == 0;
         }
-    }
-
-    /**
-     * Bind {@code ledger} as the ambient run ledger for this thread (and threads it forks); a
-     * {@code null} unbinds, which is how a pool task restores a worker that had no request.
-     */
-    public static void open(@Nullable IoLedger ledger) {
-        if (ledger == null) AMBIENT.remove();
-        else AMBIENT.set(ledger);
-    }
-
-    /** Drop this thread's ambient binding. */
-    public static void close() {
-        AMBIENT.remove();
-    }
-
-    /**
-     * The ambient run ledger for this thread, or a fresh detached one when no run is open — what
-     * {@code Session.defaults()} uses so a session built inside a request joins that request's
-     * accounting and one built anywhere else meters harmlessly into the void.
-     */
-    /**
-     * The ledger this thread's request opened, or {@code null} off a request.
-     *
-     * <p>Distinct from {@link #currentOrNew()}, which mints one rather than answer "none" — useful
-     * for accounting, useless as a request discriminator. {@link cc.jumpkick.config.RequestScope} needs the honest
-     * answer: it caches facts for the length of a request, so it must be able to tell that there is
-     * no request rather than cache into a ledger nobody opened.
-     */
-    public static @Nullable IoLedger ambient() {
-        return AMBIENT.get();
-    }
-
-    public static IoLedger currentOrNew() {
-        IoLedger ambient = AMBIENT.get();
-        return ambient != null ? ambient : new IoLedger();
     }
 
     /** Bytes uploaded to a remote (published artifacts, checksums, signatures). */
@@ -150,6 +102,10 @@ public final class IoLedger {
      * This run's downloads in flight. Code that streams a body to disk reports here, so a run's
      * display shows every download whichever step or caller asked for it.
      */
+    RunNotices.Run notices() {
+        return notices;
+    }
+
     public TransferBoard transfers() {
         return transfers;
     }

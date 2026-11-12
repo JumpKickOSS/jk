@@ -43,10 +43,9 @@ public final class TerminalSignals {
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
 
     /** Linux signal names by number, for the {@code SigIgn} mask of {@code /proc/self/status}. */
-    private static final String[] LINUX_NAMES = {
-        "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM",
-        "TERM"
-    };
+    private static final List<String> LINUX_NAMES = List.of(
+            "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM",
+            "TERM");
 
     private static final Path PROC_SELF_STATUS = Path.of("/proc/self/status");
 
@@ -83,8 +82,8 @@ public final class TerminalSignals {
             long mask =
                     Long.parseUnsignedLong(line.substring("SigIgn:".length()).trim(), 16);
             List<String> names = new ArrayList<>();
-            for (int i = 0; i < LINUX_NAMES.length; i++) {
-                if ((mask & (1L << i)) != 0) names.add(LINUX_NAMES[i]);
+            for (int i = 0; i < LINUX_NAMES.size(); i++) {
+                if ((mask & (1L << i)) != 0) names.add(LINUX_NAMES.get(i));
             }
             return String.join(", ", names);
         }

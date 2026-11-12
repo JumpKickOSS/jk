@@ -10,6 +10,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,7 +57,7 @@ class ExplainAfterCleanMemoTest {
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
         Path cache = tmp.resolve("cache");
 
-        ExplainPlan warm = BuildForecasting.explainFromGraph(graph, cache, false, tmp);
+        ExplainPlan warm = BuildForecasting.explainFromGraph(graph, cache, tmp, BuildKnobs.DEFAULTS);
         assertThat(warm.modules()).allMatch(m -> !m.dirty());
 
         // jk clean: the memo stays, the outputs go.
@@ -68,7 +69,7 @@ class ExplainAfterCleanMemoTest {
                 .as("the memo names the module whose outputs are gone")
                 .isNotEmpty();
 
-        ExplainPlan wiped = BuildForecasting.explainFromGraph(graph, cache, false, tmp);
+        ExplainPlan wiped = BuildForecasting.explainFromGraph(graph, cache, tmp, BuildKnobs.DEFAULTS);
         assertThat(wiped.modules())
                 .as("the module the build will schedule is priced, not hidden behind the memo's clean claim")
                 .anyMatch(TaskForecast.Module::dirty);

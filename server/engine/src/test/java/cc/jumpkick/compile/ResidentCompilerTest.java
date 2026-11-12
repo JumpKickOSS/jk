@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.RequestShell;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.run.JkThreads;
 import java.io.File;
@@ -187,14 +187,15 @@ class ResidentCompilerTest {
     }
 
     private static <T extends @Nullable Object> T inJob(long job, Callable<T> work) throws Exception {
-        JobWorkers.open(job);
-        try {
-            return JkThreads.io().submit(work).get(180, TimeUnit.SECONDS);
-        } finally {
-            JobWorkers.shutdownForRequest(job, 0L);
-            JavaCompilerHost.end(job);
-            JobWorkers.close();
-        }
+        WorkerScope scope = new WorkerScope(job);
+        return scope.call(() -> {
+            try {
+                return JkThreads.io().submit(work).get(180, TimeUnit.SECONDS);
+            } finally {
+                scope.shutdown(0L);
+                JavaCompilerHost.end(job);
+            }
+        });
     }
 
     private static ForkedJavac.Result compileInJob(long job, ForkedJavac.Request req) throws Exception {

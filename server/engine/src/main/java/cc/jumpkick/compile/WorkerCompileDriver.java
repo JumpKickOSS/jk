@@ -5,7 +5,6 @@ import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
@@ -14,6 +13,7 @@ import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
@@ -224,8 +224,8 @@ public final class WorkerCompileDriver {
 
     /** Ends a run whose request was cancelled while it waited on the worker. */
     static BooleanSupplier cancelProbe() {
-        Long request = JobWorkers.currentRequestId();
-        return request == null ? () -> false : () -> JobWorkers.ended(request);
+        WorkerScope scope = WorkerScope.current();
+        return scope == null ? () -> false : scope::ended;
     }
 
     /**

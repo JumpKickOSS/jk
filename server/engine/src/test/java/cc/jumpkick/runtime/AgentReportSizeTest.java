@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
@@ -13,13 +13,13 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.util.MarkdownReports;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -97,8 +97,8 @@ class AgentReportSizeTest {
 
     private static void lock(Path project, Path cache) throws Exception {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();
     }
 
@@ -106,31 +106,13 @@ class AgentReportSizeTest {
             throws Exception {
         writer.register(requestId, kind, project.toString(), "cli", null, true, false, 0L, null);
         boolean test = "test".equals(kind);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false,
-                false,
-                test,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in =
+                TestInputs.of(project, cache).withEstimatedTestCount(1).withTestOnly(test);
         BuildPlan plan = BuildPlanner.fullPlan(in);
         long start = System.nanoTime();
-        writer.openResults(requestId);
-        BuildPlanResult result;
-        try {
-            result = plan.run();
-        } finally {
-            writer.closeResults();
-        }
+        BuildPlanResult result = Request.detached()
+                .with(RunResults.SLOT, writer.results(requestId))
+                .call(plan::run);
         long millis = Math.max(1, (System.nanoTime() - start) / 1_000_000);
         writer.accBuildPlanFinish(requestId, "", result);
         writer.accTests(requestId, plan.get(BuildPlanner.TEST_RESULT).orElse(null));

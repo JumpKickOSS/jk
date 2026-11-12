@@ -6,6 +6,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -368,6 +369,20 @@ public record Lockfile(
             int colon = by.lastIndexOf(':');
             if (colon <= 0 || colon == by.length() - 1 || by.indexOf(':') == colon) continue;
             out.putIfAbsent(by.substring(0, colon), by.substring(colon + 1));
+        }
+        return out;
+    }
+
+    /**
+     * Every {@code group:artifact} this lock resolves, beside each row's full package key: what a
+     * {@code classpath-has} condition and the processor-dependency check read. Rows are keyed by
+     * package id ({@code g:a:type:classifier}), and those readers speak plain {@code group:artifact}.
+     */
+    public Set<String> classpathModules() {
+        Set<String> out = new HashSet<>();
+        for (Artifact a : artifacts) {
+            out.add(a.name());
+            out.add(a.moduleGroup() + ":" + a.moduleArtifact());
         }
         return out;
     }

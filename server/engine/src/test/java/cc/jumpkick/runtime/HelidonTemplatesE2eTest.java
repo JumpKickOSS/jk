@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.model.JkBuild;
@@ -30,7 +29,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -102,27 +100,12 @@ class HelidonTemplatesE2eTest {
         Path cache = TestCaches.dir("helidon-quickstart-cache");
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).as("lock").isEmpty();
         assertThat(lock.success()).as("lock").isTrue();
 
-        BuildPlan plan = BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current()));
+        BuildPlan plan = BuildPlanner.fullPlan(TestInputs.of(project, cache).withEstimatedTestCount(1));
         BuildPlanResult built = plan.run();
         assertThat(built.errors()).as("build").isEmpty();
         assertThat(built.success()).as("build").isTrue();

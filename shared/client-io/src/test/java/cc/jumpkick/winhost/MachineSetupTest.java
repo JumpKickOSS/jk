@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.host.time.Clock;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -123,7 +124,7 @@ class MachineSetupTest {
         ChangeActor agent = ChangeActor.agent("s1", "Cursor", "speed up builds", "doctor");
         ChangeJournal.into(
                 journal,
-                () -> ChangeActor.as(agent, () -> setup(writing(
+                () -> Request.actingAs(agent, () -> setup(writing(
                                 "verified\tC:\\Users\\ada\\.jk",
                                 "missing\tC:\\Users\\ada\\IdeaProjects\tDefender still scans it"))
                         .apply(

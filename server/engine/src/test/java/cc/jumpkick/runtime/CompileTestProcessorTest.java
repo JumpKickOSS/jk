@@ -4,9 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JavacConfig;
@@ -23,10 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -59,33 +54,11 @@ class CompileTestProcessorTest {
      */
     private static Path enforcerDir;
 
-    /** One job scope for the class, so every case compiles on the warm worker a build's compile-test uses. */
-    private static JavaCompilerHost.Scope job;
-
-    private @Nullable Long previousScope;
-
     @BeforeAll
     static void buildProcessor(@TempDir Path shared) throws IOException {
         procDir = sourceGenProcessor(shared.resolve("proc"), "gen", "Gen");
         pluginProcDir = sourceGenProcessor(shared.resolve("plugin-proc"), "gen2", "Gen2");
         enforcerDir = enforcer(shared.resolve("enforcer"));
-        job = JavaCompilerHost.open();
-        JobWorkers.close();
-    }
-
-    @AfterAll
-    static void endJob() {
-        job.close();
-    }
-
-    @BeforeEach
-    void bindJob() {
-        previousScope = JobWorkers.bind(job.id());
-    }
-
-    @AfterEach
-    void unbindJob() {
-        JobWorkers.restore(previousScope);
     }
 
     @Test
@@ -232,7 +205,7 @@ class CompileTestProcessorTest {
 
     @Test
     void compileMainHandsJavacTheDeclaredPathThenTheContributedOne(@TempDir Path dir) {
-        PlannerCompile.MainCompile in = new PlannerCompile.MainCompile(
+        CompileInputs.MainCompile in = new CompileInputs.MainCompile(
                 List.of(dir.resolve("src/A.java")),
                 List.of(procDir, pluginProcDir),
                 List.of(procDir),

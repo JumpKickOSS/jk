@@ -8,6 +8,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.ToolIdentity;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,7 +41,6 @@ class TestStampToolsTest {
                 .as("an unchanged tool costs nothing new")
                 .isEqualTo(before);
 
-        Thread.sleep(20); // a rewrite within the same millisecond would keep the memo's key
         fakeTool(bin, "node", "v24.0.0");
         List<String> upgraded = extras(project, tmp, bin);
         assertThat(upgraded).contains("tool:node=" + node + "=v24.0.0").isNotEqualTo(before);
@@ -66,16 +66,17 @@ class TestStampToolsTest {
         Path git = fakeTool(first, "git", "git version 2.47.1\nbuilt from source");
         fakeTool(second, "git", "git version 2.30.0");
         String path = first + SearchPath.SEPARATOR + second;
-        assertThat(ToolIdentity.of("git", path)).isEqualTo(git + "=git version 2.47.1");
-        assertThat(ToolIdentity.of("git", null)).isEqualTo(ToolIdentity.MISSING);
-        assertThat(ToolIdentity.of("nothing-here", path)).isEqualTo(ToolIdentity.MISSING);
+        assertThat(ToolIdentity.of("git", path, tmp)).isEqualTo(git + "=git version 2.47.1");
+        assertThat(ToolIdentity.of("git", null, tmp)).isEqualTo(ToolIdentity.MISSING);
+        assertThat(ToolIdentity.of("nothing-here", path, tmp)).isEqualTo(ToolIdentity.MISSING);
     }
 
     /** The session carrying {@code bin} as the caller's PATH, the way the shell that ran jk does. */
     private static List<String> extras(JkBuild project, Path dir, Path bin) throws Exception {
         return SessionContext.where(
                 Session.defaults().withVariant(null, Map.of("PATH", bin.toString())),
-                () -> PlannerSupport.testStampExtras(dir, project));
+                () -> TestStampInputs.of(TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                        .extras());
     }
 
     private static Path fakeTool(Path bin, String name, String versionOutput) throws Exception {

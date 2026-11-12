@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -19,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -57,7 +55,7 @@ class OpenApiGeneratorTest {
                 .extracting(a -> a.manifest().id())
                 .containsExactlyInAnyOrder("openapi", "spring-boot");
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
 
@@ -119,22 +117,7 @@ class OpenApiGeneratorTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         return BuildPlanner.fullPlan(in).run();
     }
 

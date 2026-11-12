@@ -7,9 +7,9 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.task.IoLedger;
-import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
@@ -18,7 +18,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -44,6 +46,12 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     volatile boolean recordWrittenAtRelease;
 
     volatile BuildAccumulator accumulator = new BuildAccumulator("build", "/p", null, "cli");
+
+    /** When set, each request gets an accumulator and a ledger of its own, as the engine's sessions do. */
+    volatile boolean perRequest;
+
+    private final Map<Long, BuildAccumulator> accumulators = new ConcurrentHashMap<>();
+    private final Map<Long, IoLedger> ledgers = new ConcurrentHashMap<>();
     final List<String> events = Collections.synchronizedList(new ArrayList<>());
     final List<Long> cleared = Collections.synchronizedList(new ArrayList<>());
     final List<String> teardownOrder = Collections.synchronizedList(new ArrayList<>());
@@ -133,6 +141,7 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
             @Nullable String journalId) {
         lastNoTimeline = noTimeline;
         lastBuildNumber = buildNumber;
+        if (perRequest) accumulators.put(id, new BuildAccumulator(kind, dir, null, trigger));
     }
 
     @Override
@@ -140,17 +149,18 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
         return gate;
     }
 
-    @Override
-    public void bindEventRequestId(long id) {}
-
-    @Override
-    public void unbindEventRequestId() {}
-
     final IoLedger io = new IoLedger();
+
+    private final WorkerScopes workers = new WorkerScopes();
+
+    @Override
+    public WorkerScopes workers() {
+        return workers;
+    }
 
     @Override
     public IoLedger runIo(long id) {
-        return io;
+        return perRequest ? ledgers.computeIfAbsent(id, k -> new IoLedger()) : io;
     }
 
     @Override
@@ -160,17 +170,7 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
 
     @Override
     public BuildAccumulator accumulatorOf(long id) {
-        return accumulator;
-    }
-
-    @Override
-    public void openResults(long id) {
-        RunResults.open(accumulator.results());
-    }
-
-    @Override
-    public void closeResults() {
-        RunResults.close();
+        return perRequest ? accumulators.getOrDefault(id, accumulator) : accumulator;
     }
 
     @Override

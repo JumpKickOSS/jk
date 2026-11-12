@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -14,7 +13,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -95,35 +93,12 @@ class KotlinGroovyModuleE2eTest {
                 """);
 
         Path cache = TestCaches.dir("kotlin-groovy-e2e-cache");
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project,
-                JkBuildParser.parse(project.resolve("jk.toml")),
-                cache,
-                null,
-                List.of(),
-                true,
-                false,
-                ResolveObserver.NOOP,
-                null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
         Session session = Session.defaults();
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(project, cache, session).withEstimatedTestCount(1);
         BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = SessionContext.where(session, plan::run);
         assertThat(result.errors()).isEmpty();

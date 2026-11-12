@@ -10,15 +10,12 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.runtime.base.TestClassWalls;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,21 +54,6 @@ class IdleHousekeepingTest {
         assertThat(log).as("only dumps are retired here; logs rotate on spawn").exists();
         assertThat(IdleHousekeeping.pruneHeapDumps(engineDir.resolve("missing"), now))
                 .isZero();
-    }
-
-    @Test
-    void the_idle_boundary_keeps_test_walls_when_history_is_off() {
-        TestClassWalls.put("/w/idle-test", TaskNames.RUN_TESTS, Map.of("com.example.SlowTest", 1_200L));
-
-        IdleHousekeeping.dropHeapResidue(false);
-        assertThat(TestClassWalls.get("/w/idle-test", TaskNames.RUN_TESTS))
-                .as("no harvest wrote these walls anywhere else")
-                .containsEntry("com.example.SlowTest", 1_200L);
-
-        IdleHousekeeping.dropHeapResidue(true);
-        assertThat(TestClassWalls.get("/w/idle-test", TaskNames.RUN_TESTS))
-                .as("with history on the finish path already harvested them")
-                .isEmpty();
     }
 
     /**

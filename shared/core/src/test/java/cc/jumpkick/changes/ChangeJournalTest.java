@@ -3,6 +3,7 @@ package cc.jumpkick.changes;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,7 +25,7 @@ class ChangeJournalTest {
     void an_edit_is_one_line_with_its_diff_and_its_actor() throws Exception {
         ChangeJournal journal = new ChangeJournal(dir, () -> 1_000L);
         ChangeActor shell = ChangeActor.shell(List.of("self", "setup-terminal", "--mode", "pill"));
-        var change = ChangeActor.as(
+        var change = Request.actingAs(
                 shell,
                 () -> journal.recordEdit(
                         dir.resolve("config.toml"), "nerd-font set", "a = 1\n", "nerd-font = \"pill\"\n\na = 1\n"));
@@ -86,7 +87,7 @@ class ChangeJournalTest {
                 .containsEntry("session", "sess-1")
                 .containsEntry("client", "Cursor")
                 .containsEntry("goal", "free disk space");
-        ChangeActor imported = ChangeActor.as(a, () -> ChangeActor.importOf("/work/app/pom.xml"));
+        ChangeActor imported = Request.actingAs(a, () -> ChangeActor.importOf("/work/app/pom.xml"));
         assertThat(imported.kind()).isEqualTo(ChangeActor.IMPORT);
         assertThat(imported.details()).containsEntry("by", a.label()).containsEntry("session", "sess-1");
     }

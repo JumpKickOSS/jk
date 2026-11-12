@@ -30,7 +30,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -242,22 +241,9 @@ class NodeBuildStepsTest {
     }
 
     private BuildPlan plan(Session session, boolean skipTests) {
-        return BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                web,
-                tmp.resolve("cache"),
-                web.resolve("jk.toml"),
-                web.resolve("jk-lock.toml"),
-                web,
-                1,
-                1,
-                null,
-                null,
-                skipTests,
-                false,
-                false,
-                false,
-                Set.of(),
-                session));
+        return BuildPlanner.fullPlan(TestInputs.of(web, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withSkipTests(skipTests));
     }
 
     private static BuildPlanResult run(BuildPlan plan, Session session) throws Exception {

@@ -78,7 +78,7 @@ class SitesTest {
         assertThat(method.has("org.junit.jupiter.api.Test")).isFalse();
         assertThat(method.site().fingerprint()).isEqualTo("a.T");
         assertThat(method.site().file()).isEqualTo("a/T.java");
-        Annotated field = new Annotated(c, null, new FieldFacts("x", "I", 1, null, List.of()), -1, List.of());
+        Annotated field = new Annotated(c, null, new FieldFacts("x", "I", 1, null, List.of(), null), -1, List.of());
         assertThat(field.has("anything")).isFalse();
         assertThat(field.annotations()).isEmpty();
     }

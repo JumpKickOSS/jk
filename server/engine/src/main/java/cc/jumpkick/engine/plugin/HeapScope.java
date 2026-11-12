@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.TaskNames;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Which worker the current thread is about to fork, so its GC log can be filed under one key:
- * module coordinate, task kind, JDK major.
+ * module coordinate, task kind, JDK major. {@link ContextPropagator Carried}: a fork started from a
+ * pool task files under the key of the step that submitted it.
  */
 public final class HeapScope {
 
@@ -39,50 +41,44 @@ public final class HeapScope {
     /** The resident Kotlin script host. One engine-wide key, not a module compile. */
     public static final String KTS_HOST = "kts-host";
 
-    private static final ThreadLocal<Key> CURRENT = new ThreadLocal<>();
+    private static final ScopedValue<Key> CURRENT = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(CURRENT);
+    }
 
     private HeapScope() {}
 
     /** The worker this thread is forking, or {@code null}. */
     public static @Nullable Key get() {
-        return CURRENT.get();
+        return ContextPropagator.get(CURRENT);
     }
 
-    /** Bind {@code key} and return the previous one, which {@link #restore} puts back. */
-    public static @Nullable Key bind(Key key) {
-        Key previous = CURRENT.get();
-        if (key == null) CURRENT.remove();
-        else CURRENT.set(key);
-        return previous;
-    }
-
-    /** Put back what {@link #bind} returned. {@code null} clears the binding. */
-    public static void restore(@Nullable Key key) {
-        if (key == null) CURRENT.remove();
-        else CURRENT.set(key);
-    }
-
-    /** Run {@code body} with {@code key} bound; the previous binding is restored. */
+    /** Run {@code body} with {@code key} bound. */
     public static void call(Key key, Runnable body) {
-        Key previous = CURRENT.get();
-        CURRENT.set(key);
-        try {
-            body.run();
-        } finally {
-            if (previous == null) CURRENT.remove();
-            else CURRENT.set(previous);
-        }
+        ScopedValue.where(CURRENT, key).run(body);
     }
 
-    /** As {@link #call(Key, Runnable)} for a body that returns a value. */
-    public static <T> T call(Key key, Callable<T> body) throws Exception {
-        Key previous = CURRENT.get();
-        CURRENT.set(key);
+    /** As {@link #call(Key, Runnable)} for a body that returns a value or throws. */
+    public static <T extends @Nullable Object, X extends Throwable> T call(Key key, ScopedValue.CallableOp<T, X> body)
+            throws X {
+        return ScopedValue.where(CURRENT, key).call(body);
+    }
+
+    /** A worker fork: it does I/O and waits. */
+    @FunctionalInterface
+    public interface Fork<T extends @Nullable Object> {
+        T run() throws IOException, InterruptedException;
+    }
+
+    /** As {@link #call(Key, ScopedValue.CallableOp)} for a fork. */
+    public static <T extends @Nullable Object> T fork(Key key, Fork<T> body) throws IOException, InterruptedException {
         try {
-            return body.call();
-        } finally {
-            if (previous == null) CURRENT.remove();
-            else CURRENT.set(previous);
+            return call(key, body::run);
+        } catch (IOException | InterruptedException | RuntimeException | Error e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
         }
     }
 

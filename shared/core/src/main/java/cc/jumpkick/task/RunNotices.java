@@ -6,6 +6,7 @@ import cc.jumpkick.host.Log;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A note a run makes at most once, however many times the code that noticed it runs.
@@ -26,21 +27,21 @@ import java.util.function.Supplier;
  * gets silence and reads it as agreement. So the scope has to be the run.
  *
  * <p>A run is identified by its {@link IoLedger}. That is not a convenient coincidence: the ledger
- * is the one object the engine already opens and closes around a request
- * ({@link IoLedger#open}/{@link IoLedger#close}), and every {@code Session} copy derived inside the
- * request — including work handed to the shared pools — carries the same instance. {@code Session}
+ * is the one object the engine already makes once per request and binds in its {@code Request},
+ * and every {@code Session} copy derived inside the request — including work handed to the shared
+ * pools — carries the same instance. {@code Session}
  * itself cannot serve: it is a record, copied freely by every {@code with*} call, so its identity
  * changes several times inside one build while the ledger's does not.
  *
- * <p>Bounded on both axes and dropped whole when full, like the other run-scoped tables: the cost
- * of over-flowing is that one note may be said twice, which is the failure mode a diagnostic should
- * pick.
+ * <p>What a run has said, and where its notes go, are kept on its ledger, so they end with the run.
+ * Bounded and dropped whole when full: the cost of over-flowing is that one note may be said twice,
+ * which is the failure mode a diagnostic should pick.
  *
  * <h2>Where a note goes</h2>
  *
  * To the run's registered {@link Sink} when the engine opened one, and to the process
- * {@link Log} at warn otherwise. The engine opens a sink around every enveloped request — registered beside {@link
- * IoLedger#open} and removed in the same {@code finally} — and its sink turns a note into a WARN
+ * {@link Log} at warn otherwise. The engine opens a sink around every enveloped request — registered
+ * where it binds the request and removed in the same {@code finally} — and its sink turns a note into a WARN
  * wire line the CLI already prints, so the warning reaches the user who can act on it rather than
  * only the engine log. The log remains for everything outside a request: engine housekeeping
  * and tests.
@@ -56,28 +57,26 @@ public final class RunNotices {
         void notice(String code, String message);
     }
 
-    /** Keyed by the run's ledger — see the class note on why the session cannot serve. */
-    private static final ConcurrentHashMap<IoLedger, Set<String>> BY_RUN = new ConcurrentHashMap<>();
-
-    /** Same key as {@link #BY_RUN}: the ledger is the run's identity. */
-    private static final ConcurrentHashMap<IoLedger, Sink> SINKS = new ConcurrentHashMap<>();
-
-    private static final int MAX_RUNS = 32;
     private static final int MAX_PER_RUN = 64;
+
+    /** One run's notices, kept on its {@link IoLedger}: the keys it has said and where notes go. */
+    static final class Run {
+        private final Set<String> said = ConcurrentHashMap.newKeySet();
+        private volatile @Nullable Sink sink;
+    }
 
     private RunNotices() {}
 
     /** Route this run's notices to {@code sink} until {@link #closeSink}. */
     public static void openSink(IoLedger run, Sink sink) {
         if (run == null || sink == null) return;
-        if (SINKS.size() > MAX_RUNS) SINKS.clear(); // a dropped sink degrades to stderr, no worse
-        SINKS.put(run, sink);
+        run.notices().sink = sink;
     }
 
     /** Stop routing this run's notices; later notes fall back to the log. */
     public static void closeSink(IoLedger run) {
         if (run == null) return;
-        SINKS.remove(run);
+        run.notices().sink = null;
     }
 
     /**
@@ -92,11 +91,11 @@ public final class RunNotices {
     public static void warnOnce(String key, Supplier<String> message) {
         if (key == null || message == null) return;
         try {
-            IoLedger run = SessionContext.current().io(); // never null: Session's constructor sees to it
+            Run run = SessionContext.current().io().notices(); // never null: Session's constructor sees to it
             if (!claim(run, key)) return;
             String text = message.get();
             if (text == null || text.isEmpty()) return;
-            Sink sink = SINKS.get(run);
+            Sink sink = run.sink;
             if (sink != null) sink.notice(key, text);
             else Log.warn(text);
         } catch (RuntimeException e) {
@@ -107,16 +106,18 @@ public final class RunNotices {
     }
 
     /** True the first time this run claims {@code key}, false every time after. */
-    private static boolean claim(IoLedger run, String key) {
-        if (BY_RUN.size() > MAX_RUNS) BY_RUN.clear();
-        Set<String> said = BY_RUN.computeIfAbsent(run, r -> ConcurrentHashMap.newKeySet());
-        if (said.size() >= MAX_PER_RUN) said.clear(); // over-full: at worst one note is said twice
-        return said.add(key);
+    private static boolean claim(Run run, String key) {
+        if (run.said.size() >= MAX_PER_RUN) run.said.clear(); // over-full: at worst one note is said twice
+        return run.said.add(key);
     }
 
-    /** Forget every claim and every sink. Nothing on the build path needs this; tests do. */
+    /**
+     * Forget what the current session's run has said and close its sink. Nothing on the build path
+     * needs this; tests that share one session do.
+     */
     public static void clear() {
-        BY_RUN.clear();
-        SINKS.clear();
+        Run run = SessionContext.current().io().notices();
+        run.said.clear();
+        run.sink = null;
     }
 }

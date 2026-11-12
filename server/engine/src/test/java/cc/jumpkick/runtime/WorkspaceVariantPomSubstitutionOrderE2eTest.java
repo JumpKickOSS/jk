@@ -149,7 +149,7 @@ class WorkspaceVariantPomSubstitutionOrderE2eTest {
     private static void lock(Path ws, Path cache) throws Exception {
         LockPlans.LockScope scope = LockPlans.lockScope(ws);
         BuildPlan lock = LockPlans.lockBuildPlan(
-                scope.lockDir(), scope.effective(), cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                scope.lockDir(), cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
     }
 

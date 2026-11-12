@@ -16,7 +16,6 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -44,7 +43,7 @@ final class PlannerTestForecast {
         if (s.skipTests || !s.haveTests()) return null;
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
-        BuildLayout layout = prepared.layout();
+        BuildLayout layout = prepared.parsed().layout();
         TestSources testSources = s.testSources();
         if (!s.compileApiDirty()) {
             s.compileTestKotlinKey = testSources.ktTest().isEmpty()
@@ -76,34 +75,41 @@ final class PlannerTestForecast {
             step = langMiss;
             s.testDirty = true;
         } else if (!testSources.javacSources().isEmpty()) {
-            int release = prepared.release();
-            List<Path> baseCp = testBaseClasspath(s, prepared, testSources);
-            if (baseCp == null) {
-                return new TaskForecast.Task(
-                        TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "compile · Groovy jar unresolved", null);
-            }
+            int release = prepared.parsed().release();
+            List<Path> baseCp = TestOutputs.baseClasspath(
+                    layout.classesDir(),
+                    s.project,
+                    layout,
+                    prepared.classpaths().testCompile(),
+                    ModuleClasspaths.groovyJar(
+                            s.project,
+                            prepared.parsed().lock(),
+                            s.cas,
+                            prepared.parsed().shape().groovy()
+                                    || !testSources.gvTest().isEmpty()));
             Path testOut = layout.testClassesDir();
             // javac reads the Kotlin and Groovy test outputs beside it, as their records restore them.
             TestOutputs outs = TestOutputs.of(testSources, layout, testOut);
             if (outs.mixedKotlin()) s.restored.projectFromRecord(outs.kotlinOut(), s.compileTestKotlinKey);
             if (outs.mixedGroovy()) s.restored.projectFromRecord(outs.groovyOut(), s.compileTestGroovyKey);
             List<Path> javacCp = outs.javacClasspath(baseCp);
-            ScalaCompile.Setup testScala =
-                    testSources.scTest().isEmpty() ? null : ScalaCompile.prepare(s.project, prepared.lock(), s.cas);
+            ScalaCompile.Setup testScala = testSources.scTest().isEmpty()
+                    ? null
+                    : ScalaCompile.prepare(s.project, prepared.parsed().lock(), s.cas);
             List<Path> testSrc = testSources.javacSources();
             CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
                     testSrc,
                     javacCp,
-                    prepared.javacTestProcessorCp(s.project),
-                    prepared.contributedProcessors().test(),
+                    prepared.classpaths().javacTestProcessor(),
+                    prepared.classpaths().contributedTestProcessor(),
                     testOut,
                     s.project.javac().testRelease(release),
-                    prepared.javacArgs(),
+                    prepared.parsed().javacArgs(),
                     s.project.javac().forTests(),
                     prepared.javaHome(),
                     testScala,
                     layout.classesDir(),
-                    ProcessorPaths.discovers(s.project),
+                    prepared.classpaths().testProcessorDiscovery(),
                     CompilerJdk.pinned(s.project, SessionContext.current())));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path stateDir = ActionKey.stateDir(
@@ -154,7 +160,7 @@ final class PlannerTestForecast {
                 && Files.isDirectory(layout.classesDir())
                 && Files.isDirectory(layout.testClassesDir())
                 && TaskForecaster.resourcesOutOfSync(
-                        ModuleLayout.testResourcesDir(s.dir, prepared.compact()), layout.testClassesDir())) {
+                        ModuleLayout.testResourcesDir(s.dir, prepared.parsed().compact()), layout.testClassesDir())) {
             return new TaskForecast.Task(
                     TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, TaskForecast.TEST_RESOURCES_CHANGED, null);
         }
@@ -162,23 +168,27 @@ final class PlannerTestForecast {
     }
 
     /**
-     * The test compilers' base classpath through the build's own {@link PlannerTest#testCompileClasspath},
-     * or null when the Groovy jar it needs cannot be resolved here.
+     * The test compilers' base classpath, as the build's own ({@link TestOutputs#baseClasspath}), or
+     * null when the Groovy jar it needs cannot be resolved here.
      */
     private static @Nullable List<Path> testBaseClasspath(
             ForecastScope s, ForecastScope.Prepared prepared, TestSources src) throws Exception {
-        Path groovyJar = null;
-        if (PlannerTest.needsGroovyJar(
-                CompileSupport.resolveLanguages(s.project.project(), s.dir).groovy(), src)) {
-            try {
-                groovyJar = PlannerSupport.groovyCompileJar(s.project, prepared.lock(), s.cas);
-            } catch (Exception e) {
-                Log.debug("testBaseClasspath: the Groovy compile jar could not be resolved read-only", e);
-                return null;
-            }
+        BuildLayout layout = prepared.parsed().layout();
+        try {
+            return TestOutputs.baseClasspath(
+                    layout.classesDir(),
+                    s.project,
+                    layout,
+                    prepared.classpaths().testCompile(),
+                    ModuleClasspaths.groovyJar(
+                            s.project,
+                            prepared.parsed().lock(),
+                            s.cas,
+                            prepared.parsed().shape().groovy() || !src.gvTest().isEmpty()));
+        } catch (Exception e) {
+            Log.debug("testBaseClasspath: the Groovy compile jar could not be resolved read-only", e);
+            return null;
         }
-        BuildLayout layout = prepared.layout();
-        return PlannerTest.testCompileClasspath(s.project, layout, layout.classesDir(), s.testCompileCp(), groovyJar);
     }
 
     /**
@@ -190,7 +200,7 @@ final class PlannerTestForecast {
     private static TaskForecast.@Nullable Task testLangMiss(
             ForecastScope s, ForecastScope.Prepared prepared, TestSources src) throws Exception {
         if (src.ktTest().isEmpty() && src.gvTest().isEmpty()) return null;
-        BuildLayout layout = prepared.layout();
+        BuildLayout layout = prepared.parsed().layout();
         Path testClasses = layout.testClassesDir();
         List<Path> baseCp = testBaseClasspath(s, prepared, src);
         if (baseCp == null) return langRun(src.ktTest().isEmpty() ? "Groovy" : "Kotlin", 1, " · toolchain unresolved");
@@ -199,6 +209,7 @@ final class PlannerTestForecast {
         ForecastLangArms arms = s.arms();
         if (!src.ktTest().isEmpty()) {
             String key = arms.kotlinTestKey(
+                    s,
                     prepared,
                     src.ktTest(),
                     baseCp,
@@ -212,6 +223,7 @@ final class PlannerTestForecast {
         }
         if (!src.gvTest().isEmpty()) {
             String key = arms.groovyTestKey(
+                    s,
                     prepared,
                     src.gvTest(),
                     outs.groovyClasspath(baseCp),
@@ -236,7 +248,7 @@ final class PlannerTestForecast {
 
     /** The Java test roots a joint Groovy pass sweeps: every compiled suite's, as the build lists them. */
     private static List<Path> groovyJointRoots(ForecastScope s, ForecastScope.Prepared prepared) {
-        boolean compact = prepared.compact();
+        boolean compact = prepared.parsed().compact();
         List<String> selected = TestSupport.selectedSuites(
                 s.dir, compact, s.project.build(), SessionContext.current().testSelection());
         List<Path> roots = new ArrayList<>();
@@ -282,8 +294,8 @@ final class PlannerTestForecast {
         }
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
-        boolean compact = prepared.compact();
-        BuildLayout layout = prepared.layout();
+        boolean compact = prepared.parsed().compact();
+        BuildLayout layout = prepared.parsed().layout();
         int estimated = TestSupport.estimateAllSuiteTestCount(s.dir, compact);
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
@@ -308,11 +320,17 @@ final class PlannerTestForecast {
                     : "run tests · " + tests;
             return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, why, null);
         }
-        List<Path> testRt =
-                new ArrayList<>(PlannerSupport.testRuntimeClasspath(s.dir, s.project, prepared.lock(), s.resolver));
-        for (Path p : prepared.provided().testRuntime()) {
-            if (!testRt.contains(p)) testRt.add(p);
-        }
+        TestStampInputs stamp = TestStampInputs.of(
+                TestStampInputs.Facts.forecast(
+                        s.dir,
+                        s.project,
+                        layout,
+                        s.knobs.profile(),
+                        prepared.parsed().pkgDecls(),
+                        prepared.classpaths(),
+                        new TestStamp.CompileTestKeys(
+                                s.compileTestKey, s.compileTestKotlinKey, s.compileTestGroovyKey)),
+                s.restored.identity());
         long ts = Perf.start();
         String mainFp = null;
         if (!s.classesTreeWhole(layout)) {
@@ -325,18 +343,7 @@ final class PlannerTestForecast {
                         s.dir, compact, layout, s.project, s.actionCache, s.compileMainKey, null);
             if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
         }
-        String stampKey = PlannerSupport.runTestsStampKey(
-                s.dir,
-                s.project,
-                compact,
-                layout.classesDir(),
-                mainFp,
-                s.lockFile,
-                testRt,
-                new TestStamp.CompileTestKeys(s.compileTestKey, s.compileTestKotlinKey, s.compileTestGroovyKey),
-                s.restored.identity(),
-                s.profileName,
-                prepared.pkgDecls());
+        String stampKey = stamp.forecastKey(compact, layout.classesDir(), mainFp, s.lockFile);
         Perf.end("  test-stamp-key", ts);
         var marker = stampKey == null
                 ? Optional.<ActionCache.ActionRecord>empty()

@@ -25,7 +25,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -141,22 +140,9 @@ class NodeUnlockedNpxTest {
 
     private void build(Path web) throws Exception {
         Session session = Session.defaults().withCacheDir(tmp.resolve("cache")).withVariant("", Map.of());
-        BuildPlan plan = BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                web,
-                tmp.resolve("cache"),
-                web.resolve("jk.toml"),
-                web.resolve("jk-lock.toml"),
-                web,
-                1,
-                1,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                session));
+        BuildPlan plan = BuildPlanner.fullPlan(TestInputs.of(web, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withSkipTests(true));
         BuildPlanResult[] out = new BuildPlanResult[1];
         SessionContext.runWhere(session, () -> out[0] = plan.run());
         assertThat(out[0].errors()).isEmpty();

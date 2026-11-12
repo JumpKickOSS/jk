@@ -295,4 +295,21 @@ public final class ResourceMirror {
             cur = up;
         }
     }
+
+    /**
+     * Mirror one compiled-output tree ({@code kotlin}, {@code groovy}) into a shared classes tree.
+     *
+     * <p>A ledger under {@code incremental/} records what the previous merge copied, so a class the
+     * language compiler no longer produces — a renamed or deleted source; kotlinc's incremental
+     * compiler prunes its own output dir — leaves the classes tree before the copy. A plain copy is
+     * additive and would keep it, and the jar would ship the old class beside the new one. The
+     * ledger is per language, so a Java class beside the merged ones is never the mirror's to
+     * remove. Byte-identical files are left alone so mtimes stay put: a sibling fingerprints this
+     * tree through {@code FileHashMemo}, whose entries are keyed by size and mtime.
+     */
+    public static void mergeLanguageOutput(Path langOut, Path classes, Path buildDir, String ledgerName)
+            throws IOException {
+        Path ledger = buildDir.resolve("incremental").resolve(MirroredOutputs.mergedLedger(ledgerName));
+        sync(List.of(langOut), classes, ledger);
+    }
 }

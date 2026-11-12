@@ -4,12 +4,9 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsFile;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.TaskPhases;
-import cc.jumpkick.runtime.base.TestClassWalls;
-import cc.jumpkick.runtime.base.TestSuiteRunners;
-import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.io.IOException;
@@ -27,11 +24,14 @@ final class RunMetricsToml {
 
     private RunMetricsToml() {}
 
-    /** Writes nothing for a running, failed or cancelled run, or one with no wall to record. */
-    static void write(Path dir, BuildRecord finished) throws IOException {
+    /**
+     * Writes nothing for a running or cancelled run, or one with no wall to record, and only the
+     * class walls of a failed one. Takes from {@code measures} what it writes.
+     */
+    static void write(Path dir, BuildRecord finished, RunMeasures measures) throws IOException {
         if (finished == null || finished.running() || finished.cancelled()) return;
         if (!finished.success()) {
-            writeClassWallsOnly(dir, finished);
+            writeClassWallsOnly(dir, finished, measures);
             return;
         }
         StringBuilder sb = new StringBuilder();
@@ -70,13 +70,13 @@ final class RunMetricsToml {
         // exists to calibrate (4×2s compile tasks must read 8s, not 2s).
         Map<String, Long> phaseTotals = new LinkedHashMap<>();
         Map<String, Map<String, Long>> modulePhaseTotals = new LinkedHashMap<>();
-        boolean coldWorker = ColdWorkerRuns.cold(finished.requestId());
+        boolean coldWorker = measures.coldWorker();
         // Each module's suite as it ran (its selection), found again by the class walls below.
         Map<String, String> suiteSteps = new LinkedHashMap<>();
         if (finished.steps() != null) {
             for (BuildRecord.Task s : finished.steps()) {
                 if (coldWorker && isCompile(s)) continue;
-                appendStepMetrics(sb, s, root, root, phaseTotals, modulePhaseTotals, suiteSteps);
+                appendStepMetrics(sb, s, root, root, phaseTotals, modulePhaseTotals, measures, suiteSteps);
             }
         }
         if (finished.modules() != null) {
@@ -85,7 +85,7 @@ final class RunMetricsToml {
                 for (BuildRecord.Task s : m.steps()) {
                     // A compile on a worker still warming up is not this module's compile cost.
                     if (coldWorker && isCompile(s)) continue;
-                    appendStepMetrics(sb, s, m.dir(), root, phaseTotals, modulePhaseTotals, suiteSteps);
+                    appendStepMetrics(sb, s, m.dir(), root, phaseTotals, modulePhaseTotals, measures, suiteSteps);
                 }
             }
         }
@@ -108,10 +108,10 @@ final class RunMetricsToml {
             }
         }
         // Test-class walls buffered during run-tests (FQCN → ms); train harvest without recounting methods.
-        appendTestClassWalls(sb, root, root, suiteSteps);
+        appendTestClassWalls(sb, root, root, measures, suiteSteps);
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
-                if (m != null) appendTestClassWalls(sb, m.dir(), root, suiteSteps);
+                if (m != null) appendTestClassWalls(sb, m.dir(), root, measures, suiteSteps);
             }
         }
         if (sb.length() > 40) {
@@ -123,7 +123,7 @@ final class RunMetricsToml {
      * A failed run teaches no step wall, but its suites' classes ran for real: their walls are
      * kept, and the next run reads its suites' progress by them.
      */
-    private static void writeClassWallsOnly(Path dir, BuildRecord finished) throws IOException {
+    private static void writeClassWallsOnly(Path dir, BuildRecord finished, RunMeasures measures) throws IOException {
         StringBuilder sb = new StringBuilder("# run metrics — a failed run's test-class walls only\n");
         String root = finished.dir();
         Map<String, String> suiteSteps = new LinkedHashMap<>();
@@ -135,9 +135,9 @@ final class RunMetricsToml {
             }
         }
         for (String moduleDir : dirs) {
-            var suite = TestSuiteTiers.take(moduleDir);
+            var suite = measures.takeSuite(moduleDir);
             if (suite != null) suiteSteps.put(moduleDir, suite.step());
-            appendTestClassWalls(sb, moduleDir, root, suiteSteps);
+            appendTestClassWalls(sb, moduleDir, root, measures, suiteSteps);
         }
         if (sb.indexOf("[test-class.") >= 0) {
             Files.writeString(dir.resolve(ProjectBuilds.METRICS), sb.toString(), StandardCharsets.UTF_8);
@@ -150,12 +150,12 @@ final class RunMetricsToml {
      * package's classes.
      */
     private static void appendTestClassWalls(
-            StringBuilder sb, String moduleDir, String root, Map<String, String> suiteSteps) {
+            StringBuilder sb, String moduleDir, String root, RunMeasures measures, Map<String, String> suiteSteps) {
         if (moduleDir == null || moduleDir.isBlank()) return;
         // A tier's walls sit under the module's key with its selection appended: its classes are
         // its own, and a default-tier run must not read an integration class's wall as its own.
         String step = suiteSteps.getOrDefault(moduleDir, TaskNames.RUN_TESTS);
-        Map<String, Long> walls = TestClassWalls.take(moduleDir, step);
+        Map<String, Long> walls = measures.takeClassWalls(moduleDir, step);
         if (walls.isEmpty()) return;
         Map<String, String> rows = new LinkedHashMap<>();
         for (var e : walls.entrySet()) {
@@ -176,6 +176,7 @@ final class RunMetricsToml {
             String root,
             Map<String, Long> phaseTotals,
             Map<String, Map<String, Long>> modulePhaseTotals,
+            RunMeasures measures,
             Map<String, String> suiteSteps) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
@@ -183,11 +184,11 @@ final class RunMetricsToml {
         // of the suite's classes, and leaves no suite wall at all.
         String suiteStep = null;
         if (TaskNames.RUN_TESTS.equals(s.name())) {
-            var suite = moduleDir == null ? null : TestSuiteTiers.take(moduleDir);
+            var suite = moduleDir == null ? null : measures.takeSuite(moduleDir);
             if (suite != null) {
                 suiteSteps.put(moduleDir, suite.step());
                 if (suite.partial()) {
-                    TestSuiteRunners.take(moduleDir);
+                    measures.takeRunners(moduleDir);
                     return;
                 }
                 suiteStep = suite.step();
@@ -238,7 +239,7 @@ final class RunMetricsToml {
             // A suite wall is only re-usable next time if we also say how many runners produced it,
             // and the re-usable form is the *normalized* one — see TestSuiteScaling.
             if (TaskNames.isRunTests(task)) {
-                int runners = TestSuiteRunners.take(moduleDir);
+                int runners = measures.takeRunners(moduleDir);
                 if (runners > 0) {
                     sb.append("module.")
                             .append(mod)
@@ -256,11 +257,8 @@ final class RunMetricsToml {
                             .append('\n');
                 }
             }
-            // No input-bytes field here: nothing ever read it, and its value was wrong anyway —
-            // BuildService's success fold takes (removes) the recorded bytes before the journal
-            // write runs, so this always fell back to a fresh disk walk that could differ from
-            // what ms/MB learning actually used. Size learning rides the in-memory
-            // recordSuccessInputBytes → hostSamples path.
+            // No input-bytes field: size learning takes a native image's input bytes from the
+            // run's measures when its step finishes (RunMeasures.nativeInputBytes), before this.
             modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
     }

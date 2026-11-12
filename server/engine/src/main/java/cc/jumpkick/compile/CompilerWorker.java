@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
@@ -78,8 +79,8 @@ final class CompilerWorker {
 
     private final CompilerPool pool;
 
-    /** The {@link JobWorkers} scope the process runs under: its own, or a job's for a job-scoped pool. */
-    final long scope;
+    /** The {@link WorkerScope} the process runs under: its own, or a job's for a job-scoped pool. */
+    final WorkerScope scope;
 
     final Map<Long, CompileWork> inflight = new ConcurrentHashMap<>();
 
@@ -106,28 +107,25 @@ final class CompilerWorker {
 
     private @Nullable Thread io;
 
-    CompilerWorker(CompilerPool pool, long scope, Launcher launcher) {
+    CompilerWorker(CompilerPool pool, WorkerScope scope, Launcher launcher) {
         this.pool = pool;
         this.scope = scope;
         this.launcher = launcher;
     }
 
     /**
-     * Start the worker and its dispatcher, on threads that inherit nothing from the request that
-     * happened to need the worker first — no session, no job scope, no step: the worker belongs to
-     * its pool, binds its own scope before it forks, and each item brings its own session.
+     * Start the worker and its dispatcher on bare threads, which carry nothing of the request that
+     * happened to need the worker first: the worker belongs to its pool, binds its own scope before
+     * it forks, and each item brings its own session.
      */
     void start() {
-        io = detached("jk-javac-worker-" + scope, this::drive);
-        detached("jk-javac-dispatch-" + scope, this::dispatchLoop);
+        io = detached("jk-javac-worker-" + scope.id(), this::drive);
+        detached("jk-javac-dispatch-" + scope.id(), this::dispatchLoop);
     }
 
-    /** A virtual thread with no inherited context. Reads no session of a request. */
+    /** A bare virtual thread: it carries no request and reads no session of one. */
     static Thread detached(String name, Runnable body) {
-        return Thread.ofVirtual()
-                .name(name)
-                .inheritInheritableThreadLocals(false)
-                .start(body);
+        return Thread.ofVirtual().name(name).start(body);
     }
 
     /** Whether the worker has said hello and not died: it can take items. */
@@ -212,21 +210,19 @@ final class CompilerWorker {
         }
     }
 
+    /** The worker's io thread: the process it forks registers to {@link #scope}, the only request it carries. */
     private void drive() {
-        Long previous = JobWorkers.bind(scope);
-        Throwable ended = null;
-        try {
-            launcher.run(this);
-        } catch (Exception e) {
-            ended = e;
-        } finally {
+        scope.run(() -> {
+            Throwable ended = null;
             try {
+                launcher.run(this);
+            } catch (Exception e) {
+                ended = e;
+            } finally {
                 dead = true;
                 pool.workerDied(this, ended != null ? ended : new IOException("zinc worker exited"));
-            } finally {
-                JobWorkers.restore(previous);
             }
-        }
+        });
     }
 
     /**
@@ -236,7 +232,7 @@ final class CompilerWorker {
     void attach(PluginProcess.Conversation conversation) {
         channel = conversation;
         String hello = hello(concurrencyOverride());
-        detached("jk-javac-hello-" + scope, () -> sendWhenConnected(conversation, hello, () -> dead));
+        detached("jk-javac-hello-" + scope.id(), () -> sendWhenConnected(conversation, hello, () -> dead));
     }
 
     /**
@@ -293,9 +289,9 @@ final class CompilerWorker {
     void send(String json) {
         PluginProcess.Conversation c = channel;
         try {
-            if (c == null || !c.offer(json)) Log.debug("zinc worker " + scope + " not connected; dropped " + json);
+            if (c == null || !c.offer(json)) Log.debug("zinc worker " + scope.id() + " not connected; dropped " + json);
         } catch (RuntimeException e) {
-            Log.debug("zinc worker " + scope + " send failed: " + e.getMessage());
+            Log.debug("zinc worker " + scope.id() + " send failed: " + e.getMessage());
         }
     }
 
@@ -314,7 +310,7 @@ final class CompilerWorker {
      */
     void idleNow() {
         int generation = idleGeneration.incrementAndGet();
-        detached("jk-javac-trim-" + scope, () -> {
+        detached("jk-javac-trim-" + scope.id(), () -> {
             try {
                 Thread.sleep(pool.trimAfterIdle);
             } catch (InterruptedException e) {
@@ -352,7 +348,7 @@ final class CompilerWorker {
         Process p = process;
         if (stop != null) stop.run();
         else if (p != null) JobWorkers.destroyTree(p);
-        else JobWorkers.shutdownForRequest(scope, 0L);
+        else scope.shutdown(0L);
     }
 
     /** Stop the process because {@code job}'s compile on it would not answer its cancel. */

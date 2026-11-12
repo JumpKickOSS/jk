@@ -29,7 +29,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -332,22 +331,11 @@ class CoexistenceMirrorE2eTest {
     private static BuildPlan plan(Path project, Path cache) {
         Path buildFile = ManifestPaths.manifestIn(project);
         Path lockFile = LockPaths.lockFile(project);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                buildFile,
-                lockFile,
-                LockPaths.lockOwnerDir(project),
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache)
+                .withBuildFile(buildFile)
+                .withLockFile(lockFile)
+                .withLockDir(LockPaths.lockOwnerDir(project))
+                .withSkipTests(true);
         return BuildPlanner.fullPlan(in);
     }
 }

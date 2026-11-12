@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.builds.MetricsFile;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.run.TaskNames;
@@ -72,13 +73,12 @@ public final class RecentClassWalls {
     }
 
     private static Map<String, Long> live(Path moduleDir, String step) {
-        Map<String, Long> direct = TestClassWalls.get(moduleDir.toString(), step);
+        RunMeasures measures = RunMeasures.current();
+        if (measures == null) return Map.of();
+        Map<String, Long> direct = measures.classWalls(moduleDir.toString(), step);
         if (!direct.isEmpty()) return direct;
         try {
-            Path abs = moduleDir.toAbsolutePath().normalize();
-            Map<String, Long> normalized = TestClassWalls.get(abs.toString(), step);
-            if (!normalized.isEmpty()) return normalized;
-            return TestClassWalls.get(abs.toAbsolutePath().toString(), step);
+            return measures.classWalls(moduleDir.toAbsolutePath().normalize().toString(), step);
         } catch (RuntimeException e) {
             return Map.of();
         }
@@ -106,7 +106,7 @@ public final class RecentClassWalls {
         if (stamp == null) return scan(home, root);
         Cached cached = CACHE.get(key);
         if (cached != null && cached.stamp == stamp) return cached.byModule;
-        synchronized (SCANNING.computeIfAbsent(key, k -> new Object())) {
+        try (KeyedLocks.Held held = SCANNING.hold(key)) {
             cached = CACHE.get(key);
             if (cached != null && cached.stamp == stamp) return cached.byModule;
             Map<String, Map<String, Long>> walls = scan(home, root);
@@ -116,7 +116,7 @@ public final class RecentClassWalls {
     }
 
     /** One lock per key: the single flight of {@link #merged}. */
-    private static final ConcurrentHashMap<Key, Object> SCANNING = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Key> SCANNING = new KeyedLocks<>();
 
     /**
      * Each run's parsed walls by its metrics file, kept while the file's size and mtime hold: a run's

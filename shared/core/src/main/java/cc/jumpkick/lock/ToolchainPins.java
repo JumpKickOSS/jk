@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import cc.jumpkick.config.TomlScan;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,21 +21,21 @@ public record ToolchainPins(
 
     public static final ToolchainPins NONE = new ToolchainPins(null, null, null, null);
 
-    private static final String[] FIELDS = {
-        "suggested-vendor", "suggested-version", "required-vendor", "required-version"
-    };
+    private static final List<String> FIELDS =
+            List.of("suggested-vendor", "suggested-version", "required-vendor", "required-version");
 
     /** Pins of the lock owning {@code projectDir} (workspace-aware); {@link #NONE} without a lock. */
     public static ToolchainPins scan(Path projectDir) {
         Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.isRegularFile(lockPath)) return NONE;
-        String[] keys = new String[FIELDS.length * 2 + 2];
-        for (int i = 0; i < FIELDS.length; i++) {
-            keys[i] = "jdk." + FIELDS[i];
-            keys[FIELDS.length + i] = "graal." + FIELDS[i];
+        int n = FIELDS.size();
+        String[] keys = new String[n * 2 + 2];
+        for (int i = 0; i < n; i++) {
+            keys[i] = "jdk." + FIELDS.get(i);
+            keys[n + i] = "graal." + FIELDS.get(i);
         }
-        keys[FIELDS.length * 2] = "node.version";
-        keys[FIELDS.length * 2 + 1] = "node.package-manager";
+        keys[n * 2] = "node.version";
+        keys[n * 2 + 1] = "node.package-manager";
         TomlScan scan = TomlScan.scanScalarHead(lockPath, keys);
         String node = ToolchainPin.blankToEmpty(scan.get("node.version"));
         String pm = ToolchainPin.blankToEmpty(scan.get("node.package-manager"));

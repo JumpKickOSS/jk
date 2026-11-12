@@ -4,8 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkInstallConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
@@ -28,7 +26,6 @@ import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginModule;
-import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.M2CompatWriter;
@@ -162,14 +159,10 @@ public final class InstallPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
-                    Session session = SessionContext.current();
                     // The effective manifest the first pass planned from: parse() resolves the
                     // workspace inherits, and the session's assembly override applies as it did there.
-                    JkBuild project = VariantApply.apply(
-                                    BuildPlanner.applyAssemblyOverride(JkBuildParser.parse(jkBuildPath), session),
-                                    projectDir,
-                                    VariantApply.selection(session.variant(), session),
-                                    session.clientEnv())
+                    JkBuild project = EffectiveManifest.of(
+                                    JkBuildParser.parse(jkBuildPath), projectDir, EffectiveManifest.Selection.ambient())
                             .build();
                     BuildLayout layout = BuildLayout.of(projectDir, project);
                     Path jar = layout.mainJar();

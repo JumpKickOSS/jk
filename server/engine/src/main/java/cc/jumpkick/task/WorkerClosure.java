@@ -2,15 +2,16 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One of jk's own workers as an input of the work it does: every entry of its launch classpath, the
@@ -23,9 +24,10 @@ public final class WorkerClosure {
 
     private WorkerClosure() {}
 
-    private record Memo(StatIdentity identity, List<Path> paths, List<String> tokens) {}
+    private record Memo(List<Path> paths, List<String> tokens) {}
 
-    private static final Map<Path, Memo> MEMO = new ConcurrentHashMap<>();
+    /** By the worker jar's settled stat; a handful of workers per engine. */
+    private static final StampedMemo<Path, FileStamp, Memo> MEMO = StampedMemo.bounded(64);
 
     /** The worker's launch classpath, its own jar first. */
     public static List<Path> paths(PluginJar worker) throws IOException {
@@ -39,9 +41,22 @@ public final class WorkerClosure {
 
     private static Memo memo(PluginJar worker) throws IOException {
         Path jar = worker.locate(JkStores.storeCas()).toAbsolutePath().normalize();
-        StatIdentity now = StatIdentity.of(jar);
-        Memo memo = MEMO.get(jar);
-        if (memo != null && memo.identity().equals(now)) return memo;
+        FileStamp stamp = FileStamp.of(jar);
+        if (stamp == null) throw new NoSuchFileException(jar.toString());
+        try {
+            return MEMO.get(jar, stamp, () -> {
+                try {
+                    return closure(jar);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static Memo closure(Path jar) throws IOException {
         List<Path> paths = new ArrayList<>();
         List<String> tokens = new ArrayList<>();
         for (Path entry : WorkerLaunchClasspath.paths(jar)) {
@@ -49,8 +64,6 @@ public final class WorkerClosure {
             paths.add(abs);
             tokens.add(abs.getFileName() + ":" + ClasspathFingerprint.entry(abs));
         }
-        Memo fresh = new Memo(now, List.copyOf(paths), List.copyOf(tokens));
-        MEMO.put(jar, fresh);
-        return fresh;
+        return new Memo(List.copyOf(paths), List.copyOf(tokens));
     }
 }

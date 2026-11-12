@@ -36,6 +36,7 @@ import org.jspecify.annotations.Nullable;
  * @param skipNode {@code --skip-node} / {@code JK_SKIP_NODE}: no node step runs
  * @param verifyCache {@code --verify-cache}: steps run for real and are held against the cache
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
+ * @param revalidate version listings bypass their freshness window
  */
 public record Session(
         @With JkConfig config,
@@ -135,7 +136,12 @@ public record Session(
          * plain {@code jk build} leaves it off, so only a module that opted in documents itself on
          * every build.
          */
-        @With boolean javadoc) {
+        @With boolean javadoc,
+        /**
+         * {@code jk update}, {@code jk outdated}: version listings skip their freshness window and
+         * revalidate with the repository (a conditional GET when validators exist).
+         */
+        @With boolean revalidate) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -183,7 +189,8 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
-                javadoc);
+                javadoc,
+                revalidate);
     }
 
     /**
@@ -271,8 +278,7 @@ public record Session(
     /**
      * A default session: empty config, current working directory, default cache/JDK roots, no tuning,
      * and a fresh {@link CancelToken#live live} cancellation token so a front-end can cancel it.
-     * Its {@link IoLedger} is the run's ambient one when a request is open on this thread (the engine
-     * opens one per request), else a fresh detached ledger.
+     * Its {@link IoLedger} is the bound {@link Request}'s, else a fresh detached ledger.
      */
     public static Session defaults() {
         return new Session(
@@ -303,9 +309,15 @@ public record Session(
                 false,
                 false,
                 new AffectedChanged(),
-                IoLedger.currentOrNew(),
+                requestIo(),
+                false,
                 false,
                 false);
+    }
+
+    private static IoLedger requestIo() {
+        Request r = Request.current();
+        return r != null ? r.io() : new IoLedger();
     }
 
     /** A copy rooted at {@code dir}, absolutized — the working directory is never relative. */
@@ -340,7 +352,8 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
-                javadoc);
+                javadoc,
+                revalidate);
     }
 
     /** A copy with the given JVM tuning ({@code null} → {@link PluginTuning#NONE}). */
@@ -375,7 +388,8 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
-                javadoc);
+                javadoc,
+                revalidate);
     }
 
     /**
@@ -415,7 +429,8 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
-                javadoc);
+                javadoc,
+                revalidate);
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

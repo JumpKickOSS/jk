@@ -26,7 +26,7 @@ class FieldFactsTest {
     @Test
     void field_annotations_are_copied() {
         ArrayList<AnnotationFacts> anns = new ArrayList<>(List.of(Fixtures.nullMarked()));
-        FieldFacts f = new FieldFacts("x", "I", 1, null, anns);
+        FieldFacts f = new FieldFacts("x", "I", 1, null, anns, null);
         anns.clear();
         assertThat(f.annotations()).containsExactly(Fixtures.nullMarked());
         assertThatThrownBy(() -> f.annotations().clear()).isInstanceOf(UnsupportedOperationException.class);
@@ -45,9 +45,9 @@ class FieldFactsTest {
 
     @Test
     void equal_field_facts_compare_equal_and_a_different_constant_does_not() {
-        FieldFacts a = new FieldFacts("K", "I", 25, "7", List.of());
-        FieldFacts b = new FieldFacts("K", "I", 25, "7", List.of());
-        FieldFacts c = new FieldFacts("K", "I", 25, "8", List.of());
+        FieldFacts a = new FieldFacts("K", "I", 25, "7", List.of(), null);
+        FieldFacts b = new FieldFacts("K", "I", 25, "7", List.of(), null);
+        FieldFacts c = new FieldFacts("K", "I", 25, "8", List.of(), null);
         assertThat(a).isEqualTo(b).isNotEqualTo(c);
     }
 }

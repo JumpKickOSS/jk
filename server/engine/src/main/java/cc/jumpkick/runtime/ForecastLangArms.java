@@ -1,28 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -33,11 +28,6 @@ import org.jspecify.annotations.Nullable;
  * from the module's {@link ForecastScope}.
  */
 final class ForecastLangArms {
-    private final JkBuild project;
-    private final Path dir;
-    private final Path cache;
-    private final Cas cas;
-    private final ClasspathResolver resolver;
     private final ActionCache actionCache;
     private final boolean compileDepDirty;
     private final boolean force;
@@ -50,21 +40,11 @@ final class ForecastLangArms {
     private final KotlinClasspathAbi.Snapshotter snapshotter;
 
     ForecastLangArms(
-            JkBuild project,
-            Path dir,
-            Path cache,
-            Cas cas,
-            ClasspathResolver resolver,
             ActionCache actionCache,
             boolean compileDepDirty,
             boolean force,
             TaskForecaster.DepHint depHint,
             RestoredOutputs restored) {
-        this.project = project;
-        this.dir = dir;
-        this.cache = cache;
-        this.cas = cas;
-        this.resolver = resolver;
         this.actionCache = actionCache;
         this.compileDepDirty = compileDepDirty;
         this.force = force;
@@ -80,21 +60,6 @@ final class ForecastLangArms {
      */
     record LangStep(TaskForecast.Task task, @Nullable String key) {}
 
-    /** The kotlinc config and compile classpath the build derives for this module. */
-    record KotlinArm(PlannerLang.KotlinConfig config, List<Path> classpath, boolean mixedWithJava) {}
-
-    KotlinArm kotlinArm(ForecastScope.Prepared prepared) throws Exception {
-        var langs = CompileSupport.resolveLanguages(project.project(), dir);
-        List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
-                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls(), prepared.ksp());
-        PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
-                project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
-        List<Path> cp = prepared.withProvided(
-                PlannerSupport.mainCompileClasspath(dir, project, prepared.lock(), resolver, sib, false));
-        return new KotlinArm(config, cp, langs.java());
-    }
-
     /**
      * compile-kotlin priced by the {@code forKotlinc} key of the request {@code
      * PlannerLang.kotlinWorker} builds for the build — CACHED when that record is present, a full
@@ -102,29 +67,14 @@ final class ForecastLangArms {
      * misses, which is the pessimistic answer; a toolchain that cannot be resolved without a
      * fetch forecasts a full compile for the same reason.
      */
-    LangStep kotlinStep(ForecastScope.Prepared prepared, KotlinArm arm) {
-        BuildLayout layout = prepared.layout();
-        List<Path> ktSrc = prepared.ktSrc();
-        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
+    LangStep kotlinStep(CompileInputs.Module module, CompileInputs.Kotlin inputs) {
+        List<Path> ktSrc = inputs.sources();
+        String taskId = CompileInputs.kotlinTaskId(module);
         String key;
         KotlincRequest request;
-        Path workingDir = ActionKey.stateDir(
-                ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cache)),
-                TaskNames.COMPILE_KOTLIN,
-                layout.classesDir());
         try {
-            PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
-                    project,
-                    dir,
-                    cache,
-                    cas,
-                    ktSrc,
-                    arm.classpath(),
-                    layout.kotlinClassesDir(),
-                    workingDir,
-                    arm.config());
-            request = worker.request();
-            key = ActionKey.forKotlinc(taskId, request, BuildIdentity.cacheKeyVersion(), snapshotter);
+            request = CompileInputs.kotlinWorker(module, inputs).request();
+            key = LangCompile.kotlinKey(taskId, request, BuildIdentity.cacheKeyVersion(), snapshotter);
         } catch (Exception e) {
             Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
             return new LangStep(
@@ -140,7 +90,10 @@ final class ForecastLangArms {
         if (!hit) {
             try {
                 why = ForecastSteps.langMissReason(
-                        actionCache, taskId, workingDir, ActionKey.kotlincInputs(request, snapshotter));
+                        actionCache,
+                        taskId,
+                        CompileInputs.kotlinStateDir(module),
+                        ActionKey.kotlincInputs(request, snapshotter));
             } catch (IOException e) {
                 Log.debug("kotlinStep: no miss reason", e);
             }
@@ -158,20 +111,12 @@ final class ForecastLangArms {
      * not yet memoized keys on content here, which can only make the forecast say "not fresh"
      * where the build, after one snapshot, would say fresh.
      */
-    boolean kotlinStampFresh(ForecastScope.Prepared prepared, KotlinArm arm) throws Exception {
-        List<Path> freshInputs = new ArrayList<>(prepared.ktSrc());
-        if (arm.mixedWithJava()) freshInputs.addAll(prepared.mainSrc());
-        return StepWarnings.kept(prepared.layout(), TaskNames.COMPILE_KOTLIN)
-                && FreshnessStamp.isFresh(
-                        prepared.layout().compileStampDir(),
-                        BuildStamps.KOTLIN,
-                        freshInputs,
-                        FreshnessStamp.ClasspathTokens.of(PlannerLang.kotlinStampTokens(arm.classpath(), snapshotter)),
-                        prepared.release(),
-                        arm.config().digest())
+    boolean kotlinStampFresh(CompileInputs.Module module, CompileInputs.Kotlin inputs) throws Exception {
+        return StepWarnings.kept(module.layout(), TaskNames.COMPILE_KOTLIN)
+                && CompileInputs.kotlinStampFresh(
+                        module, inputs, PlannerLang.kotlinStampTokens(inputs.classpath(), snapshotter))
                 // As the build: a fresh stamp over a partly wiped tree is not up to date.
-                && ModuleOutputs.compileOutputsOnDisk(
-                        actionCache, prepared.layout().classesDir(), BuildStamps.KOTLIN);
+                && CompileInputs.outputsOnDisk(actionCache, module, BuildStamps.KOTLIN);
     }
 
     /**
@@ -183,47 +128,22 @@ final class ForecastLangArms {
      * known, as the build answers it. A toolchain that cannot be resolved read-only forecasts a
      * full compile: the pessimistic answer, never a false hit.
      */
-    LangStep groovyStep(ForecastScope.Prepared prepared) throws Exception {
-        BuildLayout layout = prepared.layout();
-        List<Path> gvSrc = prepared.gvSrc();
-        boolean mixed = prepared.mixedGroovy();
+    LangStep groovyStep(CompileInputs.Module module, CompileInputs.Groovy inputs) throws Exception {
+        BuildLayout layout = module.layout();
+        List<Path> gvSrc = inputs.sources();
         String full = "full compile · " + ForecastSteps.count(gvSrc.size(), "source");
         GroovycRequest req;
         try {
-            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
-            List<Path> cp = prepared.withProvided(
-                    PlannerSupport.mainCompileClasspath(dir, project, prepared.lock(), resolver, sib, false));
-            List<Path> javaRoots = mixed
-                    ? PlannerKsp.kotlinJavaSourceRoots(
-                            true, prepared.compact(), dir, layout, prepared.pkgDecls(), prepared.ksp())
-                    : null;
-            req = PlannerLang.groovyRequest(
-                    project,
-                    prepared.lock(),
-                    dir,
-                    cas,
-                    gvSrc,
-                    PlannerCompile.groovyClasspath(
-                            cp,
-                            layout,
-                            prepared.kotlinModule() && !prepared.ktSrc().isEmpty()),
-                    layout.groovyClassesDir(),
-                    javaRoots,
-                    mixed ? layout.groovyStubsDir() : null,
-                    prepared.processorCp(),
-                    prepared.release(),
-                    prepared.javaHome());
+            req = CompileInputs.groovyRequest(module, inputs);
         } catch (Exception e) {
             Log.debug("groovyStep: the Groovy toolchain could not be resolved read-only", e);
             // Without the toolchain the request cannot be keyed: the stamp's presence and the
             // sources' mtimes are the evidence left, and a stamp that vouches for every source the
             // compile read is the same answer the build's own stamp check gives.
-            List<Path> inputs = new ArrayList<>(gvSrc);
-            if (mixed) inputs.addAll(prepared.mainSrc());
             boolean fresh = !compileDepDirty
                     && !force
                     && StepWarnings.kept(layout, TaskNames.COMPILE_GROOVY)
-                    && FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, inputs);
+                    && FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, inputs.stampInputs());
             return new LangStep(
                     fresh
                             ? new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null)
@@ -234,24 +154,16 @@ final class ForecastLangArms {
                                     null),
                     null);
         }
-        List<Path> freshInputs = new ArrayList<>(gvSrc);
-        if (mixed) freshInputs.addAll(prepared.mainSrc());
         if (!compileDepDirty
                 && !force
                 && StepWarnings.kept(layout, TaskNames.COMPILE_GROOVY)
-                && FreshnessStamp.isFresh(
-                        layout.compileStampDir(),
-                        BuildStamps.GROOVY,
-                        freshInputs,
-                        FreshnessStamp.ClasspathTokens.of(ActionKey.groovycClasspathTokens(req, classpathToken)),
-                        prepared.release(),
-                        PlannerLang.groovyStampDigest(
-                                project, prepared.lock(), dir, prepared.release(), prepared.javaHome()))) {
+                && CompileInputs.groovyStampFresh(
+                        module, inputs, ActionKey.groovycClasspathTokens(req, classpathToken))) {
             return new LangStep(
                     new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null), null);
         }
-        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
-        String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
+        String taskId = CompileInputs.groovyTaskId(module);
+        String key = LangCompile.groovyKey(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
         boolean hit = ForecastSteps.present(actionCache, key);
         // groovyc keeps no incremental state, so the pointer is the only prior record.
         String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, null, ActionKey.snapshotInputs(req));
@@ -267,6 +179,7 @@ final class ForecastLangArms {
      */
     @Nullable
     String kotlinTestKey(
+            ForecastScope s,
             ForecastScope.Prepared prepared,
             List<Path> sources,
             List<Path> classpath,
@@ -275,21 +188,26 @@ final class ForecastLangArms {
             @Nullable List<Path> javaRoots) {
         try {
             Path workingDir = ActionKey.stateDir(
-                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cache)),
+                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(s.cache)),
                     TaskNames.COMPILE_TEST_KOTLIN,
                     testClasses);
             PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
-                    project,
-                    dir,
-                    cache,
-                    cas,
+                    s.project,
+                    s.dir,
+                    s.cache,
+                    s.cas,
                     sources,
                     classpath,
                     outputDir,
                     workingDir,
                     PlannerLang.kotlinConfig(
-                            project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots));
-            return ActionKey.forKotlinc(
+                            s.project,
+                            prepared.parsed().lock(),
+                            s.dir,
+                            prepared.parsed().release(),
+                            prepared.javaHome(),
+                            javaRoots));
+            return LangCompile.kotlinKey(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses),
                     worker.request(),
                     BuildIdentity.cacheKeyVersion(),
@@ -306,6 +224,7 @@ final class ForecastLangArms {
      */
     @Nullable
     String groovyTestKey(
+            ForecastScope s,
             ForecastScope.Prepared prepared,
             List<Path> sources,
             List<Path> classpath,
@@ -314,19 +233,19 @@ final class ForecastLangArms {
             @Nullable List<Path> javaRoots) {
         try {
             GroovycRequest req = PlannerLang.groovyRequest(
-                    project,
-                    prepared.lock(),
-                    dir,
-                    cas,
+                    s.project,
+                    prepared.parsed().lock(),
+                    s.dir,
+                    s.cas,
                     sources,
                     classpath,
                     outputDir,
                     javaRoots,
                     null,
-                    javaRoots == null ? List.of() : prepared.processorCp(),
-                    prepared.release(),
+                    javaRoots == null ? List.of() : prepared.classpaths().processor(),
+                    prepared.parsed().release(),
                     prepared.javaHome());
-            return ActionKey.forGroovyc(
+            return LangCompile.groovyKey(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses),
                     req,
                     BuildIdentity.cacheKeyVersion(),

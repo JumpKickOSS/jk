@@ -17,6 +17,7 @@ import cc.jumpkick.runtime.PreflightPartial;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -74,6 +75,11 @@ public final class BuildForecasting {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir).dirty();
     }
 
+    /** The ambient request's knobs ({@link BuildKnobs#of(Session)}), skipping tests on {@code skipTests}. */
+    private static BuildKnobs ambientKnobs(boolean skipTests) {
+        return BuildKnobs.of(SessionContext.current()).withSkipTests(skipTests);
+    }
+
     /**
      * Read-only variant for pure estimates (ForecastVerb, post-clean ETA): consults the memo but
      * NEVER stores one. A query that writes {@code target/.jk/preflight} resurrects the target
@@ -81,7 +87,7 @@ public final class BuildForecasting {
      */
     public static Set<Path> forecastDirtyDirsReadOnly(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, false, null)
+        return forecastWithFingerprints(graph, cache, entryDir, ambientKnobs(skipTests), false)
                 .dirty();
     }
 
@@ -145,30 +151,22 @@ public final class BuildForecasting {
      */
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE);
-    }
-
-    static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir, WorkspaceTarget target) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, true, null);
+        return forecastWithFingerprints(graph, cache, entryDir, ambientKnobs(skipTests), true);
     }
 
     /**
-     * The lifecycle's verdict through {@code target}'s phase (COMPILE, TEST or PACKAGE): a goal's
-     * tail is priced apart from it, so every goal that packages agrees with {@code jk build} on
-     * which modules are dirty. {@code persistMemo=false} consults the dirty memo but never stores
-     * one (read-only estimates). The profile's javac args key every compile step, so the walk
-     * forecasts against them and the memo is stored and consulted under the profile's name.
+     * The lifecycle's verdict under {@code knobs}, through their goal's phase (COMPILE, TEST or
+     * PACKAGE): a goal's tail is priced apart from it, so every goal that packages agrees with
+     * {@code jk build} on which modules are dirty. {@code persistMemo=false} consults the dirty memo
+     * but never stores one (read-only estimates). The profile's javac args key every compile step,
+     * so the walk forecasts against them and the memo is stored and consulted under the profile's
+     * name.
      */
     static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph,
-            Path cache,
-            boolean skipTests,
-            @Nullable Path entryDir,
-            WorkspaceTarget target,
-            boolean persistMemo,
-            @Nullable String profile) {
-        WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
+            BuildGraph.Result graph, Path cache, @Nullable Path entryDir, BuildKnobs knobs, boolean persistMemo) {
+        WorkspaceTarget t = knobs.target();
+        boolean skipTests = knobs.skipTests();
+        @Nullable String profile = knobs.profile();
         // The memo answers one question: are this module's *inputs* unchanged. That is the whole of
         // what PACKAGE and TEST need; COMPILE's dirty set is narrower than the one a memo stores.
         boolean memoReadable = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
@@ -186,7 +184,7 @@ public final class BuildForecasting {
             Map<Path, Map<Path, String>> claims = new LinkedHashMap<>();
             Set<Path> scheduled = all;
             if (SessionContext.current().verifyCache() && entryDir != null) {
-                Set<Path> clean = claimedClean(graph, cache, skipTests, entryDir, t, profile);
+                Set<Path> clean = claimedClean(graph, cache, entryDir, knobs);
                 List<BuildGraph.BuildUnit> skippable = new ArrayList<>();
                 for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                     if (clean.contains(u.dir())
@@ -243,8 +241,7 @@ public final class BuildForecasting {
                 return new Preflight(
                         memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
-            Optional<Preflight> cone =
-                    coneIfPartial(graph, cache, skipTests, entryDir, t, profile, persistMemo, all, partial);
+            Optional<Preflight> cone = coneIfPartial(graph, cache, entryDir, knobs, persistMemo, all, partial);
             if (cone.isPresent()) return cone.get();
             if (partial.isPresent()) {
                 // Every module was fingerprinted by the load; a changed one carries its new print.
@@ -260,7 +257,7 @@ public final class BuildForecasting {
         try {
             Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-            List<TaskForecast.Module> modules = ForecastWalk.of(graph, cas, ac, cache, skipTests, t, profile, null);
+            List<TaskForecast.Module> modules = ForecastWalk.of(graph, cas, ac, cache, knobs, null);
             Set<Path> dirty = new HashSet<>();
             Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {
@@ -316,10 +313,8 @@ public final class BuildForecasting {
     private static Optional<Preflight> coneIfPartial(
             BuildGraph.Result graph,
             Path cache,
-            boolean skipTests,
             Path entryDir,
-            WorkspaceTarget t,
-            @Nullable String profile,
+            BuildKnobs knobs,
             boolean persistMemo,
             Set<Path> all,
             Optional<PreflightPartial> partial) {
@@ -337,8 +332,7 @@ public final class BuildForecasting {
         Set<Path> cone = downstreamCone(graph, seeds);
         if (cone.size() >= all.size()) return Optional.empty();
         Perf.note("preflight-memo partial", "changed", partial.get().changed().size(), "cone", cone.size());
-        return Optional.of(
-                forecastCone(graph, cache, skipTests, entryDir, t, profile, persistMemo, partial.get(), cone));
+        return Optional.of(forecastCone(graph, cache, entryDir, knobs, persistMemo, partial.get(), cone));
     }
 
     /**
@@ -377,10 +371,8 @@ public final class BuildForecasting {
     private static Preflight forecastCone(
             BuildGraph.Result graph,
             Path cache,
-            boolean skipTests,
             Path entryDir,
-            WorkspaceTarget t,
-            @Nullable String profile,
+            BuildKnobs knobs,
             boolean persistMemo,
             PreflightPartial partial,
             Set<Path> cone) {
@@ -394,7 +386,7 @@ public final class BuildForecasting {
         Set<Path> walk = new LinkedHashSet<>(cone);
         for (Path d : partial.restoreNeeded())
             walk.add(byNormalized.getOrDefault(d.toAbsolutePath().normalize(), d));
-        List<TaskForecast.Module> modules = ForecastWalk.of(graph, cas, ac, cache, skipTests, t, profile, walk);
+        List<TaskForecast.Module> modules = ForecastWalk.of(graph, cas, ac, cache, knobs, walk);
         Set<Path> dirty = new HashSet<>();
         Set<Path> restoreNeeded = new HashSet<>();
         for (TaskForecast.Module m : modules) {
@@ -408,7 +400,10 @@ public final class BuildForecasting {
             }
         }
         withStaleOutputs(graph, entryDir, cache, partial.fingerprints(), dirty);
-        if (persistMemo) PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, dirty, partial.fingerprints());
+        if (persistMemo) {
+            PreflightMemo.storeDirty(
+                    entryDir, graph, knobs.skipTests(), knobs.profile(), dirty, partial.fingerprints());
+        }
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             if (!dirty.contains(u.dir()) && BuildLogicScripts.anyAlways(u.dir())) dirty.add(u.dir());
         }
@@ -421,12 +416,7 @@ public final class BuildForecasting {
      * what the steps then key. Neither is stored.
      */
     private static Set<Path> claimedClean(
-            BuildGraph.Result graph,
-            Path cache,
-            boolean skipTests,
-            @Nullable Path entryDir,
-            WorkspaceTarget target,
-            @Nullable String profile) {
+            BuildGraph.Result graph, Path cache, @Nullable Path entryDir, BuildKnobs knobs) {
         Session honest = SessionContext.current()
                 .withConfig(SessionContext.current().config().withRebuild(false).withForce(false))
                 .withVerifyCache(false);
@@ -439,15 +429,15 @@ public final class BuildForecasting {
                     var memo = PreflightMemo.tryLoadDirty(
                             entryDir,
                             graph,
-                            skipTests,
-                            profile,
+                            knobs.skipTests(),
+                            knobs.profile(),
                             new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
                     memo.ifPresent(m -> {
                         Set<Path> dirty = new HashSet<>(m.dirty());
                         for (Path dir : all) if (!dirty.contains(dir)) clean.add(dir);
                     });
                 }
-                Preflight walked = forecastWithFingerprints(graph, cache, skipTests, null, target, false, profile);
+                Preflight walked = forecastWithFingerprints(graph, cache, null, knobs, false);
                 for (Path dir : all) {
                     if (!walked.dirty().contains(dir)) clean.add(dir);
                 }
@@ -497,33 +487,19 @@ public final class BuildForecasting {
      * renders. Pure policy — nothing here writes to {@code stdout}/{@code stderr}. Graph-resolution
      * errors come back in {@link ExplainPlan#errors} (the caller renders the same failure); an
      * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
+     *
+     * <p>{@code knobs} are {@code jk build}'s with the same flags: its test policy, so the forecast
+     * does not claim test work the live command will not run, and its profile and variant, which
+     * key the steps and the dirty memo exactly as the build keys them. A non-empty selection
+     * confines the plan to its cone — the selected module dirs and every prerequisite the graph
+     * reaches from them, which is the set {@code jk build -m} with the same selection schedules. An
+     * empty selection prices the whole workspace.
      */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache) throws IOException {
-        return explain(entryDir, entryBuild, cache, false);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path)} with {@code skipTests} matching {@code jk build
-     * --skip-tests} / {@code jk explain -S} so the forecast does not claim test work the
-     * live command will not run.
-     */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)
+    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, BuildKnobs knobs)
             throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(entryDir, entryBuild);
-        return explainFromGraph(graph, cache, skipTests, entryDir);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path, boolean)} confined to the cone of {@code selection}
-     * — the selected module dirs and every prerequisite the graph reaches from them, which is the
-     * set {@code jk build -m} with the same selection schedules. An empty selection prices the
-     * whole workspace.
-     */
-    public static ExplainPlan explain(
-            Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests, Set<Path> selection) throws IOException {
-        if (selection.isEmpty()) return explain(entryDir, entryBuild, cache, skipTests);
-        BuildGraph.Result graph = BuildGraph.resolve(entryDir, entryBuild);
-        return explainSelection(graph, cache, skipTests, selection);
+        if (knobs.selection().isEmpty()) return explainFromGraph(graph, cache, entryDir, knobs);
+        return explainSelection(graph, cache, knobs);
     }
 
     /**
@@ -533,36 +509,24 @@ public final class BuildForecasting {
      * Explain does the same: forecast the graph the way that build does (no memo shortcut), then
      * keep the cone, so the modules listed, the edges drawn and the ETA totals are that build's.
      */
-    static ExplainPlan explainSelection(BuildGraph.Result graph, Path cache, boolean skipTests, Set<Path> selection) {
+    static ExplainPlan explainSelection(BuildGraph.Result graph, Path cache, BuildKnobs knobs) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
-        Set<Path> cone = ModuleHints.withPrereqs(graph, selection, skipTests);
-        return restrictToSelection(explainFromGraph(graph, cache, skipTests, null), cone);
+        Set<Path> cone = ModuleHints.withPrereqs(graph, knobs.selection(), knobs.skipTests());
+        return restrictToSelection(explainFromGraph(graph, cache, null, knobs), cone);
     }
 
     /**
-     * Forecast from an already-resolved graph — the same {@link TaskForecaster} walk {@code jk
-     * build} uses for its countdown seed so explain and build never price different step sets.
-     */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests) {
-        return explainFromGraph(graph, cache, skipTests, null);
-    }
-
-    /**
-     * As {@link #explainFromGraph(BuildGraph.Result, Path, boolean)} with {@code entryDir} for the
-     * dirty-memo fast path: when a prior build recorded an empty dirty set and sources are still
-     * unchanged, skip the multi-second {@link TaskForecaster} walk (same shortcut as fully-cached
-     * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
+     * Forecast from an already-resolved graph under the request's {@code knobs} — the same
+     * {@link TaskForecaster} walk {@code jk build} uses for its countdown seed so explain and build
+     * never price different step sets. With {@code entryDir}, the dirty memo stored under the same
+     * profile is the fast path: when a prior build recorded an empty dirty set and sources are still
+     * unchanged, skip the multi-second walk (same shortcut as fully-cached {@code jk build}). ETA is
+     * 0; the plan is "Fully Cached" for every module.
      */
     public static ExplainPlan explainFromGraph(
-            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
-        return explainFromGraph(graph, cache, skipTests, entryDir, null);
-    }
-
-    /** As above under the request's {@code --profile}, which keys the compile steps and the memo. */
-    public static ExplainPlan explainFromGraph(
-            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir, @Nullable String profile) {
+            BuildGraph.Result graph, Path cache, @Nullable Path entryDir, BuildKnobs knobs) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
@@ -577,8 +541,8 @@ public final class BuildForecasting {
             var memo = PreflightMemo.tryLoadDirty(
                     entryDir,
                     graph,
-                    skipTests,
-                    profile,
+                    knobs.skipTests(),
+                    knobs.profile(),
                     new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
             if (memo.isPresent()
                     && memo.get().dirty().isEmpty()
@@ -600,8 +564,7 @@ public final class BuildForecasting {
         // to `server/engine` read as 30 modules dirty and priced their suites, while `jk build`
         // scheduled 7 and never touched them. Both statements were true; only one is the plan for
         // the command the user is about to run.
-        Preflight pf = forecastWithFingerprints(
-                graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, /* persistMemo= */ false, profile);
+        Preflight pf = forecastWithFingerprints(graph, cache, entryDir, knobs, /* persistMemo= */ false);
         Set<Path> scheduled = new HashSet<>(pf.dirty());
         scheduled.addAll(pf.restoreNeeded());
         if (scheduled.isEmpty()) return fullyCachedExplainPlan(graph);
@@ -609,7 +572,7 @@ public final class BuildForecasting {
         if (modules.isEmpty()) {
             // Memo hit, or --force/--redo: no walk happened, so the step lists come from one here,
             // over the modules the build schedules and no others.
-            modules = scheduledModules(graph, cache, skipTests, profile, scheduled);
+            modules = scheduledModules(graph, cache, knobs, scheduled);
         }
         return new ExplainPlan(
                 withReasons(onlyScheduled(modules, scheduled), pf.reasons()),
@@ -626,19 +589,16 @@ public final class BuildForecasting {
      * root runs a {@code jk: always} script, a no-op spent ~270 ms pricing that one script.
      */
     public static ExplainPlan scheduledPlan(
-            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable String profile, Set<Path> scheduled) {
+            BuildGraph.Result graph, Path cache, BuildKnobs knobs, Set<Path> scheduled) {
         return new ExplainPlan(
-                scheduledModules(graph, cache, skipTests, profile, scheduled),
-                graph.edges(),
-                graph.maxReadyWidth(),
-                List.of());
+                scheduledModules(graph, cache, knobs, scheduled), graph.edges(), graph.maxReadyWidth(), List.of());
     }
 
     private static List<TaskForecast.Module> scheduledModules(
-            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable String profile, Set<Path> scheduled) {
+            BuildGraph.Result graph, Path cache, BuildKnobs knobs, Set<Path> scheduled) {
         Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-        return ForecastWalk.of(graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, profile, scheduled);
+        return ForecastWalk.of(graph, cas, actionCache, cache, knobs, scheduled);
     }
 
     /** Attach the preflight's own reasons to the modules it scheduled. */

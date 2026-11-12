@@ -11,8 +11,8 @@ import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.Tail;
-import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -84,7 +84,8 @@ public final class ModulePipeline {
             Set<Path> launchedAssemblies,
             SiblingArtifacts.Gate siblings) {
         Path dir = unit.dir();
-        WorkspaceTarget target = request.target();
+        BuildKnobs knobs = BuildKnobs.of(request);
+        WorkspaceTarget target = knobs.target();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
         if (target == WorkspaceTarget.RESHELVE) {
             BuildPlan reshelve = reshelve(unit, request.cache(), spec);
@@ -92,8 +93,7 @@ public final class ModulePipeline {
             for (Task t : reshelve.steps()) all.add(t.name());
             return new Planned(reshelve, all);
         }
-        boolean skipTests = target.tests() == WorkspaceTarget.Tests.NOT_RUN || request.skipTests();
-        if (EnvPreflight.applies(target, skipTests, selected(spec, dir))) {
+        if (EnvPreflight.applies(target, knobs.skipTests(), selected(spec, dir))) {
             List<EnvPreflight.Missing> missing =
                     EnvPreflight.missing(unit.manifest().build().env(), dir);
             if (!missing.isEmpty()) {
@@ -106,7 +106,7 @@ public final class ModulePipeline {
         // A test run packages the jar a sibling compiles against: its suite reads it.
         boolean packagesForTests = target == WorkspaceTarget.TEST && consumed && !nodeModule;
         BuildPlanner.Inputs in =
-                inputs(dir, request, moduleDirs, target == WorkspaceTarget.TEST && !consumed, target, siblings);
+                inputs(dir, request, knobs, moduleDirs, target == WorkspaceTarget.TEST && !consumed, siblings);
         BuildPlan.Builder plan = BuildPlanner.coreBuilder(in, forceRebuild);
         if (!target.packages()) {
             if (packagesForTests) {
@@ -182,42 +182,46 @@ public final class ModulePipeline {
 
     /** The request-level knobs every module's {@link BuildPlanner.Inputs} carries. */
     static UnaryOperator<BuildPlanner.Inputs> requestKnobs(WorkspaceRequest request, Set<Path> moduleDirs) {
-        return requestKnobs(request, moduleDirs, SiblingArtifacts.NONE);
+        return requestKnobs(request, BuildKnobs.of(request), moduleDirs, SiblingArtifacts.NONE);
     }
 
-    /** As above, and the module's side of the schedule's artifact wait. */
-    static UnaryOperator<BuildPlanner.Inputs> requestKnobs(
-            WorkspaceRequest request, Set<Path> moduleDirs, SiblingArtifacts.Gate siblings) {
+    /** As above from {@code request}'s {@code knobs}, and the module's side of the schedule's artifact wait. */
+    private static UnaryOperator<BuildPlanner.Inputs> requestKnobs(
+            WorkspaceRequest request, BuildKnobs knobs, Set<Path> moduleDirs, SiblingArtifacts.Gate siblings) {
         return inputs -> inputs.withWorkerCount(Math.max(0, request.workers()))
-                .withProfileName(request.profile())
+                .withProfileName(knobs.profile())
                 .withProjectModules(moduleDirs)
-                .withVariant(request.variant(), request.clientEnv())
-                .withEphemeralActions(request.ephemeralActions())
+                .withVariant(knobs.variant())
+                .withClientEnv(knobs.clientEnv())
+                .withEphemeralActions(knobs.ephemeral())
                 .withSiblings(siblings);
     }
 
     /** The one {@link BuildPlanner.Inputs} a module's plan is built from. */
     static BuildPlanner.Inputs inputs(Path dir, WorkspaceRequest request, Set<Path> moduleDirs, boolean testOnly) {
-        return inputs(dir, request, moduleDirs, testOnly, request.target(), SiblingArtifacts.NONE);
+        return inputs(dir, request, BuildKnobs.of(request), moduleDirs, testOnly, SiblingArtifacts.NONE);
     }
 
-    /** As above for {@code target}: a goal whose {@link WorkspaceTarget#tests()} is NOT_RUN skips them whatever the request says. */
-    static BuildPlanner.Inputs inputs(
+    /**
+     * As above under {@code request}'s {@code knobs}: their goal and its test policy, profile,
+     * variant and client env.
+     */
+    private static BuildPlanner.Inputs inputs(
             Path dir,
             WorkspaceRequest request,
+            BuildKnobs knobs,
             Set<Path> moduleDirs,
             boolean testOnly,
-            WorkspaceTarget target,
             SiblingArtifacts.Gate siblings) {
-        boolean skipTests = target.tests() == WorkspaceTarget.Tests.NOT_RUN || request.skipTests();
-        return requestKnobs(request, moduleDirs, siblings)
-                .apply(TaskForecaster.inputsFor(
+        WorkspaceTarget target = knobs.target();
+        return requestKnobs(request, knobs, moduleDirs, siblings)
+                .apply(BuildPlanner.Inputs.forBuild(
                         dir,
                         request.cache(),
                         Math.max(0, request.workers()),
                         request.jdksDir(),
-                        request.profile(),
-                        skipTests,
+                        knobs.profile(),
+                        knobs.skipTests(),
                         request.verbose(),
                         moduleDirs,
                         testOnly,

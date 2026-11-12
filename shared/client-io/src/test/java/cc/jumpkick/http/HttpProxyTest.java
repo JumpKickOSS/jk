@@ -10,9 +10,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.testing.LoopbackHttp;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
@@ -246,11 +244,9 @@ class HttpProxyTest {
     /** A proxy that is down fails the request; the failure names the target, never the proxy's credential. */
     @Test
     void a_failure_through_the_proxy_carries_no_proxy_credential() throws Exception {
-        int closed;
-        try (var probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closed = probe.getLocalPort();
-        }
-        String down = "http://alice:s3cr3t@127.0.0.1:" + closed;
+        // Port 0 refuses every connect at once; a port freed by closing a probe socket can be taken
+        // by another test before the request reaches it.
+        String down = "http://alice:s3cr3t@127.0.0.1:0";
 
         assertThatThrownBy(() -> through(Map.of("http_proxy", down)).get(BEHIND_PROXY))
                 .isInstanceOf(IOException.class)

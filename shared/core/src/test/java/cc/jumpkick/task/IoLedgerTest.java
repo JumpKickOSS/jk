@@ -3,6 +3,9 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,7 +16,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,11 +23,6 @@ class IoLedgerTest {
 
     @TempDir
     Path dir;
-
-    @AfterEach
-    void dropAmbient() {
-        IoLedger.close();
-    }
 
     @Test
     void starts_empty() {
@@ -80,26 +77,30 @@ class IoLedgerTest {
     }
 
     @Test
-    void ambient_is_absent_until_opened_and_gone_after_close() {
-        IoLedger first = IoLedger.currentOrNew();
-        assertThat(IoLedger.currentOrNew()).isNotSameAs(first); // detached: a fresh one each time
+    void a_session_meters_into_the_bound_requests_ledger_and_a_detached_one_off_a_request() {
+        IoLedger first = Session.defaults().io();
+        assertThat(Session.defaults().io()).isNotSameAs(first); // detached: a fresh one each time
 
         IoLedger run = new IoLedger();
-        IoLedger.open(run);
-        assertThat(IoLedger.currentOrNew()).isSameAs(run);
-        assertThat(IoLedger.currentOrNew()).isSameAs(run);
-
-        IoLedger.close();
-        assertThat(IoLedger.currentOrNew()).isNotSameAs(run);
+        Request.of(1, run).run(() -> {
+            assertThat(Session.defaults().io()).isSameAs(run);
+            assertThat(Session.defaults().io()).isSameAs(run);
+        });
+        assertThat(Session.defaults().io()).isNotSameAs(run);
     }
 
     @Test
-    void ambient_reaches_threads_the_run_forks() throws InterruptedException {
+    void the_ledger_reaches_threads_the_request_starts_and_not_bare_ones() throws InterruptedException {
+        // A scoped binding reaches a thread only when it is carried there: SessionContext's starts
+        // carry the request, and a bare thread meters into a detached ledger nobody reads.
         IoLedger run = new IoLedger();
-        IoLedger.open(run);
-        Thread forked = new Thread(() -> IoLedger.currentOrNew().remoteDown(64));
-        forked.start();
-        assertThat(forked.join(Duration.ofSeconds(30))).isTrue();
+        Thread[] started = new Thread[2];
+        Request.of(1, run).run(() -> {
+            started[0] = SessionContext.startVirtual(
+                    "jk-ledger-test", () -> Session.defaults().io().remoteDown(64));
+            started[1] = Thread.ofPlatform().start(() -> Session.defaults().io().remoteDown(1_000));
+        });
+        for (Thread t : started) assertThat(t.join(Duration.ofSeconds(30))).isTrue();
 
         assertThat(run.totals().remoteDown()).isEqualTo(64);
     }

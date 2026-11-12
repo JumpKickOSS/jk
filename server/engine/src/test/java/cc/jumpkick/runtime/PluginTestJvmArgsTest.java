@@ -96,13 +96,24 @@ class PluginTestJvmArgsTest {
         Files.writeString(file, "-Dframework.model=/m/target/model.json\n");
         PluginDeclarations decls = new PluginDeclarations(List.of(model), null, List.of());
 
-        List<String> runFlags = TestLaunch.testJvmArgs(layout, project, null, decls);
-        assertThat(runFlags).startsWith("-Dframework.model=/m/target/model.json");
+        TestStampInputs.Facts facts = TestStampInputs.Facts.of(tmp, project);
+        TestStampInputs withPlugin = TestStampInputs.of(
+                new TestStampInputs.Facts(
+                        facts.dir(),
+                        facts.project(),
+                        layout,
+                        null,
+                        facts.sessionSelection(),
+                        decls,
+                        facts.workerJars(),
+                        List.of(),
+                        List.of(),
+                        facts.compileTestKeys()),
+                ClasspathFingerprint.ON_DISK);
+        assertThat(withPlugin.jvmArgs()).anyMatch(a -> a.contains("-Dframework.model=/m/target/model.json"));
 
-        List<String> forecastExtras =
-                PlannerSupport.testStampExtras(tmp, project, null, ClasspathFingerprint.ON_DISK, runFlags);
-        List<String> withoutPlugin = PlannerSupport.testStampExtras(tmp, project, null, ClasspathFingerprint.ON_DISK);
-        assertThat(String.join("\n", forecastExtras)).contains("-Dframework.model=/m/target/model.json");
-        assertThat(forecastExtras).isNotEqualTo(withoutPlugin);
+        TestStampInputs withoutPlugin = TestStampInputs.of(facts, ClasspathFingerprint.ON_DISK);
+        assertThat(String.join("\n", withPlugin.extras())).contains("-Dframework.model=/m/target/model.json");
+        assertThat(withPlugin.extras()).isNotEqualTo(withoutPlugin.extras());
     }
 }

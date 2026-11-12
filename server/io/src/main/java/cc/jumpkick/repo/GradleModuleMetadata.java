@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -14,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -51,9 +53,7 @@ public final class GradleModuleMetadata {
      * Process-wide parse memo keyed by absolute path + size + mtime. First-in-process Android locks
      * re-read the same {@code .module} files across scopes; MiniJson dominates without this.
      */
-    private static final ConcurrentHashMap<String, GradleModuleMetadata> PARSE_CACHE = new ConcurrentHashMap<>();
-
-    private static final int PARSE_CACHE_MAX = 4_096;
+    private static final StampedMemo<Path, FileStamp, GradleModuleMetadata> PARSE_CACHE = StampedMemo.bounded(4_096);
 
     private final List<Map<String, Object>> variants;
 
@@ -68,22 +68,27 @@ public final class GradleModuleMetadata {
 
     /** Drop the parse memo and return how many module files went; for the idle engine. */
     public static int dropParseMemo() {
-        int dropped = PARSE_CACHE.size();
-        PARSE_CACHE.clear();
-        return dropped;
+        return PARSE_CACHE.clear();
+    }
+
+    public static GradleModuleMetadata parse(Path moduleFile) throws IOException {
+        FileStamp stamp = FileStamp.of(moduleFile);
+        if (stamp == null) throw new NoSuchFileException(moduleFile.toString());
+        try {
+            return PARSE_CACHE.get(moduleFile.toAbsolutePath().normalize(), stamp, () -> {
+                try {
+                    return read(moduleFile);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
     }
 
     @SuppressWarnings("unchecked")
-    public static GradleModuleMetadata parse(Path moduleFile) throws IOException {
-        BasicFileAttributes attrs = Files.readAttributes(moduleFile, BasicFileAttributes.class);
-        String cacheKey = moduleFile.toAbsolutePath()
-                + "\0"
-                + attrs.size()
-                + "\0"
-                + attrs.lastModifiedTime().toMillis();
-        GradleModuleMetadata hit = PARSE_CACHE.get(cacheKey);
-        if (hit != null) return hit;
-
+    private static GradleModuleMetadata read(Path moduleFile) throws IOException {
         String text = Files.readString(moduleFile, StandardCharsets.UTF_8);
         // KMP roots publish platform redirects via available-at, families align through
         // dependencyConstraints, and a test-fixtures edge is a requestedCapabilities entry. A .module
@@ -93,24 +98,15 @@ public final class GradleModuleMetadata {
         if (!text.contains("\"available-at\"")
                 && !text.contains("\"dependencyConstraints\"")
                 && !text.contains("\"requestedCapabilities\"")) {
-            GradleModuleMetadata empty = new GradleModuleMetadata(List.of());
-            remember(cacheKey, empty);
-            return empty;
+            return new GradleModuleMetadata(List.of());
         }
 
         Object root = MiniJson.parse(text);
         if (!(root instanceof Map<?, ?> map)) throw new IOException("not a GMM document: " + moduleFile);
         Object variants = map.get("variants");
-        GradleModuleMetadata parsed = !(variants instanceof List<?> list)
+        return !(variants instanceof List<?> list)
                 ? new GradleModuleMetadata(List.of())
                 : new GradleModuleMetadata((List<Map<String, Object>>) (List<?>) list);
-        remember(cacheKey, parsed);
-        return parsed;
-    }
-
-    private static void remember(String cacheKey, GradleModuleMetadata parsed) {
-        if (PARSE_CACHE.size() >= PARSE_CACHE_MAX) PARSE_CACHE.clear();
-        PARSE_CACHE.putIfAbsent(cacheKey, parsed);
     }
 
     /**

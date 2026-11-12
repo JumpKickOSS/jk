@@ -3,11 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -15,7 +13,6 @@ import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -64,9 +61,8 @@ class ClassPatternSuiteE2eTest {
         Path tests = Files.createDirectories(project.resolve("test/src/com/example"));
         Files.writeString(tests.resolve("FooTest.java"), testClass("FooTest", 1));
         Files.writeString(tests.resolve("FooIT.java"), testClass("FooIT", 2));
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null);
+                project, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();
     }
 
@@ -116,22 +112,9 @@ class ClassPatternSuiteE2eTest {
 
     private static Run run(TestSelection selection) throws Exception {
         Session session = Session.defaults().withTestSelection(selection);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                tmp.resolve("cache"),
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                /* testOnly */ true,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(project, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withTestOnly(true);
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();
         return new Run(plan, SessionContext.where(session, plan::run));
     }

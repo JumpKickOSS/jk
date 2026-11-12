@@ -59,8 +59,7 @@ class TestCompileGoalE2eTest {
                 }
                 """);
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        assertThat(LockPlans.lockBuildPlan(
-                                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+        assertThat(LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                         .run()
                         .errors())
                 .isEmpty();

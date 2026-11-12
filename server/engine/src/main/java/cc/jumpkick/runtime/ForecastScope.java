@@ -4,9 +4,8 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
@@ -17,7 +16,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
@@ -26,7 +24,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.SourceApiIndex;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +34,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
@@ -55,7 +52,25 @@ public final class ForecastScope implements StepForecast.Scope {
     final BuildGraph.BuildUnit u;
     final TaskForecaster.DepDirtiness dep;
     final boolean force;
+
+    /** The request's knobs the module's plan is built under: its goal, profile and variant. */
+    final BuildKnobs knobs;
+
+    /**
+     * The plan runs no JUnit, as its {@link BuildPlanner.Inputs#skipTests} says: the goal's test
+     * policy, or a guard-scripts-only selection.
+     */
     final boolean skipTests;
+
+    /**
+     * The plan carries no guard lane, as {@code PlannerGuards.detect} skips them: tests skipped
+     * outside a test goal and no {@code --guard}.
+     */
+    final boolean guardLanesSkipped;
+
+    /** The plan's module lane indexes the test classes, as {@code PlannerGuards.indexesTestClasses} says. */
+    final boolean testsIndexed;
+
     final Cas cas;
     final ClasspathResolver resolver;
     final ActionCache actionCache;
@@ -70,9 +85,7 @@ public final class ForecastScope implements StepForecast.Scope {
     final RestoredOutputs restored;
 
     final Map<Path, TaskForecaster.ModuleHint> hints;
-    final WorkspaceTarget target;
     final @Nullable Path workerJar;
-    final @Nullable String profileName;
     final JkBuild project;
     final Path dir;
     final Path lockFile;
@@ -133,9 +146,6 @@ public final class ForecastScope implements StepForecast.Scope {
     @Nullable
     String compileTestKey, compileTestKotlinKey, compileTestGroovyKey;
 
-    /** The compile-main classpath, once compile-java has derived it; the javadoc predictor keys on it. */
-    List<Path> mainCp = List.of();
-
     /** A test compile, or the fixtures it reads, will run: the suite runs. */
     boolean testDirty;
 
@@ -158,7 +168,6 @@ public final class ForecastScope implements StepForecast.Scope {
 
     private @Nullable Prepared prepared;
     private @Nullable TestSources testSources;
-    private List<Path> testCompileCp = List.of();
     private boolean ownOutputsProjected;
     private KspForecast.@Nullable Round testRound;
 
@@ -182,20 +191,23 @@ public final class ForecastScope implements StepForecast.Scope {
             BuildGraph.BuildUnit u,
             TaskForecaster.DepDirtiness dep,
             boolean force,
-            boolean skipTests,
+            BuildKnobs knobs,
             Cas cas,
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
             RestoredOutputs restored,
             Map<Path, TaskForecaster.ModuleHint> hints,
-            WorkspaceTarget target,
             @Nullable Path workerJar,
-            @Nullable String profileName) {
+            JkBuild project) {
         this.u = u;
         this.dep = dep;
         this.force = force;
-        this.skipTests = skipTests;
+        this.knobs = knobs;
+        TestSelection selection = SessionContext.current().testSelection();
+        this.skipTests = knobs.planSkipsTests(selection);
+        this.guardLanesSkipped = skipTests && !knobs.target().testOnly() && !selection.runGuardScripts();
+        this.testsIndexed = !knobs.target().compileOnly() && !skipTests;
         this.cas = cas;
         this.resolver = resolver;
         this.actionCache = actionCache;
@@ -203,10 +215,8 @@ public final class ForecastScope implements StepForecast.Scope {
         this.cache = cache;
         this.restored = restored;
         this.hints = hints;
-        this.target = target;
         this.workerJar = workerJar;
-        this.profileName = profileName;
-        this.project = ForecastSteps.planned(u.manifest(), u.dir());
+        this.project = project;
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
         this.compileDepDirty = dep.compileDepDirty();
@@ -226,22 +236,21 @@ public final class ForecastScope implements StepForecast.Scope {
      * A scope for pricing one module's tail on its own, outside a walk: no sibling is dirty and
      * nothing is restored ahead of it, so its steps answer from the caches alone.
      */
-    public static ForecastScope alone(BuildGraph.BuildUnit unit, Path cache, ActionCache actionCache) {
+    public static ForecastScope alone(BuildGraph.BuildUnit unit, JkBuild project, Path cache, ActionCache actionCache) {
         Cas cas = JkStores.storeCas();
         return new ForecastScope(
                 unit,
                 TaskForecaster.DepDirtiness.NONE,
                 false,
-                false,
+                BuildKnobs.of(SessionContext.current()),
                 cas,
                 new ClasspathResolver(cas),
                 actionCache,
                 cache,
                 new RestoredOutputs(actionCache),
                 new ConcurrentHashMap<>(),
-                WorkspaceTarget.PACKAGE,
                 null,
-                null);
+                project);
     }
 
     /** The engine's scope behind a predictor's argument. */
@@ -250,51 +259,56 @@ public final class ForecastScope implements StepForecast.Scope {
         throw new IllegalArgumentException("not an engine forecast scope: " + scope);
     }
 
-    /** Resolved once, the first time a predictor needs it; never rewritten. */
-    record Prepared(
-            Lockfile lock,
-            boolean compact,
-            BuildLayout layout,
-            int release,
-            Path javaHome,
-            List<String> javacArgs,
-            List<Path> processorCp,
-            List<Path> testProcessorCp,
-            ContributedProcessors.Paths contributedProcessors,
-            ActivePlugins.@Nullable Declared plugin,
-            @Nullable PluginDeclarations pkgDecls,
-            Path mainSrcDir,
-            List<Path> mainSrc,
-            List<Path> ktSrc,
-            List<Path> gvSrc,
-            boolean mixedKotlin,
-            boolean mixedGroovy,
-            boolean kotlinModule,
-            boolean kspPlanned,
-            KspForecast.Round mainRound,
-            ProvidedClasspath.Provided provided) {
-
-        /**
-         * The processor path javac runs, as the build's {@code ksp} step publishes it: the KSP jars
-         * split off in a module that plans a main round, the whole path otherwise.
-         */
-        List<Path> javacProcessorCp() {
-            return kspPlanned ? KspProcessors.split(processorCp).javac() : processorCp;
-        }
-
-        /** compile-test's processor path as {@link ProcessorPaths#forTest} derives the build's. */
-        List<Path> javacTestProcessorCp(JkBuild project) {
-            return ProcessorPaths.forTest(project, processorCp, javacProcessorCp(), testProcessorCp);
-        }
+    /**
+     * What every predictor reads of the module, resolved once, the first time one needs it; never
+     * rewritten: the module as parsed, its classpaths as the build's classpath step derives them,
+     * the JDK it compiles with, and its main KSP round as the build will leave it.
+     */
+    record Prepared(Parsed parsed, ModuleClasspaths classpaths, Path javaHome, KspForecast.Round mainRound) {
 
         /** Whether the main KSP round's output joins the module: the build runs one with a KSP processor. */
         boolean ksp() {
             return mainRound.state() != KspForecast.State.NONE;
         }
+    }
 
-        /** The main compile classpath the build derives: the lock's, the siblings', then the plugin-provided jars. */
-        List<Path> withProvided(List<Path> cp) {
-            return ForecastScope.withProvided(provided, cp);
+    /**
+     * The module as its plan reads it once parsed: the lock as the member reads it, its layout,
+     * release and javac args, its plugins, its shape and the source sets the build compiles.
+     */
+    record Parsed(
+            Lockfile lock,
+            BuildLayout layout,
+            int release,
+            List<String> javacArgs,
+            ActivePlugins.@Nullable Declared plugin,
+            @Nullable PluginDeclarations pkgDecls,
+            ModuleShape shape,
+            Path mainSrcDir,
+            List<Path> mainSrc,
+            List<Path> ktSrc,
+            List<Path> gvSrc) {
+
+        boolean compact() {
+            return shape.compact();
+        }
+
+        /** javac reads the Kotlin output: Kotlin and Java in one module, as {@link ModuleShape#mixed}. */
+        boolean mixedKotlin() {
+            return shape.mixed();
+        }
+
+        boolean mixedGroovy() {
+            return shape.mixedGroovy();
+        }
+
+        /** javac runs in this module, whatever else does. */
+        boolean mixedWithJava() {
+            return shape.java();
+        }
+
+        boolean kotlinModule() {
+            return shape.kotlin();
         }
 
         boolean noSources() {
@@ -312,7 +326,6 @@ public final class ForecastScope implements StepForecast.Scope {
         // The lock as this member reads it, the view the build compiles against: a partition row
         // the member does not hold must not put its jar on this module's processor path.
         Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
-        boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
         BuildLayout layout = BuildLayout.of(dir, project);
         int release = project.project().javaRelease();
         // ActionKey.forJavac hashes the project JDK, so the forecast has to resolve the same
@@ -323,30 +336,37 @@ public final class ForecastScope implements StepForecast.Scope {
         // The build's own derivation, against the same lock and the same --profile: forecast
         // action keys must match the keys the build will actually use, and a profile whose
         // javac args differ from the default's keys a different compile.
-        List<String> javacArgs = PlannerSetup.effectiveJavacArgs(project, dir, lock, profileName);
-        // The build's processor classpath exactly — workspace siblings included — or the forecast
-        // hashes a different -processorpath than the build and every KSP module forecasts a
-        // phantom rebuild.
-        List<Path> processorCp = PlannerSupport.processorClasspath(
-                dir, project, lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)), false);
-        List<Path> testProcessorCp = ProcessorPaths.forecastTest(project, lock, resolver, dir, processorCp);
-        // The processors the module's plugins contribute, resolved by the build's own derivation:
-        // left out, every module of such a plugin forecasts a compile the build then hits.
-        ContributedProcessors.Paths contributedProcessors = ContributedProcessors.forecast(project, dir, lock, cas);
+        List<String> javacArgs = PlannerSetup.effectiveJavacArgs(project, dir, lock, knobs.profile());
         // Resolved once: the declarations decide both the generated source roots compile-main
         // folds in and, at package time, whether jk packs the jar or a plugin does.
         ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);
         @Nullable PluginDeclarations pkgDecls = plugin == null ? null : plugin.decls();
+        restored.projectContributedSources(projection, layout, pkgDecls);
+        // The compilers the plan runs, from the declarations the plan reads too: a Kotlin or
+        // Groovy module whose processors or plugin steps generate Java runs javac.
+        ModuleShape shape = ModuleShape.of(project, dir, pkgDecls);
+        boolean compact = shape.compact();
         Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
         InputTrees.coverModule(dir);
-        // The build adds these to every compile and test classpath (PlannerSetup), so a key
-        // priced without them names a compile the build never makes.
-        ProvidedClasspath.Provided provided = ProvidedClasspath.forecast(project, dir, lockFile, cas, !skipTests);
+        // The build's classpaths exactly — workspace siblings, the plugins' provided jars and
+        // processors included — or the forecast hashes a classpath or -processorpath the build
+        // never uses and forecasts a phantom compile. A plugin's jar that does not resolve
+        // read-only is left out: a predicted miss, never a false hit.
+        ModuleClasspaths classpaths = ModuleClasspaths.derive(
+                dir,
+                project,
+                shape,
+                lock,
+                resolver,
+                new ModuleClasspaths.Contributions(
+                        ProvidedClasspath.forecast(project, dir, lockFile, cas, !skipTests),
+                        ContributedProcessors.forecast(project, dir, lock, cas)),
+                ModuleClasspaths.Mode.FORECAST);
         // The source set the build compiles, derived by its owner: the src walk plus the
         // [build] extra-src overlay, plugin source roots, every .scala (one Zinc session
         // compiles both languages) and the generated roots — the KSP round's as the build will
         // leave them: none when no round runs, its record's when the build restores one.
-        boolean ksp = PlannerKsp.runsMainRound(project, dir);
+        boolean ksp = shape.ksp();
         List<Path> javaAndScala = PlannerCompile.javaAndScalaSources(
                 project, dir, compact, CompileSupport.collectJavaSources(mainSrcDir));
         List<Path> kotlin = PlannerCompile.mainKotlinSources(project, dir, compact);
@@ -354,57 +374,21 @@ public final class ForecastScope implements StepForecast.Scope {
                 kspInputs(lock, javaHome, release),
                 layout,
                 ksp ? PlannerKsp.mainRoundInputs(kotlin, javaAndScala, layout, pkgDecls) : List.of(),
-                withProvided(provided, mainCompileClasspath(lock)),
-                processorCp);
+                classpaths.main(),
+                classpaths.processor());
         mainRound.projectInto(projection);
         List<Path> mainSrc = PlannerCompile.mainJavaSources(javaAndScala, layout, pkgDecls, ksp);
         List<Path> ktSrc = PlannerCompile.mainKotlinSourcesWithGenerated(kotlin, layout, pkgDecls, ksp);
         List<Path> gvSrc = PlannerCompile.mainGroovySourcesWithGenerated(
                 PlannerCompile.mainGroovySources(project, dir, compact), layout, pkgDecls);
-        // The same predicate the planner composes the plan from — a source-list emptiness test
-        // is a different question and answers differently for a Scala module.
-        var langs = CompileSupport.resolveLanguages(project.project(), dir);
-        boolean mixedKotlin = (langs.java() || langs.scala()) && langs.kotlin();
-        boolean mixedGroovy = (langs.java() || langs.scala()) && langs.groovy();
-        return new Prepared(
-                lock,
-                compact,
-                layout,
-                release,
-                javaHome,
-                javacArgs,
-                processorCp,
-                testProcessorCp,
-                contributedProcessors,
-                plugin,
-                pkgDecls,
-                mainSrcDir,
-                mainSrc,
-                ktSrc,
-                gvSrc,
-                mixedKotlin,
-                mixedGroovy,
-                langs.kotlin(),
-                ksp,
-                mainRound,
-                provided);
+        Parsed parsed = new Parsed(
+                lock, layout, release, javacArgs, plugin, pkgDecls, shape, mainSrcDir, mainSrc, ktSrc, gvSrc);
+        return new Prepared(parsed, classpaths, javaHome, mainRound);
     }
 
     /** What decides a KSP round of this module, its sibling trees read as the build restores them. */
     private KspForecast.Inputs kspInputs(Lockfile lock, Path javaHome, int release) {
         return new KspForecast.Inputs(project, dir, lock, javaHome, release, actionCache, restored.identity());
-    }
-
-    /** The main compile classpath the build derives, before the plugin-provided jars. */
-    List<Path> mainCompileClasspath(Lockfile lock) throws IOException {
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
-        return PlannerSupport.mainCompileClasspath(dir, project, lock, resolver, sib, false);
-    }
-
-    private static List<Path> withProvided(ProvidedClasspath.Provided provided, List<Path> cp) {
-        List<Path> out = new ArrayList<>(cp);
-        out.addAll(provided.compile());
-        return out;
     }
 
     /**
@@ -416,19 +400,15 @@ public final class ForecastScope implements StepForecast.Scope {
         TestSources t = testSources;
         if (t != null) return t;
         Prepared p = prepared();
-        List<Path> testCp = new ArrayList<>(PlannerSupport.testCompileClasspath(dir, project, p.lock(), resolver));
-        testCp.addAll(p.provided().compile());
-        testCp.addAll(p.provided().testOnly());
-        testCompileCp = testCp;
         var selection = SessionContext.current().testSelection();
-        List<String> selected = TestSupport.selectedSuites(dir, p.compact(), project.build(), selection);
+        List<String> selected = TestSupport.selectedSuites(dir, p.parsed().compact(), project.build(), selection);
         try {
             t = collectTests(p, selected);
         } catch (IOException e) {
             return testSources = new TestSources(Path.of(""), List.of(), List.of(), List.of(), List.of());
         }
         projectOwnOutputs();
-        KspForecast.Round round = decideTestRound(p, selected, t.all(), testCp);
+        KspForecast.Round round = decideTestRound(p, selected, t.all());
         testRound = round;
         round.projectInto(projection);
         if (round.state() == KspForecast.State.RECORDED || round.state() == KspForecast.State.NONE) {
@@ -438,32 +418,41 @@ public final class ForecastScope implements StepForecast.Scope {
     }
 
     /** The test round over the hand-written {@code sources}; one that cannot be decided runs. */
-    private KspForecast.Round decideTestRound(Prepared p, List<String> selected, List<Path> sources, List<Path> testCp)
-            throws Exception {
+    private KspForecast.Round decideTestRound(Prepared p, List<String> selected, List<Path> sources) throws Exception {
         List<Path> roundCp = PlannerFixtures.withOwnFixtures(
-                project, p.layout(), new ArrayList<>(List.of(p.layout().classesDir())));
-        roundCp.addAll(testCp);
+                project,
+                p.parsed().layout(),
+                new ArrayList<>(List.of(p.parsed().layout().classesDir())));
+        roundCp.addAll(p.classpaths().testCompile());
         try {
             return KspForecast.testRound(
-                    kspInputs(p.lock(), p.javaHome(), p.release()),
-                    p.layout(),
-                    p.kotlinModule(),
-                    p.compact(),
+                    kspInputs(p.parsed().lock(), p.javaHome(), p.parsed().release()),
+                    p.parsed().layout(),
+                    p.parsed().kotlinModule(),
+                    p.parsed().compact(),
                     TestSuites.compiled(
-                            dir, p.compact(), selected, project.build().testClassSuites()),
-                    p.pkgDecls(),
+                            dir, p.parsed().compact(), selected, project.build().testClassSuites()),
+                    p.parsed().pkgDecls(),
                     sources,
                     roundCp,
-                    p.testProcessorCp());
+                    p.classpaths().kspTestProcessor());
         } catch (IOException e) {
             Log.debug("testRound: the round could not be decided", e);
-            return new KspForecast.Round(KspForecast.State.RUNS, PlannerKsp.kspTestOutBase(p.layout()), null);
+            return new KspForecast.Round(
+                    KspForecast.State.RUNS, PlannerKsp.kspTestOutBase(p.parsed().layout()), null);
         }
     }
 
     private TestSources collectTests(Prepared p, List<String> selected) throws Exception {
         return ProjectedFiles.with(
-                projection, () -> TestSources.collect(project, dir, p.compact(), selected, p.layout(), p.pkgDecls()));
+                projection,
+                () -> TestSources.collect(
+                        project,
+                        dir,
+                        p.parsed().compact(),
+                        selected,
+                        p.parsed().layout(),
+                        p.parsed().pkgDecls()));
     }
 
     /** compile-test's KSP round, once {@link #testSources} decided it; none before. */
@@ -472,13 +461,8 @@ public final class ForecastScope implements StepForecast.Scope {
         KspForecast.Round round = testRound;
         return round != null
                 ? round
-                : KspForecast.Round.none(PlannerKsp.kspTestOutBase(prepared().layout()));
-    }
-
-    /** The test compile classpath the build derives (the plugin-provided jars included). */
-    List<Path> testCompileCp() throws Exception {
-        testSources();
-        return testCompileCp;
+                : KspForecast.Round.none(
+                        PlannerKsp.kspTestOutBase(prepared().parsed().layout()));
     }
 
     boolean haveTests() throws Exception {
@@ -504,21 +488,21 @@ public final class ForecastScope implements StepForecast.Scope {
         if (compileDirty && !(depOnlyDirty && !compileStampHeld)) return;
         Prepared p = prepared();
         try {
-            if (classesTreeWhole(p.layout())) return;
+            if (classesTreeWhole(p.parsed().layout())) return;
             // The KSP round's bytecode and resources come back from its own record, which
             // `jk clean` leaves where it took target/ksp. A round with no record runs, and what
             // it writes cannot be described.
             Map<String, String> ksp = kspTreeOutputs();
             if (ksp == null) return;
             List<@Nullable String> keys = new ArrayList<>();
-            if (!p.mainSrc().isEmpty()) keys.add(compileMainKey);
-            if (!p.ktSrc().isEmpty()) keys.add(compileKotlinKey);
-            if (!p.gvSrc().isEmpty()) keys.add(compileGroovyKey);
+            if (!p.parsed().mainSrc().isEmpty()) keys.add(compileMainKey);
+            if (!p.parsed().ktSrc().isEmpty()) keys.add(compileKotlinKey);
+            if (!p.parsed().gvSrc().isEmpty()) keys.add(compileGroovyKey);
             restored.projectFromRecords(
-                    p.layout().classesDir(),
+                    p.parsed().layout().classesDir(),
                     keys,
                     ksp,
-                    PackagingKeys.packageResourceRoots(dir, p.compact()),
+                    PackagingKeys.packageResourceRoots(dir, p.parsed().compact()),
                     PackagingKeys.copiedPluginManifest(dir));
         } catch (IOException e) {
             // Without the projection a consumer keys on the tree's absence: the pessimistic
@@ -549,8 +533,7 @@ public final class ForecastScope implements StepForecast.Scope {
 
     /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */
     ForecastLangArms arms() {
-        return new ForecastLangArms(
-                project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint, restored);
+        return new ForecastLangArms(actionCache, compileDepDirty, force, depHint, restored);
     }
 
     /** A dedicated node module's node directory, or null for any other module. */
@@ -678,15 +661,15 @@ public final class ForecastScope implements StepForecast.Scope {
             if (v != null) steps.add(v);
         }
         steps.addAll(moduleVerdicts);
-        int sourceCount = p.mainSrc().size()
-                + p.ktSrc().size()
-                + p.gvSrc().size()
+        int sourceCount = p.parsed().mainSrc().size()
+                + p.parsed().ktSrc().size()
+                + p.parsed().gvSrc().size()
                 + testSources().all().size()
                 + PlannerFixtures.forecastSources(project, dir).size();
         boolean producesImage =
                 project.image().base() != null || project.image().registry() != null;
         return new TaskForecast.Module(
-                u.dir(), u.coord(), steps, sourceCount, testCount, !p.noSources(), producesImage);
+                u.dir(), u.coord(), steps, sourceCount, testCount, !p.parsed().noSources(), producesImage);
     }
 
     /** The module when its lock must be written first: each priced or always-run step of {@code plan} runs. */
@@ -720,8 +703,8 @@ public final class ForecastScope implements StepForecast.Scope {
 
     private void restore() throws Exception {
         Prepared p = prepared();
-        boolean compact = p.compact();
-        BuildLayout layout = p.layout();
+        boolean compact = p.parsed().compact();
+        BuildLayout layout = p.parsed().layout();
         // ---- restore gate ----
         // Right after jk clean every step can predict CACHED (action keys survive the wipe by
         // design), but a clean-forecast module is never scheduled, so nothing restores target/
@@ -736,20 +719,24 @@ public final class ForecastScope implements StepForecast.Scope {
         // from the tree would lack the same classes, build after build, until something
         // else moved the key. The restore brings the record's whole tree back.
         boolean incomplete = false;
-        if (!p.noSources()) {
+        // The jar and what is packaged beside it are outputs of a plan that packages: a compile or
+        // a test run that packages nothing (a sibling reads none of its jar) never brings them back.
+        boolean packages = knobs.target().packages() || verdicts.containsKey(TaskNames.PACKAGE_JAR);
+        if (!p.parsed().noSources()) {
             incomplete = TaskForecaster.classesDirHasContent(layout.classesDir())
                     && !compileOutputsOnDisk(layout.classesDir());
-            outputsAbsent = !Files.isRegularFile(layout.mainJar())
-                    || !TaskForecaster.classesDirHasContent(layout.classesDir())
+            outputsAbsent = !TaskForecaster.classesDirHasContent(layout.classesDir())
                     || incomplete
-                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
-                    || ModuleOutputs.jlinkImageMissing(project, layout)
+                    || (packages
+                            && (!Files.isRegularFile(layout.mainJar())
+                                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
+                                    || ModuleOutputs.jlinkImageMissing(project, layout)))
                     || nativeBinaryToRestore;
         } else if (!project.isWorkspaceRoot()) {
             // Source-less member: the build still packages its jar, and a resources-only
             // module's classes tree (copied resources) is consumed straight off sibling
             // classpaths, so either missing is a missing output too.
-            outputsAbsent = !Files.isRegularFile(layout.mainJar())
+            outputsAbsent = (packages && !Files.isRegularFile(layout.mainJar()))
                     || (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()
                             && !TaskForecaster.classesDirHasContent(layout.classesDir()));
         }

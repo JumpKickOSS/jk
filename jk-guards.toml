@@ -801,6 +801,166 @@ matching = "cc.jumpkick.(**)"
 baseline = true
 why      = "a cyclic component has no edge anyone can name to cut, so the count is what the build defends"
 
+# G137. Two runtime classes may not reach into each other's members. A size cap met by peeling
+# statics into a sibling lowers line counts and leaves the coupling where it was, now across a file
+# boundary; the pairs of today are a baseline band that may only shrink, and a new pair is red.
+# Nested and lambda classes fold into their outer class; constants javac inlines leave no edge.
+[guards.runtime-mutual-classes]
+kind       = "coupling"
+measure    = "mutual"
+packages   = ["cc.jumpkick.runtime", "cc.jumpkick.runtime.base", "cc.jumpkick.runtime.workspace"]
+scope      = "server/engine"
+source-set = "main"
+baseline   = true
+fixture    = "server/guard/fixtures/runtime-mutual-classes"
+instead    = "merge the pair, or move what both need into a third class one of them owns, so the edge runs one way"
+why        = "two classes that call each other are one class split by line count, and neither can change alone"
+
+# G138. A runtime class may reach at most fifteen other runtime classes; today's wider ones are a
+# baseline band that may only shrink.
+[guards.runtime-efferent-coupling]
+kind       = "coupling"
+measure    = "efferent"
+packages   = ["cc.jumpkick.runtime", "cc.jumpkick.runtime.base", "cc.jumpkick.runtime.workspace"]
+cap        = 15
+scope      = "server/engine"
+source-set = "main"
+baseline   = true
+instead    = "hand the class the values it reads instead of the classes that compute them, or split it by the callers it serves"
+why        = "a class that reaches everything is rebuilt by every change and understood by no one"
+
+# G139. A static-only runtime holder may be reached by at most fifteen runtime classes; today's wider
+# ones are a baseline band that may only shrink.
+[guards.runtime-static-holder-fan-in]
+kind       = "coupling"
+measure    = "static-fan-in"
+packages   = ["cc.jumpkick.runtime", "cc.jumpkick.runtime.base", "cc.jumpkick.runtime.workspace"]
+cap        = 15
+scope      = "server/engine"
+source-set = "main"
+baseline   = true
+instead    = "move the functions to the type whose data they read, so callers depend on that type rather than a namespace"
+why        = "a static holder everything leans on is a namespace for functions that belong with their data"
+
+# G142. A module's variant overlay is folded in one place. EffectiveManifest is the manifest the
+# plan, its step bodies and its forecast all read; a second VariantApply is a manifest the forecast
+# keys differently from the build.
+[guards.variant-apply-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.plugin.manifest.VariantApply#apply(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = "cc.jumpkick.runtime.EffectiveManifest"
+fixture    = "server/engine/guard-fixtures/variant-apply-owner"
+instead    = "EffectiveManifest.of(parsed, dir, selection), or the plan's own EffectiveManifest"
+why        = "a second variant overlay is a manifest the forecast keys differently from the build"
+
+# G143. Which compilers a module runs is answered once. ModuleShape composes the plan and prices
+# the forecast's compiles; a raw language read is a second answer that forgets the javac a Kotlin
+# module's processors or a plugin's generated Java need.
+[guards.module-languages-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.runtime.base.CompileSupport#resolveLanguages(**)", "cc.jumpkick.layout.Languages#resolve(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = ["cc.jumpkick.runtime.ModuleShape", "cc.jumpkick.runtime.base.CompileSupport"]
+fixture    = "server/engine/guard-fixtures/module-languages-owner"
+instead    = "ModuleShape.of(project, dir, decls), or the plan's own ModuleShape"
+why        = "a raw language read is a second answer to which compilers run, and the forecast prices what it says"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.BuildForks"
+reason = "forks the workers a workspace's modules need before any of them plans; it keys nothing"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.KotlinAbiWarmup"
+reason = "picks a Kotlin consumer to warm the compiler worker for; it keys nothing"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.LocalProjectBuilder"
+reason = "a headless build of a project outside any plan: nothing forecasts it"
+
+[[guards.module-languages-owner.allow]]
+in     = "cc.jumpkick.runtime.base.IdeOps"
+reason = "the IDE model lists a module's source roots; it keys nothing"
+
+# G144. The run-tests stamp's identity tokens are composed in one place. TestStampInputs derives
+# them for the live run, the forecast and the preflight memo alike; a second caller of the
+# composer is a stamp that can drift from the one the green run was stored under.
+[guards.test-stamp-extras-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.runtime.TestStampInputs#testStampExtras(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = ["cc.jumpkick.runtime.TestStampInputs"]
+instead    = "TestStampInputs.of(facts, identity).extras(), or its key(...)"
+why        = "stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up"
+
+# G145. A module's classpaths are derived once, by ModuleClasspaths.derive, for the build and the
+# forecast alike; the classpath step (PlannerSetup) keeps the side effects around it: awaiting the
+# siblings, the unresolved-processor errors and the plugins' provided fetch. Subsystems that resolve
+# a classpath for something other than a module's plan are allow entries.
+[guards.module-classpath-owner]
+kind       = "forbid"
+signatures = [
+  "cc.jumpkick.config.WorkspaceClasspath#resolve(**)",
+  "cc.jumpkick.compile.ClasspathResolver#classpathFor(**)",
+  "cc.jumpkick.compile.ClasspathResolver#testRuntimeClasspathFor(**)",
+  "cc.jumpkick.runtime.ProvidedClasspath#contributed(**)",
+  "cc.jumpkick.runtime.ProvidedClasspath#forecast(**)",
+  "cc.jumpkick.runtime.ProvidedClasspath#providedJars(**)",
+]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = ["cc.jumpkick.runtime.ModuleClasspaths", "cc.jumpkick.runtime.PlannerSetup"]
+fixture    = "server/engine/guard-fixtures/module-classpath-owner"
+instead    = "ModuleClasspaths.derive(..., mode), or the classpaths the plan's classpath step publishes"
+why        = "a classpath derived twice is a compile or test key the forecast computes over different entries than the build"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.ForecastScope"
+reason = "the forecast's read-only provided fetch, handed to ModuleClasspaths.derive as the classpath step hands it the build's"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.BuildLogicSupport"
+reason = "build-logic scripts key the workspace members they read, outside any module's plan"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.GuardKeys"
+reason = "the guard lane keys its module's sibling edges, not a classpath a step compiles against"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.GuardFixtures"
+reason = "guard fixtures compile and run against the suite's own classpath, outside any module's plan"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.LocalProjectBuilder"
+reason = "a headless build of a project outside any plan: nothing forecasts it"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.PluginBuild"
+reason = "a plugin's worker closure and production entries, resolved for the plugin it runs, not a step key"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.PluginSdkFloor"
+reason = "checks the plugin SDK a module compiles against; it keys nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.workspace.ExecPlans"
+reason = "jk exec and jshell launch a classpath; they key nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.runtime.base.IdeOps"
+reason = "the IDE model lists a module's sibling edges; it keys nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.engine.verbs.IdeModelVerb"
+reason = "the IDE model lists the provided jars; it keys nothing"
+
+[[guards.module-classpath-owner.allow]]
+in     = "cc.jumpkick.engine.http.mcp.tools.IdeTool"
+reason = "the IDE tool lists the provided jars; it keys nothing"
+
 # G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway
 # enforces nullness only where the package says so, and a package that forgets the marker is a
 # package where every finding is silently off. The scope is every module NullMarking.enforcedRoots
@@ -1074,6 +1234,10 @@ in     = "cc.jumpkick.config.CredentialHelpers"
 reason = "a ${cmd:} credential helper runs under exactly the request's shell (BuildEnv.callerEnv()): the inherited map is cleared before it is set"
 
 [[guards.child-env-owner.allow]]
+in     = "cc.jumpkick.task.ToolIdentity"
+reason = "a [test] tool's --version runs under the request's shell (BuildEnv.callerEnv()) with the suite's PATH, as the suite would run it: the inherited map is cleared before it is set"
+
+[[guards.child-env-owner.allow]]
 in     = "cc.jumpkick.engine.runtime.TemplateClone"
 reason = "a template clone runs git under the request's shell (BuildEnv.callerEnv()) with prompts off: the inherited map is cleared before it is set"
 
@@ -1314,137 +1478,250 @@ baseline = true
 why      = "a coverage number nobody tightens stops meaning anything"
 
 # G103. A bare thread start carries no ScopedValue, so code on it reads the process-default
-# session: a worker JVM forked from such a thread is sized and flagged without the request's
-# --jvm-arg / JK_JVM_ARGS and runs without its cancel token — a per-request defect invisible until
-# two terminals disagree. Request-path threads start through SessionContext.startVirtual; every
-# engine-lifetime or housekeeping start below is an allow entry stating what it does not read.
+# session and no request: a worker JVM forked from such a thread is sized and flagged without the
+# request's --jvm-arg / JK_JVM_ARGS and runs without its cancel token. Request-path threads start
+# through SessionContext.startVirtual / startPlatform or a JkThreads pool; every engine-lifetime,
+# housekeeping or byte-pump start is an allow entry naming its method and what it does not read.
 [guards.request-thread-carries-session]
-kind     = "text"
-files    = ["server/engine/src/main/java/**/*.java"]
-patterns = ['Thread\.ofVirtual\(\)', 'Thread\.ofPlatform\(\)', 'new Thread\(', 'Thread\.startVirtualThread\(']
-hit      = 'Thread pump = Thread.ofVirtual().name("jk-worker-pump").start(() -> pump());'
-miss     = 'Thread pump = SessionContext.startVirtual("jk-worker-pump", () -> pump());'
-instead  = "SessionContext.startVirtual(name, body); engine-lifetime starts are allow entries"
-why      = "a bare thread reads the default session, not the request's"
+kind       = "forbid"
+signatures = [
+  "java.lang.Thread#ofVirtual()",
+  "java.lang.Thread#ofPlatform()",
+  "java.lang.Thread#<init>(**)",
+  "java.lang.Thread#startVirtualThread(**)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/request-thread-carries-session"
+instead    = "SessionContext.startVirtual(name, body) / startPlatform, or a JkThreads pool; an engine-lifetime start is an allow entry naming its method"
+why        = "a bare thread reads the default session, not the request's"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/OwnerWatchdog.java"
+in     = "cc.jumpkick.config.SessionContext#startVirtual"
+reason = "the door itself: starts the thread with every carried value of the caller"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.config.SessionContext#startPlatform"
+reason = "the door itself: starts the thread with every carried value of the caller"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.JkThreads#io"
+reason = "the shared virtual-thread pool's factory; every task is wrapped with the submitter's carried values"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.JkThreads#platform"
+reason = "the shared platform pool's factory; every task is wrapped with the submitter's carried values"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.JkThreads#registerShutdownHook"
+reason = "the shutdown hook that stops the shared pools"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.BuildPlan#startInterpolationTimer"
+reason = "the progress interpolation timer eases step bars forward and reads no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.resolver.MemberSolves#runAll"
+reason = "the member-solve pool's factory; every task is wrapped by ContextPropagator on the submitting thread"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.builds.MetricsHarvest#request"
+reason = "the engine-lifetime harvest of finished runs' metrics reads journal files, never a request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.util.AccessLedger#<clinit>"
+reason = "the shutdown hook that flushes the access ledgers"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers#drain"
+reason = "byte pump for a credential helper's output; the request is read on the calling thread"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.m2.MvnencPasswords#askAgent"
+reason = "watchdog that stops a gpg agent query that hangs; reads no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.http.StalledBodyGuard#watchdog"
+reason = "one watchdog thread for every download body; it only closes a stalled stream"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.jsonl.BoundedLineReader#watchdog"
+reason = "one watchdog thread for every protocol stream; it only closes an idle one"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.host.Processes$Drain#<init>"
+reason = "byte pump for a child's output"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.host.AotTraining#runUntilSettled"
+reason = "reads a training child's output to see it settle"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.tool.NativeImageDriver#forwardStdout"
+reason = "forwards native-image's output to the explicit TaskContext it was handed"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.tool.NativeImageDriver#forwardStream"
+reason = "forwards native-image's output to the explicit TaskContext it was handed"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.OwnerWatchdog#watch"
 reason = "engine-lifetime poll of the owner pid"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineMaintenance.java"
+in     = "cc.jumpkick.engine.EngineMaintenance#<init>"
 reason = "engine-lifetime scheduler whose ticks read config files, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/activity/ChangeNotices.java"
+in     = "cc.jumpkick.engine.activity.ChangeNotices#start"
 reason = "engine-lifetime poll of the change journal's file, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EtaStepTicker.java"
+in     = "cc.jumpkick.engine.EtaStepTicker#watch"
 reason = "engine-lifetime ETA ticker: re-prices live requests' remainders by request id, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/DiskWatch.java"
+in     = "cc.jumpkick.engine.DiskWatch#startThreads"
 reason = "engine-lifetime disk guard and cache collector: statfs and the cache's own files, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WorkerAotCache.java"
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#trainAsync"
 reason = "a startup-cache trainer belongs to the cache, not to the request that missed it; a cancel must not kill it"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/WriteDeadline.java"
+in     = "cc.jumpkick.engine.http.WriteDeadline#watchdog"
 reason = "engine-lifetime watchdog that only interrupts a stuck response write, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/IdleHousekeeping.java"
+in     = "cc.jumpkick.engine.IdleHousekeeping#scheduleResolveClassWarmup"
+reason = "idle-time resolver class warmup runs while no build is live"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.IdleHousekeeping#kickPendingWarmup"
 reason = "idle-time warmup and class preload run while no build is live"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineAotTrainer.java"
+in     = "cc.jumpkick.engine.EngineAotTrainer#maybeTrain"
 reason = "records the engine's startup cache from an idle engine by driving a scratch trainer engine; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/SelfUpdateScheduler.java"
-reason = "engine-lifetime update ticker and the jk self update runs it starts; serves no request"
+in     = "cc.jumpkick.engine.SelfUpdateScheduler#start"
+reason = "engine-lifetime update ticker; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineHttpFront.java"
+in     = "cc.jumpkick.engine.SelfUpdateScheduler#kick"
+reason = "a jk self update run the ticker starts; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.SelfUpdateScheduler#installNow"
+reason = "a jk self update install the ticker starts; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.EngineHttpFront#start"
 reason = "retries a busy HTTP port beside startup so the first build never waits on the dashboard; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/DrainReporter.java"
+in     = "cc.jumpkick.engine.DrainReporter#start"
 reason = "engine-lifetime drain report to the successor"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java"
-reason = "one thread per connection; each verb binds the request's session itself"
+in     = "cc.jumpkick.engine.EngineServer#run"
+reason = "the connection executor, one thread per connection whose verbs bind their own request, and startup's sweep of parked installs and adoption of sessions"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/DisplacementWatchdog.java"
+in     = "cc.jumpkick.engine.EngineServer#lastWordsOnSignal"
+reason = "the shutdown hook that logs a signalled exit"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.EngineServer#enterDrain"
+reason = "supervises the engine's drain; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.DisplacementWatchdog#start"
 reason = "engine-lifetime election watch"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/LiveVitals.java"
+in     = "cc.jumpkick.engine.http.LiveVitals#<init>"
 reason = "engine-lifetime vitals publisher"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java"
+in     = "cc.jumpkick.engine.http.HttpEngineServer#start"
 reason = "one thread per HTTP exchange; each handler binds the request's session itself"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobEnvelope.java"
-reason = "the job body binds its own session inside the verb; the detached join reads none"
+in     = "cc.jumpkick.engine.jobs.JobEnvelope#submit"
+reason = "the admit thread reads neither the job's request nor its session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobWatchdog.java"
+in     = "cc.jumpkick.engine.jobs.JobEnvelope#proceed"
+reason = "the runner binds the job's request itself and the body its session inside the verb; the detached join reads neither"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.jobs.JobWatchdog#start"
 reason = "holds the job's cancel token explicitly"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/LiveJobRegistry.java"
-reason = "cancel and settle run after the request thread may be gone; token and request id are explicit"
+in     = "cc.jumpkick.engine.jobs.LiveJobRegistry#beginCancel"
+reason = "cancel runs after the request thread may be gone; token and request id are explicit"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingBuildPlanListener.java"
+in     = "cc.jumpkick.engine.api.CoalescingBuildPlanListener#<clinit>"
 reason = "shared progress timer and its flushers only hand coalesced events to the delegate"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/api/WireWriter.java"
-reason = "one writer thread per client stream; a queued line carries no session"
-
-[[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingLockPackages.java"
+in     = "cc.jumpkick.engine.api.CoalescingLockPackages#<clinit>"
 reason = "shared lock-progress timer"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/git/GitCliExtension.java"
+in     = "cc.jumpkick.engine.api.WireWriter$Stream#startDrainer"
+reason = "one writer thread per client stream; a queued line carries no session"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.git.GitCliExtension#drain"
 reason = "byte pump for the git child's output"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerKsp.java"
+in     = "cc.jumpkick.runtime.PlannerKsp#runKspProcess"
 reason = "byte pump for KSP's output"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/base/KtsSession.java"
-reason = "the .kts host outlives any one build: its reader, reaper and shutdown hook carry no request"
+in     = "cc.jumpkick.runtime.base.KtsSession#<init>"
+reason = "the .kts host outlives any one build: its reader carries no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/compile/CompilerWorker.java"
-reason = "a resident compiler worker's threads start with no inherited context on purpose: they belong to the pool, not to the request that first needed it; each item brings its own session"
+in     = "cc.jumpkick.runtime.base.KtsSession#startBound"
+reason = "the .kts host outlives any one build: its reaper carries no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/compile/CompilerPool.java"
-reason = "resident compiler workers outlive any one build: their linger reaper, retire and shutdown hook carry no request; each item brings its own session"
+in     = "cc.jumpkick.runtime.base.KtsSession#registerShutdownHook"
+reason = "the shutdown hook that stops the .kts host"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WarmWorkers.java"
-reason = "warm plugin workers outlive any one request: their reader, reaper and shutdown hook carry no request; each run brings its own"
+in     = "cc.jumpkick.compile.CompilerWorker#detached"
+reason = "a resident compiler worker's threads belong to the pool, not to the request that first needed it; each item brings its own session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/HostPressure.java"
+in     = "cc.jumpkick.compile.CompilerPool#registerHooks"
+reason = "the shutdown hook that retires resident compiler workers"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers#registerShutdownHook"
+reason = "the shutdown hook that stops warm plugin workers"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers$Worker#<init>"
+reason = "a warm worker's reader outlives any one request; each run brings its own"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers$Worker#armReaper"
+reason = "a warm worker's reaper outlives any one request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#watch"
 reason = "the memory-pressure watcher outlives any one request and ends only idle warm workers"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
+in     = "cc.jumpkick.task.CasPrewriter$Watcher#open"
 reason = "one engine-lifetime thread drains output-tree file events for every compile and hashes settled files"
 
 # G108. A module's manifest is named through ManifestPaths.manifestIn, which answers the shadow of a
@@ -1600,8 +1877,802 @@ owner      = [
   "cc.jumpkick.runtime.workspace.ModulePipeline",
   "cc.jumpkick.runtime.BuildPlanner",
   "cc.jumpkick.runtime.PlannerTails",
-  "cc.jumpkick.runtime.TaskForecaster",
 ]
 source-set = "main"
 instead    = "plan through ModulePipeline; a goal's work past PACKAGE is a Tail that extend()s the plan (docs/contributors/lifecycle.md)"
 why        = "a second planner is how build verbs drifted apart in which phases they ran"
+
+
+
+
+# G129. A static field the engine can reach that holds mutable state lives as long as the resident
+# engine, days, so "this cannot change while a build runs" is no reason to keep it. It is a bounded
+# or trimmable memo (StampedMemo, StoreFileMemo, LruMemo), or an allow entry naming the field says
+# why the engine's lifetime is safe, with a reason from the vocabulary below: `seam:` is a
+# collaborator wired in once or a test's override, `stamped:` a hand-kept memo that re-checks its
+# inputs on every read. The baseline the rule landed with is spent; a new holder fails at once.
+[guards.engine-static-memo]
+kind           = "statics"
+reachable-from = "server/engine"
+scope          = ["shared/*", "server/*"]
+source-set     = "main"
+managed        = [
+  "cc.jumpkick.config.StampedMemo#*",
+  "cc.jumpkick.repo.StoreFileMemo#<init>",
+  "cc.jumpkick.repo.LruMemo#<init>",
+]
+holders        = [
+  "cc.jumpkick.config.StampedMemo",
+  "cc.jumpkick.repo.StoreFileMemo",
+  "cc.jumpkick.repo.LruMemo",
+]
+ignore-types   = ["java.util.function.*", "java.lang.Runnable", "cc.jumpkick.host.time.Clock"]
+reasons        = [
+  "live registry:",
+  "lock registry:",
+  "content-keyed:",
+  "engine-process fact:",
+  "TTL ",
+  "log-once:",
+  "deliberate negative:",
+  "seam:",
+  "stamped:",
+]
+baseline       = true
+instead        = "StampedMemo.bounded(n) or a Request slot, or an allow entry naming the field: `<reason prefix>: why the engine's lifetime is safe`"
+why            = "a static memo in the resident engine outlives every build that filled it and goes stale or grows for days"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.TrimRegistry#MEMOS"
+reason = "live registry: every memo that can trim itself, held weakly"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Interned#TABLE"
+reason = "content-keyed: an interned string is its own key; the idle trim empties the table"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Linking#LINKABLE"
+reason = "deliberate negative: two volumes that cannot hard-link stay that way; only the negative is kept"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.PathUtil#pathExt"
+reason = "engine-process fact: this process's own PATHEXT"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#FAILED"
+reason = "deliberate negative: a failed trainer is retried after the next engine start, not on every miss"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#TRAINING"
+reason = "live registry: the trainers running now"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#LIVE"
+reason = "live registry: trainer forks alive now; shutdown and a store wipe stop them"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.CompilerPool#LIVE"
+reason = "live registry: the pools not yet closed"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers#LIVE"
+reason = "live registry: every live worker; shutdown stops them all"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers#IDLE"
+reason = "live registry: the idle workers by launch key"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.WorkspaceModules#MATCHERS"
+reason = "content-keyed: one compiled matcher per glob segment's text"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.manifest.PluginDescriptorStore#BY_SHA"
+reason = "content-keyed: a parsed plugin manifest by its jar's sha256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.http.ConnectFaults#REFUSING"
+reason = "TTL per refusal: each entry lapses at the deadline recorded with it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.jobs.JobAdmit#UNGUARDED_NOTED"
+reason = "log-once: one note per checkout per engine"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.http.WorkspaceFileAccess#WRITE_LOCKS"
+reason = "lock registry: 64 striped monitors, bounded for ever"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.PreflightMemo#SHAPE_LOCKS"
+reason = "lock registry: 64 striped monitors, bounded for ever"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.LockGate#MONITORS"
+reason = "lock registry: 64 striped monitors, bounded for ever"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.jdk.JdkInstaller#IN_FLIGHT"
+reason = "live registry: scratch this process is writing now, reaped on cancel"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compat.ToolInstaller#IN_FLIGHT"
+reason = "live registry: scratch this process is writing now, reaped on cancel"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.EffectivePomBuilder#IN_FLIGHT"
+reason = "live registry: the POM walks running now"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.EffectivePomBuilder#WAITING_ON"
+reason = "live registry: the threads parked on a running walk"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.CompilerBudget#CEILINGS"
+reason = "live registry: the heap ceiling of each compiler worker alive now; a worker's entry goes when it stops"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.CompilerPool#POOLS"
+reason = "live registry: the compiler pools open now by key; a job's pools leave when the job ends, the rest when they close"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.KotlincSnapshots#RECORDING"
+reason = "seam: empty in production; a test installs a recording to watch the forks"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.EngineAotTrainer#recording"
+reason = "live registry: the one training recording in flight; shutdown stops it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.api.WireWriter#STREAMS"
+reason = "live registry: the writer of each client stream open now; closing the stream removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.graph.GraphRunner#PENDING"
+reason = "live registry: the workspaces with a graph refresh queued now; the refresh removes its workspace as it starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.graph.GraphRunner#SLOTS"
+reason = "live registry: the graph refreshes running now per workspace and the slot they share; the last one out removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.graph.GraphRunner#compiler"
+reason = "seam: the engine's job submitter, installed once as the server starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.http.CacheSnapshot#m2Reading"
+reason = "TTL 3600s: the size of ~/.m2, which jk neither budgets nor prunes, walked at most hourly for the dashboard"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.jobs.LastBuiltRoot#LAST"
+reason = "live registry: the one root the last admitted plan job ran in, replaced by every plan job"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#SHEDDERS"
+reason = "live registry: the owners that shed their idle workers under memory pressure, one per name"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#forTests"
+reason = "seam: null in production; a test pins the pressure level"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#sysctlbyname"
+reason = "engine-process fact: libc's sysctlbyname handle, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.JvmOptions#enginePlan"
+reason = "engine-process fact: the engine's own worker budget, planned at start for its core count and again by a caller with no request of its own; a build that plans carries its plan on its request"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.MemoryProbe#cached"
+reason = "TTL 5s: one memory reading answers every heap plan for five seconds"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.ProjectActivity#LAST"
+reason = "live registry: when each project was last worked on through the engine, for the warm workers' linger; dropped whole past 1024 projects"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.UserPluginPins#registered"
+reason = "live registry: the config.toml path pins registered now, re-synced whenever the file or a pinned jar moves"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.UserPluginPins#seen"
+reason = "stamped: the settled stamps of config.toml and every pinned jar at the last sync; any move re-syncs"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmLinger#ciForTests"
+reason = "seam: null in production; a test pins whether the host is CI"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerContainment#state"
+reason = "engine-process fact: the cgroup arrangement this engine made of itself at start"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerLaunchClasspath#REPORTED"
+reason = "log-once: one note per shelf POM walked from the store instead"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerLeases#replaced"
+reason = "seam: null in production; a test swaps the engine's ledger"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.runtime.NewProjectOps#versionLookup"
+reason = "seam: null in production; a test answers the templates' Maven versions"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.giter8.Giter8TemplateIndex#PICKER_MEMO"
+reason = "TTL 5s: one scan of the template roots answers the picker for five seconds"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.giter8.JkTemplateToml#REFUSED"
+reason = "log-once: one warning per refused template"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.BuildForks#STAGED"
+reason = "content-keyed: a store and a worker coordinate staged once; a coordinate's bytes never change, the store's GC and wipes forget the set, and a fork lost since is the needing step's to fetch"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.Calibration#MEMO"
+reason = "engine-process fact: this host's calibration, written only by this engine, which replaces the memo with each write; a user config change drops it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.KotlinAbiWarmup#RECORDING"
+reason = "seam: empty in production; a test installs a recording to watch the warmups"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.ShadowManifests#ROOT_OF"
+reason = "live registry: the reactor root whose last rendering wrote each leaf's shadow; a root's next rendering replaces its leaves"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.ShadowManifests#pinRaises"
+reason = "seam: the lock module's pin raiser, installed once as the engine starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.TestGates#GATES"
+reason = "lock registry: one gate per checkout while a suite holds or waits for it; the last one out removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.KtsSession#cancelGrace"
+reason = "seam: two seconds in production; a test shortens it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RecentClassWalls#CACHE"
+reason = "stamped: each checkout's merged class walls by the runs directory's mtime, which every build moves by adding its run"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RecentClassWalls#RUNS"
+reason = "stamped: each run's parsed walls by its metrics file's size and mtime (a run's metrics are written once), dropped when its run is pruned"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.SessionAggregates#MEMOS"
+reason = "stamped: every read re-checks the ledger files an aggregate came from; the least recently read go past 8 MiB"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.TestStorePool#CHECKED"
+reason = "TTL 3600s: when this engine last asked whether each test-store pool was due a reap"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.CasPrewriter$Watcher#ACTIVE"
+reason = "live registry: the prewriters running now; each removes itself when it closes"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.CasPrewriter$Watcher#OWNERS"
+reason = "live registry: the prewriters watching each directory; the last one out cancels the watch and removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.PortablePath#OWNERS"
+reason = "TTL 5s: a module's owning workspace root, re-walked after five seconds; dropped whole past 4096"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.PortablePath#ROOTS"
+reason = "TTL 5s: a directory's workspace root, re-walked after five seconds so a manifest that appears is found; dropped whole past 4096"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.ClassPredicates#DOTTED"
+reason = "content-keyed: a compiled package pattern by its text"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.EvalContext#HIERARCHIES"
+reason = "live registry: the type hierarchy of each evaluation context alive now, held weakly"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.EvalContext#MEMOS"
+reason = "live registry: the memos of each evaluation context alive now, held weakly"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.Evaluators#BY_KIND"
+reason = "seam: the shipped evaluator of each kind; a test registers its own and restores the defaults"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.GuardThrash#LAST_RUN"
+reason = "live registry: each lane's red sites at its last run, replaced by its next; forgetting them at an engine restart is the design"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.GuardThrash#STREAKS"
+reason = "live registry: how many runs in a row each red site of a lane has been red, replaced by the lane's next run"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.TypeHierarchy#JDK_SUPERS"
+reason = "engine-process fact: the platform class loader's answers, the same for this JVM's life"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.rules.Rule#GLOBS"
+reason = "content-keyed: a compiled glob by its text"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.DownloadSlots#LEGS"
+reason = "lock registry: one leg semaphore per repository host asked, that host's queue for the engine's life"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.PomRuntimeClasspath#RESOLVE_CACHE"
+reason = "stamped: keyed by the worker jar's and POM's size and mtime and the repository URL; each hit re-stats its jars, and only successes are kept, 256 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.PomRuntimeClasspath#STORE_REPOS"
+reason = "content-keyed: the worker repository group by store root, official URL and extra store, 32 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoGroup#ARTIFACT_HIT_CACHE"
+reason = "content-keyed: an artifact hit by the repositories asked and its coordinate, never a -SNAPSHOT one: a release coordinate's bytes do not change, each hit re-stats its file, misses are not kept, 16384 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoGroup#POM_HIT_CACHE"
+reason = "content-keyed: a POM hit by the repositories asked and its coordinate, never a -SNAPSHOT one: a release coordinate's bytes do not change, each hit re-stats its file, misses are not kept, 16384 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoGroup#VERSIONS_CACHE"
+reason = "TTL 60s: a version listing answers for a minute, 8192 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.resolver.GradleMarkerAnswers#LOADED"
+reason = "content-keyed: whether a POM carries Gradle's metadata marker, by the POM's sha256; another process appending to the file only adds answers this one would compute the same"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.resolver.KmpRedirects#PROCESS_CACHE"
+reason = "content-keyed: a released module's Gradle metadata facts by repositories and coordinate; only definite answers are kept, 8192 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.FetchTimings#memo"
+reason = "engine-process fact: the sample window this process last wrote to its timings file; a sample another engine wrote and this one overwrites only slows an advisory prior"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.LockTimings#memo"
+reason = "engine-process fact: the sample window this process last wrote to its timings file; a sample another engine wrote and this one overwrites only slows an advisory prior"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.WindowsFileIdentity#closeHandle"
+reason = "engine-process fact: kernel32's CloseHandle, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.WindowsFileIdentity#createFileW"
+reason = "engine-process fact: kernel32's CreateFileW, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.WindowsFileIdentity#getFileInformationByHandle"
+reason = "engine-process fact: kernel32's GetFileInformationByHandle, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.http.InFlightRequests#IN_FLIGHT"
+reason = "live registry: the HTTP requests in flight now; each removes itself when it ends"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoArtifactStore#CLAIMS"
+reason = "engine-process fact: the loopback trees this process has claimed with its own token"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.builds.ProjectIds#CACHE"
+reason = "TTL 60s: a directory's project id, read again after a minute; dropped whole past 4096"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers#SLOTS"
+reason = "TTL per helper (15m unless its #ttl= says otherwise): a credential helper's output by argv and environment; dropped whole past 256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers#runner"
+reason = "seam: runs the helper process in production; a test answers for it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.DiskGuard#LISTENERS"
+reason = "live registry: the listeners told when disk runs short, each removed by its owner"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.DiskGuard#PROBES"
+reason = "TTL 5s: one free-space probe per volume answers for five seconds"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.GlobalConfig#lastAutoDetection"
+reason = "engine-process fact: the terminal's last glyph detection, made by the CLI process that paints it; no engine path detects"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.GlobalConfig#resolvedNerdFont"
+reason = "engine-process fact: the terminal's glyph caps, resolved by the CLI process that paints them; no engine path reads them"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.MacPrefs#cf"
+reason = "engine-process fact: the CoreFoundation handles, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.RequestScope#SCOPES"
+reason = "live registry: the scope of each request alive now, keyed weakly by its ledger"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.ResolvedSecrets#BY_WORKSPACE"
+reason = "live registry: the credential values jk resolved for each workspace, so text leaving the process masks them; dropped whole past 32 workspaces"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SearchCeiling#last"
+reason = "content-keyed: the parsed JK_CEILING value by its text, one entry"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SecretRedactor#KNOWN"
+reason = "live registry: every secret value this process was told about, so the shared engine log masks each; 4096 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SecretRedactor#MEMO"
+reason = "content-keyed: a redactor by its set of values; dropped whole past 64"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SessionContext#current"
+reason = "engine-process fact: the process's fallback session, installed at start; every request binds its own over it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#LAST"
+reason = "live registry: the last finished job's tree counters for engine status, replaced by each job"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#loadFailureForTest"
+reason = "seam: null in production; a test makes a tree load fail"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#resolved"
+reason = "engine-process fact: [engine] policy is fixed for the process's life, as documented, and the pool ceiling derives from this JVM's -Xmx"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#testConfig"
+reason = "seam: null in production; a test supplies the engine config"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.library.LibraryCatalog#bundledLayer"
+reason = "engine-process fact: the library catalogue bundled in this process's jar"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.lock.LockManifestDigest#MEMO"
+reason = "stamped: every manifest the digest read, every probed absence and every glob's expansion is re-checked, settle-aware, on each read; one entry per lock owner"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.lock.ManifestPaths#shadows"
+reason = "seam: the engine's shadow renderer, installed once; the plain path elsewhere"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#ARCHIVES"
+reason = "live registry: the jar of each plugin installed now, removed with its plugin"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#BY_TABLE"
+reason = "live registry: the plugins installed now by owned table; installs and removals replace it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.AccessLedger#OPEN"
+reason = "live registry: one ledger per access directory per process, buffering uses until it flushes (at exit too); a process uses a handful of stores"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.FileLocks#ENTRIES"
+reason = "lock registry: one entry per lock file this JVM has locked, never a second, since closing a second channel would release the first's OS lock"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.PoolUse#POOLED"
+reason = "deliberate negative: whether a tree carries the pool marker; the engine marks a pool before using it, and a hot path pays a lookup, not a stat"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.PoolUse#STAMPED"
+reason = "TTL 3600s: a unit stamped within the hour is not stamped again; past 4096 the older entries go first"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.TestHomes#PASSES"
+reason = "TTL 600s: the last reap pass over each test-homes root; a quiet pass is not repeated for ten minutes"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.version.Versions#PARSED"
+reason = "content-keyed: a parsed version by its text; dropped whole past 16384, and the idle trim empties it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Forks#opener"
+reason = "seam: starts the process in production; the engine installs its worker starter once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Log$Backend#JK"
+reason = "engine-process fact: this process's logger backend, installed as logging starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.WorkingDirectory#pinned"
+reason = "seam: null in a real jk; a test suite pins a temporary directory"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.ContextPropagator#CARRIED"
+reason = "live registry: the scoped values every hop carries, each registered once by its owner's static initializer"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#cpu"
+reason = "live registry: the process's shared CPU pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#cpuReal"
+reason = "live registry: the executor under the shared CPU pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#io"
+reason = "live registry: the process's shared I/O pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#ioReal"
+reason = "live registry: the executor under the shared I/O pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#platform"
+reason = "live registry: the process's shared platform-thread pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#platformReal"
+reason = "live registry: the executor under the shared platform-thread pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.SessionCancel#hold"
+reason = "seam: does nothing by default; the planner binds it once to whichever session is current when a task waits"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.StepScope#ON_CLOSE"
+reason = "live registry: the listeners told when a step closes, each added once by its owner"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.build.Transfers#REPLIES"
+reason = "seam: the forked plugin process's reply channel, installed once; null prints the report lines"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.jdk.JdkEnsure#REGISTRIES"
+reason = "stamped: one JDK registry per JDK root and Gradle build; each re-scans when jk's JDK root moves and every 30 s for roots other tools own; dropped whole past 64"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.jdk.JdkInventory#SHARED"
+reason = "stamped: one inventory per JDK root and state file; each snapshot re-stats the file and re-parses when it moves"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.wire.protocol.CliSessionIdentity#current"
+reason = "engine-process fact: this process's own session identity, worked out once"
+
+# G130. A request's values reach other threads only as ScopedValues the propagator carries. An
+# InheritableThreadLocal copies whichever request happened to create a pool's thread into every task
+# that thread runs later, for the engine's life; there is no reason left to hold one.
+[guards.no-inheritable-thread-local]
+kind       = "forbid"
+signatures = ["java.lang.InheritableThreadLocal"]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/no-inheritable-thread-local"
+instead    = "a ScopedValue registered with ContextPropagator.carry, or a Request.Slot for a type above core"
+why        = "an inheritable thread-local hands a pool thread's first request to every task it runs after"
+
+# G131. A plain ThreadLocal in the resident engine outlives the request that set it on a pool thread
+# and is invisible to the next hop. The few that hold genuinely per-thread state are allow entries.
+[guards.thread-local-owner]
+kind       = "forbid"
+signatures = ["java.lang.ThreadLocal#<init>(**)", "java.lang.ThreadLocal#withInitial(**)"]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/thread-local-owner"
+instead    = "pass the state, bind a ScopedValue for the operation, or carry it with ContextPropagator.carry"
+why        = "a thread-local is left on a pool thread by one request and missing on the next thread the work hops to"
+
+[[guards.thread-local-owner.allow]]
+in     = "cc.jumpkick.mvn.ReactorModelResolver"
+reason = "the cycle check's stack of POMs being built on this thread: a recursion on one thread, empty again when it unwinds"
+
+[[guards.thread-local-owner.allow]]
+in     = "cc.jumpkick.guard.api.runtime.GuardExtension"
+reason = "the id of the guard method running on this test thread, set and cleared around it by asGuard"
+
+# G132. Every carried value is registered by the class that owns it, once, in its static
+# initializer. A registration anywhere else is a value carried by someone who does not own its
+# lifetime, and the snapshot every pool task takes grows by one more binding.
+[guards.carried-value-owners]
+kind       = "text"
+files      = ["server/*/src/main/java/**/*.java", "shared/*/src/main/java/**/*.java", "plugins/graph/src/main/java/**/*.java"]
+pattern    = 'ContextPropagator\.carry\('
+hit        = 'static { ContextPropagator.carry(LABEL); }'
+miss       = 'String label = ContextPropagator.get(LABEL);'
+fixture    = "server/guard/fixtures/carried-value-owners"
+instead    = "register the value in its owner's static initializer and add the owner's file here with what it carries"
+why        = "a carried value registered by a class that does not own it outlives the reason it was carried"
+
+[[guards.carried-value-owners.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/SessionContext.java"
+reason = "the bound session and request, pinned from the invocation's fallback on the submitting thread"
+
+[[guards.carried-value-owners.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/ManifestOverlay.java"
+reason = "the manifest texts an IDE or agent overlays on the files for one request"
+
+[[guards.carried-value-owners.allow]]
+in     = "shared/jk-api/src/main/java/cc/jumpkick/run/StepScope.java"
+reason = "the step a task reports to, and its locals"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/HeapScope.java"
+reason = "the heap key a forked worker learns its peak under"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java"
+reason = "the forecast's over-reserve flag for test tails"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java"
+reason = "the preflight's progress listener, told by every lane"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/NodeRun.java"
+reason = "the client's Node.js download bar for the run being planned"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/JavaCompile.java"
+reason = "the compile workers a forecast plans on"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/ClasspathFingerprint.java"
+reason = "a reader's classpath-entry memo, shared by its lanes"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/ProjectedFiles.java"
+reason = "the output trees a forecast projects instead of reading"
+
+# G133. A ScopedValue that work reads after a pool hop must be carried, or the hop reads it unbound.
+# Every one is registered with ContextPropagator.carry in its own file, or is an allow entry saying
+# why it never needs to leave the thread that bound it: one operation's binding, or a test seam.
+[guards.scoped-value-carried]
+kind     = "text"
+files    = ["server/*/src/main/java/**/*.java", "shared/*/src/main/java/**/*.java", "plugins/graph/src/main/java/**/*.java"]
+pattern  = '\b(\w+)=ScopedValue\.(?:<[^()]*>)?newInstance\(\)(?![\s\S]*ContextPropagator\.carry\(\1[,)])'
+hit      = 'private static final ScopedValue<String> LABEL = ScopedValue.newInstance();'
+miss     = 'private static final ScopedValue<String> LABEL = ScopedValue.newInstance(); static { ContextPropagator.carry(LABEL); }'
+fixture  = "server/guard/fixtures/scoped-value-carried"
+instead  = "ContextPropagator.carry(VALUE) in the owner's static initializer, read through ContextPropagator.get; a binding that never leaves its thread is an allow entry"
+why      = "a scoped value nobody carries reads as unbound on the first pool thread the work reaches"
+
+[[guards.scoped-value-carried.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/SessionContext.java"
+reason = "INVOCATION is the CLI invocation's own thread; what a pool task needs of it, the session, rides the carried binding pinned on the submitter"
+
+[[guards.scoped-value-carried.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/changes/ChangeJournal.java"
+reason = "test seam: the journal directory a test's writes on its own thread go to"
+
+[[guards.scoped-value-carried.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WorkerEnv.java"
+reason = "test seam: the environment a test's fork on its own thread filters instead of the engine's"
+
+[[guards.scoped-value-carried.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/git/JGitProxyRoute.java"
+reason = "one JGit operation's proxy route, read by the connection factory on the thread running that operation"
+
+# G134. A parallel stream, the common pool or a fork-join task of jk's own runs its work on threads
+# no request's carried values reach, and competes with the engine's pools for the cores. Work fans
+# out through JkThreads, ParallelMap included, which carries the submitter's values to every helper.
+[guards.no-parallel-streams]
+kind       = "forbid"
+signatures = [
+  "java.util.Collection#parallelStream(**)",
+  "java.util.stream.BaseStream#parallel(**)",
+  "java.util.concurrent.ForkJoinPool#commonPool(**)",
+  "java.util.concurrent.RecursiveAction",
+  "java.util.concurrent.RecursiveTask",
+  "java.util.concurrent.CountedCompleter",
+  "java.util.Arrays#parallelSort(**)",
+  "java.util.Arrays#parallelSetAll(**)",
+  "java.util.Arrays#parallelPrefix(**)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/no-parallel-streams"
+instead    = "cc.jumpkick.run.ParallelMap.map / forEach, or a task on a JkThreads pool"
+why        = "a parallel stream's helpers run on the common pool, where none of the request's carried values reach"
+
+[[guards.no-parallel-streams.allow]]
+in     = "cc.jumpkick.host.PathUtil$Wipe*"
+reason = "a tree delete forks a task per directory on DeleteParallelism's pool, sized to the filesystem; the tasks unlink files and read no carried value"
+
+# G135. An async stage without an executor runs on the common pool: off every JkThreads pool, with
+# none of the request's carried values, and sized by the core count whatever it waits on.
+[guards.async-names-its-executor]
+kind       = "forbid"
+signatures = [
+  "java.util.concurrent.CompletableFuture#supplyAsync(java.util.function.Supplier)",
+  "java.util.concurrent.CompletableFuture#runAsync(java.lang.Runnable)",
+  "java.util.concurrent.CompletableFuture#thenApplyAsync(java.util.function.Function)",
+  "java.util.concurrent.CompletableFuture#thenAcceptAsync(java.util.function.Consumer)",
+  "java.util.concurrent.CompletableFuture#thenRunAsync(java.lang.Runnable)",
+  "java.util.concurrent.CompletableFuture#thenComposeAsync(java.util.function.Function)",
+  "java.util.concurrent.CompletableFuture#handleAsync(java.util.function.BiFunction)",
+  "java.util.concurrent.CompletableFuture#whenCompleteAsync(java.util.function.BiConsumer)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/async-names-its-executor"
+instead    = "the overload that takes an executor: JkThreads.cpu() to compute, io() to wait on the network, platform() for a body that waits on other work"
+why        = "an async stage without an executor runs on the common pool, where none of the request's carried values reach"
+
+# G136. Threads come from JkThreads, whose pools carry every registered value onto each task. A pool
+# of one's own carries nothing unless every task is wrapped by hand; each one here is an allow entry
+# saying why its tasks need nothing of a request.
+[guards.executors-through-jkthreads]
+kind       = "forbid"
+signatures = [
+  "java.util.concurrent.Executors#newFixedThreadPool(**)",
+  "java.util.concurrent.Executors#newCachedThreadPool(**)",
+  "java.util.concurrent.Executors#newSingleThreadExecutor(**)",
+  "java.util.concurrent.Executors#newScheduledThreadPool(**)",
+  "java.util.concurrent.Executors#newSingleThreadScheduledExecutor(**)",
+  "java.util.concurrent.Executors#newWorkStealingPool(**)",
+  "java.util.concurrent.Executors#newThreadPerTaskExecutor(**)",
+  "java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor(**)",
+  "java.util.concurrent.ForkJoinPool#<init>(**)",
+  "java.util.concurrent.ThreadPoolExecutor#<init>(**)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+owner      = "cc.jumpkick.run.JkThreads"
+fixture    = "server/guard/fixtures/executors-through-jkthreads"
+instead    = "JkThreads.cpu() / io() / platform(); a pool that must stay private wraps each task with ContextPropagator.wrapCallable and is an allow entry"
+why        = "a pool of one's own carries no request onto its tasks unless each is wrapped by hand"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.resolver.MemberSolves"
+reason = "the member solves of one lock, bounded by the heap each needs; every task is wrapped by ContextPropagator on the submitting thread"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.host.DeleteParallelism"
+reason = "the tree-delete pool, sized to the filesystem rather than the cores; its tasks unlink files and read no carried value"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.EngineServer"
+reason = "one thread per client connection; each verb binds its request itself"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.http.HttpEngineServer"
+reason = "one thread per HTTP exchange; each handler binds its request itself"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.api.CoalescingBuildPlanListener"
+reason = "the shared progress timer and its flushers only hand coalesced events to the delegate"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.api.CoalescingLockPackages"
+reason = "the shared lock-progress timer only hands coalesced counts to the delegate"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.EngineMaintenance"
+reason = "the engine-lifetime maintenance ticks read config files, never a request"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.activity.ChangeNotices"
+reason = "the engine-lifetime poll of the change journal's file, never a request"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.http.LiveVitals"
+reason = "the engine-lifetime vitals publisher"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.http.WriteDeadline"
+reason = "one watchdog thread for every response; it only interrupts a stuck write"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.http.StalledBodyGuard"
+reason = "one watchdog thread for every download body; it only closes a stalled stream"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.jsonl.BoundedLineReader"
+reason = "one watchdog thread for every protocol stream; it only closes an idle one"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.run.BuildPlan"
+reason = "the progress interpolation timer eases step bars forward and reads no request"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.winhost.WindowsHostCheck"
+reason = "the host probes read the machine, never a request; the pool is shut down with the call so a hung probe is interrupted"

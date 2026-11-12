@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.PomReactorScan;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.mvn.FrontendCollector;
@@ -13,6 +14,7 @@ import cc.jumpkick.mvn.PomShadow;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's {@link ManifestPaths.ShadowSource}: a module with a {@code pom.xml} and no {@code
@@ -33,9 +36,10 @@ import java.util.stream.Collectors;
  * the first reader and shared by the rest.
  *
  * <p>Rendering happens once per POM change; the rows of the import report that {@code jk import}
- * would grade Tier 3 are parked per module until the next build's parse step {@linkplain
- * #drainTier3 drains} them into its warnings, so a build says once what the shadow does not carry.
- * The reactor's own rows ride with the first leaf that drains. A render that failed on a read —
+ * would grade Tier 3 are parked beside each module's shadow until the next build's parse step
+ * {@linkplain #drainTier3 drains} them into its warnings, whichever request rendered it, so a build
+ * says once what the shadow does not carry. The reactor's own rows ride with the first leaf that
+ * drains. A render that failed on a read —
  * a repository that stopped answering — is {@linkplain ShadowRenderFailures remembered}, so the
  * job's next reader of the same POM gets the failure at once rather than waiting the stall window
  * out again.
@@ -44,16 +48,17 @@ public final class ShadowManifests {
 
     private ShadowManifests() {}
 
-    private static final Map<Path, List<String>> PENDING_TIER3 = new ConcurrentHashMap<>();
+    /** A rendering's Tier-3 rows, one per line, beside the module's shadow until a build reports them. */
+    static final String PENDING_TIER3 = "pending-tier3.txt";
 
-    /** What a rendering changed from the POM's own words (raised pins), reported once like the rows. */
-    private static final Map<Path, List<String>> PENDING_NOTES = new ConcurrentHashMap<>();
+    /** What a rendering changed from the POM's own words (raised pins), parked and reported like the rows. */
+    static final String PENDING_NOTES = "pending-notes.txt";
 
     /** Leaf module → the reactor root whose rendering wrote its shadow. */
     private static final Map<Path, Path> ROOT_OF = new ConcurrentHashMap<>();
 
     /** Per-module render gate: two readers racing on the same POM render it once. */
-    private static final Map<Path, Object> GATES = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Path> GATES = new KeyedLocks<>();
 
     private static final ShadowRenderFailures FAILURES = ShadowRenderFailures.forStallWindow();
 
@@ -84,7 +89,7 @@ public final class ShadowManifests {
         if (PomShadow.isCurrent(shadow, module)) return shadow;
         Optional<Path> root = PomReactorScan.reactorRootOf(module);
         if (root.isEmpty()) {
-            synchronized (GATES.computeIfAbsent(module, k -> new Object())) {
+            try (KeyedLocks.Held held = GATES.hold(module)) {
                 if (!PomShadow.isCurrent(shadow, module)) render(module);
             }
             return shadow;
@@ -95,7 +100,7 @@ public final class ShadowManifests {
         // the root has to render again.
         materialize(root.get());
         if (PomShadow.isCurrent(shadow, module)) return shadow;
-        synchronized (GATES.computeIfAbsent(root.get(), k -> new Object())) {
+        try (KeyedLocks.Held held = GATES.hold(root.get())) {
             if (!PomShadow.isCurrent(shadow, module)) render(root.get());
         }
         if (PomShadow.isCurrent(shadow, module)) return shadow;
@@ -140,19 +145,37 @@ public final class ShadowManifests {
             List<PomShadow.Shadow> shadows = PomReactorScan.declaresModules(pom)
                     ? PomShadow.renderReactor(importer, pom)
                     : List.of(PomShadow.render(importer, pom));
+            List<Path> leaves = new ArrayList<>();
             for (PomShadow.Shadow rendered : shadows) {
                 Path target = ManifestPaths.shadowManifestPath(rendered.moduleDir());
                 Files.createDirectories(Objects.requireNonNull(target.getParent(), "shadow dir"));
                 AtomicWrites.replace(target, rendered.toml());
-                PENDING_TIER3.put(rendered.moduleDir(), rendered.tier3());
-                if (!rendered.moduleDir().equals(module)) ROOT_OF.put(rendered.moduleDir(), module);
+                park(rendered.moduleDir(), PENDING_TIER3, rendered.tier3());
+                if (!rendered.moduleDir().equals(module)) leaves.add(rendered.moduleDir());
                 Log.debug("shadow manifest rendered", target);
             }
-            PENDING_NOTES.put(module, raisePins(module));
+            recordLeaves(module, leaves);
+            park(module, PENDING_NOTES, raisePins(module));
         } catch (IOException e) {
             FAILURES.remember(module, e);
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * {@code root}'s rendering wrote {@code leaves}: they are its leaves now, a leaf it no longer
+     * renders is no longer its, and {@code root} itself is nobody's leaf, so a reactor that was
+     * restructured reports each leaf's rows under the root that renders it today.
+     */
+    static void recordLeaves(Path root, List<Path> leaves) {
+        ROOT_OF.values().removeIf(root::equals);
+        ROOT_OF.remove(root);
+        for (Path leaf : leaves) ROOT_OF.put(leaf, root);
+    }
+
+    /** The reactor root whose rendering wrote {@code leaf}'s shadow, or {@code null}. Test seam. */
+    static @Nullable Path rootOf(Path leaf) {
+        return ROOT_OF.get(leaf);
     }
 
     /**
@@ -181,15 +204,44 @@ public final class ShadowManifests {
         Path module = dir.toAbsolutePath().normalize();
         List<String> rows = new ArrayList<>();
         Path root = ROOT_OF.get(module);
-        if (root != null) rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(root), List.of()));
-        rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(module), List.of()));
+        if (root != null) rows.addAll(take(root, PENDING_TIER3));
+        rows.addAll(take(module, PENDING_TIER3));
         List<String> out = new ArrayList<>();
         for (String row : rows) {
             out.add(row + ": ignored when building from " + ManifestPaths.POM + "; jk import " + ManifestPaths.POM
                     + " writes a jk.toml to edit");
         }
-        if (root != null) out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(root), List.of()));
-        out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(module), List.of()));
+        if (root != null) out.addAll(take(root, PENDING_NOTES));
+        out.addAll(take(module, PENDING_NOTES));
         return List.copyOf(out);
+    }
+
+    /** Park {@code lines} under {@code name} beside {@code module}'s shadow, replacing any not yet reported. */
+    private static void park(Path module, String name, List<String> lines) throws IOException {
+        Path file = ManifestPaths.shadowDir(module).resolve(name);
+        if (lines.isEmpty()) {
+            Files.deleteIfExists(file);
+            return;
+        }
+        Files.createDirectories(ManifestPaths.shadowDir(module));
+        AtomicWrites.replace(file, String.join("\n", lines) + "\n");
+    }
+
+    /**
+     * The lines parked under {@code name} beside {@code module}'s shadow, and gone from there; empty
+     * when none are, or when a racing drain removed them first, so only one build reports them.
+     */
+    private static List<String> take(Path module, String name) {
+        Path file = ManifestPaths.shadowDir(module).resolve(name);
+        try {
+            List<String> lines = Files.readAllLines(file);
+            Files.delete(file);
+            return lines;
+        } catch (NoSuchFileException none) {
+            return List.of();
+        } catch (IOException e) {
+            Log.debug("shadow: cannot take " + file, e);
+            return List.of();
+        }
     }
 }

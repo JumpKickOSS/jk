@@ -16,7 +16,6 @@ import cc.jumpkick.run.TaskStatus;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -118,27 +117,12 @@ class GuardStandaloneStemsE2eTest {
     /** What the {@code guard} verb sends: a build with tests skipped and the guard selection on. */
     private static BuildPlanResult guard(Path project, Path cache) throws Exception {
         var build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
         Session session = SessionContext.current()
                 .withTestSelection(TestSelection.of(List.of(), false, List.of(), List.of(), false, true));
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(project, cache, session).withSkipTests(true);
         return SessionContext.where(session, () -> BuildPlanner.fullPlan(in).run());
     }
 

@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -11,10 +10,11 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.TestCaches;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -91,30 +91,19 @@ class JdkFloorTest {
                 }
                 """.formatted(majorStr));
 
-        var parsed = JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
         Session nested = Session.defaults().withCacheDir(cache);
         SessionContext.runWhere(nested, () -> {
-            BuildPlan lock = LockPlans.lockBuildPlan(
-                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            BuildPlan lock;
+            try {
+                lock = LockPlans.lockBuildPlan(
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
             assertThat(lock.run().errors()).isEmpty();
 
-            BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                    project,
-                    cache,
-                    project.resolve("jk.toml"),
-                    project.resolve("jk-lock.toml"),
-                    project,
-                    1,
-                    1,
-                    null,
-                    null,
-                    /* skipTests */ false,
-                    false,
-                    false,
-                    false,
-                    Set.of(),
-                    nested);
+            BuildPlanner.Inputs in = TestInputs.of(project, cache, nested).withEstimatedTestCount(1);
             BuildPlan plan = BuildPlanner.fullPlan(in);
             BuildPlanResult result = plan.run();
             for (BuildPlanResult.Diagnostic d : result.errors()) {

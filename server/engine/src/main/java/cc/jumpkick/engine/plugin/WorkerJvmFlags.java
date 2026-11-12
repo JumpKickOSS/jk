@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.Log;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The JVM flags a worker's own JDK understands. The engine runs on a pinned JDK 25 or newer and
@@ -34,13 +34,24 @@ public final class WorkerJvmFlags {
             new Since("-XX:+UseCompactObjectHeaders", 25),
             new Since("-XX:-UseCompactObjectHeaders", 25));
 
-    private static final Map<Path, Integer> FEATURES = new ConcurrentHashMap<>();
+    /**
+     * Each worker JDK's feature release, stamped by its {@code release} file as a stat sees it
+     * through any link: a {@code JAVA_HOME} that is a pointer ({@code current}) repointed at another
+     * JDK reads that JDK's file.
+     */
+    private static final StampedMemo<Path, FileStamp, Integer> FEATURES = StampedMemo.bounded(64);
 
     /** {@code flags} less those {@code javaHome}'s JDK is too old for. */
     public static List<String> forJdk(Path javaHome, List<String> flags) {
         if (flags.isEmpty()) return flags;
-        int feature = FEATURES.computeIfAbsent(javaHome, JvmOptions::hostFeature);
-        return forFeature(feature, flags);
+        return forFeature(feature(javaHome), flags);
+    }
+
+    /** {@code javaHome}'s feature release, read again whenever its {@code release} file changes. */
+    static int feature(Path javaHome) {
+        FileStamp stamp = FileStamp.of(javaHome.resolve("release"));
+        if (stamp == null) return JvmOptions.hostFeature(javaHome);
+        return FEATURES.get(javaHome, stamp, () -> JvmOptions.hostFeature(javaHome));
     }
 
     /** {@code flags} less those JDK {@code feature} is too old for. */

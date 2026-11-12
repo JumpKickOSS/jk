@@ -4,14 +4,12 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -129,8 +127,8 @@ class BuildPlannerGroovyStepTest {
                 "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
         BuildLayout layout = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
         List<Path> cp = List.of(dir.resolve("a.jar"));
-        assertThat(PlannerCompile.groovyClasspath(cp, layout, false)).isEqualTo(cp);
-        assertThat(PlannerCompile.groovyClasspath(cp, layout, true))
+        assertThat(CompileInputs.groovyClasspath(cp, layout, false)).isEqualTo(cp);
+        assertThat(CompileInputs.groovyClasspath(cp, layout, true))
                 .containsExactly(cp.get(0), layout.kotlinClassesDir());
     }
 
@@ -150,22 +148,7 @@ class BuildPlannerGroovyStepTest {
     }
 
     private static BuildPlan plan(Path dir) {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                dir,
-                dir.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(dir, dir.resolve("cache")).withSkipTests(true);
         return BuildPlanner.fullPlan(in);
     }
 }

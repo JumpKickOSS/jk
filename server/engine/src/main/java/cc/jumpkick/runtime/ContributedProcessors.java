@@ -44,7 +44,7 @@ final class ContributedProcessors {
     static Paths resolve(JkBuild project, Path moduleDir, Lockfile view, Cas cas)
             throws IOException, InterruptedException {
         List<PluginContributions.ProcessorDep> deps = PluginContributions.processorDependencies(
-                project, moduleDir, view.platformPins(), PlannerSupport.lockModules(view));
+                project, moduleDir, view.platformPins(), view.classpathModules());
         if (deps.isEmpty()) return Paths.NONE;
         RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         List<Path> main = new ArrayList<>();

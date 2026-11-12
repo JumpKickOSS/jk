@@ -32,6 +32,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.PortablePath;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -52,25 +53,12 @@ import org.jspecify.annotations.Nullable;
  * Every packaging action key that both the build and {@code jk explain} have to agree on, derived
  * once.
  *
- * <p>{@code jk explain} prices a step by recomputing the key the build will compute. A prefix-set
- * guard ({@code checkForecastKeyParity}) can prove the two sides emit the same token <em>kinds</em>,
- * but not that they put the same <em>value</em> behind a kind — and values legitimately differ per
- * module, so no text scan can. Two live defects were exactly that shape:
- *
- * <ul>
- * <li><b>.</b> Both {@code package-assembly} sites emitted {@code main:}; the build read
- *     {@code project.mainClass()} and the forecast {@code PluginModule.mainClass(dir, project)},
- *     which answers {@code WORKER_MAIN} for a plugin worker. A worker module with
- *     {@code assembly = true} could therefore never forecast up-to-date.
- * <li><b>.</b> A module packaged by a plugin (spring-boot, grails, quarkus, minified) runs
- *     the packager under a token bag that has nothing to do with the plain jar's, and the forecast
- *     had no arm for it at all — it priced {@code package-jar} against the plain-jar key, which
- *     that build never computes.
- * </ul>
- *
- * <p>The fix for both is the same and it is structural rather than asserted: one body per derived
- * value, called from both sides. That is what this class is. The guard's job shrinks to proving no
- * second body appears.
+ * <p>{@code jk explain} prices a step by recomputing the key the build will compute, and two sides
+ * that emit the same token kinds can still put different values behind one: the assembly's {@code
+ * main:} read {@code project.mainClass()} on one side and {@code PluginModule.mainClass} on the
+ * other, so a worker module with {@code assembly = true} never forecast up to date. So each key is
+ * one {@link KeyOwner} body here, called from both sides; the {@code forecast-key-*} guard tests
+ * refuse a key composed anywhere else and an owner only one side calls.
  */
 public final class PackagingKeys {
 
@@ -101,6 +89,7 @@ public final class PackagingKeys {
      * {@code classesTok}/{@code contribTok} are passed in because the forecast projects trees a
      * {@code jk clean} wiped from their records; every token and its shape is derived here.
      */
+    @KeyOwner(step = TaskNames.PACKAGE_JAR)
     public static Keyed packageJar(
             Path jar, Path moduleDir, JkBuild project, String classesTok, String contribTok, byte @Nullable [] sbom) {
         List<String> tokens = List.of(
@@ -117,8 +106,8 @@ public final class PackagingKeys {
     /** The dirs package-jar merges over the classes: plugin contributions, then worker codec classes. */
     public static List<Path> packagedContributions(
             @Nullable PluginDeclarations decls, BuildLayout layout, Path moduleDir, JkBuild project) {
-        List<Path> contributed = new ArrayList<>(PlannerSupport.packagedDirs(decls, layout, project));
-        contributed.addAll(PlannerSupport.workerCodecClassDirs(moduleDir, project));
+        List<Path> contributed = new ArrayList<>(PackagedClasses.packagedDirs(decls, layout, project));
+        contributed.addAll(PackagedClasses.workerCodecClassDirs(moduleDir, project));
         return contributed;
     }
 
@@ -163,6 +152,7 @@ public final class PackagingKeys {
         return PlannerTails.assemblyAttributes(project, PlannerBuildInfo.worktree(moduleDir));
     }
 
+    @KeyOwner(step = TaskNames.PACKAGE_ASSEMBLY)
     static Keyed assembly(
             Path assemblyJar,
             Path moduleDir,
@@ -196,7 +186,7 @@ public final class PackagingKeys {
 
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the key the live step will
-     * compute. Dep jars must come from {@link PlannerSupport#assemblyDependencyJars} — never the
+     * compute. Dep jars must come from {@link PackagedClasses#assemblyDependencyJars} — never the
      * whole workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm
      * assembly. Sibling jars missing after clean are fingerprinted via CAS shas recovered from
      * each sibling's package record.
@@ -227,10 +217,10 @@ public final class PackagingKeys {
                         knownResourceDrift);
         // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath), the wiped sibling
         // jars the walk pinned included.
-        List<Path> depJars = PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);
+        List<Path> depJars = PackagedClasses.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);
         PluginDeclarations pkgDecls;
         try {
-            pkgDecls = PlannerSupport.pluginDeclarationsFor(project, layout, cache);
+            pkgDecls = PackagedClasses.pluginDeclarationsFor(project, layout, cache);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -240,7 +230,7 @@ public final class PackagingKeys {
                 dir,
                 project,
                 classesTok,
-                PlannerSupport.contributionsToken(PlannerSupport.packagedDirs(pkgDecls, layout, project)),
+                PackagedClasses.contributionsToken(PackagedClasses.packagedDirs(pkgDecls, layout, project)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas),
                 assemblySbom(project, lockFile));
         boolean hit = ForecastSteps.present(actionCache, keyed.key());
@@ -345,6 +335,7 @@ public final class PackagingKeys {
      * own identity and code. Any config, classes, dependency-set, step-output, extra-artifact,
      * JDK or manifest change re-packages; nothing else does.
      */
+    @KeyOwner(step = TaskNames.PACKAGE_JAR)
     public static PackagerKey pluginPackager(Packager p) throws IOException, InterruptedException {
         // The packager's runtime view IS its entry jars — coordinate-named lock artifacts plus
         // workspace sibling jars, the SAME set steps see via In.runtimeEntries(). Packaging from
@@ -647,6 +638,7 @@ public final class PackagingKeys {
      * docTool} naming Dokka's or scaladoc's release — and the JDK. One body for the step and its
      * forecast; a module with no source of any of them keys a constant.
      */
+    @KeyOwner(step = TaskNames.PACKAGE_JAVADOC)
     public static Keyed javadoc(
             Path javadocJar,
             Path moduleDir,

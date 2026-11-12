@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
@@ -13,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
- * The run-tests step resolves its coverage tooling before it takes the process-wide serial test
+ * The run-tests step resolves its coverage tooling before it takes its checkout's serial test
  * gate. The order is what keeps a slow or failing JaCoCo fetch from parking every other module's
  * suite, and what keeps a failed fetch from leaving the gate held for good.
  */
@@ -47,16 +48,16 @@ class PlannerTestGateOrderTest {
                 .as("the gate is never taken for a suite that will not start")
                 .isEmpty();
 
-        // The real gate too: its permit count is what every other module's suite waits on.
-        int permits = BuildPlanner.TEST_GATE.availablePermits();
+        // The real gate too: it is what every other module's suite of the checkout waits on.
+        int gates = TestGates.live();
         assertThatThrownBy(() -> PlannerTest.resolveBeforeGate(
                         () -> {
                             throw new IOException("cannot fetch");
                         },
                         true,
-                        PlannerTest::awaitTestGate))
+                        () -> TestGates.acquire(Path.of("/ws/never-gated"), () -> false)))
                 .isInstanceOf(IOException.class);
-        assertThat(BuildPlanner.TEST_GATE.availablePermits()).isEqualTo(permits);
+        assertThat(TestGates.live()).isEqualTo(gates);
     }
 
     @Test
@@ -77,11 +78,11 @@ class PlannerTestGateOrderTest {
         Semaphore gate = new Semaphore(1);
         gate.acquireUninterruptibly(); // another workspace's suite holds it
         AtomicInteger asked = new AtomicInteger();
-        assertThatThrownBy(() -> PlannerTest.awaitGate(gate, () -> asked.incrementAndGet() >= 2))
+        assertThatThrownBy(() -> TestGates.await(gate, () -> asked.incrementAndGet() >= 2))
                 .isInstanceOf(CancellationException.class);
         assertThat(gate.availablePermits()).isZero();
         gate.release();
-        PlannerTest.awaitGate(gate, () -> true);
+        TestGates.await(gate, () -> true);
         assertThat(gate.availablePermits())
                 .as("a free gate is taken even when cancelled is asked")
                 .isZero();

@@ -60,7 +60,7 @@ class SiblingRulePackStagingTest {
         Map<String, String> env = Map.of(TestEnv.JK_HOME, home.toString());
         JkBuild host = JkBuildParser.parse(root.resolve("host/jk.toml"));
 
-        PlannerSupport.stageSiblingRulePacks(root.resolve("host"), host, env);
+        SiblingJars.stageSiblingRulePacks(root.resolve("host"), host, env);
 
         Path store = JkDirs.of(env::get, tmp.toString()).storeDir();
         Path staged = store.resolve("repos/jk-local/cc/jumpkick/guards/quarkus/1.2.3/quarkus-1.2.3.jar");
@@ -82,7 +82,7 @@ class SiblingRulePackStagingTest {
                 """);
         JkBuild solo = JkBuildParser.parse(tmp.resolve("solo/jk.toml"));
         Path home = tmp.resolve("home");
-        PlannerSupport.stageSiblingRulePacks(tmp.resolve("solo"), solo, Map.of(TestEnv.JK_HOME, home.toString()));
+        SiblingJars.stageSiblingRulePacks(tmp.resolve("solo"), solo, Map.of(TestEnv.JK_HOME, home.toString()));
         assertThat(home).doesNotExist();
     }
 }

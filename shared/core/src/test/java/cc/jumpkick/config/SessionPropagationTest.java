@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Proves that a {@code where()}-bound {@link Session} — and its per-request cancel token — propagates
- * to tasks dispatched to the shared {@link JkThreads} pools via the {@code ContextPropagator} seam
- * that {@link SessionContext}'s static initializer installs. Without propagation a pool worker would
+ * to tasks dispatched to the shared {@link JkThreads} pools, as {@link SessionContext} registers its
+ * binding with {@code ContextPropagator}. Without propagation a pool worker would
  * read the process-static session instead, so two concurrent requests could not be isolated.
  */
 class SessionPropagationTest {
@@ -26,7 +26,6 @@ class SessionPropagationTest {
     void tidy() {
         SessionContext.reset();
         SessionCancel.bind(null); // undo any probe binding this test installed
-        IoLedger.close(); // drop any ambient run ledger a test opened
     }
 
     private static Session sessionAt(String dir) {
@@ -131,34 +130,58 @@ class SessionPropagationTest {
     @Test
     void sessions_built_inside_a_run_share_the_runs_io_ledger() {
         IoLedger run = new IoLedger();
-        IoLedger.open(run); // what the engine does on a request's runner thread
-
-        Session session = sessionAt("/tmp/jk-io-adopt");
-
-        assertThat(session.io()).isSameAs(run);
-        assertThat(session.withCacheDir(Path.of("/tmp/jk-cache")).io()).isSameAs(run); // copies share it
-
-        IoLedger.close();
+        // What the engine does on a request's runner thread.
+        Request.of(1, run).run(() -> {
+            Session session = sessionAt("/tmp/jk-io-adopt");
+            assertThat(session.io()).isSameAs(run);
+            assertThat(session.withCacheDir(Path.of("/tmp/jk-cache")).io()).isSameAs(run); // copies share it
+        });
         assertThat(Session.defaults().io()).isNotSameAs(run); // outside a run: detached ledger
     }
 
     @Test
     void a_pool_task_meters_into_the_runs_ledger() throws Exception {
         IoLedger run = new IoLedger();
-        IoLedger.open(run);
-        Session session = sessionAt("/tmp/jk-io-pool");
-
         // The pool worker pre-dates the request, so it inherits no thread state — it reaches the
-        // run's ledger only through the propagated session. This is how MavenRepo/ActionCache meter.
-        SessionContext.where(session, () -> CompletableFuture.supplyAsync(
-                        () -> {
-                            SessionContext.current().io().remoteDown(1_234);
-                            return null;
-                        },
-                        JkThreads.io())
-                .get());
+        // run's ledger only through the propagated binding. This is how MavenRepo/ActionCache meter.
+        Request.of(1, run).run(() -> {
+            Session session = sessionAt("/tmp/jk-io-pool");
+            SessionContext.where(session, () -> CompletableFuture.supplyAsync(
+                            () -> {
+                                SessionContext.current().io().remoteDown(1_234);
+                                Session.defaults().io().remoteDown(1);
+                                return null;
+                            },
+                            JkThreads.io())
+                    .get());
+        });
 
-        assertThat(run.totals().remoteDown()).isEqualTo(1_234);
+        assertThat(run.totals().remoteDown()).isEqualTo(1_235);
+    }
+
+    @Test
+    void where_keeps_the_bound_request_and_a_pool_task_carries_both() throws Exception {
+        Request request = Request.of(7, new IoLedger());
+        Session scoped = sessionAt("/tmp/jk-where-keeps");
+        Object[] seen = request.call(() -> SessionContext.where(scoped, () -> CompletableFuture.supplyAsync(
+                        () -> new Object[] {Request.current(), SessionContext.current()}, JkThreads.cpu())
+                .get()));
+        assertThat(seen[0]).isSameAs(request);
+        assertThat(seen[1]).isSameAs(scoped);
+        assertThat(CompletableFuture.supplyAsync(Request::current, JkThreads.cpu())
+                        .get())
+                .as("a task submitted off a request carries none")
+                .isNull();
+    }
+
+    @Test
+    void a_request_bound_without_a_session_leaves_the_invocations_session_current() throws Exception {
+        Session installed = sessionAt("/tmp/jk-invocation");
+        Session seen = SessionContext.invocation(() -> {
+            SessionContext.install(installed);
+            return Request.detached().call(SessionContext::current);
+        });
+        assertThat(seen).isSameAs(installed);
     }
 
     @Test

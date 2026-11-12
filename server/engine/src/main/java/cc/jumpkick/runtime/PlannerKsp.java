@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerNative.javaSources;
 import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.beforeCompile;
-import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
@@ -18,6 +17,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -26,9 +26,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
-import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildStage;
@@ -47,6 +45,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ProjectedFiles;
 import java.io.ByteArrayOutputStream;
@@ -129,6 +128,11 @@ public final class PlannerKsp {
         for (TaskDecl step : decls.steps()) {
             for (String rel : lane.apply(step)) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
+                List<Path> projected = ProjectedFiles.files(dir, suffix);
+                if (projected != null) {
+                    out.addAll(projected);
+                    continue;
+                }
                 if (!Files.isDirectory(dir)) continue;
                 List<Path> found = new ArrayList<>();
                 PathUtil.forEachRegularFile(dir, (file, attrs) -> {
@@ -141,14 +145,54 @@ public final class PlannerKsp {
         return out;
     }
 
-    /** Plugin steps' declared source-contribution dirs (existing ones only). */
+    /**
+     * Lay the sources each before-compile plugin step of {@code decls} contributes at its roots, for
+     * a forecast of a module whose step scratch is gone: the build restores the scratch from the
+     * step's record before any compile reads it, and the forecast prices the step as restored, so
+     * the files of the record the step's pointer names are what every compile keys on. A step with
+     * no record projects nothing: it runs, and what it writes cannot be described.
+     */
+    static void projectContributedSources(
+            ProjectedFiles projection,
+            BuildLayout layout,
+            @Nullable PluginDeclarations decls,
+            ActionCache actionCache) {
+        if (decls == null) return;
+        for (TaskDecl step : decls.steps()) {
+            if (!beforeCompile(step)) continue;
+            List<String> roots = new ArrayList<>(step.contributesSources());
+            roots.addAll(step.contributesTestSources());
+            if (roots.isEmpty()) continue;
+            Path scratch = PluginBuild.taskScratch(layout, step.name());
+            if (Files.isDirectory(scratch)) continue;
+            Map<String, String> outputs;
+            try {
+                var record = actionCache.lastFor(ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch));
+                if (record.isEmpty()) continue;
+                outputs = record.get().outputs();
+            } catch (IOException e) {
+                Log.debug("projectContributedSources: " + step.name() + " keys on the tree as it is", e);
+                continue;
+            }
+            for (String rel : roots) {
+                String prefix = rel.endsWith("/") ? rel : rel + "/";
+                Map<String, String> files = new TreeMap<>();
+                for (Map.Entry<String, String> e : outputs.entrySet()) {
+                    if (e.getKey().startsWith(prefix)) files.put(e.getKey().substring(prefix.length()), e.getValue());
+                }
+                projection.project(scratch.resolve(rel), files);
+            }
+        }
+    }
+
+    /** Plugin steps' declared source-contribution dirs (existing or projected ones only). */
     static List<Path> pluginContributedSourceDirs(BuildLayout layout, @Nullable PluginDeclarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (TaskDecl step : decls.steps()) {
             for (String rel : step.contributesSources()) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
-                if (Files.isDirectory(dir)) out.add(dir);
+                if (ProjectedFiles.isDirectory(dir)) out.add(dir);
             }
         }
         return out;
@@ -194,11 +238,6 @@ public final class PlannerKsp {
             }
         }
         return out;
-    }
-
-    /** The provided-classpath contribution (platform jars), re-read for the test step. */
-    static List<Path> contributedProvidedFor(TaskContext ctx) {
-        return ctx.get(PROVIDED_CP).orElse(List.of());
     }
 
     /**
@@ -341,21 +380,7 @@ public final class PlannerKsp {
      * its processors keeps no generated code alive.
      */
     static boolean runsMainRound(JkBuild project, Path dir) {
-        return PlannerCompile.hasProcessorDeps(project)
-                && CompileSupport.resolveLanguages(project.project(), dir).kotlin();
-    }
-
-    /**
-     * Whether a Kotlin module declares any processor a test round could run: either table's, or the
-     * test table's alone under its {@code inherit = false}.
-     */
-    private static boolean mayRunTestRound(JkBuild project, boolean kotlinModule) {
-        if (!kotlinModule) return false;
-        for (Scope scope : ProcessorPaths.testScopes(project)) {
-            List<Dependency> declared = project.dependencies().byScope().get(scope);
-            if (declared != null && !declared.isEmpty()) return true;
-        }
-        return false;
+        return ModuleShape.of(project, dir, null).ksp();
     }
 
     /**
@@ -365,15 +390,16 @@ public final class PlannerKsp {
      */
     static void dropRetiredRounds(BuildPlanner.Ctx cx, BuildLayout layout, JkBuild project) throws IOException {
         if (!cx.ksp()) PathUtil.deleteRecursively(kspOutBase(layout));
-        if (!mayRunTestRound(project, cx.kotlinModule())) dropTestRound(layout);
+        // A test round runs only in a Kotlin module that declares a processor compile-test reads.
+        if (!cx.kotlinModule() || !ModuleShape.hasTestProcessorDeps(project)) dropTestRound(layout);
     }
 
     /** The main KSP2 round: split the processors, then run the round over the main sources. */
     private static void runKsp(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
-        List<Path> processorCp = ctx.require(PROCESSOR_CP);
+        ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
+        List<Path> processorCp = classpaths.processor();
         var split = KspProcessors.split(processorCp);
-        ctx.put(JAVAC_PROCESSOR_CP, split.javac());
         BuildLayout layout = ctx.require(LAYOUT);
         if (split.ksp().isEmpty()) {
             // Processors that are all javac's leave nothing of an earlier round to read.
@@ -390,7 +416,7 @@ public final class PlannerKsp {
                 TaskNames.KSP,
                 kspSourceRoots(cx.in(), project, layout, pluginDecls, cx.compact()),
                 mainRoundInputs(kotlinSources(ctx), javaSources(ctx), layout, pluginDecls),
-                ctx.require(CLASSPATH),
+                classpaths.main(),
                 processorCp,
                 split.ksp());
         if (runRound(ctx, cx, round) == RoundOutcome.KEPT) {
@@ -447,33 +473,35 @@ public final class PlannerKsp {
      * outputs, restore them from the action record the round's inputs name or fork KSP and record
      * what it wrote, surface its diagnostics and stamp.
      */
+    @KeyOwner(
+            step = TaskNames.KSP,
+            unpaired = "the round writes its stamp; the forecast reads it through roundStampFresh",
+            forecastsStep = true)
     static RoundOutcome runRound(TaskContext ctx, BuildPlanner.Ctx cx, Round round) throws Exception {
         BuildPlanner.Inputs in = cx.in();
         Path outBase = round.outBase();
-        List<Path> stampCp = new ArrayList<>(round.classpath());
-        stampCp.addAll(round.kspJars());
+        List<Path> stampCp = stampClasspath(round.classpath(), round.kspJars());
         boolean rerun = in.session().config().rebuildOr(false);
         JkBuild project = ctx.require(PROJECT);
         String kotlinVersion = kotlinVersion(ctx.require(LOCKFILE), project);
         // Processor options and the toolchain are round inputs no file mtime reflects; the digest
         // is what makes a `ksp-options` edit with untouched sources re-run the round.
         String kspVersion = KspResolver.versionFor(project);
-        String optionsDigest = kspStampDigest(
-                project,
-                ctx.require(LOCKFILE),
-                in.dir(),
-                kotlinVersion,
-                kspVersion,
-                ctx.require(JAVA_HOME),
-                ctx.require(RELEASE));
+        String optionsDigest =
+                roundDigest(project, ctx.require(LOCKFILE), in.dir(), ctx.require(JAVA_HOME), ctx.require(RELEASE));
         // The warnings the round's outputs were made with: a fresh stamp without them is not up to date.
         Path warnings = CompileWarnings.currentFile(
                 ctx.require(LAYOUT).buildDir().resolve("incremental"), CompileWarnings.roundFile(round.producer()));
         Optional<List<CompileWarnings.Kept>> kept =
                 rerun ? Optional.empty() : CompileWarnings.readCurrent(warnings, round.stampInputs());
         if (kept.isPresent()
-                && FreshnessStamp.isFresh(
-                        outBase, BuildStamps.KSP, round.stampInputs(), stampCp, ctx.require(RELEASE), optionsDigest)) {
+                && roundStampFresh(
+                        outBase,
+                        round.stampInputs(),
+                        round.classpath(),
+                        round.kspJars(),
+                        ctx.require(RELEASE),
+                        optionsDigest)) {
             for (CompileWarnings.Kept k : kept.get())
                 ctx.replayedWarn(k.tool(), "", k.warning().describe());
             return RoundOutcome.KEPT;
@@ -553,6 +581,36 @@ public final class PlannerKsp {
                 optionsDigest,
                 readClock);
         return outcome;
+    }
+
+    /**
+     * A round's option digest ({@link #kspStampDigest}) over the module's Kotlin and KSP versions:
+     * what its stamp records and its action key hashes.
+     */
+    @KeyOwner(step = TaskNames.KSP)
+    static String roundDigest(JkBuild project, Lockfile lock, Path dir, Path javaHome, int release) throws IOException {
+        return kspStampDigest(
+                project, lock, dir, kotlinVersion(lock, project), KspResolver.versionFor(project), javaHome, release);
+    }
+
+    /**
+     * Whether the freshness stamp under a round's {@code outBase} vouches for it: the hand-written
+     * sources it reads, its classpath and KSP jars, the release and the round's option digest
+     * ({@link #kspStampDigest}).
+     */
+    @KeyOwner(step = TaskNames.KSP)
+    static boolean roundStampFresh(
+            Path outBase, List<Path> stampInputs, List<Path> classpath, List<Path> kspJars, int release, String digest)
+            throws IOException {
+        return FreshnessStamp.isFresh(
+                outBase, BuildStamps.KSP, stampInputs, stampClasspath(classpath, kspJars), release, digest);
+    }
+
+    /** A round's stamped classpath: its compile classpath, then its KSP jars. */
+    private static List<Path> stampClasspath(List<Path> classpath, List<Path> kspJars) {
+        List<Path> out = new ArrayList<>(classpath);
+        out.addAll(kspJars);
+        return out;
     }
 
     /** Record what a round wrote under {@code outBase}, an empty round as the verdict that it wrote nothing. */
@@ -655,9 +713,7 @@ public final class PlannerKsp {
         BuildLayout layout = ctx.require(LAYOUT);
         if (!cx.kotlinModule()) return dropped(dropTestRound(layout));
         Path outBase = kspTestOutBase(layout);
-        List<Path> shared = ctx.require(PROCESSOR_CP);
-        List<Path> processorCp = ProcessorPaths.forTest(
-                ctx.require(PROJECT), shared, shared, ctx.get(TEST_PROCESSOR_CP).orElse(List.of()));
+        List<Path> processorCp = ctx.require(CLASSPATHS).kspTestProcessor();
         List<Path> kspJars = KspProcessors.split(processorCp).ksp();
         List<Path> roots =
                 testSourceRoots(ctx.require(PROJECT), cx.in().dir(), cx.compact(), compiledSuites, layout, decls);
@@ -777,7 +833,8 @@ public final class PlannerKsp {
      * ksp-options} (Room's schemaLocation), so the project overrides.
      */
     static List<String> kspOptions(JkBuild project, Path moduleDir, Lockfile lock) {
-        List<String> options = new ArrayList<>(PluginContributions.kspOptions(project, moduleDir, lockModules(lock)));
+        List<String> options =
+                new ArrayList<>(PluginContributions.kspOptions(project, moduleDir, lock.classpathModules()));
         options.addAll(project.build().kspOptions());
         return options;
     }
@@ -787,6 +844,7 @@ public final class PlannerKsp {
      * (language and API level), the KSP2 release, the JDK, the module name and every processor
      * option.
      */
+    @KeyOwner(step = TaskNames.KSP)
     static String kspStampDigest(
             JkBuild project,
             Lockfile lock,
@@ -971,7 +1029,7 @@ public final class PlannerKsp {
                 for (String rel : step.contributesSources()) {
                     Path contributed =
                             PluginBuild.taskScratch(layout, step.name()).resolve(rel);
-                    if (Files.isDirectory(contributed)) roots.add(contributed);
+                    if (ProjectedFiles.isDirectory(contributed)) roots.add(contributed);
                 }
             }
         }

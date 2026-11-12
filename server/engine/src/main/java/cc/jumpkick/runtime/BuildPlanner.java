@@ -9,25 +9,30 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.CompileStamp;
+import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import lombok.With;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -67,7 +72,8 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
-    public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
+    /** Every classpath the module's compiles and tests read; published by {@code resolve-deps}. */
+    static final BuildPlanKey<ModuleClasspaths> CLASSPATHS = BuildPlanKey.scalar("classpaths", ModuleClasspaths.class);
 
     public static final BuildPlanKey<List<Path>> JAVA_SOURCES = BuildPlanKey.list("java-sources", Path.class);
 
@@ -76,38 +82,6 @@ public final class BuildPlanner {
     public static final BuildPlanKey<List<Path>> GROOVY_SOURCES = BuildPlanKey.list("groovy-sources", Path.class);
 
     public static final BuildPlanKey<List<String>> JAVAC_ARGS = BuildPlanKey.list("javac-args", String.class);
-
-    public static final BuildPlanKey<List<Path>> PROCESSOR_CP = BuildPlanKey.list("processor-cp", Path.class);
-
-    /** The javac half of the processor split — set by the ksp step (KSP jars removed). */
-    public static final BuildPlanKey<List<Path>> JAVAC_PROCESSOR_CP =
-            BuildPlanKey.list("javac-processor-cp", Path.class);
-
-    /** The compile-test processor path: {@link #PROCESSOR_CP} plus the {@code [test-processor-dependencies]} closure. */
-    public static final BuildPlanKey<List<Path>> TEST_PROCESSOR_CP = BuildPlanKey.list("test-processor-cp", Path.class);
-
-    /** The annotation-processor jars the module's plugins append to compile-main's processor path. */
-    public static final BuildPlanKey<List<Path>> CONTRIBUTED_PROCESSOR_CP =
-            BuildPlanKey.list("contributed-processor-cp", Path.class);
-
-    /** The annotation-processor jars the module's plugins append to compile-test's processor path. */
-    public static final BuildPlanKey<List<Path>> CONTRIBUTED_TEST_PROCESSOR_CP =
-            BuildPlanKey.list("contributed-test-processor-cp", Path.class);
-
-    /** The [[contribute.provided-classpath]] jars (platform), published for the test step. */
-    public static final BuildPlanKey<List<Path>> PROVIDED_CP = BuildPlanKey.list("provided-cp", Path.class);
-
-    public static final BuildPlanKey<List<Path>> COMPILE_TEST_CP = BuildPlanKey.list("cp-test", Path.class);
-
-    public static final BuildPlanKey<List<Path>> TEST_RUNTIME_CP = BuildPlanKey.list("cp-runtime", Path.class);
-
-    public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
-
-    /** The Kotlin main compile's action key: what its stamp records, and what the merged tree is held against. */
-    public static final BuildPlanKey<String> KOTLIN_ACTION_KEY = BuildPlanKey.scalar("kotlin-action-key", String.class);
-
-    /** The Groovy main compile's action key, recorded by its stamp the same way. */
-    public static final BuildPlanKey<String> GROOVY_ACTION_KEY = BuildPlanKey.scalar("groovy-action-key", String.class);
 
     /** The javac test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
     public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
@@ -121,46 +95,17 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> COMPILE_TEST_GROOVY_ACTION_KEY =
             BuildPlanKey.scalar("compile-test-groovy-action-key", String.class);
 
-    /**
-     * The option digest each compile checked its freshness stamp against, published for the
-     * write-stamp step so the stamp records exactly what the compile compared.
-     */
-    public static final BuildPlanKey<String> JAVA_STAMP_DIGEST = BuildPlanKey.scalar("java-stamp-digest", String.class);
+    /** What compile-java decided, for write-stamp, assemble-classes and the steps after them. */
+    public static final BuildPlanKey<CompileStamp> JAVA_COMPILE =
+            BuildPlanKey.scalar("java-compile", CompileStamp.class);
 
-    /**
-     * The classpath token lines compile-main checked its freshness stamp against ({@code
-     * ActionKey.javacClasspathTokens} of the request it keyed), published for write-stamp so the
-     * stamp records the same lines the key hashed.
-     */
-    public static final BuildPlanKey<List<String>> JAVA_STAMP_TOKENS =
-            BuildPlanKey.list("java-stamp-tokens", String.class);
+    /** What compile-kotlin decided; its action key is what the merged tree is held against. */
+    public static final BuildPlanKey<CompileStamp> KOTLIN_COMPILE =
+            BuildPlanKey.scalar("kotlin-compile", CompileStamp.class);
 
-    public static final BuildPlanKey<String> KOTLIN_STAMP_DIGEST =
-            BuildPlanKey.scalar("kotlin-stamp-digest", String.class);
-
-    /** As {@link #JAVA_STAMP_TOKENS} for compile-kotlin ({@code PlannerLang.kotlinStampTokens}). */
-    public static final BuildPlanKey<List<String>> KOTLIN_STAMP_TOKENS =
-            BuildPlanKey.list("kotlin-stamp-tokens", String.class);
-
-    public static final BuildPlanKey<String> GROOVY_STAMP_DIGEST =
-            BuildPlanKey.scalar("groovy-stamp-digest", String.class);
-
-    /** As {@link #JAVA_STAMP_TOKENS} for compile-groovy ({@code ActionKey.groovycClasspathTokens}). */
-    public static final BuildPlanKey<List<String>> GROOVY_STAMP_TOKENS =
-            BuildPlanKey.list("groovy-stamp-tokens", String.class);
-
-    /**
-     * The filesystem clock ({@code FreshnessStamp.clockNow}) before compile-main read its first
-     * input, published for write-stamp as the stamp's instant: a source edited while javac ran is
-     * stale on the next check instead of hiding behind a stamp written after it.
-     */
-    public static final BuildPlanKey<Long> JAVA_STAMP_CLOCK = BuildPlanKey.scalar("java-stamp-clock", Long.class);
-
-    /** As {@link #JAVA_STAMP_CLOCK} for compile-kotlin. */
-    public static final BuildPlanKey<Long> KOTLIN_STAMP_CLOCK = BuildPlanKey.scalar("kotlin-stamp-clock", Long.class);
-
-    /** As {@link #JAVA_STAMP_CLOCK} for compile-groovy. */
-    public static final BuildPlanKey<Long> GROOVY_STAMP_CLOCK = BuildPlanKey.scalar("groovy-stamp-clock", Long.class);
+    /** What compile-groovy decided. */
+    public static final BuildPlanKey<CompileStamp> GROOVY_COMPILE =
+            BuildPlanKey.scalar("groovy-compile", CompileStamp.class);
 
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
@@ -172,9 +117,11 @@ public final class BuildPlanner {
     static final BuildPlanKey<SuiteResources> SUITE_RESOURCES =
             BuildPlanKey.scalar("suite-resources", SuiteResources.class);
 
+    /**
+     * {@code built} once a packaging step wrote the module's artifact anew, whatever its compiles
+     * found cached; absent while none did, and the module's outcome is then compile-java's.
+     */
     public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
-    public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.scalar("kotlin-outcome", String.class);
-    public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.scalar("groovy-outcome", String.class);
 
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
@@ -187,11 +134,8 @@ public final class BuildPlanner {
     /** The suite a {@code --class} that matched nothing in this module named instead, when one owns it. */
     public static final BuildPlanKey<String> CLASS_SUITE_HINT = BuildPlanKey.scalar("class-suite-hint", String.class);
 
-    public static final BuildPlanKey<Map<String, ClassAbi.Fingerprint>> PRE_COMPILE_ABI =
-            BuildPlanKey.map("pre-compile-abi", String.class, ClassAbi.Fingerprint.class);
-
-    public static final BuildPlanKey<List<Path>> COMPILED_MAIN_SOURCES =
-            BuildPlanKey.list("compiled-main-sources", Path.class);
+    /** What a javac main compile that ran changed, for {@code --affected}. */
+    public static final BuildPlanKey<MainAbi> MAIN_ABI = BuildPlanKey.scalar("main-abi", MainAbi.class);
 
     public static final BuildPlanKey<AffectedTests> AFFECTED_TESTS =
             BuildPlanKey.scalar("affected-tests", AffectedTests.class);
@@ -205,40 +149,21 @@ public final class BuildPlanner {
             NODE_INSTALLED,
             NODE_EXPORTS,
             RELEASE,
-            CLASSPATH,
+            CLASSPATHS,
             JAVA_SOURCES,
             KOTLIN_SOURCES,
             GROOVY_SOURCES,
             JAVAC_ARGS,
-            PROCESSOR_CP,
-            JAVAC_PROCESSOR_CP,
-            TEST_PROCESSOR_CP,
-            CONTRIBUTED_PROCESSOR_CP,
-            CONTRIBUTED_TEST_PROCESSOR_CP,
-            PROVIDED_CP,
-            COMPILE_TEST_CP,
-            TEST_RUNTIME_CP,
-            ACTION_KEY,
-            KOTLIN_ACTION_KEY,
-            GROOVY_ACTION_KEY,
+            JAVA_COMPILE,
+            KOTLIN_COMPILE,
+            GROOVY_COMPILE,
             COMPILE_TEST_ACTION_KEY,
             COMPILE_TEST_KOTLIN_ACTION_KEY,
             COMPILE_TEST_GROOVY_ACTION_KEY,
-            JAVA_STAMP_DIGEST,
-            JAVA_STAMP_TOKENS,
-            KOTLIN_STAMP_DIGEST,
-            KOTLIN_STAMP_TOKENS,
-            GROOVY_STAMP_DIGEST,
-            GROOVY_STAMP_TOKENS,
-            JAVA_STAMP_CLOCK,
-            KOTLIN_STAMP_CLOCK,
-            GROOVY_STAMP_CLOCK,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
             SUITE_RESOURCES,
             BUILD_OUTCOME,
-            KOTLIN_OUTCOME,
-            GROOVY_OUTCOME,
             MAIN_CLASSES,
             TEST_CLASSES,
             LAYOUT,
@@ -246,14 +171,22 @@ public final class BuildPlanner {
             TAG_EXCLUDED,
             NO_TEST_SOURCES,
             CLASS_SUITE_HINT,
-            PRE_COMPILE_ABI,
-            COMPILED_MAIN_SOURCES,
+            MAIN_ABI,
             AFFECTED_TESTS);
 
-    /** Serializes {@code run-tests} across concurrent modules unless {@code parallelTests}. */
-    static final Semaphore TEST_GATE = new Semaphore(1);
-
-    /** Everything a build needs that isn't carried through the plan's state. */
+    /**
+     * Everything a build needs that isn't carried through the plan's state. Every component has a
+     * {@code with} copy; {@link #of} is where one starts.
+     *
+     * @param variant variant selection; {@code null} becomes {@code ""}
+     * @param clientEnv client-resolved env for {@code env:} indirection; {@code null} becomes empty
+     * @param siblings this module's side of the workspace schedule's artifact wait: what its package
+     *     and test steps call before reading a sibling's jar. Set by the workspace prepare phase; a
+     *     single-module plan keeps {@link SiblingArtifacts#NONE}
+     * @param compileTests a compile-only plan that also compiles the tests and runs none, the {@code
+     *     TEST_COMPILE} goal's
+     */
+    @With
     public record Inputs(
             Path dir,
             Path cache,
@@ -270,48 +203,39 @@ public final class BuildPlanner {
             boolean compileOnly,
             Set<Path> projectModules,
             Session session,
-            String variant,
+            @Nullable String variant,
             @Nullable Map<String, String> clientEnv,
             boolean ephemeralActions,
             SiblingArtifacts.Gate siblings,
             boolean compileTests) {
 
+        public Inputs {
+            variant = variant == null ? "" : variant;
+            clientEnv = clientEnv == null ? Map.of() : clientEnv;
+        }
+
         /**
-         * Variant and client env from the session; durable action cache. Commands that install a
-         * selection on the session ({@code jk run}, {@code test}, {@code image}, {@code native},
-         * {@code publish}) parameterize every plan factory without each one threading those fields.
+         * {@code dir}'s manifest and lock, one worker, no profile, the full lifecycle, and the
+         * variant and client env from {@code session}. Commands that install a selection on the
+         * session ({@code jk run}, {@code test}, {@code image}, {@code native}, {@code publish})
+         * parameterize every plan factory without each one threading those fields.
          */
-        public Inputs(
-                Path dir,
-                Path cache,
-                Path buildFile,
-                Path lockFile,
-                Path lockDir,
-                int workerCount,
-                int estimatedTestCount,
-                @Nullable String profileName,
-                @Nullable Path jdksDir,
-                boolean skipTests,
-                boolean verbose,
-                boolean testOnly,
-                boolean compileOnly,
-                Set<Path> projectModules,
-                Session session) {
-            this(
+        public static Inputs of(Path dir, Path cache, Session session) {
+            return new Inputs(
                     dir,
                     cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
+                    ManifestPaths.manifestIn(dir),
+                    LockPaths.lockFile(dir),
+                    dir,
+                    1,
+                    0,
+                    null,
+                    null,
+                    false,
+                    false,
+                    false,
+                    false,
+                    Set.of(),
                     session,
                     session.variant(),
                     session.clientEnv(),
@@ -320,29 +244,45 @@ public final class BuildPlanner {
                     false);
         }
 
-        /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
-        public Inputs withEphemeralActions(boolean ephemeralActions) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
+        /**
+         * The inputs a real {@code jk build} constructs for one module — the single factory both
+         * {@code jk build} and {@code jk explain}'s ETA use, so the two can't drift in what they feed
+         * the effort-weight prediction. A {@code jdksDir} of {@code null} is load-bearing: it routes
+         * {@link EffortWeights#jdkWeight} through the full JDK probe chain (PATH / JAVA_HOME / GraalVM
+         * / SDKMAN / …) instead of the empty managed JDK root, so an already-installed JDK predicts a
+         * zero-cost {@code ensure-jdk} rather than a phantom download.
+         *
+         * @param workers {@code 0} is auto at run-tests; the forecast prices it as one
+         * @param projectModules the build graph's module dirs, so the prediction can borrow a
+         *     project-tier learned rate for a not-yet-built module
+         * @param testOnly the plan stops before packaging ({@code jk test})
+         * @param compileOnly the plan stops after compiling ({@code jk compile})
+         */
+        public static Inputs forBuild(
+                Path dir,
+                Path cache,
+                int workers,
+                @Nullable Path jdksDir,
+                @Nullable String profile,
+                boolean skipTests,
+                boolean verbose,
+                Set<Path> projectModules,
+                boolean testOnly,
+                boolean compileOnly) {
+            Session session = SessionContext.current();
+            boolean skip = BuildKnobs.skipsTests(session.testSelection(), testOnly, skipTests);
+            int estimatedTestCount =
+                    skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, CompileSupport.isSimpleLayout(dir));
+            return of(dir, cache, session)
+                    .withWorkerCount(workers > 0 ? workers : 1)
+                    .withEstimatedTestCount(estimatedTestCount)
+                    .withProfileName(profile)
+                    .withJdksDir(jdksDir)
+                    .withSkipTests(skip)
+                    .withVerbose(verbose)
+                    .withTestOnly(testOnly)
+                    .withCompileOnly(compileOnly)
+                    .withProjectModules(projectModules);
         }
 
         /**
@@ -357,163 +297,6 @@ public final class BuildPlanner {
          */
         public Function<String, @Nullable String> env() {
             return BuildEnv.forModule(dir);
-        }
-
-        /** This request with a variant selection + client-resolved env attached. */
-        public Inputs withVariant(@Nullable String variant, @Nullable Map<String, String> clientEnv) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant == null ? "" : variant,
-                    clientEnv == null ? Map.of() : clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /** Copy with {@link #workerCount()} set (request-level {@code --workers}). */
-        public Inputs withWorkerCount(int workerCount) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /** Copy with {@link #profileName()} set (request-level {@code --profile}). */
-        public Inputs withProfileName(@Nullable String profileName) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
-        public Inputs withProjectModules(Set<Path> modules) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    modules == null ? Set.of() : modules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /**
-         * Copy with {@link #compileTests()} set: a compile-only plan that also compiles the tests and
-         * runs none, the {@code TEST_COMPILE} goal's.
-         */
-        public Inputs withCompileTests(boolean compileTests) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /**
-         * Copy carrying this module's side of the workspace schedule's artifact wait: what its
-         * package and test steps call before reading a sibling's jar. Set by the workspace prepare
-         * phase; a single-module plan keeps {@link SiblingArtifacts#NONE}.
-         */
-        public Inputs withSiblings(SiblingArtifacts.Gate siblings) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
         }
     }
 
@@ -571,16 +354,79 @@ public final class BuildPlanner {
             BuildLogicInputTokens buildLogicInputTokens,
             BuildLogicScope buildLogicScope,
             Path javaMainSrcDir,
-            boolean compact,
-            boolean mixed,
-            boolean mixedGroovy,
-            boolean kotlinModule,
-            boolean groovyModule,
-            boolean mixedWithJava,
-            String mainCompile,
-            boolean ksp,
+            ModuleShape shape,
+            Supplier<JkBuild> manifest,
             PlannerGuards.GuardsPlan guards,
-            PluginBuild.StepTools tools) {}
+            PluginBuild.StepTools tools) {
+
+        /** A module's context, with fresh step tools and its build-logic scope. */
+        static Ctx of(
+                Inputs in,
+                Cas cas,
+                ActionCache actionCache,
+                Supplier<EffortWeights.Plan> plan,
+                AtomicReference<@Nullable List<Path>> javaMainSrcRef,
+                AtomicReference<@Nullable List<Path>> kotlinMainSrcRef,
+                AtomicReference<@Nullable List<Path>> groovyMainSrcRef,
+                BuildLogicInputTokens buildLogicInputTokens,
+                Path javaMainSrcDir,
+                ModuleShape shape,
+                Supplier<JkBuild> manifest,
+                PlannerGuards.GuardsPlan guards) {
+            return new Ctx(
+                    in,
+                    cas,
+                    actionCache,
+                    plan,
+                    javaMainSrcRef,
+                    kotlinMainSrcRef,
+                    groovyMainSrcRef,
+                    buildLogicInputTokens,
+                    BuildLogicScope.of(in.dir()),
+                    javaMainSrcDir,
+                    shape,
+                    manifest,
+                    guards,
+                    new PluginBuild.StepTools());
+        }
+
+        boolean compact() {
+            return shape.compact();
+        }
+
+        /** Kotlin and Java: kotlinc, then javac against its output, then assemble-classes. */
+        boolean mixed() {
+            return shape.mixed();
+        }
+
+        /** Groovy and Java: joint groovyc, then javac, then assemble-classes. */
+        boolean mixedGroovy() {
+            return shape.mixedGroovy();
+        }
+
+        boolean kotlinModule() {
+            return shape.kotlin();
+        }
+
+        boolean groovyModule() {
+            return shape.groovy();
+        }
+
+        /** javac runs in this module, whatever else does. */
+        boolean mixedWithJava() {
+            return shape.java();
+        }
+
+        /** The step the main compile ends with. */
+        String mainCompile() {
+            return shape.mainCompile();
+        }
+
+        /** The module runs a main KSP round. */
+        boolean ksp() {
+            return shape.ksp();
+        }
+    }
 
     /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
     record KspDiagnostic(String severity, String message) {}
@@ -596,9 +442,6 @@ public final class BuildPlanner {
 
     static final String SBOM_JAR_ENTRY = PlannerPlugin.SBOM_JAR_ENTRY;
     static final String NATIVE_IMAGE_ARGS = PlannerNative.NATIVE_IMAGE_ARGS;
-
-    /** Test hook: restrict host-engine-jar discovery to this monorepo root. */
-    static volatile @Nullable Path hostEngineSearchOverride;
 
     /** Apply CLI {@code --fat}/{@code --minified} over the parsed manifest for this invocation. */
     static JkBuild applyAssemblyOverride(JkBuild build, Session session) {

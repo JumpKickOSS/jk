@@ -32,14 +32,11 @@ class TestJvmFlagsTest {
     void a_line_names_the_flags_before_the_classpath_and_workers_that_differ_only_by_paths_share_it() {
         List<String> output = new ArrayList<>();
         TaskContext ctx = recording(output);
-        StepScope.open(ctx);
-        try {
-            TestJvmFlags.note(ctx, command("/t/w0", "1g"));
-            TestJvmFlags.note(ctx, command("/t/w1", "1g"));
-            TestJvmFlags.note(ctx, command("/t/w0", "2g"));
-        } finally {
-            StepScope.close();
-        }
+        StepScope.run(ctx, () -> {
+            TestJvmFlags.note(command("/t/w0", "1g"));
+            TestJvmFlags.note(command("/t/w1", "1g"));
+            TestJvmFlags.note(command("/t/w0", "2g"));
+        });
         assertThat(output)
                 .containsExactly(
                         TestJvmFlags.PREFIX + "-Xmx1g -Djava.io.tmpdir=/t/w0 " + WorkerGc.FLAG_PREFIX

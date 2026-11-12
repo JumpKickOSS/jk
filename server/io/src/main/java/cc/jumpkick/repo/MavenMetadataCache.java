@@ -8,7 +8,6 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
-import cc.jumpkick.run.ContextPropagator;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -44,42 +43,6 @@ public final class MavenMetadataCache {
 
     /** Maven's own default release-metadata update policy is daily; match it. */
     public static final Duration DEFAULT_TTL = Duration.ofHours(24);
-
-    /**
-     * When true on the calling thread, {@link #fetch} skips the TTL short-circuit and revalidates
-     * (conditional GET when validators exist). Used by {@code jk update} and {@code -F}/{@code
-     * --force}; normal {@code jk lock} leaves the TTL alone.
-     */
-    private static final ThreadLocal<Boolean> FORCE_REVALIDATE = ThreadLocal.withInitial(() -> Boolean.FALSE);
-
-    static {
-        // The flag rides every JkThreads hop the way the session does: a version-catalog fan-out,
-        // a BOM-import fan-out and a prefetch revalidate when the thread that started them does.
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                boolean forced = forceRevalidate();
-                return () -> {
-                    try {
-                        forced(forced, () -> {
-                            r.run();
-                            return null;
-                        });
-                    } catch (RuntimeException | Error e) {
-                        throw e;
-                    } catch (Exception e) {
-                        throw new IllegalStateException(e);
-                    }
-                };
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                boolean forced = forceRevalidate();
-                return () -> forced(forced, c);
-            }
-        });
-    }
 
     /**
      * Bodies inside their TTL, by file: one lock asks each artifact's version list from every
@@ -123,8 +86,9 @@ public final class MavenMetadataCache {
     }
 
     /**
-     * Run {@code body} with metadata TTL bypassed on this thread (conditional GET still applies).
-     * Nested calls keep the outer flag.
+     * Run {@code body} under a session that {@linkplain cc.jumpkick.config.Session#revalidate
+     * revalidates}: metadata TTL bypassed (conditional GET still applies) on this thread and the
+     * pool tasks and threads it starts.
      */
     public static <T> T withForceRevalidate(Callable<T> body) throws Exception {
         // Force means do not trust process-wide resolve memos computed against a prior view.
@@ -139,23 +103,12 @@ public final class MavenMetadataCache {
         } catch (ReflectiveOperationException ignored) {
             // io unit tests without resolver on classpath
         }
-        return forced(true, body);
+        return SessionContext.where(SessionContext.current().withRevalidate(true), body);
     }
 
-    /** Run {@code body} with the revalidate flag set to {@code forced} on this thread, restoring it after. */
-    private static <T> T forced(boolean forced, Callable<T> body) throws Exception {
-        Boolean prev = FORCE_REVALIDATE.get();
-        FORCE_REVALIDATE.set(forced);
-        try {
-            return body.call();
-        } finally {
-            FORCE_REVALIDATE.set(prev);
-        }
-    }
-
-    /** True when this thread is inside {@link #withForceRevalidate}. */
+    /** True inside {@link #withForceRevalidate}: the session asks for {@link cc.jumpkick.config.Session#revalidate}. */
     static boolean forceRevalidate() {
-        return Boolean.TRUE.equals(FORCE_REVALIDATE.get());
+        return SessionContext.current().revalidate();
     }
 
     /** Metadata bytes for {@code uri}; 404 → {@link MavenRepo.ArtifactNotFoundException}. */

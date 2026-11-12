@@ -2,9 +2,15 @@
 package cc.jumpkick.git;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.util.GitProxy;
@@ -72,27 +78,40 @@ public final class GitCliExtension implements GitBackend {
         }
     }
 
-    private static volatile @Nullable Optional<GitCli> cached;
+    /** A usable git by the command that names it, while the file that command ran keeps its stat. */
+    private static final StampedMemo<String, FileStamp, Optional<GitCli>> DETECTED =
+            StampedMemo.<String, FileStamp, Optional<GitCli>>bounded(4).keeping(Optional::isPresent);
 
-    /** Locate and memoize a usable {@code git} once per process. */
+    /**
+     * A usable {@code git}: {@code JK_GIT} or {@code git} on the PATH. A found git is remembered
+     * while the file it ran keeps its stat; an absent or broken one is probed again on the next
+     * ask, so installing git, or fixing {@code JK_GIT}, takes effect without an engine restart.
+     */
     public static Optional<GitCli> detect() {
-        Optional<GitCli> c = cached;
-        if (c == null) {
-            synchronized (GitCliExtension.class) {
-                c = cached;
-                if (c == null) {
-                    c = probe();
-                    cached = c;
-                }
-            }
-        }
-        return c;
-    }
-
-    private static Optional<GitCli> probe() {
         String override = BuildEnv.get("JK_GIT");
         String exe = (override != null && !override.isBlank()) ? override.trim() : "git";
-        return probe(exe, PROBE_TIMEOUT_MS);
+        FileStamp stamp = FileStamp.of(locate(exe));
+        if (stamp == null) return probe(exe, PROBE_TIMEOUT_MS);
+        return DETECTED.get(exe, stamp, () -> probe(exe, PROBE_TIMEOUT_MS));
+    }
+
+    /**
+     * The file {@code exe} runs: itself when it names a path, else the first runnable match on this
+     * process's PATH, where the probe's start looks; {@code null} when there is none.
+     */
+    static @Nullable Path locate(String exe) {
+        Path named = SearchPath.path(exe);
+        if (named != null && (named.isAbsolute() || named.getNameCount() > 1)) return named;
+        List<String> names = Os.isWindows() ? List.of(exe + ".exe", exe) : List.of(exe);
+        for (String dir : SearchPath.entries(ProcessEnv.get("PATH"))) {
+            Path d = SearchPath.path(dir);
+            if (d == null) continue;
+            for (String name : names) {
+                Path candidate = d.resolve(name);
+                if (Files.isRegularFile(candidate) && PathUtil.isRunnable(candidate)) return candidate;
+            }
+        }
+        return null;
     }
 
     /** How long {@code git --version} gets before the command is judged unusable. */

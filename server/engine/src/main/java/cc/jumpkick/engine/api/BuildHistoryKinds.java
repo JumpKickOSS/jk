@@ -42,7 +42,7 @@ public final class BuildHistoryKinds {
      * Engine {@code kind} strings that are project builds: every goal's job kind and the external
      * tools. Exclusive admission ({@link BuildJobFingerprint#EXCLUSIVE_KINDS}) is this same set.
      */
-    public static final Set<String> ALL = all();
+    public static final Set<String> ALL = Set.copyOf(all());
 
     private BuildHistoryKinds() {}
 

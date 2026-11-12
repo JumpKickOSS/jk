@@ -10,7 +10,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -50,8 +50,8 @@ class BuildForecastingConeTest {
         ModuleInputProvenance.record(ws, graph, fps.fingerprints());
 
         Files.writeString(ws.resolve("other/src/main/java/Other.java"), "class Other { int edited; }\n");
-        var otherEdit = BuildForecasting.forecastWithFingerprints(
-                graph, ws.resolve("cache"), false, ws, WorkspaceTarget.PACKAGE, false, null);
+        var otherEdit =
+                BuildForecasting.forecastWithFingerprints(graph, ws.resolve("cache"), ws, BuildKnobs.DEFAULTS, false);
         assertThat(otherEdit.dirty()).anyMatch(d -> d.endsWith("other"));
         assertThat(walked(otherEdit, "lib"))
                 .as("upstream of nothing that changed")
@@ -64,8 +64,8 @@ class BuildForecastingConeTest {
         PreflightMemo.storeDirty(ws, graph, false, Set.of(), settled.fingerprints());
         ModuleInputProvenance.record(ws, graph, settled.fingerprints());
         Files.writeString(ws.resolve("lib/src/main/java/Lib.java"), "public class Lib { public int edited; }\n");
-        var libEdit = BuildForecasting.forecastWithFingerprints(
-                graph, ws.resolve("cache"), false, ws, WorkspaceTarget.PACKAGE, false, null);
+        var libEdit =
+                BuildForecasting.forecastWithFingerprints(graph, ws.resolve("cache"), ws, BuildKnobs.DEFAULTS, false);
         assertThat(libEdit.dirty()).anyMatch(d -> d.endsWith("lib"));
         assertThat(walked(libEdit, "app")).as("downstream of the edit").isTrue();
         assertThat(walked(libEdit, "other")).isFalse();
@@ -80,8 +80,8 @@ class BuildForecastingConeTest {
         ModuleInputProvenance.record(ws, graph, fps.fingerprints());
 
         Files.writeString(ws.resolve("other/src/main/java/Other.java"), "class Other { int edited; }\n");
-        var preflight = BuildForecasting.forecastWithFingerprints(
-                graph, ws.resolve("cache"), false, ws, WorkspaceTarget.PACKAGE, false, null);
+        var preflight =
+                BuildForecasting.forecastWithFingerprints(graph, ws.resolve("cache"), ws, BuildKnobs.DEFAULTS, false);
         assertThat(walked(preflight, "lib")).isTrue();
         assertThat(walked(preflight, "app")).as("a dependent of a dirty module").isTrue();
     }
@@ -97,8 +97,8 @@ class BuildForecastingConeTest {
         Files.writeString(
                 ws.resolve("jk.toml"), Files.readString(ws.resolve("jk.toml")).replace("0.1.0", "0.2.0"));
         BuildGraph.Result edited = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
-        var preflight = BuildForecasting.forecastWithFingerprints(
-                edited, ws.resolve("cache"), false, ws, WorkspaceTarget.PACKAGE, false, null);
+        var preflight =
+                BuildForecasting.forecastWithFingerprints(edited, ws.resolve("cache"), ws, BuildKnobs.DEFAULTS, false);
         assertThat(walked(preflight, "other")).as("inherits the root's version").isTrue();
         assertThat(walked(preflight, "lib")).isTrue();
     }

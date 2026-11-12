@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.testing.Sleepers;
 import java.nio.file.Files;
@@ -91,8 +92,7 @@ class WorkerBudgetJobsTest {
     void killing_a_fork_returns_its_lease() throws Exception {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
         long before = ledger.snapshot().leasedBytes();
-        JobWorkers.open(11L);
-        Process process = JobWorkers.start(Sleepers.sleeper(30), ledger);
+        Process process = new WorkerScope(11L).call(() -> JobWorkers.start(Sleepers.sleeper(30), ledger));
         try {
             assertThat(ledger.snapshot().leasedBytes()).isGreaterThan(before);
             process.destroyForcibly();
@@ -106,55 +106,49 @@ class WorkerBudgetJobsTest {
             }
         } finally {
             if (process.isAlive()) process.destroyForcibly();
-            JobWorkers.clear(11L);
-            JobWorkers.close();
         }
     }
 
     @Test
     void a_heap_larger_than_the_budget_is_lowered_and_the_jvm_still_starts() throws Exception {
-        SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
-            JvmOptions.notePlannedHeap("-Xmx2g");
-            WorkerLeases.Ledger ledger = ledger(300L << 20, 4);
-            String java =
-                    Path.of(System.getProperty("java.home"), "bin", "java").toString();
-            JobWorkers.open(12L);
-            ProcessBuilder pb = new ProcessBuilder(java, "-Xmx2g", "-version")
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            Process process = JobWorkers.start(pb, ledger);
-            try {
-                assertThat(pb.command()).doesNotContain("-Xmx2g");
-                assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
-                        .isLessThanOrEqualTo(ledger.capacityBytes());
-                assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
-                assertThat(process.exitValue()).isZero();
-            } finally {
-                JvmOptions.forgetPlannedHeapForTests("-Xmx2g");
-                if (process.isAlive()) process.destroyForcibly();
-                JobWorkers.clear(12L);
-                JobWorkers.close();
-            }
-            awaitReleased(ledger);
-            return null;
-        });
+        Request.detached()
+                .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap())
+                .call(() -> SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
+                    JvmOptions.notePlannedHeap("-Xmx2g");
+                    WorkerLeases.Ledger ledger = ledger(300L << 20, 4);
+                    String java = Path.of(System.getProperty("java.home"), "bin", "java")
+                            .toString();
+                    ProcessBuilder pb = new ProcessBuilder(java, "-Xmx2g", "-version")
+                            .redirectErrorStream(true)
+                            .redirectOutput(ProcessBuilder.Redirect.DISCARD);
+                    Process process = new WorkerScope(12L).call(() -> JobWorkers.start(pb, ledger));
+                    try {
+                        assertThat(pb.command()).doesNotContain("-Xmx2g");
+                        assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
+                                .isLessThanOrEqualTo(ledger.capacityBytes());
+                        assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
+                        assertThat(process.exitValue()).isZero();
+                    } finally {
+                        if (process.isAlive()) process.destroyForcibly();
+                    }
+                    awaitReleased(ledger);
+                    return null;
+                }));
     }
 
-    /** Does not watch {@link JobWorkers} shutdown tombstones; those are process-wide. */
+    /** Abandons no wait: these tests end no request. */
     private static WorkerLeases.Ledger ledger(long capacityBytes, int cpu) {
         return new WorkerLeases.Ledger(() -> capacityBytes, () -> cpu, id -> false);
     }
 
     private static int run(WorkerLeases.Ledger ledger, long requestId, List<String> command) {
-        JobWorkers.open(requestId);
         try {
-            Process process = JobWorkers.start(new ProcessBuilder(command), ledger);
-            return process.waitFor();
+            return new WorkerScope(requestId).call(() -> {
+                Process process = JobWorkers.start(new ProcessBuilder(command), ledger);
+                return process.waitFor();
+            });
         } catch (Exception e) {
             throw new IllegalStateException(e);
-        } finally {
-            JobWorkers.clear(requestId);
-            JobWorkers.close();
         }
     }
 

@@ -4,27 +4,22 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
 import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
-import static cc.jumpkick.runtime.PlannerSupport.effectiveSelection;
-import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
-import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
+import static cc.jumpkick.runtime.TestStampInputs.effectiveSelection;
+import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompilerJdk;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TierTags;
-import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -36,7 +31,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
@@ -60,10 +54,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -261,27 +251,16 @@ public final class PlannerTest {
     /** target/classes, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
     private static List<Path> testCompileClasspath(TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, TestSources src)
             throws Exception {
-        return testCompileClasspath(
+        return TestOutputs.baseClasspath(
+                ctx.require(MAIN_CLASSES),
                 ctx.require(PROJECT),
                 ctx.require(LAYOUT),
-                ctx.require(MAIN_CLASSES),
-                ctx.require(COMPILE_TEST_CP),
-                needsGroovyJar(cx.groovyModule(), src) ? groovyCompileJar(ctx, cas) : null);
-    }
-
-    /**
-     * The test compilers' base classpath, for the build and the forecast alike: the main classes,
-     * the module's own fixtures, the resolved test compile classpath, then {@code groovyJar} when
-     * {@link #needsGroovyJar}.
-     */
-    static List<Path> testCompileClasspath(
-            JkBuild project, BuildLayout layout, Path mainClasses, List<Path> compileCp, @Nullable Path groovyJar) {
-        List<Path> baseCp = new ArrayList<>();
-        baseCp.add(mainClasses);
-        baseCp = PlannerFixtures.withOwnFixtures(project, layout, baseCp);
-        baseCp.addAll(compileCp);
-        if (groovyJar != null) baseCp.add(groovyJar);
-        return baseCp;
+                ctx.require(CLASSPATHS).testCompile(),
+                ModuleClasspaths.groovyJar(
+                        ctx.require(PROJECT),
+                        ctx.require(LOCKFILE),
+                        cas,
+                        cx.groovyModule() || !src.gvTest().isEmpty()));
     }
 
     /**
@@ -353,7 +332,7 @@ public final class PlannerTest {
                 PlannerLang.groovyRequest(ctx, in, cas, src.gvTest(), baseCp, gvTestOut, gvJavaRoots, null),
                 gvTaskId);
         if (!gr.success()) {
-            PlannerSupport.forwardWorkerDiagnostics(
+            StepDiagnostics.forwardWorkerDiagnostics(
                     ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
             throw new RuntimeException("test groovyc reported errors");
         }
@@ -399,7 +378,7 @@ public final class PlannerTest {
                 PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots));
         LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, ktTaskId, worker);
         if (!kr.success()) {
-            PlannerSupport.forwardWorkerDiagnostics(
+            StepDiagnostics.forwardWorkerDiagnostics(
                     ctx,
                     "kotlinc",
                     PackageProviders.enrich(ctx, baseCp, ClasspathResolver.COMPILE_TEST, kr.diagnostics()),
@@ -433,12 +412,7 @@ public final class PlannerTest {
         // request builder discovers classpath processors
         // when none are declared, exactly as compile-main does, so a Lombok-using test sees its
         // generated members.
-        List<Path> shared = ctx.require(PROCESSOR_CP);
-        List<Path> processorCp = ProcessorPaths.forTest(
-                ctx.require(PROJECT),
-                shared,
-                ctx.get(JAVAC_PROCESSOR_CP).orElse(shared),
-                ctx.get(TEST_PROCESSOR_CP).orElse(shared));
+        ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);
         ScalaCompile.Setup scalaSetup =
@@ -450,8 +424,8 @@ public final class PlannerTest {
                 new PlannerCompile.TestCompile(
                         src.javacSources(),
                         javaCp,
-                        processorCp,
-                        ctx.require(CONTRIBUTED_TEST_PROCESSOR_CP),
+                        classpaths.javacTestProcessor(),
+                        classpaths.contributedTestProcessor(),
                         javaTestOut,
                         ctx.require(PROJECT).javac().testRelease(ctx.require(RELEASE)),
                         javacArgs,
@@ -459,7 +433,7 @@ public final class PlannerTest {
                         ctx.require(JAVA_HOME),
                         scalaSetup,
                         ctx.require(MAIN_CLASSES),
-                        ProcessorPaths.discovers(ctx.require(PROJECT)),
+                        classpaths.testProcessorDiscovery(),
                         CompilerJdk.pinned(ctx.require(PROJECT), in.session())),
                 genDir,
                 cas,
@@ -480,11 +454,11 @@ public final class PlannerTest {
         Path testClasses = outs.testClasses();
         if (outs.mixedKotlin() && !src.ktTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            PlannerSupport.mergeLanguageOutput(outs.kotlinOut(), testClasses, buildDir, "kotlin-test");
+            ResourceMirror.mergeLanguageOutput(outs.kotlinOut(), testClasses, buildDir, "kotlin-test");
         }
         if (outs.mixedGroovy() && !src.gvTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            PlannerSupport.mergeLanguageOutput(outs.groovyOut(), testClasses, buildDir, "groovy-test");
+            ResourceMirror.mergeLanguageOutput(outs.groovyOut(), testClasses, buildDir, "groovy-test");
         }
     }
 
@@ -603,20 +577,20 @@ public final class PlannerTest {
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
         PlannerSetup.awaitSiblingTestRuntime(ctx, in);
-        List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
         // Worker jars feed both the forked JVM and the TestStamp
         // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
         // matches what the suite actually loads — same set forecast uses.
         Map<String, String> workerJars =
                 PlannerSetup.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
+        TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
+        List<Path> testRtCp = stamp.runtimeClasspath();
         Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());
         WorkerEnv testEnv = TestLaunch.withFastTierWalls(
                 TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);
-        TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
-        List<String> testJvmArgs = tier.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls));
+        TestTier tier = stamp.tier();
+        List<String> testJvmArgs = stamp.jvmArgs();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
-        SuiteDiscovery.Rekey rekey = () -> testStampKey(
-                ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
+        SuiteDiscovery.Rekey rekey = () -> testStampKey(ctx, in, stamp, affected, testSrcs);
         String stampKey = rekey.key();
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
@@ -639,11 +613,12 @@ public final class PlannerTest {
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
-        // Test execution is serialized across concurrently-built units unless the
-        // user opted into parallel tests — shared ports/locks/fixtures. The worker
-        // count is decided once the gate is held: a suite parked at the gate is
+        // Test execution is serialized across the checkout's concurrently-built units
+        // unless the user opted into parallel tests — shared ports/locks/fixtures. The
+        // worker count is decided once the gate is held: a suite parked at the gate is
         // not running, and the ones running when it starts are what it shares with.
         boolean gated = !in.session().parallelTests();
+        TestGates.Hold[] gate = new TestGates.Hold[1];
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
         // The agent and the report tool come first: a coverage run that cannot fetch
         // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
@@ -653,7 +628,7 @@ public final class PlannerTest {
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
-                PlannerTest::awaitTestGate);
+                () -> gate[0] = TestGates.acquire(ctx.require(LAYOUT).workspaceRoot(), SessionCancel::cancelled));
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         TagExcludedCapture tagExcluded;
@@ -695,7 +670,7 @@ public final class PlannerTest {
             }
         } finally {
             HeapNotes.flush(ctx);
-            if (gated) TEST_GATE.release();
+            if (gate[0] != null) gate[0].close();
             // A run stopped part way keeps the classes it got through, under the stamp it started with.
             if (result == null) ledger.store(actionCache, testTaskId, stampKey);
         }
@@ -877,16 +852,27 @@ public final class PlannerTest {
     private record Judged(
             @Nullable TestSummary result, @Nullable String noMatch) {}
 
-    /**
-     * {@code [test] fast-method-budget} in milliseconds: the module's own, else its workspace
-     * root's, so one line at the root holds every member to it; 0 when neither sets one.
-     */
-    static long fastMethodBudget(JkBuild module, Path moduleDir) throws IOException {
-        long own = module.build().testFastMethodBudgetMs();
-        if (own > 0) return own;
-        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
-        if (root == null || root.normalize().equals(moduleDir.normalize())) return 0;
-        return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
+    /** The run-tests stamp's inputs as this run reads them: what the classpath step published, the worker jars awaited. */
+    private static TestStampInputs stampInputs(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild projectUnderTest,
+            @Nullable PluginDeclarations pluginDecls,
+            Map<String, String> workerJars)
+            throws IOException {
+        return TestStampInputs.of(
+                new TestStampInputs.Facts(
+                        in.dir(),
+                        projectUnderTest,
+                        ctx.require(LAYOUT),
+                        in.profileName(),
+                        in.session().testSelection(),
+                        pluginDecls,
+                        workerJars,
+                        ctx.require(CLASSPATHS).testRuntime(),
+                        ctx.require(CLASSPATHS).providedRuntime(),
+                        compileTestKeys(ctx)),
+                ClasspathFingerprint.ON_DISK);
     }
 
     /**
@@ -896,29 +882,19 @@ public final class PlannerTest {
     private static @Nullable String testStampKey(
             TaskContext ctx,
             BuildPlanner.Inputs in,
-            JkBuild projectUnderTest,
-            TestSelection effectiveSel,
+            TestStampInputs stamp,
             AffectedTestRun.@Nullable Outcome affected,
-            Map<String, String> workerJars,
-            List<String> testJvmArgs,
-            List<Path> testSrcs,
-            List<Path> testRtCp)
+            List<Path> testSrcs)
             throws Exception {
         List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
-        List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
-                NodeTestStamp.testStampExtras(
-                        workerJars,
-                        effectiveSel,
-                        projectUnderTest,
-                        testJvmArgs,
-                        in.dir(),
-                        ClasspathFingerprint.ON_DISK),
-                compileTestKeys(ctx)));
-        extras.addAll(SuiteEnvKeys.profileEnv(projectUnderTest, in.profileName()));
+        List<String> extras = new ArrayList<>(stamp.extras());
         if (affected != null && !affected.stampToken().isBlank()) {
             extras.add("affected:" + affected.stampToken());
         }
-        return TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, testRtCp, extras);
+        // Unchanged inputs replay the green run; null (an unreadable input) is "not cached".
+        String key = stamp.key(testSrcs, ctx.require(MAIN_CLASSES), null, testResDirs, in.lockFile(), extras);
+        TestLaunch.noteStampKey(ctx, in, key, testSrcs, testResDirs, stamp.runtimeClasspath(), extras);
+        return key;
     }
 
     /**
@@ -1007,7 +983,7 @@ public final class PlannerTest {
 
     /**
      * Coverage tooling resolves before the serial test gate is taken, never inside it. The fetch
-     * can take seconds or fail outright, and the gate is process-wide: a fetch behind it would park
+     * can take seconds or fail outright, and the gate is the checkout's: a fetch behind it would park
      * every other module's suite behind a download, and a failed fetch would leave the gate held
      * for good. So a failing {@code resolve} throws with the gate untouched, and {@code gate} runs
      * only once {@code resolve} has answered.
@@ -1022,32 +998,6 @@ public final class PlannerTest {
         if (gated) gate.run();
         return tools;
     }
-
-    /**
-     * Wait for the serial-test gate without counting as a running unit: a suite parked here is
-     * sharing the machine with nobody yet, and counting it would hand every gated suite a fraction
-     * of the machine it then uses alone.
-     */
-    static void awaitTestGate() {
-        awaitGate(TEST_GATE, SessionCancel::cancelled);
-    }
-
-    /**
-     * Take {@code gate}, giving up with a {@link CancellationException} once {@code cancelled}
-     * answers true: a suite parked behind another workspace's tests stays cancellable.
-     */
-    static void awaitGate(Semaphore gate, BooleanSupplier cancelled) {
-        try (LiveUnits.Lease parked = LiveUnits.stepOut()) {
-            while (!gate.tryAcquire(GATE_POLL_MS, TimeUnit.MILLISECONDS)) {
-                if (cancelled.getAsBoolean()) throw new CancellationException("test run cancelled");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new CancellationException("test run interrupted");
-        }
-    }
-
-    private static final long GATE_POLL_MS = 200;
 
     /** What a finished run leaves for later builds under the same inputs. */
     enum Stamp {

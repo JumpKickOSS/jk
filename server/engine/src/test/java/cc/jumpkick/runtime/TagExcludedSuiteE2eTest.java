@@ -3,10 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -16,7 +14,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -98,28 +95,15 @@ class TagExcludedSuiteE2eTest {
 
     /** The plan of {@code jk test -p nightly}: the profile's tags resolved onto the session. */
     private static BuildPlan lockAndPlan(Path project) throws Exception {
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         Path cache = TestCaches.dir("tag-excluded-suite-cache");
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
         TestSelection nightly = TestSelection.of(List.of(), false, List.of("nightly"), List.of(), true);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                "nightly",
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current().withTestSelection(nightly));
+        BuildPlanner.Inputs in = TestInputs.of(
+                        project, cache, SessionContext.current().withTestSelection(nightly))
+                .withEstimatedTestCount(1)
+                .withProfileName("nightly");
         return BuildPlanner.fullPlan(in);
     }
 }

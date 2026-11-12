@@ -95,6 +95,22 @@ class FactsIndexingTest {
         assertThat(FactsIndexing.ensure(classes, idx, "after").tier()).isEqualTo(Ensured.Tier.FRESH);
     }
 
+    /** A reader handed an index an older jk wrote gets it rebuilt, not a file it cannot decode. */
+    @Test
+    void a_reader_gets_an_index_another_extractor_wrote_rebuilt_and_one_this_extractor_wrote_as_is(@TempDir Path dir)
+            throws IOException {
+        Path classes = classes(dir);
+        Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
+        assertThat(FactsIndexing.ensure(classes, idx, "an older jk").tier()).isEqualTo(Ensured.Tier.BUILT);
+
+        assertThat(FactsIndexing.readable(classes, idx)).contains(idx);
+        assertThat(FactsIndexing.freshDigest(classes, idx, FactsExtractor.identity()))
+                .as("rebuilt by this extractor")
+                .isPresent();
+        assertThat(FactsIndexing.readable(dir.resolve("no-classes"), dir.resolve("absent.idx")))
+                .isEmpty();
+    }
+
     /**
      * The module lane and the workspace lane index the same classes directory from one engine at
      * the same time. One of them writes; the other waits and reads what was written. Several

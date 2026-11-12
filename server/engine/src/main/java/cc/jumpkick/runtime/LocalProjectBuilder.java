@@ -26,6 +26,7 @@ import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,6 +74,9 @@ public final class LocalProjectBuilder {
      * network when it declares none) and compiles with {@code javaHome}. The jar is written to {@link
      * BuildLayout#mainJar()} so callers can reuse it on disk.
      */
+    @KeyOwner(
+            step = {},
+            unpaired = "a headless build of a project outside any plan: nothing forecasts it")
     static Built build(
             Path projectDir,
             JkBuild project,

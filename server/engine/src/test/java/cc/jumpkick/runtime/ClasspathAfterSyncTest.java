@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -24,7 +23,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -42,8 +40,8 @@ class ClasspathAfterSyncTest {
         Files.createDirectories(store);
         Fixture f = fixture(tmp, store, /* materializeLib */ false);
 
-        assertThatThrownBy(
-                        () -> PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store), new PluginBuild.StepTools()))
+        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(
+                        f.ctx, f.in, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:lib")
                 .hasMessageContaining("not on disk after sync");
@@ -55,9 +53,9 @@ class ClasspathAfterSyncTest {
         centralIsTheLocalRepository(store);
         Fixture f = fixture(tmp, store, /* materializeLib */ true);
 
-        PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(f.ctx, f.in, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
 
-        List<Path> cp = f.ctx.require(BuildPlanner.CLASSPATH);
+        List<Path> cp = f.ctx.require(BuildPlanner.CLASSPATHS).main();
         assertThat(cp).contains(f.libJar.toAbsolutePath().normalize());
         assertThat(new ClasspathResolver(store).classpathFor(f.lock, ClasspathResolver.COMPILE_MAIN, true))
                 .contains(f.libJar.toAbsolutePath().normalize());
@@ -146,29 +144,14 @@ class ClasspathAfterSyncTest {
         StashContext ctx = new StashContext();
         ctx.put(BuildPlanner.LOCKFILE, lock);
         ctx.put(BuildPlanner.PROJECT, project);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                store,
-                module.resolve("jk.toml"),
-                lockFile,
-                module,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, store).withLockFile(lockFile);
 
-        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(ctx, in, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
 
-        assertThat(ctx.require(BuildPlanner.COMPILE_TEST_CP))
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testCompile())
                 .extracting(p -> p.getFileName().toString())
                 .contains("kept-1.0.jar", "simple-2.0.jar");
-        assertThat(ctx.require(BuildPlanner.TEST_RUNTIME_CP))
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testRuntime())
                 .extracting(p -> p.getFileName().toString())
                 .contains("kept-1.0.jar")
                 .doesNotContain("simple-2.0.jar");
@@ -213,20 +196,80 @@ class ClasspathAfterSyncTest {
         Files.createDirectories(ws.libLayout.classesDir());
 
         StashContext ctx = ws.context();
-        PlannerSetup.publishClasspaths(ctx, ws.inputs(store, false), new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(
+                ctx, ws.inputs(store, false), ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
 
         assertThat(ctx.errors).isEmpty();
-        assertThat(ctx.require(BuildPlanner.CLASSPATH))
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).main())
                 .contains(ws.libLayout.classesDir())
                 .doesNotContain(ws.libLayout.mainJar());
-        assertThat(ctx.require(BuildPlanner.COMPILE_TEST_CP))
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testCompile())
                 .as("the test compile reads the same tree")
                 .contains(ws.libLayout.classesDir())
                 .doesNotContain(ws.libLayout.mainJar());
-        assertThat(ctx.require(BuildPlanner.TEST_RUNTIME_CP))
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testRuntime())
                 .as("the tests run against the jar, named whether or not it exists yet")
                 .contains(ws.libLayout.mainJar())
                 .doesNotContain(ws.libLayout.classesDir());
+    }
+
+    /**
+     * The classpath step publishes the derivation the forecast prices against: with every jar and
+     * sibling tree on disk, the build's classpaths and the forecast's are one value, a sibling only
+     * the tests and the processors name included.
+     */
+    @Test
+    void the_classpath_step_publishes_what_the_forecast_derives(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
+        Workspace ws = twoModules(tmp, "");
+        Files.writeString(ws.app.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib.workspace = true
+                kept = { group = "com.foo", version = "1.0" }
+
+                [processor-dependencies]
+                lib.workspace = true
+
+                [test-processor-dependencies]
+                inherit = false
+                lib.workspace = true
+
+                [test-dependencies]
+                lib = { workspace = true, kind = "tests" }
+                """);
+        Files.createDirectories(ws.libLayout.classesDir());
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(materialized(tmp, store, "com.foo:kept", "1.0")));
+        LockfileWriter.write(lock, ws.root.resolve("jk-lock.toml"));
+        JkBuild app = JkBuildParser.parse(ws.app.resolve("jk.toml"));
+        ModuleShape shape = ModuleShape.of(app, ws.app, null);
+
+        StashContext ctx = ws.context(lock);
+        PlannerSetup.publishClasspaths(
+                ctx, ws.inputs(store, false), shape, new Cas(store), new PluginBuild.StepTools());
+
+        ModuleClasspaths built = ctx.require(BuildPlanner.CLASSPATHS);
+        assertThat(built.main()).anyMatch(p -> p.getFileName().toString().equals("kept-1.0.jar"));
+        assertThat(built.processor()).contains(ws.libLayout.classesDir());
+        assertThat(built.testRuntime()).contains(ws.libLayout.mainJar());
+        assertThat(ModuleClasspaths.derive(
+                        ws.app,
+                        app,
+                        shape,
+                        lock,
+                        new ClasspathResolver(new Cas(store)),
+                        ModuleClasspaths.Contributions.NONE,
+                        ModuleClasspaths.Mode.FORECAST))
+                .as("the forecast's derivation")
+                .isEqualTo(built);
     }
 
     /** A jar with no tree beside it is a sibling that has not compiled this build; the compile cannot start on it. */
@@ -241,7 +284,7 @@ class ClasspathAfterSyncTest {
 
         StashContext ctx = ws.context();
         assertThatThrownBy(() -> PlannerSetup.publishClasspaths(
-                        ctx, ws.inputs(store, false), new Cas(store), new PluginBuild.StepTools()))
+                        ctx, ws.inputs(store, false), ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools()))
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors)
                 .anyMatch(e -> e.contains("dependency module not compiled") && e.contains("expected classes at"));
@@ -269,7 +312,7 @@ class ClasspathAfterSyncTest {
 
         StashContext ctx = ws.context();
         BuildPlanner.Inputs in = ws.inputs(store, false);
-        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(ctx, in, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
         assertThat(ctx.errors).as("the compile classpaths need only the trees").isEmpty();
 
         PlannerSetup.awaitSiblingArtifacts(ctx, in);
@@ -305,13 +348,13 @@ class ClasspathAfterSyncTest {
 
         StashContext ctx = ws.context();
         BuildPlanner.Inputs in = ws.inputs(store, false);
-        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(ctx, in, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
         assertThat(ctx.errors)
                 .as("lib has not compiled and app's main does not read it")
                 .isEmpty();
-        assertThat(String.valueOf(ctx.values.get(BuildPlanner.COMPILE_TEST_CP)))
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testCompile())
                 .as("the test classpath names lib's tree, built or not")
-                .contains(ws.libLayout().classesDir().toString());
+                .contains(ws.libLayout().classesDir());
 
         assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestCompile(ctx, in))
                 .hasMessageContaining("missing workspace siblings");
@@ -343,16 +386,15 @@ class ClasspathAfterSyncTest {
 
         StashContext ctx = ws.context();
         BuildPlanner.Inputs skipping = ws.inputs(store, true);
-        PlannerSetup.publishClasspaths(ctx, skipping, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(ctx, skipping, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
         PlannerSetup.awaitSiblingTestCompile(ctx, skipping);
         PlannerSetup.awaitSiblingTestRuntime(ctx, skipping);
         assertThat(ctx.errors).isEmpty();
-        assertThat(ctx.values).containsKey(BuildPlanner.CLASSPATH);
-        assertThat(ctx.values).containsKey(BuildPlanner.COMPILE_TEST_CP);
+        assertThat(ctx.values).containsKey(BuildPlanner.CLASSPATHS);
 
         // The same tree with tests planned is still a failure that names the sibling's fixtures.
         BuildPlanner.Inputs withTests = ws.inputs(store, false);
-        PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.publishClasspaths(ctx, withTests, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
         assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestRuntime(ctx, withTests))
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors).anyMatch(e -> e.contains("test dependency module not built") && e.contains("fixtures"));
@@ -388,8 +430,9 @@ class ClasspathAfterSyncTest {
         JkBuild app = JkBuildParser.parse(ws.app.resolve("jk.toml"));
 
         StashContext whole = ws.context(lock);
-        PlannerSetup.publishClasspaths(whole, ws.inputs(store, false), cas, new PluginBuild.StepTools());
-        assertThat(whole.require(BuildPlanner.CLASSPATH))
+        PlannerSetup.publishClasspaths(
+                whole, ws.inputs(store, false), ModuleShape.UNREAD, cas, new PluginBuild.StepTools());
+        assertThat(whole.require(BuildPlanner.CLASSPATHS).main())
                 .as("the sibling lock's row rides the compile classpath while its jar is on disk")
                 .anyMatch(p -> p.getFileName().toString().equals("gone-2.0.jar"));
         assertThat(PluginBuild.productionClasspath(ws.app, cas, workspaceLock, app))
@@ -398,8 +441,8 @@ class ClasspathAfterSyncTest {
         Files.delete(store.resolve("repos/central/com/foo/gone/2.0/gone-2.0.jar"));
 
         StashContext ctx = ws.context(lock);
-        assertThatThrownBy(() ->
-                        PlannerSetup.publishClasspaths(ctx, ws.inputs(store, false), cas, new PluginBuild.StepTools()))
+        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(
+                        ctx, ws.inputs(store, false), ModuleShape.UNREAD, cas, new PluginBuild.StepTools()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:gone:2.0")
                 .hasMessageContaining("not on disk after sync");
@@ -455,22 +498,7 @@ class ClasspathAfterSyncTest {
         }
 
         BuildPlanner.Inputs inputs(Path store, boolean skipTests) {
-            return new BuildPlanner.Inputs(
-                    app,
-                    store,
-                    app.resolve("jk.toml"),
-                    app.resolve("jk-lock.toml"),
-                    app,
-                    1,
-                    0,
-                    null,
-                    null,
-                    skipTests,
-                    false,
-                    false,
-                    false,
-                    Set.of(),
-                    SessionContext.current());
+            return TestInputs.of(app, store).withSkipTests(skipTests);
         }
     }
 
@@ -516,22 +544,7 @@ class ClasspathAfterSyncTest {
         ctx.put(BuildPlanner.LOCKFILE, lock);
         ctx.put(BuildPlanner.PROJECT, project);
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                store,
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, store);
 
         return new Fixture(ctx, in, lock, libJar);
     }

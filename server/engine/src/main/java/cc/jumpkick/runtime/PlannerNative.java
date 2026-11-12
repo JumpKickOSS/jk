@@ -2,9 +2,9 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PackagedClasses.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
-import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -36,10 +36,12 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.tool.GraalHomeLookup;
 import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
@@ -376,12 +378,6 @@ public final class PlannerNative {
         List<Path> metadataDirs = List.of();
         if (Files.exists(lockFile)) {
             Lockfile metaLock = LockfileReader.read(lockFile);
-            List<Lockfile.Artifact> runtimeArtifacts = new ArrayList<>();
-            for (Lockfile.Artifact a : metaLock.artifacts()) {
-                if (a.inAnyScope(ClasspathResolver.RUNTIME) && a.checksum() != null) {
-                    runtimeArtifacts.add(a);
-                }
-            }
             // Local only for the forecast: an unextracted repository is an input it cannot see, never
             // "build without metadata" (the build would fetch it, and key the image with it).
             Lockfile.NativeMetadata pin = metaLock.nativeMetadata();
@@ -390,7 +386,11 @@ public final class PlannerNative {
             }
             cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, JkStores.storeCas());
             metadataDirs = ReachabilityMetadata.configDirs(
-                    JkStores.store(), metaRepos, metaLock.nativeMetadata(), runtimeArtifacts, msg -> ctx.label(msg));
+                    JkStores.store(),
+                    metaRepos,
+                    metaLock.nativeMetadata(),
+                    metadataArtifacts(metaLock),
+                    msg -> ctx.label(msg));
         }
         if (frameworkSources != null) {
             metadataDirs = List.of();
@@ -427,6 +427,18 @@ public final class PlannerNative {
         withMeta.add("-H:-UnlockExperimentalVMOptions");
         withMeta.addAll(allArgs);
         return new ReachabilityArgs(withMeta, repositoryDirs);
+    }
+
+    /**
+     * The lock entries the metadata repository is matched against: every runtime artifact the lock
+     * pins a checksum for, in lock order, which is the order the image key lists their dirs in.
+     */
+    static List<Lockfile.Artifact> metadataArtifacts(Lockfile lock) {
+        List<Lockfile.Artifact> runtimeArtifacts = new ArrayList<>();
+        for (Lockfile.Artifact a : lock.artifacts()) {
+            if (a.inAnyScope(ClasspathResolver.RUNTIME) && a.checksum() != null) runtimeArtifacts.add(a);
+        }
+        return runtimeArtifacts;
     }
 
     /** The image args with the metadata flag in front, and the metadata-repository dirs it names. */
@@ -471,6 +483,7 @@ public final class PlannerNative {
                 identity);
     }
 
+    @KeyOwner(step = TaskNames.NATIVE_IMAGE)
     static ImageKey imageKey(
             Path javaHome,
             List<Path> classpath,
@@ -542,7 +555,8 @@ public final class PlannerNative {
             throws Exception {
         long effectiveBytes = NativeEffort.estimateInputBytes(dir);
         if (effectiveBytes < 1024) effectiveBytes = NativeEffort.sumExistingBytes(classpath);
-        NativeEffort.recordSuccessInputBytes(dir, effectiveBytes);
+        RunMeasures measures = RunMeasures.current();
+        if (measures != null) measures.nativeInputBytes(dir.toString(), effectiveBytes);
         // Size-aware reservation; reweight may shrink only (never grow the bar).
         int sized = NativeEffort.weight(dir);
         try {
@@ -701,7 +715,7 @@ public final class PlannerNative {
         // Graal's output feeds progress parsing, the durable report and the plan output channel,
         // which the CLI buffers for Ctrl-O peek and --verbose streams live.
         List<String> log = Collections.synchronizedList(new ArrayList<>());
-        int exit = HeapScope.call(
+        int exit = HeapScope.fork(
                 key,
                 () -> NativeImageDriver.run(request, listener, line -> {
                     log.add(line);
@@ -920,8 +934,8 @@ public final class PlannerNative {
             boolean allowShared)
             throws Exception {
         ForecastScope.Prepared p = s.prepared();
-        if (p.noSources()) return null;
-        BuildLayout layout = p.layout();
+        if (p.parsed().noSources()) return null;
+        BuildLayout layout = p.parsed().layout();
         TaskForecast.Task step = forecastImage(s, layout, jdksDir, graalHome, mainOverride, extra, allowShared);
         s.nativeBinaryToRestore = step.cached() && !ForecastPackagingTails.nativeBinaryPresent(layout);
         return step;

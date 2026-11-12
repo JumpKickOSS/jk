@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.time.Clock;
 import com.sun.management.OperatingSystemMXBean;
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -52,30 +53,53 @@ public final class MemoryProbe {
     /** {@code total} = physical/limit RAM; {@code available} = what we can still allocate. */
     public record Memory(long totalBytes, long availableBytes) {}
 
-    private static volatile @Nullable Memory cached;
+    /**
+     * How long one reading answers {@link #probe}: long enough that one planning pass sizes every
+     * worker from the same reading, short enough that the next build sees the memory the host has
+     * then, not what it had when the engine started.
+     */
+    static final long TTL_NANOS = 5_000_000_000L;
 
-    /** Probe once and cache — memory headroom is read at planning time and reused. */
+    /** A reading and when it was taken; a pinned one is a test's and never expires. */
+    private record Reading(Memory memory, long atNanos, boolean pinned) {}
+
+    private static volatile @Nullable Reading cached;
+
+    /** The host's memory as read in the last {@link #TTL_NANOS}, measured again once that has passed. */
     public static Memory probe() {
-        Memory m = cached;
-        if (m == null) {
-            synchronized (MemoryProbe.class) {
-                if (cached == null) cached = measure();
-                m = cached;
-            }
+        return probeAt(Clock.SYSTEM.nanos());
+    }
+
+    /** As {@link #probe()}, judged at {@code nowNanos}. */
+    static Memory probeAt(long nowNanos) {
+        Reading r = cached;
+        if (r != null && (r.pinned() || nowNanos - r.atNanos() < TTL_NANOS)) return r.memory();
+        synchronized (MemoryProbe.class) {
+            r = cached;
+            if (r != null && (r.pinned() || nowNanos - r.atNanos() < TTL_NANOS)) return r.memory();
+            Memory m = measure();
+            cached = new Reading(m, nowNanos, false);
+            return m;
         }
-        return m;
     }
 
     /** Test seam: the memory {@link #probe} answers, or {@code null} to measure the host again. */
     public static void forTests(@Nullable Memory memory) {
         synchronized (MemoryProbe.class) {
-            cached = memory;
+            cached = memory == null ? null : new Reading(memory, 0, true);
+        }
+    }
+
+    /** Test seam: a reading taken at {@code atNanos} that expires like a measured one. */
+    static void readAtForTests(Memory memory, long atNanos) {
+        synchronized (MemoryProbe.class) {
+            cached = new Reading(memory, atNanos, false);
         }
     }
 
     /**
      * Live host memory (uncached) for status / SSE vitals. Prefer {@link #probe()} when sizing
-     * worker heaps so the plan stays stable for one build.
+     * worker heaps so one planning pass reads one reading.
      */
     public static Memory current() {
         return measure();

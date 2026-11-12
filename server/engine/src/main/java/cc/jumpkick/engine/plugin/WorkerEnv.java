@@ -295,13 +295,13 @@ public final class WorkerEnv {
     }
 
     private static final Set<String> MACHINE_UPPER =
-            MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
+            Set.copyOf(MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet()));
 
     /** The names that ride each request by exact spelling: the proxy, the display, the container runtime. */
     private static final Set<String> SHELL = Set.copyOf(BuildEnv.SHELL);
 
     private static final Set<String> SHELL_UPPER =
-            SHELL.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
+            Set.copyOf(SHELL.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet()));
 
     /**
      * Test seam: run {@code body} with {@code engine} standing in for this process's environment, so

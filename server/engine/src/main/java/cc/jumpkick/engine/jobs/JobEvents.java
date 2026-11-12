@@ -26,9 +26,4 @@ public interface JobEvents {
     void clearProgress(long id);
 
     void putMode(long id, ProgressBarMode mode);
-
-    /** Bind the current thread's events to {@code id} for the runner's life. */
-    void bindEventRequestId(long id);
-
-    void unbindEventRequestId();
 }

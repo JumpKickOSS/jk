@@ -27,8 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * through {@link cc.jumpkick.wire.runtime.RemainingWork} offline, so a change to the live model is
  * scored against recorded runs in seconds instead of re-running them.
  *
- * <p>An in-process hand-off keyed by request id, drained when the journal writes the run, like
- * {@link cc.jumpkick.runtime.base.TestSuiteRunners}: the model is not part of the record.
+ * <p>An in-process hand-off keyed by request id, drained when the journal writes the run: the model
+ * is not part of the record.
  */
 public final class EtaModels {
 

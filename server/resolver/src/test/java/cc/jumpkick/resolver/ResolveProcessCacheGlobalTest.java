@@ -3,9 +3,11 @@ package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -25,8 +27,14 @@ class ResolveProcessCacheGlobalTest {
     void a_test_may_fill_the_parse_memo(@TempDir Path dir) throws Exception {
         Path module = dir.resolve("a.module");
         Files.writeString(module, "{}\n");
-        GradleModuleMetadata parsed = GradleModuleMetadata.parse(module);
-        assertThat(GradleModuleMetadata.parse(module)).isSameAs(parsed);
+        // Judged as settled: a file written this instant is read again, not remembered.
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            GradleModuleMetadata parsed = GradleModuleMetadata.parse(module);
+            assertThat(GradleModuleMetadata.parse(module)).isSameAs(parsed);
+        } finally {
+            Settled.aheadForTests(null);
+        }
     }
 
     @Test

@@ -54,7 +54,7 @@ public final class FormatPlans {
     public static final String SCALAFMT_VERSION = "3.8.1";
 
     // palantir/google-java-format reflectively use the JDK compiler internals.
-    private static final List<String> JAVAC_EXPORTS = JdkCompilerAccess.JVM_FLAGS;
+    private static final List<String> JAVAC_EXPORTS = List.copyOf(JdkCompilerAccess.JVM_FLAGS);
 
     /**
      * Build the format plan for {@code projectDir}. Style names arrive already resolved (flags/env/

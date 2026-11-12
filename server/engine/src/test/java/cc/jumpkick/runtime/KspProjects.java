@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -154,7 +153,7 @@ final class KspProjects {
         Files.writeString(project.resolve("jk.toml"), manifest);
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
         return BuildLayout.of(project, build);
@@ -188,22 +187,7 @@ final class KspProjects {
     }
 
     private static BuildPlanner.Inputs inputs(Path project, Path cache, boolean skipTests) {
-        return new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        return TestInputs.of(project, cache).withSkipTests(skipTests);
     }
 
     static BuildPlanResult.StepReport step(BuildPlanResult result, String name) {

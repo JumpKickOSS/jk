@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_SOURCES;
@@ -97,7 +97,7 @@ final class PlannerJavadoc {
         List<Path> scalaSources = scaladocSources(javaAndScala, kotlinSources);
         String scalaVersion = scalaSources.isEmpty() ? null : scaladocVersion(project, ctx.require(LOCKFILE));
         // What javac saw, plus the module's own classes: a Java source may name a Kotlin type.
-        List<Path> classpath = new ArrayList<>(ctx.require(CLASSPATH));
+        List<Path> classpath = new ArrayList<>(ctx.require(CLASSPATHS).main());
         classpath.add(ctx.require(MAIN_CLASSES));
         Path javaHome = ctx.require(JAVA_HOME);
         JavadocMode mode = project.project().javadocMode();

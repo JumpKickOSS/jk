@@ -2,7 +2,6 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.run.ContextPropagator;
-import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -11,10 +10,15 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Ambient holder for the current {@link Session}. {@link #current()} prefers a per-thread
- * {@link ScopedValue} binding ({@link #where}/{@link #runWhere}) so concurrent in-JVM builds each
- * see their own session; then the session of the enclosing CLI invocation ({@link #invocation});
- * otherwise a process-wide static.
+ * Ambient holder for the current {@link Session} and {@link Request}. {@link #current()} prefers a
+ * per-thread {@link ScopedValue} binding ({@link #where}/{@link #runWhere}) so concurrent in-JVM
+ * builds each see their own session; then the session of the enclosing CLI invocation
+ * ({@link #invocation}); otherwise a process-wide static.
+ *
+ * <p>One {@link ScopedValue} carries both the session and the request, registered with {@link
+ * ContextPropagator} so that binding follows work onto {@link cc.jumpkick.run.JkThreads} workers and
+ * onto the threads {@link #startVirtual}/{@link #startPlatform} start. A bare thread sees
+ * neither: it reads the invocation's or the static session and no request.
  *
  * <p>{@link #install}/{@link #installConfig} write the invocation's session when one is open, so
  * two invocations in one JVM never see each other's flags, and the static fallback otherwise;
@@ -24,8 +28,14 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SessionContext {
 
-    /** Per-thread binding set by {@link #where}/{@link #runWhere}; enables concurrent in-JVM builds. */
-    private static final ScopedValue<Session> SCOPED = ScopedValue.newInstance();
+    /**
+     * The session and request bound on this thread. A {@code null} session is a request bound without
+     * pinning one: {@link #current()} then falls through to the invocation's or the static session.
+     */
+    private record Bound(
+            @Nullable Session session, @Nullable Request request) {}
+
+    private static final ScopedValue<Bound> SCOPED = ScopedValue.newInstance();
 
     /** One CLI invocation's session and facts, bound for that invocation's extent. */
     private static final ScopedValue<Invocation> INVOCATION = ScopedValue.newInstance();
@@ -41,71 +51,14 @@ public final class SessionContext {
     private static volatile Session current = Session.defaults();
 
     static {
-        // Propagate where()-bound sessions (and their cancel tokens) onto JkThreads pool workers;
-        // ScopedValue does not reach pre-existing shared executors without this. The run ledger
-        // rides along for the reason in withLedger. Added beside, not bound over, whatever another
-        // subsystem registered first: class-initialization order must not decide which context
-        // survives the hop.
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                Session s = current();
-                IoLedger run = IoLedger.ambient();
-                return () -> runWithLedger(run, () -> runWhere(s, r));
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                Session s = current();
-                IoLedger run = IoLedger.ambient();
-                return () -> withLedger(run, () -> where(s, c));
-            }
-        });
+        // Carried pinned: a worker reads the submitter's session even when it came from the
+        // invocation or the static, and a submitter off a request hands the worker no request.
+        ContextPropagator.carry(SCOPED, SessionContext::capture);
     }
 
-    /**
-     * Run {@code body} with {@code run} as the worker thread's ambient ledger, restoring whatever was
-     * there before.
-     *
-     * <p><strong>Why the ledger has to be propagated and not inherited.</strong> {@code IoLedger}'s
-     * ambient holder is an {@code InheritableThreadLocal}, and inheritance is a snapshot taken once,
-     * when a thread is <em>created</em>. {@link cc.jumpkick.run.JkThreads#cpu()} is a process-wide
-     * {@code ForkJoinPool} whose workers are created lazily — on demand, inside whichever request
-     * first widened the pool. Those workers then live for the engine's life still holding that first
-     * request's ledger, and every later request's CPU step read it back as "the ambient request".
-     *
-     * <p>That is not merely mis-billed bytes. {@link RequestScope} keys on the ledger instance
-     * precisely because a ledger cannot outlive its request — so a leaked one handed every
-     * subsequent build the <em>first</em> build's derived facts. A module that had no {@code
-     * src/test/java} when the pool warmed had that scan memoized empty, and {@code jk test} then
-     * reported "no test sources" — a green run — for every test written afterwards, until the engine
-     * restarted.
-     *
-     * <p>Capturing on the submitting thread and binding here makes the worker's ledger the one
-     * belonging to the request that submitted the task. A {@code null} capture (a caller off a
-     * request) <em>clears</em> rather than leaves, so an inherited ledger cannot be mistaken for an
-     * ambient request either: {@code RequestScope} then answers "no request" and recomputes, which is
-     * uncached but never stale.
-     */
-    private static <T> T withLedger(@Nullable IoLedger run, Callable<T> body) throws Exception {
-        IoLedger previous = IoLedger.ambient();
-        IoLedger.open(run);
-        try {
-            return body.call();
-        } finally {
-            IoLedger.open(previous);
-        }
-    }
-
-    /** Void-returning variant of {@link #withLedger}, for the {@code Runnable} hop. */
-    private static void runWithLedger(@Nullable IoLedger run, Runnable body) {
-        IoLedger previous = IoLedger.ambient();
-        IoLedger.open(run);
-        try {
-            body.run();
-        } finally {
-            IoLedger.open(previous);
-        }
+    /** The calling thread's session, pinned, and its request: what a hop to another thread carries. */
+    private static Bound capture() {
+        return new Bound(current(), request());
     }
 
     private SessionContext() {}
@@ -166,34 +119,50 @@ public final class SessionContext {
      * session, else the process static.
      */
     public static Session current() {
-        if (SCOPED.isBound()) return SCOPED.get();
+        if (SCOPED.isBound()) {
+            Session s = SCOPED.get().session();
+            if (s != null) return s;
+        }
         return INVOCATION.isBound() ? INVOCATION.get().session().get() : current;
+    }
+
+    /** The request bound on this thread, or {@code null}; read through {@link Request#current()}. */
+    static @Nullable Request request() {
+        return SCOPED.isBound() ? SCOPED.get().request() : null;
+    }
+
+    /** Run {@code body} with {@code request} bound, keeping the session bound now; see {@link Request#call}. */
+    static <T extends @Nullable Object, X extends Throwable> T bind(Request request, Request.Body<T, X> body) throws X {
+        Session pinned = SCOPED.isBound() ? SCOPED.get().session() : null;
+        return ScopedValue.where(SCOPED, new Bound(pinned, request)).call(body::call);
     }
 
     /**
      * Run {@code body} with {@code s} bound as the current session for the dynamic extent of the call
-     * (and any threads it structurally forks). {@link #current()} returns {@code s} within that scope.
+     * (and any threads it structurally forks). {@link #current()} returns {@code s} within that scope;
+     * the request bound now stays bound.
      */
     public static <T> T where(Session s, Callable<T> body) throws Exception {
         // Java 25's finalized Carrier.call takes a ScopedValue.CallableOp; adapt the Callable via a
         // method reference (Callable.call and CallableOp.call share the R call() throws X shape).
-        return ScopedValue.where(SCOPED, s).<T, Exception>call(body::call);
+        return ScopedValue.where(SCOPED, new Bound(s, request())).<T, Exception>call(body::call);
     }
 
     /** Void-returning variant of {@link #where(Session, java.util.concurrent.Callable)}. */
     public static void runWhere(Session s, Runnable body) {
-        ScopedValue.where(SCOPED, s).run(body);
+        ScopedValue.where(SCOPED, new Bound(s, request())).run(body);
     }
 
     /**
-     * Start a virtual thread that runs {@code body} under the calling thread's session. A bare
-     * {@code Thread.ofVirtual().start} carries no {@link ScopedValue} binding, so code on it reads
-     * the process default — a worker JVM forked from such a thread is sized and flagged without the
-     * request's tuning and runs without its cancel token.
+     * Start a virtual thread that runs {@code body} under the calling thread's session, request and
+     * every other {@link ContextPropagator carried} value. A bare {@code Thread.ofVirtual().start}
+     * carries no {@link ScopedValue} binding, so code on it
+     * reads the process default and no request — a worker JVM forked from such a thread is sized and
+     * flagged without the request's tuning, runs without its cancel token, and is not the request's
+     * to kill on cancel.
      */
     public static Thread startVirtual(String name, Runnable body) {
-        Session session = current();
-        return Thread.ofVirtual().name(name).start(() -> runWhere(session, body));
+        return Thread.ofVirtual().name(name).start(ContextPropagator.wrapRunnable(body));
     }
 
     /**
@@ -202,8 +171,7 @@ public final class SessionContext {
      * scheduler would otherwise hand to the work that saturates it.
      */
     public static Thread startPlatform(String name, Runnable body) {
-        Session session = current();
-        return Thread.ofPlatform().daemon().name(name).start(() -> runWhere(session, body));
+        return Thread.ofPlatform().daemon().name(name).start(ContextPropagator.wrapRunnable(body));
     }
 
     /**

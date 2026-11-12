@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The step's {@code test JVM flags: …} line: the JVM flags a test JVM was started with, after the
@@ -18,19 +17,17 @@ final class TestJvmFlags {
 
     static final String PREFIX = "test JVM flags: ";
 
-    private static final ConcurrentHashMap<TaskContext, Set<List<String>>> NOTED = new ConcurrentHashMap<>();
-
-    static {
-        StepScope.onClose(NOTED::remove);
-    }
+    /** The flag sets this step has named. */
+    private static final StepScope.Local<Set<List<String>>> NOTED = new StepScope.Local<>(ConcurrentHashMap::newKeySet);
 
     private TestJvmFlags() {}
 
-    /** Write {@code command}'s JVM flags on {@code ctx} unless the step already named the same set. */
-    static void note(@Nullable TaskContext ctx, List<String> command) {
-        if (ctx == null) return;
+    /** Write {@code command}'s JVM flags on this thread's step unless it already named the same set. */
+    static void note(List<String> command) {
+        TaskContext ctx = StepScope.current();
+        Set<List<String>> seen = StepScope.local(NOTED);
+        if (ctx == null || seen == null) return;
         List<String> flags = jvmFlags(command);
-        Set<List<String>> seen = NOTED.computeIfAbsent(ctx, k -> ConcurrentHashMap.newKeySet());
         if (seen.add(withoutForkPaths(flags))) ctx.output(PREFIX + String.join(" ", flags));
     }
 

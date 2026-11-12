@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -34,9 +35,11 @@ import org.jspecify.annotations.Nullable;
  */
 final class ModuleRoots {
 
-    private static final Set<Scope> INHERITED_COMPILE = EnumSet.of(Scope.EXPORT, Scope.MAIN);
-    private static final Set<Scope> INHERITED_RUNTIME = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
-    private static final Set<Scope> TEST_SCOPES = EnumSet.of(Scope.TEST, Scope.TEST_DEV);
+    private static final Set<Scope> INHERITED_COMPILE =
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN));
+    private static final Set<Scope> INHERITED_RUNTIME =
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME));
+    private static final Set<Scope> TEST_SCOPES = Collections.unmodifiableSet(EnumSet.of(Scope.TEST, Scope.TEST_DEV));
 
     private ModuleRoots() {}
 

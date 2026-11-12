@@ -13,7 +13,7 @@ import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.ParallelMap;
+import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -125,8 +125,8 @@ final class VocabularyEvaluator implements BatchEvaluator {
             List<TextFiles.Entry> own = TextFiles.corpus(m).stream()
                     .filter(f -> nested.moduleOf(f.rel()).isEmpty())
                     .toList();
-            List<@Nullable Lexed> lexed =
-                    ParallelMap.<TextFiles.Entry, @Nullable Lexed>map(own, f -> lex(f, here, ownerSources));
+            List<@Nullable Lexed> lexed = ParallelMap.<TextFiles.Entry, @Nullable Lexed, IOException>map(
+                    own, f -> lex(f, here, ownerSources));
             for (Lexed l : lexed) {
                 if (l == null) continue;
                 for (Prepared p : here) {

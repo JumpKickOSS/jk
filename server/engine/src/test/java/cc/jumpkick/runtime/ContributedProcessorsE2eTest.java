@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -28,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
@@ -99,28 +97,13 @@ class ContributedProcessorsE2eTest {
         Path project = project();
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).as("lock").isEmpty();
         assertThat(lock.success()).as("lock").isTrue();
 
-        BuildPlanResult result = BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                        project,
-                        cache,
-                        project.resolve("jk.toml"),
-                        project.resolve("jk-lock.toml"),
-                        project,
-                        1,
-                        0,
-                        null,
-                        null,
-                        false,
-                        false,
-                        false,
-                        false,
-                        Set.of(),
-                        SessionContext.current()))
-                .run();
+        BuildPlanResult result =
+                BuildPlanner.fullPlan(TestInputs.of(project, cache)).run();
         assertThat(result.errors()).as("build").isEmpty();
         assertThat(result.success()).as("build").isTrue();
 

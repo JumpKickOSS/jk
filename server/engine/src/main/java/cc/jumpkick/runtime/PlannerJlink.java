@@ -23,6 +23,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,7 @@ final class PlannerJlink {
 
     private PlannerJlink() {}
 
+    @KeyOwner(step = TaskNames.PACKAGE_JLINK, unpaired = "explain does not forecast the runtime image at all")
     static Task jlinkStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_JLINK)
                 .forecast(StepForecast.RIDES)

@@ -103,25 +103,10 @@ class LockPipelineParityTest {
         switch (entry) {
             case LOCK_PLAN ->
                 runPlan(LockPlans.lockBuildPlan(
-                        f.project,
-                        JkBuildParser.parse(f.manifest),
-                        f.cache,
-                        f.repo,
-                        List.of(),
-                        true,
-                        false,
-                        ResolveObserver.NOOP,
-                        null));
+                        f.project, f.cache, f.repo, List.of(), true, false, ResolveObserver.NOOP, null));
             case UPDATE_PLAN ->
                 runPlan(LockPlans.updateBuildPlan(
-                        f.project,
-                        JkBuildParser.parse(f.manifest),
-                        f.cache,
-                        f.repo,
-                        List.of(),
-                        true,
-                        null,
-                        ResolveObserver.NOOP));
+                        f.project, f.cache, f.repo, List.of(), true, null, ResolveObserver.NOOP));
             case LOCK_FLOW -> {
                 LockFlow.Result r = LockFlow.run(f.project, f.cache, List.of(), false, f.repo);
                 assertThat(r.status()).as("LockFlow freshen: %s", r.error()).isZero();
@@ -191,19 +176,11 @@ class LockPipelineParityTest {
         // the second one, reading the now-live table, is the baseline this test compares against.
         Path cache = tmp.resolve("cache");
         runPlan(LockPlans.lockBuildPlan(
-                project,
-                JkBuildParser.parse(manifest),
-                cache,
-                repo.toUri(),
-                List.of(),
-                true,
-                false,
-                ResolveObserver.NOOP,
-                null));
+                project, cache, repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null));
         JkBuild build = JkBuildParser.reparse(manifest);
         assertThat(build.pluginConfig("parity")).as("plugin table is live").isPresent();
         runPlan(LockPlans.lockBuildPlan(
-                project, build, cache, repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null));
+                project, cache, repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null));
         return new Fixture(project, manifest, LockPaths.lockFile(project), cache, repo.toUri());
     }
 

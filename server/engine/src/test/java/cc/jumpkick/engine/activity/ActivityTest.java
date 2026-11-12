@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionForms;
 import cc.jumpkick.engine.decisions.DecisionQueue;
@@ -78,7 +79,7 @@ class ActivityTest {
 
     @Test
     void a_global_change_from_an_import_names_the_import_and_who_ran_it_with_its_diff() {
-        ChangeActor.as(ChangeActor.importOf("/w/app/pom.xml"), () -> journal()
+        Request.actingAs(ChangeActor.importOf("/w/app/pom.xml"), () -> journal()
                 .record("config.toml", Change.EDIT, "added repository corp", "+[repositories.corp]\n"));
 
         Activity.Entry e =
@@ -97,7 +98,7 @@ class ActivityTest {
     void a_setup_run_is_a_setup_entry_and_so_is_its_decision() {
         Decision d = ask("setup", "Apply the recommended machine setup?", null, null);
         queue.accept(d.id(), Map.of(DecisionForms.ANSWER, DecisionForms.YES), DecisionSurface.DASHBOARD);
-        ChangeActor.as(ChangeActor.dashboard("machine setup"), () -> journal()
+        Request.actingAs(ChangeActor.dashboard("machine setup"), () -> journal()
                 .record("Windows host", Change.APPLY, "applied machine setup: 2 changes", "+ a\n+ b\n"));
         journal().record("JDK 25", Change.INSTALL, "installed JDK 25", null);
 

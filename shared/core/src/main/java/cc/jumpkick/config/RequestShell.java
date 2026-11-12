@@ -2,7 +2,6 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Os;
-import cc.jumpkick.run.ContextPropagator;
 import java.util.Collections;
 import java.util.Map;
 import java.util.TreeMap;
@@ -10,8 +9,8 @@ import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The whole environment of the shell that ran {@code jk}, bound for the extent of the request it
- * rode. {@link BuildEnv#get} answers from it, so a name the caller left unset reads as unset rather
+ * The whole environment of the shell that ran {@code jk}, carried by the {@link Request} it rode.
+ * {@link BuildEnv#get} answers from it, so a name the caller left unset reads as unset rather
  * than as whatever the daemon's own shell had. A request with no shell (MCP, HTTP, a test) binds
  * nothing and {@link BuildEnv#get} falls back to the engine's environment.
  *
@@ -19,26 +18,6 @@ import org.jspecify.annotations.Nullable;
  * count, and nothing journals, logs or replies with {@link #vars}.
  */
 public final class RequestShell {
-
-    private static final ScopedValue<RequestShell> BOUND = ScopedValue.newInstance();
-
-    static {
-        // Pool workers run a request's steps; without this they would see no shell, or another
-        // request's.
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                RequestShell shell = current();
-                return shell == null ? r : () -> ScopedValue.where(BOUND, shell).run(r);
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                RequestShell shell = current();
-                return shell == null ? c : () -> ScopedValue.where(BOUND, shell).call(c::call);
-            }
-        });
-    }
 
     private final Map<String, String> vars;
 
@@ -49,24 +28,35 @@ public final class RequestShell {
         this.vars = Collections.unmodifiableMap(copy);
     }
 
-    /** The shell bound to the running request, or {@code null} off a request or for one without a shell. */
-    public static @Nullable RequestShell current() {
-        return BOUND.isBound() ? BOUND.get() : null;
+    /** A shell of {@code vars}, or {@code null} for a null or empty map: a request with no shell. */
+    public static @Nullable RequestShell of(@Nullable Map<String, String> vars) {
+        return vars == null || vars.isEmpty() ? null : new RequestShell(vars);
     }
 
-    /** Run {@code body} with {@code vars} as the request's shell; a null or empty map binds nothing. */
+    /** The shell of the running request, or {@code null} off a request or for one without a shell. */
+    public static @Nullable RequestShell current() {
+        Request r = Request.current();
+        return r == null ? null : r.shell();
+    }
+
+    /**
+     * Run {@code body} with {@code vars} as the shell of the current request, or of a request that is
+     * no job off one; a null or empty map binds nothing.
+     */
     public static <T> T where(@Nullable Map<String, String> vars, Callable<T> body) throws Exception {
-        if (vars == null || vars.isEmpty()) return body.call();
-        return ScopedValue.where(BOUND, new RequestShell(vars)).call(body::call);
+        RequestShell shell = of(vars);
+        if (shell == null) return body.call();
+        return Request.currentOrDetached().withShell(shell).call(body::call);
     }
 
     /** {@link #where} for a body with no result. */
     public static void runWhere(@Nullable Map<String, String> vars, Runnable body) {
-        if (vars == null || vars.isEmpty()) {
+        RequestShell shell = of(vars);
+        if (shell == null) {
             body.run();
             return;
         }
-        ScopedValue.where(BOUND, new RequestShell(vars)).run(body);
+        Request.currentOrDetached().withShell(shell).run(body::run);
     }
 
     /** The caller's value for {@code name}, or {@code null} when its shell did not set it. */

@@ -4,6 +4,8 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
@@ -24,7 +26,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
@@ -54,7 +55,8 @@ public final class StepTimings {
      */
     public static final String HOST_METHOD_MS_DIR = "__host__";
 
-    private static final ConcurrentHashMap<Path, StepTimings> MEMO = new ConcurrentHashMap<>();
+    /** Each ledger file as last read, while its stat holds: an engine that took over may have written it. */
+    private static final StampedMemo<Path, FileStamp, StepTimings> MEMO = StampedMemo.bounded(16);
 
     /** A learned step rate plus when it was last refreshed (epoch millis; 0 = never stamped). */
     private record Entry(double perUnit, long updatedMillis) {}
@@ -94,7 +96,7 @@ public final class StepTimings {
     }
 
     /**
-     * Read-only ledger for {@code rootOrCache}, memoized for the process. Missing/unreadable → empty
+     * Read-only ledger for {@code rootOrCache}, read again once the file moves. Missing/unreadable → empty
      * (cold). See {@link #file(Path)}.
      */
     public static StepTimings load(Path rootOrCache) {
@@ -102,7 +104,8 @@ public final class StepTimings {
         if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
             return fromAggregates();
         }
-        return MEMO.computeIfAbsent(f, StepTimings::readFile);
+        FileStamp stamp = FileStamp.of(f);
+        return stamp == null ? readFile(f) : MEMO.get(f, stamp, () -> readFile(f));
     }
 
     private static boolean isLiveBuildsTimings(Path f) {
@@ -250,7 +253,6 @@ public final class StepTimings {
                 }
                 write(f, m);
             });
-            MEMO.remove(f); // next load in this process sees the update
         } catch (IOException | RuntimeException e) {
             // advisory store — never fail the build over it
             Log.debug("record: advisory store", e);
@@ -319,7 +321,6 @@ public final class StepTimings {
             try {
                 if (m.isEmpty()) Files.deleteIfExists(file);
                 else write(file, m);
-                MEMO.remove(file);
             } catch (IOException | RuntimeException e) {
                 // advisory — leave the file as-is on failure
                 Log.debug("prune: advisory", e);

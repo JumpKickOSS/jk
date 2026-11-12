@@ -9,6 +9,8 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +34,29 @@ import org.jspecify.annotations.Nullable;
 public final class JavaCompile {
 
     private JavaCompile() {}
+
+    /**
+     * A javac step's action key: what {@link #run} looks up and records, what the plan's preflight
+     * reweighs by, and what {@link #predict} prices. {@code cp} reads the compile classpath: the
+     * build's ABI tokens, or the forecast's view of a sibling tree the build restores first.
+     */
+    @KeyOwner(
+            step = {
+                TaskNames.COMPILE_JAVA,
+                TaskNames.COMPILE_TEST,
+                TaskNames.COMPILE_TEST_FIXTURES,
+                TaskNames.COMPILE_GUARD,
+                TaskNames.COMPILE_VERSIONS
+            })
+    public static String key(String taskId, CompileRequest request, String jkVersion, ActionKey.EntryToken cp)
+            throws IOException {
+        return ActionKey.forJavac(taskId, request, jkVersion, cp);
+    }
+
+    /** {@link #key(String, CompileRequest, String, ActionKey.EntryToken)} over the build's classpath tokens. */
+    public static String key(String taskId, CompileRequest request, String jkVersion) throws IOException {
+        return key(taskId, request, jkVersion, ClasspathAbi::token);
+    }
 
     /** Test seam: runs once the key is taken and before the worker is forked. */
     static volatile Runnable beforeFork = () -> {};
@@ -73,7 +98,11 @@ public final class JavaCompile {
         }
     }
 
-    /** Which compiler workers a forecast may ask for Zinc's plan of a compile. */
+    /**
+     * Which compiler workers a forecast may ask for Zinc's plan of a compile, chosen by who else is
+     * on them: a plan queues behind the compiles a worker is running. The rule shapes the forecast's
+     * compile verdicts and never how the ETA prices them.
+     */
     public enum PlanWorkers {
         /** Any, starting one if none runs: {@code jk explain}, whose answer is the plan. */
         ANY,
@@ -91,6 +120,10 @@ public final class JavaCompile {
 
     /** Bound by a forecast that limits which workers it plans on; unbound is {@link PlanWorkers#ANY}. */
     public static final ScopedValue<PlanWorkers> PLAN_WORKERS = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(PLAN_WORKERS);
+    }
 
     public enum Outcome {
         CACHE_HIT,
@@ -162,7 +195,7 @@ public final class JavaCompile {
             return new Result(true, "no-sources", "", List.of(), List.of(), List.of(), List.of(), 0L);
         }
 
-        String key = ActionKey.forJavac(taskId, request, jkVersion);
+        String key = key(taskId, request, jkVersion);
         if (useCache) {
             Result restored = restored(key, request, actionCache, stateDir);
             if (restored != null) return restored;
@@ -422,7 +455,7 @@ public final class JavaCompile {
             WorkerEnv env,
             ActionKey.EntryToken cp)
             throws IOException {
-        String key = ActionKey.forJavac(taskId, request, jkVersion, cp);
+        String key = key(taskId, request, jkVersion, cp);
         // A hit only when the restore would succeed: a record whose payload was pruned compiles.
         if (request.sources().isEmpty() || actionCache.restorable(key).isPresent()) {
             return new Prediction(Outcome.CACHE_HIT, key, request.sources().size(), "");
@@ -430,7 +463,7 @@ public final class JavaCompile {
         if (!Files.isRegularFile(stateDir.resolve(ProducerAnalyses.ANALYSIS_FILE))) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "no zinc analysis");
         }
-        PlanWorkers planWorkers = PLAN_WORKERS.orElse(PlanWorkers.ANY);
+        PlanWorkers planWorkers = Objects.requireNonNullElse(ContextPropagator.get(PLAN_WORKERS), PlanWorkers.ANY);
         if (planWorkers != PlanWorkers.NONE && workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);

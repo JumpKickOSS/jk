@@ -135,7 +135,7 @@ class PrivatePluginPathTest {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         // Drive lock-plugins via the real plan helper used by jk lock.
         var result = LockPlans.lockBuildPlan(
-                        project, build, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(result.success()).isFalse();
         assertThat(result.errors().toString()).containsIgnoringCase("sha256");

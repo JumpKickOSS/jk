@@ -20,10 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,19 +31,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 class JavaIncrementalCompileTest {
-
-    /** One job scope per test, so a test's builds share a compiler worker as a build's modules do. */
-    private JavaCompilerHost.@Nullable Scope job;
-
-    @BeforeEach
-    void openJob() {
-        job = JavaCompilerHost.open();
-    }
-
-    @AfterEach
-    void closeJob() {
-        if (job != null) job.close();
-    }
 
     @Test
     void body_only_edit_recompiles_only_that_source(@TempDir Path dir) throws Exception {
@@ -490,17 +474,15 @@ class JavaIncrementalCompileTest {
         }
 
         JavaCompile.Prediction predict(List<Path> classpath, int release) throws IOException {
-            try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
-                return JavaCompile.predict(
-                        "compile-main",
-                        request(classpath, release),
-                        "jk-test",
-                        actionCache,
-                        stateDir,
-                        workerJar,
-                        root.resolve("gen"),
-                        WorkerEnv.strict());
-            }
+            return JavaCompilerHost.scoped(() -> JavaCompile.predict(
+                    "compile-main",
+                    request(classpath, release),
+                    "jk-test",
+                    actionCache,
+                    stateDir,
+                    workerJar,
+                    root.resolve("gen"),
+                    WorkerEnv.strict()));
         }
 
         private CompileRequest request(List<Path> classpath, int release) throws IOException {

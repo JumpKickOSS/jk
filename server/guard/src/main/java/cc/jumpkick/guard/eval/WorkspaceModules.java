@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import static cc.jumpkick.config.WorkspaceModules.expand;
+import static cc.jumpkick.config.WorkspaceModules.isGlob;
 import static cc.jumpkick.config.WorkspaceModules.memberDirs;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The module directories a workspace root declares — the root itself when it is a standalone
@@ -24,20 +26,60 @@ public final class WorkspaceModules {
 
     private WorkspaceModules() {}
 
-    private record Memo(long size, FileTime mtime, List<Path> modules) {}
+    /** One answer: the module directories, and the globs among the entries it expanded. */
+    private record Answer(Path root, Path manifest, List<String> globs, List<Path> modules) {}
 
-    private static final Map<Path, Memo> MEMO = new ConcurrentHashMap<>();
+    /**
+     * What an answer rests on: the manifest's stamp, which pins a literal list, and what its globs
+     * expand to now, which a new {@code libs/new/jk.toml} under {@code libs/*} moves without
+     * editing any file.
+     */
+    private record Inputs(@Nullable FileStamp manifest, List<String> globMembers) implements StampedMemo.Settling {
+        @Override
+        public boolean settled() {
+            return manifest != null && manifest.settled();
+        }
+    }
 
-    /** Memoised by the manifest's size and modification time: every lane asks, one parse answers. */
+    private static final StampedMemo<Path, Inputs, Answer> MEMO = StampedMemo.bounded(64);
+
+    /**
+     * Memoised by the manifest's stamp and its globs' expansion: every lane asks, one parse answers.
+     * A manifest written too recently for its stamp to vouch for its bytes is parsed and not recorded.
+     */
     public static List<Path> of(Path root) throws IOException {
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return List.of();
-        BasicFileAttributes a = Files.readAttributes(manifest, BasicFileAttributes.class);
-        Memo m = MEMO.get(manifest);
-        if (m != null && m.size() == a.size() && m.mtime().equals(a.lastModifiedTime())) return m.modules();
-        List<Path> modules = List.copyOf(parse(root, manifest));
-        MEMO.put(manifest, new Memo(a.size(), a.lastModifiedTime(), modules));
-        return modules;
+        try {
+            return MEMO.getDiscovered(manifest, WorkspaceModules::inputs, () -> answer(root, manifest))
+                    .modules();
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static Answer answer(Path root, Path manifest) {
+        JkBuild build;
+        try {
+            build = JkBuildParser.parse(manifest);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        List<Path> members = members(root, build);
+        List<String> globs =
+                build.workspaceModules().stream().filter(g -> isGlob(g)).toList();
+        return new Answer(root, manifest, globs, members.isEmpty() ? List.of(root) : members);
+    }
+
+    private static Inputs inputs(Answer a) {
+        List<String> globMembers;
+        try {
+            globMembers = a.globs().isEmpty() ? List.of() : expand(a.root(), a.globs());
+        } catch (RuntimeException unexpandable) {
+            // A glob that now selects nothing: no stamp an answer was recorded under looks like it.
+            globMembers = List.of("!" + unexpandable.getMessage());
+        }
+        return new Inputs(FileStamp.of(a.manifest()), globMembers);
     }
 
     /**
@@ -47,10 +89,5 @@ public final class WorkspaceModules {
      */
     public static List<Path> members(Path root, JkBuild build) {
         return memberDirs(root, build);
-    }
-
-    private static List<Path> parse(Path root, Path manifest) throws IOException {
-        List<Path> members = members(root, JkBuildParser.parse(manifest));
-        return members.isEmpty() ? List.of(root) : members;
     }
 }

@@ -19,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -65,7 +64,7 @@ class PackagerIdentityKeyTest {
         SessionContext.runWhere(session, () -> {
             try {
                 BuildPlan lock = LockPlans.lockBuildPlan(
-                        project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
                 BuildIdentity.overrideBuildIdForTests("engine-one-0001");
@@ -91,22 +90,8 @@ class PackagerIdentityKeyTest {
     /** What the package-jar step said about itself during one build. */
     private static List<String> packageLabels(Path project, Path cache, Session session) {
         List<String> labels = new ArrayList<>();
-        BuildPlan plan = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
-                        project,
-                        cache,
-                        project.resolve("jk.toml"),
-                        project.resolve("jk-lock.toml"),
-                        project,
-                        1,
-                        0,
-                        null,
-                        null,
-                        true,
-                        false,
-                        false,
-                        false,
-                        Set.of(),
-                        session))
+        BuildPlan plan = BuildPlanner.coreBuilder(
+                        TestInputs.of(project, cache, session).withSkipTests(true))
                 .build();
         plan.addListener(new BuildPlanListener() {
             @Override

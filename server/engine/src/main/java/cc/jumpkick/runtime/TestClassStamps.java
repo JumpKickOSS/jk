@@ -11,6 +11,7 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,6 +72,11 @@ final class TestClassStamps {
                 readClock);
     }
 
+    @KeyOwner(
+            step = TaskNames.COMPILE_TEST,
+            unpaired =
+                    "the test compiles' stamp is written after them; the forecast prices compile-test by its compile keys",
+            forecastsStep = true)
     private static void write(
             Path testClasses,
             String stamp,

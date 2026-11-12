@@ -16,7 +16,6 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -24,12 +23,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ProcessedResources;
@@ -37,10 +36,9 @@ import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
-import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.SourceApiIndex;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,14 +52,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -75,9 +71,11 @@ public final class TaskForecaster {
     private TaskForecaster() {}
 
     /** A module's plan for the forecast's goal, as the one planner builds it; the workspace layer supplies it. */
-    @FunctionalInterface
     public interface Planner {
         BuildPlan plan(BuildGraph.BuildUnit unit) throws Exception;
+
+        /** What every module's plan reads its effective manifest under, which its steps are priced against. */
+        EffectiveManifest.Selection manifest();
     }
 
     /**
@@ -85,17 +83,15 @@ public final class TaskForecaster {
      * step of the plan {@code planner} builds for it. {@code only} walks just those modules and
      * reports every other one with no work: for a caller that already knows the rest are clean and
      * their outputs present — a preflight memo hit, whose dirty set is build logic or a stale row
-     * and never moves a consumer's inputs. Null walks all. {@code profile} keys the compile steps
-     * with that profile's javac args, as the build does.
+     * and never moves a consumer's inputs. Null walks all. {@code knobs} are the ones {@code
+     * planner} plans under, which the steps' predictors read as the build's steps do.
      */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph,
             Cas cas,
             ActionCache actionCache,
             Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
-            @Nullable String profile,
+            BuildKnobs knobs,
             @Nullable Set<Path> only,
             Planner planner) {
         // One resolver for the whole walk: every module resolves its classpath against the same
@@ -109,12 +105,12 @@ public final class TaskForecaster {
             Log.debug("of: forecast without a worker still uses action-cache + zinc-file presence", e);
         }
         Path worker = workerJar;
-        try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
+        try {
             // The walk reads the same classpath entry once per module that names it, and a
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
             // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
-            return ClasspathFingerprint.withEntryMemo(() -> forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only, planner));
+            return JavaCompilerHost.scoped(() -> ClasspathFingerprint.withEntryMemo(
+                    () -> forecastModules(graph, cas, resolver, actionCache, cache, knobs, worker, only, planner)));
         } catch (RuntimeException | Error direct) {
             throw direct;
         } catch (Exception impossible) {
@@ -123,8 +119,15 @@ public final class TaskForecaster {
         }
     }
 
-    /** Told each module the walk finishes, as (done, total); bound by the preflight's cache check. */
+    /**
+     * Told each module the walk finishes, as (done, total); bound by the preflight's cache check and
+     * carried onto the lanes that price the modules.
+     */
     public static final ScopedValue<ModuleProgress> PROGRESS = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(PROGRESS);
+    }
 
     /** A forecast walk's progress: {@code done} of {@code total} modules priced. */
     @FunctionalInterface
@@ -138,10 +141,8 @@ public final class TaskForecaster {
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
+            BuildKnobs knobs,
             @Nullable Path workerJar,
-            @Nullable String profile,
             @Nullable Set<Path> only,
             Planner planner) {
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
@@ -192,20 +193,7 @@ public final class TaskForecaster {
             DepDirtiness dep = depDirtiness(u, reads.getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
             TaskForecast.Module m = forecastModule(
-                    u,
-                    dep,
-                    force,
-                    skipTests,
-                    cas,
-                    resolver,
-                    actionCache,
-                    cache,
-                    restored,
-                    hints,
-                    target,
-                    workerJar,
-                    profile,
-                    planner);
+                    u, dep, force, knobs, cas, resolver, actionCache, cache, restored, hints, workerJar, planner);
             Perf.end("forecast " + u.coord(), t0);
             forecast.put(u.dir(), m);
             // Seed main-output dirtiness for *compile* consumers only when this module's
@@ -224,12 +212,11 @@ public final class TaskForecaster {
         // moves. A module's verdict is published before any consumer starts, so a consumer reads
         // its prereqs' dirtiness complete.
         List<BuildGraph.BuildUnit> walked = new ArrayList<>(byDir.values());
-        // Read once on the caller: the lanes run on pool threads the scoped value does not reach.
-        ModuleProgress progress = PROGRESS.isBound() ? PROGRESS.get() : null;
         AtomicInteger priced = new AtomicInteger();
-        ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), laneContext(), u -> {
+        ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), u -> {
             one.accept(u);
             if (seeds.contains(u.dir())) dirty.add(u.dir());
+            ModuleProgress progress = ContextPropagator.get(PROGRESS);
             if (progress != null) progress.moduleDone(priced.incrementAndGet(), walked.size());
         });
         // Anything the walk could not reach — a cycle the graph resolve should already have
@@ -261,21 +248,6 @@ public final class TaskForecaster {
 
     static int lanes(int modules) {
         return Math.clamp(modules / MIN_MODULES_PER_LANE, 1, Math.min(MAX_LANES, JkThreads.CPU_THREADS / 2));
-    }
-
-    /**
-     * What a lane carries over from the caller. {@link JkThreads#cpu()}, whose threads are platform
-     * threads, rather than the io pool: an arm's dominant cost is reading directories, a native call
-     * the virtual-thread scheduler does not compensate for. The pool carries the session and its
-     * cancel token, the run's io ledger and the request scope a compile prediction forks its plan
-     * worker under; the entry memo is a {@code ScopedValue}, which does not ride a pool hop, so it
-     * and {@link JavaCompile#PLAN_WORKERS} are handed across explicitly.
-     */
-    private static UnaryOperator<Callable<@Nullable Void>> laneContext() {
-        Map<Path, String> memo = ClasspathFingerprint.entryMemo();
-        JavaCompile.PlanWorkers planWorkers = JavaCompile.PLAN_WORKERS.orElse(JavaCompile.PlanWorkers.ANY);
-        return body -> () -> ScopedValue.where(JavaCompile.PLAN_WORKERS, planWorkers)
-                .call(() -> ClasspathFingerprint.withEntryMemo(memo, body));
     }
 
     /** Wait for every lane of a wave, re-raising the first failure as the serial walk would have. */
@@ -454,99 +426,6 @@ public final class TaskForecaster {
     }
 
     /**
-     * The {@link BuildPlanner.Inputs} a real {@code jk build} constructs for one module — the
-     * single factory both {@code jk build} and {@code jk
-     * explain}'s ETA use, so the two can't drift in what they feed the effort-weight prediction.
-     * The {@code jdksDir} default of {@code null} is load-bearing: it routes {@link
-     * cc.jumpkick.runtime.EffortWeights#jdkWeight} through the full JDK probe chain (PATH /
-     * JAVA_HOME / GraalVM / SDKMAN / …) instead of the empty {@code the managed JDK root}, so an
-     * already-installed JDK predicts a zero-cost {@code ensure-jdk} rather than a phantom download.
-     */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose) {
-        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, Set.of());
-    }
-
-    /**
-     * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean)} but carrying the sibling
-     * module dirs of the build graph, so the effort-weight prediction can borrow a project-tier learned
-     * rate for a not-yet-built module (see {@link cc.jumpkick.runtime.EffortWeights#learned}).
-     */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules) {
-        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, false);
-    }
-
-    /**
-     * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean, Set)} with {@code
-     * testOnly} — when true, plans stop before packaging ({@code jk test} / MCP {@code test}).
-     */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules,
-            boolean testOnly) {
-        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, testOnly, false);
-    }
-
-    /** As above with {@code compileOnly}: the plan stops after compiling ({@code jk compile}). */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules,
-            boolean testOnly,
-            boolean compileOnly) {
-        Path buildFile = ManifestPaths.manifestIn(dir);
-        Path lockFile = LockPaths.lockFile(dir);
-        // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
-        int workerCount = workers > 0 ? workers : 1;
-        // testOnly still runs tests unless --scripts-only (guard scripts, no JUnit).
-        boolean skip = SessionContext.current().testSelection().scriptsOnly() || (!testOnly && skipTests);
-        boolean compactEst = CompileSupport.isSimpleLayout(dir);
-        int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
-        return new BuildPlanner.Inputs(
-                        dir,
-                        cache,
-                        buildFile,
-                        lockFile,
-                        dir,
-                        workerCount,
-                        estimatedTestCount,
-                        profile,
-                        jdksDir,
-                        skip,
-                        verbose,
-                        testOnly,
-                        compileOnly,
-                        Set.of(),
-                        SessionContext.current())
-                .withProjectModules(projectModules);
-    }
-
-    /**
      * One step a goal's tail appended to {@code unit}'s plan, priced the way it declares: an
      * always-run step runs, a priced one asks its predictor, alone, as no walk precedes it. Null for
      * a step that rides with its module. A step that declares nothing fails: an unpriced tail step
@@ -559,7 +438,8 @@ public final class TaskForecaster {
             case StepForecast.Rides r -> null;
             case StepForecast.Always a -> new TaskForecast.Task(step.name(), TaskForecast.Status.RUN, a.why(), null);
             case StepForecast.Priced p -> {
-                ForecastScope s = ForecastScope.alone(unit, cache, actionCache);
+                ForecastScope s = ForecastScope.alone(
+                        unit, effectiveManifest(unit, EffectiveManifest.Selection.ambient()), cache, actionCache);
                 s.price(step.name(), p.predictor());
                 yield s.verdict(step.name());
             }
@@ -570,31 +450,28 @@ public final class TaskForecaster {
             BuildGraph.BuildUnit u,
             DepDirtiness dep,
             boolean force,
-            boolean skipTests,
+            BuildKnobs knobs,
             Cas cas,
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
             RestoredOutputs restored,
             Map<Path, ModuleHint> hints,
-            WorkspaceTarget target,
             @Nullable Path workerJar,
-            @Nullable String profile,
             Planner planner) {
         ForecastScope s = new ForecastScope(
                 u,
                 dep,
                 force,
-                skipTests,
+                knobs,
                 cas,
                 resolver,
                 actionCache,
                 cache,
                 restored,
                 hints,
-                target,
                 workerJar,
-                profile);
+                effectiveManifest(u, planner.manifest()));
         try {
             List<Task> steps = forecastOrder(planner.plan(u).steps());
             String unlocked = s.unlocked();
@@ -852,5 +729,20 @@ public final class TaskForecaster {
             return true; // unreadable ⇒ treat as dirty
         }
         return false;
+    }
+
+    /**
+     * The manifest the module's plan is built from ({@link EffectiveManifest}): a plugin's config
+     * carries the build type even when no variant is declared, and its packager keys on that
+     * config. A selection that does not apply fails the build itself; the forecast prices the
+     * parsed manifest.
+     */
+    static JkBuild effectiveManifest(BuildGraph.BuildUnit u, EffectiveManifest.Selection manifest) {
+        try {
+            return EffectiveManifest.of(u.manifest(), u.dir(), manifest).build();
+        } catch (RuntimeException e) {
+            Log.debug("forecast of " + u.dir() + " prices the parsed manifest: its variants do not apply", e);
+            return u.manifest();
+        }
     }
 }

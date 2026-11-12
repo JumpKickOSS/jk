@@ -188,8 +188,7 @@ class DeletedResourceOutputTest {
         Files.writeString(testRes.resolve(TEST_KEEP), "keep\n");
 
         JkBuild manifest = JkBuildParser.parse(dir.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(dir, manifest, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(dir, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();
         return new Project(dir, cache, BuildLayout.of(dir, manifest));
     }

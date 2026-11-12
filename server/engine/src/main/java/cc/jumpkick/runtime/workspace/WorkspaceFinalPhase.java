@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
-import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
@@ -12,8 +10,10 @@ import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.SettledReads;
 import cc.jumpkick.runtime.TestClassMatch;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.task.VerifyCache;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -124,7 +124,8 @@ final class WorkspaceFinalPhase {
             if (!model.measured()) {
                 // Nothing measured to protect yet: a cold worker's compile walls are the history
                 // there is (a CI agent with a fresh engine per job has no other).
-                ColdWorkerRuns.keepWalls(JobWorkers.currentRequestId());
+                RunMeasures measures = RunMeasures.current();
+                if (measures != null) measures.keepCompileWalls();
             }
         });
         StepTimings.record(request.cache(), resources.timingSamples(), StepTimings.DEFAULT_ALPHA, now);
@@ -132,11 +133,13 @@ final class WorkspaceFinalPhase {
         medianRate(run.observedRates()).ifPresent(rate -> Calibration.refine(rate, now));
 
         if (shouldStoreCleanMemo(request)) {
+            // Under the knobs the preflight read the memo with: the goal's test policy applied.
+            BuildKnobs knobs = BuildKnobs.of(request);
             certifyClean(
                     request.entryDir(),
                     graph,
-                    request.skipTests(),
-                    request.profile(),
+                    knobs.skipTests(),
+                    knobs.profile(),
                     resources.preflight().forecast(),
                     ModuleInputProvenance.RunTrees.transforms(request.cache()));
         }

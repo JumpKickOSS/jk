@@ -481,12 +481,12 @@ class GlobalConfigTest {
     /** Run {@code body} the way a real request runs: with an {@link IoLedger} opened around it. */
     private static void inRequest(Runnable body) {
         IoLedger ledger = new IoLedger();
-        IoLedger.open(ledger);
-        try {
-            SessionContext.runWhere(Session.defaults().withIo(ledger), body);
-        } finally {
-            IoLedger.close();
-            RequestScope.release();
-        }
+        Request.of(1, ledger).run(() -> {
+            try {
+                SessionContext.runWhere(Session.defaults().withIo(ledger), body);
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 }

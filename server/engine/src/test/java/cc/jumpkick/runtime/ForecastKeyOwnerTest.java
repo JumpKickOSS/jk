@@ -32,13 +32,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The derived values `jk explain` and the build have to agree on, asserted at the one body that
- * derives each — the shape concluded with after a prefix-set guard proved unable to
- * see a value drift behind an agreed token.
+ * derives each: a value can drift behind a token both sides agree on, and only the body sees it.
  *
  * <p>What is NOT asserted here: that the forecast calls these owners. A test cannot show that
- * without re-deriving the answer itself, which is the very duplication being removed —
- * {@code checkForecastKeyParity} arms A2 and C read the call sites instead, and go red when either
- * side stops going through the owner.
+ * without re-deriving the answer itself, which is the very duplication being removed. The {@code
+ * forecast-key-*} guard tests in {@code server/engine/src/guard} read the call sites instead: each
+ * owner is a {@code @KeyOwner}, and one the build or the forecast stops calling is red.
  */
 class ForecastKeyOwnerTest {
 
@@ -82,7 +81,7 @@ class ForecastKeyOwnerTest {
 
     private static CompileRequest mainWithResources(
             Path src, BuildLayout layout, List<Path> processorPath, ProcessorResources resources) {
-        return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        return PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 processorPath,
@@ -125,7 +124,7 @@ class ForecastKeyOwnerTest {
         Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"21.0.5+11\"\n");
         var scala = new ScalaCompile.Setup("3.8.4", List.of(compiler), List.of(stdlib), compiler, compiler);
 
-        CompileRequest full = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest full = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -155,7 +154,7 @@ class ForecastKeyOwnerTest {
 
         // Load-bearing, not decorative: drop the toolchain and the sibling languages and forJavac
         // computes a different key. That is exactly the drift the forecast used to ship.
-        CompileRequest bare = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest bare = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -249,7 +248,7 @@ class ForecastKeyOwnerTest {
         Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"25.0.1+9\"\n");
         String plugin = "-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=t";
 
-        CompileRequest main = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest main = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -287,7 +286,7 @@ class ForecastKeyOwnerTest {
         JavacConfig warn = new JavacConfig(
                 Map.of("ErrorProne", List.of("-Xep:NullAway:WARN", "-XepOpt:NullAway:AnnotatedPackages=t")),
                 project.build().javac().args());
-        CompileRequest relaxed = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest relaxed = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -337,7 +336,7 @@ class ForecastKeyOwnerTest {
 
     private static CompileRequest debugRequest(
             JkBuild project, BuildLayout layout, Path src, Path jdk, DebugInfo debug) {
-        return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        return PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -414,7 +413,7 @@ class ForecastKeyOwnerTest {
         byte[] sbom = PackagingKeys.assemblySbom(project, module.resolve("jk-lock.toml"));
         List<String> expectedTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
-                "contrib:" + PlannerSupport.contributionsToken(List.of()),
+                "contrib:" + PackagedClasses.contributionsToken(List.of()),
                 "deps:" + ClasspathFingerprint.of(List.of()),
                 "main:t.Main",
                 "sbom:" + Hashing.sha256Hex(Objects.requireNonNull(sbom)),
@@ -430,7 +429,7 @@ class ForecastKeyOwnerTest {
                 module,
                 project,
                 ClasspathFingerprint.entry(classes),
-                PlannerSupport.contributionsToken(List.of()),
+                PackagedClasses.contributionsToken(List.of()),
                 ClasspathFingerprint.of(List.of()),
                 sbom);
         assertThat(keyed.tokens()).isEqualTo(expectedTokens);

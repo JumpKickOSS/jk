@@ -3,18 +3,18 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.guard.eval.GuardMessages.WITHHELD;
 import static cc.jumpkick.guard.eval.GuardMessages.withheldNotice;
-import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
-import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
@@ -85,7 +85,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -329,10 +328,6 @@ final class PlannerGuards {
                             : null;
                     // Before this lane waits on anyone: a workspace suite elsewhere may be waiting on it.
                     cx.in().siblings().indexed();
-                    List<String> tokens = GuardKeys.moduleTokens(module, main.bodyDigest(), moduleDir);
-                    if (test != null) tokens.add("test-facts:" + test.bodyDigest());
-                    // Without compiled tests the lane runs fewer rules; its verdict is not the build's.
-                    if (!indexTests) tokens.add(GuardKeys.TESTS_NOT_COMPILED);
                     EvalContext ectx = new EvalContext(
                             Lane.MODULE,
                             g.root(),
@@ -341,11 +336,12 @@ final class PlannerGuards {
                             List.of(moduleDir),
                             EvalContext.lazy(() -> FactsIndexing.load(main)),
                             testFacts(test),
-                            () -> ctx.get(CLASSPATH).orElse(List.of()));
+                            () -> ctx.require(CLASSPATHS).main());
                     // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
                     Path guardClasses = ctx.require(LAYOUT).guardClassesDir();
                     List<Rule> suiteRules = List.of();
                     Evaluation withSuite = null;
+                    List<String> suiteTokens = List.of();
                     if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(moduleDir, compact(moduleDir))) {
                         FactsIndexing.Ensured suite =
                                 FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
@@ -356,7 +352,7 @@ final class PlannerGuards {
                         // A workspace guard judges every module's index: each must describe what this
                         // build compiled before the key is taken or the suite reads it.
                         if (workspace) awaitIndexed(ctx, cx.in(), g.root(), workspaceModules);
-                        tokens.addAll(GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules));
+                        suiteTokens = GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules);
                         List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
                         if (!loadErrors.isEmpty()) {
                             for (String e : loadErrors)
@@ -370,12 +366,14 @@ final class PlannerGuards {
                         List<Path> testIdx = new ArrayList<>();
                         List<Path> classDirs = new ArrayList<>();
                         if (workspace) {
+                            // Every member's index as this jk reads it: one an older jk wrote is
+                            // rebuilt from its classes rather than handed to a suite that cannot read it.
                             for (Path m : workspaceModules) {
                                 Path bd = BuildLayout.moduleTargetDir(m);
-                                Path idx = FactsIndexing.indexPath(bd, "main");
-                                if (Files.isRegularFile(idx)) factsIdx.add(idx);
-                                Path tidx = FactsIndexing.indexPath(bd, "test");
-                                if (Files.isRegularFile(tidx)) testIdx.add(tidx);
+                                FactsIndexing.readable(bd.resolve("classes"), FactsIndexing.indexPath(bd, "main"))
+                                        .ifPresent(factsIdx::add);
+                                FactsIndexing.readable(bd.resolve("test-classes"), FactsIndexing.indexPath(bd, "test"))
+                                        .ifPresent(testIdx::add);
                                 classDirs.add(bd.resolve("classes"));
                             }
                         } else {
@@ -388,8 +386,7 @@ final class PlannerGuards {
                         List<Path> runtimeCp = PlannerGuardSuite.classpath(
                                 ctx.require(PROJECT),
                                 ctx.require(LAYOUT),
-                                ctx.get(TEST_RUNTIME_CP)
-                                        .orElseGet(() -> ctx.get(CLASSPATH).orElse(List.of())),
+                                ctx.require(CLASSPATHS).testRuntime(),
                                 library);
                         GuardSuiteRunner.Inputs inputs = new GuardSuiteRunner.Inputs(
                                 g.root(),
@@ -418,6 +415,10 @@ final class PlannerGuards {
                             }
                         };
                     }
+                    String facts = main.bodyDigest();
+                    String testFacts = test == null ? null : test.bodyDigest();
+                    List<String> tokens =
+                            GuardKeys.moduleLaneTokens(module, facts, moduleDir, indexTests, testFacts, suiteTokens);
                     // A module that compiled nothing (a resources-only module) has no site for any
                     // bytecode rule: that is not blindness, it is an empty population. Record the
                     // clean verdict so the forecast stops entering the module for its lane.
@@ -1019,9 +1020,10 @@ final class PlannerGuards {
 
     // ---- rules memo ---------------------------------------------------------------------------
 
-    private record Memo(String stamp, LoadResult load) {}
+    /** The rule layers' stamp and the manifest's {@code [guards]} table, which the rule set carries. */
+    private record RulesStamp(String layers, GuardsConfig config) {}
 
-    private static final Map<Path, Memo> RULES = new ConcurrentHashMap<>();
+    private static final StampedMemo<Path, RulesStamp, LoadResult> RULES = StampedMemo.bounded(16);
 
     /** The rule layers parsed once per content stamp; every lane of every module shares the result. */
     static LoadResult rules(GuardsPlan g) throws IOException {
@@ -1041,12 +1043,13 @@ final class PlannerGuards {
         // Every layer the load reads is in the stamp: the root file, the lock (pack pins), the members'
         // files and the packs' unpack markers. A pack the lock pins but the store has not unpacked yet
         // changes the stamp when it lands, so the memo never outlives its inputs.
-        String stamp = GuardRules.stamp(g.root());
-        Memo m = RULES.get(file);
-        if (m != null && m.stamp.equals(stamp)) return m.load;
-        LoadResult load = loader.get();
-        RULES.put(file, new Memo(stamp, load));
-        recordRulesHash(g.root(), file);
+        RulesStamp stamp = new RulesStamp(GuardRules.stamp(g.root()), g.config());
+        boolean[] loaded = {false};
+        LoadResult load = RULES.get(file, stamp, () -> {
+            loaded[0] = true;
+            return loader.get();
+        });
+        if (loaded[0]) recordRulesHash(g.root(), file);
         return load;
     }
 
@@ -1119,16 +1122,16 @@ final class PlannerGuards {
 
     // ---- forecast ---------------------------------------------------------------------------
 
-    /** The module lane's price: its verdict under the lane's key, stale whenever the compile runs. */
+    /** The module lane's price: its verdict under the plan's lane key, stale whenever the compile runs. */
     static TaskForecast.@Nullable Task forecastModuleLane(ForecastScope s) throws Exception {
         return GuardKeys.forecastModuleLane(
-                        s.dir, s.prepared().layout(), s.actionCache, s.force || s.compileDirty, s.skipTests)
+                        s.dir, s.prepared().parsed().layout(), s.actionCache, s.force || s.compileDirty, s.testsIndexed)
                 .orElse(null);
     }
 
     /** A root lane's price at the invocation root: its verdict under the lane's key. */
     static TaskForecast.@Nullable Task forecastRootLane(ForecastScope s, String lane) {
-        if (!PlannerResources.invocationRoot(s.dir) || lanesSkipped(s.skipTests, guardRequested())) return null;
+        if (!PlannerResources.invocationRoot(s.dir) || s.guardLanesSkipped) return null;
         Optional<TaskForecast.Task> verdict =
                 switch (lane) {
                     case TaskNames.GUARD_MODEL -> GuardKeys.forecastModelLane(s.dir, s.project, s.actionCache);

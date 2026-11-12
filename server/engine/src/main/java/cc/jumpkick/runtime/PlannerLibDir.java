@@ -19,6 +19,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +35,7 @@ final class PlannerLibDir {
 
     private PlannerLibDir() {}
 
+    @KeyOwner(step = TaskNames.PACKAGE_LIB_DIR, unpaired = "explain does not forecast the lib-dir layout at all")
     static Task libDirStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_LIB_DIR)
                 .forecast(StepForecast.RIDES)

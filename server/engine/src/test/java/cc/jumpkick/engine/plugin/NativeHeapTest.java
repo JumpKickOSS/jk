@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -98,16 +99,21 @@ class NativeHeapTest {
     @Test
     void a_native_image_builders_gc_log_is_a_builder_flag() throws Exception {
         List<String> command = List.of("/opt/graal/bin/native-image", "-J-Xmx4096m", "-cp", "app.jar", "app.Main");
-        JvmOptions.notePlannedHeap("-J-Xmx4096m");
         HeapScope.Key key = new HeapScope.Key(Path.of("/ws/app"), "g:app", HeapScope.NATIVE_IMAGE, 25);
-        WorkerGc.Watch watch = HeapScope.call(
-                key, () -> WorkerGc.watch(command, JvmOptions.HeapChoice.inspect(command), LearnedHeaps.engine()));
+        WorkerGc.Watch watch = Request.detached()
+                .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap())
+                .call(() -> {
+                    JvmOptions.notePlannedHeap("-J-Xmx4096m");
+                    return HeapScope.call(
+                            key,
+                            () -> WorkerGc.watch(
+                                    command, JvmOptions.HeapChoice.inspect(command), LearnedHeaps.engine()));
+                });
         try {
             assertThat(watch.command().get(1)).startsWith("-J" + WorkerGc.FLAG_PREFIX);
             assertThat(WorkerGc.logged(watch.command())).isTrue();
         } finally {
             watch.finish();
-            JvmOptions.forgetPlannedHeapForTests("-J-Xmx4096m");
         }
     }
 

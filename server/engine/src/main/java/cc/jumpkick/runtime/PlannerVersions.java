@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
-import static cc.jumpkick.runtime.BuildPlanner.CONTRIBUTED_PROCESSOR_CP;
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
-import static cc.jumpkick.runtime.BuildPlanner.JAVAC_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
-import static cc.jumpkick.runtime.BuildPlanner.PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -37,6 +33,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -148,6 +145,7 @@ public final class PlannerVersions {
      * from one body. A source set with a {@code module-info.java} is the versioned descriptor of the
      * module the main classes form, so those classes patch it, as Maven's compiler plugin does.
      */
+    @KeyOwner(step = TaskNames.COMPILE_VERSIONS)
     public static CompileRequest versionsCompileRequest(
             List<Path> sources,
             List<Path> classpath,
@@ -201,18 +199,13 @@ public final class PlannerVersions {
         return cp;
     }
 
-    /** The forecast's caches and resolver, as {@link #addForecast} reads them. */
+    /** The forecast's caches, as {@link #addForecast} reads them. */
     record ForecastEnv(
-            Path cache,
-            ActionCache actionCache,
-            @Nullable Path workerJar,
-            RestoredOutputs restored,
-            ClasspathResolver resolver) {}
+            Path cache, ActionCache actionCache, @Nullable Path workerJar, RestoredOutputs restored) {}
 
     /**
      * Forecast {@code compile-versions} into {@code steps}; whether it is dirty, so packaging and
-     * the suite cascade. {@code mainCp} is compile-main's classpath, empty when the forecast did not
-     * derive one.
+     * the suite cascade.
      */
     static boolean addForecast(
             List<TaskForecast.Task> steps,
@@ -220,7 +213,6 @@ public final class PlannerVersions {
             JkBuild project,
             Path dir,
             ForecastScope.Prepared prepared,
-            List<Path> mainCp,
             ForecastEnv env)
             throws IOException {
         if (!declared(project)) return false;
@@ -229,16 +221,10 @@ public final class PlannerVersions {
                     TaskNames.COMPILE_VERSIONS, TaskForecast.Status.RUN, "recompile · main changed", null));
             return true;
         }
-        BuildLayout layout = prepared.layout();
-        List<Path> base = mainCp.isEmpty()
-                ? PlannerSupport.mainCompileClasspath(
-                        dir,
-                        project,
-                        prepared.lock(),
-                        env.resolver(),
-                        WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES),
-                        false)
-                : mainCp;
+        BuildLayout layout = prepared.parsed().layout();
+        // compile-main's classpath, the plugin-provided jars included, whether or not javac
+        // compiles main sources here: the live step reads the classpath step's whatever the module.
+        List<Path> base = prepared.classpaths().main();
         boolean dirty = false;
         for (ReleaseSources entry : project.build().multiRelease()) {
             List<Path> sources = sources(entry, dir);
@@ -247,11 +233,11 @@ public final class PlannerVersions {
             CompileRequest req = versionsCompileRequest(
                     sources,
                     classpath(project, layout, entry, layout.classesDir(), base),
-                    prepared.javacProcessorCp(),
-                    prepared.contributedProcessors().main(),
+                    prepared.classpaths().javacProcessor(),
+                    prepared.classpaths().contributedProcessor(),
                     out,
-                    compileRelease(entry, prepared.release()),
-                    prepared.javacArgs(),
+                    compileRelease(entry, prepared.parsed().release()),
+                    prepared.parsed().javacArgs(),
                     project.javac(),
                     prepared.javaHome(),
                     layout.classesDir());
@@ -337,11 +323,12 @@ public final class PlannerVersions {
             return true;
         }
         Path mainClasses = ctx.require(MAIN_CLASSES);
+        ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         CompileRequest request = versionsCompileRequest(
                 sources,
-                classpath(project, layout, entry, mainClasses, ctx.require(CLASSPATH)),
-                ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP)),
-                ctx.require(CONTRIBUTED_PROCESSOR_CP),
+                classpath(project, layout, entry, mainClasses, classpaths.main()),
+                classpaths.javacProcessor(),
+                classpaths.contributedProcessor(),
                 out,
                 compileRelease(entry, ctx.require(RELEASE)),
                 ctx.require(JAVAC_ARGS),
@@ -408,8 +395,7 @@ public final class PlannerVersions {
                 s.project,
                 s.dir,
                 s.prepared(),
-                s.mainCp,
-                new ForecastEnv(s.cache, s.actionCache, s.workerJar, s.restored, s.resolver));
+                new ForecastEnv(s.cache, s.actionCache, s.workerJar, s.restored));
         return out.isEmpty() ? null : out.getFirst();
     }
 }

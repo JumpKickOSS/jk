@@ -18,12 +18,32 @@
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [archive-stream-owner]
 population = { files = 2203 }
 
+[async-names-its-executor]
+[async-names-its-executor.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+"server/guard" = { classes = 204, sites = 13624 }
+"server/io" = { classes = 78, sites = 4704 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"server/toolchain" = { classes = 231, sites = 17217 }
+"shared/client-io" = { classes = 240, sites = 12786 }
+"shared/core" = { classes = 571, sites = 34876 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+"shared/toolchain-jdk" = { classes = 213, sites = 11232 }
+"shared/wire" = { classes = 246, sites = 12211 }
+
 [atomic-move-owner]
+population = { files = 5722 }
 [atomic-move-owner.populations]
 "clients/cli" = { classes = 817, sites = 52816 }
 
@@ -50,6 +70,8 @@ population = { files = 2203 }
 "shared/core" = { classes = 446, sites = 26137 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 46, sites = 1921 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 214, sites = 11356 }
 "shared/wire" = { classes = 115, sites = 4305 }
 [[blind-tree-walks.entries]]
@@ -556,8 +578,16 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [bootstrap-pin-reads-tree]
 population = { examined = 2 }
 
+[bootstrap-reads-lock]
+population = { examined = 2 }
+
 [cache-tiers]
 population = { constants = 29, files = 2266, literals = 44297 }
+
+[carried-value-owners]
+population = { files = 2215 }
+[carried-value-owners.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
@@ -576,7 +606,11 @@ population = { constants = 29, files = 2266, literals = 44297 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [central-address]
 population = { files = 2306 }
@@ -596,10 +630,17 @@ population = { examined = 1930 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1372, sites = 93555 }
+"server/guard" = { classes = 204, sites = 13606 }
+"server/io" = { classes = 75, sites = 4579 }
+"server/resolver" = { classes = 130, sites = 8587 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 168, sites = 9184 }
 "shared/core" = { classes = 506, sites = 31724 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 210, sites = 10447 }
+"shared/wire" = { classes = 246, sites = 12211 }
 [[child-env-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.EngineAotTrainer#start(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;[Ljava/lang/String;)Ljava/lang/Process; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
@@ -699,16 +740,19 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1761, sites = 124767 }
+"server/engine" = { classes = 1748, sites = 124319 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 59, sites = 3494 }
+"server/io" = { classes = 78, sites = 4704 }
 "server/resolver" = { classes = 123, sites = 7334 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 506, sites = 31724 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 51, sites = 2014 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 214, sites = 11356 }
+"shared/wire" = { classes = 246, sites = 12211 }
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.CliFailure#appendLog([Ljava/lang/String;Ljava/lang/Throwable;)V -> java.time.Instant#now()Ljava/time/Instant;"
@@ -995,10 +1039,6 @@ at     = "cc.jumpkick.engine.journal.BuildJournal#complete(Ljava/lang/String;Lcc
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.JobWorkers#shutdownForRequest(JJ)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; five sites moved with their classes into engine.api and engine.plugin (pure move); the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.engine.verbs.CalibrateVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1020,10 +1060,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.HardwareProbe#timeProcess(Ljava/lang/ProcessBuilder;)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.PlannerSupport#nestedEngineTestEnv(Ljava/nio/file/Path;)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
@@ -1092,14 +1128,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/guard"
 at     = "cc.jumpkick.guard.explain.SarifWriter#document(Ljava/nio/file/Path;Lcc/jumpkick/guard/rules/RuleSet;Lcc/jumpkick/guard/baseline/Baseline;Ljava/util/List;Ljava/util/List;)Ljava/util/Map; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.EffectivePomBuilder#awaitShared(Ljava/lang/String;Ljava/lang/String;Lcc/jumpkick/repo/EffectivePomBuilder$Flight;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.EffectivePomBuilder#build(Lcc/jumpkick/model/Coordinate;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/io"
@@ -1197,6 +1225,9 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+
+[config-error-through-broad-catch]
+population = { examined = 159 }
 
 [coverage-band]
 population = { units = 32 }
@@ -1348,18 +1379,65 @@ population = { examined = 15 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [engine-off-virtual-threads]
 [engine-off-virtual-threads.populations]
 "server/engine" = { classes = 1685, sites = 120806 }
+"server/io" = { classes = 75, sites = 4579 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+
+[engine-static-memo]
+[engine-static-memo.populations]
+"server/engine" = { classes = 1673 }
+"server/guard" = { classes = 189 }
+"server/io" = { classes = 77 }
+"server/resolver" = { classes = 125 }
+"server/toolchain" = { classes = 223 }
+"shared/client-io" = { classes = 227 }
+"shared/core" = { classes = 542 }
+"shared/host" = { classes = 108 }
+"shared/jk-api" = { classes = 207 }
+"shared/plugin-sdk" = { classes = 70 }
+"shared/toolchain-jdk" = { classes = 196 }
+"shared/wire" = { classes = 241 }
+
+[executors-through-jkthreads]
+[executors-through-jkthreads.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+"server/guard" = { classes = 204, sites = 13624 }
+"server/io" = { classes = 78, sites = 4704 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"server/toolchain" = { classes = 231, sites = 17217 }
+"shared/client-io" = { classes = 240, sites = 12786 }
+"shared/core" = { classes = 571, sites = 34876 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+"shared/toolchain-jdk" = { classes = 213, sites = 11232 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [file-size]
 population = { units = 4145 }
 
+[forecast-key-owner-callers]
+[forecast-key-owner-callers.populations]
+"server/engine" = { examined = 58 }
+
 [forecast-key-parity]
 [forecast-key-parity.populations]
-"server/engine" = { examined = 559 }
+"server/engine" = { examined = 49 }
+[forecast-key-parity.scope-reasons]
+"server/engine" = "the guard now counts key-family call sites read from bytecode, not engine source files"
+
+[forecast-key-unpaired-claim]
+[forecast-key-unpaired-claim.populations]
+"server/engine" = { examined = 17 }
 
 [git-writes-are-pinned]
 population = { files = 2240 }
@@ -1409,7 +1487,14 @@ population = { files = 1888 }
 "shared/client-io" = { classes = 106, sites = 0 }
 "shared/core" = { classes = 373, sites = 0 }
 "shared/dynamic-surface" = { classes = 11, sites = 0 }
+"shared/host" = { classes = 115, sites = 0 }
+"shared/jk-api" = { classes = 221, sites = 0 }
+"shared/plugin-sdk" = { classes = 74, sites = 0 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 0 }
+
+[jk-version-parity]
+population = { examined = 1 }
 
 [json-concat]
 population = { files = 2240 }
@@ -1457,6 +1542,9 @@ unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/protocol/SpecWriter
 value  = 27
 reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
 
+[local-repo-owner]
+population = { files = 2959 }
+
 [lock-version-is-one]
 population = { files = 18 }
 
@@ -1469,6 +1557,14 @@ population = { files = 2240 }
 [method-size]
 population = { units = 34572 }
 
+[module-classpath-owner]
+[module-classpath-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
+
+[module-languages-owner]
+[module-languages-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
+
 [named-exit-codes]
 population = { files = 2203 }
 
@@ -1476,7 +1572,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 5055 }
+population = { units = 5578 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1598,10 +1694,6 @@ unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildService
 value  = 1
 reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
 [[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaTest.java"
-value  = 1
-reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
-[[no-fqcn.entries]]
 unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java"
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
@@ -1696,6 +1788,36 @@ population = { files = 4230 }
 [no-historical-narration]
 population = { files = 4452 }
 
+[no-inheritable-thread-local]
+[no-inheritable-thread-local.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+"server/guard" = { classes = 204, sites = 13624 }
+"server/io" = { classes = 78, sites = 4704 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"server/toolchain" = { classes = 231, sites = 17217 }
+"shared/client-io" = { classes = 240, sites = 12786 }
+"shared/core" = { classes = 571, sites = 34876 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+"shared/toolchain-jdk" = { classes = 213, sites = 11232 }
+"shared/wire" = { classes = 246, sites = 12211 }
+
+[no-parallel-streams]
+[no-parallel-streams.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+"server/guard" = { classes = 204, sites = 13624 }
+"server/io" = { classes = 78, sites = 4704 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"server/toolchain" = { classes = 231, sites = 17217 }
+"shared/client-io" = { classes = 240, sites = 12786 }
+"shared/core" = { classes = 571, sites = 34876 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+"shared/toolchain-jdk" = { classes = 213, sites = 11232 }
+"shared/wire" = { classes = 246, sites = 12211 }
+
 [no-retired-code-markers]
 population = { files = 2306 }
 
@@ -1722,7 +1844,11 @@ population = { examined = 5 }
 "shared/client-io" = { classes = 106, elements = 7 }
 "shared/core" = { classes = 373, elements = 17 }
 "shared/dynamic-surface" = { classes = 11, elements = 1 }
+"shared/host" = { classes = 115, elements = 6 }
+"shared/jk-api" = { classes = 221, elements = 8 }
+"shared/plugin-sdk" = { classes = 74, elements = 4 }
 "shared/toolchain-jdk" = { classes = 168, elements = 11 }
+"shared/wire" = { classes = 246, elements = 5 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
@@ -1741,7 +1867,11 @@ population = { examined = 5 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [one-env-surface]
 [one-env-surface.populations]
@@ -1749,10 +1879,17 @@ population = { examined = 5 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1387, sites = 100473 }
+"server/guard" = { classes = 204, sites = 13606 }
+"server/io" = { classes = 75, sites = 4579 }
+"server/resolver" = { classes = 130, sites = 8587 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 168, sites = 9184 }
 "shared/core" = { classes = 506, sites = 31724 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 214, sites = 11356 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
@@ -1771,7 +1908,11 @@ population = { examined = 5 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [one-host-surface]
 [one-host-surface.populations]
@@ -1790,7 +1931,11 @@ population = { examined = 5 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
 "shared/dynamic-surface" = { classes = 11, sites = 485 }
+"shared/host" = { classes = 115, sites = 3300 }
+"shared/jk-api" = { classes = 221, sites = 8642 }
+"shared/plugin-sdk" = { classes = 74, sites = 2125 }
 "shared/toolchain-jdk" = { classes = 168, sites = 6288 }
+"shared/wire" = { classes = 246, sites = 10515 }
 
 [one-http-client]
 [one-http-client.populations]
@@ -1809,7 +1954,11 @@ population = { examined = 5 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [one-json-codec]
 population = { examined = 1928 }
@@ -1824,12 +1973,18 @@ population = { files = 2240 }
 "plugins/publisher" = { classes = 24, sites = 0 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }
+"server/guard" = { classes = 204, sites = 0 }
 "server/io" = { classes = 59, sites = 0 }
+"server/resolver" = { classes = 130, sites = 0 }
 "server/toolchain" = { classes = 205, sites = 0 }
 "shared/client-io" = { classes = 136, sites = 0 }
 "shared/core" = { classes = 435, sites = 0 }
 "shared/dynamic-surface" = { classes = 11, sites = 0 }
+"shared/host" = { classes = 115, sites = 0 }
+"shared/jk-api" = { classes = 221, sites = 0 }
+"shared/plugin-sdk" = { classes = 74, sites = 0 }
 "shared/toolchain-jdk" = { classes = 214, sites = 0 }
+"shared/wire" = { classes = 246, sites = 0 }
 
 [one-recursive-delete]
 population = { files = 2203 }
@@ -1851,7 +2006,11 @@ population = { files = 2203 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
 "shared/dynamic-surface" = { classes = 11, sites = 485 }
+"shared/host" = { classes = 115, sites = 3300 }
+"shared/jk-api" = { classes = 221, sites = 8642 }
+"shared/plugin-sdk" = { classes = 74, sites = 2125 }
 "shared/toolchain-jdk" = { classes = 168, sites = 6288 }
+"shared/wire" = { classes = 246, sites = 10515 }
 
 [package-cycles]
 [package-cycles.populations]
@@ -1871,8 +2030,11 @@ population = { files = 2203 }
 "shared/client-io" = { edges = 15, slices = 9 }
 "shared/core" = { edges = 32, slices = 17 }
 "shared/dynamic-surface" = { edges = 0, slices = 1 }
+"shared/host" = { edges = 4, slices = 6 }
+"shared/jk-api" = { edges = 5, slices = 8 }
 "shared/plugin-sdk" = { edges = 7, slices = 4 }
 "shared/toolchain-jdk" = { edges = 8, slices = 11 }
+"shared/wire" = { edges = 4, slices = 5 }
 [[package-cycles.entries]]
 in     = "clients/cli"
 unit   = "clients/cli:cli.api"
@@ -1929,6 +2091,9 @@ unit   = "shared/toolchain-jdk:discovery"
 value  = 2
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 
+[pipe-reader-platform-thread]
+population = { examined = 2942 }
+
 [plugin-family]
 population = { examined = 15 }
 
@@ -1940,6 +2105,13 @@ population = { examined = 15 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+
+[process-output-owner]
+population = { examined = 5694 }
+
+[product-name-in-docs]
+population = { files = 90 }
 
 [properties-render-owner]
 [properties-render-owner.populations]
@@ -1958,7 +2130,11 @@ population = { examined = 15 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [published-installer-ps1]
 population = { left = 1095, right = 1095 }
@@ -1977,6 +2153,19 @@ population = { examined = 78 }
 
 [request-thread-carries-session]
 population = { files = 572 }
+[request-thread-carries-session.populations]
+"server/engine" = { classes = 1730, sites = 123751 }
+"server/guard" = { classes = 204, sites = 13624 }
+"server/io" = { classes = 78, sites = 4704 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"server/toolchain" = { classes = 231, sites = 17217 }
+"shared/client-io" = { classes = 240, sites = 12786 }
+"shared/core" = { classes = 571, sites = 34876 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+"shared/toolchain-jdk" = { classes = 213, sites = 11232 }
+"shared/wire" = { classes = 246, sites = 12211 }
 
 [retired-wire-keys]
 population = { files = 2335 }
@@ -1998,7 +2187,398 @@ population = { files = 2335 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }
+
+[runtime-efferent-coupling]
+[runtime-efferent-coupling.populations]
+"server/engine" = { classes = 279, edges = 1024 }
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
+value  = 24
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope"
+value  = 21
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockPipeline"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys"
+value  = 19
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
+value  = 19
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerNative"
+value  = 17
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPackage"
+value  = 17
+reason = "PlannerSupport split by concern: TestLaunch reads the language runtimes, the self-host engine and the sibling rule packs from their owners, and PlannerPackage the packaged tree and the language-output mirror, where one class held all of them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin"
+value  = 19
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSetup"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTails"
+value  = 23
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTest"
+value  = 36
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.TestLaunch"
+value  = 20
+reason = "PlannerSupport split by concern: TestLaunch reads the language runtimes, the self-host engine and the sibling rule packs from their owners, and PlannerPackage the packaged tree and the language-output mirror, where one class held all of them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspaceFinalPhase"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspaceRunPhase"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+
+[runtime-mutual-classes]
+[runtime-mutual-classes.populations]
+"server/engine" = { classes = 279, edges = 1024 }
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildGraph~cc.jumpkick.runtime.PreflightMemo"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildLogicInputTokens~cc.jumpkick.runtime.BuildLogicSupport"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.CorePlan"
+value  = 13
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.PlannerTails"
+value  = 12
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.TestSupport"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.Calibration~cc.jumpkick.runtime.HostMetricsFile"
+value  = 54
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.Calibration~cc.jumpkick.runtime.NativeEffort"
+value  = 7
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.DirtyMemoVariants~cc.jumpkick.runtime.PreflightMemo"
+value  = 8
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.NativeEffort"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.PlannerCompile"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.StepWalls"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.TestEffort"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.TestSupport"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastLanes~cc.jumpkick.runtime.TaskForecaster"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastPackagingTails~cc.jumpkick.runtime.InstallPlans"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.KspForecast"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerFixtures"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerKsp"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerNode"
+value  = 8
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.TaskForecaster"
+value  = 18
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastSteps~cc.jumpkick.runtime.TaskForecaster"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.GraphMemoEdges~cc.jumpkick.runtime.PreflightMemo"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.GuardFixtures~cc.jumpkick.runtime.GuardKeys"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.GuardKeys~cc.jumpkick.runtime.PlannerGuards"
+value  = 25
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.KspForecast~cc.jumpkick.runtime.PlannerKsp"
+value  = 10
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockClosures~cc.jumpkick.runtime.LockPipeline"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockClosures~cc.jumpkick.runtime.PlannerPlugin"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockClosures~cc.jumpkick.runtime.PluginBuild"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockPipeline~cc.jumpkick.runtime.LockPlans"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockPipeline~cc.jumpkick.runtime.ToolPins"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.MemoInputs~cc.jumpkick.runtime.PreflightMemo"
+value  = 9
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleFingerprints~cc.jumpkick.runtime.PreflightMemo"
+value  = 7
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PackagingKeys"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PlannerFixtures"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys~cc.jumpkick.runtime.PlannerPlugin"
+value  = 15
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys~cc.jumpkick.runtime.PlannerTails"
+value  = 11
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.PlannerCompileForecast"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.StepWarnings"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp~cc.jumpkick.runtime.TestSources"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerNode~cc.jumpkick.runtime.PlannerNodeSteps"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin~cc.jumpkick.runtime.PluginBuild"
+value  = 22
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin~cc.jumpkick.runtime.StepDiagnostics"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTest~cc.jumpkick.runtime.TestLaunch"
+value  = 22
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PluginBuild~cc.jumpkick.runtime.ToolClosures"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.RestoredOutputs~cc.jumpkick.runtime.TaskForecaster"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.BuildEta~cc.jumpkick.runtime.workspace.BuildService"
+value  = 31
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.BuildService~cc.jumpkick.runtime.workspace.WorkspaceLock"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.GuardPackPins~cc.jumpkick.runtime.workspace.ManifestUpdates"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.ImagePlans~cc.jumpkick.runtime.workspace.ImageWrite"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.ImagePlans~cc.jumpkick.runtime.workspace.NodeImagePlans"
+value  = 9
+reason = "the runtime packages as the coupling guard first measured them"
+
+[runtime-static-holder-fan-in]
+[runtime-static-holder-fan-in.populations]
+"server/engine" = { classes = 279, edges = 1024 }
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
+value  = 23
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
+value  = 45
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"
+value  = 27
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
+value  = 18
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PluginBuild"
+value  = 25
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.RepoGroupBuilder"
+value  = 27
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.base.CompileSupport"
+value  = 27
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.base.Perf"
+value  = 22
+reason = "the runtime packages as the coupling guard first measured them"
 
 [schema-compared-to-its-constant]
 population = { files = 4230 }
@@ -2006,8 +2586,14 @@ population = { files = 4230 }
 [schema-freeze]
 population = { files = 10 }
 
+[scoped-value-carried]
+population = { files = 2215 }
+
 [script-walks-never-follow-links]
 population = { files = 1 }
+
+[sdk-version-is-the-release]
+population = { examined = 2 }
 
 [security-docs]
 population = { examined = 3 }
@@ -2059,6 +2645,9 @@ reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests
 [spa-no-class-key]
 population = { files = 29 }
 
+[speed-claims-are-generated]
+population = { examined = 206 }
+
 [spike-cache-temp-dir]
 [spike-cache-temp-dir.populations]
 "server/engine" = { examined = 29 }
@@ -2088,14 +2677,37 @@ population = { examined = 48 }
 [test-paths-from-checkout-root]
 population = { files = 1920 }
 
+[test-stamp-extras-owner]
+[test-stamp-extras-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
+
 [test-tier-docs]
 population = { examined = 5 }
 
 [tests-skip-symlinks-on-windows]
 population = { files = 1920 }
 
+[thread-local-owner]
+[thread-local-owner.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+"server/guard" = { classes = 204, sites = 13624 }
+"server/io" = { classes = 78, sites = 4704 }
+"server/resolver" = { classes = 130, sites = 8587 }
+"server/toolchain" = { classes = 231, sites = 17217 }
+"shared/client-io" = { classes = 240, sites = 12786 }
+"shared/core" = { classes = 571, sites = 34876 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
+"shared/toolchain-jdk" = { classes = 213, sites = 11232 }
+"shared/wire" = { classes = 246, sites = 12211 }
+
 [tree-copy-owner]
 population = { files = 2203 }
+
+[variant-apply-owner]
+[variant-apply-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
 
 [wire-prefix-pairs]
 population = { files = 2257 }
@@ -2134,4 +2746,8 @@ population = { files = 1 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
+"shared/host" = { classes = 115, sites = 4436 }
+"shared/jk-api" = { classes = 221, sites = 10524 }
+"shared/plugin-sdk" = { classes = 74, sites = 2797 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+"shared/wire" = { classes = 246, sites = 12211 }

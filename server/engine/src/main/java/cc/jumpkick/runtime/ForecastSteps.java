@@ -3,11 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.TaskForecaster.DepHint;
 import cc.jumpkick.runtime.base.Perf;
@@ -336,9 +332,10 @@ final class ForecastSteps {
             // members are invisible to every consumer and their edits are body-only.
             own = SourceApiIndex.classify(
                     dir,
-                    SourceApiIndex.load(SourceApiIndex.path(prepared.layout().buildDir())),
-                    prepared.mainSrc(),
-                    !prepared.processorCp().isEmpty());
+                    SourceApiIndex.load(
+                            SourceApiIndex.path(prepared.parsed().layout().buildDir())),
+                    prepared.parsed().mainSrc(),
+                    !prepared.classpaths().processor().isEmpty());
         } catch (IOException e) {
             Log.debug("ownApiHint: no baseline", e);
             return SourceApiIndex.Hint.UNKNOWN;
@@ -349,25 +346,5 @@ final class ForecastSteps {
             return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
         }
         return own;
-    }
-
-    /**
-     * The manifest as the build plans it ({@code CorePlan}): the CLI's packaging override and the
-     * selected {@code [variants]} folded in. A plugin's config carries the build type even when no
-     * variant is declared, and its packager keys on that config, so a forecast over the parsed
-     * manifest priced a packaging step the build never runs. A selection that does not apply fails
-     * the build itself; the forecast keeps the parsed manifest and prices against it.
-     */
-    static JkBuild planned(JkBuild manifest, Path dir) {
-        Session session = SessionContext.current();
-        try {
-            JkBuild build = BuildPlanner.applyAssemblyOverride(manifest, session);
-            return VariantApply.apply(
-                            build, dir, VariantApply.selection(session.variant(), session), session.clientEnv())
-                    .build();
-        } catch (RuntimeException e) {
-            Log.debug("forecast of " + dir + " prices the parsed manifest: its variants do not apply", e);
-            return manifest;
-        }
     }
 }

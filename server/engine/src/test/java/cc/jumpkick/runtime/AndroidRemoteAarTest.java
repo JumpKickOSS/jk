@@ -8,7 +8,6 @@ import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
@@ -21,7 +20,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,8 +50,8 @@ class AndroidRemoteAarTest {
 
         // ---- 1. jk lock: packaging-aware resolution ----
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
         assertThat(lockResult.success()).isTrue();
@@ -74,22 +72,7 @@ class AndroidRemoteAarTest {
         assertThat(sync.errors()).isEmpty();
 
         // ---- 3. jk build: compile against classes.jar, R from R.txt, dex the closure ----
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();

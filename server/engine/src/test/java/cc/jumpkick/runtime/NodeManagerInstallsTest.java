@@ -37,7 +37,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -242,22 +241,9 @@ class NodeManagerInstallsTest {
     }
 
     private BuildPlan plan(Path web, Session session) {
-        return BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                web,
-                tmp.resolve("cache"),
-                web.resolve("jk.toml"),
-                web.resolve("jk-lock.toml"),
-                web,
-                1,
-                1,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                session));
+        return BuildPlanner.fullPlan(TestInputs.of(web, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withSkipTests(true));
     }
 
     private static BuildPlanResult run(BuildPlan plan, Session session) throws Exception {

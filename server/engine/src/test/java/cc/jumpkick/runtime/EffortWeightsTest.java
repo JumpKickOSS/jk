@@ -146,22 +146,7 @@ class EffortWeightsTest {
         for (Path f : sources) {
             Files.setLastModifiedTime(f, FileTime.fromMillis(past));
         }
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                dir,
-                dir.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(dir, dir.resolve("cache")).withSkipTests(true);
         var cas = new Cas(dir.resolve("cache"));
 
         var cold = EffortWeights.predict(in, cas, true, false, false, true, false);
@@ -201,22 +186,8 @@ class EffortWeightsTest {
                 """.formatted(i, i + 1));
         }
         Files.writeString(dir.resolve("jk-lock.toml"), lock.toString());
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                dir,
-                dir.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = BuildPlanner.Inputs.forBuild(
+                dir, dir.resolve("cache"), 1, null, null, true, false, Set.of(), false, false);
         var plan = EffortWeights.predict(in, new Cas(dir.resolve("cache")), true, false, false, false, false);
         assertThat(plan.sync()).isEqualTo(EffortWeights.TOKEN);
     }

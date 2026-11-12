@@ -4,23 +4,18 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildLogicToml;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
-import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.SourceRefs;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Path;
@@ -45,15 +40,10 @@ final class CorePlan {
     private final ActionCache actionCache;
 
     // Compose only the language steps the project uses, so a single-language project never shows
-    // a no-op step for the other. Explicit jk.toml opt-ins (java/kotlin) win; otherwise the
-    // languages are inferred from the source tree (see CompileSupport.resolveLanguages).
-    private boolean useJava = true;
-    private boolean useKotlin;
-    private boolean useGroovy;
-    private boolean useScala;
-    private boolean compactLayout;
-    private boolean workspaceNoSources;
+    // a no-op step for the other.
+    private ModuleShape shape = ModuleShape.UNREAD;
     private @Nullable JkBuild parsedBuild;
+    private @Nullable RuntimeException manifestFailure;
     private Map<String, String> variantSecrets = Map.of();
 
     private ActivePlugins.@Nullable Declared plugins;
@@ -70,9 +60,10 @@ final class CorePlan {
     }
 
     BuildPlan.Builder build() {
+        readManifest();
+        readPluginDeclarations();
         readShape();
         rejectUnsupportedLanguagePairs();
-        readPluginDeclarations();
         BuildPlanner.Ctx cx = context();
         Steps s = steps(cx);
         BuildPlan.Builder b = BuildPlan.builder("build")
@@ -80,9 +71,11 @@ final class CorePlan {
                 .addTask(s.parseBuild())
                 .addTask(s.syncDeps())
                 .addTask(s.ensureJdk());
+        // The declared tails plan from the manifest this plan was built from.
+        if (parsedBuild != null) b.fact(JkBuild.class, parsedBuild);
         if (nodeKind != NodeShape.Kind.NONE || testNode) b.addTask(PlannerNodeSetup.ensureNodeStep());
         if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, cx);
-        if (workspaceNoSources) return workspaceRootPlan(b, cx);
+        if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
         if (nodeKind == NodeShape.Kind.SIDE_BY_SIDE) PlannerNode.planSideBySide(b, nodeUnit());
@@ -93,54 +86,44 @@ final class CorePlan {
 
     // ---- shape ---------------------------------------------------------------------------
 
-    private void readShape() {
+    private void readManifest() {
         try {
-            var jkBuild = JkBuildParser.parse(in.buildFile());
-            // Third-party plugin pre-flight: extract any locked-but-unmaterialized manifests
-            // from the CAS and re-parse, so a declared plugin's table validates (and its
-            // contributions apply) on the very first build after `jk sync`.
-            if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
-                jkBuild = JkBuildParser.reparse(in.buildFile());
-            }
-            // CLI packaging override (jk assemble -W / -U) wins over jk.toml for this run.
-            // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
-            // plan outside SessionContext.where.
-            jkBuild = BuildPlanner.applyAssemblyOverride(jkBuild, in.session());
-            // Variant overlays fold into plugin configs HERE, so describe keys, contribution
-            // predicates, step/packager action keys, and plugin specs all see one flat effective
-            // config (parameterized plans, not configured objects).
-            var applied = VariantApply.apply(
-                    jkBuild, in.dir(), VariantApply.selection(in.variant(), in.session()), in.clientEnv());
-            jkBuild = applied.build();
-            variantSecrets = applied.secrets();
-            parsedBuild = jkBuild;
-            var project = jkBuild.project();
-            Languages langs = CompileSupport.resolveLanguages(project, in.dir());
-            useJava = langs.java() || langs.scala();
-            useKotlin = langs.kotlin();
-            useGroovy = langs.groovy();
-            useScala = langs.scala();
-            // [processor-dependencies] on a Kotlin module can generate Java sources (Hilt's
-            // components are Java) — route through the mixed plan so javac compiles them.
-            if (useKotlin && !useJava && PlannerCompile.hasProcessorDeps(jkBuild)) {
-                useJava = true;
-            }
-            compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
-            nodeKind = NodeShape.kind(jkBuild, in.dir());
+            // The plan is built from the effective manifest under Inputs.session (not ambient
+            // SessionContext): single-build constructs the plan outside SessionContext.where.
+            EffectiveManifest effective = EffectiveManifest.read(in);
+            variantSecrets = effective.secrets();
+            parsedBuild = effective.build();
+            nodeKind = NodeShape.kind(parsedBuild, in.dir());
             testNode = nodeKind == NodeShape.Kind.NONE
-                    && !jkBuild.project().nodeSpec().isEmpty();
-            // Workspace root with no source tree: nothing to compile or package.
-            if (CompileSupport.coordinatorOnly(jkBuild, in.dir())) {
-                useJava = false;
-                useKotlin = false;
-                useGroovy = false;
-                workspaceNoSources = true;
-            }
+                    && !parsedBuild.project().nodeSpec().isEmpty();
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // Unparseable/missing jk.toml — parse-build will surface the real error.
-            Log.debug("readShape: Unparseable/missing jk.toml", e);
+            Log.debug("readManifest: Unparseable/missing jk.toml", e);
+            manifestFailure = e instanceof RuntimeException r ? r : new IllegalStateException(e.getMessage(), e);
+        }
+    }
+
+    /** The effective manifest this plan was built from, for parse-build; or why it could not be read. */
+    private Supplier<JkBuild> manifest() {
+        JkBuild effective = parsedBuild;
+        RuntimeException failure = manifestFailure;
+        return () -> {
+            if (effective != null) return effective;
+            throw failure != null ? failure : new IllegalStateException("no jk.toml in " + in.dir());
+        };
+    }
+
+    /** The module's compilers, once its plugin declarations are known: their Java sources need javac. */
+    private void readShape() {
+        if (parsedBuild == null) return;
+        try {
+            shape = ModuleShape.of(parsedBuild, in.dir(), pluginDecls);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed;
+        } catch (RuntimeException e) {
+            Log.debug("readShape: languages unreadable; parse-build reports why", e);
         }
     }
 
@@ -148,8 +131,8 @@ final class CorePlan {
         // Scala compiles with Java in one Zinc session, but a second stub-generating compiler
         // (kotlinc / groovyc) can't parse .scala, so the combo would fail with a cryptic
         // unresolved reference: refuse it by name instead.
-        if (useScala && (useKotlin || useGroovy)) {
-            throw new IllegalStateException("scala+" + (useKotlin ? "kotlin" : "groovy")
+        if (shape.scala() && (shape.kotlin() || shape.groovy())) {
+            throw new IllegalStateException("scala+" + (shape.kotlin() ? "kotlin" : "groovy")
                     + " in one module is not supported; put the languages in separate modules");
         }
     }
@@ -171,18 +154,6 @@ final class CorePlan {
                 throw new IllegalStateException(e.getMessage(), e);
             }
         }
-        // Plugin-contributed generated sources can be Java even in a Kotlin- or Groovy-only
-        // module (protoc's --kotlin_out DSL wraps its own --java_out classes) — same
-        // mixed-plan routing the KSP/Hilt case above takes, decided here because the
-        // declarations only exist after the describe round.
-        if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
-            for (TaskDecl step : pluginDecls.steps()) {
-                if (!step.contributesSources().isEmpty()) {
-                    useJava = true;
-                    break;
-                }
-            }
-        }
     }
 
     // ---- context -------------------------------------------------------------------------
@@ -190,30 +161,10 @@ final class CorePlan {
     /** The build-scoped services, estimation state and layout flags every core step shares. */
     private BuildPlanner.Ctx context() {
         // Effectively-final copies for the step lambdas.
-        final boolean mixedWithJava = useJava;
-        final boolean compact = compactLayout;
-        // Mixed module: Kotlin compiles first (it reads Java *declarations* from
-        // source; the Kotlin compiler never emits Java bytecode), then javac
-        // against the Kotlin output, then `assemble-classes` merges both into the
-        // shared classes dir — so Java↔Kotlin references resolve in both
-        // directions. Each compiler owns a private output dir; they can't share
-        // one, because javac's content-hash action cache snapshots its whole
-        // output dir and would cache (then on restore, clobber) the other's
-        // classes. The terminal step downstream steps wait on is the assembler
-        // when mixed, else whichever single compiler ran.
-        final boolean mixed = useJava && useKotlin;
-        // Groovy takes the same shape: joint groovyc first (sweeps.java for resolution,
-        // emits ONLY Groovy classes + Java-visible stubs), then javac (stubs on its
-        // sourcepath, Groovy classes on its classpath), then assemble merges.
-        final boolean mixedGroovy = useJava && useGroovy;
-        final boolean kotlinModule = useKotlin; // effectively-final copy for lambdas
-        final boolean groovyModule = useGroovy;
-        // Kotlin and Groovy without Java: Kotlin first, Groovy against its output, so Groovy is last.
-        String mainCompile = (mixed || mixedGroovy)
-                ? TaskNames.ASSEMBLE_CLASSES
-                : (useGroovy
-                        ? TaskNames.COMPILE_GROOVY
-                        : (useKotlin ? TaskNames.COMPILE_KOTLIN : TaskNames.COMPILE_JAVA));
+        final boolean mixedWithJava = shape.java();
+        final boolean compact = shape.compact();
+        final boolean kotlinModule = shape.kotlin();
+        final boolean groovyModule = shape.groovy();
 
         // Predict each step's bar weight from the work it will actually do this
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
@@ -254,8 +205,7 @@ final class CorePlan {
         // walk per scope across anchors and the guard's tree lane (same pattern as javaMainSrcRef).
         final BuildLogicInputTokens buildLogicInputTokens = new BuildLogicInputTokens();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
-        final boolean kspEnabled = useKotlin && parsedBuild != null && PlannerCompile.hasProcessorDeps(parsedBuild);
-        return new BuildPlanner.Ctx(
+        return BuildPlanner.Ctx.of(
                 in,
                 cas,
                 actionCache,
@@ -264,18 +214,10 @@ final class CorePlan {
                 kotlinMainSrcRef,
                 groovyMainSrcRef,
                 buildLogicInputTokens,
-                BuildLogicScope.of(in.dir()),
                 javaMainSrcDir,
-                compact,
-                mixed,
-                mixedGroovy,
-                kotlinModule,
-                groovyModule,
-                mixedWithJava,
-                mainCompile,
-                kspEnabled,
-                PlannerGuards.detect(in),
-                new PluginBuild.StepTools());
+                shape,
+                manifest(),
+                PlannerGuards.detect(in));
     }
 
     // ---- steps ---------------------------------------------------------------------------
@@ -318,8 +260,8 @@ final class CorePlan {
                 parsedBuild != null && parsedBuild.build().moduleServices() ? PlannerModuleServices.step(cx) : null;
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
-        boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), compactLayout);
-        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, compactLayout);
+        boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), shape.compact());
+        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact());
         Task compileTest = PlannerTest.compileTestStep(cx, hasFixtures, pluginDecls);
         // In testOnly plans no package path exists to anchor the freshness stamps, so
         // run-tests carries them in its requires — otherwise the target-closure prune drops
@@ -333,9 +275,9 @@ final class CorePlan {
         if (PlannerVersions.declared(parsedBuild)) testStampRequires.add(TaskNames.COMPILE_VERSIONS);
         if (testNode) testStampRequires.add(TaskNames.ENSURE_NODE);
         if (in.testOnly()) {
-            if (useJava) testStampRequires.add(TaskNames.WRITE_STAMP);
-            if (useKotlin) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
-            if (useGroovy) testStampRequires.add(TaskNames.WRITE_STAMP_GROOVY);
+            if (shape.java()) testStampRequires.add(TaskNames.WRITE_STAMP);
+            if (shape.kotlin()) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
+            if (shape.groovy()) testStampRequires.add(TaskNames.WRITE_STAMP_GROOVY);
         }
         Task runTests = PlannerTest.runTestsStep(cx, pluginDecls, testStampRequires);
         List<Task> pluginSteps = new ArrayList<>();
@@ -451,13 +393,13 @@ final class CorePlan {
         // Resources before any compile, as Maven's process-resources: a processor reads them from
         // the class output, and what it writes at a resource's path is what the jar keeps.
         b.addTask(s.copyResources());
-        if (useGroovy) {
+        if (shape.groovy()) {
             b.addTask(s.compileGroovy());
         }
-        if (useJava) {
+        if (shape.java()) {
             b.addTask(s.compileJava());
         }
-        if (useKotlin) {
+        if (shape.kotlin()) {
             b.addTask(s.compileKotlin());
         }
         // `jk compile` runs no lane: it has neither the guard suite's compile nor the test classes the
@@ -473,9 +415,9 @@ final class CorePlan {
     private void addGuardLanes(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         if (PlannerGuards.moduleLanesOnThisBuild(cx.guards(), PlannerResources.runGuardScripts(in))) {
             List<String> after = new ArrayList<>();
-            if (useJava) after.add(TaskNames.COMPILE_JAVA);
-            if (useKotlin) after.add(TaskNames.COMPILE_KOTLIN);
-            if (useGroovy) after.add(TaskNames.COMPILE_GROOVY);
+            if (shape.java()) after.add(TaskNames.COMPILE_JAVA);
+            if (shape.kotlin()) after.add(TaskNames.COMPILE_KOTLIN);
+            if (shape.groovy()) after.add(TaskNames.COMPILE_GROOVY);
             if (cx.mixed() || cx.mixedGroovy()) after.add(TaskNames.ASSEMBLE_CLASSES);
             if (s.hasGuardSuite()) after.add(TaskNames.COMPILE_GUARD);
             // The lane indexes the test classes exactly when the plan compiles them, and then waits
@@ -523,15 +465,15 @@ final class CorePlan {
             b.addTask(s.compileTest());
             leaves.add(TaskNames.COMPILE_TEST);
         }
-        if (useJava) {
+        if (shape.java()) {
             b.addTask(s.writeStamp());
             leaves.add(TaskNames.WRITE_STAMP);
         }
-        if (useKotlin) {
+        if (shape.kotlin()) {
             b.addTask(s.writeStampKotlin());
             leaves.add(TaskNames.WRITE_STAMP_KOTLIN);
         }
-        if (useGroovy) {
+        if (shape.groovy()) {
             b.addTask(s.writeStampGroovy());
             leaves.add(TaskNames.WRITE_STAMP_GROOVY);
         }
@@ -596,15 +538,15 @@ final class CorePlan {
             b.addTask(s.packageJar());
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.
-        if (useJava) {
+        if (shape.java()) {
             b.addTask(s.writeStamp());
         }
         // write-stamp-kotlin is the Kotlin-compile freshness companion.
-        if (useKotlin) {
+        if (shape.kotlin()) {
             b.addTask(s.writeStampKotlin());
         }
         // write-stamp-groovy is the Groovy-compile freshness companion.
-        if (useGroovy) {
+        if (shape.groovy()) {
             b.addTask(s.writeStampGroovy());
         }
     }

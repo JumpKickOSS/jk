@@ -8,6 +8,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -240,8 +241,7 @@ public final class LaneRun {
         }
         // Forbid rules only read the facts and the shared hierarchy, so they run side by side.
         Evaluator forbid = Evaluators.forKind(Kind.FORBID);
-        List<Evaluation> judged =
-                forbids.parallelStream().map(r -> evaluateOne(forbid, r, ctx)).toList();
+        List<Evaluation> judged = ParallelMap.map(forbids, 2, r -> evaluateOne(forbid, r, ctx));
         for (int i = 0; i < forbids.size(); i++) out.put(forbids.get(i).id(), judged.get(i));
         for (var e : batches.entrySet()) {
             try {

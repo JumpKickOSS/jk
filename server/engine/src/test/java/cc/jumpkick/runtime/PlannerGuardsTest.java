@@ -72,6 +72,29 @@ class PlannerGuardsTest {
         assertThat(loads).hasSize(2);
     }
 
+    /**
+     * The loaded rule set carries the manifest's {@code [guards]} table, which no rules file names:
+     * an edit to it alone must reach the next build's lanes, not the table the engine read first.
+     */
+    @Test
+    void a_changed_guards_table_is_not_served_the_rules_loaded_under_the_old_one(@TempDir Path root) throws Exception {
+        Files.writeString(GuardsPresence.rulesFile(root), "# rules\n", StandardCharsets.UTF_8);
+        GuardsConfig before = new GuardsConfig(true, null, true);
+        GuardsConfig after = new GuardsConfig(true, "reports/jacoco.xml", true);
+
+        LoadResult first = PlannerGuards.rules(new PlannerGuards.GuardsPlan(true, root, before), () -> loaded(before));
+        LoadResult second = PlannerGuards.rules(new PlannerGuards.GuardsPlan(true, root, after), () -> loaded(after));
+
+        assertThat(first.rules().config()).isEqualTo(before);
+        assertThat(second.rules().config())
+                .as("the coverage report the edited table names")
+                .isEqualTo(after);
+    }
+
+    private static LoadResult loaded(GuardsConfig config) {
+        return new LoadResult(new RuleSet(Map.of(), Map.of(), config), List.of());
+    }
+
     @Test
     void the_model_output_and_tree_lanes_expand_a_glob_member_list_as_the_build_does(@TempDir Path dir)
             throws Exception {

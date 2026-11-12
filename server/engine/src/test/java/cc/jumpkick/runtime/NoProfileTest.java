@@ -53,7 +53,7 @@ class NoProfileTest {
     void on_ci_the_auto_selected_profile_applies_without_the_flag(@TempDir Path dir) throws Exception {
         JkBuild project = project(dir);
         assertThat(onCi(() -> CompileSupport.activeProfileName(null))).isEqualTo("ci");
-        assertThat(onCi(() -> PlannerSupport.testJvmArgs(project, null))).containsExactly("-Dbase=1", "-Dci=1");
+        assertThat(onCi(() -> TestStampInputs.testJvmArgs(project, null))).containsExactly("-Dbase=1", "-Dci=1");
         assertThat(onCi(() -> TestLaunch.profileEnv(project, null))).containsEntry("CI_ONLY", "1");
     }
 
@@ -64,13 +64,13 @@ class NoProfileTest {
         assertThat(onCi(() -> CompileSupport.activeProfileName(none))).isNull();
         assertThat(onCi(() -> CompileSupport.resolveProfile(project.profiles(), none)))
                 .isNull();
-        assertThat(onCi(() -> PlannerSupport.testJvmArgs(project, none))).containsExactly("-Dbase=1");
+        assertThat(onCi(() -> TestStampInputs.testJvmArgs(project, none))).containsExactly("-Dbase=1");
         assertThat(onCi(() -> TestLaunch.profileEnv(project, none))).isEmpty();
         assertThat(onCi(() -> SuiteEnvKeys.profileEnv(project, none))).isEmpty();
-        assertThat(onCi(() -> PlannerSupport.effectiveSelection(TestSelection.DEFAULT, dir, none)
+        assertThat(onCi(() -> TestStampInputs.effectiveSelection(TestSelection.DEFAULT, dir, none)
                         .excludeTags()))
                 .isEmpty();
-        assertThat(onCi(() -> PlannerSupport.effectiveSelection(TestSelection.DEFAULT, dir, null)
+        assertThat(onCi(() -> TestStampInputs.effectiveSelection(TestSelection.DEFAULT, dir, null)
                         .excludeTags()))
                 .containsExactly("slow");
     }

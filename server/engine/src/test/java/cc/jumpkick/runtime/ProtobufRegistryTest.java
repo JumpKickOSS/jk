@@ -4,8 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.SchemaPresetExamplesTest.anyFile;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.LockfileReader;
@@ -21,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -115,15 +112,7 @@ class ProtobufRegistryTest {
                 """);
         try {
             BuildPlanResult lock = LockPlans.lockBuildPlan(
-                            project,
-                            JkBuildParser.parse(project.resolve("jk.toml")),
-                            cache,
-                            null,
-                            List.of(),
-                            true,
-                            false,
-                            ResolveObserver.NOOP,
-                            null)
+                            project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                     .run();
             assertThat(lock.errors()).isEmpty();
             assertThat(LockfileReader.read(project.resolve("jk-lock.toml")).schemas())
@@ -144,22 +133,7 @@ class ProtobufRegistryTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         return BuildPlanner.fullPlan(in).run();
     }
 

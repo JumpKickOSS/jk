@@ -30,7 +30,7 @@ public final class BuildJobFingerprint {
      * Kinds that take an exclusive fingerprint slot — same set as durable build history ({@link
      * BuildHistoryKinds#ALL}).
      */
-    public static final Set<String> EXCLUSIVE_KINDS = BuildHistoryKinds.ALL;
+    public static final Set<String> EXCLUSIVE_KINDS = Set.copyOf(BuildHistoryKinds.ALL);
 
     private BuildJobFingerprint() {}
 

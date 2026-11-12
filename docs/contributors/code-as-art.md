@@ -876,7 +876,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G11 | a file gaining a fully-qualified class name (`fqcn-baseline.txt`) | ratchet | `no-fqcn` (metric) |
 | G12 | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | `task-names` (vocabulary) |
 | G13 | a JumpKick file name typed as a literal (use `ManifestNames`, or `ManifestPaths` from core upward) | ban | `manifest-names` (vocabulary) |
-| G14 | a forecast key hashing a different fact set than the build key | ban | guard test `forecast-key-parity` |
+| G14 | a forecast key hashing a different fact set than the build key: a call composing a key or the facts it hashes — `ActionKey.forArtifact` / `forJavac` / `forKotlinc` / `forGroovyc`, a `CompileRequest` / `KotlincRequest` / `GroovycRequest` builder, `TestStamp.computeKey`, `FreshnessStamp.isFresh` / `freshStamp` / `write` / `optionsDigest` — in any expression position, outside a method annotated `@KeyOwner(step = …)` (a lambda inside one, or a private helper only owners call, is the owner's) | bytecode over server/engine's main classes; the owner tables are the annotations | guard test `forecast-key-parity` |
 | G15 | a cache-tier directory typed as a literal (use `CacheTree`) | ban | `cache-tiers` (vocabulary) |
 | G16 | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` (vocabulary) |
 | G17 | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | `wire-types` (vocabulary) |
@@ -965,7 +965,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G100 | a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `$var` in a `[ ]` test (SC2086) first among them | `scripts/shellcheck.sh`: a working binary or container daemon; skipped on Windows; skipped with a notice on a developer machine that has neither, failed under POSIX CI; a fixture proves the bite | guard test `shellcheck` |
 | G101 | an `HttpClient.newBuilder()` outside `cc.jumpkick.http.Http` — a client that goes direct behind the proxy every other request honours; `Http.proxiedClientBuilder()` + `proxiedRequest(uri)` is the door for a request shape the verbs do not fit | forbid, owner probed every run | `one-http-client` (forbid) |
 | G102 | an import of `cc.jumpkick.cli.run` or `cc.jumpkick.command` from `cc.jumpkick.cli.engine`, the client half of the wire — it closes a package cycle across the line the wire client depends on nothing behind | ban; self-fail when the package scan shrinks | guard test `cli-engine-package-cycle` |
-| G103 | a bare `Thread.ofVirtual()`, `Thread.ofPlatform()` or `new Thread(` under `server/engine` main code — a thread started bare reads the process-default session, so the worker JVM it forks loses the request's `--jvm-arg`/`JK_JVM_ARGS` and cancel token; request paths start through `SessionContext.startVirtual` | text, `server/engine/src/main/java`; twenty engine-lifetime and housekeeping files are allow entries each stating what the thread does not read | `request-thread-carries-session` (text) |
+| G103 | a bare `Thread.ofVirtual()`, `Thread.ofPlatform()`, `new Thread(` or `Thread.startVirtualThread` in engine-reachable main code (`server/*`, `shared/*`, `plugins/graph`) — a thread started bare reads the process-default session and no request, so the worker JVM it forks loses the request's `--jvm-arg`/`JK_JVM_ARGS` and cancel token; request paths start through `SessionContext.startVirtual`/`startPlatform` or a `JkThreads` pool | forbid over bytecode; each engine-lifetime, housekeeping, shutdown-hook or byte-pump start is an allow entry naming its method (its lambdas included) and what the thread does not read | `request-thread-carries-session` (forbid) |
 | G104 | a workflow `uses:` naming an action by a tag, a branch or a short sha, a pin without the release it stands for in a trailing comment, a `docker://` image without an `@sha256:` digest, a workflow with no top-level `permissions:` or one that grants a write there, or `write-all` at either level — the three rules `scripts/check-workflows.sh` applies in CI's workflow-lint job, refused locally by `jk guard` before the push | workflow text scan; a tree fixture proves the bite, and the script's own fixture test runs over the same cases | guard test `workflow-pins-permissions` |
 | G105 | the tree's `jk-lock.toml` requires (`jk-min`) a JumpKick newer than the release `.jk/ci/ci-bootstrap-version` pins — the only JumpKick that builds this tree from nothing refuses the tree; the lock schema itself is G86's | lock and pin text read; a fixture proves the bite | guard test `bootstrap-pin-reads-tree` |
 | G106 | a version typed into `JkVersion.java` — the build stamps `JkVersion.VERSION` from the root `jk.toml` version, so a literal can only drift from it and the client refuses the engine jar built beside it | text over `JkVersion.java`; a tree fixture proves the bite | guard test `jk-version-parity` |
@@ -991,6 +991,23 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G126 | a `readAllBytes` / `readNBytes` on a Process pipe — chained on `getInputStream()` / `getErrorStream()`, or on a variable assigned from one — outside `cc.jumpkick.host.Processes`: the read blocks until every holder of the pipe closes it, so a `waitFor(timeout)` after it never starts and a child that keeps its pipe open hangs the caller. `Processes.capture` drains on platform threads and kills the tree at the deadline | text over the main, test, fixture and e2e Java sources of files that name `Process`, comment- and string-blind; one exemption (`Protoc`, which runs in a forked JVM without JumpKick on its classpath) | guard test `process-output-owner` |
 | G127 | an engine-process read of a request variable by name — `BuildEnv.get("X")`, `env.apply("X")`, `env.get("X")` in a `shared` or `server` main source — whose name the client never forwards: the client sends the engine only the variables it reads for itself (`RequestEnvNames`) and what a manifest or the user's configuration declares, so such a name always reads as unset | text over every `shared/*` and `server/*` main source, comment-blind, against `RequestEnvNames` | guard test `request-env-forwarded` |
 | G128 | a main source that spells `~/.m2` (`".m2"`, `".m2/…"`) or builds `<dir>.resolve("repository")` outside `cc.jumpkick.repo.M2Dirs`: the copy skips `jk.m2.local`, `JK_M2_LOCAL`, `maven.repo.local` and `settings.xml`, so `jk install` writes one repository while reads consult another. `M2Dirs.localRepository()` is the configured one, `M2Dirs.repository(m2Dir)` the one under an `--m2-dir` root, `M2Dirs.userRepository()` the user's without a test JVM's redirects | text over main Java and Kotlin, comment-blind, owner `M2Dirs`; three exemptions (`MavenSettings`, `SettingsValues`, `MavenToolchainsProbe`), which locate Maven's other files under `~/.m2` | `local-repo-owner` (text) |
+| G129 | a static field in a module the engine reaches that holds mutable state — a JDK collection or map, an atomic reference, a reference array, a `StampedMemo`/`StoreFileMemo`/`LruMemo`, or a non-final field a method fills in later — not produced by a bounded memo and with no allow entry naming the field: the resident engine keeps it for days, past every build that filled it, so it grows or answers stale | statics over the main classes of `server/engine` and the `shared` and `server` modules it depends on (plugin code never runs in the engine); an allow entry names `pkg.Class#FIELD` with a reason from a fixed vocabulary (`live registry:`, `lock registry:`, `content-keyed:`, `engine-process fact:`, `TTL <n>s:`, `log-once:`, `deliberate negative:`, `seam:` for a collaborator wired in once or a test's override, `stamped:` for a hand-kept memo that re-checks its inputs on every read); no baseline left | `engine-static-memo` (statics) |
+| G130 | an `InheritableThreadLocal` in engine-reachable main code (`server/*`, `shared/*`, `plugins/graph`): a pool thread created under one request hands that request's value to every task it runs later | ban, no allowlist | `no-inheritable-thread-local` (forbid) |
+| G131 | a `new ThreadLocal` or `ThreadLocal.withInitial` in engine-reachable main code: a value one request leaves on a pool thread, missing on the next thread its work hops to | ban; per-thread state that never leaves its thread (the reactor's POM cycle stack, the running guard's id) is an allow entry | `thread-local-owner` (forbid) |
+| G132 | a `ContextPropagator.carry` registration outside the class that owns the carried value | text, comment-blind; each owner's file is an allow entry naming what it carries | `carried-value-owners` (text) |
+| G133 | a `ScopedValue.newInstance()` in engine-reachable main code whose field its own file never registers with `ContextPropagator.carry`: the first pool hop reads it unbound | text, comment-blind; one operation's binding or a test seam is an allow entry | `scoped-value-carried` (text) |
+| G134 | a parallel stream, `.parallel()`, `ForkJoinPool.commonPool()`, a `RecursiveAction`/`RecursiveTask`/`CountedCompleter` or an `Arrays.parallel*` in engine-reachable main code: the work runs on the common pool, where no carried value reaches; `ParallelMap` fans out on `JkThreads.cpu()` instead | ban; the tree delete's fork-join walk on its filesystem-sized pool is an allow entry | `no-parallel-streams` (forbid) |
+| G135 | a `CompletableFuture` async stage (`supplyAsync`, `runAsync`, `then*Async`, `handleAsync`, `whenCompleteAsync`) without an executor in engine-reachable main code | ban, no allowlist | `async-names-its-executor` (forbid) |
+| G136 | an `Executors.new*`, `new ForkJoinPool` or `new ThreadPoolExecutor` outside `JkThreads` in engine-reachable main code: a private pool carries nothing of a request unless every task is wrapped by hand | forbid, owner `JkThreads` probed every run; the engine-lifetime timers, the per-connection executors, the member solves (which wrap each task) and the delete pool are allow entries | `executors-through-jkthreads` (forbid) |
+| G137 | two top-level classes of server/engine's runtime packages (`cc.jumpkick.runtime`, `.base`, `.workspace`) that each reference the other's members: the size cap met by peeling statics into a sibling lowers line counts and leaves the coupling where it was. Nested and lambda classes fold into their outer class; a constant javac inlines leaves no edge | ratchet, metric per pair (the two weights summed), baselined; a new pair is red | `runtime-mutual-classes` (coupling) |
+| G138 | a runtime class reaching more than fifteen other runtime classes | ratchet, metric per class, baselined | `runtime-efferent-coupling` (coupling) |
+| G139 | a static-only runtime holder (no instance field, every method static, constructors private) reached by more than fifteen runtime classes | ratchet, metric per holder, baselined | `runtime-static-holder-fan-in` (coupling) |
+| G140 | a `@KeyOwner` only one side calls: a shared owner with no build-side or no forecast-side caller, or one declared `unpaired` that both call. A caller is forecast-side when its outermost class's name contains `Forecast`, its method's name `forecast` or `predict` (a lambda carries its method's name), or its descriptor takes `ForecastScope` / `StepForecast.Scope` or returns `TaskForecast.Task`; every other caller is build-side, and a call from the owner's own class is followed to its callers | bytecode call graph over server/engine's main classes | guard test `forecast-key-owner-callers` |
+| G141 | an unpaired `@KeyOwner` whose `forecastsStep` misstates what its step's factory declares (`priced` or `always` names a verdict, `RIDES` or nothing does not), or that names a step no `Task.builder` builds; the factory is the owner itself when it builds the task, else the members handing `Task.builder` that name, its own class's first | bytecode over server/engine's main classes, the builder and the forecast declaration anywhere in one member | guard test `forecast-key-unpaired-claim` |
+| G142 | a `VariantApply.apply` in server/engine outside `EffectiveManifest`: a second variant overlay is a manifest the forecast keys differently from the build | ban | `variant-apply-owner` (forbid) |
+| G143 | a `CompileSupport.resolveLanguages` or `Languages.resolve` in server/engine outside `ModuleShape`: a raw language read forgets the javac a Kotlin module's processors or a plugin's generated Java need | ban; subsystems that key nothing (worker forks, the Kotlin warm-up, the headless builder, the IDE model) are allow entries | `module-languages-owner` (forbid) |
+| G144 | a `TestStampInputs.testStampExtras` call outside `TestStampInputs`: run-tests extras composed elsewhere are a stamp the forecast does not look up | ban, no allowlist | `test-stamp-extras-owner` (forbid) |
+| G145 | a `WorkspaceClasspath.resolve`, `ClasspathResolver.classpathFor` / `testRuntimeClasspathFor` or `ProvidedClasspath` derivation in server/engine outside `ModuleClasspaths` and the classpath step around it (`PlannerSetup`: sibling requires, processor errors, the provided fetch) | ban; the forecast's provided fetch and subsystems that key nothing (exec, IDE, plugin closures, guard fixtures, build-logic, the headless builder) are allow entries | `module-classpath-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1022,9 +1039,11 @@ by id, kind and why. This block is a `generated` guard's rendering
 |---|---|---|
 | archive-instant-owner | forbid | an archive stamped through the default timezone is a function of the build host's TZ |
 | archive-stream-owner | text | an archive written over an unbuffered sink pays one system call per 512 bytes |
+| async-names-its-executor | forbid | an async stage without an executor runs on the common pool, where none of the request's carried values reach |
 | atomic-move-owner | text | a hand-rolled atomic move skips the Windows retry, so a reader holding the target open fails the write |
 | blind-tree-walks | forbid | re-resolving each path to ask again is the dominant cost of walking a large tree |
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
+| carried-value-owners | text | a carried value registered by a class that does not own it outlives the reason it was carried |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | central-through-the-group | text | a repository built over Central by hand skips the user's repositories and mirrors, so a firewalled resolve fails and an open one goes around the mirror |
@@ -1035,6 +1054,8 @@ by id, kind and why. This block is a `generated` guard's rendering
 | coverage-band | metric | a coverage number nobody tightens stops meaning anything |
 | engine-log-owner | forbid | a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink |
 | engine-off-virtual-threads | forbid | a virtual thread that loads a class or computes pins its carrier, and with every carrier pinned the engine stops |
+| engine-static-memo | statics | a static memo in the resident engine outlives every build that filled it and goes stale or grows for days |
+| executors-through-jkthreads | forbid | a pool of one's own carries no request onto its tasks unless each is wrapped by hand |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
@@ -1048,12 +1069,16 @@ by id, kind and why. This block is a `generated` guard's rendering
 | manifest-names | vocabulary | a file JumpKick owns is named once, in ManifestNames |
 | manifest-reader-owner | text | a directory built from its pom.xml has no jk.toml; manifestIn is what answers its shadow |
 | method-size | metric | a member that no longer fits a screen no longer fits a reviewer |
+| module-classpath-owner | forbid | a classpath derived twice is a compile or test key the forecast computes over different entries than the build |
+| module-languages-owner | forbid | a raw language read is a second answer to which compilers run, and the forecast prices what it says |
 | named-exit-codes | text | an exit code is the one integer a user's script sees, and a bare one is a meaning nobody wrote down |
 | no-agent-trailers | commit | attribution trailers are noise in blame |
 | no-closed-port-endpoints | text | a closed loopback port is refused instantly on one host and hangs to the connect timeout on another |
 | no-fqcn | metric | a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so |
 | no-glued-inline-tag | text | a glued inline tag renders as garbage and blocks the shortener for the whole file |
 | no-historical-narration | text | historical narration describes a tree that no longer exists |
+| no-inheritable-thread-local | forbid | an inheritable thread-local hands a pool thread's first request to every task it runs after |
+| no-parallel-streams | forbid | a parallel stream's helpers run on the common pool, where none of the request's carried values reach |
 | no-retired-code-markers | text | a deprecated alias is a dual path with no users to protect |
 | no-ticket-ids | text | a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project |
 | null-marked-packages | annotate | NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off |
@@ -1076,11 +1101,15 @@ by id, kind and why. This block is a `generated` guard's rendering
 | published-installer-sh | parity | a published installer that drifts from the repo copy installs JumpKick where the CLI does not look |
 | published-poms | output | a POM with an unspecified coordinate is an artifact nobody can depend on |
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
-| request-thread-carries-session | text | a bare thread reads the default session, not the request's |
+| request-thread-carries-session | forbid | a bare thread reads the default session, not the request's |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |
+| runtime-efferent-coupling | coupling | a class that reaches everything is rebuilt by every change and understood by no one |
+| runtime-mutual-classes | coupling | two classes that call each other are one class split by line count, and neither can change alone |
+| runtime-static-holder-fan-in | coupling | a static holder everything leans on is a namespace for functions that belong with their data |
 | schema-compared-to-its-constant | text | G85 pins the constant and nothing pinned the comparisons against it |
 | schema-freeze | text | a bump before 1.0 mints a dual reader with no users |
+| scoped-value-carried | text | a scoped value nobody carries reads as unbound on the first pool thread the work reaches |
 | script-walks-never-follow-links | text | a walk that follows links can delete the install behind a stable JDK pointer |
 | ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name> for the engine and the shelf; a dist that writes another name is one the installer walks past |
 | single-home-root | text | JumpKick has one home; a layout it does not have, named anywhere, misleads the reader |
@@ -1090,8 +1119,11 @@ by id, kind and why. This block is a `generated` guard's rendering
 | target-dir | vocabulary | the output directory is named once; renaming it must not miss a spelling |
 | task-names | vocabulary | a step name typed by hand is an edge that quietly does not exist |
 | test-paths-from-checkout-root | text | a path from the working directory differs between a module-rooted test run and a workspace `jk build` |
+| test-stamp-extras-owner | forbid | stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up |
 | tests-skip-symlinks-on-windows | text | a test that creates a symlink is red for every Windows contributor without Developer Mode |
+| thread-local-owner | forbid | a thread-local is left on a pool thread by one request and missing on the next thread the work hops to |
 | tree-copy-owner | text | a hand-rolled tree copy is the shape twelve callers got wrong the same three ways |
+| variant-apply-owner | forbid | a second variant overlay is a manifest the forecast keys differently from the build |
 | wire-prefix-pairs | text | a protocol prefix has exactly two ends: one writes it, one reads it |
 | wire-types | vocabulary | a wire type typed by hand is an event nobody handles |
 | worker-offline-from-spec | text | a worker reading the daemon's environment answers from the shell that started the engine |

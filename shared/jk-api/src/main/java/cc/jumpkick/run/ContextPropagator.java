@@ -1,84 +1,74 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Seam that re-binds ambient session context on {@link JkThreads} workers ({@code ScopedValue}
- * does not propagate to shared executors). Core binds a {@link Propagator}; until then
- * {@link #IDENTITY} is a no-op. Avoids a {@code jk-api → core} compile cycle.
+ * The {@link ScopedValue}s that follow work off the thread that submits it. A {@code ScopedValue}
+ * binding does not reach a pre-existing pool's threads, so {@link JkThreads} wraps every task, and
+ * {@code SessionContext.startVirtual}/{@code startPlatform} every thread they start, in one
+ * {@link ScopedValue.Carrier} snapshotted on the submitting thread.
+ *
+ * <p>Each owner registers its value once with {@link #carry}. The snapshot binds every registered
+ * value, an unbound one to {@code null}, so a task sees exactly its submitter's values whatever
+ * thread runs it, including one that is running another task's. A carried value is therefore read
+ * through {@link #get}, which treats a {@code null} binding as unbound.
  */
 public final class ContextPropagator {
 
-    /**
-     * Wraps a pool task so ambient context captured on the submitting thread is re-established on the
-     * worker thread. {@code wrap*} is invoked <b>on the submitting thread</b> (capturing the ambient
-     * context now) and returns a task that restores that context when later run on a worker.
-     */
-    public interface Propagator {
-
-        /** Capture context now (submitting thread); return a Runnable that restores it when run. */
-        Runnable wrapRunnable(Runnable r);
-
-        /** Capture context now (submitting thread); return a Callable that restores it when called. */
-        <T> Callable<T> wrapCallable(Callable<T> c);
+    /** One carried value and how its value is read on the submitting thread. */
+    private record Carried<T>(ScopedValue<T> value, Supplier<@Nullable T> capture) {
+        ScopedValue.Carrier bind(ScopedValue.@Nullable Carrier into) {
+            T now = capture.get();
+            return into == null ? ScopedValue.where(value, now) : into.where(value, now);
+        }
     }
 
-    /** Pass-through propagator: tasks are returned unchanged (unbound / default behavior). */
-    public static final Propagator IDENTITY = new Propagator() {
-        @Override
-        public Runnable wrapRunnable(Runnable r) {
-            return r;
-        }
-
-        @Override
-        public <T> Callable<T> wrapCallable(Callable<T> c) {
-            return c;
-        }
-    };
-
-    private static volatile Propagator active = IDENTITY;
+    private static final List<Carried<?>> CARRIED = new CopyOnWriteArrayList<>();
 
     private ContextPropagator() {}
 
-    /** Install the context-capturing propagator. Last binding wins; a {@code null} resets to identity. */
-    public static void bind(Propagator p) {
-        active = (p == null) ? IDENTITY : p;
+    /** Carry {@code value} as bound on the submitting thread. Registering one value twice is a no-op. */
+    public static <T> void carry(ScopedValue<T> value) {
+        carry(value, () -> get(value));
     }
 
     /**
-     * Add {@code p} alongside whatever is already bound, so several independent kinds of ambient
-     * context ride the same pool hop. {@code p} is the outer wrapper: it captures first and
-     * restores last. Unlike {@link #bind} this never displaces an existing propagator — a second
-     * subsystem must not silently drop the session context the first one carries.
+     * Carry {@code value} as {@code capture} reads it on the submitting thread: for an owner whose
+     * carried binding is derived, such as a session pinned from the invocation's fallback.
      */
-    public static synchronized void add(Propagator p) {
-        if (p == null) return;
-        Propagator inner = active;
-        if (inner == IDENTITY) {
-            active = p;
-            return;
+    public static synchronized <T> void carry(ScopedValue<T> value, Supplier<@Nullable T> capture) {
+        for (Carried<?> c : CARRIED) {
+            if (c.value() == value) return;
         }
-        active = new Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                return p.wrapRunnable(inner.wrapRunnable(r));
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                return p.wrapCallable(inner.wrapCallable(c));
-            }
-        };
+        CARRIED.add(new Carried<>(value, capture));
     }
 
-    /** Wrap a Runnable via the active propagator (called on the submitting thread). */
+    /** {@code value}'s binding on this thread, or {@code null} when it is unbound or carried as unbound. */
+    public static <T> @Nullable T get(ScopedValue<T> value) {
+        return value.isBound() ? value.get() : null;
+    }
+
+    /** Every carried value as this thread holds it now, or {@code null} when none is registered. */
+    private static ScopedValue.@Nullable Carrier snapshot() {
+        ScopedValue.Carrier carrier = null;
+        for (Carried<?> c : CARRIED) carrier = c.bind(carrier);
+        return carrier;
+    }
+
+    /** {@code r}, run under this thread's carried values wherever it later runs. */
     public static Runnable wrapRunnable(Runnable r) {
-        return active.wrapRunnable(r);
+        ScopedValue.Carrier carrier = snapshot();
+        return carrier == null ? r : () -> carrier.run(r);
     }
 
-    /** Wrap a Callable via the active propagator (called on the submitting thread). */
+    /** {@code c}, called under this thread's carried values wherever it is later called. */
     public static <T> Callable<T> wrapCallable(Callable<T> c) {
-        return active.wrapCallable(c);
+        ScopedValue.Carrier carrier = snapshot();
+        return carrier == null ? c : () -> carrier.<T, Exception>call(c::call);
     }
 }

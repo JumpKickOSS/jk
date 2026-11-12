@@ -5,6 +5,7 @@ import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
@@ -42,7 +43,7 @@ public final class JdkInventory {
     private static final String DEFAULT_KEY = "default";
     private static final String GRAAL_DEFAULT_KEY = "graal-default";
 
-    private static final ConcurrentHashMap<String, Object> JVM_LOCKS = new ConcurrentHashMap<>();
+    private static final KeyedLocks<String> JVM_LOCKS = new KeyedLocks<>();
 
     private final Path jdksRoot;
     private final Path file;
@@ -575,9 +576,8 @@ public final class JdkInventory {
 
     private <T extends @Nullable Object> T withExclusiveLockGet(IoSupplier<T> body) throws IOException {
         Path lockFile = file.resolveSibling(file.getFileName() + ".lock");
-        Object jvmLock =
-                JVM_LOCKS.computeIfAbsent(lockFile.toAbsolutePath().normalize().toString(), k -> new Object());
-        synchronized (jvmLock) {
+        try (KeyedLocks.Held jvmLock =
+                JVM_LOCKS.hold(lockFile.toAbsolutePath().normalize().toString())) {
             try (FileChannel channel =
                             OwnerOnlyFiles.channel(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                     FileLock lock = channel.lock()) {

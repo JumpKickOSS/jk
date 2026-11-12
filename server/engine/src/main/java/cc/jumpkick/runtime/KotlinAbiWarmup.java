@@ -18,6 +18,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.KotlinClasspathAbi;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -142,6 +143,9 @@ public final class KotlinAbiWarmup {
         return null;
     }
 
+    @KeyOwner(
+            step = {},
+            unpaired = "a warm-up compile primes the Kotlin worker; no step keys its request")
     private static void warm(BuildGraph.BuildUnit producer, BuildGraph.BuildUnit consumer, Path cache, Cas cas)
             throws IOException, InterruptedException {
         Path classes = BuildLayout.of(producer.dir(), producer.manifest()).classesDir();

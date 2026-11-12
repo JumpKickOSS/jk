@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
@@ -84,8 +85,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void output_printed_while_a_class_runs_is_counted_for_that_class_in_the_published_results(@TempDir Path ws) {
         RunResults sink = new RunResults();
-        RunResults.open(sink);
-        try {
+        Request.detached().with(RunResults.SLOT, sink).run(() -> {
             var md = new MarkdownTestReport(true);
             var agg = new ResultAggregator(TestProgressListener.noop(), 0, null, md);
             agg.userOutput("JVM banner before any class");
@@ -101,9 +101,7 @@ class JUnitLauncherAggregatorTest {
             assertThat(sink.takeTests().getFirst().printed())
                     .containsOnlyKeys("A")
                     .containsEntry("A", new MarkdownTestReport.Printed(1, List.of("A says hello"), ""));
-        } finally {
-            RunResults.close();
-        }
+        });
     }
 
     @Test

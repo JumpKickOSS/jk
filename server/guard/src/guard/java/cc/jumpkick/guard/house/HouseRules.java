@@ -548,9 +548,6 @@ final class HouseRules {
             in = "server/engine/src/main/java/cc/jumpkick/runtime/LockFlow.java",
             reason = "a hint built after a failed resolve; it must never replace the resolve's own error")
     @Allow(
-            in = "server/engine/src/main/java/cc/jumpkick/runtime/TestLaunch.java",
-            reason = "a once-per-engine warm-up of the test roots; the test run's own parse reports the file")
-    @Allow(
             in = "shared/core/src/main/java/cc/jumpkick/templates/OfficialTemplatesFreshen.java",
             reason = "a background freshen that never throws; its log line carries the message and the position")
     void configErrorThroughBroadCatch(Text text, Violations v) {

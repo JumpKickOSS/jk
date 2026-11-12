@@ -9,11 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
-import java.util.Objects;
 import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Reads the secret a {@code ${file:path}} or {@code ${file:path#key}} reference, or a {@code
@@ -34,13 +30,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SecretFiles {
 
-    /** What one file held the last time it was read, and the stat it was read under. */
-    private record Read(@Nullable Object fileKey, FileTime modified, long size, String contents) {}
-
-    private static final ConcurrentHashMap<Path, Read> CACHE = new ConcurrentHashMap<>();
-
-    /** A machine names a handful of secret files; an over-full table is dropped whole. */
-    private static final int MAX_ENTRIES = 256;
+    /** What each file held when last read, under its settled stat; a machine names a handful. */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, String> CACHE = StampedMemo.bounded(256);
 
     private SecretFiles() {}
 
@@ -105,22 +96,17 @@ public final class SecretFiles {
         }
         if (!attrs.isRegularFile()) throw new JkBuildParseException(where + " reads " + file + ", which is not a file");
         SecretFileAccess.DEFAULT.check(file, where);
-        Read cached = CACHE.get(file);
-        if (cached != null
-                && Objects.equals(cached.fileKey(), attrs.fileKey())
-                && cached.modified().equals(attrs.lastModifiedTime())
-                && cached.size() == attrs.size()) {
-            return cached.contents();
-        }
-        String text;
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
+        if (stamp == null) return readText(file, where);
+        return CACHE.get(file, stamp, () -> readText(file, where));
+    }
+
+    private static String readText(Path file, String where) {
         try {
-            text = Files.readString(file, StandardCharsets.UTF_8);
+            return Files.readString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new JkBuildParseException(where + " cannot read " + file + ": " + e.getMessage());
         }
-        if (CACHE.size() >= MAX_ENTRIES) CACHE.clear();
-        CACHE.put(file, new Read(attrs.fileKey(), attrs.lastModifiedTime(), attrs.size(), text));
-        return text;
     }
 
     private static String stripTrailingNewlines(String s) {

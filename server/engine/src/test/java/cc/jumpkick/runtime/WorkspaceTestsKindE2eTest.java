@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -48,8 +47,7 @@ class WorkspaceTestsKindE2eTest {
 
         // Lock at workspace root (union).
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         // Members redirect to the root lock.
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
@@ -99,8 +97,7 @@ class WorkspaceTestsKindE2eTest {
         Path ws = testsKindWorkspace(tmp);
 
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
@@ -221,22 +218,7 @@ class WorkspaceTestsKindE2eTest {
     }
 
     private static BuildPlanResult build(Path module, Path cache) {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                cache,
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, cache).withEstimatedTestCount(1);
         // Core + tails, like jk build: post- run-tests (and its compile-test) are on
         // the terminal-join branch, not the packaging path — a core-only plan prunes them.
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);

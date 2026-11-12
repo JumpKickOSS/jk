@@ -94,7 +94,7 @@ class PluginCompilerArgsKeyTest {
         JkBuild build = JkBuildParser.reparse(project.resolve("jk.toml"));
         Lockfile lock = LockfileReader.read(project.resolve("jk-lock.toml"));
         List<String> javacArgs = PlannerSetup.effectiveJavacArgs(build, project, lock, null);
-        CompileRequest request = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest request = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src.resolve("App.java")),
                 List.of(),
                 List.of(),

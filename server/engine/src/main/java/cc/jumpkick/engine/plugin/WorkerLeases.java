@@ -59,7 +59,7 @@ import org.jspecify.annotations.Nullable;
  * <p>The queue and the counters live on a {@link Ledger}. {@link #engine()} is the one this process
  * uses: its capacity supplier is {@link WorkerContainment#budgetBytes()}, so {@code
  * JK_WORKER_BUDGET_MB} applies to that instance, its CPU cap is the host's core count, a waiting
- * lease is abandoned once {@link JobWorkers#ended} says the request was shut down, and a lease past
+ * lease is abandoned once {@link JobWorkers#ended} says its request was shut down, and a lease past
  * the budget is granted only when {@link OverbookSignals#live()} says the host has room.
  *
  * <p>The budget, its cap and the JVM slot cap bound the host, not one process. An engine process

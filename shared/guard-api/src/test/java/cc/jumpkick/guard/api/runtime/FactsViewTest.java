@@ -83,8 +83,8 @@ class FactsViewTest {
                 "Esc.java",
                 List.of(),
                 List.of(
-                        new FieldFacts("count", "I", 8, null, List.of()),
-                        new FieldFacts("SEP", "Ljava/lang/String;", 25, ",", List.of(NULL_MARKED))),
+                        new FieldFacts("count", "I", 8, null, List.of(), null),
+                        new FieldFacts("SEP", "Ljava/lang/String;", 25, ",", List.of(NULL_MARKED), null)),
                 List.of(write),
                 Set.of("b/Util"));
         ClassFacts pkg =

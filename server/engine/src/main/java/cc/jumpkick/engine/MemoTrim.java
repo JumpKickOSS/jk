@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.TrimRegistry;
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.task.AbiMemo;
@@ -17,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * workspace: parsed manifests, scanned TOML
  * lines, parsed versions, the interned-string table, the file-hash and ABI stores (persisted
  * first; the next build reloads them), and the resolve memos — effective POMs, repository hits,
- * version lists, module metadata. An engine that has touched every workspace on a machine
+ * version lists, module metadata — and every memo that joined the {@link TrimRegistry}. An engine that has touched every workspace on a machine
  * otherwise keeps every one of their manifest trees and POM graphs for its life; the workspace
  * built last keeps its manifests. Returns the log fragment naming what went.
  */
@@ -39,6 +40,7 @@ final class MemoTrim {
         int fileHashes = FileHashMemo.dropAll();
         int abiTokens = AbiMemo.dropAll();
         ResolveProcessCacheControl.Dropped resolve = ResolveProcessCacheControl.dropMemos();
+        int joined = TrimRegistry.trimAll(keep);
         return "memos dropped: manifests " + manifests
                 + ", toml files " + tomlFiles
                 + ", versions " + versions
@@ -49,6 +51,7 @@ final class MemoTrim {
                 + ", repository hits " + resolve.repositoryHits()
                 + ", version lists " + resolve.versionLists()
                 + ", module metadata " + resolve.moduleMetadata()
+                + ", stamped entries " + joined
                 + (keep == null ? "" : "; kept for " + keep);
     }
 }

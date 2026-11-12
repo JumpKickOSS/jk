@@ -12,6 +12,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.task.CachePruneScheduler;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
@@ -83,7 +84,7 @@ public record CacheSnapshot(
 
     /** Tiers the report breaks out by name; everything else in the table sums into {@code derived}. */
     private static final Set<CacheTree> OWN_ROW =
-            EnumSet.of(CacheTree.ACTIONS, CacheTree.CACHE_CAS, CacheTree.FORMAT_STAMPS);
+            Collections.unmodifiableSet(EnumSet.of(CacheTree.ACTIONS, CacheTree.CACHE_CAS, CacheTree.FORMAT_STAMPS));
 
     /**
      * Supplier that walks at most once per TTL and coalesces concurrent callers onto a single

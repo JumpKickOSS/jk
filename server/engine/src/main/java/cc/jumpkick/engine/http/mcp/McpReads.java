@@ -62,7 +62,7 @@ public final class McpReads {
             var build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
             Path cache = JkDirs.cache();
             Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
-            ExplainReport report = ExplainReport.compute(root, build, cache, session, ExplainReport.Knobs.defaults());
+            ExplainReport report = ExplainReport.compute(root, build, cache, session);
             if (report.plan().hasErrors()) {
                 m.put("errors", report.plan().errors());
                 return m;

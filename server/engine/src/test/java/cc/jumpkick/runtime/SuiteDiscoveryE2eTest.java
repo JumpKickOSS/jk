@@ -74,8 +74,7 @@ class SuiteDiscoveryE2eTest {
         Files.createDirectories(m.resolve("src/main/java/demo"));
         Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
         JkBuild build = JkBuildParser.parse(m.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(m, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();
 
         Steps first = build(m, cache);

@@ -21,6 +21,7 @@ import cc.jumpkick.giter8.TemplateAnswers;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
@@ -42,7 +43,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -580,14 +580,14 @@ public final class NewProjectOps {
     }
 
     /** Per-template-key clone serialization: the resident engine serves concurrent jk new. */
-    private static final ConcurrentHashMap<String, Object> CLONE_LOCKS = new ConcurrentHashMap<>();
+    private static final KeyedLocks<String> CLONE_LOCKS = new KeyedLocks<>();
 
     private static Path cloneRemoteTemplate(String ref) throws IOException {
         Path cache = JkDirs.templates();
         Files.createDirectories(cache);
         String key = ref.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "_");
         Path dest = cache.resolve(key);
-        synchronized (CLONE_LOCKS.computeIfAbsent(key, k -> new Object())) {
+        try (KeyedLocks.Held held = CLONE_LOCKS.hold(key)) {
             if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
                 if (Files.exists(dest)) PathUtil.deleteRecursivelyOrThrow(dest);
                 cloneInto(ref, cache, key, dest);

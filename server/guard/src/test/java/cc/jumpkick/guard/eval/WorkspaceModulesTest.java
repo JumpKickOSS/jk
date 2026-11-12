@@ -11,9 +11,11 @@ import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.model.GuardsConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
@@ -136,5 +138,29 @@ class WorkspaceModulesTest {
         assertThatThrownBy(() -> GuardRules.load(root, GuardsConfig.ABSENT))
                 .as("the member rule layer")
                 .hasMessage(message);
+    }
+
+    @Test
+    void a_member_added_under_a_glob_is_seen_by_the_next_lane(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        // Judged as settled, so the memo answers from its stamp rather than re-reading a fresh write.
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            assertThat(WorkspaceModules.of(root))
+                    .containsExactly(root.resolve("services/a"), root.resolve("services/b"), root.resolve("lib"));
+
+            // A new member under the glob edits no existing file.
+            Path c = Files.createDirectories(root.resolve("services/c"));
+            Files.writeString(c.resolve("jk.toml"), "group = \"p\"\nname = \"c\"\nversion = \"1\"\n");
+
+            assertThat(WorkspaceModules.of(root))
+                    .containsExactly(
+                            root.resolve("services/a"),
+                            root.resolve("services/b"),
+                            root.resolve("services/c"),
+                            root.resolve("lib"));
+        } finally {
+            Settled.aheadForTests(null);
+        }
     }
 }

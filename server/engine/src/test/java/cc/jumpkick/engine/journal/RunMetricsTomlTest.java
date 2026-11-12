@@ -7,11 +7,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.TestClassWalls;
-import cc.jumpkick.runtime.base.TestSuiteRunners;
-import cc.jumpkick.runtime.base.TestSuiteTiers;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -168,7 +165,8 @@ class RunMetricsTomlTest {
     void a_suite_wall_is_journalled_with_its_runner_count_and_normalized() throws Exception {
         BuildJournal j = new BuildJournal(dir);
         Path mod = dir.resolve("server/engine");
-        TestSuiteRunners.put(mod.toString(), 8);
+        RunMeasures measures = new RunMeasures();
+        measures.runners(mod.toString(), 8);
         var modules = List.of(new BuildRecord.Module(
                 "g:engine",
                 mod.toString(),
@@ -177,7 +175,7 @@ class RunMetricsTomlTest {
                 20_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 17_384, 0L))));
         String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE));
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), measured(measures)));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
 
         assertThat(toml).contains(".task.run-tests.wall-ms = 17384");
@@ -187,10 +185,11 @@ class RunMetricsTomlTest {
                 .contains(".task.run-tests.wall1-ms = " + TestSuiteScaling.normalize(17_384, 8));
     }
 
-    private String metricsOf(BuildJournal j, Path mod, TestSuiteTiers.Suite suite, long wall) throws Exception {
-        TestSuiteTiers.put(mod.toString(), suite);
-        TestSuiteRunners.put(mod.toString(), 1);
-        TestClassWalls.put(mod.toString(), suite.step(), Map.of("a.SlowIT", 9_000L));
+    private String metricsOf(BuildJournal j, Path mod, RunMeasures.Suite suite, long wall) throws Exception {
+        RunMeasures measures = new RunMeasures();
+        measures.suite(mod.toString(), suite);
+        measures.runners(mod.toString(), 1);
+        measures.classWalls(mod.toString(), suite.step(), Map.of("a.SlowIT", 9_000L));
         var modules = List.of(new BuildRecord.Module(
                 "g:cli",
                 mod.toString(),
@@ -199,7 +198,7 @@ class RunMetricsTomlTest {
                 wall,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", wall, 0L))));
         String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE));
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), measured(measures)));
         return Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
     }
 
@@ -210,8 +209,8 @@ class RunMetricsTomlTest {
     @Test
     void an_integration_suite_wall_is_journalled_under_its_own_step() throws Exception {
         Path mod = dir.resolve("clients/cli");
-        String toml = metricsOf(
-                new BuildJournal(dir), mod, new TestSuiteTiers.Suite("run-tests@integration", false), 575_000);
+        String toml =
+                metricsOf(new BuildJournal(dir), mod, new RunMeasures.Suite("run-tests@integration", false), 575_000);
 
         assertThat(toml)
                 .contains(".task.run-tests@integration.wall-ms = 575000")
@@ -226,8 +225,9 @@ class RunMetricsTomlTest {
     void a_failed_run_keeps_its_class_walls_and_nothing_else() throws Exception {
         BuildJournal j = new BuildJournal(dir);
         Path mod = dir.resolve("server/engine");
-        TestSuiteTiers.put(mod.toString(), new TestSuiteTiers.Suite("run-tests@all_integration", false));
-        TestClassWalls.put(mod.toString(), "run-tests@all_integration", Map.of("a.SlowIT", 9_000L));
+        RunMeasures measures = new RunMeasures();
+        measures.suite(mod.toString(), new RunMeasures.Suite("run-tests@all_integration", false));
+        measures.classWalls(mod.toString(), "run-tests@all_integration", Map.of("a.SlowIT", 9_000L));
         var modules = List.of(new BuildRecord.Module(
                 "g:engine",
                 mod.toString(),
@@ -236,7 +236,7 @@ class RunMetricsTomlTest {
                 250_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "FAILED", 249_000, 0L))));
         String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, false, "g:a"), modules), BuildJournal.Snapshot.NONE));
+                j.append(withModules(record(1_700_000_000_000L, false, "g:a"), modules), measured(measures)));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
 
         assertThat(toml)
@@ -247,8 +247,7 @@ class RunMetricsTomlTest {
     @Test
     void a_default_suite_keeps_the_bare_row() throws Exception {
         Path mod = dir.resolve("clients/cli");
-        String toml =
-                metricsOf(new BuildJournal(dir), mod, new TestSuiteTiers.Suite(TaskNames.RUN_TESTS, false), 54_000);
+        String toml = metricsOf(new BuildJournal(dir), mod, new RunMeasures.Suite(TaskNames.RUN_TESTS, false), 54_000);
 
         assertThat(toml).contains(".task.run-tests.wall-ms = 54000").doesNotContain("run-tests@");
         assertThat(toml).containsPattern("\\[test-class\\.\"[^\"@]*clients/cli\"\\.\"a\"]");
@@ -258,8 +257,7 @@ class RunMetricsTomlTest {
     @Test
     void a_class_filtered_run_leaves_no_suite_wall_but_keeps_its_class_walls() throws Exception {
         Path mod = dir.resolve("clients/cli");
-        String toml =
-                metricsOf(new BuildJournal(dir), mod, new TestSuiteTiers.Suite(TaskNames.RUN_TESTS, true), 56_000);
+        String toml = metricsOf(new BuildJournal(dir), mod, new RunMeasures.Suite(TaskNames.RUN_TESTS, true), 56_000);
 
         assertThat(toml)
                 .doesNotContain("run-tests.wall-ms")
@@ -340,7 +338,6 @@ class RunMetricsTomlTest {
     void a_suite_wall_with_no_recorded_concurrency_writes_no_runner_keys() throws Exception {
         BuildJournal j = new BuildJournal(dir);
         Path mod = dir.resolve("shared/host");
-        TestSuiteRunners.take(mod.toString()); // drain anything a sibling test left
         var modules = List.of(new BuildRecord.Module(
                 "g:host",
                 mod.toString(),
@@ -403,9 +400,10 @@ class RunMetricsTomlTest {
         var tasks = List.of(
                 new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 0L),
                 new BuildRecord.Task("package-jar", "package", "SUCCESS", 300, 0L));
-        ColdWorkerRuns.mark(4242L);
+        RunMeasures measures = new RunMeasures();
+        measures.startedWorker();
         String locator = requireNonNull(
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks, 4242L), BuildJournal.Snapshot.NONE));
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks, 4242L), measured(measures)));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
         assertThat(toml).contains("task.package-jar.wall-ms = 300");
         assertThat(toml).doesNotContain("task.compile-java.wall-ms");
@@ -426,5 +424,9 @@ class RunMetricsTomlTest {
         assertThat(toml).contains("task.compile-test.wall-ms = 900");
         assertThat(TaskNames.compiledPart(TaskNames.compiledLabel(12, 12))).isFalse();
         assertThat(TaskNames.compiledPart("cache hit 1234abcd")).isFalse();
+    }
+
+    private static BuildJournal.Snapshot measured(RunMeasures measures) {
+        return new BuildJournal.Snapshot(null, null, null, null, null, measures);
     }
 }

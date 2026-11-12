@@ -39,6 +39,9 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * optional index lock, so a developer's own git commands never wait on them. Outside a git work tree
  * — a source archive, a host without git — it checks nothing. A file edited by hand while the class
  * runs is reported too: the message says so.
+ *
+ * <p>The guard baseline is not counted: a build's guard lane tightens it on purpose while the
+ * build's tests run, so the class running at that moment would be blamed for the engine's write.
  */
 public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallback {
 
@@ -47,6 +50,9 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
     private static final String BEFORE = "before";
 
     private static final long GIT_TIMEOUT_SECONDS = 30;
+
+    /** Written by the engine's guard tightening during a build, never by a test. */
+    static final String GUARD_BASELINE = "jk-guards-baseline.toml";
 
     /**
      * The tracked files that differ from the index or HEAD, and the untracked files under {@code
@@ -86,6 +92,7 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
         before.dirty().keySet().forEach(path -> {
             if (!after.dirty().containsKey(path)) out.add(path);
         });
+        out.remove(GUARD_BASELINE);
         return List.copyOf(out);
     }
 

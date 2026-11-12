@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.task.JarClassReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -30,14 +29,8 @@ public final class ClasspathProcessors {
 
     private ClasspathProcessors() {}
 
-    private record Stamp(long size, long modified) {}
-
-    private record Memo(Stamp stamp, boolean registers) {}
-
     /** Clear-on-overflow: a resident engine otherwise keeps one row per jar it ever probed. */
-    private static final int MEMO_CAP = 4_096;
-
-    private static final Map<Path, Memo> MEMO = new ConcurrentHashMap<>();
+    private static final StampedMemo<Path, FileStamp, Boolean> MEMO = StampedMemo.bounded(4_096);
 
     /** The entries of {@code classpath} that register a processor, in classpath order. */
     public static List<Path> discover(List<Path> classpath) {
@@ -51,20 +44,9 @@ public final class ClasspathProcessors {
     /** True when {@code entry} (a jar or a classes directory) carries the service registration. */
     public static boolean registersProcessor(Path entry) {
         if (Files.isDirectory(entry)) return Files.isRegularFile(entry.resolve(SERVICE));
-        BasicFileAttributes attrs;
-        try {
-            attrs = Files.readAttributes(entry, BasicFileAttributes.class);
-        } catch (IOException absent) {
-            return false;
-        }
-        Stamp stamp = new Stamp(attrs.size(), attrs.lastModifiedTime().toMillis());
-        Path key = entry.toAbsolutePath().normalize();
-        Memo memo = MEMO.get(key);
-        if (memo != null && memo.stamp().equals(stamp)) return memo.registers();
-        boolean registers = jarRegistersProcessor(entry);
-        if (MEMO.size() >= MEMO_CAP) MEMO.clear();
-        MEMO.put(key, new Memo(stamp, registers));
-        return registers;
+        FileStamp stamp = FileStamp.of(entry);
+        if (stamp == null) return false;
+        return MEMO.get(entry.toAbsolutePath().normalize(), stamp, () -> jarRegistersProcessor(entry));
     }
 
     /**

@@ -564,6 +564,9 @@ jk test -L
 
 `--parallel-tests` is accepted (affirmative no-op; default is already on).
 
+The opt-out runs one suite at a time per checkout. Another checkout of the same repository
+(a second worktree) has suites of its own and runs them alongside.
+
 ## Per-module serial opt-out
 
 Modules that cannot share a JVM pin workers in `jk.toml`. A positive module pin **wins**

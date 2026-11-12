@@ -2,14 +2,11 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.lockModules;
-import static cc.jumpkick.runtime.PlannerSupport.unresolvedProcessorDeps;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JavaRelease;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.Errors;
@@ -34,7 +31,6 @@ import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
-import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildStage;
@@ -50,7 +46,6 @@ import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -132,15 +127,10 @@ public final class PlannerSetup {
                     ctx.label("parse jk.toml");
                     JkBuild project;
                     try {
-                        // Same override the plan was built from (jk assemble -U/-W).
-                        // Plan construction and step bodies must read one effective config, or a
-                        // task gets scheduled against a config its body cannot.
-                        project = VariantApply.apply(
-                                        applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
-                                        in.dir(),
-                                        VariantApply.selection(in.variant(), in.session()),
-                                        in.clientEnv())
-                                .build();
+                        // The effective manifest the plan was built from: plan construction and
+                        // step bodies read one config, or a task gets scheduled against a config
+                        // its body cannot.
+                        project = cx.manifest().get();
                     } catch (RuntimeException e) {
                         ctx.error("toml", Errors.text(e));
                         throw e;
@@ -247,7 +237,7 @@ public final class PlannerSetup {
         return JavacDefaults.effectiveArgs(
                 project.build().lint(),
                 project.build().debug(),
-                PluginContributions.javacArgs(project, dir, lockModules(lock)),
+                PluginContributions.javacArgs(project, dir, lock.classpathModules()),
                 profile == null ? List.of() : profile.javacArgs());
     }
 
@@ -277,7 +267,7 @@ public final class PlannerSetup {
                     // ran; this step derives the module's classpaths from them.
                     ctx.label("resolve classpath");
                     try {
-                        publishClasspaths(ctx, in, cas, cx.tools());
+                        publishClasspaths(ctx, in, cx.shape(), cas, cx.tools());
                         // Ahead of the KSP round and every compile that reads its output.
                         PlannerKsp.dropRetiredRounds(cx, ctx.require(LAYOUT), ctx.require(PROJECT));
                     } catch (RuntimeException e) {
@@ -292,103 +282,64 @@ public final class PlannerSetup {
     }
 
     /**
-     * Lock + workspace sibling classpaths for compile / test / processors. Called only after the
-     * SYNC phase, so every checksummed lock row is on disk ({@code requirePresent}).
+     * The module's classpaths ({@link ModuleClasspaths}), published once the SYNC phase put every
+     * checksummed lock row on disk. What the derivation leaves to its caller happens here first:
+     * the siblings the main compile and the processor path read must have compiled, every declared
+     * processor must resolve, and the plugins' provided jars and processors are fetched.
      *
-     * <p>Siblings enter the compile classpaths through their classes trees, never their jars: a
-     * tree is whole once the sibling has compiled, so this module is admitted — and reaches this
-     * step — while the sibling may still be packaging and testing. Only the main compile's trees
-     * are required here. A sibling only the test scopes name is no admission edge, so the test
-     * classpaths name it built or not and {@link #awaitSiblingTestCompile} requires it; the jars
-     * are what the package and test steps read, and {@link #awaitSiblingArtifacts} and {@link
-     * #awaitSiblingTestRuntime} require them where they are first needed.
+     * <p>Only the main compile's and the processors' sibling trees are required here: a sibling
+     * only the test scopes name is no admission edge, so {@link #awaitSiblingTestCompile} requires
+     * it; the jars are what the package and test steps read, and {@link #awaitSiblingArtifacts}
+     * and {@link #awaitSiblingTestRuntime} require them where they are first needed.
      */
-    static void publishClasspaths(TaskContext ctx, BuildPlanner.Inputs in, Cas cas, PluginBuild.StepTools tools)
+    static void publishClasspaths(
+            TaskContext ctx, BuildPlanner.Inputs in, ModuleShape shape, Cas cas, PluginBuild.StepTools tools)
             throws Exception {
         Lockfile lock = ctx.require(LOCKFILE);
         JkBuild project = ctx.require(PROJECT);
-        ClasspathResolver resolver = new ClasspathResolver(cas);
-
-        WorkspaceClasspath.Result mainSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.COMPILE_SCOPES);
-        requireSiblingsCompiled(ctx, mainSiblings, "dependency module not compiled: ");
-        // The module's lock rows (its own and those its siblings pass on) + sibling classes
-        // trees — the exact classpath `jk explain` re-derives, so the action keys match.
-        List<Path> mainCp = PlannerSupport.mainCompileClasspath(in.dir(), project, lock, resolver, mainSiblings, true);
-        // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
-        // sees it, runtime/packaging never do. Resolved through the same engine
-        // fetch the steps use, so the compile action key fingerprints it.
+        Path dir = in.dir();
+        requireSiblingsCompiled(
+                ctx,
+                WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES),
+                "dependency module not compiled: ");
+        // Plugin-contributed PROVIDED classpath (an Android platform jar): javac sees it,
+        // runtime/packaging never do. Resolved through the same engine fetch the steps use, so the
+        // compile action key fingerprints it.
         ProvidedClasspath.Provided provided = ProvidedClasspath.contributed(project, in, cas, tools);
-        List<Path> contributedProvided = provided.compile();
-        mainCp.addAll(contributedProvided);
-        ctx.put(CLASSPATH, mainCp);
-
-        // Declared annotation processors live in their own scope (kept off the
-        // compile classpath); javac searches that path alone and KspProcessors.split
-        // routes the KSP ones to the forked KSP2 round. A module that declares none
-        // runs the processors registered on its compile classpath instead — the
-        // request builders (PlannerCompile.effectiveProcessorPath) decide that.
-        // Workspace siblings must merge in exactly as they do for main/test
-        // a processor declared `{ workspace = true }` is never in the
-        // lock, so a lock-only path silently yields no processors at all.
-        WorkspaceClasspath.Result processorSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
-        // Every sibling either table names, for the unresolved-processor check below.
-        WorkspaceClasspath.Result testProcessorSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, ClasspathResolver.PROCESSOR_PATH);
-        // A declared processor that cannot be found generates nothing, and a build
-        // that silently skips code generation is worse than one that fails. A sibling
-        // processor is loaded from its classes tree, which holds its service registration
-        // once the sibling's resources are copied — the point its tree is published at.
-        requireSiblingsCompiled(ctx, processorSiblings, "processor module not compiled: ");
-        List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, testProcessorSiblings);
+        // A declared processor that cannot be found generates nothing, and a build that silently
+        // skips code generation is worse than one that fails. A sibling processor is loaded from
+        // its classes tree, which holds its service registration once the sibling's resources are
+        // copied — the point its tree is published at.
+        requireSiblingsCompiled(
+                ctx,
+                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)),
+                "processor module not compiled: ");
+        List<String> unresolvedProcessors = ProcessorPaths.unresolved(
+                project, lock, WorkspaceClasspath.resolve(dir, project, ClasspathResolver.PROCESSOR_PATH));
         if (!unresolvedProcessors.isEmpty()) {
             for (String unresolved : unresolvedProcessors)
                 ctx.error("processor", "processor " + unresolved + " is not in jk-lock.toml; run jk lock");
             throw new RuntimeException("unresolved processor dependencies");
         }
-        ctx.put(
-                PROCESSOR_CP,
-                PlannerSupport.processorClasspath(in.dir(), project, lock, resolver, processorSiblings, true));
-        // compile-test's declared closure: both tables', or the test table's alone under its
-        // inherit = false (ProcessorPaths, which the forecast derives it through too).
-        ctx.put(TEST_PROCESSOR_CP, ProcessorPaths.testClosure(project, lock, resolver, in.dir(), true));
-        // The processors the module's plugins contribute, appended to whichever path the module's
-        // own is (PlannerCompile.effectiveProcessorPath). Each is a closure the lock pins; one the
-        // lock lacks fails here, as a declared processor the lock lacks does above.
+        // The processors the module's plugins contribute: each is a closure the lock pins, and one
+        // the lock lacks fails here, as a declared processor the lock lacks does above.
         ContributedProcessors.Paths contributedProcessors;
         try {
-            contributedProcessors = ContributedProcessors.resolve(project, in.dir(), lock, cas);
+            contributedProcessors = ContributedProcessors.resolve(project, dir, lock, cas);
         } catch (IOException e) {
             ctx.error("processor", String.valueOf(e.getMessage()));
             throw new RuntimeException("unresolved contributed processors", e);
         }
-        ctx.put(CONTRIBUTED_PROCESSOR_CP, contributedProcessors.main());
-        ctx.put(CONTRIBUTED_TEST_PROCESSOR_CP, contributedProcessors.test());
-
-        WorkspaceClasspath.Result testSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
-        // Both test classpaths name the declared closure, built or not: a sibling's test classes
-        // and jar may still be on their way when this step runs, and a list filtered to what is
-        // on disk now would silently drop them from the tests.
-        List<Path> compileTestCp =
-                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true, project, in.dir()));
-        compileTestCp.addAll(testSiblings.siblingClosureClasses());
-        List<Path> testRuntimeCp = new ArrayList<>(resolver.testRuntimeClasspathFor(lock, true, project, in.dir()));
-        testRuntimeCp.addAll(testSiblings.siblingClosureJars());
-        // A plugin's contributed provided classpath is provided scope by another door: on both test
-        // classpaths, as a [provided-dependencies] row is, and in no artifact. Its test-only entries
-        // (a platform's test framework) join here and nowhere else.
-        // A compile-only entry (a platform the test JVM gets whole from elsewhere) is compiled against
-        // here and never run with.
-        compileTestCp.addAll(contributedProvided);
-        compileTestCp.addAll(provided.testOnly());
-        for (Path p : provided.testRuntime()) {
-            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-        }
-        ctx.put(PROVIDED_CP, provided.runtime());
-        ctx.put(COMPILE_TEST_CP, compileTestCp);
-        ctx.put(TEST_RUNTIME_CP, testRuntimeCp);
+        ctx.put(
+                CLASSPATHS,
+                ModuleClasspaths.derive(
+                        dir,
+                        project,
+                        shape,
+                        lock,
+                        new ClasspathResolver(cas),
+                        new ModuleClasspaths.Contributions(provided, contributedProcessors),
+                        ModuleClasspaths.Mode.BUILD));
     }
 
     /**

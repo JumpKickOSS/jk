@@ -4,8 +4,8 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.model.EnvConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -130,20 +130,20 @@ class ForkedJavacTest {
                 List.of(),
                 work);
 
-        long job = 8801L;
-        JobWorkers.open(job);
-        try {
-            ForkedJavac.Result compiled = ForkedJavac.compile(req);
-            assertThat(compiled.success()).as("%s", compiled.diagnostics()).isTrue();
-            Files.writeString(src, "package a; public class A { public int n() { return 2; } }");
-            ForkedJavac.Plan plan = ForkedJavac.plan(req);
-            assertThat(plan.full()).isFalse();
-            assertThat(plan.sources()).isNotEmpty();
-        } finally {
-            JavaCompilerHost.end(job);
-            JobWorkers.shutdownForRequest(job, 0L);
-            JobWorkers.close();
-        }
+        WorkerScope job = new WorkerScope(8801L);
+        job.run(() -> {
+            try {
+                ForkedJavac.Result compiled = ForkedJavac.compile(req);
+                assertThat(compiled.success()).as("%s", compiled.diagnostics()).isTrue();
+                Files.writeString(src, "package a; public class A { public int n() { return 2; } }");
+                ForkedJavac.Plan plan = ForkedJavac.plan(req);
+                assertThat(plan.full()).isFalse();
+                assertThat(plan.sources()).isNotEmpty();
+            } finally {
+                JavaCompilerHost.end(job.id());
+                job.shutdown(0L);
+            }
+        });
     }
 
     /**

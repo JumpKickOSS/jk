@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
@@ -126,52 +127,14 @@ public final class BuildService {
     }
 
     /**
-     * Forecast the build without running it: resolve the module graph and run the truthful
-     * per-step {@link TaskForecaster} over it, returning an {@link ExplainPlan} the caller
-     * renders. Pure policy — nothing here writes to {@code stdout}/{@code stderr}. Graph-resolution
-     * errors come back in {@link ExplainPlan#errors} (the caller renders the same failure); an
-     * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
+     * Forecast the build without running it, under the request's {@code knobs}, confined to their
+     * selection's cone — the modules {@code jk build -m} with the same selection schedules, priced
+     * the way its countdown seed prices them. An empty selection is the whole workspace. See {@link
+     * BuildForecasting#explain}.
      */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache) throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path)} with {@code skipTests} matching {@code jk build
-     * --skip-tests} / {@code jk explain -S} so the forecast does not claim test work the
-     * live command will not run.
-     */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)
+    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, BuildKnobs knobs)
             throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path, boolean)} confined to {@code selection}'s cone —
-     * the modules {@code jk build -m} with the same selection schedules, priced the way its
-     * countdown seed prices them. An empty selection is the whole workspace.
-     */
-    public static ExplainPlan explain(
-            Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests, Set<Path> selection) throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests, selection);
-    }
-
-    /**
-     * Forecast from an already-resolved graph — the same {@link TaskForecaster} walk {@code jk
-     * build} uses for its countdown seed so explain and build never price different step sets.
-     */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests) {
-        return BuildForecasting.explainFromGraph(graph, cache, skipTests);
-    }
-
-    /**
-     * As {@link #explainFromGraph(BuildGraph.Result, Path, boolean)} with {@code entryDir} for the
-     * dirty-memo fast path: when a prior build recorded an empty dirty set and sources are still
-     * unchanged, skip the multi-second {@link TaskForecaster} walk (same shortcut as fully-cached
-     * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
-     */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return BuildForecasting.explainFromGraph(graph, cache, skipTests, entryDir);
+        return BuildForecasting.explain(entryDir, entryBuild, cache, knobs);
     }
 
     /**
@@ -188,8 +151,17 @@ public final class BuildService {
      *
      * <p><b>Hard invariant:</b> this is the <em>only</em> ETA seed used by both {@code jk explain}
      * and {@code jk build}'s countdown. Same forecast plan, same {@code workers}/{@code
-     * maxModuleConcurrency}/{@code parallelTests}, same {@link BuildEta} seed — the numbers must
-     * match bit-for-bit for a given workspace and session. See {@code docs/perf/progress-contract.md}.
+     * maxModuleConcurrency}/{@code parallelTests}, same {@link BuildEta} seed — one plan prices
+     * bit-for-bit for a given workspace and session, whichever forecast produced it.
+     *
+     * <p>The plans agree except where the two forecasts ask different compiler workers for Zinc's
+     * plan of a compile ({@link cc.jumpkick.task.JavaCompile.PlanWorkers}), and the rule is who else
+     * is on the workers: {@code jk explain} plans on any (its answer is the plan), as does a build's
+     * preflight walk, which runs before any compile; the walk a build prices beside its running
+     * compiles ({@code BackgroundEta}: a memo hit's scheduled modules, a selection, {@code
+     * --rebuild}/{@code --force}) plans on none and predicts each compile that has an analysis from
+     * its prior record. Only there can a compile's verdict, and so the seed, differ from explain's.
+     * See {@code docs/contributors/progress-contract.md}.
      *
      * @param workers within-module test JVMs; {@code 0} = auto (identical to bare {@code jk build})
      * @param maxModuleConcurrency module-concurrency cap from {@code -j} / jobs (same as workspace

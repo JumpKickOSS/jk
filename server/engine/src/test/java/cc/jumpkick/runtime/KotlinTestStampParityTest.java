@@ -20,11 +20,10 @@ import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -90,7 +89,7 @@ class KotlinTestStampParityTest {
         SessionContext.runWhere(session, () -> {
             try {
                 BuildPlan lock = LockPlans.lockBuildPlan(
-                        project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
                 BuildPlanResult first = build(project, cache, session);
@@ -107,8 +106,8 @@ class KotlinTestStampParityTest {
                         .isPresent();
 
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
-                List<TaskForecast.Module> modules = ForecastWalk.of(
-                        graph, JkStores.storeCas(), actionCache, cache, false, WorkspaceTarget.PACKAGE, null, null);
+                List<TaskForecast.Module> modules =
+                        ForecastWalk.of(graph, JkStores.storeCas(), actionCache, cache, BuildKnobs.DEFAULTS, null);
                 assertThat(modules).hasSize(1);
                 TaskForecast.Task runTests = modules.getFirst().steps().stream()
                         .filter(step -> step.name().equals(TaskNames.RUN_TESTS))
@@ -130,22 +129,7 @@ class KotlinTestStampParityTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache, Session session) {
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs inputs = TestInputs.of(project, cache, session).withEstimatedTestCount(1);
         return BuildPlanner.fullPlan(inputs).run();
     }
 

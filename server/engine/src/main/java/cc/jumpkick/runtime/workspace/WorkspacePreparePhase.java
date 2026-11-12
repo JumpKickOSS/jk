@@ -13,9 +13,9 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.runtime.base.SuiteSelection;
-import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -194,8 +194,8 @@ final class WorkspacePreparePhase {
     }
 
     /** The suite a module's {@code run-tests} runs under {@code session}: its selection, and whether it is partial. */
-    static TestSuiteTiers.Suite suiteOf(Session session) {
-        return new TestSuiteTiers.Suite(
+    static RunMeasures.Suite suiteOf(Session session) {
+        return new RunMeasures.Suite(
                 SuiteSelection.step(session.testSelection(), session.profile()),
                 SuiteSelection.partial(session.testSelection()));
     }

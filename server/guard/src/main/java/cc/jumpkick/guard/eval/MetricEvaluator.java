@@ -11,7 +11,7 @@ import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.ParallelMap;
+import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

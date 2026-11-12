@@ -99,7 +99,7 @@ public final class FormatWorker {
      */
     static @Nullable Long startHeap(LearnedHeaps heaps, HeapScope.Key key) {
         if (!JvmOptions.autoHeapEnabled()) return null;
-        HeapPlan.Plan plan = JvmOptions.processHeapPlan();
+        HeapPlan.Plan plan = JvmOptions.heapPlan();
         long planned = plan != null ? plan.xmxBytes() : LearnedHeaps.FLOOR_BYTES;
         return heaps.choose(key.project(), key.module(), key.kind(), key.jdk(), planned);
     }
@@ -137,7 +137,8 @@ public final class FormatWorker {
      * <p>A worker that runs out of its own heap is started again up the {@link HeapLadder}; one the
      * kernel killed for memory is started once more at the same heap. A re-run reports every file
      * again, and only the files no earlier attempt reported are counted. The peak each attempt
-     * reached is learned under {@code key}, so the next run starts at a heap that fits.
+     * reached is learned under {@code key}, so the next run starts at a heap that fits, and each
+     * retry is one {@link HeapNotes#CODE} warning on the step.
      *
      * @param heap the first heap, or {@code null} when the user pinned worker memory
      * @param preClean files the freshness index settled before the fork: part of {@code total}, so
@@ -164,13 +165,13 @@ public final class FormatWorker {
         if (heap == null) {
             last = tally.attempt(launch.command(null), spec, key);
         } else {
-            last = scoped(key, () -> tally.attempt(launch.command(heap), spec, key));
+            last = HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key));
             WorkerFate.Cause cause = last.exit() == 0 || last.exit() == 1
                     ? WorkerFate.Cause.OTHER
                     : WorkerFate.classify(last.exit(), last.output());
             if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
-                last = scoped(key, () -> tally.attempt(launch.command(heap), spec, key));
+                last = HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key));
             } else if (cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
                 List<Long> ranOut = new ArrayList<>(List.of(heap));
                 while (true) {
@@ -182,7 +183,7 @@ public final class FormatWorker {
                         break;
                     }
                     HeapNotes.note(HeapNotes.line(bigger, failed, false));
-                    last = scoped(key, () -> tally.attempt(launch.command(bigger), spec, key));
+                    last = HeapScope.fork(key, () -> tally.attempt(launch.command(bigger), spec, key));
                     if (!WorkerFate.heapExhausted(last.exit(), last.output())) {
                         heaps.good(key, bigger);
                         break;
@@ -191,6 +192,7 @@ public final class FormatWorker {
                 }
             }
         }
+        HeapNotes.flush(ctx);
         if (freshness != null) freshness.save();
         ctx.put(CHANGED, tally.changed.get());
         ctx.put(CLEAN, preClean + tally.clean.get());
@@ -285,21 +287,6 @@ public final class FormatWorker {
             observer.onFile(path, status, Jsonl.str(json, "msg"), index.incrementAndGet(), total);
             ctx.progress(1);
         }
-    }
-
-    private static Attempt scoped(HeapScope.Key key, AttemptBody body) throws IOException, InterruptedException {
-        try {
-            return HeapScope.call(key, body::run);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException(e);
-        }
-    }
-
-    @FunctionalInterface
-    private interface AttemptBody {
-        Attempt run() throws Exception;
     }
 
     /**

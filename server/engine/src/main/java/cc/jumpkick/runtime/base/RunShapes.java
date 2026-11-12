@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
  * (the integration tier is not the default tier), whether it was forced (a from-scratch compile or
  * link is not an incremental one), and whether a test filter narrowed its suites (a filtered suite
  * is not the suite). The build's session knows these and the journal, which records the finished
- * run, does not; this hands them across by request id, like {@code ColdWorkerRuns}.
+ * run, does not; this hands them across by request id.
  */
 public final class RunShapes {
 

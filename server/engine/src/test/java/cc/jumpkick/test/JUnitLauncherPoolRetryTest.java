@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.AsOneStep;
 import cc.jumpkick.engine.plugin.FakeWorkerShell;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
@@ -19,6 +20,7 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -27,11 +29,11 @@ import org.junit.jupiter.api.io.TempDir;
  * ones on the next rung, so the suite ends green with no shortfall row.
  */
 @Tag("integration")
+@ExtendWith(AsOneStep.class)
 class JUnitLauncherPoolRetryTest {
 
     @AfterEach
     void reset() {
-        HeapNotes.clear();
         SessionContext.reset();
     }
 

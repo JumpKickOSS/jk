@@ -34,7 +34,7 @@ public final class ShippedTemplates {
 
     /** The jar never changes under a running engine: scanned once. */
     private static final class Holder {
-        static final List<TemplateSpec> SPECS = scan(root());
+        static final List<TemplateSpec> SPECS = List.copyOf(scan(root()));
     }
 
     /** Every shipped template as a picker row ({@code root} unset until {@link #materialize}). */

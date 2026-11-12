@@ -14,11 +14,13 @@ import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.SuiteSelection;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -197,8 +199,9 @@ final class WorkspaceResourcePhase {
      * have compiled since the seed answer from their outputs.
      */
     private static ExplainPlan scheduledPlan(WorkspacePreflightPhase.Context preflight, WorkspaceRequest request) {
-        ExplainPlan plan = BuildForecasting.scheduledPlan(
-                preflight.graph(), request.cache(), request.skipTests(), request.profile(), preflight.dirty());
+        WorkspaceTarget core = WorkspacePreflightPhase.coreTarget(request.target());
+        BuildKnobs knobs = BuildKnobs.of(request).withTarget(core == null ? WorkspaceTarget.PACKAGE : core);
+        ExplainPlan plan = BuildForecasting.scheduledPlan(preflight.graph(), request.cache(), knobs, preflight.dirty());
         return testRunPlan(BuildForecasting.restrictToSelection(plan, preflight.dirty()), preflight, request);
     }
 
@@ -214,6 +217,9 @@ final class WorkspaceResourcePhase {
             WorkspaceRequest request,
             List<BuildGraph.BuildUnit> dirtyUnits) {
         ExplainPlan plan;
+        // The lifecycle's knobs, as the preflight walked them: a goal's tail is priced apart.
+        WorkspaceTarget core = WorkspacePreflightPhase.coreTarget(request.target());
+        BuildKnobs knobs = BuildKnobs.of(request).withTarget(core == null ? WorkspaceTarget.PACKAGE : core);
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         if (preflight.forecast().isPresent()
@@ -228,11 +234,9 @@ final class WorkspaceResourcePhase {
             plan = BuildForecasting.fullyCachedExplainPlan(preflight.graph());
         } else if (preflight.forecast().isPresent() && !distrust) {
             // A memo hit: the preflight walked nothing, and only the dirty set needs pricing.
-            plan = BuildForecasting.scheduledPlan(
-                    preflight.graph(), request.cache(), request.skipTests(), request.profile(), preflight.dirty());
+            plan = BuildForecasting.scheduledPlan(preflight.graph(), request.cache(), knobs, preflight.dirty());
         } else {
-            plan = BuildForecasting.explainFromGraph(
-                    preflight.graph(), request.cache(), request.skipTests(), null, request.profile());
+            plan = BuildForecasting.explainFromGraph(preflight.graph(), request.cache(), null, knobs);
         }
         return testRunPlan(BuildForecasting.restrictToSelection(plan, preflight.dirty()), preflight, request);
     }

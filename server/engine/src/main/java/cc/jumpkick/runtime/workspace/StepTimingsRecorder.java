@@ -11,10 +11,8 @@ import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.NativeEffort;
 import cc.jumpkick.runtime.base.HostLearnedRates;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.StepTimings;
-import cc.jumpkick.runtime.base.TestClassWalls;
-import cc.jumpkick.runtime.base.TestSuiteRunners;
-import cc.jumpkick.runtime.base.TestSuiteTiers;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -53,10 +51,10 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     /** Optional continuous host calibration samples (may be null). */
     private final @Nullable List<HostLearnedRates.HostSample> hostSink;
     /** The suite this module's {@code run-tests} runs: its selection, and whether it is all of the suite. */
-    private final TestSuiteTiers.Suite suite;
+    private final RunMeasures.Suite suite;
 
     /** The default selection's whole suite. */
-    private static final TestSuiteTiers.Suite DEFAULT_SUITE = new TestSuiteTiers.Suite(TaskNames.RUN_TESTS, false);
+    private static final RunMeasures.Suite DEFAULT_SUITE = new RunMeasures.Suite(TaskNames.RUN_TESTS, false);
 
     public StepTimingsRecorder(String moduleKey, List<StepTimings.Sample> sink) {
         this(moduleKey, sink, null, null, DEFAULT_SUITE);
@@ -88,14 +86,16 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     @Override
     public void planFinish(BuildPlanResult result) {
         if (result == null || result.cancelled() || result.userCancelled()) return;
+        // The run's own measures, journaled with its record: a request without them measures nothing.
+        RunMeasures measures = RunMeasures.current();
         if (!result.success()) {
             // A failed plan trains no rate, but its suite's classes ran for real and their walls
             // price the next run's: a first integration run of the engine failed on one class, and
             // the next ran 249 s with no class walls to read its progress by.
             TestSummary sum = testSummary == null ? null : testSummary.get();
-            if (sum != null && !sum.classWallMs().isEmpty()) {
-                TestSuiteTiers.put(moduleKey, suite);
-                TestClassWalls.put(moduleKey, suite.step(), sum.classWallMs());
+            if (measures != null && sum != null && !sum.classWallMs().isEmpty()) {
+                measures.suite(moduleKey, suite);
+                measures.classWalls(moduleKey, suite.step(), sum.classWallMs());
             }
             return;
         }
@@ -130,12 +130,12 @@ public final class StepTimingsRecorder implements BuildPlanListener {
             methods = (int) Math.min(Integer.MAX_VALUE, sum.succeeded());
         }
         // Where the module's tests are found again: the selection they ran under.
-        TestSuiteTiers.put(moduleKey, suite);
+        if (measures != null) measures.suite(moduleKey, suite);
         // Per-class walls for next ETA (no method counting), under this selection: one tier's
         // classes are never priced from another's. Kept for a --class run too: a class's wall is
         // a measurement whoever selected it.
-        if (sum != null && !sum.classWallMs().isEmpty()) {
-            TestClassWalls.put(moduleKey, suite.step(), sum.classWallMs());
+        if (measures != null && sum != null && !sum.classWallMs().isEmpty()) {
+            measures.classWalls(moduleKey, suite.step(), sum.classWallMs());
         }
         // A --class run times the classes it ran, not the suite: leave no suite wall behind.
         if (suite.partial()) return;
@@ -174,8 +174,8 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         // above is not a prediction of anything: it is one runner count's outcome. Capped at the
         // class count: runners past the classes ran nothing, and normalizing with them would store
         // the wall as if they had.
-        if (sum != null && sum.workers() > 0) {
-            TestSuiteRunners.put(moduleKey, TestSuiteScaling.effectiveRunners(sum.workers(), classes));
+        if (measures != null && sum != null && sum.workers() > 0) {
+            measures.runners(moduleKey, TestSuiteScaling.effectiveRunners(sum.workers(), classes));
         }
     }
 
@@ -196,8 +196,9 @@ public final class StepTimingsRecorder implements BuildPlanListener {
                 hostSink.add(
                         new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_ASSEMBLY_MS, wallMs, MAX_PACKAGE_MS));
             case TaskNames.NATIVE_IMAGE -> {
-                // Size-conditioned host rates when this process recorded input bytes for the module.
-                long bytes = NativeEffort.takeLastInputBytes(moduleKey);
+                // Size-conditioned host rates when this run recorded input bytes for the module.
+                RunMeasures measures = RunMeasures.current();
+                long bytes = measures == null ? 0 : measures.takeNativeInputBytes(moduleKey);
                 if (bytes <= 0) bytes = NativeEffort.estimateInputBytes(Path.of(moduleKey));
                 for (HostLearnedRates.HostSample s : NativeEffort.hostSamples(wallMs, bytes)) {
                     hostSink.add(s);

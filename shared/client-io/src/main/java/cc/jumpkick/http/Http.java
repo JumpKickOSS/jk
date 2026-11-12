@@ -68,13 +68,16 @@ public final class Http {
 
     private static final Function<URI, Optional<String>> NO_AUTHORIZATION = uri -> Optional.empty();
 
-    private static final Duration[] BACKOFFS = {
-        Duration.ofMillis(100),
-        Duration.ofMillis(200),
-        Duration.ofMillis(400),
-        Duration.ofMillis(800),
-        Duration.ofMillis(1600),
-    };
+    /** The retry delays a default client waits between attempts; a fresh array, since one can be written. */
+    private static Duration[] backoffs() {
+        return new Duration[] {
+            Duration.ofMillis(100),
+            Duration.ofMillis(200),
+            Duration.ofMillis(400),
+            Duration.ofMillis(800),
+            Duration.ofMillis(1600),
+        };
+    }
 
     /**
      * How long a GET or a form POST waits for the response to start once the connection is up. A
@@ -144,11 +147,11 @@ public final class Http {
      */
     public static final String DENY_HOSTS_ENV = "JK_HTTP_DENY_HOSTS";
 
-    private static final Set<String> DENIED_BY_ENV = deniedHosts(ProcessEnv.get(DENY_HOSTS_ENV));
+    private static final Set<String> DENIED_BY_ENV = Set.copyOf(deniedHosts(ProcessEnv.get(DENY_HOSTS_ENV)));
 
     /** A client whose requests go through {@link ProxyEnvironment#ambient()}. */
     public Http() {
-        this(ProxyEnvironment.ambient(), BACKOFFS);
+        this(ProxyEnvironment.ambient(), backoffs());
     }
 
     /**

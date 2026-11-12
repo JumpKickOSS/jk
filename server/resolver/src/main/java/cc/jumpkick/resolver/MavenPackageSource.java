@@ -38,9 +38,12 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -116,6 +119,19 @@ public final class MavenPackageSource implements PackageSource {
     private final Map<String, Cached> versionCache = new ConcurrentHashMap<>();
     /** pkg → its full advertised history; see {@link #cachedCandidates}. */
     private final Map<String, Cached> expandedVersionCache = new ConcurrentHashMap<>();
+
+    /**
+     * The candidate read running now per cache and package; see {@link #cachedCandidates}. Holds
+     * only reads in flight, each removed as it ends.
+     */
+    private final Map<String, CompletableFuture<Cached>> candidateReads = new ConcurrentHashMap<>();
+
+    /**
+     * Runs between a candidate read's look in its cache and its claim on the read: the window in
+     * which another caller's read of the same package can finish and land. Package-visible so a
+     * test can hold a caller there.
+     */
+    static volatile Runnable candidatesMissed = () -> {};
 
     /** A candidate list with the wanted set it was computed for, stored as one entry so the two never disagree. */
     private record Cached(List<String> versions, Set<String> wanted) {}
@@ -413,17 +429,51 @@ public final class MavenPackageSource implements PackageSource {
      * what must send the walk on to the next one. The read runs outside the map, since a
      * repository read can take seconds and a lock on the entry would stall every other package
      * in its bin; the result is installed only while no entry computed for a superset of
-     * {@code wanted} has landed, so two threads asking at once may read twice but never leave a
-     * list labelled with a wanted set it was not computed for.
+     * {@code wanted} has landed, so no list is ever labelled with a wanted set it was not
+     * computed for.
+     *
+     * <p>One read per package and cache at a time: the warm-up and the solver's decide ask for the
+     * same package, and a caller that finds a read running waits for it and takes its list when it
+     * covers {@code wanted}. The caller that claims the read looks in the cache once more first,
+     * since a read can end and land between its first look and its claim; without that second
+     * look, a catalog no memo below vouches for (a loopback repository's) was asked for twice.
+     * A leader's failure is not the waiter's: it looks again and reads itself.
      */
     private List<String> cachedCandidates(Map<String, Cached> cache, String pkg, Set<String> wanted, CandidateRead read)
             throws IOException, InterruptedException {
-        Cached current = cache.get(pkg);
-        if (current != null && current.wanted().containsAll(wanted)) return current.versions();
-        Cached fresh = new Cached(read.read(), Set.copyOf(wanted));
-        return cache.compute(
-                        pkg, (k, cached) -> cached != null && cached.wanted().containsAll(wanted) ? cached : fresh)
-                .versions();
+        String flight = (cache == versionCache ? "window|" : "history|") + pkg;
+        while (true) {
+            Cached current = cache.get(pkg);
+            if (current != null && current.wanted().containsAll(wanted)) return current.versions();
+            candidatesMissed.run();
+            CompletableFuture<Cached> mine = new CompletableFuture<>();
+            CompletableFuture<Cached> theirs = candidateReads.putIfAbsent(flight, mine);
+            if (theirs != null) {
+                Cached led;
+                try {
+                    led = theirs.get();
+                } catch (ExecutionException | CancellationException leaderFailed) {
+                    continue;
+                }
+                if (led.wanted().containsAll(wanted)) return led.versions();
+                continue;
+            }
+            try {
+                Cached landed = cache.get(pkg);
+                Cached fresh = landed != null && landed.wanted().containsAll(wanted)
+                        ? landed
+                        : new Cached(read.read(), Set.copyOf(wanted));
+                Cached installed = cache.compute(
+                        pkg, (k, cached) -> cached != null && cached.wanted().containsAll(wanted) ? cached : fresh);
+                mine.complete(installed);
+                return installed.versions();
+            } catch (Throwable failure) {
+                mine.completeExceptionally(failure);
+                throw failure;
+            } finally {
+                candidateReads.remove(flight, mine);
+            }
+        }
     }
 
     @Override

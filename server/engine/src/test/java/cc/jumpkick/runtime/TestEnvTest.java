@@ -19,6 +19,7 @@ import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.util.TestHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -221,7 +222,9 @@ class TestEnvTest {
             // Still not keyed, even while the session carrying PATH is bound — the stamp
             // must be computed inside the scope or this guard proves nothing: machine env
             // is the shape of the world, not a build input.
-            assertThat(PlannerSupport.testStampExtras(tmp, project)).noneMatch(s -> s.contains("PATH="));
+            assertThat(TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                            .extras())
+                    .noneMatch(s -> s.contains("PATH="));
             return null;
         });
     }
@@ -330,9 +333,13 @@ class TestEnvTest {
         JkBuild before = project(tmp, "[test]\nenv = [{ MODE = \"a\" }]\n");
         JkBuild after = project(tmp, "[test]\nenv = [{ MODE = \"b\" }]\n");
 
-        assertThat(PlannerSupport.testStampExtras(tmp, before))
-                .isNotEqualTo(PlannerSupport.testStampExtras(tmp, after));
-        assertThat(PlannerSupport.testStampExtras(tmp, before)).contains("test-env:MODE=a");
+        assertThat(TestStampInputs.of(TestStampInputs.Facts.of(tmp, before), ClasspathFingerprint.ON_DISK)
+                        .extras())
+                .isNotEqualTo(TestStampInputs.of(TestStampInputs.Facts.of(tmp, after), ClasspathFingerprint.ON_DISK)
+                        .extras());
+        assertThat(TestStampInputs.of(TestStampInputs.Facts.of(tmp, before), ClasspathFingerprint.ON_DISK)
+                        .extras())
+                .contains("test-env:MODE=a");
     }
 
     @Test
@@ -344,7 +351,8 @@ class TestEnvTest {
         String home = System.getenv("HOME");
         org.junit.jupiter.api.Assumptions.assumeTrue(home != null && !home.isBlank());
 
-        List<String> extras = PlannerSupport.testStampExtras(tmp, project);
+        List<String> extras = TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                .extras();
 
         assertThat(extras).noneMatch(s -> s.contains(home));
         assertThat(extras).anyMatch(s -> s.startsWith("test-env:HOME_DIR=" + SecretRedactor.KEY_PREFIX));
@@ -357,13 +365,15 @@ class TestEnvTest {
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + secret + "\n");
         JkBuild project = project(tmp, "[test]\nenv = [{ API_KEY = \"${TOKEN}\" }]\n");
 
-        List<String> extras = PlannerSupport.testStampExtras(tmp, project);
+        List<String> extras = TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                .extras();
         assertThat(extras).noneMatch(s -> s.contains(secret));
         assertThat(extras).anyMatch(s -> s.startsWith("test-env:API_KEY=" + SecretRedactor.KEY_PREFIX));
 
         // A different secret must retest (different digest).
         Files.writeString(tmp.resolve(".env"), "TOKEN=other-secret-value\n");
-        List<String> after = PlannerSupport.testStampExtras(tmp, project);
+        List<String> after = TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                .extras();
         assertThat(after).isNotEqualTo(extras);
         assertThat(after).noneMatch(s -> s.contains("other-secret-value"));
     }
@@ -381,7 +391,9 @@ class TestEnvTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY")
                 .hasMessageContaining(UNSET);
-        assertThatThrownBy(() -> PlannerSupport.testStampExtras(tmp, project))
+        assertThatThrownBy(
+                        () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                                .extras())
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY")
                 .hasMessageContaining(UNSET);
@@ -399,21 +411,27 @@ class TestEnvTest {
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));
 
         // Cold: nothing cached for this module.
-        assertThatThrownBy(() -> PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
+        assertThatThrownBy(
+                        () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                                .forecastKey(false, classes, null, lock))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY");
 
         // Give the variable a value, take the key the build would use and store the green marker
         // under it — "this module's tests are cached" is now true on disk.
         Files.writeString(tmp.resolve(".env"), UNSET + "=a-value-long-enough-to-count\n");
-        String key = requireNonNull(PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of()));
+        String key =
+                requireNonNull(TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                        .forecastKey(false, classes, null, lock));
         cache.storeWithOutputs("run-tests", key, Map.of(), Map.of("tests.total", "1"));
         assertThat(cache.lookup(key)).isPresent();
 
         // Take the value away again. Same manifest, same marker: the plan must fail as it did cold,
         // not key on the raw ${VAR} text and let the forecast report a skip.
         Files.delete(tmp.resolve(".env"));
-        assertThatThrownBy(() -> PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
+        assertThatThrownBy(
+                        () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                                .forecastKey(false, classes, null, lock))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY");
     }
@@ -441,7 +459,9 @@ class TestEnvTest {
         assertThat(env.inherit()).isTrue();
         assertThat(env.extras()).containsEntry("TZ", "PST8PDT").containsEntry("LANG", "C");
         // Both tables key the run: a changed [env] var must retest as a changed [test] env does.
-        assertThat(PlannerSupport.testStampExtras(tmp, project)).contains("test-env:TZ=PST8PDT", "test-env:LANG=C");
+        assertThat(TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                        .extras())
+                .contains("test-env:TZ=PST8PDT", "test-env:LANG=C");
     }
 
     @Test
@@ -457,9 +477,13 @@ class TestEnvTest {
                 RequestShell.where(shell, () -> TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project)));
 
         assertThat(env.extras()).containsEntry("JK_DECLARED_PROBE", "one").doesNotContainKey(UNSET);
-        List<String> one = RequestShell.where(shell, () -> PlannerSupport.testStampExtras(tmp, project));
-        List<String> two = RequestShell.where(
-                Map.of("PATH", "/bin", "JK_DECLARED_PROBE", "two"), () -> PlannerSupport.testStampExtras(tmp, project));
+        List<String> one = RequestShell.where(
+                shell, () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                        .extras());
+        List<String> two =
+                RequestShell.where(Map.of("PATH", "/bin", "JK_DECLARED_PROBE", "two"), () -> TestStampInputs.of(
+                                TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
+                        .extras());
         assertThat(one)
                 .anyMatch(s -> s.startsWith("test-env:JK_DECLARED_PROBE="))
                 .noneMatch(s -> s.contains("one"));

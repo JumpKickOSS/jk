@@ -105,8 +105,8 @@ class AndroidKmpRedirectTest {
         Files.writeString(project.resolve("jk.toml"), jkToml);
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult result = lock.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();

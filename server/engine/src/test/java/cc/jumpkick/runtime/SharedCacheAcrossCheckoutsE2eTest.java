@@ -3,10 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -223,9 +221,7 @@ class SharedCacheAcrossCheckoutsE2eTest {
     }
 
     private static void lock(Path ws, Path cache) throws Exception {
-        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
     }
 

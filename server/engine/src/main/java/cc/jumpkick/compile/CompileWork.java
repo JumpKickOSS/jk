@@ -4,6 +4,8 @@ package cc.jumpkick.compile;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.WorkerScope;
+import cc.jumpkick.runtime.base.RunMeasures;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +38,14 @@ final class CompileWork {
     long job;
 
     Session session = SessionContext.current();
+
+    /** The measures of the job that asked: a worker started for this item is that job's warm-up. */
+    @Nullable
+    RunMeasures measures;
+
+    /** The forks of the job that asked: once they are shut down, the item is cancelled. */
+    @Nullable
+    WorkerScope scope;
 
     /**
      * How many workers died with this item in flight and were charged for it; a second fails it. A
@@ -105,9 +115,17 @@ final class CompileWork {
     CompileWork forJob(long job, Session session) {
         this.job = job;
         this.session = session;
+        this.measures = RunMeasures.current();
+        this.scope = WorkerScope.current();
         RequestShell bound = RequestShell.current();
         this.shell = bound == null ? null : bound.vars();
         return this;
+    }
+
+    /** Whether the job that asked has ended: nothing waits on this item's answer. */
+    boolean ended() {
+        WorkerScope s = scope;
+        return s != null && s.ended();
     }
 
     /** Whether this item has its answer, or its failure. */

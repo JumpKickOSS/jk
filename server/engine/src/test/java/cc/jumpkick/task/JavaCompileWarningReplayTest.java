@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
-import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
@@ -14,10 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,18 +29,6 @@ class JavaCompileWarningReplayTest {
     private static final String OLD = "package a; public class Old { @Deprecated public static void f() {} }";
     private static final String USES_OLD = "package a; public class A { void use() { Old.f(); } }";
     private static final String CLEAN_B = "package a; public class B { int v() { return 1; } }";
-
-    private JavaCompilerHost.@Nullable Scope job;
-
-    @BeforeEach
-    void openJob() {
-        job = JavaCompilerHost.open();
-    }
-
-    @AfterEach
-    void closeJob() {
-        if (job != null) job.close();
-    }
 
     @Test
     void a_cache_hit_says_the_warnings_its_compile_said(@TempDir Path dir) throws Exception {

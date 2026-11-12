@@ -40,6 +40,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -52,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -67,6 +67,7 @@ final class GuardKeys {
     private GuardKeys() {}
 
     /** The lane key: the lane's read-set tokens plus the baseline slice the verdict was judged against. */
+    @KeyOwner(step = TaskNames.GUARD + "*")
     static String laneKey(String taskId, List<String> tokens, String baselineSlice) {
         List<String> all = new ArrayList<>(tokens);
         all.add("baseline:" + baselineSlice);
@@ -123,20 +124,10 @@ final class GuardKeys {
         md.update((tag + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
     }
 
-    /** The baseline parsed once per content: every lane of a build reads the same file. */
+    /** The baseline as {@link BaselineFile#read} memoizes it: every lane of a build reads the same file. */
     private static Baseline parsedBaseline(Path file) throws IOException {
-        Path abs = file.toAbsolutePath().normalize();
-        String hash = FileHashMemo.contentHash(abs);
-        Parsed held = PARSED.get(abs);
-        if (held != null && held.hash().equals(hash)) return held.baseline();
-        Baseline read = BaselineFile.read(abs);
-        PARSED.put(abs, new Parsed(hash, read));
-        return read;
+        return BaselineFile.read(file.toAbsolutePath().normalize());
     }
-
-    private record Parsed(String hash, Baseline baseline) {}
-
-    private static final Map<Path, Parsed> PARSED = new ConcurrentHashMap<>();
 
     static void addRuleTokens(List<String> tokens, LoadResult load) {
         for (var e : load.rules().sourceDigests().entrySet()) tokens.add("rules:" + e.getKey() + ":" + e.getValue());
@@ -145,13 +136,13 @@ final class GuardKeys {
     }
 
     /**
-     * The forecast's {@code guard} step for one module, or empty when the workspace has no guards
-     * or {@code --skip-tests} skips the lanes. CACHED only when the facts index is current and the lane's verdict is in the cache; RUN
-     * otherwise, which is what makes the module dirty.
+     * The forecast's {@code guard} step for one module, or empty when the workspace has no guards.
+     * {@code testsIndexed} is whether the plan's lane indexes the test classes ({@link
+     * PlannerGuards#indexesTestClasses}). CACHED only when the facts index is current and the lane's
+     * verdict is in the cache; RUN otherwise, which is what makes the module dirty.
      */
     static Optional<TaskForecast.Task> forecastModuleLane(
-            Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean skipTests) {
-        if (PlannerGuards.lanesSkipped(skipTests, PlannerGuards.guardRequested())) return Optional.empty();
+            Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean testsIndexed) {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
         if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.guardRequested())) return Optional.empty();
@@ -160,7 +151,7 @@ final class GuardKeys {
         if (upstreamDirty) return Optional.of(run("guards · module recompiles"));
         try {
             LoadResult load = PlannerGuards.rules(g);
-            LaneProbe probe = probeModuleLane(root, dir, layout, load, !skipTests);
+            LaneProbe probe = probeModuleLane(root, dir, layout, load, testsIndexed);
             String key = probe.key();
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
@@ -182,14 +173,14 @@ final class GuardKeys {
     }
 
     /** The module-lane key token of a run that compiled no tests, and so ran no rule over them. */
-    static final String TESTS_NOT_COMPILED = "tests:not-compiled";
+    private static final String TESTS_NOT_COMPILED = "tests:not-compiled";
 
     /** A module lane's forecast key, or why the lane runs with none (an index to extract first). */
     record LaneProbe(@Nullable String key, String runReason) {}
 
     /**
-     * The key the module lane at {@code dir} would run under, read-only: the run builds the same
-     * tokens in the same order, the suite's through {@link #suiteTokens}.
+     * The key the module lane at {@code dir} would run under, read-only: its tokens come from
+     * {@link #moduleLaneTokens}, as the run's do.
      */
     static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load, boolean testsIndexed)
             throws IOException {
@@ -197,23 +188,25 @@ final class GuardKeys {
         Optional<String> main =
                 FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
         if (main.isEmpty()) return new LaneProbe(null, "guards · facts index stale");
-        List<String> tokens = moduleTokens(WorkspaceModel.rel(root, dir), main.get(), dir);
         Path testClasses = layout.testClassesDir();
+        String testFacts = null;
         if (testsIndexed && Files.isDirectory(testClasses)) {
             Optional<String> test =
                     FactsIndexing.freshDigest(testClasses, FactsIndexing.indexPath(layout.buildDir(), "test"));
             if (test.isEmpty()) return new LaneProbe(null, "guards · test facts index stale");
-            tokens.add("test-facts:" + test.get());
+            testFacts = test.get();
         }
-        if (!testsIndexed) tokens.add(TESTS_NOT_COMPILED);
+        List<String> suiteTokens = List.of();
         Path guardClasses = layout.guardClassesDir();
         if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(dir, PlannerGuards.compact(dir))) {
             Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");
             Optional<String> suite = FactsIndexing.freshDigest(guardClasses, suiteIndex);
             if (suite.isEmpty()) return new LaneProbe(null, "guards · guard suite index stale");
             List<GuardSuites.Declared> declared = GuardSuites.declared(FactsFormat.read(suiteIndex));
-            tokens.addAll(suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null)));
+            suiteTokens = suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null));
         }
+        List<String> tokens =
+                moduleLaneTokens(WorkspaceModel.rel(root, dir), main.get(), dir, testsIndexed, testFacts, suiteTokens);
         addRuleTokens(tokens, load);
         return new LaneProbe(
                 laneKey(
@@ -224,14 +217,36 @@ final class GuardKeys {
     }
 
     /**
-     * The head of a module lane's key, for the run and the forecast alike: the module, its facts
+     * A module lane's tokens ahead of its rules', for the run and the forecast alike: {@link
+     * #moduleTokens}, the test classes' facts digest when the lane indexes a test tree ({@code
+     * testFacts}, null without one), a token saying the build compiled no tests when it did not, so
+     * the lane's narrower verdict is not the build's, then the guard suite's {@link #suiteTokens}
+     * ({@code suite}, empty without one).
+     */
+    static List<String> moduleLaneTokens(
+            String module,
+            String factsDigest,
+            Path dir,
+            boolean testsIndexed,
+            @Nullable String testFacts,
+            List<String> suite)
+            throws IOException {
+        List<String> tokens = moduleTokens(module, factsDigest, dir);
+        if (testFacts != null) tokens.add("test-facts:" + testFacts);
+        if (!testsIndexed) tokens.add(TESTS_NOT_COMPILED);
+        tokens.addAll(suite);
+        return tokens;
+    }
+
+    /**
+     * The head of a module lane's key: the module, its facts
      * digest, and what its type hierarchy resolves through besides its own classes — the JDK the
      * engine runs on, whose platform classes answer every {@code java.*} supertype, and the ABI of
      * each compile-scope sibling's classes tree, in closure order. An override or a subtype check
      * moves with either, while the module's own facts do not. The siblings are read off the
      * manifest on disk, so the run and the forecast name the same ones.
      */
-    static List<String> moduleTokens(String module, String factsDigest, Path dir) throws IOException {
+    private static List<String> moduleTokens(String module, String factsDigest, Path dir) throws IOException {
         JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
         List<String> tokens = new ArrayList<>();
         tokens.add("module:" + module);

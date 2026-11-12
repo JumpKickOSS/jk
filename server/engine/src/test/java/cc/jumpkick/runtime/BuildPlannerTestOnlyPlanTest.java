@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -415,22 +414,7 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     private BuildPlanner.Inputs inputs(Path dir, boolean testOnly, boolean compileOnly) {
-        return new BuildPlanner.Inputs(
-                dir,
-                tmp.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                testOnly,
-                compileOnly,
-                Set.of(),
-                SessionContext.current());
+        return TestInputs.of(dir, tmp.resolve("cache")).withTestOnly(testOnly).withCompileOnly(compileOnly);
     }
 
     private static Path writePluginJar(Path jar) throws Exception {

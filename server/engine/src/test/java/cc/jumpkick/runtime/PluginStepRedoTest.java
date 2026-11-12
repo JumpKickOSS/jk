@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -134,29 +133,14 @@ class PluginStepRedoTest {
         Path cache = tmp.resolve("cache");
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
         return project;
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         return BuildPlanner.fullPlan(in).run();
     }
 

@@ -36,12 +36,20 @@ public final class EffectivePomBuilder {
     private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)\\}");
 
     private final RepoGroup repos;
-    private final Map<String, EffectivePom> cache = new ConcurrentHashMap<>();
+    private final Map<String, Built> cache = new ConcurrentHashMap<>();
+
+    /**
+     * A model and whether it rests on a non-unique snapshot other than its own POM: a parent or an
+     * imported BOM, at any depth, that a re-install or a deploy replaces in place. The memo's key
+     * names only the POM's own file, so such a model is never kept past the builder that made it.
+     */
+    private record Built(EffectivePom pom, boolean moving) {}
 
     /**
      * Process-wide effective-POM memo, keyed by the POM file the group served and its digest: two
      * groups — a POM that declares its own repositories makes another — that reach the same file
-     * share one model. No TTL: published release GAVs are immutable; force / {@link
+     * share one model. No TTL: published release GAVs are immutable, and a model whose parent chain
+     * or BOM imports reach a non-unique snapshot is not kept at all; force / {@link
      * #clearProcessCache} drop the memo and the idle engine drops it through {@link
      * #dropProcessMemo}. Bounded by {@value #PROCESS_WEIGHT_MAX} weight of declared entries, the
      * least recently used going first.
@@ -60,7 +68,7 @@ public final class EffectivePomBuilder {
     private static final ConcurrentHashMap<String, Flight> IN_FLIGHT = new ConcurrentHashMap<>();
 
     /** An in-flight single-flight build and the thread performing it. */
-    private record Flight(CompletableFuture<EffectivePom> future, Thread owner) {}
+    private record Flight(CompletableFuture<Built> future, Thread owner) {}
 
     /**
      * Flight key each thread is currently parked on in {@link #awaitShared}. Together with the
@@ -112,7 +120,7 @@ public final class EffectivePomBuilder {
      */
     public EffectivePom build(Pom raw) throws IOException, InterruptedException {
         Objects.requireNonNull(raw, "raw");
-        return merge(raw, new HashSet<>(), 0);
+        return merge(raw, new HashSet<>(), 0).pom();
     }
 
     /**
@@ -121,11 +129,11 @@ public final class EffectivePomBuilder {
      */
     public EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
         boolean profile = ResolveProfile.on();
-        long t0 = profile ? System.nanoTime() : 0L;
+        long t0 = profile ? Clock.SYSTEM.nanos() : 0L;
         boolean known = cache.containsKey(coord.toGav());
-        EffectivePom built = buildInternal(coord, new HashSet<>(), 0);
+        EffectivePom built = buildInternal(coord, new HashSet<>(), 0).pom();
         if (profile) {
-            ResolveProfile.pomBuild(known ? 0L : System.nanoTime() - t0, known);
+            ResolveProfile.pomBuild(known ? 0L : Clock.SYSTEM.nanos() - t0, known);
         }
         return built;
     }
@@ -153,13 +161,13 @@ public final class EffectivePomBuilder {
                 + pom.inheritedManaged().size();
     }
 
-    private EffectivePom buildInternal(Coordinate coord, Set<String> visiting, int depth)
+    private Built buildInternal(Coordinate coord, Set<String> visiting, int depth)
             throws IOException, InterruptedException {
         if (depth > MAX_DEPTH) {
             throw new PomParseException("POM parent / BOM chain deeper than " + MAX_DEPTH + " at " + coord);
         }
         String localKey = coord.toGav();
-        EffectivePom cached = cache.get(localKey);
+        Built cached = cache.get(localKey);
         if (cached != null) return cached;
         RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
                 .orElseThrow(() ->
@@ -167,8 +175,9 @@ public final class EffectivePomBuilder {
         String processKey = processKey(hit);
         EffectivePom processHit = PROCESS_CACHE.get(processKey);
         if (processHit != null) {
-            cache.put(localKey, processHit);
-            return processHit;
+            Built hitBuilt = new Built(processHit, false);
+            cache.put(localKey, hitBuilt);
+            return hitBuilt;
         }
         if (!visiting.add(localKey)) {
             throw new PomParseException("cycle in POM chain at " + localKey + " (already visiting: " + visiting + ")");
@@ -181,7 +190,7 @@ public final class EffectivePomBuilder {
             Flight mine = new Flight(new CompletableFuture<>(), Thread.currentThread());
             Flight existing = IN_FLIGHT.putIfAbsent(flightKey, mine);
             if (existing != null) {
-                EffectivePom shared = awaitShared(localKey, flightKey, existing);
+                Built shared = awaitShared(localKey, flightKey, existing);
                 if (shared != null) {
                     cache.put(localKey, shared);
                     return shared;
@@ -206,18 +215,20 @@ public final class EffectivePomBuilder {
     }
 
     /** Parse + merge one served POM; publishes to caches and completes {@code flight} when non-null. */
-    private EffectivePom parseAndMerge(
+    private Built parseAndMerge(
             RepoGroup.RepoFetched hit,
             String localKey,
             String processKey,
             Set<String> visiting,
             int depth,
-            @Nullable CompletableFuture<EffectivePom> flight)
+            @Nullable CompletableFuture<Built> flight)
             throws IOException, InterruptedException {
         Pom raw = StorePoms.parse(hit.fetched().cachePath());
-        EffectivePom effective = merge(raw, visiting, depth);
+        Built effective = merge(raw, visiting, depth);
         cache.put(localKey, effective);
-        if (PROCESS_CACHE.get(processKey) == null) PROCESS_CACHE.put(processKey, effective);
+        if (!effective.moving() && PROCESS_CACHE.get(processKey) == null) {
+            PROCESS_CACHE.put(processKey, effective.pom());
+        }
         if (flight != null) {
             flight.complete(effective);
         }
@@ -230,16 +241,16 @@ public final class EffectivePomBuilder {
      * completing, or the generous {@link #JOIN_FALLBACK_MS} bound elapsed — in which case the
      * caller degrades to an independent in-line walk.
      */
-    private static @Nullable EffectivePom awaitShared(String localKey, String flightKey, Flight flight)
+    private static @Nullable Built awaitShared(String localKey, String flightKey, Flight flight)
             throws IOException, InterruptedException {
         Thread self = Thread.currentThread();
         WAITING_ON.put(self, flightKey);
         try {
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
+            long deadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
             while (true) {
                 if (joinWouldDeadlock(self, flight)) return null;
                 if (!flight.future().isDone() && !flight.owner().isAlive()) return null;
-                if (!flight.future().isDone() && System.nanoTime() - deadline > 0) return null;
+                if (!flight.future().isDone() && Clock.SYSTEM.nanos() - deadline > 0) return null;
                 try {
                     return flight.future().get(JOIN_POLL_MS, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
@@ -276,13 +287,21 @@ public final class EffectivePomBuilder {
         return false;
     }
 
-    private EffectivePom merge(Pom child, Set<String> visiting, int depth) throws IOException, InterruptedException {
+    /** {@code child}'s parent model, moving when the parent is itself a non-unique snapshot; null without one. */
+    private @Nullable Built parentOf(Pom child, Set<String> visiting, int depth)
+            throws IOException, InterruptedException {
+        Pom.Parent p = child.parent();
+        if (p == null) return null;
+        Coordinate coord = Coordinate.of(p.groupId(), p.artifactId(), p.version());
+        Built built = buildInternal(coord, visiting, depth + 1);
+        return new Built(built.pom(), built.moving() || MovingSnapshots.moving(coord));
+    }
 
-        EffectivePom parent = null;
-        if (child.parent() != null) {
-            Pom.Parent p = child.parent();
-            parent = buildInternal(Coordinate.of(p.groupId(), p.artifactId(), p.version()), visiting, depth + 1);
-        }
+    private Built merge(Pom child, Set<String> visiting, int depth) throws IOException, InterruptedException {
+
+        Built parentBuilt = parentOf(child, visiting, depth);
+        EffectivePom parent = parentBuilt == null ? null : parentBuilt.pom();
+        boolean moving = parentBuilt != null && parentBuilt.moving();
 
         // 1. Coords — child wins, parent fills holes.
         String groupId = child.groupId() != null ? child.groupId() : (parent != null ? parent.groupId() : null);
@@ -328,14 +347,15 @@ public final class EffectivePomBuilder {
         if (parent != null) imports.addAll(parent.inheritedImports());
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
         for (Pom.Dep dep : imports) bomCoordsOrdered.add(bomCoordinate(dep, props));
-        Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
+        Map<String, Built> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
         for (Coordinate bomCoord : bomCoordsOrdered) {
-            EffectivePom bom = bomsByGav.get(bomCoord.toGav());
+            Built bom = bomsByGav.get(bomCoord.toGav());
             if (bom == null) {
                 // Should not happen; fall back to serial expand.
                 bom = buildInternal(bomCoord, visiting, depth + 1);
             }
-            importedManaged.addAll(bom.managedDependencies());
+            moving |= bom.moving() || MovingSnapshots.moving(bomCoord);
+            importedManaged.addAll(bom.pom().managedDependencies());
         }
         for (Pom.Dep dep : child.managedDependencies()) {
             if (!isBomImport(dep)) declaredManaged.add(dep);
@@ -420,21 +440,23 @@ public final class EffectivePomBuilder {
         }
 
         // A relocation belongs to the POM that declares it — it is not inherited from a parent.
-        return new EffectivePom(
-                groupId,
-                child.artifactId(),
-                version,
-                child.packaging(),
-                retainedProps,
-                finalDeps,
-                retainedManaged,
-                retainedImportedKeys,
-                child.relocation(),
-                hostClassified,
-                repositories(child, parent),
-                retainedInherited,
-                !child.licenses().isEmpty() || parent == null ? child.licenses() : parent.licenses(),
-                pomPackaging ? List.copyOf(imports) : List.of());
+        return new Built(
+                new EffectivePom(
+                        groupId,
+                        child.artifactId(),
+                        version,
+                        child.packaging(),
+                        retainedProps,
+                        finalDeps,
+                        retainedManaged,
+                        retainedImportedKeys,
+                        child.relocation(),
+                        hostClassified,
+                        repositories(child, parent),
+                        retainedInherited,
+                        !child.licenses().isEmpty() || parent == null ? child.licenses() : parent.licenses(),
+                        pomPackaging ? List.copyOf(imports) : List.of()),
+                moving);
     }
 
     /** The child's own {@code <repositories>} first, then the parent chain's, one entry per URL. */
@@ -476,8 +498,8 @@ public final class EffectivePomBuilder {
      * Expand unique {@code import}-scoped BOM POMs keyed by GAV. One unique BOM stays on the caller
      * thread; several run on {@link JkThreads#io} with independent cycle sets.
      */
-    private Map<String, EffectivePom> buildBomImportsParallel(
-            List<Coordinate> bomCoords, Set<String> visiting, int depth) throws IOException, InterruptedException {
+    private Map<String, Built> buildBomImportsParallel(List<Coordinate> bomCoords, Set<String> visiting, int depth)
+            throws IOException, InterruptedException {
         // Dedupe while preserving first-seen order.
         LinkedHashMap<String, Coordinate> unique = new LinkedHashMap<>();
         for (Coordinate c : bomCoords) {
@@ -488,7 +510,7 @@ public final class EffectivePomBuilder {
             Coordinate only = unique.values().iterator().next();
             return Map.of(only.toGav(), buildInternal(only, visiting, depth));
         }
-        Map<String, CompletableFuture<EffectivePom>> futures = new LinkedHashMap<>();
+        Map<String, CompletableFuture<Built>> futures = new LinkedHashMap<>();
         for (var e : unique.entrySet()) {
             Set<String> childVisiting = new HashSet<>(visiting);
             Coordinate bomCoord = e.getValue();
@@ -504,7 +526,7 @@ public final class EffectivePomBuilder {
                             },
                             JkThreads.io()));
         }
-        Map<String, EffectivePom> out = new LinkedHashMap<>();
+        Map<String, Built> out = new LinkedHashMap<>();
         Thread self = Thread.currentThread();
         try {
             joinExpansions(unique, futures, out, self);
@@ -537,8 +559,8 @@ public final class EffectivePomBuilder {
      * Returns its result, or {@code null} when the wait loops back to {@code self} (a cycle the
      * caller resolves by expanding in-line) or {@code deadline} passed.
      */
-    private static @Nullable EffectivePom awaitExpansion(
-            String bomKey, CompletableFuture<EffectivePom> future, Thread self, long deadline)
+    private static @Nullable Built awaitExpansion(
+            String bomKey, CompletableFuture<Built> future, Thread self, long deadline)
             throws ExecutionException, InterruptedException {
         WAITING_ON.put(self, bomKey);
         try {
@@ -558,8 +580,8 @@ public final class EffectivePomBuilder {
 
     private void joinExpansions(
             LinkedHashMap<String, Coordinate> unique,
-            Map<String, CompletableFuture<EffectivePom>> futures,
-            Map<String, EffectivePom> out,
+            Map<String, CompletableFuture<Built>> futures,
+            Map<String, Built> out,
             Thread self)
             throws IOException, InterruptedException {
         for (var e : futures.entrySet()) {
@@ -570,7 +592,7 @@ public final class EffectivePomBuilder {
             String bomKey = flightKey(Objects.requireNonNull(unique.get(e.getKey())));
             long deadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
             try {
-                EffectivePom bom = awaitExpansion(bomKey, e.getValue(), self, deadline);
+                Built bom = awaitExpansion(bomKey, e.getValue(), self, deadline);
                 if (bom != null) out.put(e.getKey(), bom);
             } catch (ExecutionException ex) {
                 Throwable c = ex.getCause() != null ? ex.getCause() : ex;

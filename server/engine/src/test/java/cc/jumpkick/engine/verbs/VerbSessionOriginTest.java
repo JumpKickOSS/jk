@@ -35,7 +35,7 @@ class VerbSessionOriginTest {
 
     /** Reaching any of these means the verb plans, builds, forecasts or keys under a session. */
     private static final Pattern BUILD_PATH = Pattern.compile(
-            "BuildPlanner|BuildService|PlannerSupport|TestStamp|BuildEnv|ExplainReport|ExecPlans\\.|PluginCommands\\.");
+            "BuildPlanner|BuildService|TestStamp|BuildEnv|ExplainReport|ExecPlans\\.|PluginCommands\\.");
 
     /** Verb sources that read a request line and reach the build path. */
     private static List<Path> planningVerbs() throws IOException {

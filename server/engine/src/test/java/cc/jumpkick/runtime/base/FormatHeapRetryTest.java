@@ -26,15 +26,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A format worker that runs out of its heap climbs the heap ladder and finishes, each file counted
- * once across the attempts, and the next run starts at a heap that fits. A pinned heap is not
- * retried.
+ * once across the attempts, each retry a warning on the step, and the next run starts at a heap
+ * that fits. A pinned heap is not retried.
  */
 class FormatHeapRetryTest {
 
     @AfterEach
     void reset() {
         WarmWorkers.shutdown();
-        HeapNotes.clear();
         SessionContext.reset();
     }
 
@@ -53,7 +52,7 @@ class FormatHeapRetryTest {
                 .as("the file the dead attempt reported is counted once")
                 .contains(4);
         assertThat(first.observed()).hasSize(4);
-        assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
+        assertThat(first.notes()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(dir.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
 
         LearnedHeaps learned = new LearnedHeaps(state);
@@ -64,7 +63,7 @@ class FormatHeapRetryTest {
         Files.writeString(dir.resolve("heaps"), "");
         Run second = run(java, learned, key, 4);
         assertThat(second.result().success()).isTrue();
-        assertThat(HeapNotes.drain()).isEmpty();
+        assertThat(second.notes()).isEmpty();
         assertThat(Files.readString(dir.resolve("heaps"))).doesNotContain("-Xmx128m");
     }
 
@@ -80,6 +79,9 @@ class FormatHeapRetryTest {
         assertThat(r.result().errors().get(0).message())
                 .startsWith("format worker ran out of heap at 128 MiB, 256 MiB")
                 .contains("[jvm] args");
+        assertThat(r.notes())
+                .as("the retries before the step gave up are still reported")
+                .startsWith("retried with 256 MiB heap after running out of 128 MiB");
     }
 
     @Test
@@ -94,11 +96,19 @@ class FormatHeapRetryTest {
 
         Run r = run(java, heaps, key, 2);
         assertThat(r.result().success()).isFalse();
-        assertThat(HeapNotes.drain()).isEmpty();
+        assertThat(r.notes()).isEmpty();
         assertThat(Files.readString(dir.resolve("heaps"))).isEqualTo("-Xmx128m\n");
     }
 
-    private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed) {}
+    /** The format step's run; {@link #notes} are its heap-retry warnings. */
+    private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed) {
+        List<String> notes() {
+            return result.warnings().stream()
+                    .filter(w -> w.code().equals(HeapNotes.CODE))
+                    .map(w -> String.valueOf(w.message()))
+                    .toList();
+        }
+    }
 
     /** One format step over {@code total} files, forking {@code java} at the heap {@code heaps} chooses. */
     private static Run run(Path java, LearnedHeaps heaps, HeapScope.Key key, int total) {

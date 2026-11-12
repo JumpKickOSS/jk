@@ -23,12 +23,13 @@ import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
 import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.ModuleJar;
-import cc.jumpkick.runtime.PlannerSupport;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.runtime.SelfHostEngine;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -324,11 +325,9 @@ public final class WorkspacePreflightPhase {
                             .call(() -> BuildForecasting.forecastWithFingerprints(
                                     graph,
                                     request.cache(),
-                                    request.skipTests(),
                                     request.entryDir(),
-                                    core,
-                                    true,
-                                    request.profile()));
+                                    BuildKnobs.of(request).withTarget(core),
+                                    true));
                 } catch (RuntimeException e) {
                     throw e;
                 } catch (Exception e) {
@@ -394,11 +393,11 @@ public final class WorkspacePreflightPhase {
         Set<Path> launched = new LinkedHashSet<>();
         for (Map.Entry<Path, Set<Path>> edge : graph.reads().entrySet()) {
             JkBuild consumer = byDir.get(BuildGraph.canonicalPath(edge.getKey()));
-            if (consumer == null || !PlannerSupport.needsNestedEngineIsolation(consumer)) continue;
+            if (consumer == null || !SelfHostEngine.needsNestedEngineIsolation(consumer)) continue;
             for (Path prereq : edge.getValue()) {
                 Path dir = BuildGraph.canonicalPath(prereq);
                 JkBuild module = byDir.get(dir);
-                if (module != null && module.assembly() && PlannerSupport.isEngineModule(module)) launched.add(dir);
+                if (module != null && module.assembly() && SelfHostEngine.isEngineModule(module)) launched.add(dir);
             }
         }
         return Collections.unmodifiableSet(launched);

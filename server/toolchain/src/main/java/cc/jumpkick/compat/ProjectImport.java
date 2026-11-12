@@ -2,6 +2,7 @@
 package cc.jumpkick.compat;
 
 import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.host.JkDirs;
@@ -401,7 +402,7 @@ public final class ProjectImport {
         ChangeActor importer =
                 ChangeActor.importOf(source.toAbsolutePath().normalize().toString());
         for (UserConfigEditor.CredentialTable table : tables) {
-            if (ChangeActor.as(importer, () -> UserConfigEditor.addCredential(configFile, table))) {
+            if (Request.actingAs(importer, () -> UserConfigEditor.addCredential(configFile, table))) {
                 written = true;
             } else if (!UserConfigEditor.declaresRepositoryAt(configFile, table)) {
                 out.warning(table.name() + ": ~/.jk/config.toml has another table by that name; left it");

@@ -4,6 +4,8 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
@@ -24,7 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -42,7 +43,8 @@ public final class BuildMetrics {
     /** In-memory key separator; never appears in a sane path or step name. */
     private static final char SEP = '\n';
 
-    private static final ConcurrentHashMap<Path, BuildMetrics> MEMO = new ConcurrentHashMap<>();
+    /** Each store file as last read, while its stat holds: an engine that took over may have written it. */
+    private static final StampedMemo<Path, FileStamp, BuildMetrics> MEMO = StampedMemo.bounded(16);
 
     /** Serializes concurrent request-finish folds within this engine process. */
     private static final ReentrantLock LOCK = new ReentrantLock();
@@ -178,13 +180,14 @@ public final class BuildMetrics {
         return JkDirs.builds().resolve("metrics.json");
     }
 
-    /** Read-only store for {@code file}, memoized for the process. Missing/unreadable → empty. */
+    /** Read-only store for {@code file}, read again once the file moves. Missing/unreadable → empty. */
     public static BuildMetrics load(Path file) {
         if (file != null && isDefaultMetricsPath(file)) {
             // Production reads the harvested aggregates, never a file at this path.
             return fromAggregates();
         }
-        return MEMO.computeIfAbsent(file, BuildMetrics::read);
+        FileStamp stamp = FileStamp.of(file);
+        return stamp == null ? read(file) : MEMO.get(file, stamp, () -> read(file));
     }
 
     private static boolean isDefaultMetricsPath(Path file) {
@@ -467,7 +470,6 @@ public final class BuildMetrics {
                 }
 
                 write(file, inv, ph);
-                MEMO.remove(file); // next load in this process sees the update
                 if (assignedBuildNumber > 0) return assignedBuildNumber;
                 return projectRunCount(inv, o.dir());
             });
@@ -611,7 +613,6 @@ public final class BuildMetrics {
                 try {
                     if (inv.isEmpty() && ph.isEmpty()) Files.deleteIfExists(file);
                     else write(file, inv, ph);
-                    MEMO.remove(file);
                 } catch (IOException | RuntimeException e) {
                     // advisory — leave the file as-is on failure
                     Log.debug("prune: advisory", e);

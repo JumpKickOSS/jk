@@ -3,10 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -52,9 +50,8 @@ class UpdatePlanProgressTest {
                         List.of()),
                 dir.resolve("jk-lock.toml"));
 
-        JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
-        BuildPlan plan = LockPlans.updateBuildPlan(
-                dir, build, dir.resolve("cache"), null, List.of(), true, null, ResolveObserver.NOOP);
+        BuildPlan plan =
+                LockPlans.updateBuildPlan(dir, dir.resolve("cache"), null, List.of(), true, null, ResolveObserver.NOOP);
 
         Task parse = step(plan, TaskNames.PARSE_BUILD);
         Task resolve = step(plan, TaskNames.RESOLVE_DEPS);

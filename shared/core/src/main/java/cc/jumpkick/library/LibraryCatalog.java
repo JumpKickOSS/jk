@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.library;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.config.WorkspaceScan;
@@ -23,7 +24,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
@@ -392,10 +392,12 @@ public final class LibraryCatalog {
     }
 
     /** A file layer as parsed for a file stamp; an absent file is a stamp of null and no layer. */
-    private record FileLayer(@Nullable FileStamp stamp, Optional<Layer> layer) {}
+    /** A layer file and the layer name it is read as. */
+    private record LayerKey(Path file, String layerName) {}
 
-    /** File layers by path and layer name, kept while the file's stamp holds. */
-    private static final ConcurrentHashMap<String, FileLayer> FILE_LAYERS = new ConcurrentHashMap<>();
+    /** File layers by path and layer name, kept while the file's settled stamp holds. */
+    private static final StampedMemo<LayerKey, FileStamp, Optional<Layer>> FILE_LAYERS =
+            StampedMemo.<LayerKey, FileStamp, Optional<Layer>>bounded(256).keeping(Optional::isPresent);
 
     private static Layer parseBundledLayer() {
         try (InputStream in = LibraryCatalog.class.getResourceAsStream(BUNDLED_RESOURCE)) {
@@ -414,13 +416,10 @@ public final class LibraryCatalog {
      * kept, so its warning reaches every caller rather than only the first.
      */
     private static Optional<Layer> loadFileLayer(Path file, String layerName, Consumer<String> warn) {
-        String key = file.toAbsolutePath().normalize() + "|" + layerName;
         FileStamp stamp = FileStamp.of(file);
-        FileLayer known = FILE_LAYERS.get(key);
-        if (known != null && Objects.equals(known.stamp(), stamp)) return known.layer();
-        Optional<Layer> parsed = parseFileLayer(file, layerName, warn);
-        if (parsed.isPresent() || stamp == null) FILE_LAYERS.put(key, new FileLayer(stamp, parsed));
-        return parsed;
+        if (stamp == null) return Optional.empty();
+        LayerKey key = new LayerKey(file.toAbsolutePath().normalize(), layerName);
+        return FILE_LAYERS.get(key, stamp, () -> parseFileLayer(file, layerName, warn));
     }
 
     private static Optional<Layer> parseFileLayer(Path file, String layerName, Consumer<String> warn) {

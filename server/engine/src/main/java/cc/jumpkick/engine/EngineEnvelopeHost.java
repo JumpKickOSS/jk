@@ -11,6 +11,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
@@ -40,7 +41,6 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     private final SsePublisher sse;
     private final JournalWriter journalWriter;
     private final ReentrantReadWriteLock cacheGate;
-    private final ThreadLocal<Long> currentEventRequestId;
     private final InFlightBuilds inFlight;
     private final AtomicInteger activeBuildPlans;
     private final IdleHousekeeping idle;
@@ -49,6 +49,12 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
     private final SessionLog sessionLog;
+    private final WorkerScopes workers;
+
+    @Override
+    public WorkerScopes workers() {
+        return workers;
+    }
 
     @Override
     public @Nullable String episodeFor(
@@ -128,16 +134,6 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
-    public void bindEventRequestId(long id) {
-        currentEventRequestId.set(id);
-    }
-
-    @Override
-    public void unbindEventRequestId() {
-        currentEventRequestId.remove();
-    }
-
-    @Override
     public IoLedger runIo(long id) {
         return sse.runIo(id);
     }
@@ -150,16 +146,6 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     @Override
     public @Nullable BuildAccumulator accumulatorOf(long id) {
         return sessions.accumulator(id);
-    }
-
-    @Override
-    public void openResults(long id) {
-        journalWriter.openResults(id);
-    }
-
-    @Override
-    public void closeResults() {
-        journalWriter.closeResults();
     }
 
     @Override

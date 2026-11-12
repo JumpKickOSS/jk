@@ -59,7 +59,7 @@ class ForecastLanesTest {
         order.put(dir("d"), Set.of(dir("b"), dir("c")));
         order.put(dir("e"), Set.of(dir("c"), root.resolve("outside")));
         List<Path> visited = Collections.synchronizedList(new ArrayList<>());
-        ForecastLanes.walk(units, order, lanes, c -> c, u -> visited.add(u.dir()));
+        ForecastLanes.walk(units, order, lanes, u -> visited.add(u.dir()));
         assertThat(visited).containsExactlyInAnyOrder(dir("a"), dir("b"), dir("c"), dir("d"), dir("e"));
         for (var e : order.entrySet()) {
             for (Path prereq : e.getValue()) {
@@ -76,7 +76,7 @@ class ForecastLanesTest {
         Map<Path, Set<Path>> order = Map.of(dir("b"), Set.of(dir("a")));
         CountDownLatch bRan = new CountDownLatch(1);
         Map<Path, Boolean> slowSawB = new ConcurrentHashMap<>();
-        ForecastLanes.walk(units, order, 2, c -> c, u -> {
+        ForecastLanes.walk(units, order, 2, u -> {
             if (u.dir().equals(dir("b"))) bRan.countDown();
             if (u.dir().equals(dir("slow"))) {
                 try {
@@ -94,7 +94,7 @@ class ForecastLanesTest {
         List<BuildGraph.BuildUnit> units = List.of(unit("a"), unit("b"), unit("c"), unit("d"));
         Map<Path, Set<Path>> order = Map.of(dir("b"), Set.of(dir("a")), dir("d"), Set.of(dir("c")));
         Set<Path> visited = ConcurrentHashMap.newKeySet();
-        assertThatThrownBy(() -> ForecastLanes.walk(units, order, 4, c -> c, u -> {
+        assertThatThrownBy(() -> ForecastLanes.walk(units, order, 4, u -> {
                     if (u.dir().equals(dir("a"))) throw new IllegalStateException("boom");
                     visited.add(u.dir());
                 }))
@@ -108,7 +108,7 @@ class ForecastLanesTest {
         List<BuildGraph.BuildUnit> units = List.of(unit("a"), unit("x"), unit("y"));
         Map<Path, Set<Path>> order = Map.of(dir("x"), Set.of(dir("y")), dir("y"), Set.of(dir("x")));
         Set<Path> visited = ConcurrentHashMap.newKeySet();
-        ForecastLanes.walk(units, order, 4, c -> c, u -> visited.add(u.dir()));
+        ForecastLanes.walk(units, order, 4, u -> visited.add(u.dir()));
         assertThat(visited).containsExactly(dir("a"));
     }
 }

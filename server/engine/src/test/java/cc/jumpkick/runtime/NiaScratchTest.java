@@ -8,7 +8,6 @@ import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
@@ -23,7 +22,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -133,35 +131,20 @@ class NiaScratchTest {
         var modules = WorkspaceLoader.loadModules(NIA, rootManifest);
         build = WorkspaceMerge.applyToModule(rootManifest, build, modules.values());
         BuildPlan lock =
-                LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                LockPlans.lockBuildPlan(module, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         System.out.println("NIA-RELEASE lock: " + lockResult.errors());
         assertThat(lockResult.errors()).as("app lock").isEmpty();
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                        module,
-                        cache,
-                        module.resolve("jk.toml"),
-                        module.resolve("jk-lock.toml"),
-                        module,
-                        1,
-                        0,
-                        null,
-                        null,
-                        true,
-                        false,
-                        false,
-                        false,
-                        Set.of(),
-                        SessionContext.current())
-                .withVariant(
-                        "release|contentType=demo",
-                        Map.of(
-                                "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
-                                "RELEASE_STORE_PASSWORD", "rel-store-pass",
-                                // PKCS12: the key password IS the store password (keytool
-                                // ignores -keypass for PKCS12 stores).
-                                "RELEASE_KEY_PASSWORD", "rel-store-pass"));
+        BuildPlanner.Inputs in = TestInputs.of(module, cache)
+                .withSkipTests(true)
+                .withVariant("release|contentType=demo")
+                .withClientEnv(Map.of(
+                        "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
+                        "RELEASE_STORE_PASSWORD", "rel-store-pass",
+                        // PKCS12: the key password IS the store password (keytool
+                        // ignores -keypass for PKCS12 stores).
+                        "RELEASE_KEY_PASSWORD", "rel-store-pass"));
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         System.out.println("NIA-RELEASE diags: " + result.errors());
         System.out.println("NIA-RELEASE success: " + result.success());
@@ -195,33 +178,18 @@ class NiaScratchTest {
             }
         }
         BuildPlan lock =
-                LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                LockPlans.lockBuildPlan(module, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         if (!lockResult.errors().isEmpty())
             return "lock: " + lockResult.errors().getFirst();
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                cache,
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, cache).withSkipTests(true);
         // Flavored modules build the demo variant (the flavor NiA's own CI exercises — no
         // backend needed). True workspace variant propagation (the app's selection reaching
         // sibling AAR builds automatically) is a recorded follow-up; the sweep selects
         // per-module.
         if (Files.readString(module.resolve("jk.toml")).contains("[variants.contentType]")
                 || module.getFileName().toString().equals("app")) {
-            in = in.withVariant("contentType=demo", Map.of());
+            in = in.withVariant("contentType=demo").withClientEnv(Map.of());
         }
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         if (!result.errors().isEmpty()) return "build: ALL-DIAGS " + result.errors();

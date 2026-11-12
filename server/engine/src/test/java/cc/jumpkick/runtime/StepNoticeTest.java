@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -258,17 +259,16 @@ class StepNoticeTest {
 
     /**
      * {@code body} inside a run whose notices land on {@code acc}, as the engine's job envelope
-     * routes them: the run's ledger is ambient, and its sink adds each note to the run's record.
+     * routes them: the run's request carries its ledger, and its sink adds each note to the run's
+     * record.
      */
     private static void inRun(BuildAccumulator acc, Runnable body) {
         IoLedger run = new IoLedger();
-        IoLedger.open(run);
         RunNotices.openSink(run, (code, message) -> acc.addWarning(null, null, RunNotices.CODE, message));
         try {
-            SessionContext.runWhere(Session.defaults(), body);
+            Request.of(1, run).run(() -> SessionContext.runWhere(Session.defaults(), body));
         } finally {
             RunNotices.closeSink(run);
-            IoLedger.close();
         }
     }
 

@@ -15,6 +15,7 @@ import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.node.NodeHome;
+import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,9 +37,14 @@ public final class NodeRun {
 
     /**
      * Where the request that plans a run reports a Node.js it has to install first: the client's
-     * download bar under {@code jk run} and {@code jk dev}, nothing when unbound.
+     * download bar under {@code jk run} and {@code jk dev}, nothing when unbound. Carried onto the
+     * pools the plan's work reaches.
      */
     public static final ScopedValue<ToolProgress> PROGRESS = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(PROGRESS);
+    }
 
     private NodeRun() {}
 
@@ -175,7 +182,10 @@ public final class NodeRun {
         NodePin pin =
                 Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile).node() : null;
         if (pin == null) throw new IOException("Node.js is not locked yet; run jk build first");
-        return PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, PROGRESS.orElse(ToolProgress.NONE));
+        return PlannerNodeSetup.ensure(
+                PlannerNodeSetup.provisioning.get(),
+                pin,
+                Objects.requireNonNullElse(ContextPropagator.get(PROGRESS), ToolProgress.NONE));
     }
 
     private static String path(NodeHome home, Path nodeDir, @Nullable String callerPath) {

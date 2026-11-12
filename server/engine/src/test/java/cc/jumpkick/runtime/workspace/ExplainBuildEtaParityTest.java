@@ -5,22 +5,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.MemoryProbe;
+import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.SettledHostCalibration;
+import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * HARD INVARIANT: {@code jk explain} and {@code jk build}'s countdown seed use one function
- * ({@link BuildService#estimateEtaMillis}) with the same defaults. If these diverge, the feature
- * is actively misleading — see docs/perf/progress-contract.md.
+ * ({@link BuildService#estimateEtaMillis}) with the same defaults, and that function prices the
+ * plan it is handed whichever compiler workers the forecast behind it could ask for a plan. If
+ * these diverge, the feature is actively misleading — see docs/contributors/progress-contract.md.
  */
 @ExtendWith(SettledHostCalibration.class)
 class ExplainBuildEtaParityTest {
@@ -54,6 +65,45 @@ class ExplainBuildEtaParityTest {
         // No cap on the request: the engine's own resolved jobs, the same number the build verb
         // resolves a non-positive wire value to.
         assertThat(BuildService.etaConcurrency(0)).isEqualTo(TestWorkers.effectiveJobs());
+    }
+
+    @Test
+    void a_plan_prices_the_same_whichever_workers_its_forecast_could_plan_on(@TempDir Path tmp) throws Exception {
+        // The worker rule decides how the forecast predicts a compile, never how the ETA prices the
+        // prediction: explain plans on any worker, jk status on a warm one, the build's background
+        // pricing on none, and one plan is one number under all three.
+        Path dir = tmp.resolve("m");
+        var compile =
+                new TaskForecast.Task(TaskNames.COMPILE_JAVA, TaskForecast.Status.PARTIAL, "compile · 2 sources", null);
+        var tests = new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, "", null);
+        var module = new TaskForecast.Module(dir, "ex:m", List.of(compile, tests), 40, 12, true, false);
+        ExplainPlan plan = new ExplainPlan(List.of(module), Map.of(dir, Set.<Path>of()), 1, List.of());
+        List<Long> etas = new ArrayList<>();
+        for (JavaCompile.PlanWorkers rule : JavaCompile.PlanWorkers.values()) {
+            etas.add(ScopedValue.where(JavaCompile.PLAN_WORKERS, rule)
+                    .call(() -> BuildService.estimateEtaMillis(
+                            plan, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8)));
+        }
+        assertThat(etas.getFirst()).isPositive();
+        assertThat(etas).containsOnly(etas.getFirst());
+    }
+
+    @Test
+    void the_build_prices_its_eta_beside_its_compiles_planning_on_no_worker() throws Exception {
+        // The build's own compiles run on the resident workers while it prices: a plan asked of
+        // them would queue ahead of a module's compile. Explain asks them (ANY); the background
+        // pricing must not, so its compiles are predicted from their prior records.
+        AtomicReference<JavaCompile.@Nullable PlanWorkers> seen = new AtomicReference<>();
+        CountDownLatch published = new CountDownLatch(1);
+        BackgroundEta eta = BackgroundEta.start(
+                () -> {
+                    seen.set(ContextPropagator.get(JavaCompile.PLAN_WORKERS));
+                    return new BuildService.EtaModel(1L, List.of(), 1, true);
+                },
+                m -> published.countDown());
+        assertThat(published.await(10, TimeUnit.SECONDS)).isTrue();
+        eta.close();
+        assertThat(seen.get()).isEqualTo(JavaCompile.PlanWorkers.NONE);
     }
 
     @Test

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -74,15 +73,7 @@ class GuardPackPinTest {
                 """);
         Path cache = tmp.resolve("cache");
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project,
-                        JkBuildParser.parse(project.resolve("jk.toml")),
-                        cache,
-                        repo.toUri(),
-                        List.of(),
-                        true,
-                        false,
-                        ResolveObserver.NOOP,
-                        null)
+                        project, cache, repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.success()).as("lock errors: " + lock.errors()).isTrue();
         Lockfile written = LockfileReader.read(LockPaths.lockFile(project));
@@ -128,15 +119,7 @@ class GuardPackPinTest {
                 extends = ["cc.jumpkick.guards:house-rules:0.9.0"]
                 """);
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project,
-                        JkBuildParser.parse(project.resolve("jk.toml")),
-                        tmp.resolve("cache"),
-                        repo.toUri(),
-                        List.of(),
-                        true,
-                        false,
-                        ResolveObserver.NOOP,
-                        null)
+                        project, tmp.resolve("cache"), repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.success()).as("lock errors: " + lock.errors()).isTrue();
         Lockfile written = LockfileReader.read(LockPaths.lockFile(project));

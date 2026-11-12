@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_CP;
-import static cc.jumpkick.runtime.BuildPlanner.CONTRIBUTED_PROCESSOR_CP;
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
-import static cc.jumpkick.runtime.BuildPlanner.JAVAC_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
-import static cc.jumpkick.runtime.BuildPlanner.PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
@@ -38,6 +34,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,6 +73,7 @@ public final class PlannerGuardSuite {
     }
 
     /** compile-guard's request — the build's javac invocation and the forecast's key, from one body. */
+    @KeyOwner(step = TaskNames.COMPILE_GUARD)
     public static CompileRequest guardCompileRequest(
             List<Path> sources,
             List<Path> classpath,
@@ -173,6 +171,11 @@ public final class PlannerGuardSuite {
         return !step.cached();
     }
 
+    @KeyOwner(
+            step = TaskNames.COMPILE_GUARD,
+            unpaired =
+                    "the step writes the suite's stamp after its compile; the forecast prices the compile by its key",
+            forecastsStep = true)
     static Task compileGuardStep(BuildPlanner.Ctx cx, boolean compact) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -205,15 +208,14 @@ public final class PlannerGuardSuite {
                     PlannerSetup.awaitSiblingTestCompile(ctx, in);
                     Path root = WorkspaceScan.findRoot(in.dir()).orElse(in.dir());
                     Path library = GuardSuiteLibrary.locate(root, cas).path();
-                    List<Path> testCp = ctx.get(COMPILE_TEST_CP).orElseGet(() -> ctx.require(CLASSPATH));
-                    List<Path> classpath = classpath(project, layout, testCp, library);
+                    ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
+                    List<Path> classpath = classpath(project, layout, classpaths.testCompile(), library);
                     if (!classpath.contains(ctx.require(MAIN_CLASSES))) classpath.add(0, ctx.require(MAIN_CLASSES));
-                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                     CompileRequest request = guardCompileRequest(
                             sources,
                             classpath,
-                            processorCp,
-                            ctx.require(CONTRIBUTED_PROCESSOR_CP),
+                            classpaths.javacProcessor(),
+                            classpaths.contributedProcessor(),
                             out,
                             ctx.require(RELEASE),
                             ctx.require(JAVAC_ARGS),
@@ -227,7 +229,7 @@ public final class PlannerGuardSuite {
                     if (!rerun) {
                         try {
                             boolean restores = actionCache
-                                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
+                                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion()))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
@@ -300,17 +302,17 @@ public final class PlannerGuardSuite {
                 s.compileApiDirty(),
                 s.project,
                 s.dir,
-                p.compact(),
-                p.layout(),
-                p.javacProcessorCp(),
-                p.contributedProcessors().main(),
-                p.release(),
-                p.javacArgs(),
+                p.parsed().compact(),
+                p.parsed().layout(),
+                p.classpaths().javacProcessor(),
+                p.classpaths().contributedProcessor(),
+                p.parsed().release(),
+                p.parsed().javacArgs(),
                 p.javaHome(),
                 s.cache,
                 s.actionCache,
                 s.workerJar,
-                s.testCompileCp(),
+                p.classpaths().testCompile(),
                 s.cas,
                 s.restored);
         return out.isEmpty() ? null : out.getFirst();

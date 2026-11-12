@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -80,16 +79,7 @@ class WorkspaceGuardLibraryLockTest {
     }
 
     private static BuildPlanResult lock(Path ws, Path cache, Path repo) throws Exception {
-        return LockPlans.lockBuildPlan(
-                        ws,
-                        JkBuildParser.parse(ws.resolve("jk.toml")),
-                        cache,
-                        repo.toUri(),
-                        List.of(),
-                        true,
-                        false,
-                        ResolveObserver.NOOP,
-                        null)
+        return LockPlans.lockBuildPlan(ws, cache, repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
     }
 

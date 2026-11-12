@@ -21,6 +21,7 @@ import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
@@ -125,20 +126,13 @@ public final class JournalWriter {
     }
 
     /**
-     * Bind the request's {@link RunResults} sink as the ambient sink of the calling thread — the
-     * runner's, before the body starts — so every test run and coverage a step publishes under it
-     * lands on this request's record. A request with no accumulator gets a sink nothing drains.
-     * Every path that runs a plan and then {@link #write writes} its record binds this way; a plan
-     * run with no sink bound publishes to nobody.
+     * The request's {@link RunResults} sink, which a request carries so every test run and coverage a
+     * step publishes under it lands on this request's record. A request with no accumulator gets a
+     * sink nothing drains.
      */
-    public void openResults(long requestId) {
+    public RunResults results(long requestId) {
         BuildAccumulator a = sessions.accumulator(requestId);
-        RunResults.open(a != null ? a.results() : new RunResults());
-    }
-
-    /** Drop the calling thread's ambient sink once the request's body has returned. */
-    public void closeResults() {
-        RunResults.close();
+        return a != null ? a.results() : new RunResults();
     }
 
     /** {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout. */
@@ -264,6 +258,8 @@ public final class JournalWriter {
             return null;
         }
         List<MarkdownTestReport.ModuleRun> tests = a.results().takeTests();
+        // Taken whether or not history keeps them: they are this run's, and nothing reads them later.
+        RunMeasures measures = a.measures().take();
         try {
             if (a.discarded()) {
                 deleteStub(a);
@@ -304,7 +300,8 @@ public final class JournalWriter {
                         LockPaths.lockFile(dir),
                         a.diagnosticsText(),
                         iteration.testOutcomes(),
-                        iteration.sources());
+                        iteration.sources(),
+                        measures);
                 String jid = a.journalId();
                 String locator = jid != null && !jid.isBlank()
                         ? completeInPlace(jid, record, snapshot)

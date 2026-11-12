@@ -7,13 +7,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Who made a change: a command typed in a shell, an agent's MCP session, an import, the engine on its
  * own, or the dashboard. A process names its default once ({@code jk} names the command line, the
  * engine names itself); a narrower scope (one MCP tool call, one import) overrides it for the work it
- * wraps through {@link #as}.
+ * wraps, carried by the request that work runs under ({@code Request.actingAs}).
  *
  * @param kind one of {@link #SHELL}, {@link #AGENT}, {@link #IMPORT}, {@link #ENGINE}, {@link
  *     #DASHBOARD}
@@ -29,7 +30,8 @@ public record ChangeActor(String kind, String label, Map<String, String> details
     public static final String ENGINE = "engine";
     public static final String DASHBOARD = "dashboard";
 
-    private static final ScopedValue<ChangeActor> SCOPED = ScopedValue.newInstance();
+    /** The actor of the request bound now, or {@code null}; installed by the request type above this package. */
+    private static volatile Supplier<@Nullable ChangeActor> scoped = () -> null;
 
     private static volatile ChangeActor processDefault = new ChangeActor(ENGINE, "JumpKick", Map.of());
 
@@ -39,9 +41,15 @@ public record ChangeActor(String kind, String label, Map<String, String> details
         details = Collections.unmodifiableMap(new LinkedHashMap<>(details));
     }
 
-    /** The actor of the work running now: the innermost {@link #as} scope, else the process default. */
+    /** The actor of the work running now: the request's, else the process default. */
     public static ChangeActor current() {
-        return SCOPED.isBound() ? SCOPED.get() : processDefault;
+        ChangeActor bound = scoped.get();
+        return bound != null ? bound : processDefault;
+    }
+
+    /** Where {@link #current()} finds the request's actor; the request type installs it once. */
+    public static void resolveWith(Supplier<@Nullable ChangeActor> requestActor) {
+        scoped = Objects.requireNonNull(requestActor);
     }
 
     /** Name the actor of everything this process changes outside a narrower scope. */
@@ -53,11 +61,6 @@ public record ChangeActor(String kind, String label, Map<String, String> details
     @FunctionalInterface
     public interface Work<T extends @Nullable Object, X extends Throwable> {
         T get() throws X;
-    }
-
-    /** Run {@code work} with {@code actor} as the actor of every change it records. */
-    public static <T extends @Nullable Object, X extends Throwable> T as(ChangeActor actor, Work<T, X> work) throws X {
-        return ScopedValue.where(SCOPED, actor).call(work::get);
     }
 
     /**

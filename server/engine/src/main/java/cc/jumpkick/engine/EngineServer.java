@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.activity.ChangeNotices;
@@ -32,10 +33,10 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.notices.UpdatedNotice;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.FinishedRun;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -254,6 +255,9 @@ public final class EngineServer implements AutoCloseable {
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
 
+    /** The live jobs' worker processes by job id, for cancel, suspend and the drain deadline. */
+    private final WorkerScopes workers = new WorkerScopes();
+
     /** The config file of an engine built for a state directory alone: beside its engine files. */
     static Path ownConfig(EnginePaths.Paths paths) {
         return paths.dir().resolve(ManifestPaths.CONFIG);
@@ -273,7 +277,6 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /** Event-request id for the hosted op on this thread (set around the runner). */
-    private final ThreadLocal<Long> currentEventRequestId = new ThreadLocal<>();
 
     /**
      * Fair RW lock: plans hold read for their run; cache maintenance holds write so sweeps
@@ -525,6 +528,11 @@ public final class EngineServer implements AutoCloseable {
                 });
     }
 
+    /** The live jobs' worker scopes; tests fork into a running job's. */
+    WorkerScopes workers() {
+        return workers;
+    }
+
     private JobEnvelope newJobEnvelope() {
         return new JobEnvelope(
                 new EngineEnvelopeHost(
@@ -538,7 +546,6 @@ public final class EngineServer implements AutoCloseable {
                         sse,
                         journalWriter,
                         cacheGate,
-                        currentEventRequestId,
                         inFlightBuilds,
                         activeBuildPlans,
                         idle,
@@ -546,7 +553,8 @@ public final class EngineServer implements AutoCloseable {
                         this.version,
                         historyConfig,
                         journal,
-                        sessionLog),
+                        sessionLog,
+                        workers),
                 config.jobLimits());
     }
 
@@ -768,10 +776,10 @@ public final class EngineServer implements AutoCloseable {
      */
     private final ReentrantReadWriteLock sseConnect = new ReentrantReadWriteLock();
 
-    /** The current thread's hosted-request id for dashboard events; {@code -1} outside a request. */
+    /** The bound job's id for dashboard events; {@code -1} outside a job. */
     private long eventRequestId() {
-        Long id = currentEventRequestId.get();
-        return id != null ? id : -1;
+        Request r = Request.current();
+        return r != null && r.isJob() ? r.id() : -1;
     }
 
     private void onConnectionFinished() {
@@ -922,7 +930,7 @@ public final class EngineServer implements AutoCloseable {
         List<Long> cancelled = jobs.cancelAllForDrain(drainCancelReason(limits.drainDeadlineMs()));
         awaitPlansOrDeadline(clockMillis.getAsLong() + limits.deadlineGraceMs());
         int killed = 0;
-        for (long jid : cancelled) killed += JobWorkers.shutdownForRequest(jid, 0L);
+        for (long jid : cancelled) killed += workers.shutdown(jid, 0L);
         log.accept("jk engine: drain deadline: cancelled " + cancelled.size() + " job(s), killed " + killed
                 + " worker process(es) still alive after the grace; exiting");
         shutDownAfterDrain();

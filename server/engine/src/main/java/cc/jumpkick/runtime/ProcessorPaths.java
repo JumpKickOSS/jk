@@ -4,18 +4,21 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import java.io.IOException;
+import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
- * The compile-test processor path, derived one way for the build and the forecast so both hash
- * the same {@code -processorpath}: by default the shared table's javac half, then every entry the
+ * The compile-test processor path ({@link ModuleClasspaths} derives it for the build and the
+ * forecast alike): by default the shared table's javac half, then every entry the
  * {@code [test-processor-dependencies]} closure adds; under that table's {@code inherit = false}
  * the test table's closure alone, the way Maven's {@code testCompile} reads only its own {@code
  * annotationProcessorPaths}. An empty one runs no processor ({@link #discovers}), as Maven's
@@ -54,22 +57,36 @@ final class ProcessorPaths {
         return out;
     }
 
-    /** compile-test's declared processor closure for a module, from the lock and the workspace. */
-    static List<Path> testClosure(
-            JkBuild project, Lockfile lock, ClasspathResolver resolver, Path dir, boolean requirePresent)
-            throws IOException {
-        Set<Scope> scopes = testScopes(project);
-        return PlannerSupport.processorClasspath(
-                dir, project, lock, resolver, WorkspaceClasspath.resolve(dir, project, scopes), scopes, requirePresent);
+    /**
+     * Declared {@code [processor-dependencies]} and {@code [test-processor-dependencies]} entries
+     * that resolve to nothing — not a workspace sibling and absent from the lock — each as {@code
+     * <table> <module>}. Silently skipping code generation is the worst failure mode for an
+     * annotation-driven project, so callers turn this into a build error.
+     *
+     * <p>After {@link WorkspaceMerge#resolveSiblingCoordinates}, workspace
+     * processors are real {@code group:name} coords (so {@link
+     * Dependency#isWorkspace()} is false) and still never appear in the lock —
+     * pass the {@link WorkspaceClasspath} result so rewritten siblings stay covered.
+     */
+    static List<String> unresolved(JkBuild project, Lockfile lock) {
+        return unresolved(project, lock, null);
     }
 
-    /**
-     * The forecast's compile-test path for a module on disk: {@code shared} stands as its own javac
-     * half, and the test closure is resolved from the lock and the workspace like the build's.
-     */
-    static List<Path> forecastTest(
-            JkBuild project, Lockfile lock, ClasspathResolver resolver, Path dir, List<Path> shared)
-            throws IOException {
-        return forTest(project, shared, shared, testClosure(project, lock, resolver, dir, false));
+    static List<String> unresolved(
+            JkBuild project, Lockfile lock, WorkspaceClasspath.@Nullable Result processorSiblings) {
+        Set<String> locked = lock.classpathModules();
+        Set<String> siblings = new HashSet<>();
+        if (processorSiblings != null) {
+            siblings.addAll(processorSiblings.siblingCoords());
+        }
+        List<String> missing = new ArrayList<>();
+        for (Scope scope : ClasspathResolver.PROCESSOR_PATH) {
+            for (Dependency dep : project.dependencies().of(scope)) {
+                if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
+                if (siblings.contains(dep.module())) continue;
+                if (!locked.contains(dep.module())) missing.add("[" + scope.tomlSection() + "] " + dep.module());
+            }
+        }
+        return missing;
     }
 }

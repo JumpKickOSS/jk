@@ -9,7 +9,9 @@ import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -103,5 +105,29 @@ class BuildLogicGroovyHostTest {
         BuildLogicGroovyHost.publish(source, out, pin);
         assertThat(Files.readString(out)).isEqualTo("good-bytes");
         assertThat(BuildLogicGroovyHost.published(out, pin)).isTrue();
+    }
+
+    @Test
+    void a_wiped_tool_cache_is_verified_and_fetched_again(@TempDir Path dir) throws Exception {
+        Path source = Files.writeString(dir.resolve("groovy-source.jar"), "groovy bytes");
+        var pin = new BuildLogicGroovyHost.PinnedJar("g", "groovy", "1", Hashing.sha256Hex(source));
+        Path cache = dir.resolve("tools/build-logic-groovy");
+        AtomicInteger fetches = new AtomicInteger();
+        BuildLogicGroovyHost.Fetch fetch = jar -> {
+            fetches.incrementAndGet();
+            return source;
+        };
+
+        Path[] first = BuildLogicGroovyHost.ensureJars(cache, List.of(pin), fetch);
+        assertThat(first[0]).hasContent("groovy bytes");
+        BuildLogicGroovyHost.ensureJars(cache, List.of(pin), fetch);
+        assertThat(fetches.get()).as("verified once, then remembered").isEqualTo(1);
+
+        Files.delete(first[0]);
+        Files.delete(cache);
+        Path[] again = BuildLogicGroovyHost.ensureJars(cache, List.of(pin), fetch);
+
+        assertThat(again[0]).hasContent("groovy bytes");
+        assertThat(fetches.get()).isEqualTo(2);
     }
 }
