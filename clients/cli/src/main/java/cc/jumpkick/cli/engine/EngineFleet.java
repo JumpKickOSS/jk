@@ -222,12 +222,13 @@ public final class EngineFleet {
         Path home = JkDirs.home();
         Path state = JkDirs.state();
         List<Member> out = new ArrayList<>();
+        WindowsCommandLines.Scan scan = new WindowsCommandLines.Scan();
         try {
             ProcessHandle.allProcesses().forEach(h -> {
                 long pid = h.pid();
                 if (pid == self || known.contains(pid) || !h.isAlive()) return;
                 if (!sameUser(me, h)) return;
-                String cmd = commandLineOf(h);
+                String cmd = commandLineOf(h, scan);
                 if (!isResidentEngineProcess(h, cmd)) return;
                 boolean ours = belongsToThisHome(cmd, home, state);
                 if (!allHomes && !ours) return;
@@ -417,6 +418,11 @@ public final class EngineFleet {
     }
 
     static String commandLineOf(ProcessHandle handle) {
+        return commandLineOf(handle, new WindowsCommandLines.Scan());
+    }
+
+    /** As {@link #commandLineOf(ProcessHandle)}, reading Windows command lines through {@code scan}. */
+    private static String commandLineOf(ProcessHandle handle, WindowsCommandLines.Scan scan) {
         // /proc is the full argv; ProcessHandle.commandLine() is sometimes only the executable.
         String proc = procCmdline(handle.pid());
         if (!proc.isBlank()) return proc;
@@ -427,7 +433,7 @@ public final class EngineFleet {
         // On Windows that joined value is the bare executable path: the JDK populates command() but
         // never arguments()/commandLine() there, so every predicate below would see `java.exe` and
         // nothing else. The CIM snapshot is the only source of the real argv.
-        String windows = WindowsCommandLines.of(handle.pid());
+        String windows = scan.of(handle.pid());
         if (!windows.isBlank()) return windows;
         if (!joined.isBlank()) return joined;
         return info.commandLine().orElse("");

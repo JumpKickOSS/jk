@@ -94,4 +94,29 @@ class WindowsCommandLinesTest {
             child.waitFor();
         }
     }
+
+    /** A scan re-queries once, for the first process newer than the snapshot, and never again. */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void a_scan_queries_again_once_for_processes_newer_than_its_snapshot() throws Exception {
+        WindowsCommandLines.of(ProcessHandle.current().pid());
+        Process first = SleepMain.spawn(30_000, "jk-marker-first");
+        Process second = null;
+        try {
+            WindowsCommandLines.Scan scan = new WindowsCommandLines.Scan();
+            assertThat(scan.of(first.pid())).contains("jk-marker-first");
+            second = SleepMain.spawn(30_000, "jk-marker-second");
+            assertThat(scan.of(second.pid()))
+                    .as("the scan has had its one re-query")
+                    .isEmpty();
+            assertThat(WindowsCommandLines.of(second.pid())).contains("jk-marker-second");
+        } finally {
+            first.destroyForcibly();
+            first.waitFor();
+            if (second != null) {
+                second.destroyForcibly();
+                second.waitFor();
+            }
+        }
+    }
 }

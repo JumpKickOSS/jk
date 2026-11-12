@@ -34,10 +34,11 @@ final class WindowsCommandLines {
     private static volatile @Nullable Snapshot snapshot;
 
     /**
-     * The command lines of every process the query saw, and when it started: {@code takenAt} is
-     * read before the query runs, so a process that started during it still counts as newer.
+     * The command lines of every process the query saw. {@code takenAt} is read before the query
+     * runs, so a process that started during it still counts as newer; the TTL runs from
+     * {@code answeredNanos}, so a slow query does not hand back a snapshot already expired.
      */
-    private record Snapshot(Map<Long, String> rows, long takenNanos, Instant takenAt) {}
+    private record Snapshot(Map<Long, String> rows, long answeredNanos, Instant takenAt) {}
 
     /**
      * How long a snapshot stands. Every caller today is a short-lived CLI command, so this only
@@ -65,19 +66,37 @@ final class WindowsCommandLines {
 
     private WindowsCommandLines() {}
 
-    /** This process's command line, or {@code ""} — off Windows, unknown, or the query failed. */
+    /**
+     * This process's command line, or {@code ""} — off Windows, unknown, or the query failed. A pid
+     * that started after the snapshot is looked up again.
+     */
     static String of(long pid) {
-        if (!Os.isWindows()) return "";
-        Snapshot current = current();
-        String cmd = current.rows().get(pid);
-        if (cmd != null) return cmd;
-        if (!startedAfter(pid, current.takenAt())) return "";
-        return refresh(current).rows().getOrDefault(pid, "");
+        return new Scan().of(pid);
+    }
+
+    /**
+     * Lookups over the whole process table: the first process newer than the snapshot re-queries
+     * and later ones read that answer, so a busy machine's new processes cannot chain query after
+     * query.
+     */
+    static final class Scan {
+        private boolean requeried;
+
+        /** As {@link WindowsCommandLines#of}, re-querying at most once for this scan. */
+        String of(long pid) {
+            if (!Os.isWindows()) return "";
+            Snapshot current = current();
+            String cmd = current.rows().get(pid);
+            if (cmd != null) return cmd;
+            if (requeried || !startedAfter(pid, current.takenAt())) return "";
+            requeried = true;
+            return refresh(current).rows().getOrDefault(pid, "");
+        }
     }
 
     private static Snapshot current() {
         Snapshot local = snapshot;
-        if (local != null && Clock.SYSTEM.nanos() - local.takenNanos() < SNAPSHOT_TTL_NANOS) return local;
+        if (local != null && Clock.SYSTEM.nanos() - local.answeredNanos() < SNAPSHOT_TTL_NANOS) return local;
         return refresh(local);
     }
 
@@ -86,9 +105,9 @@ final class WindowsCommandLines {
         synchronized (WindowsCommandLines.class) {
             Snapshot local = snapshot;
             if (local == null || local == stale) {
-                long nanos = Clock.SYSTEM.nanos();
                 Instant at = Clock.SYSTEM.instant();
-                local = new Snapshot(query(), nanos, at);
+                Map<Long, String> rows = query();
+                local = new Snapshot(rows, Clock.SYSTEM.nanos(), at);
                 snapshot = local;
             }
             return local;
