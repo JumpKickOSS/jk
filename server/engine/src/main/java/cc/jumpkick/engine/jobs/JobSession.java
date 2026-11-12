@@ -5,6 +5,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
+import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +27,8 @@ public final class JobSession {
     private volatile @Nullable Double lastProgress;
     private volatile @Nullable Long lastProgressDen;
     private volatile @Nullable BuildAccumulator accumulator;
+    /** The attached client's socket, for events the build's listeners do not carry (a hold); null when detached. */
+    private volatile @Nullable BufferedWriter writer;
 
     /** Wall clock of the newest progress/remaining signal; 0 until the job emits one. */
     private volatile long lastEventAt;
@@ -157,6 +160,14 @@ public final class JobSession {
 
     public @Nullable BuildAccumulator accumulator() {
         return accumulator;
+    }
+
+    public void writer(@Nullable BufferedWriter w) {
+        this.writer = w;
+    }
+
+    public @Nullable BufferedWriter writer() {
+        return writer;
     }
 
     public ConcurrentHashMap<String, Long> weights() {

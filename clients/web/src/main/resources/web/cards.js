@@ -35,8 +35,19 @@ export const cardMethods = {
     } catch (_) {}
     return 'auto';
   },
+  /** Whether the run is on hold for memory (hold-start without its hold-end yet). */
+  held(card) {
+    return card != null && card.holdSince != null && this.outcome(card) === 'running';
+  },
+  /** `0:12`: how long the current hold has lasted, for the head's `On hold` count-up. */
+  holdFace(card) {
+    if (!this.held(card)) return '';
+    return fmtClockSeconds(Math.max(0, Math.floor((this.now - card.holdSince) / 1000)));
+  },
   progress(card) {
     if (this.outcome(card) !== 'running') return 100;
+    // On hold the bar stands still where the hold found it.
+    if (this.held(card) && typeof card.peakPct === 'number') return card.peakPct;
     const pct = this.rawProgress(card);
     // Monotonic floor across the weighted→clock takeover: the clock fill starts
     // near 0 when R0 seeds mid-preflight — never repaint below the card's displayed peak.

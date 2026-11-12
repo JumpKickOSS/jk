@@ -14,6 +14,7 @@ import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.SseFrame;
+import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
@@ -24,6 +25,7 @@ import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ErrorLineEvent;
 import cc.jumpkick.wire.protocol.EventCatalog;
+import cc.jumpkick.wire.protocol.MemoryHoldEvent;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
@@ -275,6 +277,45 @@ public final class SsePublisher implements SseEvents {
         emitWorkspaceProgress(requestId, writer, false);
     }
 
+    /**
+     * The build went on hold for memory ({@link MemoryHolds}): its clock and its running steps
+     * stand still until it resumes, and the client and the dashboard are told.
+     */
+    public void holdStarted(long requestId, long needBytes, long freeBytes) {
+        JobSession s = get(requestId);
+        if (s == null || s.retired()) return;
+        s.tracker().hold();
+        RemainingWork rw = s.remaining();
+        if (rw != null) {
+            synchronized (rw) {
+                rw.hold();
+            }
+        }
+        sendHold(requestId, s, MemoryHoldEvent.start(progressRoot(requestId), needBytes, freeBytes));
+    }
+
+    /** The build resumed after {@code heldMs} on hold: the time held is taken off its clock. */
+    public void holdEnded(long requestId, long heldMs) {
+        JobSession s = get(requestId);
+        if (s == null || s.retired()) return;
+        s.tracker().resume();
+        RemainingWork rw = s.remaining();
+        if (rw != null) {
+            synchronized (rw) {
+                rw.resume();
+            }
+        }
+        sendHold(requestId, s, MemoryHoldEvent.end(progressRoot(requestId), heldMs));
+    }
+
+    private void sendHold(long requestId, JobSession s, MemoryHoldEvent event) {
+        String line = event.encode();
+        BufferedWriter writer = s.writer();
+        if (writer != null) WireWriter.sendQuiet(writer, line);
+        if (eventsWanted()) publishEvent(event.type(), SseFrame.of(event.type(), requestId, line), false);
+        emitWorkspaceProgress(requestId, writer, true);
+    }
+
     /** Per request and module, its running suite's class progress. */
     private final ConcurrentHashMap<String, SuiteClassProgress> suiteProgress = new ConcurrentHashMap<>();
 
@@ -336,8 +377,9 @@ public final class SsePublisher implements SseEvents {
             long r0 = snap.R0ms();
             // Held percent on both surfaces: SSE sends the line the wire does.
             double pct = heldPct;
+            long heldMs = tracker.onHold() ? MemoryHolds.heldMillis(requestId) : -1;
             String line = ProtoEvents.workspaceProgress(
-                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
+                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct, heldMs);
             if (writer != null) WireWriter.sendQuiet(writer, line);
             if (eventsWanted()) {
                 publishEvent(

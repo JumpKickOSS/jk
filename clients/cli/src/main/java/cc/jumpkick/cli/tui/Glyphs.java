@@ -78,6 +78,9 @@ public final class Glyphs {
     /** Spinner / black-circle under plain. */
     public static final String PULSE_PLAIN = "*";
 
+    /** ASCII stand-in for the breathing square of a build on hold. */
+    public static final String HOLD_PLAIN = "#";
+
     /** Progress bar filled cell (plain ASCII). */
     public static final char BAR_FULL_PLAIN = '#';
 

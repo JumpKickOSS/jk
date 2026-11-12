@@ -85,11 +85,45 @@ public final class ProtoEvents {
             long remainingMs,
             long R0ms,
             double progressPercent) {
+        return workspaceProgress(
+                dir,
+                numerator,
+                denominator,
+                phase,
+                modulesComplete,
+                modulesTotal,
+                remainingMs,
+                R0ms,
+                progressPercent,
+                -1);
+    }
+
+    /** As above, {@code heldMs} the time the build has been on hold for memory (-1 when it is not). */
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long R0ms,
+            double progressPercent,
+            long heldMs) {
         double percent = Double.isNaN(progressPercent)
                 ? WorkspaceProgressTracker.percentOf(numerator, denominator)
                 : progressPercent;
         return new WorkspaceProgressEvent(
-                        dir, numerator, denominator, percent, phase, modulesComplete, modulesTotal, remainingMs, R0ms)
+                        dir,
+                        numerator,
+                        denominator,
+                        percent,
+                        phase,
+                        modulesComplete,
+                        modulesTotal,
+                        remainingMs,
+                        R0ms,
+                        heldMs)
                 .encode();
     }
 

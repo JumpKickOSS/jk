@@ -98,4 +98,21 @@ class RemainingWorkStepsTest {
         rw.moduleComplete(A);
         assertThat(rw.remaining()).isZero();
     }
+
+    @Test
+    void a_hold_for_memory_stops_a_running_step_counting_down_and_resumes_it_where_it_stood() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(10_000);
+        long before = rw.remaining();
+
+        rw.hold();
+        now.addAndGet(30_000);
+        assertThat(rw.remaining()).as("on hold").isEqualTo(before);
+
+        rw.resume();
+        assertThat(rw.remaining()).as("just resumed").isEqualTo(before);
+        now.addAndGet(5_000);
+        assertThat(rw.remaining()).as("counting again").isEqualTo(before - 5_000);
+    }
 }

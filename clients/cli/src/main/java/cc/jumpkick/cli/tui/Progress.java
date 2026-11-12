@@ -13,7 +13,14 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
         /** Underlined block bar used on the plan header ({@code █}). */
         PLAN,
         /** Track cells used inside tables ({@code ▰▱}). */
-        TRACK
+        TRACK,
+        /** The plan header's bar while the build is on hold for memory: {@link #PLAN} in grayscale. */
+        HELD;
+
+        /** Whether this is a plan header's bar ({@link #PLAN} or {@link #HELD}), flush against its badge. */
+        public boolean header() {
+            return this == PLAN || this == HELD;
+        }
     }
 
     /** Bar width when the caller controls the trailing text (the plan header). */
@@ -71,6 +78,7 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
         String core =
                 switch (look) {
                     case PLAN -> ProgressBar.shared().render(numerator, denominator, segments);
+                    case HELD -> ProgressBar.held().render(numerator, denominator, segments);
                     case TRACK -> trackBar(ctx);
                 };
         return suffix.isEmpty() ? core : core + " " + suffix.render(ctx);

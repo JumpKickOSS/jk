@@ -276,15 +276,41 @@ public final class WorkspaceProgressTracker {
         return mode.select(clock, weighted, annotatedR0ms, annotatedRemainingMs).id();
     }
 
+    /**
+     * The build went on hold (a memory wait): its clock stands still until {@link #resume}, so the
+     * bar holds and the countdown resumes from where it stood. A hold is not work.
+     */
+    public synchronized void hold() {
+        if (holdStartNanos != 0) return;
+        tickElapsed();
+        long now = ticker.nanos();
+        holdStartNanos = now == 0 ? 1 : now;
+    }
+
+    /** The build resumed: the time held is taken off its clock. */
+    public synchronized void resume() {
+        if (holdStartNanos == 0) return;
+        if (elapsedEpochNanos != 0) elapsedEpochNanos += Math.max(0, ticker.nanos() - holdStartNanos);
+        holdStartNanos = 0;
+    }
+
+    /** Whether the build is on hold. */
+    public synchronized boolean onHold() {
+        return holdStartNanos != 0;
+    }
+
+    /** When the current hold began on the ticker; 0 when not on hold. */
+    private long holdStartNanos;
+
     private void tickElapsed() {
         // Monotonic synthetic clock via a nanosecond ticker base — wall clock jumps (NTP steps)
         // inflated or froze elapsed when this read the epoch clock. First call establishes the
-        // epoch.
+        // epoch. On hold the clock stands still.
         long nowNanos = ticker.nanos();
         if (elapsedEpochNanos == 0) {
             elapsedEpochNanos = nowNanos;
             elapsedClockMs = 0;
-        } else {
+        } else if (holdStartNanos == 0) {
             elapsedClockMs = Math.max(elapsedClockMs, (nowNanos - elapsedEpochNanos) / 1_000_000L);
         }
     }

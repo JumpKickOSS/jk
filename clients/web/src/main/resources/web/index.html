@@ -247,8 +247,9 @@
                     <div v-if="i.sub" class="tl-sub">{{ i.sub }}</div>
                     <!-- The live build, laid out as the terminal: the bar, then what is running, then the module cells. -->
                     <div v-if="i.state === 'run' && i.card" class="live-build" role="link" tabindex="0" @click="openRun(i)" @keydown.enter.prevent="openRun(i)">
-                      <build-head :label="headLabel(i.card)" :pct="progress(i.card)" state="running" :eta="hasEta(i.card) ? etaCountdown(i.card) : ''" :clock="elapsed(i.card)"></build-head>
-                      <worker-lanes :lanes="workerLanes(i.card)"></worker-lanes>
+                      <build-head :label="headLabel(i.card)" :pct="progress(i.card)" state="running" :eta="hasEta(i.card) ? etaCountdown(i.card) : ''" :hold="holdFace(i.card)" :clock="elapsed(i.card)"></build-head>
+                      <div v-if="held(i.card)" class="lanes hold-line">JumpKick is waiting for system memory to become available…</div>
+                      <worker-lanes v-else :lanes="workerLanes(i.card)"></worker-lanes>
                       <button v-if="i.card.id != null" type="button" class="rebuild icon danger live-cancel" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button>
                       <div class="cells" aria-label="Modules">
                         <i v-for="c in moduleCells(i.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
@@ -512,9 +513,10 @@
           <span v-if="projectRun.outcome !== 'running'" class="ago" :data-tip="fmtDateTime(projectRun.card.finishedAt) || undefined">{{ ago(projectRun.card.finishedAt) }}</span>
         </div>
         <!-- Laid out as the terminal: the chip and bar, then the fixed worker rows; the module cells close the pane. -->
-        <build-head :label="headLabel(projectRun.card)" :pct="progress(projectRun.card)" :state="projectRun.outcome === 'running' ? 'running' : projectRun.outcome" :eta="projectRun.outcome === 'running' && hasEta(projectRun.card) ? etaCountdown(projectRun.card) : ''" :clock="projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis)"></build-head>
+        <build-head :label="headLabel(projectRun.card)" :pct="progress(projectRun.card)" :state="projectRun.outcome === 'running' ? 'running' : projectRun.outcome" :eta="projectRun.outcome === 'running' && hasEta(projectRun.card) ? etaCountdown(projectRun.card) : ''" :hold="holdFace(projectRun.card)" :clock="projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis)"></build-head>
         <template v-if="projectRun.outcome === 'running'">
-          <worker-lanes :lanes="workerLanes(projectRun.card)"></worker-lanes>
+          <div v-if="held(projectRun.card)" class="lanes hold-line">JumpKick is waiting for system memory to become available…</div>
+          <worker-lanes v-else :lanes="workerLanes(projectRun.card)"></worker-lanes>
           <!-- The run's downloads while bytes move, as the terminal's Download block. -->
           <div v-if="projectRun.card.downloads" class="downloads">
             <div class="downloads-head">Download <span class="downloads-sep">›</span> {{ downloadsHead(projectRun.card.downloads) }}</div>

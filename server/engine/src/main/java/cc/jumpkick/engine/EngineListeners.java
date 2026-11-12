@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.engine.api.CoalescingBuildPlanListener;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.WireWriter;
+import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.EtaModels;
@@ -14,6 +15,7 @@ import cc.jumpkick.engine.listen.CompositeEventSink;
 import cc.jumpkick.engine.listen.EventSink;
 import cc.jumpkick.engine.listen.SseEventSink;
 import cc.jumpkick.engine.listen.WireEventSink;
+import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -58,6 +60,10 @@ public final class EngineListeners {
     public WorkspaceBuildListener workspace(@Nullable BufferedWriter writer, String workspaceDir) {
         long rid = eventRequestId.getAsLong();
         if (rid > 0 && workspaceDir != null) sessions.progressRoot(rid, workspaceDir);
+        if (rid > 0) {
+            JobSession session = sessions.open(rid);
+            if (session != null) session.writer(writer);
+        }
         return new BridgingWorkspaceListener(workspaceDir, sinkFor(writer, rid), workspaceHooks(rid, writer));
     }
 
@@ -113,6 +119,8 @@ public final class EngineListeners {
                 if (rid <= 0) return;
                 EtaModels.put(rid, model);
                 RemainingWork rw = model.toRemainingWork();
+                // A model that arrives while the build is on hold stands still with it.
+                if (MemoryHolds.onHold(rid)) rw.hold();
                 sessions.remaining(rid, rw);
                 var tracker = sessions.tracker(rid);
                 tracker.seedWall(model.R0(), model.costs().size());

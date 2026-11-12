@@ -26,6 +26,8 @@ public final class McpVitals {
         StatusSnapshot s = ctx.status().get();
         Map<String, Object> fields = new LinkedHashMap<>(s.vitals());
         if (bound != null) fields.put("boundDir", bound);
+        var held = McpHolds.statusRows(ctx.liveRuns().get());
+        if (!held.isEmpty()) fields.put("onHold", held);
         Map<String, Object> last = McpHistoryViews.jobSummary(McpDiagnostics.findNewest(ctx.history(), bound));
         if (last != null) fields.put("lastRun", last);
         return McpEnvelope.of("status", fields);

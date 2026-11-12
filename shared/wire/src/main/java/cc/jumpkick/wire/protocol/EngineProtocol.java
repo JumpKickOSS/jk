@@ -183,6 +183,16 @@ public final class EngineProtocol {
      */
     public static final String WORKSPACE_PROGRESS = "workspace-progress";
 
+    /**
+     * Server → client: the build went on hold for memory. A fork has waited past a moment for a
+     * worker lease; until {@link #HOLD_END} the build is paused, its countdown stands still and
+     * every {@link #WORKSPACE_PROGRESS} carries {@code "state": "on-hold"} and the time held.
+     */
+    public static final String HOLD_START = "hold-start";
+
+    /** Server → client: the build resumed after a {@link #HOLD_START}; {@code heldMs} is how long it held. */
+    public static final String HOLD_END = "hold-end";
+
     /** Server → client: a module's plan is about to run — {@code onModuleStart}. */
     public static final String MODULE_START = "module-start";
 

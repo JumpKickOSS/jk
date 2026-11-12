@@ -16,6 +16,12 @@ public sealed interface Icon {
     /** Animated pulse ({@code ●} / {@code *}). Frame comes from {@link RenderContext#frame()}. */
     record Spinner() implements Icon {}
 
+    /**
+     * The build on hold for memory: a square ({@code ■} / {@code #}) that breathes like the {@link
+     * Spinner}, since a hold is a wait jk recovers from, not a stop.
+     */
+    record HoldSpinner() implements Icon {}
+
     static Icon check() {
         return new Glyph(Glyphs.CHECK, Glyphs.CHECK_PLAIN);
     }
@@ -56,6 +62,10 @@ public sealed interface Icon {
         return new Spinner();
     }
 
+    static Icon holdSpinner() {
+        return new HoldSpinner();
+    }
+
     /** Map a historical {@link Glyphs} / ASCII constant onto the typed icon. */
     static Icon fromGlyph(String glyph) {
         if (glyph == null || glyph.isEmpty()) return new Glyph(Glyphs.BULLET, Glyphs.BULLET_PLAIN);
@@ -75,6 +85,7 @@ public sealed interface Icon {
         return switch (this) {
             case Glyph(var unicode, var ascii) -> ctx.ansi() ? unicode : ascii;
             case Spinner() -> ctx.ansi() ? Glyphs.PULSE : Glyphs.PULSE_PLAIN;
+            case HoldSpinner() -> ctx.ansi() ? Glyphs.STOP : Glyphs.HOLD_PLAIN;
         };
     }
 
@@ -101,7 +112,7 @@ public sealed interface Icon {
                 }
                 yield JkWedge.Variant.WORK;
             }
-            case Spinner() -> JkWedge.Variant.WORK;
+            case Spinner(), HoldSpinner() -> JkWedge.Variant.WORK;
         };
     }
 }

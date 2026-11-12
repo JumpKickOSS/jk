@@ -17,6 +17,7 @@ import cc.jumpkick.wire.protocol.ErrorLineEvent;
 import cc.jumpkick.wire.protocol.EtaEvent;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.LabelEvent;
+import cc.jumpkick.wire.protocol.MemoryHoldEvent;
 import cc.jumpkick.wire.protocol.ModuleFinishEvent;
 import cc.jumpkick.wire.protocol.NoteEvent;
 import cc.jumpkick.wire.protocol.OutputEvent;
@@ -217,6 +218,10 @@ final class EngineEventDecoder {
                         listener.onNote(NoteEvent.decode(line).text());
                     case EngineProtocol.WORKSPACE_PROGRESS ->
                         listener.onWorkspaceProgress(snapshotOf(WorkspaceProgressEvent.decode(line)));
+                    case EngineProtocol.HOLD_START, EngineProtocol.HOLD_END -> {
+                        MemoryHoldEvent e = MemoryHoldEvent.decode(line);
+                        listener.onMemoryHold(e.held(), e.needBytes(), e.freeBytes(), e.heldMs());
+                    }
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                     case EngineProtocol.ETA ->
                         // Seed / re-seed only (R0). Client locks after execute starts. The line's

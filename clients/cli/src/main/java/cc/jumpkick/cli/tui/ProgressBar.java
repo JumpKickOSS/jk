@@ -52,6 +52,19 @@ public final class ProgressBar {
         return s;
     }
 
+    private static volatile @Nullable ProgressBar held;
+
+    /** Cached bar in the theme's {@link Theme#heldGradient()}: a build on hold for memory. */
+    public static ProgressBar held() {
+        Gradient g = Theme.active().heldGradient();
+        ProgressBar h = held;
+        if (h == null || !h.gradient.equals(g)) {
+            h = new ProgressBar(g);
+            held = h;
+        }
+        return h;
+    }
+
     /** Bar in an explicit gradient (e.g. the failure gradient for a stopped run). */
     public ProgressBar(Gradient gradient) {
         this.gradient = gradient;

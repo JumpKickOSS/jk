@@ -258,6 +258,14 @@ public interface Theme {
     Gradient failureGradient();
 
     /**
+     * Gradient a build on hold for memory repaints its bar in: grayscale, so the bar reads as
+     * paused, not failed and not advancing.
+     */
+    default Gradient heldGradient() {
+        return new Gradient(new Rgb(110, 110, 110), new Rgb(190, 190, 190));
+    }
+
+    /**
      * Per-codepoint truecolor lerp across {@link #titleGradient()}, bold stamped on every cell
      * ({@code 1;38;2;R;G;B}).
      */

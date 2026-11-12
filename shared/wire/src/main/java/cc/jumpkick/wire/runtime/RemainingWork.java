@@ -160,7 +160,9 @@ public final class RemainingWork {
     /** {@code step} of the module at {@code dir} started now. */
     public synchronized void stepStart(Path dir, String step) {
         if (dir == null || step == null || !steps.containsKey(dir)) return;
-        started.computeIfAbsent(dir, k -> new HashMap<>()).putIfAbsent(step, clock.millis());
+        // A step that starts on hold starts, on the step clock, when the hold began.
+        started.computeIfAbsent(dir, k -> new HashMap<>())
+                .putIfAbsent(step, heldSince >= 0 ? heldSince : clock.millis());
     }
 
     /** {@code step} of the module at {@code dir} finished. */
@@ -174,6 +176,26 @@ public final class RemainingWork {
         if (dir == null || !steps.containsKey(dir)) return;
         suiteDone.put(dir, clamp01(fracDone));
     }
+
+    /**
+     * The build went on hold (a memory wait): running steps stop counting down until {@link
+     * #resume}, which takes the time held off their elapsed time. A hold is not work.
+     */
+    public synchronized void hold() {
+        if (heldSince < 0) heldSince = clock.millis();
+    }
+
+    /** The build resumed after a {@link #hold}. */
+    public synchronized void resume() {
+        if (heldSince < 0) return;
+        long held = Math.max(0, clock.millis() - heldSince);
+        heldSince = -1;
+        if (held == 0) return;
+        for (Map<String, Long> starts : started.values()) starts.replaceAll((step, at) -> at + held);
+    }
+
+    /** When the current hold began; -1 when not on hold. */
+    private long heldSince = -1;
 
     /** Whether the module at {@code dir} is counted down by its steps. */
     public synchronized boolean steps(Path dir) {
@@ -222,7 +244,7 @@ public final class RemainingWork {
         if (R0 <= 0) return 0;
         if (pending.isEmpty()) return 0;
         List<ModuleWorkCost> residual = new ArrayList<>(pending.size());
-        long now = steps.isEmpty() ? 0 : clock.millis();
+        long now = steps.isEmpty() ? 0 : heldSince >= 0 ? heldSince : clock.millis();
         for (Map.Entry<Path, ModuleWorkCost> e : pending.entrySet()) {
             List<StepCost> own = steps.get(e.getKey());
             ModuleWorkCost r = own != null

@@ -500,6 +500,11 @@ final class JkManagerView {
             chrome.add(ModuleScopeHint.line(m.scopeHintVerb, m.scopeHintNames, frameCtx));
         }
         chrome.add(planHeader(frameCtx, elapsedMillis));
+        if (m.heldMillis(elapsedMillis) >= 0) {
+            // On hold for memory: one waiting line stands in for the work rows until it resumes.
+            chrome.add("  " + Theme.colorize(HOLD_LINE, Theme.active().midGray()));
+            return chrome;
+        }
 
         int rowsAfterHeader = Math.max(1, m.height - 2 - (hasScopeHint ? 1 : 0));
         // Shrink the work tree so ✓ [N of M] still fits under the wedge (live region only).
@@ -681,7 +686,10 @@ final class JkManagerView {
      * Painted via {@link JkWedge} so live and settled chrome share one renderer.
      */
     private String planHeader(RenderContext frameCtx, long elapsedMillis) {
-        long[] bd = m.displayBar(elapsedMillis);
+        // The bar and the countdown run on work time: a hold for memory stands them still.
+        long workMillis = m.workElapsedMillis(elapsedMillis);
+        long heldMillis = m.heldMillis(elapsedMillis);
+        long[] bd = m.displayBar(workMillis);
         long barNum = bd[0];
         long barDen = bd[1];
         // Sample worker-written state under the lock — the animator thread otherwise read
@@ -702,9 +710,10 @@ final class JkManagerView {
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
         Countdown.Face face;
         synchronized (m.lock) {
-            face = m.header.countdown.face(elapsedMillis);
+            face = m.header.countdown.face(workMillis);
         }
-        RichText clock = clockFace(face, elapsedSec);
+        RichText clock = heldMillis >= 0 ? holdFace(heldMillis, elapsedSec) : clockFace(face, elapsedSec);
+        Icon icon = heldMillis >= 0 ? Icon.holdSpinner() : Icon.spinner();
         RenderContext ctx = frameCtx.withCaps(m.nerdFont).withFrame(m.frame);
         if (phase1) {
             RichText msg = sl.isEmpty()
@@ -713,14 +722,23 @@ final class JkManagerView {
                             RichText.ansi(Theme.colorize(sl, Theme.active().brightWhite())),
                             RichText.plain(" "),
                             clock);
-            return new JkWedge(Icon.spinner(), m.name, msg)
-                    .variant(JkWedge.Variant.WORK)
-                    .renderLiveLine(ctx);
+            return new JkWedge(icon, m.name, msg).variant(JkWedge.Variant.WORK).renderLiveLine(ctx);
         }
-        return new JkWedge(Icon.spinner(), m.name, RichText.empty())
+        return new JkWedge(icon, m.name, RichText.empty())
                 .variant(JkWedge.Variant.WORK)
-                .progress(new Progress(hasBar ? barNum : 0, hasBar ? Math.max(1, barDen) : 0).suffix(clock))
+                .progress(new Progress(hasBar ? barNum : 0, hasBar ? Math.max(1, barDen) : 0)
+                        .look(heldMillis >= 0 ? Progress.Look.HELD : Progress.Look.PLAN)
+                        .suffix(clock))
                 .renderLiveLine(ctx);
+    }
+
+    /** The line that stands in for the work rows while the build is on hold for memory. */
+    static final String HOLD_LINE = "JumpKick is waiting for system memory to become available…";
+
+    /** {@code On hold 0:12 · 1:40}: the hold counting up where the countdown was, then the elapsed time. */
+    private RichText holdFace(long heldMillis, long elapsedSec) {
+        return RichText.parse("[dark-gray]·[/] [mid-gray]On hold " + DurationText.clock(heldMillis / 1000L)
+                + "[/] [dark-gray]·[/] [dark-gray]" + DurationText.clock(elapsedSec) + "[/]");
     }
 
     private RichText clockFace(Countdown.Face face, long elapsedSec) {

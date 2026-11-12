@@ -22,6 +22,7 @@ import cc.jumpkick.wire.protocol.EventCatalog;
 import cc.jumpkick.wire.protocol.EventEnvelope;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.LabelEvent;
+import cc.jumpkick.wire.protocol.MemoryHoldEvent;
 import cc.jumpkick.wire.protocol.ModuleFinishEvent;
 import cc.jumpkick.wire.protocol.ModuleStartEvent;
 import cc.jumpkick.wire.protocol.NoteEvent;
@@ -409,6 +410,14 @@ public final class JsonlShape {
      * do not recompute from module ticks.
      */
     public static String workspaceProgress(String dir, WorkspaceProgressTracker.Snapshot snap) {
+        return workspaceProgress(dir, snap, -1);
+    }
+
+    /**
+     * As above for a build that has been on hold for memory {@code heldMs} (-1 when it is not): the
+     * line carries {@code "state": "on-hold"} and the time held.
+     */
+    public static String workspaceProgress(String dir, WorkspaceProgressTracker.Snapshot snap, long heldMs) {
         return console(new WorkspaceProgressEvent(
                         dir,
                         snap.numerator(),
@@ -418,8 +427,15 @@ public final class JsonlShape {
                         snap.modulesComplete(),
                         snap.modulesTotal(),
                         snap.remainingMs(),
-                        snap.R0ms())
+                        snap.R0ms(),
+                        heldMs)
                 .encode());
+    }
+
+    /** The build went on hold for memory, or resumed ({@code hold-start} / {@code hold-end}). */
+    public static String memoryHold(String dir, boolean held, long needBytes, long freeBytes, long heldMs) {
+        return console(
+                (held ? MemoryHoldEvent.start(dir, needBytes, freeBytes) : MemoryHoldEvent.end(dir, heldMs)).encode());
     }
 
     /** The run's downloads summed up, without the per-transfer rows; {@code done} closes a burst. */

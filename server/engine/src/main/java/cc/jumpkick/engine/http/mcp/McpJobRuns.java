@@ -107,14 +107,16 @@ public final class McpJobRuns {
             return in.text(McpAgentText.running(spec.kind(), jid));
         }
         // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
-        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs()));
+        McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
+        boolean done =
+                ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), holds));
         if (!done) {
             return in.text(McpAgentText.timeout(spec.kind(), jid));
         }
         Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, in.dir(), triggeredAt));
         String text = McpAgentText.of(ctx, last);
         if (text == null) text = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
-        return in.text(text);
+        return in.text(text + McpHolds.totalLine(jid));
     }
 
     /**
@@ -126,14 +128,16 @@ public final class McpJobRuns {
         String progressToken = in.progressToken();
         if (progressToken != null) ctx.progressTokens().bind(progressToken, jid);
         int timeoutS = timeoutS(in);
-        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs()));
+        McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
+        boolean done =
+                ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), holds));
         if (!done) {
             return in.text(McpAgentText.timeout(McpVitals.liveKind(ctx, jid), jid));
         }
         Map<String, Object> last = ctx.admissionYield().yielding(() -> waitForJournal(ctx, jid));
         if (last == null) last = McpDiagnostics.findByRequestId(ctx.history(), jid);
         String text = McpAgentText.of(ctx, last);
-        return in.text(text != null ? text : "FAIL run jid=" + jid + "\nno run record\n");
+        return in.text((text != null ? text : "FAIL run jid=" + jid + "\nno run record\n") + McpHolds.totalLine(jid));
     }
 
     /** {@code timeout_s}: how long one call parks before it answers {@code TIMEOUT}. */
@@ -264,10 +268,11 @@ public final class McpJobRuns {
      * has one, and one still queued (behind the workspace's previous job, or waiting for memory) is
      * not live yet and has none, and a wait that gave up on it answered FAIL for a build that passed.
      */
-    private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs) {
+    private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs, McpHolds.Notifier holds) {
         long start = System.currentTimeMillis();
         boolean seen = false;
         while (System.currentTimeMillis() - start < timeoutMs) {
+            holds.tick(System.currentTimeMillis());
             boolean live = McpVitals.isLive(ctx, jid);
             if (live) seen = true;
             if (seen && !live) return true;

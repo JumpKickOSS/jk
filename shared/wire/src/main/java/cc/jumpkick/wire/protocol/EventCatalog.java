@@ -214,6 +214,16 @@ public final class EventCatalog {
                     Carried.as(EngineProtocol.WORKSPACE_PROGRESS, "every change"),
                     Carried.as(EngineProtocol.WORKSPACE_PROGRESS, "every change (SsePublisher.emitWorkspaceProgress)")),
             new Row(
+                    EngineProtocol.HOLD_START,
+                    wire(),
+                    Carried.as(EngineProtocol.HOLD_START, "when a build goes on hold for memory"),
+                    Carried.as(EngineProtocol.HOLD_START, "when a build goes on hold (SsePublisher.holdStarted)")),
+            new Row(
+                    EngineProtocol.HOLD_END,
+                    wire(),
+                    Carried.as(EngineProtocol.HOLD_END, "when a held build resumes"),
+                    Carried.as(EngineProtocol.HOLD_END, "when a held build resumes (SsePublisher.holdEnded)")),
+            new Row(
                     EngineProtocol.MODULE_START,
                     wire(),
                     Carried.as(EngineProtocol.MODULE_START, "every module"),

@@ -237,7 +237,9 @@ export function foldEvent(cards, event) {
         const rem = typeof d.remainingMs === 'number' && d.remainingMs >= 0 ? d.remainingMs : null;
         if (rem != null) {
           card.residualRemainingMs = rem;
-          card.residualAt = event.at ?? Date.now();
+          // On hold the engine's countdown stands still: anchor it where the hold began, so the
+          // resume shift (hold-end) brings it back exactly where it stood.
+          card.residualAt = card.holdSince != null ? card.holdSince : (event.at ?? Date.now());
         }
         if (card.r0Ms == null) {
           if (rem != null) {
@@ -253,6 +255,25 @@ export function foldEvent(cards, event) {
             card.r0At = startAnchor(card) ?? event.at ?? Date.now();
           }
         }
+      }
+      break;
+    }
+    case EVENT.holdStart: {
+      // The build is on hold for memory: the head turns gray, the square breathes, the lanes give
+      // way to the waiting line and the countdown to a count-up (cards.holdFace).
+      const card = resolveCard(cards, d);
+      if (card && card.holdSince == null) card.holdSince = event.at ?? Date.now();
+      break;
+    }
+    case EVENT.holdEnd: {
+      // Resumed: the time held moves the countdown's anchors, so it resumes from where it stood.
+      const card = resolveCard(cards, d);
+      if (card && card.holdSince != null) {
+        const held = Math.max(0, (event.at ?? Date.now()) - card.holdSince);
+        if (card.residualAt != null) card.residualAt += held;
+        if (card.r0At != null) card.r0At += held;
+        card.heldMs = (card.heldMs || 0) + held;
+        card.holdSince = null;
       }
       break;
     }

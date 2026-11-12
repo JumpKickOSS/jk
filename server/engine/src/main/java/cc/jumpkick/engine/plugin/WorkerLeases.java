@@ -529,6 +529,7 @@ public final class WorkerLeases {
                 MemoryNotes.reportWaiting(waiter.demand.bytes, free);
             }
             long lastReport = Clock.SYSTEM.nanos();
+            boolean holding = false;
             try {
                 while (true) {
                     boolean granted;
@@ -557,6 +558,10 @@ public final class WorkerLeases {
                     }
                     if (granted) break;
                     long now = Clock.SYSTEM.nanos();
+                    if (!holding && now - arrived >= MemoryHolds.HOLD_AFTER_NANOS && waiter.resident == null) {
+                        holding = true;
+                        MemoryHolds.waiting(requestId, need, free);
+                    }
                     if (lastReport == 0 || now - lastReport >= REPORT_EVERY_NANOS) {
                         MemoryNotes.reportWaiting(need, free);
                         lastReport = now;
@@ -571,6 +576,8 @@ public final class WorkerLeases {
                     lock.notifyAll();
                 }
                 throw e;
+            } finally {
+                if (holding) MemoryHolds.done(requestId);
             }
             long waitedNanos = Clock.SYSTEM.nanos() - arrived;
             return finish(waiter, waitedNanos, queued);

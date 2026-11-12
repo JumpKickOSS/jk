@@ -71,6 +71,24 @@ import org.jspecify.annotations.Nullable;
  */
 final class WorkspaceRunView {
 
+    /** Whether the build is on hold for memory, and since when: progress lines carry the time held. */
+    private final HoldClock holds = new HoldClock();
+
+    /** The hold the engine announced, timed on this side for the progress lines that follow it. */
+    private static final class HoldClock {
+        private volatile long sinceNanos;
+
+        void note(boolean held) {
+            sinceNanos = held ? Math.max(1, System.nanoTime()) : 0;
+        }
+
+        /** How long the build has been on hold; -1 when it is not. */
+        long heldMs() {
+            long since = sinceNanos;
+            return since == 0 ? -1 : Math.max(0, System.nanoTime() - since) / 1_000_000L;
+        }
+    }
+
     /**
      * Per-verb rendering policy.
      *
@@ -264,7 +282,15 @@ final class WorkspaceRunView {
             public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
                 agg.applySnapshot(snap);
                 seedPlanned(snap.modulesTotal());
-                event(JsonlShape.workspaceProgress(entryDir.toString(), snap));
+                event(JsonlShape.workspaceProgress(entryDir.toString(), snap, holds.heldMs()));
+            }
+
+            @Override
+            public void onMemoryHold(boolean held, long needBytes, long freeBytes, long heldMs) {
+                holds.note(held);
+                if (held) view.hold(needBytes, freeBytes);
+                else view.resume(heldMs);
+                event(JsonlShape.memoryHold(entryDir.toString(), held, needBytes, freeBytes, heldMs));
             }
 
             @Override
@@ -362,7 +388,13 @@ final class WorkspaceRunView {
             public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
                 // Engine tracker owns the aggregate rider; module listeners stay local.
                 LiveProgress.get().apply(snap);
-                event(JsonlShape.workspaceProgress(entryDir.toString(), snap));
+                event(JsonlShape.workspaceProgress(entryDir.toString(), snap, holds.heldMs()));
+            }
+
+            @Override
+            public void onMemoryHold(boolean held, long needBytes, long freeBytes, long heldMs) {
+                holds.note(held);
+                event(JsonlShape.memoryHold(entryDir.toString(), held, needBytes, freeBytes, heldMs));
             }
 
             @Override

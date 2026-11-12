@@ -141,14 +141,14 @@ public final class JkWedge implements Widget {
         // " ") plus the separator, leaving the bar detached from its badge in every no-nerd-font
         // terminal. The chip's trail is painted on the chip background, so dropping only the
         // separator leaves the bar flush against the badge in both modes rather than merely closer.
-        if (progress != null && progress.look() == Progress.Look.PLAN) {
+        if (progress != null && progress.look().header()) {
             return chip + cap + tail;
         }
         return chip + cap + " " + tail;
     }
 
     private @Nullable String paintChip(RenderContext ctx, ChipColors colors, String glyph) {
-        if (!(icon instanceof Icon.Spinner) || !ctx.ansi()) {
+        if (!(icon instanceof Icon.Spinner || icon instanceof Icon.HoldSpinner) || !ctx.ansi()) {
             return chip(glyph, title, colors.chip, ctx.wedge());
         }
         Style[] pulseFg = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, colors.cap);
@@ -172,11 +172,11 @@ public final class JkWedge implements Widget {
 
     private @Nullable String paintCap(RenderContext ctx, ChipColors colors) {
         if (!ctx.wedge() || !ctx.ansi()) return "";
-        if (progress != null && progress.look() == Progress.Look.PLAN) {
+        if (progress != null && progress.look().header()) {
             // The cap blends into the bar's lead, so it must ask at the bar's OWN width: cell 0's
             // gradient index depends on the cell count, so a narrow bar asked at the default width
             // gets a subtly wrong cap.
-            Rgb lead = ProgressBar.shared()
+            Rgb lead = (progress.look() == Progress.Look.HELD ? ProgressBar.held() : ProgressBar.shared())
                     .leadColor(progress.numerator(), Math.max(1L, progress.denominator()), progress.segments());
             return Theme.colorize(
                     Glyphs.SEGMENT_END_NERD,

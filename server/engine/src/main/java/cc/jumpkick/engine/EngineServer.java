@@ -33,6 +33,7 @@ import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.notices.UpdatedNotice;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.sessions.EpisodeInference;
@@ -407,6 +408,19 @@ public final class EngineServer implements AutoCloseable {
                 journalWriter::accStepStart);
         this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
         this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
+        // A build whose forks wait for memory goes on hold on every surface (JK-VYJ4X).
+        SsePublisher holds = sse;
+        MemoryHolds.listen(new MemoryHolds.Listener() {
+            @Override
+            public void held(long requestId, long needBytes, long freeBytes) {
+                holds.holdStarted(requestId, needBytes, freeBytes);
+            }
+
+            @Override
+            public void resumed(long requestId, long heldMillis) {
+                holds.holdEnded(requestId, heldMillis);
+            }
+        });
         this.jobs = newJobEnvelope();
         this.verbs = newVerbRegistry();
         // A graph question compiles stale modules as a job of this engine, like any other.

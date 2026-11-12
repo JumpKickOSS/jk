@@ -14,6 +14,7 @@ export const BuildHead = {
     state: { type: String, default: 'running' },
     eta: { type: String, default: '' }, // '~1:20' / '0s' / '+0:05'; '' with no estimate
     clock: { type: String, default: '' }, // elapsed while running, the final wall once finished
+    hold: { type: String, default: '' }, // '0:12' while on hold for memory; '' otherwise
   },
   // The settled chip carries the outcome's icon (the terminal's check / cross / cancelled) where the spinner was.
   computed: {
@@ -22,10 +23,10 @@ export const BuildHead = {
     },
   },
   template: `
-    <div class="bhead" :class="'bhead-' + state" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100">
-      <span class="bchip"><span v-if="state === 'running'" class="spin bspin"></span><jk-icon v-else-if="icon" :name="icon" class="bglyph"></jk-icon><span class="bchip-label">{{ label }}</span></span>
+    <div class="bhead" :class="['bhead-' + state, { 'bhead-held': hold }]" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100">
+      <span class="bchip"><span v-if="state === 'running'" class="spin bspin" :class="{ bhold: hold }"></span><jk-icon v-else-if="icon" :name="icon" class="bglyph"></jk-icon><span class="bchip-label">{{ label }}</span></span>
       <span class="btrack"><span class="bfill" :style="{ width: (state === 'running' ? pct : 100) + '%' }"></span><span class="bpct">{{ state === 'running' ? pct : 100 }}%</span></span>
-      <span class="bclock"><template v-if="eta"><span class="bsep">·</span> <span class="eta-label">ETA</span> <span class="eta-cd">{{ eta }}</span> </template><span class="bsep">·</span> <span class="bel">{{ clock }}</span></span>
+      <span class="bclock"><template v-if="hold"><span class="bsep">·</span> <span class="hold-cd">On hold {{ hold }}</span> </template><template v-else-if="eta"><span class="bsep">·</span> <span class="eta-label">ETA</span> <span class="eta-cd">{{ eta }}</span> </template><span class="bsep">·</span> <span class="bel">{{ clock }}</span></span>
     </div>`,
 };
 

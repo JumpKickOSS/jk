@@ -103,7 +103,15 @@ final class JkManagerPlainView {
      * manager lock. Refreshes percent, ETA, and live status details (e.g. remaining tests).
      */
     void maybeEmitHeartbeat() {
-        if (m.done || !animating() || !progressMode || !progressStarted) return;
+        if (m.done || !animating()) return;
+        long held = m.heldMillis(m.elapsedMillis());
+        if (held >= 0) {
+            // On hold: the count-up at the progress cadence, so a long hold is never silent.
+            if (System.nanoTime() - lastPrintedNanos < HEARTBEAT_MS * 1_000_000L) return;
+            printPlain(holdLine(held));
+            return;
+        }
+        if (!progressMode || !progressStarted) return;
         if (lastPrintedNanos == 0) return;
         long elapsedNs = System.nanoTime() - lastPrintedNanos;
         if (elapsedNs < HEARTBEAT_MS * 1_000_000L) return;
@@ -408,14 +416,44 @@ final class JkManagerPlainView {
         return last;
     }
 
+    /** The line a plain run prints when its build goes on hold for memory. */
+    static final String HOLD_STARTED = "JumpKick build paused - Waiting for system memory to become available...";
+
+    /** The build went on hold for memory. Must hold the manager lock. */
+    void onHold(long needBytes, long freeBytes) {
+        if (m.done || !animating()) return;
+        printPlain(HOLD_STARTED);
+    }
+
+    /** The build resumed after {@code heldMs} on hold. Must hold the manager lock. */
+    void onResume(long heldMs) {
+        if (m.done || !animating()) return;
+        printPlain("JumpKick build resumed after " + DurationText.clockMillis(heldMs) + " on hold");
+        // The next stage line prints in full: the hold line stood between it and the last one.
+        lastSubject = "";
+        lastStatus = "";
+    }
+
+    /** {@code On hold 45s}: the plain count-up of a hold. */
+    static String holdLine(long heldMs) {
+        return "On hold " + Math.max(0, heldMs) / 1000L + "s";
+    }
+
+    private void printPlain(String line) {
+        m.out.println(line);
+        chromeStarted = true;
+        lastPrintedNanos = System.nanoTime();
+        m.out.flush();
+    }
+
     private int currentPercent() {
-        long[] bd = m.displayBar(m.elapsedMillis());
+        long[] bd = m.displayBar(m.workElapsedMillis());
         if (bd[1] <= 0) return 0;
         return new Progress(bd[0], bd[1]).percent();
     }
 
     private @Nullable String etaClock() {
-        long remMs = m.header.countdown.remainingMs(m.elapsedMillis());
+        long remMs = m.header.countdown.remainingMs(m.workElapsedMillis());
         if (remMs < 0) return null;
         return DurationText.clockMillis(remMs);
     }

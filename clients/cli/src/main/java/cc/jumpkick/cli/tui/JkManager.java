@@ -149,7 +149,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
         this.windowTitle = new WindowTitle(this.out, animate);
         this.pane = new OutputPane(this, lock);
-        this.header = new HeaderProgress(lock, plain, progressMode, this::elapsedMillis, () -> done);
+        this.header = new HeaderProgress(lock, plain, progressMode, this::workElapsedMillis, () -> done);
         this.model = new PlanModel(lock, new PlanEvents());
         this.animator = new RegionAnimator(lock, pane::flushStale, this::tick, plain::maybeEmitHeartbeat, () -> done);
     }
@@ -585,6 +585,57 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
 
     long elapsedMillis() {
         return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    /**
+     * The run's elapsed time less its time on hold for memory: the clock the bar and the
+     * countdown run on, so both stand still through a hold and resume where they were.
+     */
+    long workElapsedMillis() {
+        return workElapsedMillis(elapsedMillis());
+    }
+
+    /** {@link #workElapsedMillis()} at {@code elapsedMillis} of wall time. */
+    long workElapsedMillis(long elapsedMillis) {
+        long since = holdSinceMs;
+        long held = heldTotalMs + (since >= 0 ? Math.max(0, elapsedMillis - since) : 0);
+        return Math.max(0, elapsedMillis - held);
+    }
+
+    /** How long the current hold has lasted at {@code elapsedMillis}; -1 when not on hold. */
+    long heldMillis(long elapsedMillis) {
+        long since = holdSinceMs;
+        return since < 0 ? -1 : Math.max(0, elapsedMillis - since);
+    }
+
+    /** Wall elapsed at which the current hold began; -1 when not on hold. */
+    private volatile long holdSinceMs = -1;
+
+    /** Time on hold before the current hold. */
+    private volatile long heldTotalMs;
+
+    /**
+     * The build went on hold for memory: a fork needs {@code needBytes} and {@code freeBytes} are
+     * free. The bar turns gray and stops, the circle becomes a breathing square, the work lines give
+     * way to one waiting line and the countdown to a count-up of the hold.
+     */
+    public void hold(long needBytes, long freeBytes) {
+        synchronized (lock) {
+            if (done || holdSinceMs >= 0) return;
+            holdSinceMs = elapsedMillis();
+            plain.onHold(needBytes, freeBytes);
+        }
+    }
+
+    /** The build resumed after {@code heldMs} on hold: the display returns to where it was. */
+    public void resume(long heldMs) {
+        synchronized (lock) {
+            long since = holdSinceMs;
+            if (since < 0) return;
+            heldTotalMs += Math.max(0, elapsedMillis() - since);
+            holdSinceMs = -1;
+            plain.onResume(heldMs);
+        }
     }
 
     /** Stop the background loop and release the Ctrl-O key listener. Idempotent. */

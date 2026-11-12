@@ -84,6 +84,30 @@ def load_events(path: Path) -> list[dict]:
     return out
 
 
+def hold_intervals(ev: list[dict]) -> list[tuple[int, int]]:
+    """The run's holds for memory, (start, end) in ms: hold-start to hold-end, or to the last event."""
+    out, since = [], None
+    for e in ev:
+        if e.get("type") == "hold-start" and since is None:
+            since = e.get("ts")
+        elif e.get("type") == "hold-end" and since is not None:
+            out.append((since, e.get("ts", since)))
+            since = None
+    if since is not None:
+        out.append((since, max(e.get("ts", since) for e in ev)))
+    return out
+
+
+def work_time(ts: int, holds: list[tuple[int, int]]) -> int:
+    """`ts` less the time held before it: a hold is a pause, not work, and is not scored."""
+    held = 0
+    for start, end in holds:
+        if ts <= start:
+            break
+        held += min(ts, end) - start
+    return ts - held
+
+
 def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore | None:
     details = run_dir / "details.jsonl"
     if not details.is_file():
@@ -91,6 +115,13 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
     ev = load_events(details)
     if not ev or ev[0].get("type") != "session-start":
         return None
+    # Time on hold for memory comes off the run's clock: the countdown stands still through a
+    # hold, and the run's wall the estimate is judged against is its working time (JK-VYJ4X).
+    holds = hold_intervals(ev)
+    if holds:
+        for e in ev:
+            if isinstance(e.get("ts"), (int, float)):
+                e["ts"] = work_time(e["ts"], holds)
     argv = " ".join(ev[0].get("argv") or [])
     t0 = ev[0]["ts"]
     finish = [e for e in ev if e.get("type") == "workspace-finish"]

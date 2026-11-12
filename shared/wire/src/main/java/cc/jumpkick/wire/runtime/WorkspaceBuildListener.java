@@ -97,6 +97,13 @@ public interface WorkspaceBuildListener {
      */
     default void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snapshot) {}
 
+    /**
+     * The build went on hold for memory ({@code held}; a fork needs {@code needBytes}, {@code
+     * freeBytes} are free) or resumed after {@code heldMs}. A hold is a pause jk recovers from by
+     * itself: the surfaces show it as on hold, never as stuck or failed, and restore on resume.
+     */
+    default void onMemoryHold(boolean held, long needBytes, long freeBytes, long heldMs) {}
+
     /** The whole workspace build finished. */
     default void onWorkspaceFinish(WorkspaceResult result) {}
 }
