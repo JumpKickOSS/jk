@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -92,12 +93,29 @@ public final class ReachabilityMetadata {
             return List.of();
         }
 
+        return matched(repoRoot, artifacts, log);
+    }
+
+    /**
+     * The dirs {@link #configDirs} hands native-image, read without fetching or logging: empty
+     * when {@code pin} is null, and absent when the pinned release is not extracted yet, where the
+     * build would fetch it and match against content no read-only caller can see.
+     */
+    public static Optional<List<Path>> extractedConfigDirs(
+            Path storeRoot, Lockfile.@Nullable NativeMetadata pin, List<Lockfile.Artifact> artifacts) {
+        if (pin == null) return Optional.of(List.of());
+        Path repoRoot = repositoryRoot(storeRoot, pin.version());
+        if (!Files.isRegularFile(repoRoot.resolve(".complete"))) return Optional.empty();
+        return Optional.of(matched(repoRoot, artifacts, msg -> {}));
+    }
+
+    private static List<Path> matched(Path repoRoot, List<Lockfile.Artifact> artifacts, Consumer<String> log) {
         List<Path> dirs = new ArrayList<>();
         for (Lockfile.Artifact artifact : artifacts) {
             Path dir = match(repoRoot, artifact.moduleGroup(), artifact.moduleArtifact(), artifact.version(), log);
             if (dir != null) dirs.add(dir);
         }
-        return dirs;
+        return List.copyOf(dirs);
     }
 
     /**

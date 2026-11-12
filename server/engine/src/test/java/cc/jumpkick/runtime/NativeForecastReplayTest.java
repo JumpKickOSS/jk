@@ -10,11 +10,13 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +75,8 @@ class NativeForecastReplayTest {
         Files.delete(out);
         Files.delete(jar);
         Map<Path, String> pinned = new HashMap<>();
-        assertThat(PackagingKeys.nativeActionCached(dir, project, layout, lockFile, ac, cache, pinned))
+        assertThat(PackagingKeys.nativeActionCached(
+                        dir, project, layout, lockFile, ac, cache, tmp.resolve("store"), pinned))
                 .as("a jar nobody pinned is a missing classpath entry: no false restore")
                 .isFalse();
 
@@ -83,12 +86,14 @@ class NativeForecastReplayTest {
                 .hashFromPath(ac.cas().put("jar-bytes".getBytes(StandardCharsets.UTF_8)))
                 .orElseThrow();
         pinned.put(jar.toAbsolutePath().normalize(), sha);
-        assertThat(PackagingKeys.nativeActionCached(dir, project, layout, lockFile, ac, cache, pinned))
+        assertThat(PackagingKeys.nativeActionCached(
+                        dir, project, layout, lockFile, ac, cache, tmp.resolve("store"), pinned))
                 .isTrue();
 
         // An arg the manifest changed is a key the record does not hold.
         JkBuild changedArgs = JkBuildParser.parse(module(tmp, "[\"-O3\"]").resolve("jk.toml"));
-        assertThat(PackagingKeys.nativeActionCached(dir, changedArgs, layout, lockFile, ac, cache, pinned))
+        assertThat(PackagingKeys.nativeActionCached(
+                        dir, changedArgs, layout, lockFile, ac, cache, tmp.resolve("store"), pinned))
                 .isFalse();
 
         // A trained reachability tree the record never saw moves the key too.
@@ -98,7 +103,92 @@ class NativeForecastReplayTest {
                 .resolve(TrainLayout.REACHABILITY);
         Files.createDirectories(train);
         Files.writeString(train.resolve("reachability-metadata.json"), "{}");
-        assertThat(PackagingKeys.nativeActionCached(dir, project, layout, lockFile, ac, cache, pinned))
+        assertThat(PackagingKeys.nativeActionCached(
+                        dir, project, layout, lockFile, ac, cache, tmp.resolve("store"), pinned))
+                .isFalse();
+    }
+
+    @Test
+    void a_wiped_executable_with_metadata_repository_dirs_forecasts_a_restore(@TempDir Path tmp) throws Exception {
+        Path cache = tmp.resolve("cache");
+        Path store = tmp.resolve("store");
+        Path dir = module(tmp, "[]");
+        // The lock pins a metadata-repository release, extracted in the store, that matches a
+        // runtime artifact: the step folds that dir's content into its key as a metadata: token.
+        String release = "9.9.9";
+        Files.writeString(dir.resolve("jk-lock.toml"), """
+                version = 1
+                generated-by = "test"
+                resolution-algorithm = "pubgrub-v1"
+
+                [native]
+                metadata-repository = "%s"
+
+                [[artifact]]
+                name     = "com.acme:widgets:jar:"
+                version  = "4.5.6"
+                source   = "central+https://repo.example/"
+                checksum = "sha256:%s"
+                scopes   = ["main"]
+                """.formatted(release, "a".repeat(64)));
+        Path repoRoot = ReachabilityMetadata.repositoryRoot(store, release);
+        Path widgets = Files.createDirectories(repoRoot.resolve("com.acme/widgets/1"));
+        Files.writeString(widgets.resolve("reflect-config.json"), "[]");
+        Files.writeString(
+                repoRoot.resolve("com.acme/widgets/index.json"),
+                "[{\"metadata-version\":\"1\",\"tested-versions\":[\"4.5.6\"]}]");
+        Files.writeString(repoRoot.resolve(".complete"), release);
+
+        JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(dir, project);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        Path jar = layout.mainJar();
+        Path target = Objects.requireNonNull(jar.getParent(), "the jar's directory");
+        Files.createDirectories(target);
+        Files.writeString(jar, "jar-bytes");
+        Path out = layout.nativeBinary();
+        Files.writeString(out, "binary");
+        Path graal = Files.createDirectories(tmp.resolve("graal"));
+        Files.writeString(graal.resolve("release"), "JAVA_VERSION=\"25\"\n");
+
+        Map<Path, String> pinned = new HashMap<>();
+        List<Path> classpath = new ArrayList<>(List.of(jar));
+        classpath.addAll(PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, pinned));
+        List<String> liveArgs = List.of(
+                "-H:+UnlockExperimentalVMOptions",
+                "-H:ConfigurationFileDirectories=" + widgets.toAbsolutePath(),
+                "-H:-UnlockExperimentalVMOptions");
+        PlannerNative.ImageKey key =
+                PlannerNative.imageKey(graal, classpath, liveArgs, "t.Main", false, out, null, null, List.of(widgets));
+        assertThat(key.tokens()).anyMatch(t -> t.startsWith("metadata:"));
+        Session session = Session.defaults().withCacheDir(cache);
+        SessionContext.where(session, () -> {
+            PackagingCache.storePackagedForTest(
+                    cache, key.task(), key.key(), key.tokens(), target, List.of(out), true, List.of());
+            return null;
+        });
+        ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
+
+        // jk clean, with the jar's content pinned by the package forecast.
+        Files.delete(out);
+        Files.delete(jar);
+        String sha = ac.cas()
+                .hashFromPath(ac.cas().put("jar-bytes".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        pinned.put(jar.toAbsolutePath().normalize(), sha);
+        assertThat(PackagingKeys.nativeActionCached(dir, project, layout, lockFile, ac, cache, store, pinned))
+                .as("the metadata: token replays as its own token and the key hits")
+                .isTrue();
+
+        // Rewritten metadata behind the same release path is an image the record does not hold.
+        Files.writeString(widgets.resolve("reflect-config.json"), "[{\"name\":\"com.acme.Fixed\"}]");
+        assertThat(PackagingKeys.nativeActionCached(dir, project, layout, lockFile, ac, cache, store, pinned))
+                .isFalse();
+        Files.writeString(widgets.resolve("reflect-config.json"), "[]");
+
+        // A pinned release not extracted yet is one the build would fetch: no claim on its content.
+        Files.delete(repoRoot.resolve(".complete"));
+        assertThat(PackagingKeys.nativeActionCached(dir, project, layout, lockFile, ac, cache, store, pinned))
                 .isFalse();
     }
 
@@ -110,21 +200,30 @@ class NativeForecastReplayTest {
         BuildLayout layout = BuildLayout.of(dir, project);
         ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
         assertThat(PackagingKeys.nativeActionCached(
-                        dir, project, layout, dir.resolve("jk-lock.toml"), ac, cache, Map.of()))
+                        dir, project, layout, dir.resolve("jk-lock.toml"), ac, cache, tmp.resolve("store"), Map.of()))
                 .isFalse();
     }
 
     @Test
     void the_record_tokens_read_back_with_a_joiner_inside_an_arg() {
         Map<String, String> tokens = PackagingKeys.nativeTokens(
-                "cp:abc;args:-Da=1;2 -O2;main:t.Main;shared:false;out:demo;graal:g;framework:;train:");
+                        "cp:abc;args:-Da=1;2 -O2;main:t.Main;shared:false;out:demo;graal:g;framework:;train:")
+                .single();
         assertThat(tokens)
                 .containsEntry("cp:", "abc")
                 .containsEntry("args:", "-Da=1;2 -O2")
                 .containsEntry("main:", "t.Main")
                 .containsEntry("framework:", "")
                 .containsEntry("train:", "");
-        assertThat(PackagingKeys.nativeTokens(null)).isEmpty();
+        assertThat(PackagingKeys.nativeTokens(null).single()).isEmpty();
+    }
+
+    @Test
+    void metadata_tokens_read_back_as_their_own_tokens_in_record_order() {
+        PackagingKeys.NativeTokens tokens = PackagingKeys.nativeTokens(
+                "cp:abc;args:;main:t.Main;shared:false;out:demo;graal:g;framework:;train:;metadata:m1;metadata:m2");
+        assertThat(tokens.single()).hasSize(8).containsEntry("train:", "");
+        assertThat(tokens.metadata()).containsExactly("m1", "m2");
     }
 
     @Test

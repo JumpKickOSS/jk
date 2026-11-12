@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.JavadocTool;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
@@ -193,7 +194,7 @@ final class ForecastPackagingTails {
             RestoredOutputs restored) {
         try {
             return PackagingKeys.nativeActionCached(
-                    dir, project, layout, lockFile, actionCache, cache, restored.jarShas());
+                    dir, project, layout, lockFile, actionCache, cache, JkStores.store(), restored.jarShas());
         } catch (Exception e) {
             Log.debug("nativeImage: the last record could not be replayed read-only", e);
             return false;

@@ -12,6 +12,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -28,6 +29,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -297,9 +299,12 @@ public final class PackagingKeys {
 
     // ---- native-image (executable) ------------------------------------------------------------
 
-    /** The token prefixes {@code PlannerNative.imageKey} spells, in the order it lists them. */
+    /** The token prefixes {@code PlannerNative.imageKey} spells once each, in the order it lists them. */
     private static final List<String> NATIVE_TOKEN_PREFIXES =
             List.of("cp:", "args:", "main:", "shared:", "out:", "graal:", "framework:", "train:");
+
+    /** The prefix {@code PlannerNative.imageKey} spells once per metadata-repository dir, after the others. */
+    private static final String NATIVE_METADATA_PREFIX = "metadata:";
 
     /**
      * Whether the native-image action cache holds the executable this build would restore, judged
@@ -311,8 +316,10 @@ public final class PackagingKeys {
      * look up its own.
      *
      * <p>Recomputed: the classpath token from the jar the package forecast pinned and the runtime
-     * closure the lock resolves ({@link #fingerprintJarOrCached}), the output name and the trained
-     * reachability tree. Checked against the record: the {@code [native]} args and plugin args the
+     * closure the lock resolves ({@link #fingerprintJarOrCached}), the output name, the trained
+     * reachability tree, and the content of each metadata-repository dir the lock's pinned release
+     * matches, read from the extracted release (one not extracted yet is a release the build would
+     * fetch, so the replay cannot vouch for it) under the artifact {@code store}. Checked against the record: the {@code [native]} args and plugin args the
      * manifest names (the metadata-repository prefix the step prepends is the lock's and rides
      * along), and a configured main class. Taken from the record: the GraalVM release token, which
      * no read-only path resolves, and a scanned main class, which an unchanged classes tree scans
@@ -327,9 +334,10 @@ public final class PackagingKeys {
             Path lockFile,
             ActionCache actionCache,
             Path cache,
+            Path store,
             Map<Path, String> restoredJarShas)
             throws IOException {
-        String miss = nativeReplayMiss(dir, project, layout, lockFile, actionCache, cache, restoredJarShas);
+        String miss = nativeReplayMiss(dir, project, layout, lockFile, actionCache, cache, store, restoredJarShas);
         Perf.note("forecast-native " + layout.nativeBinary(), "miss", miss == null ? "none" : miss);
         return miss == null;
     }
@@ -341,6 +349,7 @@ public final class PackagingKeys {
             Path lockFile,
             ActionCache actionCache,
             Path cache,
+            Path store,
             Map<Path, String> restoredJarShas)
             throws IOException {
         if (PluginBuild.shape(project, dir)
@@ -351,7 +360,8 @@ public final class PackagingKeys {
         String task = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
         var record = actionCache.lastFor(task);
         if (record.isEmpty()) return "no native-image record for " + task;
-        Map<String, String> stored = nativeTokens(record.get().inputs().get("inputs"));
+        Map<String, String> stored =
+                nativeTokens(record.get().inputs().get("inputs")).single();
         if (stored.size() != NATIVE_TOKEN_PREFIXES.size())
             return "record holds " + stored.size() + " tokens: " + stored.keySet();
         // An executable only: a shared library's record names no binary this replay can restore.
@@ -376,8 +386,16 @@ public final class PackagingKeys {
         for (Path jar : PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas)) {
             if (!classpath.contains(jar)) classpath.add(jar);
         }
+        List<Path> metadataDirs = List.of();
+        if (Files.exists(lockFile)) {
+            Lockfile lock = LockfileReader.read(lockFile);
+            var extracted = ReachabilityMetadata.extractedConfigDirs(
+                    store, lock.nativeMetadata(), PlannerNative.metadataArtifacts(lock));
+            if (extracted.isEmpty()) return "metadata repository release not extracted";
+            metadataDirs = extracted.get();
+        }
         Path trainReach = PlannerNative.trainReachabilityDir(layout);
-        List<String> tokens = List.of(
+        List<String> tokens = new ArrayList<>(List.of(
                 "cp:" + fingerprintDepJars(classpath, actionCache, restoredJarShas),
                 "args:" + stored.get("args:"),
                 "main:" + stored.get("main:"),
@@ -385,22 +403,35 @@ public final class PackagingKeys {
                 "out:" + out.getFileName(),
                 "graal:" + stored.get("graal:"),
                 "framework:",
-                "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach)));
+                "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach))));
+        for (Path d : metadataDirs) tokens.add(NATIVE_METADATA_PREFIX + ClasspathFingerprint.entry(d));
         boolean present = ForecastSteps.present(
                 actionCache, ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
         return present ? null : "key miss: " + tokens;
     }
 
     /**
-     * The record's {@code inputs} line as the tokens it was joined from, keyed by prefix. A token's
-     * value may itself hold the joiner (an arg with a {@code ;}), so a fragment that opens with no
-     * known prefix continues the token before it.
+     * A native-image record's tokens: each once-only token keyed by its prefix, and the value of
+     * every {@code metadata:} token in the order the record lists them.
      */
-    static Map<String, String> nativeTokens(@Nullable String joined) {
-        Map<String, String> tokens = new LinkedHashMap<>();
-        if (joined == null || joined.isBlank()) return tokens;
+    record NativeTokens(Map<String, String> single, List<String> metadata) {}
+
+    /**
+     * The record's {@code inputs} line as the tokens it was joined from. A token's value may itself
+     * hold the joiner (an arg with a {@code ;}), so a fragment that opens with no known prefix
+     * continues the token before it.
+     */
+    static NativeTokens nativeTokens(@Nullable String joined) {
+        Map<String, String> single = new LinkedHashMap<>();
+        List<String> metadata = new ArrayList<>();
+        if (joined == null || joined.isBlank()) return new NativeTokens(single, metadata);
         String current = null;
         for (String fragment : joined.split(";", -1)) {
+            if (fragment.startsWith(NATIVE_METADATA_PREFIX)) {
+                current = NATIVE_METADATA_PREFIX;
+                metadata.add(fragment.substring(NATIVE_METADATA_PREFIX.length()));
+                continue;
+            }
             String prefix = null;
             for (String p : NATIVE_TOKEN_PREFIXES) {
                 if (fragment.startsWith(p)) {
@@ -410,12 +441,14 @@ public final class PackagingKeys {
             }
             if (prefix != null) {
                 current = prefix;
-                tokens.put(prefix, fragment.substring(prefix.length()));
+                single.put(prefix, fragment.substring(prefix.length()));
+            } else if (NATIVE_METADATA_PREFIX.equals(current)) {
+                metadata.set(metadata.size() - 1, metadata.getLast() + ";" + fragment);
             } else if (current != null) {
-                tokens.put(current, tokens.get(current) + ";" + fragment);
+                single.put(current, single.get(current) + ";" + fragment);
             }
         }
-        return tokens;
+        return new NativeTokens(single, metadata);
     }
 
     /**
