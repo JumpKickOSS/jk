@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -93,9 +92,8 @@ class GuardOutputLaneE2eTest {
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
         TestStoreSeed.seed(JkDirs.store());
-        var build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
         BuildPlanner.Inputs in = TestInputs.of(project, cache);
         return BuildPlanner.fullPlan(in).run();

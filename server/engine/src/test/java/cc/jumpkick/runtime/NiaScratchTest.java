@@ -131,7 +131,7 @@ class NiaScratchTest {
         var modules = WorkspaceLoader.loadModules(NIA, rootManifest);
         build = WorkspaceMerge.applyToModule(rootManifest, build, modules.values());
         BuildPlan lock =
-                LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                LockPlans.lockBuildPlan(module, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         System.out.println("NIA-RELEASE lock: " + lockResult.errors());
         assertThat(lockResult.errors()).as("app lock").isEmpty();
@@ -178,7 +178,7 @@ class NiaScratchTest {
             }
         }
         BuildPlan lock =
-                LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                LockPlans.lockBuildPlan(module, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         if (!lockResult.errors().isEmpty())
             return "lock: " + lockResult.errors().getFirst();

@@ -3,11 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -63,9 +61,8 @@ class ClassPatternSuiteE2eTest {
         Path tests = Files.createDirectories(project.resolve("test/src/com/example"));
         Files.writeString(tests.resolve("FooTest.java"), testClass("FooTest", 1));
         Files.writeString(tests.resolve("FooIT.java"), testClass("FooIT", 2));
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null);
+                project, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();
     }
 

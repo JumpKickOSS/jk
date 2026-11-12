@@ -8,7 +8,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskForecast;
@@ -232,9 +231,7 @@ class ClassesTreeRestoreE2eTest {
     }
 
     static void lock(Path ws, Path cache) throws Exception {
-        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
     }

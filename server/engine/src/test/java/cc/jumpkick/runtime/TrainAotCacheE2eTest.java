@@ -104,7 +104,7 @@ class TrainAotCacheE2eTest {
         SessionContext.runWhere(nested, () -> {
             try {
                 BuildPlan lock = LockPlans.lockBuildPlan(
-                        project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
                 BuildPlanResult built = BuildPlanner.coreBuilder(TestInputs.of(project, cache, nested)
                                 .withLockFile(lockFile)

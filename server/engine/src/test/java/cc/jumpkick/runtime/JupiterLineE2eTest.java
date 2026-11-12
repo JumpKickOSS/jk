@@ -3,8 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -237,10 +235,9 @@ class JupiterLineE2eTest {
     }
 
     private static BuildPlan lockAndPlan(Path project) throws Exception {
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         Path cache = TestCaches.dir("android-spike-cache");
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
         BuildPlanner.Inputs in = TestInputs.of(project, cache).withEstimatedTestCount(1);
         return BuildPlanner.fullPlan(in);

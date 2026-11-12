@@ -81,12 +81,14 @@ public final class LockPlans {
             BuildPlanKey.scalar("trust", RepoGroup.TrustSummary.class);
 
     /**
-     * Build the default {@code jk lock} plan for one project directory: {@code parse-build} →
-     * {@code resolve} → {@code lock-plugins} → {@code lock-sdk} → {@code write-lockfile}. Pins
-     * already on disk are kept ({@link LockMode.Keep}); {@link #plan} takes any other mode. The
-     * offline flag is read off the ambient {@link SessionContext} at step-run time, so both the CLI
-     * (which installs the session from its global flags) and the engine (which reconstructs it from
-     * the wire request) behave alike.
+     * Build the default {@code jk lock} plan for {@code dir}'s {@link #lockScope}: {@code
+     * parse-build} → {@code resolve} → {@code lock-plugins} → {@code lock-sdk} → {@code
+     * write-lockfile}, over the manifest {@code jk lock} and {@link LockFlow} solve — a workspace's
+     * merged one, which carries each member's dependencies of every scope. Pins already on disk are
+     * kept ({@link LockMode.Keep}); {@link #plan} takes any other mode. The offline flag is read off
+     * the ambient {@link SessionContext} at step-run time, so both the CLI (which installs the
+     * session from its global flags) and the engine (which reconstructs it from the wire request)
+     * behave alike. Throws as {@link #lockScope} does.
      *
      * @param observer per-package resolution events (never {@code null}; use {@link
      * ResolveObserver#NOOP})
@@ -96,17 +98,18 @@ public final class LockPlans {
      */
     public static BuildPlan lockBuildPlan(
             Path dir,
-            JkBuild effective,
             Path cache,
             @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaultFeatures,
             boolean sources,
             ResolveObserver observer,
-            @Nullable BiFunction<String, String, String> coordLabel) {
+            @Nullable BiFunction<String, String, String> coordLabel)
+            throws IOException {
+        LockScope scope = lockScope(dir, new FeatureSelection(features, withDefaultFeatures));
         return plan(
-                dir,
-                effective,
+                scope.lockDir(),
+                scope.effective(),
                 cache,
                 repoUrl,
                 features,
@@ -124,16 +127,17 @@ public final class LockPlans {
      */
     public static BuildPlan updateBuildPlan(
             Path dir,
-            JkBuild effective,
             Path cache,
             @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaultFeatures,
             @Nullable String platformOverride,
-            ResolveObserver observer) {
+            ResolveObserver observer)
+            throws IOException {
+        LockScope scope = lockScope(dir, new FeatureSelection(features, withDefaultFeatures));
         return plan(
-                dir,
-                effective,
+                scope.lockDir(),
+                scope.effective(),
                 cache,
                 repoUrl,
                 features,

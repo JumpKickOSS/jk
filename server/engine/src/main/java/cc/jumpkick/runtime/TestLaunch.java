@@ -8,7 +8,6 @@ import static cc.jumpkick.runtime.PlannerSupport.needsNestedEngineIsolation;
 import static cc.jumpkick.runtime.PlannerSupport.nestedEngineTestEnv;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.guard.eval.OutputArtifacts;
@@ -203,10 +202,8 @@ final class TestLaunch {
                         version = "0.0.0"
                         java    = 25
                         """);
-                JkBuild build = JkBuildParser.parse(project.resolve(ManifestNames.MANIFEST));
                 var lock = LockPlans.lockBuildPlan(
                                 project,
-                                build,
                                 Files.createDirectories(dir.resolve("cache")),
                                 null,
                                 List.of(),

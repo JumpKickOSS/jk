@@ -4,11 +4,9 @@ package cc.jumpkick.engine.graph;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.GraphCacheKeys;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.LockPlans;
@@ -61,9 +59,7 @@ class GuardSuiteGraphCacheE2eTest {
     @Test
     void a_second_refresh_reads_the_guard_suites_facts_from_the_cache(@TempDir Path tmp) throws Exception {
         Path ws = workspace(tmp);
-        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         WorkspaceResult built = WorkspaceExecute.buildWorkspace(
                 new WorkspaceRequest(ws, cache, null, 0, null, false, false, 0, null, false, false),

@@ -82,8 +82,8 @@ class KotlinSerializationTest {
         assertThat(build.build().kotlinPlugins().getFirst().id())
                 .isEqualTo("kotlin-serialization-compiler-plugin-embeddable");
 
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
         Lockfile locked = LockfileReader.read(project.resolve("jk-lock.toml"));

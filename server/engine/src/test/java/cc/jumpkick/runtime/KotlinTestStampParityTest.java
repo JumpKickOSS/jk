@@ -89,7 +89,7 @@ class KotlinTestStampParityTest {
         SessionContext.runWhere(session, () -> {
             try {
                 BuildPlan lock = LockPlans.lockBuildPlan(
-                        project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
                 BuildPlanResult first = build(project, cache, session);

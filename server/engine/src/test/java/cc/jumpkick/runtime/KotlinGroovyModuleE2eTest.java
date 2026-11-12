@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -94,16 +93,8 @@ class KotlinGroovyModuleE2eTest {
                 """);
 
         Path cache = TestCaches.dir("kotlin-groovy-e2e-cache");
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project,
-                JkBuildParser.parse(project.resolve("jk.toml")),
-                cache,
-                null,
-                List.of(),
-                true,
-                false,
-                ResolveObserver.NOOP,
-                null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
         Session session = Session.defaults();

@@ -47,7 +47,7 @@ class LintFixtureTest {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         assertThat(build.pluginConfig("lint")).isPresent();
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
 

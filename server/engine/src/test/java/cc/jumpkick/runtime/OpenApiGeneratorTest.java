@@ -55,7 +55,7 @@ class OpenApiGeneratorTest {
                 .extracting(a -> a.manifest().id())
                 .containsExactlyInAnyOrder("openapi", "spring-boot");
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
 

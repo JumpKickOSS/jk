@@ -76,8 +76,8 @@ class BuildCleanRestoreTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
         Session nested = Session.defaults().withCacheDir(cache);
         run(nested, () -> {
-            BuildPlan lock = LockPlans.lockBuildPlan(
-                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            BuildPlan lock =
+                    LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
             BuildPlanResult first = BuildPlanner.coreBuilder(inputs(project, cache, nested, false))
@@ -171,8 +171,8 @@ class BuildCleanRestoreTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
         Session nested = Session.defaults().withCacheDir(cache);
         run(nested, () -> {
-            BuildPlan lock = LockPlans.lockBuildPlan(
-                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            BuildPlan lock =
+                    LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
             BuildPlanResult first = BuildPlanner.coreBuilder(inputs(project, cache, nested, true))

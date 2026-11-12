@@ -74,7 +74,7 @@ class SourceDependencyBuildE2eTest {
     private static void assertLocksBuildsAndRuns(Path app, Path cache, String expected) throws Exception {
         LockPlans.LockScope scope = LockPlans.lockScope(app);
         BuildPlan lockPlan = LockPlans.lockBuildPlan(
-                scope.lockDir(), scope.effective(), cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+                scope.lockDir(), cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lockPlan.run().success()).as("lock").isTrue();
 
         Lockfile lock = LockfileReader.read(LockPaths.lockFile(app));

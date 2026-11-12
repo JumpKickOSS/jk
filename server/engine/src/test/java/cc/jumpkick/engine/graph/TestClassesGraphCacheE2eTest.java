@@ -11,7 +11,6 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.LockPlans;
@@ -131,9 +130,7 @@ class TestClassesGraphCacheE2eTest {
     }
 
     private void build(Path ws) throws Exception {
-        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         WorkspaceResult built = WorkspaceExecute.buildWorkspace(
                 new WorkspaceRequest(ws, cache, null, 0, null, false, false, 0, null, false, false),

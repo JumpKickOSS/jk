@@ -102,8 +102,8 @@ class GuardTestClassPopulationTest {
             throws Exception {
         TestStoreSeed.seed(JkDirs.store());
         var build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
         BuildPlanner.Inputs in = TestInputs.of(
                         project, cache, SessionContext.current().withTestSelection(selection))

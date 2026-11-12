@@ -97,7 +97,7 @@ class ContributedProcessorsE2eTest {
         Path project = project();
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).as("lock").isEmpty();
         assertThat(lock.success()).as("lock").isTrue();

@@ -5,7 +5,6 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockPaths;
@@ -192,15 +191,7 @@ class LockNativePinStageTest {
 
     private static void lock(Path project, Path repo, Path tmp) throws IOException {
         BuildPlanResult result = run(LockPlans.lockBuildPlan(
-                project,
-                JkBuildParser.parse(project.resolve("jk.toml")),
-                tmp.resolve("cache"),
-                repo.toUri(),
-                List.of(),
-                true,
-                false,
-                ResolveObserver.NOOP,
-                null));
+                project, tmp.resolve("cache"), repo.toUri(), List.of(), true, false, ResolveObserver.NOOP, null));
         assertThat(result.success()).as("lock errors: %s", result.errors()).isTrue();
     }
 

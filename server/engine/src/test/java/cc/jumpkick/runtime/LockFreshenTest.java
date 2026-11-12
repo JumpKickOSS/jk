@@ -162,9 +162,8 @@ class LockFreshenTest {
         dropLibIndexCache();
         touchManifest(tmp);
 
-        var effective = JkBuildParser.parse(tmp.resolve("jk.toml"));
         var plan = LockPlans.lockBuildPlan(
-                tmp, effective, tmp.resolve("cache2"), http.base(), List.of(), true, false, ResolveObserver.NOOP, null);
+                tmp, tmp.resolve("cache2"), http.base(), List.of(), true, false, ResolveObserver.NOOP, null);
         var result = plan.run();
         assertThat(result.success()).isTrue();
         Lockfile lock = plan.get(LockPlans.LOCKFILE).orElseThrow();

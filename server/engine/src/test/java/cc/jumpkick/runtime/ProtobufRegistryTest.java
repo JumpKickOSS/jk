@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.SchemaPresetExamplesTest.anyFile;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.LockfileReader;
@@ -113,15 +112,7 @@ class ProtobufRegistryTest {
                 """);
         try {
             BuildPlanResult lock = LockPlans.lockBuildPlan(
-                            project,
-                            JkBuildParser.parse(project.resolve("jk.toml")),
-                            cache,
-                            null,
-                            List.of(),
-                            true,
-                            false,
-                            ResolveObserver.NOOP,
-                            null)
+                            project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                     .run();
             assertThat(lock.errors()).isEmpty();
             assertThat(LockfileReader.read(project.resolve("jk-lock.toml")).schemas())

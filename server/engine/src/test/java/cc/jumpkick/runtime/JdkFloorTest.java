@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -11,6 +10,8 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.TestCaches;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -90,12 +91,16 @@ class JdkFloorTest {
                 }
                 """.formatted(majorStr));
 
-        var parsed = JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
         Session nested = Session.defaults().withCacheDir(cache);
         SessionContext.runWhere(nested, () -> {
-            BuildPlan lock = LockPlans.lockBuildPlan(
-                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            BuildPlan lock;
+            try {
+                lock = LockPlans.lockBuildPlan(
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
             assertThat(lock.run().errors()).isEmpty();
 
             BuildPlanner.Inputs in = TestInputs.of(project, cache, nested).withEstimatedTestCount(1);

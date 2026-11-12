@@ -3,13 +3,14 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.TestCaches;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -69,13 +70,17 @@ import org.junit.jupiter.api.Tag;
                 }
                 """);
 
-        var parsed = JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session: under `jk test` the ambient SessionContext is the monorepo (jdk 25).
         // Nested fixture plans must not inherit that pin or they skip the first-install path.
         Session nested = Session.defaults().withCacheDir(cache).withJdksDir(freshJdks);
         SessionContext.runWhere(nested, () -> {
-            BuildPlan lock = LockPlans.lockBuildPlan(
-                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            BuildPlan lock;
+            try {
+                lock = LockPlans.lockBuildPlan(
+                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
             assertThat(lock.run().errors()).isEmpty();
 
             BuildPlanner.Inputs in = TestInputs.of(project, cache, nested)
