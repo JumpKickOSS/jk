@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
 
@@ -194,6 +195,25 @@ public final class ModulePipeline {
                 .withClientEnv(request.clientEnv())
                 .withEphemeralActions(request.ephemeralActions())
                 .withSiblings(siblings);
+    }
+
+    /**
+     * The {@link BuildPlanner.Inputs} each of {@code request}'s modules is planned from, for an
+     * estimate: what {@link #planned} hands the core, less the schedule's artifact wait.
+     */
+    static Function<Path, BuildPlanner.Inputs> estimateInputs(
+            WorkspaceRequest request, Set<Path> moduleDirs, Set<Path> jarConsumed) {
+        WorkspaceTarget target = request.target();
+        return dir -> {
+            boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
+            return inputs(
+                    dir,
+                    request,
+                    moduleDirs,
+                    target == WorkspaceTarget.TEST && !consumed,
+                    target,
+                    SiblingArtifacts.NONE);
+        };
     }
 
     /** The one {@link BuildPlanner.Inputs} a module's plan is built from. */

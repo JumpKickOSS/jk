@@ -35,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -103,18 +104,17 @@ public final class BuildEta {
                 cache,
                 workers,
                 jdksDir,
-                profile,
-                skipTests,
-                verbose,
                 parallelTests,
                 maxModuleConcurrency,
-                JavaCompilerHost.anyWarmWorkerFor(entryDir));
+                JavaCompilerHost.anyWarmWorkerFor(entryDir),
+                defaultModuleInputs(plan, cache, workers, jdksDir, profile, skipTests, verbose));
     }
 
     /**
      * As above for a build that starts with ({@code workerWarm}) or without a warm compiler worker,
      * as measured when it started: a shape of its own, since a cold worker's warm-up is seconds the
-     * same work does not otherwise cost.
+     * same work does not otherwise cost. {@code moduleInputs} is what each module plans from, the
+     * shape a module is priced at when no forecast says what is cached.
      */
     public static BuildService.EtaModel estimateEtaModel(
             ExplainPlan plan,
@@ -122,18 +122,16 @@ public final class BuildEta {
             Path cache,
             int workers,
             @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency,
-            boolean workerWarm) {
+            boolean workerWarm,
+            Function<Path, BuildPlanner.Inputs> moduleInputs) {
         try {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
             Calibration.ensure(jdksDir);
-            List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
-                    plan, cache, workers, jdksDir, profile, skipTests, verbose, maxModuleConcurrency);
+            List<EffortWeights.ModuleCost> costs =
+                    etaCostsFromExplainPlan(plan, cache, workers, maxModuleConcurrency, moduleInputs);
             int concurrency = etaConcurrency(maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
             if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
@@ -279,8 +277,44 @@ public final class BuildEta {
             boolean skipTests,
             boolean verbose,
             int maxModuleConcurrency) {
+        return etaCostsFromExplainPlan(
+                plan,
+                cache,
+                workers,
+                maxModuleConcurrency,
+                defaultModuleInputs(plan, cache, workers, jdksDir, profile, skipTests, verbose));
+    }
+
+    /**
+     * What a module plans from when the caller has no request to plan it by ({@code jk explain}):
+     * a default build under these knobs.
+     */
+    private static Function<Path, BuildPlanner.Inputs> defaultModuleInputs(
+            ExplainPlan plan,
+            Path cache,
+            int workers,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose) {
+        Set<Path> projectModules = projectModules(plan);
+        return dir -> BuildPlanner.Inputs.forBuild(
+                dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, false, false);
+    }
+
+    private static Set<Path> projectModules(ExplainPlan plan) {
         Set<Path> projectModules = new HashSet<>();
         for (TaskForecast.Module m : plan.modules()) projectModules.add(m.dir());
+        return projectModules;
+    }
+
+    static List<EffortWeights.ModuleCost> etaCostsFromExplainPlan(
+            ExplainPlan plan,
+            Path cache,
+            int workers,
+            int maxModuleConcurrency,
+            Function<Path, BuildPlanner.Inputs> moduleInputs) {
+        Set<Path> projectModules = projectModules(plan);
         List<String> projectDirs = projectModules.stream().map(Path::toString).toList();
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
@@ -319,20 +353,8 @@ public final class BuildEta {
         for (TaskForecast.Module m : plan.modules()) {
             if (distrust || m.dirty()) priced.add(m);
         }
-        CostInputs in = new CostInputs(
-                plan,
-                cache,
-                workers,
-                jdksDir,
-                profile,
-                skipTests,
-                verbose,
-                projectModules,
-                projectDirs,
-                distrust,
-                metrics,
-                timings,
-                share);
+        CostInputs in =
+                new CostInputs(plan, cache, workers, projectDirs, distrust, metrics, timings, share, moduleInputs);
         List<EffortWeights.ModuleCost> costs = ModuleCosting.each(priced, m -> moduleCost(in, m));
         return costs;
     }
@@ -342,27 +364,18 @@ public final class BuildEta {
             ExplainPlan plan,
             Path cache,
             int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules,
             List<String> projectDirs,
             boolean distrust,
             BuildMetrics metrics,
             StepTimings timings,
-            int share) {}
+            int share,
+            Function<Path, BuildPlanner.Inputs> moduleInputs) {}
 
     /** The ETA cost of one scheduled module {@code m}. */
     private static EffortWeights.ModuleCost moduleCost(CostInputs in, TaskForecast.Module m) {
         ExplainPlan plan = in.plan();
         Path cache = in.cache();
         int workers = in.workers();
-        Path jdksDir = in.jdksDir();
-        String profile = in.profile();
-        boolean skipTests = in.skipTests();
-        boolean verbose = in.verbose();
-        Set<Path> projectModules = in.projectModules();
         List<String> projectDirs = in.projectDirs();
         boolean distrust = in.distrust();
         BuildMetrics metrics = in.metrics();
@@ -406,11 +419,13 @@ public final class BuildEta {
                             > 0;
             running.add(incremental ? TaskNames.COMPILE_JAVA_INCREMENTAL : s.name());
         }
-        // Rebuild with an empty step list still means "all work" — fall back to plan shape.
+        // Rebuild with an empty step list still means "all work" — fall back to the shape of the
+        // plan the module is built from, under the request's goal and knobs.
         if (running.isEmpty() && distrust) {
-            BuildPlanner.Inputs inputs = BuildPlanner.Inputs.forBuild(
-                    mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, false, false);
-            for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
+            for (Task s :
+                    ModulePipeline.throughPackage(in.moduleInputs().apply(mdir)).steps()) {
+                running.add(s.name());
+            }
         }
         if (running.isEmpty()) {
             // A pure cascade recheck is one token for the whole module: every step hits its cache,

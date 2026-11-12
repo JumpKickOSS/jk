@@ -106,12 +106,10 @@ final class WorkspaceResourcePhase {
                 request.cache(),
                 incoming.workers(),
                 request.jdksDir(),
-                request.profile(),
-                request.skipTests(),
-                request.verbose(),
                 parallelTests,
                 request.maxModuleConcurrency(),
-                workerWarm);
+                workerWarm,
+                ModulePipeline.estimateInputs(request, preflight.moduleDirs(), preflight.jarConsumed()));
     }
 
     private static ExplainPlan etaPlan(
