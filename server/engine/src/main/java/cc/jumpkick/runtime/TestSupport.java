@@ -7,6 +7,8 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -15,7 +17,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
@@ -49,7 +50,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -112,35 +112,22 @@ public final class TestSupport {
      */
     static int countTests(Path file) {
         Path abs = file.toAbsolutePath().normalize();
-        StatIdentity identity;
-        try {
-            identity = StatIdentity.of(abs);
-        } catch (IOException e) {
-            return 0;
-        }
-        Counted known = COUNTED.get(abs);
-        if (known != null && known.identity().equals(identity)) return known.tests();
-        int tests;
-        try {
-            tests = (int) TEST_ANNOTATION_REGEX
-                    .matcher(Files.readString(abs))
-                    .results()
-                    .count();
-        } catch (IOException e) {
-            return 0;
-        }
-        if (COUNTED.size() >= COUNTED_MAX) COUNTED.clear();
-        COUNTED.put(abs, new Counted(identity, tests));
-        return tests;
+        FileStamp stamp = FileStamp.of(abs);
+        if (stamp == null) return 0;
+        return COUNTED.get(abs, stamp, () -> {
+            try {
+                return (int) TEST_ANNOTATION_REGEX
+                        .matcher(Files.readString(abs))
+                        .results()
+                        .count();
+            } catch (IOException e) {
+                return 0;
+            }
+        });
     }
 
-    /** One source's annotation count and the identity it was counted at. */
-    private record Counted(StatIdentity identity, int tests) {}
-
     /** Bounded: cleared once full, since an estimate's memo needs no eviction order. */
-    private static final int COUNTED_MAX = 100_000;
-
-    private static final ConcurrentMap<Path, Counted> COUNTED = new ConcurrentHashMap<>();
+    private static final StampedMemo<Path, FileStamp, Integer> COUNTED = StampedMemo.bounded(100_000);
 
     /**
      * Count test methods across every discovered suite, not the default suite only. Dedupes when

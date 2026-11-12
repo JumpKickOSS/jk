@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.baseline;
 
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -38,12 +38,10 @@ public final class BaselineFile {
 
     private BaselineFile() {}
 
-    private record Memo(long size, FileTime mtime, Baseline baseline) {}
-
-    private static final Map<Path, Memo> MEMO = new ConcurrentHashMap<>();
+    private static final StampedMemo<Path, FileStamp, Baseline> MEMO = StampedMemo.bounded(64);
 
     /**
-     * Read, memoised by size and modification time: thirty module lanes reconcile against the same
+     * Read, memoised by the file's settled stat: thirty module lanes reconcile against the same
      * file at once, and a general TOML parser builds a tree object per character of every reason
      * string — the one thing the engine's heap could not afford. The format is the writer's own,
      * so the reader is the writer's inverse and nothing more.
@@ -51,12 +49,19 @@ public final class BaselineFile {
     public static Baseline read(Path file) throws IOException {
         if (!Files.isRegularFile(file)) return Baseline.EMPTY;
         Path key = file.toAbsolutePath().normalize();
-        BasicFileAttributes a = Files.readAttributes(key, BasicFileAttributes.class);
-        Memo m = MEMO.get(key);
-        if (m != null && m.size() == a.size() && m.mtime().equals(a.lastModifiedTime())) return m.baseline();
-        Baseline parsed = parse(Files.readString(key, StandardCharsets.UTF_8), key);
-        MEMO.put(key, new Memo(a.size(), a.lastModifiedTime(), parsed));
-        return parsed;
+        FileStamp stamp = FileStamp.of(key);
+        if (stamp == null) return parse(Files.readString(key, StandardCharsets.UTF_8), key);
+        try {
+            return MEMO.get(key, stamp, () -> {
+                try {
+                    return parse(Files.readString(key, StandardCharsets.UTF_8), key);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
     }
 
     /** Line-shaped: the only forms {@link #render} writes. Anything else is a hand edit, refused. */

@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Which plugin answered a closure resolved for the lock, as the row records it ({@code plugin}):
@@ -24,8 +21,8 @@ public final class LockClosureStamp {
 
     private LockClosureStamp() {}
 
-    /** A jar's digest, kept per path, size and modification time: read once per jar this process sees. */
-    private static final Map<String, String> JAR_DIGESTS = new ConcurrentHashMap<>();
+    /** A jar's digest, kept while its settled stat holds: read once per jar version this process sees. */
+    private static final StampedMemo<Path, FileStamp, String> JAR_DIGESTS = StampedMemo.bounded(256);
 
     /** The stamp of {@code manifest}'s plugin as this process loads it. */
     public static String of(PluginDescriptor manifest) {
@@ -39,17 +36,14 @@ public final class LockClosureStamp {
     }
 
     private static String jarDigest(Path jar) {
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(jar, BasicFileAttributes.class);
-            String key = jar.toAbsolutePath() + "|" + attrs.size() + "|"
-                    + attrs.lastModifiedTime().toMillis();
-            @Nullable String known = JAR_DIGESTS.get(key);
-            if (known != null) return known;
-            String hex = Hashing.sha256Hex(jar).substring(0, 16);
-            JAR_DIGESTS.put(key, hex);
-            return hex;
-        } catch (IOException e) {
-            return "unreadable";
-        }
+        FileStamp stamp = FileStamp.of(jar);
+        if (stamp == null) return "unreadable";
+        return JAR_DIGESTS.get(jar.toAbsolutePath().normalize(), stamp, () -> {
+            try {
+                return Hashing.sha256Hex(jar).substring(0, 16);
+            } catch (IOException e) {
+                return "unreadable";
+            }
+        });
     }
 }

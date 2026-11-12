@@ -10,8 +10,6 @@ import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,19 +17,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The workspace as the model kinds read it: every member's manifest (memoised by size and
- * modification time, so the model lane parses nothing on an unchanged tree) and the module edges
+ * The workspace as the model kinds read it: every member's manifest (memoised by the parser, so
+ * the model lane parses nothing on an unchanged tree) and the module edges
  * those manifests declare, resolved exactly as the build graph resolves them.
  */
 public final class WorkspaceModel {
-
-    private record Memo(long size, FileTime mtime, JkBuild build) {}
-
-    private static final Map<Path, Memo> MANIFESTS = new ConcurrentHashMap<>();
 
     private final Path root;
     private final Map<String, JkBuild> byModule = new TreeMap<>();
@@ -56,13 +49,9 @@ public final class WorkspaceModel {
         return m;
     }
 
+    /** The parser's own memo answers an unchanged manifest; a second one here only duplicated it. */
     private static JkBuild parse(Path manifest) throws IOException {
-        BasicFileAttributes a = Files.readAttributes(manifest, BasicFileAttributes.class);
-        Memo hit = MANIFESTS.get(manifest);
-        if (hit != null && hit.size() == a.size() && hit.mtime().equals(a.lastModifiedTime())) return hit.build();
-        JkBuild build = JkBuildParser.parse(manifest);
-        MANIFESTS.put(manifest, new Memo(a.size(), a.lastModifiedTime(), build));
-        return build;
+        return JkBuildParser.parse(manifest);
     }
 
     public Set<String> modules() {
