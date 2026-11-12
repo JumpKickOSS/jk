@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -120,12 +121,21 @@ public final class ActionKey {
 
     /** As {@link #javacClasspathTokens(CompileRequest)} with the compile classpath read through {@code cp}. */
     public static List<String> javacClasspathTokens(CompileRequest request, EntryToken cp) throws IOException {
+        JAVAC_CLASSPATH_READS.incrementAndGet();
         List<String> lines = new ArrayList<>();
         appendCpTokens(lines, "cp:", request.classpath(), javacEntryToken(request, cp));
         // Through cp's identity: a sibling tree on the processor path that the build restores before
         // this compile keys on it reads as the restored tree, not the stale one on disk.
         appendCpTokens(lines, "pp:", request.processorPath(), cp::identity);
         return lines;
+    }
+
+    /** Every {@link #javacClasspathTokens} read so far: each one fingerprints every entry it names. */
+    private static final AtomicLong JAVAC_CLASSPATH_READS = new AtomicLong();
+
+    /** How many javac classpaths have been read; tests count one step's reads by the difference. */
+    public static long javacClasspathReads() {
+        return JAVAC_CLASSPATH_READS.get();
     }
 
     /**

@@ -12,6 +12,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.ActionKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -92,6 +93,25 @@ class CompileTestProcessorTest {
         assertThat(ok).isTrue();
         assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile(); // processor ran
         assertThat(out.resolve("app/WidgetTest.class")).isRegularFile();
+    }
+
+    /**
+     * The step fingerprints every classpath entry to key its compile, and a sibling's classes tree
+     * is a whole walk: the reweigh and the compile key on one reading, not one each.
+     */
+    @Test
+    void a_compile_test_reads_its_classpath_once(@TempDir Path dir) throws Exception {
+        Path testSrc = dir.resolve("test").resolve("src");
+        write(testSrc, "app/PlainTest.java", "package app; public class PlainTest {}");
+        Path out = dir.resolve("out");
+
+        long before = ActionKey.javacClasspathReads();
+        boolean ok = compile(dir, testSrc, List.of(procDir), List.of(), List.of(), out, false);
+
+        assertThat(ok).isTrue();
+        assertThat(ActionKey.javacClasspathReads() - before)
+                .as("classpath readings for one compile-test")
+                .isEqualTo(1);
     }
 
     @Test

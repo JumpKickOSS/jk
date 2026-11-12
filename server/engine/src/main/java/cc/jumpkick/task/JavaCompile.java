@@ -38,9 +38,20 @@ public final class JavaCompile {
     private JavaCompile() {}
 
     /**
+     * {@link #key(String, CompileRequest, String, List)} with the compile classpath read through
+     * {@code cp}: the build's ABI tokens, or the forecast's view of a sibling tree the build
+     * restores first.
+     */
+    public static String key(String taskId, CompileRequest request, String jkVersion, ActionKey.EntryToken cp)
+            throws IOException {
+        return key(taskId, request, jkVersion, ActionKey.javacClasspathTokens(request, cp));
+    }
+
+    /**
      * A javac step's action key: what {@link #run} looks up and records, what the plan's preflight
-     * reweighs by, and what {@link #predict} prices. {@code cp} reads the compile classpath: the
-     * build's ABI tokens, or the forecast's view of a sibling tree the build restores first.
+     * reweighs by, and what {@link #predict} prices, over the classpath lines {@link
+     * ActionKey#javacClasspathTokens} reads. A step that keys its freshness stamp on those lines
+     * reads its classpath once and hands the same list to the key and to {@link #run}.
      */
     @KeyOwner(
             step = {
@@ -50,14 +61,14 @@ public final class JavaCompile {
                 TaskNames.COMPILE_GUARD,
                 TaskNames.COMPILE_VERSIONS
             })
-    public static String key(String taskId, CompileRequest request, String jkVersion, ActionKey.EntryToken cp)
+    public static String key(String taskId, CompileRequest request, String jkVersion, List<String> classpathTokens)
             throws IOException {
-        return ActionKey.forJavac(taskId, request, jkVersion, cp);
+        return ActionKey.forJavac(taskId, request, jkVersion, classpathTokens);
     }
 
-    /** {@link #key(String, CompileRequest, String, ActionKey.EntryToken)} over the build's classpath tokens. */
+    /** {@link #key(String, CompileRequest, String, List)} over the build's classpath tokens. */
     public static String key(String taskId, CompileRequest request, String jkVersion) throws IOException {
-        return key(taskId, request, jkVersion, ClasspathAbi::token);
+        return key(taskId, request, jkVersion, ActionKey.javacClasspathTokens(request));
     }
 
     /** Test seam: runs once the key is taken and before the worker is forked. */
@@ -191,13 +202,50 @@ public final class JavaCompile {
             @Nullable Path generatedSourceDir,
             WorkerEnv env)
             throws IOException {
+        List<String> classpathTokens =
+                request.sources().isEmpty() ? List.of() : ActionKey.javacClasspathTokens(request);
+        return run(
+                taskId,
+                label,
+                request,
+                jkVersion,
+                useCache,
+                persist,
+                cas,
+                actionCache,
+                stateDir,
+                workerJar,
+                generatedSourceDir,
+                env,
+                classpathTokens);
+    }
+
+    /**
+     * As above, keyed on {@code classpathTokens}: the lines {@link ActionKey#javacClasspathTokens}
+     * reads of {@code request}, which a step that stamps its compile has read already.
+     */
+    public static Result run(
+            String taskId,
+            String label,
+            CompileRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache,
+            Path stateDir,
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir,
+            WorkerEnv env,
+            List<String> classpathTokens)
+            throws IOException {
         Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
             return new Result(true, "no-sources", "", List.of(), List.of(), List.of(), List.of(), 0L);
         }
 
-        String key = key(taskId, request, jkVersion);
+        String key = key(taskId, request, jkVersion, classpathTokens);
         if (useCache) {
             Result restored = restored(key, request, actionCache, stateDir);
             if (restored != null) return restored;

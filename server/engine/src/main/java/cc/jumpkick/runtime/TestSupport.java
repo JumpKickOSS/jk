@@ -753,13 +753,15 @@ public final class TestSupport {
         boolean useCache = !SessionContext.current().config().rebuildOr(false);
         Path actions = CacheTree.ACTIONS.under(cacheRoot);
         Path stateDir = ActionKey.stateDir(ActionTree.INCREMENTAL_JAVA.under(actions), taskId, outputDir);
+        // Read once: every classpath entry is fingerprinted, and the reweigh and the compile key on the same lines.
+        List<String> classpathTokens = ActionKey.javacClasspathTokens(request);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
         // restore (3), else a full compile. Same key JavaCompile uses.
         if (useCache) {
             try {
                 boolean restores = actionCache
-                        .lookup(JavaCompile.key(cacheTaskId, request, BuildIdentity.cacheKeyVersion()))
+                        .lookup(JavaCompile.key(cacheTaskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
                         .isPresent();
                 ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
             } catch (Exception e) {
@@ -771,7 +773,7 @@ public final class TestSupport {
             Perf.note(
                     "live-compile-test " + outputDir,
                     "key",
-                    JavaCompile.key(cacheTaskId, request, BuildIdentity.cacheKeyVersion()),
+                    JavaCompile.key(cacheTaskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens),
                     "cp",
                     request.classpath().size(),
                     "src",
@@ -799,12 +801,14 @@ public final class TestSupport {
                     request,
                     BuildIdentity.cacheKeyVersion(),
                     useCache,
+                    true,
                     actionCache.cas(),
                     actionCache,
                     stateDir,
                     workerJar,
                     gen,
-                    env);
+                    env,
+                    classpathTokens);
         } finally {
             HeapNotes.flush(ctx);
         }

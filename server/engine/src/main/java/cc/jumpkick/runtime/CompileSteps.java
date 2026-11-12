@@ -202,7 +202,7 @@ final class CompileSteps {
         // The stamp's instant: before the first source is hashed, so an edit landing while the
         // compile runs is stale on the next build instead of vouched for by a later stamp.
         long clock = FreshnessStamp.clockNow(javaOut);
-        if (!rerun) reweightForActionCache(ctx, actionCache, taskId, request, sources.size());
+        if (!rerun) reweightForActionCache(ctx, actionCache, taskId, request, stampTokens, sources.size());
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
         Files.createDirectories(genDir);
         Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
@@ -224,7 +224,8 @@ final class CompileSteps {
                 WorkerEnv.forModule(
                         ctx.require(PROJECT).build().env(),
                         in.dir(),
-                        ctx.require(LAYOUT).moduleTargetDir()));
+                        ctx.require(LAYOUT).moduleTargetDir()),
+                stampTokens);
         HeapNotes.flush(ctx);
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, request, r);
@@ -257,10 +258,15 @@ final class CompileSteps {
      * reconstruction divergence.
      */
     private static void reweightForActionCache(
-            TaskContext ctx, ActionCache actionCache, String taskId, CompileRequest request, int sources) {
+            TaskContext ctx,
+            ActionCache actionCache,
+            String taskId,
+            CompileRequest request,
+            List<String> classpathTokens,
+            int sources) {
         try {
             boolean restores = actionCache
-                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion()))
+                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
                     .isPresent();
             ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources));
         } catch (Exception e) {
