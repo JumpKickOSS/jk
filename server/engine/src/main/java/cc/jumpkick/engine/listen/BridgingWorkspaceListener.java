@@ -11,6 +11,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.nio.file.Path;
@@ -190,6 +191,11 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
                 hooks.trackStep(d, step, false);
                 nested.stepFinished(d, step, phase, status, millis, waitMillis);
+            }
+
+            @Override
+            public @Nullable StepCost priced(String d, String step) {
+                return nested.priced(d, step);
             }
 
             @Override
