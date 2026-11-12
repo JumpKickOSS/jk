@@ -21,6 +21,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -79,13 +80,13 @@ final class WorkspaceRunView {
         private volatile long sinceNanos;
 
         void note(boolean held) {
-            sinceNanos = held ? Math.max(1, System.nanoTime()) : 0;
+            sinceNanos = held ? Math.max(1, Clock.SYSTEM.nanos()) : 0;
         }
 
         /** How long the build has been on hold; -1 when it is not. */
         long heldMs() {
             long since = sinceNanos;
-            return since == 0 ? -1 : Math.max(0, System.nanoTime() - since) / 1_000_000L;
+            return since == 0 ? -1 : Math.max(0, Clock.SYSTEM.nanos() - since) / 1_000_000L;
         }
     }
 

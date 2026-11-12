@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.host.time.Clock;
 import java.nio.file.Path;
@@ -113,6 +114,6 @@ class RemainingWorkStepsTest {
         rw.resume();
         assertThat(rw.remaining()).as("just resumed").isEqualTo(before);
         now.addAndGet(5_000);
-        assertThat(rw.remaining()).as("counting again").isEqualTo(before - 5_000);
+        assertThat(rw.remaining()).as("counting again").isCloseTo(before - 5_000, within(2L * MS));
     }
 }

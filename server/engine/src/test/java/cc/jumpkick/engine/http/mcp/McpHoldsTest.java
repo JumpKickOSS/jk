@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.MemoryHoldsSeam;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +26,7 @@ class McpHoldsTest {
         List<String> messages = new ArrayList<>();
         McpOutbound out = note -> {
             @SuppressWarnings("unchecked")
-            Map<String, Object> params = (Map<String, Object>) note.get("params");
+            Map<String, Object> params = (Map<String, Object>) Objects.requireNonNull(note.get("params"));
             assertThat(note).containsEntry("method", "notifications/progress");
             assertThat(params).containsEntry("progressToken", "t1");
             messages.add(String.valueOf(params.get("message")));

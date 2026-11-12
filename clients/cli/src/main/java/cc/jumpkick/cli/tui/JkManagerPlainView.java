@@ -107,7 +107,7 @@ final class JkManagerPlainView {
         long held = m.heldMillis(m.elapsedMillis());
         if (held >= 0) {
             // On hold: the count-up at the progress cadence, so a long hold is never silent.
-            if (System.nanoTime() - lastPrintedNanos < HEARTBEAT_MS * 1_000_000L) return;
+            if (Clock.SYSTEM.nanos() - lastPrintedNanos < HEARTBEAT_MS * 1_000_000L) return;
             printPlain(holdLine(held));
             return;
         }
@@ -442,7 +442,7 @@ final class JkManagerPlainView {
     private void printPlain(String line) {
         m.out.println(line);
         chromeStarted = true;
-        lastPrintedNanos = System.nanoTime();
+        lastPrintedNanos = Clock.SYSTEM.nanos();
         m.out.flush();
     }
 

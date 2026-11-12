@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.host.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -269,15 +270,15 @@ public final class McpJobRuns {
      * not live yet and has none, and a wait that gave up on it answered FAIL for a build that passed.
      */
     private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs, McpHolds.Notifier holds) {
-        long start = System.currentTimeMillis();
+        long start = Clock.SYSTEM.millis();
         boolean seen = false;
-        while (System.currentTimeMillis() - start < timeoutMs) {
-            holds.tick(System.currentTimeMillis());
+        while (Clock.SYSTEM.millis() - start < timeoutMs) {
+            holds.tick(Clock.SYSTEM.millis());
             boolean live = McpVitals.isLive(ctx, jid);
             if (live) seen = true;
             if (seen && !live) return true;
             if (!seen
-                    && System.currentTimeMillis() - start > 250
+                    && Clock.SYSTEM.millis() - start > 250
                     && ctx.finishedRecords().apply(jid) != null) {
                 return true;
             }

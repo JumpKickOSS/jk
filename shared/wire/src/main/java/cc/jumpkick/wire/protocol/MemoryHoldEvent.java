@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.Objects;
 
 /**
  * The build went on hold for memory, or resumed ({@link EngineProtocol#HOLD_START}, {@link
@@ -26,17 +27,19 @@ public record MemoryHoldEvent(boolean held, String dir, long needBytes, long fre
     }
 
     public String encode() {
-        RequestJson json = RequestJson.event(type()).string("dir", dir, "");
-        if (held) json.number("needBytes", needBytes).number("freeBytes", freeBytes);
-        else json.number("heldMs", heldMs);
-        return json.finish();
+        return RequestJson.event(type())
+                .string("dir", dir, "")
+                .optionalNumber("needBytes", needBytes, 0)
+                .optionalNumber("freeBytes", freeBytes, 0)
+                .optionalNumber("heldMs", heldMs, 0)
+                .finish();
     }
 
     public static MemoryHoldEvent decode(String json) {
         boolean held = EngineProtocol.HOLD_START.equals(Jsonl.str(json, EngineProtocol.TYPE_FIELD));
         return new MemoryHoldEvent(
                 held,
-                Jsonl.requiredStr(json, "dir"),
+                Objects.requireNonNullElse(Jsonl.str(json, "dir"), ""),
                 Jsonl.longValue(json, "needBytes", 0),
                 Jsonl.longValue(json, "freeBytes", 0),
                 Jsonl.longValue(json, "heldMs", 0));
