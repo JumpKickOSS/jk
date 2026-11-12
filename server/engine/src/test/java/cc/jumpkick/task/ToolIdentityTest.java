@@ -2,7 +2,6 @@
 package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.config.Request;
@@ -36,16 +35,34 @@ class ToolIdentityTest {
     }
 
     @Test
-    void a_tool_that_prints_nothing_and_never_exits_gives_up_at_the_version_timeout(@TempDir Path tmp)
-            throws Exception {
+    void a_tool_that_hangs_gives_up_at_the_timeout_once_per_request(@TempDir Path tmp) throws Exception {
         assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
-        Path tool = tmp.resolve("hangs");
-        Files.writeString(tool, "#!/bin/sh\nexec sleep 120\n");
-        assertThat(tool.toFile().setExecutable(true)).isTrue();
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path count = tmp.resolve("count");
+        String file = "'" + count + "'";
+        // Counts its runs, then prints nothing and never exits. Shell builtins only, but sleep,
+        // which it runs by absolute path.
+        Path node = tool(
+                bin,
+                "node",
+                "n=0; [ -f " + file + " ] && read n < " + file + "; echo $((n + 1)) > " + file
+                        + "; exec /bin/sleep 120");
+        String path = bin.toString();
 
-        String version = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> ToolIdentity.probe(tool, tmp, null));
-
-        assertThat(version).isEqualTo("no-version");
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                // On this thread: the request is bound here, not on a timeout helper's thread.
+                long start = System.nanoTime();
+                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo(node + "=no-version");
+                assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(20));
+                assertThat(ToolIdentity.of("node", path, tmp))
+                        .as("the hang is remembered for the request")
+                        .isEqualTo(node + "=no-version");
+                assertThat(Files.readString(count).strip()).isEqualTo("1");
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test

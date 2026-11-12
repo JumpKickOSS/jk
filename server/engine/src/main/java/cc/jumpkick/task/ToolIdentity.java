@@ -27,8 +27,8 @@ import org.jspecify.annotations.Nullable;
  * <p>The version is asked in the suite's directory with the request's environment, as the suite
  * would ask it: a toolchain manager's shim ({@code mise}, {@code asdf}, {@code volta}) answers
  * with the version the directory and the shell select, which can change without the binary
- * changing. So the answer is remembered for one request only, and a tool that gave no version line
- * is asked again rather than remembered as having none.
+ * changing. So the answer is remembered for one request only; a tool that exited without a version
+ * line is asked again, and one that hung is not asked again within the request.
  */
 public final class ToolIdentity {
 
@@ -86,15 +86,19 @@ public final class ToolIdentity {
         VersionKey key = new VersionKey(exe, dir, path);
         String known = versions.get(key);
         if (known != null) return known;
-        String v = probe(exe, dir, path, VERSION_TIMEOUT_MILLIS);
-        // A timeout or a silent tool is asked again rather than remembered as having no version.
-        if (!v.equals(NO_VERSION)) versions.put(key, v);
-        return v;
+        Answer a = probe(exe, dir, path, VERSION_TIMEOUT_MILLIS);
+        // A hang is remembered for the request, so it costs one timeout per build, not one per
+        // module; a tool that exited without a version line is asked again.
+        if (a.timedOut() || !a.line().equals(NO_VERSION)) versions.put(key, a.line());
+        return a.line();
     }
+
+    /** What {@code --version} gave: its first line or {@link #NO_VERSION}, and whether it hung. */
+    record Answer(String line, boolean timedOut) {}
 
     /** The first non-blank line {@code --version} prints, or a word saying why there is none. */
     static String probe(Path exe, Path dir, @Nullable String path) {
-        return probe(exe, dir, path, VERSION_TIMEOUT_MILLIS);
+        return probe(exe, dir, path, VERSION_TIMEOUT_MILLIS).line();
     }
 
     /**
@@ -103,7 +107,7 @@ public final class ToolIdentity {
      * its own thread, so a tool that prints nothing and never exits cannot hold the caller past the
      * bound.
      */
-    static String probe(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
+    static Answer probe(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
         ProcessBuilder pb = new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true);
         if (Files.isDirectory(dir)) pb.directory(dir.toFile());
         Map<String, String> env = pb.environment();
@@ -113,15 +117,16 @@ public final class ToolIdentity {
         try {
             Process p = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(p, null, Duration.ofMillis(timeoutMillis), 4096);
-            if (c.timedOut()) return NO_VERSION;
-            return c.output()
+            if (c.timedOut()) return new Answer(NO_VERSION, true);
+            String line = c.output()
                     .lines()
                     .map(String::trim)
                     .filter(l -> !l.isEmpty())
                     .findFirst()
                     .orElse(NO_VERSION);
+            return new Answer(line, false);
         } catch (IOException e) {
-            return NO_VERSION;
+            return new Answer(NO_VERSION, false);
         }
     }
 }
