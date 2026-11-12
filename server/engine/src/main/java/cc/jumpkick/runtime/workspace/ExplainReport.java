@@ -53,7 +53,7 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
     public static ExplainReport compute(Path entryDir, JkBuild build, Path cache, Session session, Knobs k)
             throws Exception {
         ExplainPlan plan = SessionContext.where(
-                session, () -> BuildService.explain(entryDir, build, cache, k.skipTests(), k.selection()));
+                session, () -> BuildService.explain(entryDir, build, cache, k.skipTests(), k.profile(), k.selection()));
         if (plan.hasErrors()) {
             return new ExplainReport(plan, 0L, 0L);
         }

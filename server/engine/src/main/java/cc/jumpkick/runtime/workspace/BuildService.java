@@ -126,52 +126,20 @@ public final class BuildService {
     }
 
     /**
-     * Forecast the build without running it: resolve the module graph and run the truthful
-     * per-step {@link TaskForecaster} over it, returning an {@link ExplainPlan} the caller
-     * renders. Pure policy — nothing here writes to {@code stdout}/{@code stderr}. Graph-resolution
-     * errors come back in {@link ExplainPlan#errors} (the caller renders the same failure); an
-     * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
-     */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache) throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path)} with {@code skipTests} matching {@code jk build
-     * --skip-tests} / {@code jk explain -S} so the forecast does not claim test work the
-     * live command will not run.
-     */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)
-            throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path, boolean)} confined to {@code selection}'s cone —
-     * the modules {@code jk build -m} with the same selection schedules, priced the way its
-     * countdown seed prices them. An empty selection is the whole workspace.
+     * Forecast the build without running it, under the request's {@code --skip-tests} and {@code
+     * --profile}, confined to {@code selection}'s cone — the modules {@code jk build -m} with the
+     * same selection schedules, priced the way its countdown seed prices them. An empty selection
+     * is the whole workspace. See {@link BuildForecasting#explain}.
      */
     public static ExplainPlan explain(
-            Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests, Set<Path> selection) throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests, selection);
-    }
-
-    /**
-     * Forecast from an already-resolved graph — the same {@link TaskForecaster} walk {@code jk
-     * build} uses for its countdown seed so explain and build never price different step sets.
-     */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests) {
-        return BuildForecasting.explainFromGraph(graph, cache, skipTests);
-    }
-
-    /**
-     * As {@link #explainFromGraph(BuildGraph.Result, Path, boolean)} with {@code entryDir} for the
-     * dirty-memo fast path: when a prior build recorded an empty dirty set and sources are still
-     * unchanged, skip the multi-second {@link TaskForecaster} walk (same shortcut as fully-cached
-     * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
-     */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return BuildForecasting.explainFromGraph(graph, cache, skipTests, entryDir);
+            Path entryDir,
+            JkBuild entryBuild,
+            Path cache,
+            boolean skipTests,
+            @Nullable String profile,
+            Set<Path> selection)
+            throws IOException {
+        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests, profile, selection);
     }
 
     /**

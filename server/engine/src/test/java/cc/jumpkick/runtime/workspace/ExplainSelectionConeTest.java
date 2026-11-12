@@ -43,12 +43,12 @@ class ExplainSelectionConeTest {
         Path b = BuildGraph.canonicalPath(ws.resolve("b"));
         Path c = BuildGraph.canonicalPath(ws.resolve("c"));
 
-        ExplainPlan whole = BuildForecasting.explainFromGraph(graph, cache, false, null);
+        ExplainPlan whole = BuildForecasting.explainFromGraph(graph, cache, false, null, null);
         assertThat(whole.modules())
                 .extracting(m -> BuildGraph.canonicalPath(m.dir()))
                 .contains(a, b, c);
 
-        ExplainPlan cone = BuildForecasting.explainSelection(graph, cache, false, Set.of(c));
+        ExplainPlan cone = BuildForecasting.explainSelection(graph, cache, false, null, Set.of(c));
 
         assertThat(cone.modules())
                 .extracting(m -> BuildGraph.canonicalPath(m.dir()))
@@ -89,7 +89,7 @@ class ExplainSelectionConeTest {
         Path ws = workspace(tmp);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         var root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        ExplainPlan plan = BuildService.explain(ws, root, cache, false, Set.of());
+        ExplainPlan plan = BuildService.explain(ws, root, cache, false, null, Set.of());
         assertThat(plan.modules())
                 .extracting(m -> m.dir().getFileName().toString())
                 .contains("a", "b", "c");

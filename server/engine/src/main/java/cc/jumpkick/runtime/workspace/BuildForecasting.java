@@ -497,33 +497,25 @@ public final class BuildForecasting {
      * renders. Pure policy — nothing here writes to {@code stdout}/{@code stderr}. Graph-resolution
      * errors come back in {@link ExplainPlan#errors} (the caller renders the same failure); an
      * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
-     */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache) throws IOException {
-        return explain(entryDir, entryBuild, cache, false);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path)} with {@code skipTests} matching {@code jk build
-     * --skip-tests} / {@code jk explain -S} so the forecast does not claim test work the
-     * live command will not run.
-     */
-    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)
-            throws IOException {
-        BuildGraph.Result graph = BuildGraph.resolve(entryDir, entryBuild);
-        return explainFromGraph(graph, cache, skipTests, entryDir);
-    }
-
-    /**
-     * As {@link #explain(Path, JkBuild, Path, boolean)} confined to the cone of {@code selection}
-     * — the selected module dirs and every prerequisite the graph reaches from them, which is the
-     * set {@code jk build -m} with the same selection schedules. An empty selection prices the
-     * whole workspace.
+     *
+     * <p>{@code skipTests} matches {@code jk build --skip-tests} / {@code jk explain -S} so the
+     * forecast does not claim test work the live command will not run; {@code profile} is the
+     * request's {@code --profile}, which keys the compile steps and the dirty memo exactly as the
+     * build keys them. A non-empty {@code selection} confines the plan to its cone — the selected
+     * module dirs and every prerequisite the graph reaches from them, which is the set {@code jk
+     * build -m} with the same selection schedules. An empty selection prices the whole workspace.
      */
     public static ExplainPlan explain(
-            Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests, Set<Path> selection) throws IOException {
-        if (selection.isEmpty()) return explain(entryDir, entryBuild, cache, skipTests);
+            Path entryDir,
+            JkBuild entryBuild,
+            Path cache,
+            boolean skipTests,
+            @Nullable String profile,
+            Set<Path> selection)
+            throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(entryDir, entryBuild);
-        return explainSelection(graph, cache, skipTests, selection);
+        if (selection.isEmpty()) return explainFromGraph(graph, cache, skipTests, entryDir, profile);
+        return explainSelection(graph, cache, skipTests, profile, selection);
     }
 
     /**
@@ -533,34 +525,23 @@ public final class BuildForecasting {
      * Explain does the same: forecast the graph the way that build does (no memo shortcut), then
      * keep the cone, so the modules listed, the edges drawn and the ETA totals are that build's.
      */
-    static ExplainPlan explainSelection(BuildGraph.Result graph, Path cache, boolean skipTests, Set<Path> selection) {
+    static ExplainPlan explainSelection(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable String profile, Set<Path> selection) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
         Set<Path> cone = ModuleHints.withPrereqs(graph, selection, skipTests);
-        return restrictToSelection(explainFromGraph(graph, cache, skipTests, null), cone);
+        return restrictToSelection(explainFromGraph(graph, cache, skipTests, null, profile), cone);
     }
 
     /**
-     * Forecast from an already-resolved graph — the same {@link TaskForecaster} walk {@code jk
-     * build} uses for its countdown seed so explain and build never price different step sets.
+     * Forecast from an already-resolved graph under the request's {@code --profile} — the same
+     * {@link TaskForecaster} walk {@code jk build} uses for its countdown seed so explain and build
+     * never price different step sets. With {@code entryDir}, the dirty memo stored under the same
+     * profile is the fast path: when a prior build recorded an empty dirty set and sources are still
+     * unchanged, skip the multi-second walk (same shortcut as fully-cached {@code jk build}). ETA is
+     * 0; the plan is "Fully Cached" for every module.
      */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests) {
-        return explainFromGraph(graph, cache, skipTests, null);
-    }
-
-    /**
-     * As {@link #explainFromGraph(BuildGraph.Result, Path, boolean)} with {@code entryDir} for the
-     * dirty-memo fast path: when a prior build recorded an empty dirty set and sources are still
-     * unchanged, skip the multi-second {@link TaskForecaster} walk (same shortcut as fully-cached
-     * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
-     */
-    public static ExplainPlan explainFromGraph(
-            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
-        return explainFromGraph(graph, cache, skipTests, entryDir, null);
-    }
-
-    /** As above under the request's {@code --profile}, which keys the compile steps and the memo. */
     public static ExplainPlan explainFromGraph(
             BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir, @Nullable String profile) {
         if (graph.hasErrors()) {

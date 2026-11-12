@@ -27,6 +27,7 @@ import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
@@ -102,6 +103,10 @@ class ProfileForecastTest {
                 assertThat(preflight.dirty())
                         .as("the preflight schedules the module")
                         .contains(project);
+                assertThat(BuildService.explain(project, parsed, cache, false, "strict", Set.of(project))
+                                .modules())
+                        .as("explain -m under the profile prices the compile the default record does not cover")
+                        .anyMatch(TaskForecast.Module::dirty);
 
                 BuildPlanResult profileBuild = build(project, cache, session, "strict");
                 assertThat(profileBuild.success()).isTrue();

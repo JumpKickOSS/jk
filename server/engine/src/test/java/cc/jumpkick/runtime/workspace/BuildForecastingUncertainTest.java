@@ -69,7 +69,7 @@ class BuildForecastingUncertainTest {
                     .startsWith("rebuilt because the preflight could not read ")
                     .contains("jk-lock.toml");
 
-            ExplainPlan plan = BuildForecasting.explainFromGraph(graph, cache, false, tmp);
+            ExplainPlan plan = BuildForecasting.explainFromGraph(graph, cache, false, tmp, null);
             assertThat(plan.hasErrors()).isFalse();
             TaskForecast.Module explained = plan.modules().stream()
                     .filter(m -> m.dir().toAbsolutePath().normalize().equals(module))

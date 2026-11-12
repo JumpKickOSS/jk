@@ -56,7 +56,7 @@ class ExplainAfterCleanMemoTest {
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
         Path cache = tmp.resolve("cache");
 
-        ExplainPlan warm = BuildForecasting.explainFromGraph(graph, cache, false, tmp);
+        ExplainPlan warm = BuildForecasting.explainFromGraph(graph, cache, false, tmp, null);
         assertThat(warm.modules()).allMatch(m -> !m.dirty());
 
         // jk clean: the memo stays, the outputs go.
@@ -68,7 +68,7 @@ class ExplainAfterCleanMemoTest {
                 .as("the memo names the module whose outputs are gone")
                 .isNotEmpty();
 
-        ExplainPlan wiped = BuildForecasting.explainFromGraph(graph, cache, false, tmp);
+        ExplainPlan wiped = BuildForecasting.explainFromGraph(graph, cache, false, tmp, null);
         assertThat(wiped.modules())
                 .as("the module the build will schedule is priced, not hidden behind the memo's clean claim")
                 .anyMatch(TaskForecast.Module::dirty);
