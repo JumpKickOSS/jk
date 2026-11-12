@@ -361,6 +361,7 @@ public final class PreflightMemo {
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
             sb.append("profile=").append(profileHeader(profile)).append('\n');
+            sb.append("snapshot=").append(snapshotHeader()).append('\n');
             String jdk = MemoInputs.jdkReleaseToken(entryDir, graph);
             if (jdk == null) {
                 Log.debug("storeDirty: not stored, the resolved JDK could not be read");
@@ -408,6 +409,15 @@ public final class PreflightMemo {
             // fail-open
             Log.debug("storeDirty: fail-open", e);
         }
+    }
+
+    /**
+     * The header's spelling of the session's snapshot flag: {@code 1} under {@code jk snapshot},
+     * else {@code 0}. A snapshot's modules package to -SNAPSHOT jars, so a clean claim one makes
+     * says nothing of the other (JK-MAG71).
+     */
+    static String snapshotHeader() {
+        return SessionContext.current().snapshot() ? "1" : "0";
     }
 
     /** The header's spelling of a request profile: its name, or empty for the default build. */
@@ -807,8 +817,8 @@ public final class PreflightMemo {
     /** A dirty memo as read from disk: its header fields and one row per module. */
     private record MemoFile(Map<String, String> header, Map<String, MemoRow> rows) {
 
-        private static final List<String> HEADER_KEYS =
-                List.of("cacheKeyVersion", "producer", "skipTests", "fpMode", "profile", "selection", "jdkRelease");
+        private static final List<String> HEADER_KEYS = List.of(
+                "cacheKeyVersion", "producer", "skipTests", "fpMode", "profile", "snapshot", "selection", "jdkRelease");
 
         /** Empty when a row is malformed; the caller has already checked the schema line. */
         static Optional<MemoFile> parse(List<String> lines) {
@@ -883,6 +893,16 @@ public final class PreflightMemo {
         String gotProfile = memo.got("profile");
         if (!wantProfile.equals(gotProfile)) {
             miss("profile", "want", wantProfile, "got", gotProfile);
+            return true;
+        }
+        // A snapshot's modules are versioned -SNAPSHOT and package to other jars than the build's:
+        // a tree the build certified clean says nothing of them. Trusted, the regular build's memo
+        // skipped every step of `jk snapshot` and installed the -SNAPSHOT jars left on disk by the
+        // snapshot before it (JK-MAG71). A memo with no snapshot line is a regular build's.
+        String wantSnapshot = snapshotHeader();
+        String gotSnapshot = memo.header().getOrDefault("snapshot", "0");
+        if (!wantSnapshot.equals(gotSnapshot)) {
+            miss("snapshot", "want", wantSnapshot, "got", gotSnapshot);
             return true;
         }
         String wantSelection = MemoInputs.selectionHeader();

@@ -57,6 +57,34 @@ class SnapshotCommandTest {
         return Jk.execute(args);
     }
 
+    /**
+     * A build between two snapshots certifies the tree clean for the build, not for the snapshot,
+     * whose modules package to -SNAPSHOT jars. Trusted, the build's memo skipped every step of the
+     * second snapshot, which then installed the -SNAPSHOT jar the first one left (JK-MAG71).
+     */
+    @Test
+    void a_snapshot_after_a_build_packages_its_own_jar(@TempDir Path tmp) throws Exception {
+        application(tmp, "snap-built", "");
+        Path m2 = tmp.resolve("m2");
+        Path jar = m2.resolve("repository/com/example/snap-built/1.0.0-SNAPSHOT/snap-built-1.0.0-SNAPSHOT.jar");
+        assertThat(jk(tmp, m2, "snapshot", "-S")).isEqualTo(0);
+        byte[] first = Files.readAllBytes(jar);
+
+        application(tmp, "snap-built", "public static int two() { return 2; }");
+        assertThat(Jk.execute(
+                        "build",
+                        "-S",
+                        "-C",
+                        tmp.toString(),
+                        "--cache-dir",
+                        tmp.resolve("cache").toString()))
+                .isEqualTo(0);
+        assertThat(jk(tmp, m2, "snapshot", "-S")).isEqualTo(0);
+        assertThat(Files.readAllBytes(jar))
+                .as("the second snapshot installs the edited source, not the first snapshot's jar")
+                .isNotEqualTo(first);
+    }
+
     @Test
     void a_snapshot_is_installed_replaced_and_kept_beside_the_release(@TempDir Path tmp) throws Exception {
         application(tmp, "snap-lib", "");
