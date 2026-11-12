@@ -487,7 +487,7 @@ public final class PlannerCompile {
         // so it cannot prune Java's output; the assembler merges both.
         Path javaOut = classes;
         // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root .scala)
-        // that PlannerSetup published: the Scala toolchain is decided from it.
+        // that parse-build published: the Scala toolchain is decided from it.
         List<Path> declared = javaSources(ctx);
         List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls, cx.ksp());
         if (sources != declared) {

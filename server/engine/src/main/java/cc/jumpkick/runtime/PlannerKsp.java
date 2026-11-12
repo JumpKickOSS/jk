@@ -388,10 +388,10 @@ public final class PlannerKsp {
      * main round's when no {@code ksp} step is planned, the test round's when the module declares
      * no processor at all. What a removed processor generated must not compile, ship or test.
      */
-    static void dropRetiredRounds(BuildPlanner.Ctx cx, BuildLayout layout, JkBuild project) throws IOException {
-        if (!cx.ksp()) PathUtil.deleteRecursively(kspOutBase(layout));
+    static void dropRetiredRounds(ModuleShape shape, BuildLayout layout, JkBuild project) throws IOException {
+        if (!shape.ksp()) PathUtil.deleteRecursively(kspOutBase(layout));
         // A test round runs only in a Kotlin module that declares a processor compile-test reads.
-        if (!cx.kotlinModule() || !ModuleShape.hasTestProcessorDeps(project)) dropTestRound(layout);
+        if (!shape.kotlin() || !ModuleShape.hasTestProcessorDeps(project)) dropTestRound(layout);
     }
 
     /** The main KSP2 round: split the processors, then run the round over the main sources. */

@@ -276,7 +276,7 @@ final class PlannerGuards {
                             cx,
                             Lane.WORKSPACE,
                             ectx,
-                            () -> GuardKeys.workspaceTokens(g.root(), modules),
+                            () -> GuardKeys.workspaceLaneTokens(g.root(), modules),
                             ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, g.root()),
                             false);
                     ctx.progress(1);
@@ -317,7 +317,7 @@ final class PlannerGuards {
                     Path moduleDir = cx.in().dir();
                     // The lane hangs off the compile steps, ahead of copy-resources, and runs the
                     // guard suite on the test runtime classpath — sibling jars included.
-                    PlannerSetup.awaitSiblingTestRuntime(ctx, cx.in());
+                    SiblingWaits.awaitSiblingTestRuntime(ctx, cx.in());
                     String module = WorkspaceModel.rel(g.root(), moduleDir);
                     Path buildDir = ctx.require(LAYOUT).buildDir();
                     FactsIndexing.Ensured main =
@@ -590,7 +590,7 @@ final class PlannerGuards {
                 .weight(() -> cx.plan().get().fullyCached() ? 0 : 2)
                 .ticks(1)
                 .execute(ctx -> {
-                    EvalContext.IoSupplier<List<String>> tokens = () -> GuardKeys.treeTokens(g.root());
+                    EvalContext.IoSupplier<List<String>> tokens = () -> GuardKeys.treeLaneTokens(g.root());
                     List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                     EvalContext ectx =
                             new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null, List::of);
@@ -714,7 +714,7 @@ final class PlannerGuards {
         if (lane == Lane.MODEL && reportOrphans(ctx, g, load, baseline)) {
             throw new GuardsRed("baseline names retired rules");
         }
-        if (rules.isEmpty() && !EngineValidations.applies(lane)) {
+        if (!EngineValidations.judges(lane, rules)) {
             ctx.label("no rules for this lane");
             return;
         }

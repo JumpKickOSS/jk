@@ -897,8 +897,8 @@ instead    = "TestStampInputs.of(facts, identity).extras(), or its key(...)"
 why        = "stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up"
 
 # G145. A module's classpaths are derived once, by ModuleClasspaths.derive, for the build and the
-# forecast alike; the classpath step (PlannerSetup) keeps the side effects around it: awaiting the
-# siblings, the unresolved-processor errors and the plugins' provided fetch. Subsystems that resolve
+# forecast alike; the classpath step (SetupSteps) and the sibling waits (SiblingWaits) keep the side
+# effects around it: awaiting the siblings, the unresolved-processor errors and the plugins' provided fetch. Subsystems that resolve
 # a classpath for something other than a module's plan are allow entries.
 [guards.module-classpath-owner]
 kind       = "forbid"
@@ -912,7 +912,7 @@ signatures = [
 ]
 scope      = ["server/engine"]
 source-set = "main"
-owner      = ["cc.jumpkick.runtime.ModuleClasspaths", "cc.jumpkick.runtime.PlannerSetup"]
+owner      = ["cc.jumpkick.runtime.ModuleClasspaths", "cc.jumpkick.runtime.SetupSteps", "cc.jumpkick.runtime.SiblingWaits"]
 fixture    = "server/engine/guard-fixtures/module-classpath-owner"
 instead    = "ModuleClasspaths.derive(..., mode), or the classpaths the plan's classpath step publishes"
 why        = "a classpath derived twice is a compile or test key the forecast computes over different entries than the build"

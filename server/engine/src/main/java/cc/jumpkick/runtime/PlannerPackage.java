@@ -88,7 +88,7 @@ public final class PlannerPackage {
                     // The first step of the plan that reads a sibling's jar: a packager with a
                     // runtime view (an APK's dex, a boot jar, the assembly and the tails behind
                     // this step) needs the siblings' jars written, so the wait for them is here.
-                    PlannerSetup.awaitSiblingArtifacts(ctx, in);
+                    SiblingWaits.awaitSiblingArtifacts(ctx, in);
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);

@@ -23,7 +23,6 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
@@ -40,29 +39,50 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
-import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.scala.ScalaResolver;
-import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Parse / resolve-deps / ensure-jdk steps for {@link BuildPlanner#coreBuilder}.
+ * One plan's setup steps: {@code parse-build} (the manifest, the lock and the source lists),
+ * {@code resolve-deps} (the module's classpaths) and {@code ensure-jdk}. Built once per plan from
+ * what its {@link BuildPlanner.Ctx} holds.
  */
-public final class PlannerSetup {
+final class SetupSteps {
 
-    private PlannerSetup() {}
+    private final BuildPlanner.Inputs in;
+    private final Cas cas;
+    private final Supplier<EffortWeights.Plan> plan;
+    private final AtomicReference<@Nullable List<Path>> javaMainSrcRef;
+    private final AtomicReference<@Nullable List<Path>> kotlinMainSrcRef;
+    private final AtomicReference<@Nullable List<Path>> groovyMainSrcRef;
+    private final Path javaMainSrcDir;
+    private final ModuleShape shape;
+    private final boolean compact;
+    private final Supplier<JkBuild> manifest;
+    private final PluginBuild.StepTools tools;
+
+    SetupSteps(BuildPlanner.Ctx cx) {
+        this.in = cx.in();
+        this.cas = cx.cas();
+        this.plan = cx.plan();
+        this.javaMainSrcRef = cx.javaMainSrcRef();
+        this.kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        this.groovyMainSrcRef = cx.groovyMainSrcRef();
+        this.javaMainSrcDir = cx.javaMainSrcDir();
+        this.shape = cx.shape();
+        this.compact = cx.compact();
+        this.manifest = cx.manifest();
+        this.tools = cx.tools();
+    }
 
     /**
      * What the manifest has to say once it is parsed: a shadowed module says once, on the build
@@ -91,20 +111,7 @@ public final class PlannerSetup {
         }
     }
 
-    static Task parseBuildStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        AtomicReference<@Nullable List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
+    Task parseBuild() {
         return Task.builder(TaskNames.PARSE_BUILD)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
@@ -118,7 +125,7 @@ public final class PlannerSetup {
                                             .size()
                                     + 5;
                         } catch (Exception e) {
-                            Log.debug("parseBuildStep: Exception ignored", e);
+                            Log.debug("parseBuild: Exception ignored", e);
                         }
                     }
                     return 10;
@@ -130,7 +137,7 @@ public final class PlannerSetup {
                         // The effective manifest the plan was built from: plan construction and
                         // step bodies read one config, or a task gets scheduled against a config
                         // its body cannot.
-                        project = cx.manifest().get();
+                        project = manifest.get();
                     } catch (RuntimeException e) {
                         ctx.error("toml", Errors.text(e));
                         throw e;
@@ -241,19 +248,7 @@ public final class PlannerSetup {
                 profile == null ? List.of() : profile.javacArgs());
     }
 
-    static Task syncDepsStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
+    Task syncDeps() {
         return Task.builder(TaskNames.RESOLVE_DEPS)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
@@ -267,9 +262,9 @@ public final class PlannerSetup {
                     // ran; this step derives the module's classpaths from them.
                     ctx.label("resolve classpath");
                     try {
-                        publishClasspaths(ctx, in, cx.shape(), cas, cx.tools());
+                        publishClasspaths(ctx, in, shape, cas, tools);
                         // Ahead of the KSP round and every compile that reads its output.
-                        PlannerKsp.dropRetiredRounds(cx, ctx.require(LAYOUT), ctx.require(PROJECT));
+                        PlannerKsp.dropRetiredRounds(shape, ctx.require(LAYOUT), ctx.require(PROJECT));
                     } catch (RuntimeException e) {
                         ctx.error("classpath", Errors.text(e));
                         throw e;
@@ -288,9 +283,9 @@ public final class PlannerSetup {
      * processor must resolve, and the plugins' provided jars and processors are fetched.
      *
      * <p>Only the main compile's and the processors' sibling trees are required here: a sibling
-     * only the test scopes name is no admission edge, so {@link #awaitSiblingTestCompile} requires
-     * it; the jars are what the package and test steps read, and {@link #awaitSiblingArtifacts}
-     * and {@link #awaitSiblingTestRuntime} require them where they are first needed.
+     * only the test scopes name is no admission edge, so {@link SiblingWaits#awaitSiblingTestCompile} requires
+     * it; the jars are what the package and test steps read, and {@link SiblingWaits#awaitSiblingArtifacts}
+     * and {@link SiblingWaits#awaitSiblingTestRuntime} require them where they are first needed.
      */
     static void publishClasspaths(
             TaskContext ctx, BuildPlanner.Inputs in, ModuleShape shape, Cas cas, PluginBuild.StepTools tools)
@@ -298,7 +293,7 @@ public final class PlannerSetup {
         Lockfile lock = ctx.require(LOCKFILE);
         JkBuild project = ctx.require(PROJECT);
         Path dir = in.dir();
-        requireSiblingsCompiled(
+        SiblingWaits.requireSiblingsCompiled(
                 ctx,
                 WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES),
                 "dependency module not compiled: ");
@@ -310,7 +305,7 @@ public final class PlannerSetup {
         // skips code generation is worse than one that fails. A sibling processor is loaded from
         // its classes tree, which holds its service registration once the sibling's resources are
         // copied — the point its tree is published at.
-        requireSiblingsCompiled(
+        SiblingWaits.requireSiblingsCompiled(
                 ctx,
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)),
                 "processor module not compiled: ");
@@ -342,146 +337,7 @@ public final class PlannerSetup {
                         ModuleClasspaths.Mode.BUILD));
     }
 
-    /**
-     * The one shape of the missing-sibling guard for the compile classpaths. The resolve writes
-     * the accurate cause into {@code missingSiblingClasses}; failing here attributes it to setup,
-     * where the sibling is named — not to the compile that would otherwise surface a {@code
-     * cannot find symbol} pointing at the wrong file.
-     */
-    private static void requireSiblingsCompiled(TaskContext ctx, WorkspaceClasspath.Result siblings, String prefix) {
-        if (siblings.missingSiblingClasses().isEmpty()) return;
-        for (String missing : siblings.missingSiblingClasses()) {
-            ctx.error("workspace", prefix + missing);
-        }
-        throw new RuntimeException("missing workspace siblings");
-    }
-
-    /**
-     * The point a plan first reads a sibling's jar for its own artifacts: wait for every sibling of
-     * its build-order closure to have published its artifacts, then require them on disk. The wait
-     * is the module's side of the workspace schedule ({@link cc.jumpkick.runtime.base.SiblingArtifacts});
-     * the check after it names the jar a failed or sourceless sibling did not produce, so the step
-     * that would have read it fails on the sibling rather than on a {@code NoClassDefFoundError} of
-     * its own.
-     */
-    static void awaitSiblingArtifacts(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
-        in.siblings().awaitArtifacts(ctx::cancelled);
-        if (ctx.cancelled()) return;
-        requireRuntimeSiblings(ctx, in);
-    }
-
-    /**
-     * As {@link #awaitSiblingArtifacts} for a step that runs on the test runtime classpath: it also
-     * waits for the siblings only the test scopes name, and the test classes and fixtures selected,
-     * and requires them. Test-view artifacts are required only when this plan compiles tests: under
-     * {@code --skip-tests} no sibling produces fixtures or test classes and nothing here reads them.
-     */
-    static void awaitSiblingTestRuntime(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
-        in.siblings().awaitTestRuntime(ctx::cancelled);
-        if (ctx.cancelled()) return;
-        requireRuntimeSiblings(ctx, in);
-        if (!PlannerResources.skipJUnit(in)) {
-            WorkspaceClasspath.Result testSiblings =
-                    WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.TEST_SCOPES);
-            requireSiblingsBuilt(ctx, testSiblings, "test dependency module not built: ", in.siblings());
-        }
-    }
-
-    private static void requireRuntimeSiblings(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
-        WorkspaceClasspath.Result mainSiblings =
-                WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.RUNTIME_SCOPES);
-        requireSiblingsBuilt(ctx, mainSiblings, "dependency module not built: ", in.siblings());
-    }
-
-    /**
-     * {@code workerJars}, once every workspace module whose jar is among them has published it: a
-     * suite runs against the workers this build makes, whatever order the schedule took.
-     */
-    static Map<String, String> awaitWorkerSiblings(
-            TaskContext ctx, BuildPlanner.Inputs in, Map<String, String> workerJars) throws InterruptedException {
-        Path self = in.dir().toAbsolutePath().normalize();
-        Set<Path> producers = new LinkedHashSet<>();
-        for (String jar : workerJars.values()) {
-            for (Path p = Path.of(jar).toAbsolutePath().normalize(); p != null; p = p.getParent()) {
-                Path parent = p.getParent();
-                if (parent != null
-                        && BuildLayout.TARGET.equals(String.valueOf(p.getFileName()))
-                        && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
-                    if (!parent.equals(self)) producers.add(parent);
-                    break;
-                }
-            }
-        }
-        in.siblings().awaitPublished(producers, ctx::cancelled);
-        return workerJars;
-    }
-
-    /**
-     * The test compile's side of the wait, then the check that what it compiles against is on disk.
-     * Its classpath is the siblings' classes trees — the build-order ones the schedule admitted this
-     * module on, and those only its test scopes name, which it waits for here — plus the test
-     * classes and fixtures a {@code kind = "tests"} edge or {@code fixtures = true} selects, which it
-     * waits for each sibling to have compiled. It never waits for a sibling to package or test.
-     *
-     * <p>Under {@code --skip-tests} a test-only sibling may be outside the build's cone, so its
-     * absence is the cone working and nothing is required.
-     */
-    static void awaitSiblingTestCompile(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
-        in.siblings().awaitTestCompile(ctx::cancelled);
-        if (ctx.cancelled() || PlannerResources.skipJUnit(in)) return;
-        JkBuild project = ctx.require(PROJECT);
-        WorkspaceClasspath.Result testSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
-        requireSiblingsCompiled(ctx, testSiblings, "test dependency module not compiled: ");
-        WorkspaceClasspath.Result testProcessorSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, ClasspathResolver.PROCESSOR_PATH);
-        requireSiblingsCompiled(ctx, testProcessorSiblings, "test processor module not compiled: ");
-        if (testSiblings.missingSiblingTestOutputs().isEmpty()) return;
-        for (String missing : testSiblings.missingSiblingTestOutputs()) {
-            ctx.error("workspace", missingSiblingMessage("test dependency module not built: ", missing, in.siblings()));
-        }
-        throw new RuntimeException("missing workspace siblings");
-    }
-
-    /** The runtime-view guard: {@code missingSiblingJars} names each jar, test output or fixtures dir absent. */
-    private static void requireSiblingsBuilt(
-            TaskContext ctx, WorkspaceClasspath.Result siblings, String prefix, SiblingArtifacts.Gate gate) {
-        if (siblings.missingSiblingJars().isEmpty()) return;
-        for (String missing : siblings.missingSiblingJars()) {
-            ctx.error("workspace", missingSiblingMessage(prefix, missing, gate));
-        }
-        throw new RuntimeException("missing workspace siblings");
-    }
-
-    /**
-     * The line for one absent sibling output. Every label leads with the sibling's coordinate; a
-     * sibling whose plan failed this build is named with the step it failed at — the cause —
-     * rather than as "not built", which is kept for a sibling this build did not run or that
-     * finished without producing the output.
-     */
-    static String missingSiblingMessage(String prefix, String missing, SiblingArtifacts.Gate gate) {
-        int space = missing.indexOf(' ');
-        String coord = space < 0 ? missing : missing.substring(0, space);
-        Optional<String> step = gate.failedStep(coord);
-        if (step.isEmpty()) return prefix + missing;
-        String subject = prefix.startsWith("test ") ? "test dependency module " : "dependency module ";
-        return subject + coord + " failed at " + step.get() + ": "
-                + missing.substring(coord.length()).trim();
-    }
-
-    static Task ensureJdkStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
+    Task ensureJdk() {
         return Task.builder(TaskNames.ENSURE_JDK)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)

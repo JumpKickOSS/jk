@@ -37,7 +37,7 @@ class NodePackageForecastTest {
         JkBuild project = JkBuildParser.parse(web.resolve("jk.toml"));
         Path cache = dir.resolve("cache");
 
-        TaskForecast.Task before = PlannerNode.forecastPackage(project, web, web, cache, false);
+        TaskForecast.Task before = NodeForecast.forecastPackage(project, web, web, cache, false);
         assertThat(before.name()).isEqualTo(TaskNames.NODE_PACKAGE);
         assertThat(before.status()).isEqualTo(TaskForecast.Status.RUN);
         assertThat(before.text()).contains("package web-1.0.0.jar").endsWith("· start: node server.js");
@@ -49,11 +49,11 @@ class NodePackageForecastTest {
         PackagingCache.storePackagedForTest(
                 cache, keyed.taskId(), keyed.key(), List.of(), jarDir, List.of(jar), true, List.of());
 
-        TaskForecast.Task after = PlannerNode.forecastPackage(project, web, web, cache, false);
+        TaskForecast.Task after = NodeForecast.forecastPackage(project, web, web, cache, false);
         assertThat(after.status()).isEqualTo(TaskForecast.Status.CACHED);
         assertThat(after.text()).isEqualTo("web-1.0.0.jar up-to-date · start: node server.js");
 
-        assertThat(PlannerNode.forecastPackage(project, web, web, cache, true).status())
+        assertThat(NodeForecast.forecastPackage(project, web, web, cache, true).status())
                 .as("a build that runs repackages")
                 .isEqualTo(TaskForecast.Status.RUN);
     }

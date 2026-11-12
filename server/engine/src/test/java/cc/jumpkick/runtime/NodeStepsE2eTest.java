@@ -187,7 +187,7 @@ class NodeStepsE2eTest {
 
         ActionCache cache =
                 new ActionCache(JkStores.cacheCas(tmp.resolve("cache")), CacheTree.ACTIONS.under(tmp.resolve("cache")));
-        List<TaskForecast.Task> forecast = PlannerNode.forecast(
+        List<TaskForecast.Task> forecast = NodeForecast.forecast(
                 JkBuildParser.parse(web.resolve("jk.toml")),
                 web,
                 web,
@@ -200,7 +200,7 @@ class NodeStepsE2eTest {
                 .singleElement()
                 .satisfies(t -> assertThat(t.status()).isEqualTo(TaskForecast.Status.CACHED));
         Files.writeString(tmp.resolve("api/spec.json"), "{\"v\":3}");
-        List<TaskForecast.Task> stale = PlannerNode.forecast(
+        List<TaskForecast.Task> stale = NodeForecast.forecast(
                 JkBuildParser.parse(web.resolve("jk.toml")),
                 web,
                 web,

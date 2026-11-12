@@ -5,8 +5,10 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.run.TaskNames;
@@ -15,6 +17,7 @@ import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.KeyOwner;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,6 +70,9 @@ final class NodeKeys {
             ".parcel-cache",
             ".nx",
             "coverage");
+
+    /** The install stamp under the module's {@code target/}: the {@code node-install} key {@code node_modules} answers to. */
+    static final String INSTALL_STAMP = "node-install.stamp";
 
     /** One step's key, the task id it is stored under, and the inputs the record keeps. */
     record Keyed(String taskId, String key, Map<String, String> inputs) {}
@@ -149,6 +155,44 @@ final class NodeKeys {
         List<String> all = new ArrayList<>(later);
         all.add(project.out());
         return all;
+    }
+
+    /** The install stamp of {@code moduleDir}'s node build. */
+    static Path stamp(Path moduleDir) {
+        return BuildLayout.moduleTargetDir(moduleDir).resolve(INSTALL_STAMP);
+    }
+
+    /** {@code node_modules} is on disk in {@code nodeDir} and {@code stamp} vouches for it under {@code key}. */
+    static boolean installed(Path nodeDir, Path stamp, String key) throws IOException {
+        if (!Files.isDirectory(nodeDir.resolve("node_modules"))) return false;
+        return Files.isRegularFile(stamp)
+                && Files.readString(stamp, StandardCharsets.UTF_8).equals(key);
+    }
+
+    /** Every path a step or the build writes, relative to the node directory: no step's input. */
+    static List<String> outputs(JkBuild build, NodeProject project) {
+        List<String> outputs = new ArrayList<>();
+        outputs.add(project.out());
+        for (NodeTable.Step s : build.node().steps()) outputs.addAll(s.outputs());
+        return outputs;
+    }
+
+    /** The outputs of the steps {@code node-build} runs before: every step but a build-tier one ahead of it. */
+    static List<String> afterBuild(JkBuild build) {
+        List<String> later = new ArrayList<>();
+        for (NodeTable.Step s : build.node().steps()) {
+            if (s.before() != NodeTable.Before.BUILD || s.tier() != NodeTable.Tier.BUILD) later.addAll(s.outputs());
+        }
+        return later;
+    }
+
+    /** The outputs of the steps {@code node-test} runs before: the package steps and the test tier's. */
+    static List<String> afterTest(JkBuild build) {
+        List<String> later = new ArrayList<>();
+        for (NodeTable.Step s : build.node().steps()) {
+            if (s.before() == NodeTable.Before.PACKAGE || s.tier() == NodeTable.Tier.TEST) later.addAll(s.outputs());
+        }
+        return later;
     }
 
     /** The task a {@code [[node.steps]]} entry runs as. */

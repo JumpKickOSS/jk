@@ -80,6 +80,15 @@ final class NodeCommands {
         throw new IllegalStateException(command.kind().toString());
     }
 
+    /** How a step line names {@code command}. */
+    static String describe(NodeTable.Command command) {
+        return switch (command.kind()) {
+            case RUN -> "run " + command.value();
+            case NPX -> "npx " + command.value();
+            case EXEC -> command.value();
+        };
+    }
+
     /** The package an npx command names: its first word, less a {@code @version}. */
     static String npxPackage(String value) {
         List<String> words = split(value);

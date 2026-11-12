@@ -40,6 +40,14 @@ final class NodeProcess {
         boolean ok() {
             return exit == 0;
         }
+
+        /** {@code what} failed: its exit and last lines. */
+        String exited(String what) {
+            StringBuilder sb =
+                    new StringBuilder("`").append(what).append("` exited ").append(exit);
+            for (String line : tail) sb.append('\n').append("  ").append(line);
+            return sb.toString();
+        }
     }
 
     /** A {@code file:line:col} line of a tool's output. */
