@@ -118,28 +118,33 @@ final class CompileInputs {
     /**
      * compile-java's freshness stamp when it vouches for {@code request}: its sources, the classpath
      * token lines {@code tokens} (the build's ABI tokens, or the forecast's view of a sibling the
-     * build restores first) and the request's option digest. Empty when the stamp is missing or
-     * stale.
+     * build restores first) and the request's option digest, over a tree that still holds every
+     * output of the records the tree's stamps name ({@link #outputsOnDisk}). Empty when the stamp is
+     * missing or stale, or the tree is not whole against those records.
      */
     @KeyOwner(step = TaskNames.COMPILE_JAVA)
-    static Optional<FreshnessStamp.Stamp> javaStamp(Module m, CompileRequest request, List<String> tokens)
-            throws IOException {
-        return FreshnessStamp.freshStamp(
+    static Optional<FreshnessStamp.Stamp> javaStamp(
+            ActionCache actionCache, Module m, CompileRequest request, List<String> tokens) throws IOException {
+        Optional<FreshnessStamp.Stamp> stamp = FreshnessStamp.freshStamp(
                 m.layout().classesDir(),
                 BuildStamps.JAVA,
                 request.sources(),
                 FreshnessStamp.ClasspathTokens.of(tokens),
                 m.release(),
                 ActionKey.javacOptionsDigest(request));
+        return stamp.isPresent() && outputsOnDisk(actionCache, m, null) ? stamp : Optional.empty();
     }
 
     /**
      * Whether the classes tree still holds every output a compile's stamped record owns: compile-java's
      * against every stamp in the tree (the other languages merge into it) when {@code stamp} is null,
      * another compile's against the record its own stamp names. A fresh stamp over a partly wiped tree
-     * is not up to date: the action cache's hit restores the record's whole tree.
+     * is not up to date, since the action cache's hit restores the record's whole tree; nor is one
+     * whose record is gone (pruned, or never written), since only a run of the compile writes it
+     * again. Every stamp check here asks it, so the build and the forecast hold a stamp to one
+     * condition.
      */
-    static boolean outputsOnDisk(ActionCache actionCache, Module m, @Nullable String stamp) throws IOException {
+    private static boolean outputsOnDisk(ActionCache actionCache, Module m, @Nullable String stamp) throws IOException {
         Path classes = m.layout().classesDir();
         return stamp == null
                 ? ModuleOutputs.compileOutputsOnDisk(actionCache, classes)
@@ -188,17 +193,20 @@ final class CompileInputs {
     /**
      * Whether compile-kotlin's freshness stamp vouches for {@code k}: its stamp inputs, the classpath
      * token lines {@code tokens} ({@link PlannerLang#kotlinStampTokens}) and the kotlinc config's
-     * digest.
+     * digest, over a tree that holds every output of the record the stamp names ({@link
+     * #outputsOnDisk}).
      */
     @KeyOwner(step = TaskNames.COMPILE_KOTLIN)
-    static boolean kotlinStampFresh(Module m, Kotlin k, List<String> tokens) throws IOException {
+    static boolean kotlinStampFresh(ActionCache actionCache, Module m, Kotlin k, List<String> tokens)
+            throws IOException {
         return FreshnessStamp.isFresh(
-                m.layout().classesDir(),
-                BuildStamps.KOTLIN,
-                k.stampInputs(),
-                FreshnessStamp.ClasspathTokens.of(tokens),
-                m.release(),
-                k.config().digest());
+                        m.layout().classesDir(),
+                        BuildStamps.KOTLIN,
+                        k.stampInputs(),
+                        FreshnessStamp.ClasspathTokens.of(tokens),
+                        m.release(),
+                        k.config().digest())
+                && outputsOnDisk(actionCache, m, BuildStamps.KOTLIN);
     }
 
     /** The kotlinc worker of {@code k}, building into the Kotlin classes dir under its incremental state. */
@@ -283,17 +291,20 @@ final class CompileInputs {
     /**
      * Whether compile-groovy's freshness stamp vouches for {@code g}: its stamp inputs, the request's
      * classpath token lines {@code tokens} and the Groovy option digest (the Groovy version, the JVM
-     * target, the JDK and the args).
+     * target, the JDK and the args), over a tree that holds every output of the record the stamp
+     * names ({@link #outputsOnDisk}).
      */
     @KeyOwner(step = TaskNames.COMPILE_GROOVY)
-    static boolean groovyStampFresh(Module m, Groovy g, List<String> tokens) throws IOException {
+    static boolean groovyStampFresh(ActionCache actionCache, Module m, Groovy g, List<String> tokens)
+            throws IOException {
         return FreshnessStamp.isFresh(
-                m.layout().classesDir(),
-                BuildStamps.GROOVY,
-                g.stampInputs(),
-                FreshnessStamp.ClasspathTokens.of(tokens),
-                m.release(),
-                groovyDigest(m));
+                        m.layout().classesDir(),
+                        BuildStamps.GROOVY,
+                        g.stampInputs(),
+                        FreshnessStamp.ClasspathTokens.of(tokens),
+                        m.release(),
+                        groovyDigest(m))
+                && outputsOnDisk(actionCache, m, BuildStamps.GROOVY);
     }
 
     /** compile-groovy's option digest: the Groovy version, the JVM target, the JDK and the args. */

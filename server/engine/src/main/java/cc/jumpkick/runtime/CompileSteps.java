@@ -184,8 +184,8 @@ final class CompileSteps {
         // whole tree, instead of packaging the subset it has; nor for warnings without their file.
         Optional<List<CompileResult.Diagnostic>> kept = StepWarnings.read(ctx, TaskNames.COMPILE_JAVA, sources, rerun);
         if (kept.isPresent()
-                && CompileInputs.javaStamp(module, request, stampTokens).isPresent()
-                && CompileInputs.outputsOnDisk(actionCache, module, null)) {
+                && CompileInputs.javaStamp(actionCache, module, request, stampTokens)
+                        .isPresent()) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
             JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, List.of(), kept.get());
             ctx.label("up to date");
@@ -436,18 +436,16 @@ final class CompileSteps {
         if (!s.force && !groovyJarUnavailable && !round.rewrites(mainSrc)) {
             try {
                 fresh = CompileInputs.javaStamp(
-                        module, req, ActionKey.javacClasspathTokens(req, s.restored.abiToken()));
+                        s.actionCache, module, req, ActionKey.javacClasspathTokens(req, s.restored.abiToken()));
             } catch (IOException ignored) {
                 fresh = Optional.empty();
             }
         }
-        // The build's own condition (CompileUpToDate.java): the stamp vouches for the inputs AND the
-        // tree still holds every output the stamped record owns; a partly wiped tree falls through
-        // to the action cache, priced below by whether its record restores.
-        boolean stampFresh = fresh.isPresent()
-                && !s.compileDepDirty
-                && StepWarnings.kept(layout, TaskNames.COMPILE_JAVA)
-                && ModuleOutputs.compileOutputsOnDisk(s.actionCache, out);
+        // The build's own condition: the stamp vouches for the inputs and the tree still holds every
+        // output the stamped records own (CompileInputs.javaStamp); a partly wiped tree, or one whose
+        // record is gone, falls through to the action cache, priced below by whether a record restores.
+        boolean stampFresh =
+                fresh.isPresent() && !s.compileDepDirty && StepWarnings.kept(layout, TaskNames.COMPILE_JAVA);
         ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, s.compileDepDirty);
         if (stampFresh) {
             // The stamp names the compile that produced this tree; that record is what the tree is
@@ -478,10 +476,7 @@ final class CompileSteps {
         // key hit says. A key that missed here missed on what the stamp leaves out — jk's own
         // version and the compiler worker's bytes, which every upgrade moves — so after an upgrade
         // every dependent of an edit forecast a recompile it would not run.
-        boolean stampHolds = s.compileDepDirty
-                && fresh.isPresent()
-                && pred.outcome() != JavaCompile.Outcome.CACHE_HIT
-                && CompileInputs.outputsOnDisk(s.actionCache, module, null);
+        boolean stampHolds = s.compileDepDirty && fresh.isPresent() && pred.outcome() != JavaCompile.Outcome.CACHE_HIT;
         s.compileStampHeld = stampHolds;
         if (stampHolds) {
             pred = new JavaCompile.Prediction(

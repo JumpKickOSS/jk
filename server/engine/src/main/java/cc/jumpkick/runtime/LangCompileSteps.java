@@ -161,9 +161,7 @@ final class LangCompileSteps {
         // hold every output the stamped compile's record owns.
         Optional<List<CompileResult.Diagnostic>> ktKept =
                 StepWarnings.read(ctx, TaskNames.COMPILE_KOTLIN, ktSources, rerun);
-        if (ktKept.isPresent()
-                && CompileInputs.kotlinStampFresh(module, inputs, stampTokens)
-                && CompileInputs.outputsOnDisk(actionCache, module, BuildStamps.KOTLIN)) {
+        if (ktKept.isPresent() && CompileInputs.kotlinStampFresh(actionCache, module, inputs, stampTokens)) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
             JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.KOTLINC, List.of(), ktKept.get());
             ctx.label("up to date");
@@ -287,9 +285,7 @@ final class LangCompileSteps {
         // As compile-kotlin: the stamp vouches for the inputs, the record for the tree.
         Optional<List<CompileResult.Diagnostic>> gvKept =
                 StepWarnings.read(ctx, TaskNames.COMPILE_GROOVY, gvSources, rerun);
-        if (gvKept.isPresent()
-                && CompileInputs.groovyStampFresh(module, inputs, stampTokens)
-                && CompileInputs.outputsOnDisk(actionCache, module, BuildStamps.GROOVY)) {
+        if (gvKept.isPresent() && CompileInputs.groovyStampFresh(actionCache, module, inputs, stampTokens)) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
             JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.GROOVYC, List.of(), gvKept.get());
             ctx.label("up to date");

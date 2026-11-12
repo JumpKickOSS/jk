@@ -11,6 +11,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
@@ -61,7 +62,9 @@ import org.junit.jupiter.api.io.TempDir;
  * compile classpath, processor path and test processor path each carry their own entries, a
  * Kotlin module whose multi-release root compiles against the provided jars with no Java main
  * sources, and a module whose sources compile to no class file beside its resources. The request's knobs vary too: a {@code --variant}, {@code jk compile} and {@code
- * --skip-tests} build, each forecast under the knobs it was built with.
+ * --skip-tests} build, each forecast under the knobs it was built with. A Java, a Kotlin and a Groovy
+ * module whose compile records are pruned under still-fresh stamps forecast the compiles the next
+ * build runs, and are clean after it.
  */
 @Tag("integration")
 class ForecastRunParityMatrixTest {
@@ -257,6 +260,86 @@ class ForecastRunParityMatrixTest {
         Path ws = workspace(JAVA_MODULE, Lib.JAVA);
         assertParity(ws, "src/com/example/Lib.java", false, BuildKnobs.DEFAULTS.withSkipTests(true));
     }
+
+    @Test
+    void java_whose_compile_record_was_pruned() throws Exception {
+        assertHealsAfterPrune(workspace(JAVA_MODULE, Lib.JAVA));
+    }
+
+    @Test
+    void kotlin_whose_compile_record_was_pruned() throws Exception {
+        assertHealsAfterPrune(workspace("""
+                kotlin = "^2.4.10"
+                """, Lib.KOTLIN));
+    }
+
+    @Test
+    void groovy_whose_compile_record_was_pruned() throws Exception {
+        assertHealsAfterPrune(workspace("""
+                groovy = "5.0.4"
+                """, Lib.GROOVY_TESTED_IN_JAVA));
+    }
+
+    /**
+     * Build {@code ws}, then prune the compile records module {@code a}'s still-fresh stamps name: a
+     * stamp vouches for its tree only while its record stands, so the walk prices each of those
+     * compiles to run, as the build then runs them, rather than a restore from records that are
+     * gone; that one build writes each record again, and the walk after it finds every module clean.
+     */
+    private void assertHealsAfterPrune(Path ws) throws Exception {
+        Path cache = tmp.resolve("cache");
+        lock(ws, cache);
+        build(ws, cache, BuildKnobs.DEFAULTS);
+        Path a = ws.resolve("a");
+        Path classes =
+                BuildLayout.of(a, JkBuildParser.parse(a.resolve("jk.toml"))).classesDir();
+        Path records = ActionTree.KEYS.under(CacheTree.ACTIONS.under(cache));
+        Set<String> pruned = new TreeSet<>();
+        for (int i = 0; i < TREE_STAMPS.size(); i++) {
+            Optional<String> key = FreshnessStamp.stampedKey(classes, TREE_STAMPS.get(i));
+            if (key.isEmpty()) continue;
+            Files.delete(records.resolve(key.get()));
+            pruned.add(STAMPED_COMPILES.get(i));
+        }
+        assertThat(pruned).as("a's stamped compiles").isNotEmpty();
+
+        List<TaskForecast.Module> walked = walk(ws, cache, BuildKnobs.DEFAULTS);
+        assertThat(dirtyNames(walked))
+                .as("the walk once a's compile records are pruned")
+                .containsExactly("a");
+        List<TaskForecast.Task> steps = walked.stream()
+                .filter(m -> m.dir().getFileName().toString().equals("a"))
+                .flatMap(m -> m.steps().stream())
+                .toList();
+        assertThat(steps.stream()
+                        .filter(s -> pruned.contains(s.name()) && !s.cached())
+                        .map(TaskForecast.Task::name))
+                .as("a's compiles whose records are pruned, priced to run: %s", steps)
+                .containsExactlyInAnyOrderElementsOf(pruned);
+        assertThat(steps.stream().map(TaskForecast.Task::name))
+                .as("a restore from records that are gone")
+                .doesNotContain(TaskNames.RESTORE_OUTPUTS);
+
+        build(ws, cache, BuildKnobs.DEFAULTS);
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        for (String stamp : TREE_STAMPS) {
+            Optional<String> key = FreshnessStamp.stampedKey(classes, stamp);
+            if (key.isPresent())
+                assertThat(actionCache.lookup(key.get()))
+                        .as("the record %s names after the build", stamp)
+                        .isPresent();
+        }
+        assertThat(dirty(walk(ws, cache, BuildKnobs.DEFAULTS)))
+                .as("the walk after the build that followed the prune")
+                .isEmpty();
+    }
+
+    /** The stamps a main classes tree carries, and below them the compile that writes each. */
+    private static final List<String> TREE_STAMPS = List.of(BuildStamps.JAVA, BuildStamps.KOTLIN, BuildStamps.GROOVY);
+
+    private static final List<String> STAMPED_COMPILES =
+            List.of(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY);
 
     /**
      * Build {@code ws}, then: the walk and {@code jk explain} find every module clean; after one edit

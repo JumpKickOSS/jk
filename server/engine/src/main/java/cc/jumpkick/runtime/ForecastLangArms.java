@@ -114,9 +114,7 @@ final class ForecastLangArms {
     boolean kotlinStampFresh(CompileInputs.Module module, CompileInputs.Kotlin inputs) throws Exception {
         return StepWarnings.kept(module.layout(), TaskNames.COMPILE_KOTLIN)
                 && CompileInputs.kotlinStampFresh(
-                        module, inputs, PlannerLang.kotlinStampTokens(inputs.classpath(), snapshotter))
-                // As the build: a fresh stamp over a partly wiped tree is not up to date.
-                && CompileInputs.outputsOnDisk(actionCache, module, BuildStamps.KOTLIN);
+                        actionCache, module, inputs, PlannerLang.kotlinStampTokens(inputs.classpath(), snapshotter));
     }
 
     /**
@@ -158,7 +156,7 @@ final class ForecastLangArms {
                 && !force
                 && StepWarnings.kept(layout, TaskNames.COMPILE_GROOVY)
                 && CompileInputs.groovyStampFresh(
-                        module, inputs, ActionKey.groovycClasspathTokens(req, classpathToken))) {
+                        actionCache, module, inputs, ActionKey.groovycClasspathTokens(req, classpathToken))) {
             return new LangStep(
                     new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null), null);
         }

@@ -2183,11 +2183,11 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 286, edges = 1054 }
+"server/engine" = { classes = 287, edges = 1058 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CompileSteps"
-value  = 17
+value  = 16
 reason = "PlannerCompile's compile steps become per-plan CompileSteps (compile-java) and LangCompileSteps (compile-kotlin, compile-groovy), each body beside its predictor, which takes PlannerCompile from 19 to under the cap and removes its three mutual pairs; the two step classes read the compile owners PlannerCompile and PlannerCompileForecast read between them, and CorePlan builds both"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
