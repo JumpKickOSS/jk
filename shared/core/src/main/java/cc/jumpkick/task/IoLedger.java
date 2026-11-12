@@ -45,6 +45,9 @@ public final class IoLedger {
     /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
     private final TransferBoard transfers;
 
+    /** What this run has said once and where its notes go ({@link RunNotices}). */
+    private final RunNotices.Run notices = new RunNotices.Run();
+
     public IoLedger() {
         this(Clock.SYSTEM);
     }
@@ -99,6 +102,10 @@ public final class IoLedger {
      * This run's downloads in flight. Code that streams a body to disk reports here, so a run's
      * display shows every download whichever step or caller asked for it.
      */
+    RunNotices.Run notices() {
+        return notices;
+    }
+
     public TransferBoard transfers() {
         return transfers;
     }
