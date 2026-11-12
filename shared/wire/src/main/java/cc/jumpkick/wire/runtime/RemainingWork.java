@@ -284,7 +284,7 @@ public final class RemainingWork {
         Path dir = c.dir();
         Set<String> done = finished.getOrDefault(dir, Set.of());
         Map<String, Long> starts = started.getOrDefault(dir, Map.of());
-        double pre = 0, test = 0, tail = 0, prePriced = 0, testPriced = 0;
+        double pre = 0, test = 0, tail = 0, lane = 0, prePriced = 0, testPriced = 0;
         for (StepCost s : own) {
             double w = s.at(bound);
             if (s.kind() == StepCost.Kind.PRE) prePriced += w;
@@ -306,8 +306,11 @@ public final class RemainingWork {
                 case PRE -> pre += left;
                 case TEST -> test += left;
                 case TAIL -> tail = Math.max(tail, left);
+                case LANE -> lane += left;
             }
         }
+        // The guard chain runs beside the suite as the tails do.
+        tail = Math.max(tail, lane);
         int gate = c.gateWeight() == ModuleWorkCost.UNKNOWN_GATE
                 ? ModuleWorkCost.UNKNOWN_GATE
                 : (int) Math.round(Math.min(c.gateWeight(), pre));

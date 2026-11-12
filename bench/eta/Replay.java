@@ -21,6 +21,7 @@
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.StepEta;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.StepCost;
@@ -1118,7 +1119,9 @@ public class Replay {
                         rows.add(new StepCost(
                                 String.valueOf(r.get(0)),
                                 n.intValue(),
-                                StepCost.Kind.valueOf(String.valueOf(r.get(2))),
+                                // Classified as the engine classifies today, so a journal priced
+                                // before a kind existed replays under the current shape.
+                                StepEta.kindOf(String.valueOf(r.get(0))),
                                 low,
                                 high));
                     }

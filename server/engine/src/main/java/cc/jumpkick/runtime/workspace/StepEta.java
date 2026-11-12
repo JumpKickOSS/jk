@@ -33,7 +33,21 @@ import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /** The estimate priced step by step, beside {@link BuildEta}'s module-weight estimate. */
-final class StepEta {
+public final class StepEta {
+
+    /**
+     * Where {@code step} sits in its module's shape. The suite is TEST; the packaging tails and the
+     * root's guard lanes (each a leaf of its own) run beside it as TAIL; the module's guard chain
+     * runs beside it as one LANE (PlannerGuards: guard waits for the compiles, nothing waits for
+     * it); the rest is the prefix.
+     */
+    public static StepCost.Kind kindOf(String step) {
+        if (TaskNames.isRunTests(step)) return StepCost.Kind.TEST;
+        if (TaskNames.PACKAGING_TAILS.contains(step)) return StepCost.Kind.TAIL;
+        if (step.equals(TaskNames.GUARD) || step.equals(TaskNames.COMPILE_GUARD)) return StepCost.Kind.LANE;
+        if (step.startsWith(TaskNames.GUARD + "-")) return StepCost.Kind.TAIL;
+        return StepCost.Kind.PRE;
+    }
 
     private StepEta() {}
 
@@ -92,9 +106,7 @@ final class StepEta {
                 Priced priced =
                         stepMs(ledger, shape, frontier, dir, t, distrust, prereqs, metrics, timings, projectDirs, m);
                 if (priced.ms() <= 0) continue;
-                StepCost.Kind kind = TaskNames.isRunTests(t.name())
-                        ? StepCost.Kind.TEST
-                        : TaskNames.PACKAGING_TAILS.contains(t.name()) ? StepCost.Kind.TAIL : StepCost.Kind.PRE;
+                StepCost.Kind kind = kindOf(t.name());
                 own.add(new StepCost(
                         t.name(), weightOf(priced.ms()), kind, weightOf(priced.low()), weightOf(priced.high())));
             }
@@ -102,15 +114,17 @@ final class StepEta {
                 costs.add(EffortWeights.costOf(dir, prereqs, EffortWeights.TOKEN, 0));
                 continue;
             }
-            int pre = 0, test = 0, tail = 0, gate = 0;
+            int pre = 0, test = 0, tail = 0, lane = 0, gate = 0;
             for (StepCost c : own) {
                 switch (c.kind()) {
                     case PRE -> pre += c.weight();
                     case TEST -> test += c.weight();
                     case TAIL -> tail = Math.max(tail, c.weight());
+                    case LANE -> lane += c.weight();
                 }
                 if (c.kind() == StepCost.Kind.PRE && EffortWeights.gatesDependents(c.step())) gate += c.weight();
             }
+            tail = Math.max(tail, lane);
             costs.add(new EffortWeights.ModuleCost(dir, prereqs, pre + test + tail, test, tail, gate, 0, 0));
             steps.put(dir, List.copyOf(own));
         }

@@ -63,4 +63,15 @@ class StepEtaTest {
                         new StepCost("package-jar", 2, StepCost.Kind.PRE));
         assertThat(model.etaMs()).isEqualTo(642L * WorkModel.MS_PER_WEIGHT);
     }
+
+    @Test
+    void the_guard_chain_is_a_lane_beside_the_suite_and_the_root_lanes_are_tails() {
+        assertThat(StepEta.kindOf("compile-java")).isEqualTo(StepCost.Kind.PRE);
+        assertThat(StepEta.kindOf("compile-test")).isEqualTo(StepCost.Kind.PRE);
+        assertThat(StepEta.kindOf("run-tests")).isEqualTo(StepCost.Kind.TEST);
+        assertThat(StepEta.kindOf("compile-guard")).isEqualTo(StepCost.Kind.LANE);
+        assertThat(StepEta.kindOf("guard")).isEqualTo(StepCost.Kind.LANE);
+        assertThat(StepEta.kindOf("guard-workspace")).isEqualTo(StepCost.Kind.TAIL);
+        assertThat(StepEta.kindOf("package-assembly")).isEqualTo(StepCost.Kind.TAIL);
+    }
 }

@@ -14,11 +14,18 @@ import java.util.Objects;
  */
 public record StepCost(String step, int weight, Kind kind, int low, int high) {
 
-    /** Where the step sits in {@code prefix + max(suite, tail)}. */
+    /** Where the step sits in {@code prefix + max(suite, tail, lane)}. */
     public enum Kind {
         PRE,
         TEST,
-        TAIL
+        TAIL,
+        /**
+         * The module's guard chain (compile-guard, then guard): a leaf nothing in the module or
+         * downstream waits for, so it runs beside the suite after the prefix, its steps one after
+         * the other. Priced as prefix it put a 13 s guard ahead of the engine's 42 s suite, which
+         * the build starts at the same moment.
+         */
+        LANE
     }
 
     public StepCost {

@@ -59,6 +59,37 @@ class RemainingWorkStepsTest {
     }
 
     @Test
+    void the_guard_chain_runs_beside_the_suite_not_ahead_of_it() {
+        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 96_000 / MS, 90_000 / MS, 0, 6_000 / MS);
+        RemainingWork rw = RemainingWork.seedSteps(
+                        List.of(cost),
+                        Map.of(
+                                A,
+                                List.of(
+                                        new StepCost("compile-java", 6_000 / MS, StepCost.Kind.PRE),
+                                        new StepCost("compile-guard", 3_000 / MS, StepCost.Kind.LANE),
+                                        new StepCost("guard", 20_000 / MS, StepCost.Kind.LANE),
+                                        new StepCost("run-tests", 90_000 / MS, StepCost.Kind.TEST))),
+                        4,
+                        false,
+                        false)
+                .withClock(clock);
+        assertThat(rw.R0())
+                .as("compile, then the suite (90 s) beside the guard chain (3 + 20 s)")
+                .isEqualTo(96_000);
+
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.stepStart(A, "run-tests");
+        rw.stepStart(A, "compile-guard");
+        now.addAndGet(85_000);
+        rw.suiteProgress(A, 0.98);
+        assertThat(rw.remaining())
+                .as("the guard chain overran its price: it, not the nearly done suite, is what is left")
+                .isGreaterThanOrEqualTo(20_000);
+    }
+
+    @Test
     void a_finished_short_step_leaves_the_long_steps_whole_price() {
         RemainingWork rw = model();
         rw.stepStart(A, "compile-java");
