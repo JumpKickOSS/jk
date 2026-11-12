@@ -572,6 +572,9 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [bootstrap-pin-reads-tree]
 population = { examined = 2 }
 
+[bootstrap-reads-lock]
+population = { examined = 2 }
+
 [cache-tiers]
 population = { constants = 29, files = 2266, literals = 44297 }
 
@@ -612,6 +615,8 @@ population = { examined = 1930 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1372, sites = 93555 }
+"server/guard" = { classes = 204, sites = 13606 }
+"server/io" = { classes = 75, sites = 4579 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 168, sites = 9184 }
 "shared/core" = { classes = 506, sites = 31724 }
@@ -1214,6 +1219,9 @@ in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 
+[config-error-through-broad-catch]
+population = { examined = 159 }
+
 [coverage-band]
 population = { units = 32 }
 [[coverage-band.entries]]
@@ -1369,11 +1377,12 @@ population = { examined = 15 }
 [engine-off-virtual-threads]
 [engine-off-virtual-threads.populations]
 "server/engine" = { classes = 1685, sites = 120806 }
+"server/io" = { classes = 75, sites = 4579 }
 
 [engine-static-memo]
 [engine-static-memo.populations]
-"server/engine" = { classes = 1673 }
-"server/guard" = { classes = 190 }
+"server/engine" = { classes = 1674 }
+"server/guard" = { classes = 189 }
 "server/io" = { classes = 74 }
 "server/resolver" = { classes = 125 }
 "server/toolchain" = { classes = 223 }
@@ -1384,10 +1393,6 @@ population = { examined = 15 }
 "shared/plugin-sdk" = { classes = 70 }
 "shared/toolchain-jdk" = { classes = 196 }
 "shared/wire" = { classes = 241 }
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.compile.ClasspathProcessors#MEMO"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.compile.CompilerBudget#CEILINGS"
@@ -1419,10 +1424,6 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [[engine-static-memo.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.api.WireWriter#STREAMS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.graph.GraphRunner#LOCKS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
@@ -1518,15 +1519,7 @@ at     = "cc.jumpkick.engine.runtime.NewProjectForm#PROJECT_KEYS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.engine.runtime.NewProjectOps#CLONE_LOCKS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.engine.runtime.NewProjectOps#versionLookup"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.git.GitCliExtension#cached"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
@@ -1558,10 +1551,6 @@ at     = "cc.jumpkick.runtime.GuardKeys#PARSED"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.GuardSuiteRunner#RUNS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.KotlinAbiWarmup#RECORDING"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
@@ -1575,10 +1564,6 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [[engine-static-memo.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.SettledReads#SETTLED"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ShadowManifests#GATES"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
@@ -1602,14 +1587,6 @@ at     = "cc.jumpkick.runtime.TestGates#GATES"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.TestSupport#COUNTED"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.BuildLogicGroovyHost#verifiedJars"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.base.BuildMetrics#MEMO"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
@@ -1627,10 +1604,6 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [[engine-static-memo.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.base.RecentClassWalls#RUNS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.RecentClassWalls#SCANNING"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
@@ -1670,15 +1643,7 @@ at     = "cc.jumpkick.task.PortablePath#ROOTS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.task.WorkerClosure#MEMO"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.test.TestLauncherFailure#SIGNALS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.baseline.BaselineFile#MEMO"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/guard"
@@ -1710,26 +1675,6 @@ at     = "cc.jumpkick.guard.eval.TypeHierarchy#JDK_SUPERS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/guard"
-at     = "cc.jumpkick.guard.eval.WorkspaceModel#MANIFESTS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.eval.WorkspaceModules#MEMO"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.extract.FactsIndexing#WRITERS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.extract.WorkspaceFacts#NAMES"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.extract.WorkspaceFacts#OWNERS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
 at     = "cc.jumpkick.guard.rules.Rule#GLOBS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
@@ -1741,28 +1686,8 @@ in     = "server/guard"
 at     = "cc.jumpkick.guard.schema.ExtractorVocabulary#TEMPLATES"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.schema.KindSchemas#EXAMPLES"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.schema.KindSchemas#GROUPS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.schema.KindSchemas#INSTEAD"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.schema.KindSchemas#KEYS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
 in     = "server/io"
 at     = "cc.jumpkick.repo.DownloadSlots#LEGS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.GradleModuleMetadata#PARSE_CACHE"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/io"
@@ -1950,10 +1875,6 @@ at     = "cc.jumpkick.config.SearchCeiling#last"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "shared/core"
-at     = "cc.jumpkick.config.SecretFiles#CACHE"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "shared/core"
 at     = "cc.jumpkick.config.SecretRedactor#KNOWN"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
@@ -1963,10 +1884,6 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [[engine-static-memo.entries]]
 in     = "shared/core"
 at     = "cc.jumpkick.config.SessionContext#current"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.config.WorkspaceScan#SCANNED"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "shared/core"
@@ -1986,10 +1903,6 @@ at     = "cc.jumpkick.layout.InputTrees#testConfig"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "shared/core"
-at     = "cc.jumpkick.library.LibraryCatalog#FILE_LAYERS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "shared/core"
 at     = "cc.jumpkick.library.LibraryCatalog#bundledLayer"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
@@ -1999,10 +1912,6 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [[engine-static-memo.entries]]
 in     = "shared/core"
 at     = "cc.jumpkick.lock.BomExporter#TEST_SCOPES"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.lock.LockClosureStamp#JAR_DIGESTS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "shared/core"
@@ -2023,10 +1932,6 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [[engine-static-memo.entries]]
 in     = "shared/core"
 at     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#BY_TABLE"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#VERSIONS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "shared/core"
@@ -2138,10 +2043,6 @@ at     = "cc.jumpkick.jdk.JdkEnsure#REGISTRIES"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkInventory#JVM_LOCKS"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkInventory#SHARED"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
@@ -2213,6 +2114,9 @@ population = { files = 1888 }
 "shared/core" = { classes = 373, sites = 0 }
 "shared/dynamic-surface" = { classes = 11, sites = 0 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+
+[jk-version-parity]
+population = { examined = 1 }
 
 [json-concat]
 population = { files = 2240 }
@@ -2552,6 +2456,8 @@ population = { examined = 5 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1387, sites = 100473 }
+"server/guard" = { classes = 204, sites = 13606 }
+"server/io" = { classes = 75, sites = 4579 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 168, sites = 9184 }
 "shared/core" = { classes = 506, sites = 31724 }
@@ -2627,6 +2533,7 @@ population = { files = 2240 }
 "plugins/publisher" = { classes = 24, sites = 0 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }
+"server/guard" = { classes = 204, sites = 0 }
 "server/io" = { classes = 59, sites = 0 }
 "server/toolchain" = { classes = 205, sites = 0 }
 "shared/client-io" = { classes = 136, sites = 0 }
@@ -2812,6 +2719,9 @@ population = { files = 10 }
 [script-walks-never-follow-links]
 population = { files = 1 }
 
+[sdk-version-is-the-release]
+population = { examined = 2 }
+
 [security-docs]
 population = { examined = 3 }
 
@@ -2861,6 +2771,9 @@ reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests
 
 [spa-no-class-key]
 population = { files = 29 }
+
+[speed-claims-are-generated]
+population = { examined = 206 }
 
 [spike-cache-temp-dir]
 [spike-cache-temp-dir.populations]

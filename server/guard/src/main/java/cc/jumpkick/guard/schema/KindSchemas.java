@@ -18,6 +18,7 @@ import cc.jumpkick.guard.schema.Kind.InsteadRule;
 import cc.jumpkick.guard.schema.Kind.KeyGroup;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.RepositorySpec;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -49,13 +50,15 @@ final class KindSchemas {
 
     static final List<String> BLANK_MODES = List.of("comments", "comments+strings", "none", "code", "prose");
 
-    private static final Map<Kind, List<KeySpec>> KEYS = new EnumMap<>(Kind.class);
-    private static final Map<Kind, List<KeyGroup>> GROUPS = new EnumMap<>(Kind.class);
-    private static final Map<Kind, InsteadRule> INSTEAD = new EnumMap<>(Kind.class);
-    private static final Map<Kind, String> EXAMPLES = new EnumMap<>(Kind.class);
+    /** One kind's key table, one-of groups, instead rule and example. */
+    private record Schema(List<KeySpec> keys, List<KeyGroup> groups, InsteadRule instead, String example) {}
+
+    private static final Map<Kind, Schema> SCHEMAS;
 
     static {
+        Map<Kind, Schema> m = new EnumMap<>(Kind.class);
         define(
+                m,
                 Kind.FORBID,
                 InsteadRule.REQUIRED,
                 List.of(
@@ -81,6 +84,7 @@ final class KindSchemas {
                 why        = "stdout is not a log sink in a service"
                 """);
         define(
+                m,
                 Kind.ANNOTATE,
                 InsteadRule.OPTIONAL,
                 List.of(
@@ -111,6 +115,7 @@ final class KindSchemas {
                 why     = "a field-injected bean cannot be constructed in a test without the container"
                 """);
         define(
+                m,
                 Kind.CLASSES,
                 InsteadRule.OPTIONAL,
                 List.of(
@@ -125,6 +130,7 @@ final class KindSchemas {
                 why    = "an entity outside the model package is a repository leak"
                 """);
         define(
+                m,
                 Kind.STATICS,
                 InsteadRule.OPTIONAL,
                 List.of(
@@ -158,6 +164,7 @@ final class KindSchemas {
                 why     = "a static map in a long-lived service grows and goes stale for the life of the process"
                 """);
         define(
+                m,
                 Kind.LAYERS,
                 InsteadRule.ABSENT,
                 List.of(
@@ -180,6 +187,7 @@ final class KindSchemas {
                 why    = "controllers that touch repositories skip validation"
                 """);
         define(
+                m,
                 Kind.CYCLES,
                 InsteadRule.ABSENT,
                 List.of(
@@ -193,12 +201,13 @@ final class KindSchemas {
                 matching = "com.acme.features.(*).."
                 why      = "a cyclic component has no edge anyone can name to cut"
                 """);
-        define(Kind.SPLIT_PACKAGE, InsteadRule.ABSENT, List.of(), List.of(), """
+        define(m, Kind.SPLIT_PACKAGE, InsteadRule.ABSENT, List.of(), List.of(), """
                 [guards.one-module-per-package]
                 kind = "split-package"
                 why  = "package-private reach across a jar boundary stops working under JPMS"
                 """);
         define(
+                m,
                 Kind.API,
                 InsteadRule.ABSENT,
                 List.of(
@@ -215,11 +224,12 @@ final class KindSchemas {
                 breaking = "baseline"
                 why      = "a removed public method is a customer's build going red"
                 """);
-        define(Kind.TEST, InsteadRule.OPTIONAL, List.of(), List.of(), """
+        define(m, Kind.TEST, InsteadRule.OPTIONAL, List.of(), List.of(), """
                 # not a TOML kind: a guard test is a @Guard method in a @GuardSuite class under src/guard/java.
                 # jk guard explain --schema guard-test prints the skeleton; the id shares the rule namespace.
                 """);
         define(
+                m,
                 Kind.DEPEND,
                 InsteadRule.OPTIONAL,
                 List.of(
@@ -247,6 +257,7 @@ final class KindSchemas {
                 why     = "one test framework; one logging facade"
                 """);
         define(
+                m,
                 Kind.TOOLCHAIN,
                 InsteadRule.ABSENT,
                 List.of(
@@ -263,6 +274,7 @@ final class KindSchemas {
                 why          = "one JDK floor; no artifact from an unvetted repository"
                 """.formatted(RepositorySpec.CENTRAL));
         define(
+                m,
                 Kind.TIERS,
                 InsteadRule.OPTIONAL,
                 List.of(
@@ -279,6 +291,7 @@ final class KindSchemas {
                 why   = "a Docker daemon is not a unit-test dependency"
                 """);
         define(
+                m,
                 Kind.TEXT,
                 InsteadRule.REQUIRED,
                 List.of(
@@ -311,6 +324,7 @@ final class KindSchemas {
                 why     = "an unowned TODO is a comment nobody will read again"
                 """);
         define(
+                m,
                 Kind.METRIC,
                 InsteadRule.ABSENT,
                 List.of(
@@ -336,6 +350,7 @@ final class KindSchemas {
                 why      = "a file that no longer fits a context window no longer fits a reviewer"
                 """);
         define(
+                m,
                 Kind.VOCABULARY,
                 InsteadRule.REQUIRED,
                 List.of(
@@ -355,6 +370,7 @@ final class KindSchemas {
                 why     = "a step name typed twice is a rename that half-lands"
                 """);
         define(
+                m,
                 Kind.PARITY,
                 InsteadRule.ABSENT,
                 List.of(
@@ -373,6 +389,7 @@ final class KindSchemas {
                 why   = "a module one build cannot see is built half the time"
                 """.formatted(ManifestPaths.MANIFEST));
         define(
+                m,
                 Kind.GENERATED,
                 InsteadRule.ABSENT,
                 List.of(
@@ -391,6 +408,7 @@ final class KindSchemas {
                 why      = "the registry drifted twice by hand; the third reconciliation is not by hand"
                 """);
         define(
+                m,
                 Kind.OUTPUT,
                 InsteadRule.ABSENT,
                 List.of(
@@ -405,6 +423,7 @@ final class KindSchemas {
                 why  = "a POM with an unspecified coordinate is an artifact nobody can depend on"
                 """);
         define(
+                m,
                 Kind.COMMIT,
                 InsteadRule.REQUIRED,
                 List.of(
@@ -420,14 +439,21 @@ final class KindSchemas {
                 instead         = "author commits as a human contributor"
                 why             = "attribution trailers are noise in blame"
                 """);
+        SCHEMAS = Collections.unmodifiableMap(m);
+    }
+
+    private static Schema schema(Kind kind) {
+        return Objects.requireNonNull(SCHEMAS.get(kind), kind.id());
     }
 
     private static void define(
-            Kind kind, InsteadRule instead, List<KeySpec> keys, List<KeyGroup> groups, String example) {
-        KEYS.put(kind, List.copyOf(keys));
-        GROUPS.put(kind, List.copyOf(groups));
-        INSTEAD.put(kind, instead);
-        EXAMPLES.put(kind, example.stripIndent());
+            Map<Kind, Schema> into,
+            Kind kind,
+            InsteadRule instead,
+            List<KeySpec> keys,
+            List<KeyGroup> groups,
+            String example) {
+        into.put(kind, new Schema(List.copyOf(keys), List.copyOf(groups), instead, example.stripIndent()));
     }
 
     /** The keys every kind shares. */
@@ -436,19 +462,19 @@ final class KindSchemas {
     }
 
     static List<KeySpec> keysOf(Kind kind) {
-        return Objects.requireNonNull(KEYS.get(kind), kind.id());
+        return schema(kind).keys();
     }
 
     static List<KeyGroup> groupsOf(Kind kind) {
-        return Objects.requireNonNull(GROUPS.get(kind), kind.id());
+        return schema(kind).groups();
     }
 
     static InsteadRule insteadOf(Kind kind) {
-        return Objects.requireNonNull(INSTEAD.get(kind), kind.id());
+        return schema(kind).instead();
     }
 
     static String exampleOf(Kind kind) {
-        return Objects.requireNonNull(EXAMPLES.get(kind), kind.id());
+        return schema(kind).example();
     }
 
     private static String[] kindIds() {
