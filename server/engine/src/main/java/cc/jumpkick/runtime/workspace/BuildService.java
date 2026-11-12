@@ -13,6 +13,7 @@ import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -269,6 +270,19 @@ public final class BuildService {
 
         static EtaModel empty() {
             return new EtaModel(0, List.of(), 1, true);
+        }
+
+        /**
+         * The estimate's likely range, {@code {low, high}} ms: its steps scheduled at the low, then
+         * the high end of each one's own range (JK-4TEZ7). A model priced by module weights has no
+         * range: both ends are the estimate.
+         */
+        public long[] range(boolean parallelTests) {
+            if (steps.isEmpty() || costs.isEmpty()) return new long[] {etaMs, etaMs};
+            List<ModuleWorkCost> work = new ArrayList<>();
+            for (EffortWeights.ModuleCost c : costs) work.add(c.toWorkCost());
+            return RemainingWork.seedSteps(work, steps, concurrency, serial, parallelTests)
+                    .remainingRange();
         }
     }
 

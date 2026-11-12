@@ -316,6 +316,11 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         header.setBarResidualRemaining(residualMillis);
     }
 
+    /** The estimate's likely range, as gaps below and above the residual; see {@link HeaderProgress#setEtaRange}. */
+    public void setEtaRange(long belowMillis, long aboveMillis) {
+        header.setEtaRange(belowMillis, aboveMillis);
+    }
+
     /** Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded). */
     public long etaEstimateMs() {
         return header.etaEstimateMs();

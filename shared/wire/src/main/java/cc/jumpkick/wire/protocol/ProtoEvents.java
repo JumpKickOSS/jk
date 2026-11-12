@@ -57,6 +57,11 @@ public final class ProtoEvents {
         return new EtaEvent(remainingMs, fullMillis).encode();
     }
 
+    /** As above with the estimate's likely range {@code [lowMs, highMs]}. */
+    public static String eta(long remainingMs, long fullMillis, long lowMs, long highMs) {
+        return new EtaEvent(remainingMs, fullMillis, lowMs, highMs).encode();
+    }
+
     public static String workspaceProgress(
             String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
         return workspaceProgress(dir, numerator, denominator, phase, modulesComplete, modulesTotal, -1, 0);
@@ -110,6 +115,35 @@ public final class ProtoEvents {
             long R0ms,
             double progressPercent,
             long heldMs) {
+        return workspaceProgress(
+                dir,
+                numerator,
+                denominator,
+                phase,
+                modulesComplete,
+                modulesTotal,
+                remainingMs,
+                R0ms,
+                progressPercent,
+                heldMs,
+                -1,
+                -1);
+    }
+
+    /** As above, with the estimate's likely range {@code [lowMs, highMs]} (-1 when it has none). */
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long R0ms,
+            double progressPercent,
+            long heldMs,
+            long lowMs,
+            long highMs) {
         double percent = Double.isNaN(progressPercent)
                 ? WorkspaceProgressTracker.percentOf(numerator, denominator)
                 : progressPercent;
@@ -123,7 +157,9 @@ public final class ProtoEvents {
                         modulesTotal,
                         remainingMs,
                         R0ms,
-                        heldMs)
+                        heldMs,
+                        lowMs,
+                        highMs)
                 .encode();
     }
 

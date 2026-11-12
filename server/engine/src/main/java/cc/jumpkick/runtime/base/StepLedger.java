@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeSet;
@@ -209,10 +210,46 @@ public final class StepLedger {
      * filtered test run, and a forced integration run's guard is neither.
      */
     public OptionalLong price(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        List<Long> rung = rung(dir, step, status, shape, frontier);
+        return rung.isEmpty() ? OptionalLong.empty() : OptionalLong.of(median(rung));
+    }
+
+    /**
+     * The likely range of {@code step}'s wall, {@code {low, high}}: the 20th and 80th percentiles
+     * of the samples {@link #price} takes its median from, widened to at least {@link
+     * #MIN_SPREAD} either side of the median when there are too few to spread. Empty when {@link
+     * #price} is.
+     */
+    public Optional<long[]> range(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        List<Long> rung = rung(dir, step, status, shape, frontier);
+        if (rung.isEmpty()) return Optional.empty();
+        List<Long> sorted = new ArrayList<>(rung);
+        sorted.sort(Long::compare);
+        long median = median(sorted);
+        long low = percentile(sorted, 0.2);
+        long high = percentile(sorted, 0.8);
+        low = Math.min(low, Math.round(median * (1 - MIN_SPREAD)));
+        high = Math.max(high, Math.round(median * (1 + MIN_SPREAD)));
+        return Optional.of(new long[] {Math.max(0, low), high});
+    }
+
+    /** The least a priced step's range spreads either side of its median: a run-to-run wobble. */
+    static final double MIN_SPREAD = 0.15;
+
+    /** The {@code q} quantile of {@code sorted}, interpolated between the samples either side. */
+    private static long percentile(List<Long> sorted, double q) {
+        double at = q * (sorted.size() - 1);
+        int below = (int) Math.floor(at);
+        int above = Math.min(sorted.size() - 1, below + 1);
+        return Math.round(sorted.get(below) + (at - below) * (sorted.get(above) - sorted.get(below)));
+    }
+
+    /** The samples {@link #price} answers from: the first rung that has any (see there). */
+    private List<Long> rung(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
         boolean suite = TaskNames.isRunTests(step);
-        if (suite && shape.filtered()) return OptionalLong.empty();
+        if (suite && shape.filtered()) return List.of();
         List<Indexed> rows = index.getOrDefault(key(dir, step, status), List.of());
-        if (rows.isEmpty()) return OptionalLong.empty();
+        if (rows.isEmpty()) return List.of();
         boolean forcedMatters = step.startsWith("compile-") || TaskNames.NATIVE_IMAGE.equals(step);
         List<Long> sameShapeFrontier = new ArrayList<>();
         List<Long> sameShape = new ArrayList<>();
@@ -232,9 +269,9 @@ public final class StepLedger {
             if (any.size() < ANY_FRONTIER) any.add(r.ms());
         }
         for (List<Long> rung : List.of(sameShapeFrontier, sameShape, same, any)) {
-            if (!rung.isEmpty()) return OptionalLong.of(median(rung));
+            if (!rung.isEmpty()) return rung;
         }
-        return OptionalLong.empty();
+        return List.of();
     }
 
     /** Two runs of one shape: the same profile, forced or not, filtered or not. */

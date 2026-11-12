@@ -518,7 +518,9 @@ final class EngineEventDecoder {
                 e.modulesComplete(),
                 e.modulesTotal(),
                 e.remainingMs(),
-                e.r0Ms());
+                e.r0Ms(),
+                e.etaLowMs(),
+                e.etaHighMs());
     }
 
     private static ModuleOutcome readOutcome(String dir, String line) {

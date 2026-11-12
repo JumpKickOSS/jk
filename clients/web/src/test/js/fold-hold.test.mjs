@@ -36,3 +36,15 @@ test('a hold-end with no hold changes nothing', () => {
   assert.equal(cards[0].residualAt, 10_000);
   assert.equal(cards[0].heldMs, undefined);
 });
+
+test('progress with a likely range keeps it as gaps around the residual', () => {
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w'), at: 0 });
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    at: 10_000,
+    data: { jid: 1, numerator: 40, denominator: 100, progress: 40, remainingMs: 60_000, R0: 100_000, etaLowMs: 45_000, etaHighMs: 90_000 },
+  });
+  assert.equal(cards[0].rangeBelowMs, 15_000);
+  assert.equal(cards[0].rangeAboveMs, 30_000);
+});

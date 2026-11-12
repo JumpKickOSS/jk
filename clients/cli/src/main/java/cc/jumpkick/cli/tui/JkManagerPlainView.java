@@ -349,7 +349,7 @@ final class JkManagerPlainView {
         boolean showEta =
                 eta != null && !eta.isBlank() && !PlainPhase.PREPARE.equals(st) && !PlainPhase.DONE.equals(st);
         if (showEta) {
-            tail.append(" (ETA ~").append(eta).append(')');
+            tail.append(" (ETA ").append(eta).append(')');
         }
         tail.append(" - ").append(st);
         if (detail != null && !detail.isBlank()) {
@@ -455,6 +455,6 @@ final class JkManagerPlainView {
     private @Nullable String etaClock() {
         long remMs = m.header.countdown.remainingMs(m.workElapsedMillis());
         if (remMs < 0) return null;
-        return DurationText.clockMillis(remMs);
+        return m.header.etaText(remMs, "-");
     }
 }

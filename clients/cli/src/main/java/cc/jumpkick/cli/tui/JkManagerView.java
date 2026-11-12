@@ -749,7 +749,7 @@ final class JkManagerView {
         // Countdown stays mid-gray: ~remaining, then 0s, then +overrun. Elapsed stays dim, no +.
         String rem;
         if (face.remainingSec() > 0) {
-            rem = "[mid-gray]~" + DurationText.clock(face.remainingSec()) + "[/]";
+            rem = "[mid-gray]" + m.header.etaText(face.remainingSec() * 1000L, "–") + "[/]";
         } else if (face.overrunSec() > 0) {
             rem = "[mid-gray]+" + DurationText.clock(face.overrunSec()) + "[/]";
         } else {

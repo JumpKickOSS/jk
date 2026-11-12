@@ -16,6 +16,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -241,13 +242,16 @@ public final class SsePublisher implements SseEvents {
      */
     public void trackStep(long requestId, String dir, String step, boolean started, @Nullable BufferedWriter writer) {
         if (requestId <= 0 || dir == null || step == null) return;
-        RemainingWork rw = remaining(requestId);
+        JobSession s = get(requestId);
+        if (s == null) return;
+        // Marked on the session first: a step that starts before the model is priced is replayed
+        // into it when it arrives, from when it really started.
+        var mark = new JobSession.StepMark(dir, step, started, Clock.SYSTEM.millis());
+        RemainingWork rw = s.stepMarked(mark);
         if (rw == null) return;
-        Path p = Path.of(dir);
         synchronized (rw) {
-            if (!rw.steps(p)) return;
-            if (started) rw.stepStart(p, step);
-            else rw.stepFinish(p, step);
+            if (!rw.steps(Path.of(dir))) return;
+            JobSession.apply(rw, mark);
             tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
         }
         emitWorkspaceProgress(requestId, writer, false);
@@ -342,6 +346,19 @@ public final class SsePublisher implements SseEvents {
         return true;
     }
 
+    /**
+     * The estimate's likely range beside its residual, from the request's step-priced model
+     * ({@link RemainingWork#remainingRange}): the tracker keeps it as gaps around the residual.
+     */
+    private void noteRange(long requestId, WorkspaceProgressTracker tracker) {
+        RemainingWork rw = remaining(requestId);
+        if (rw == null) return;
+        synchronized (rw) {
+            long[] range = rw.remainingRange();
+            tracker.noteRange(rw.remaining(), range[0], range[1]);
+        }
+    }
+
     /** Per request and module, its running suite's class progress. */
     private final ConcurrentHashMap<String, SuiteClassProgress> suiteProgress = new ConcurrentHashMap<>();
 
@@ -378,6 +395,7 @@ public final class SsePublisher implements SseEvents {
         synchronized (lock) {
             WorkspaceProgressTracker tracker = trackerOrNull(requestId);
             if (tracker == null) return;
+            noteRange(requestId, tracker);
             var snap = tracker.snapshot();
             double heldPct = Double.NaN;
             if (snap.hasPercent()) {
@@ -405,7 +423,18 @@ public final class SsePublisher implements SseEvents {
             double pct = heldPct;
             long heldMs = tracker.onHold() ? MemoryHolds.heldMillis(requestId) : -1;
             String line = ProtoEvents.workspaceProgress(
-                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct, heldMs);
+                    dir,
+                    num,
+                    den,
+                    snap.phase(),
+                    snap.modulesComplete(),
+                    snap.modulesTotal(),
+                    rem,
+                    r0,
+                    pct,
+                    heldMs,
+                    snap.lowMs(),
+                    snap.highMs());
             if (writer != null) WireWriter.sendQuiet(writer, line);
             if (eventsWanted()) {
                 publishEvent(

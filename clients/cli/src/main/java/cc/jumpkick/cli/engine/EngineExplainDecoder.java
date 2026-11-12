@@ -141,6 +141,11 @@ final class EngineExplainDecoder {
                             if (etaOut.length > 1) {
                                 etaOut[1] = Math.max(0, e.fullMillis());
                             }
+                            // The estimate's likely range, when the caller asked for one.
+                            if (etaOut.length > 3) {
+                                etaOut[2] = e.lowMs();
+                                etaOut[3] = e.highMs();
+                            }
                         }
                     }
                     case EngineProtocol.EXPLAIN_DONE -> {

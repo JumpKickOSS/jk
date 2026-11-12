@@ -13,9 +13,14 @@ import org.jspecify.annotations.Nullable;
 /**
  * One {@code jk explain} answer for every surface: the forecast plan plus both ETAs — the
  * incremental estimate and the same graph priced as a full rebuild. The wire verb streams the
- * plan's module/step/edge burst; MCP encodes a budgeted summary. Both compute here.
+ * plan's module/step/edge burst; MCP encodes a budgeted summary. Both compute here. {@code
+ * lowMillis} and {@code highMillis} bound the incremental estimate: its likely range (JK-4TEZ7).
  */
-public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
+public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis, long lowMillis, long highMillis) {
+
+    public ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
+        this(plan, etaMillis, fullMillis, etaMillis, etaMillis);
+    }
 
     /**
      * ETA inputs the session does not carry; {@link #defaults()} is the bare {@code jk explain}
@@ -57,9 +62,9 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
         if (plan.hasErrors()) {
             return new ExplainReport(plan, 0L, 0L);
         }
-        long eta = SessionContext.where(
+        BuildService.EtaModel model = SessionContext.where(
                 session,
-                () -> BuildService.estimateEtaMillis(
+                () -> BuildService.estimateEtaModel(
                         plan,
                         entryDir,
                         cache,
@@ -70,6 +75,8 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
                         session.verbose(),
                         session.parallelTests(),
                         k.maxModuleConcurrency()));
+        long eta = model.etaMs();
+        long[] range = model.range(session.parallelTests());
         JkConfig config = session.config();
         boolean alreadyFull = config.rebuildOr(false) || config.forceOr(false);
         long full;
@@ -91,6 +98,6 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
                             session.parallelTests(),
                             k.maxModuleConcurrency()));
         }
-        return new ExplainReport(plan, eta, full);
+        return new ExplainReport(plan, eta, full, range[0], range[1]);
     }
 }

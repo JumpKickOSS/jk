@@ -171,7 +171,17 @@ export const cardMethods = {
   etaCountdown(card) {
     const rem = this.etaFaceSeconds(card);
     if (rem == null) return '';
-    if (rem > 0) return '~' + fmtClockSeconds(rem);
+    if (rem > 0) {
+      // A wide likely range shows as the range: a point would claim a precision the estimate lacks.
+      const below = card.rangeBelowMs;
+      const above = card.rangeAboveMs;
+      if (typeof below === 'number' && typeof above === 'number' && rem >= 10 && below + above > 0.4 * rem * 1000) {
+        const low = Math.max(0, Math.round(rem - below / 1000));
+        const high = Math.round(rem + above / 1000);
+        return fmtClockSeconds(low) + '–' + fmtClockSeconds(high);
+      }
+      return '~' + fmtClockSeconds(rem);
+    }
     const over = this.etaOverrunSeconds(card);
     return over > 0 ? '+' + fmtClockSeconds(over) : '0s';
   },

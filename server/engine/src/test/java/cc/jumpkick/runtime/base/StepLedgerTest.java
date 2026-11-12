@@ -92,6 +92,27 @@ class StepLedgerTest {
     }
 
     @Test
+    void a_steps_range_is_the_spread_of_the_walls_it_is_priced_from_and_never_narrower_than_a_wobble(
+            @TempDir Path home) {
+        for (long ms : new long[] {10_000, 12_000, 20_000, 11_000, 30_000}) {
+            StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/a", "run-tests", "SUCCESS", ms)));
+        }
+        StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/b", "guard", "SUCCESS", 4_000)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.price("/ws/a", "run-tests", "SUCCESS", DEFAULT, Set.of()))
+                .hasValue(12_000);
+        assertThat(ledger.range("/ws/a", "run-tests", "SUCCESS", DEFAULT, Set.of()))
+                .as("the 80th percentile of 10, 11, 12, 20, 30 s above; below, the 20th (10.8 s) is"
+                        + " closer than the least spread under the 12 s median")
+                .hasValueSatisfying(r -> assertThat(r).containsExactly(10_200, 22_000));
+        assertThat(ledger.range("/ws/b", "guard", "SUCCESS", DEFAULT, Set.of()))
+                .as("one sample: the least spread either side")
+                .hasValueSatisfying(r -> assertThat(r).containsExactly(3_400, 4_600));
+        assertThat(ledger.range("/ws/c", "guard", "SUCCESS", DEFAULT, Set.of())).isEmpty();
+    }
+
+    @Test
     void a_forced_compile_is_not_an_incremental_one(@TempDir Path home) {
         RunShapes.Shape forced = new RunShapes.Shape("", true, false);
         StepLedger.append(home, forced, List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 20_000)));

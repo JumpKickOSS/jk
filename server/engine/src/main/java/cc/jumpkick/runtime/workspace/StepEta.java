@@ -89,15 +89,14 @@ final class StepEta {
             Set<Path> prereqs = plan.edges().getOrDefault(dir, Set.of());
             List<StepCost> own = new ArrayList<>();
             for (TaskForecast.Task t : m.steps()) {
-                long ms = stepMs(ledger, shape, frontier, dir, t, distrust, prereqs, metrics, timings, projectDirs, m);
-                if (ms <= 0) continue;
+                Priced priced =
+                        stepMs(ledger, shape, frontier, dir, t, distrust, prereqs, metrics, timings, projectDirs, m);
+                if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = TaskNames.isRunTests(t.name())
                         ? StepCost.Kind.TEST
                         : TaskNames.PACKAGING_TAILS.contains(t.name()) ? StepCost.Kind.TAIL : StepCost.Kind.PRE;
                 own.add(new StepCost(
-                        t.name(),
-                        (int) Math.max(1, (ms + WorkModel.MS_PER_WEIGHT - 1) / WorkModel.MS_PER_WEIGHT),
-                        kind));
+                        t.name(), weightOf(priced.ms()), kind, weightOf(priced.low()), weightOf(priced.high())));
             }
             if (own.isEmpty()) {
                 costs.add(EffortWeights.costOf(dir, prereqs, EffortWeights.TOKEN, 0));
@@ -140,7 +139,27 @@ final class StepEta {
      * cache hit is a restore, not a run) and this run's shape, else the module-weight price of that
      * step alone; a forecast-only verdict (an order or dependency check) is a touch.
      */
-    private static long stepMs(
+    /**
+     * A step's price in ms and its likely range: the ledger's own spread for a step with history;
+     * a third either side for a filtered suite priced from its classes' walls; half to twice for a
+     * step priced from the module weights with no history of its own, which is a guess.
+     */
+    record Priced(long ms, long low, long high) {
+        static Priced exact(long ms) {
+            return new Priced(ms, ms, ms);
+        }
+
+        static Priced spread(long ms, double down, double up) {
+            return new Priced(ms, Math.round(ms * down), Math.round(ms * up));
+        }
+    }
+
+    /** A step's ms in schedule weight units, rounded up so a short step still weighs one. */
+    private static int weightOf(long ms) {
+        return (int) Math.max(1, (ms + WorkModel.MS_PER_WEIGHT - 1) / WorkModel.MS_PER_WEIGHT);
+    }
+
+    private static Priced stepMs(
             StepLedger ledger,
             RunShapes.Shape shape,
             Set<String> frontier,
@@ -156,17 +175,22 @@ final class StepEta {
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
                 || TaskNames.RESTORE_OUTPUTS.equals(name)) {
-            return EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT;
+            return Priced.exact(EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT);
         }
         boolean runs = distrust || !t.cached();
         if (runs && shape.filtered() && TaskNames.isRunTests(name)) {
             OptionalLong narrowed = filteredSuiteMs(dir);
-            if (narrowed.isPresent()) return narrowed.getAsLong();
+            if (narrowed.isPresent()) return Priced.spread(narrowed.getAsLong(), 0.7, 1.3);
         }
         String status = runs ? "SUCCESS" : "SKIPPED";
         var own = ledger.price(dir.toString(), name, status, shape, frontier);
-        if (own.isPresent()) return own.getAsLong();
-        if (!runs) return 0;
+        if (own.isPresent()) {
+            long ms = own.getAsLong();
+            long[] range =
+                    ledger.range(dir.toString(), name, status, shape, frontier).orElse(new long[] {ms, ms});
+            return new Priced(ms, range[0], range[1]);
+        }
+        if (!runs) return Priced.exact(0);
         Map<String, Integer> counts = new HashMap<>();
         if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
         if (m.sourceCount() > 0) {
@@ -176,7 +200,7 @@ final class StepEta {
         String metricsName = TaskNames.RUN_TESTS.equals(name) ? SuiteSelection.current() : name;
         EffortWeights.ModuleCost alone = EffortWeights.costFromRunningSteps(
                 dir, prereqs, List.of(metricsName), metrics, timings, projectDirs, counts);
-        return (long) alone.weight() * EffortWeights.MS_PER_WEIGHT;
+        return Priced.spread((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, 0.5, 2.0);
     }
 
     /**

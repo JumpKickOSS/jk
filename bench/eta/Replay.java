@@ -885,6 +885,12 @@ public class Replay {
                         ? RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests)
                         : RemainingWork.seedSteps(costs, seedSteps, st.concurrency, st.serial, st.parallelTests)
                                 .withClock(REPLAY_CLOCK);
+                // As the engine's JobSession: steps that started or finished before the model was
+                // priced are replayed into it, each from when it really started.
+                if (!seedSteps.isEmpty()) {
+                    st.stepStart.forEach((dir, starts) -> starts.forEach((step, at) -> v0.rw.stepStart(dir, step, at)));
+                    st.stepDone.forEach((dir, done) -> done.forEach(step -> v0.rw.stepFinish(dir, step)));
+                }
                 v6.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
                 v7.price(run, CURRENT_RUN_ID, costs);
                 v7b.price(run, CURRENT_RUN_ID, costs);
@@ -1107,10 +1113,14 @@ public class Replay {
             if (e.getValue() instanceof List<?> l) {
                 for (Object o : l) {
                     if (o instanceof List<?> r && r.size() >= 3 && r.get(1) instanceof Number n) {
+                        int low = r.size() >= 5 && r.get(3) instanceof Number lo ? lo.intValue() : n.intValue();
+                        int high = r.size() >= 5 && r.get(4) instanceof Number hi ? hi.intValue() : n.intValue();
                         rows.add(new StepCost(
                                 String.valueOf(r.get(0)),
                                 n.intValue(),
-                                StepCost.Kind.valueOf(String.valueOf(r.get(2)))));
+                                StepCost.Kind.valueOf(String.valueOf(r.get(2))),
+                                low,
+                                high));
                     }
                 }
             }

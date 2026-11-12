@@ -1,48 +1,81 @@
-# Progress contract — adaptive residual ETA and effort-weight bar
+# Progress contract — step-priced ETA, residual countdown, likely range, holds
 
 Status: **normative** for TUI / wire progress. Implementations live under
-`shared/wire` (`WorkSchedule`, `WorkspaceProgressTracker`, `RemainingWork`) and
-`server/engine` (`EffortWeights`, `TestEffort`, `BuildService.seedEta`).
+`shared/wire` (`WorkSchedule`, `RemainingWork`, `StepCost`, `WorkspaceProgressTracker`) and
+`server/engine` (`StepEta`, `StepLedger`, `SuiteClassProgress`, `MemoryHolds`, `BuildService`).
 
 ## Goals
 
 1. **One aggregate** for the whole request (single module, selection subset, or monorepo).
-2. **Open-loop seed `R0`** — wall-ms estimate at plan start (`jk explain` ≡ `jk build`). Users plan from the start; seed quality is measured against this figure.
-3. **Effort-weight progress bar** — denominator is Σ plan step weights (measured walls preferred). Cache/skip → TOKEN. Bar **never goes backwards**.
-4. **Real-work only** — bookkeeping steps do not inflate dirty set or ETA.
-5. **Hierarchical learning** — test method → test class → task → stage → module → workspace.
-6. **Dual clock** — mid-gray countdown from residual-reanchored remaining (starts as `R0`; `0s` at the deadline, then `+Ns` for the miss); dim elapsed from command start (no `+`).
-7. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
+2. **Seed `R0` in milliseconds** — the schedule of every step the build will run, each priced at
+   its own recent wall (`jk explain` ≡ `jk build`). No learned scale sits on top of it.
+3. **A countdown that follows the work** — what remains is the schedule of the steps still to
+   finish; a running step counts down by its clock, a running suite by its classes.
+4. **An honest precision** — every estimate carries a likely range that the truth falls inside
+   about four runs in five; a wide range is shown as the range.
+5. **Pauses are not work** — a build waiting for memory is on hold: shown as such, its countdown
+   stands still, and the hold teaches no timing.
+6. **The bar never goes backwards** and never runs ahead of the estimate.
+7. **Measured** — `bench/eta` scores every change against a corpus of real builds before it lands.
 
 ## Model
 
 ```
-R0            = seed wall ms (jk explain ≡ jk build seed) — seed-quality KPI; initial countdown
-residual R(t) = remaining wall from schedule of unfinished work (RemainingWork)
-countdown     = max(0, R_anchor − Δelapsed)   # re-anchor when residual updates; start R_anchor=R0
-bar (clock)   = min(99%, elapsed / (elapsed + R(t)))   # adaptive; falls back to elapsed/R0
-weight slices = fallback when R0 unknown
+price(step)   = median wall of the step's latest samples (StepLedger), first rung that has any:
+                same shape + same frontier, same shape, compatible shape + same frontier, compatible shape
+R0            = WorkSchedule of the scheduled modules' step prices, in ms
+R(t)          = WorkSchedule of what remains:
+                  finished step       → 0
+                  not started         → its price
+                  running step        → max(5% of price, price − elapsed)
+                  running suite       → share of its class walls still to run (SuiteClassProgress);
+                                        past a quarter done, elapsed × (1 − f) / f
+range         = R(t) scheduled at each unfinished step's low, then high bound
+countdown     = R_anchor − Δwork-time   # re-anchored on every engine sample, at least once a second
+bar           = min(99%, work-elapsed / (work-elapsed + R(t)))
 ```
 
-**Countdown and bar share residual.** Seed path freezes R0 once execute starts (provisional
-eta thrash guard; seed quality KPI stays honest). Mid-run residual re-anchors the *target*
-countdown so remaining eases into R(t) and hits 0 with residual → 0 (always end on time).
-Between residual samples the client open-loop-decays the last re-anchor by wall time. A
-**1s jitter buffer** commits the painted remaining face at most once per whole-second
-elapsed tick (sample latest target when `elapsedSec` advances; hold within the second;
-snap to `0s` immediately; a same-second re-anchor that raises the target overwrites a
-committed zero). Both faces implement it: CLI `JkManager` and the SPA
-(`etaFaceSeconds`).
+A step's **shape** is the run's test profile, whether it was forced (`-F`/rebuild) and whether a
+class filter narrowed its suites; the **frontier** is the set of modules whose main compile runs.
+The whole shape comes first because it carries the run's load as well as its work: a guard beside
+every compile of a forced build is not the guard of a filtered test run. Where the whole shape has
+no history, the step keeps only what changes its own work: a suite keeps to its profile and is never
+priced from a filtered run; a compile or native image keeps to forced or not.
 
-**Bar** uses residual: when work finishes faster than R0, R(t) shrinks and the bar speeds up;
-when residual is larger, it slows. Formula `elapsed / (elapsed + residual)` hits ~100% as
-residual → 0. Cap **99%** until settle; peak hold never goes backwards.
+A step's status matters: a cache hit is a restore, priced from restores, never from runs. A filtered
+suite (`--class`) is priced as its test JVM plus the recorded walls of the classes it selects, or a
+touch in a module it selects nothing in. A step with no history of its own falls back to the
+module-weight price of that step alone.
 
-| Situation | Seed (R0) | Bar slice |
-|-----------|-----------|-----------|
-| Dirty real work | priced measured walls | full effort weight |
-| Cache/skip in plan | TOKEN in composition | TOKEN / reweight shrink |
-| Omitted from plan | absent | absent |
+**Re-pricing.** The engine re-notes each live request's residual on every step and test-class event
+and once a second in between (`EtaStepTicker`), so a suite past its rate grows its remainder rather
+than letting the countdown decay to zero while it runs.
+
+**Before the estimate.** The estimate is priced beside the build and arrives within a second or two.
+Until it does, execute moves the bar at most to 15%: the plan's weights count a fully cached
+module's slice as done and would pin the bar far ahead of the clock.
+
+**Likely range.** Each step's range is the 20th–80th percentile of the samples its price comes from,
+never narrower than 15% either side; a filtered suite's is ±30%; a step priced with no history of its
+own is half to twice its price. The range narrows as steps finish. Surfaces show `~1m 32s` when the
+range is narrow and `1m 20s–1m 50s` once it spans more than 40% of what remains (and at least 10 s).
+`jk explain` prints `~1m 11s (likely 59s – 1m 30s)`.
+
+**On hold.** A fork that has waited half a second for a worker lease (`WorkerLeases`) puts its build
+on hold until the build's last waiting fork leaves the queue (`MemoryHolds`). While held, the
+engine's clock and the build's running steps stand still; every surface shows the hold and restores
+itself on resume:
+
+| Surface | On hold |
+|---------|---------|
+| TUI | gray bar, breathing `■` in place of the circle, one line `JumpKick is waiting for system memory to become available…` in place of the work rows, `On hold 12s` in place of the countdown |
+| Plain | `JumpKick build paused - Waiting for system memory to become available...`, `On hold Ns` at the heartbeat, `JumpKick build resumed after Ns on hold` |
+| jsonl / wire | `hold-start` (`needBytes`, `freeBytes`), `hold-end` (`heldMs`); `workspace-progress` carries `"state": "on-hold"` and `heldMs` |
+| Web | the TUI's hold in the build pane; the countdown's anchors move by the time held |
+| MCP | a parked call's progress notifications at the start, every 5 s, and on resume; `status` lists held jobs; the verdict names the time on hold |
+
+A held run's long waits come off the walls its steps teach the ledger; the scorer judges a run on its
+working time.
 
 ### Packaging cascade (hard rule)
 
@@ -71,7 +104,6 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **Same lock view** | The forecast reads `jk-lock.toml` through `MemberRows.view`, as the build compiles: a partition row another member holds stays off this module's processor path, so forecast and live compile keys agree. |
 | **Same concurrency** | `etaConcurrency(jobs)` is the executor's module cap (`-j`, else resolved jobs). |
 | **Seed path lock** | Client freezes the R0 *seed path* when execute starts (provisional eta thrash guard). Residual still re-anchors the painted countdown mid-run. |
-| **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
 | **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`) — residual display does not rewrite R0 for this KPI. |
 | **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
 | **Missing outputs (incl. post-`jk clean`)** | Input fingerprints can still match while jars/classes/binaries are gone. Preflight splits **input-dirty** vs **restore-needed**. Restore-needed modules restore from the action cache (no full compile/test/package plans); priced at `EffortWeights.RESTORE`. Dirty-memo dual-writes under `~/.jk/cache/projects/…` so clean does not erase fingerprints. |
@@ -97,36 +129,15 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `EffortWeights` | Plan-time task weights; TOKEN for skip; packaging cascade; dirty over-reserve |
-| `TestEffort` | `run-tests` pricing (own suite wall before method product) |
-| `WorkSchedule` / `RemainingWork` | Wall schedule + residual annotation `R(t)` |
-| `WorkspaceProgressTracker` | Preflight band + calibrated effort-weight bar; peak hold (never backwards) |
-| `BuildService` | `R0` seed; dirty prepare uses live `estimatedTotalWeight` |
-| Wire `workspace-progress` / `eta` | Snapshots: `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0` |
+| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape and frontier; prices and ranges |
+| `StepEta` | Prices every step the forecast runs; the step-priced `R0` |
+| `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its range, step by step |
+| `SuiteClassProgress` | A running suite's share of its class walls done, under the run's own tier |
+| `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range's gaps |
+| `MemoryHolds` | Which builds are on hold for memory, and for how long |
+| Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `state`, `heldMs` |
 
-## Task pricing ladder
-
-1. Module measured task wall — the ledger's trimmed mean; the single sample when the row has one.
-   Never the last sample over a mean: on a rebuild the last sample is the most contended wall the
-   ledger holds. The harvest reads each run's window from its `record.json` and, while a row has a
-   sample from a run that ran alone, leaves out the samples taken while another run under the same
-   builds root overlapped it (any project, any worktree); a contended run carries a
-   `contention.toml` sidecar naming how many runs overlapped it.  
-2. Host task wall  
-3. Residual per-unit rates × count  
-4. Host continuous learned rates / calibration × host scale  
-5. Tight static floors  
-
-### Test task (`run-tests`)
-
-1. **This module’s** suite cost normalized to one runner (`wall1-ms`, `TestSuiteScaling`), re-sharded
-   for the runners the suite will get. The journal normalizes with `min(runners, classes)`, and the
-   schedule prices the suite when the module reaches it, at `jobs / modules in flight` capped by the
-   class count — the executor's own late-share rule — so the two sides agree on what a runner is.  
-2. Class walls when complete selection has walls  
-3. Methods × hierarchical method-ms + suite-startup (cold module with known count)  
-4. Host suite wall only when method count is unknown  
-5. Cold baseline  
+`JK_ETA_STEPS=0` keeps the earlier module-weight model on one engine, for measurement only.
 
 ### Guards-off invariant (measured)
 
@@ -177,8 +188,9 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 
 | Event | Fields |
 |-------|--------|
-| `eta` | `millis` (= remaining), `remainingMs`, `R0` |
-| `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0` |
+| `eta` | `millis` (= remaining), `remainingMs`, `fullMillis` (explain), `lowMs`, `highMs` |
+| `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`; on hold also `state: on-hold`, `heldMs` |
+| `hold-start` / `hold-end` | `needBytes`, `freeBytes` / `heldMs` |
 
 ## Learning layout
 
@@ -188,6 +200,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
   projects/<id>/
     identity.toml
     project-metrics.toml
+    step-ledger.jsonl # the latest runs' step walls, shape and frontier (StepLedger)
     runs/<build-number>/
       record.json
       details.jsonl
@@ -217,10 +230,15 @@ is a minute of machine-busy time, not a minute of javac. The wall stays the hone
 learned per-unit rates (`StepTimings`) train on `wall − wait`, so a rate never prices the queue
 as work. `task-finish` carries the same split as `waitMillis`, on the wire and in JSONL alike.
 
+## Measurement
+
+`bench/eta` holds the instrument: `score.py` scores a home's runs against their walls (seed error,
+ETA error and bar error at 10–90% of the wall, plateau, tail, range coverage), `Replay.java`
+replays a run's journal under candidate models, and `corpus.sh` runs a fixed set of scenarios on
+JumpKick's own tree into a private home. A change to the ETA lands with corpus numbers.
+
 ## Out of scope
 
-- Method-level live TUI rows  
-- Perfect millisecond ETA  
-- Critical-path / remaining-work bar (Σ weights is the product bar)  
-- Third-party metrics backends  
+- Method-level live TUI rows
+- Third-party metrics backends
 - Allowing the bar to go backwards  

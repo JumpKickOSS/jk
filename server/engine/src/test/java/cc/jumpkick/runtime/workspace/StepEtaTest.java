@@ -55,6 +55,8 @@ class StepEtaTest {
 
         assertThat(model.steps()).containsOnlyKeys(app);
         assertThat(model.steps().get(app))
+                .as("each priced at its ledger wall; its range is StepLedger's")
+                .usingRecursiveFieldByFieldElementComparatorOnFields("step", "weight", "kind")
                 .containsExactly(
                         new StepCost("compile-java", 40, StepCost.Kind.PRE),
                         new StepCost("run-tests", 600, StepCost.Kind.TEST),

@@ -4,6 +4,7 @@ package cc.jumpkick.command.project;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.run.TaskForecast;
@@ -391,5 +392,18 @@ class ExplainCommandEstimateTest {
         // Mid ┼ lines up with the footer label|value │ and the bottom ┴.
         assertThat(cross).isEqualTo(footerRow.indexOf('│', 1));
         assertThat(cross).isEqualTo(footerClose.indexOf('┴'));
+    }
+
+    @Test
+    void the_estimate_names_its_likely_range_when_it_has_one_wider_than_a_second_either_way() {
+        assertThat(ExplainCommand.buildTimeEstimateValue(71_000, 59_000, 90_000, false))
+                .isEqualTo("~" + DurationText.coarseFloor(71_000) + " (likely "
+                        + DurationText.coarseFloor(59_000) + " – "
+                        + DurationText.coarseFloor(90_000) + ")");
+        assertThat(ExplainCommand.buildTimeEstimateValue(71_000, 70_500, 71_500, false))
+                .as("a range under two seconds is the point")
+                .isEqualTo(ExplainCommand.buildTimeEstimateValue(71_000, false));
+        assertThat(ExplainCommand.buildTimeEstimateValue(71_000, -1, -1, false))
+                .isEqualTo(ExplainCommand.buildTimeEstimateValue(71_000, false));
     }
 }

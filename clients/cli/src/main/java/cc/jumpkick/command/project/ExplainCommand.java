@@ -181,8 +181,9 @@ public final class ExplainCommand implements CliCommand {
         ExplainPlan plan;
         long etaMillis;
         long fullEtaMillis;
-        // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator).
-        long[] etaOut = new long[2];
+        // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator); [2], [3] = the
+        // current ETA's likely range (-1 when the engine sent none).
+        long[] etaOut = {0, 0, -1, -1};
         // Same starting lock as `jk build` so the dirty plan and ETA match the countdown. It runs
         // ahead of the prep wedge, in its own region, so a first lock's downloads are drawn.
         if (needsLock) {
@@ -226,6 +227,8 @@ public final class ExplainCommand implements CliCommand {
                 ProjectInfos.buildTarget(buildFile, startDir),
                 etaMillis,
                 fullEtaMillis,
+                etaOut[2],
+                etaOut[3],
                 scopeLabel(modulesSpec, affectedSince, affectedWip));
         return 0;
     }
@@ -282,6 +285,8 @@ public final class ExplainCommand implements CliCommand {
             String coord,
             long etaMillis,
             long fullEtaMillis,
+            long etaLowMillis,
+            long etaHighMillis,
             @Nullable String scope) {
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
@@ -294,7 +299,8 @@ public final class ExplainCommand implements CliCommand {
         buildGraph(coord, modules, verbose, t, ansi).print();
 
         CliOutput.out("");
-        for (String line : renderSummaryTable(modules, etaMillis, fullEtaMillis, fullyCached, scope, t, ansi)) {
+        for (String line : renderSummaryTable(
+                modules, etaMillis, fullEtaMillis, etaLowMillis, etaHighMillis, fullyCached, scope, t, ansi)) {
             CliOutput.out(line);
         }
     }
@@ -409,6 +415,18 @@ public final class ExplainCommand implements CliCommand {
         if (etaMillis <= 0) return fullyCached ? "<1s" : "not yet measured";
         if (etaMillis < 1000) return "<1s";
         return "~" + DurationText.coarseFloor(etaMillis);
+    }
+
+    /**
+     * {@link #buildTimeEstimateValue(long, boolean)} with the estimate's likely range when it has
+     * one wider than a second either way: {@code ~1m 11s (likely 59s – 1m 30s)}. The truth falls
+     * inside the range about four runs in five (JK-4TEZ7).
+     */
+    static String buildTimeEstimateValue(long etaMillis, long lowMillis, long highMillis, boolean fullyCached) {
+        String point = buildTimeEstimateValue(etaMillis, fullyCached);
+        if (etaMillis < 1000 || lowMillis < 0 || highMillis < 0 || highMillis - lowMillis < 2_000) return point;
+        return point + " (likely " + DurationText.coarseFloor(Math.max(0, lowMillis)) + " – "
+                + DurationText.coarseFloor(highMillis) + ")";
     }
 
     /**
@@ -534,6 +552,20 @@ public final class ExplainCommand implements CliCommand {
             @Nullable String scope,
             Theme t,
             boolean ansi) {
+        return renderSummaryTable(modules, etaMillis, fullEtaMillis, -1, -1, fullyCached, scope, t, ansi);
+    }
+
+    /** As above with the estimate's likely range {@code [etaLowMillis, etaHighMillis]} (-1 when none). */
+    static List<String> renderSummaryTable(
+            List<TaskForecast.Module> modules,
+            long etaMillis,
+            long fullEtaMillis,
+            long etaLowMillis,
+            long etaHighMillis,
+            boolean fullyCached,
+            @Nullable String scope,
+            Theme t,
+            boolean ansi) {
         int totalModules = modules.size();
         int totalSources =
                 modules.stream().mapToInt(TaskForecast.Module::sourceCount).sum();
@@ -615,7 +647,9 @@ public final class ExplainCommand implements CliCommand {
         footer.row(RichText.plain("Total rebuild effort"), RichText.ansi(colorDelta(effortPct, t, ansi)))
                 .row(
                         RichText.plain("Build time estimate"),
-                        RichText.ansi(Theme.paint(buildTimeEstimateValue(etaMillis, fullyCached), t.warning())));
+                        RichText.ansi(Theme.paint(
+                                buildTimeEstimateValue(etaMillis, etaLowMillis, etaHighMillis, fullyCached),
+                                t.warning())));
         table.append(footer, Table.Append.SECTION);
         return table.render(RenderContext.current().withAnsi(ansi));
     }

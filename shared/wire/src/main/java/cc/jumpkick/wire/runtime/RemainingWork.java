@@ -159,10 +159,18 @@ public final class RemainingWork {
 
     /** {@code step} of the module at {@code dir} started now. */
     public synchronized void stepStart(Path dir, String step) {
-        if (dir == null || step == null || !steps.containsKey(dir)) return;
         // A step that starts on hold starts, on the step clock, when the hold began.
-        started.computeIfAbsent(dir, k -> new HashMap<>())
-                .putIfAbsent(step, heldSince >= 0 ? heldSince : clock.millis());
+        stepStart(dir, step, heldSince >= 0 ? heldSince : clock.millis());
+    }
+
+    /**
+     * {@code step} of the module at {@code dir} started at {@code atMillis} on the step clock: a
+     * start the build reported before this model existed (the model is priced while the first steps
+     * run) counts down from when the step really began, not from when the model heard of it.
+     */
+    public synchronized void stepStart(Path dir, String step, long atMillis) {
+        if (dir == null || step == null || !steps.containsKey(dir)) return;
+        started.computeIfAbsent(dir, k -> new HashMap<>()).putIfAbsent(step, atMillis);
     }
 
     /** {@code step} of the module at {@code dir} finished. */
@@ -241,6 +249,20 @@ public final class RemainingWork {
 
     /** Current remaining wall ms {@code R(t)}. */
     public synchronized long remaining() {
+        return remaining(StepCost.Bound.PRICE);
+    }
+
+    /**
+     * The likely range of what remains, {@code {low, high}} in ms: the schedule of what is left
+     * with each step not yet finished at the low, then the high end of its own range (JK-4TEZ7). It
+     * narrows as steps finish, since a finished step leaves no range behind. A module priced by
+     * weight has none: both ends are its remainder.
+     */
+    public synchronized long[] remainingRange() {
+        return new long[] {remaining(StepCost.Bound.LOW), remaining(StepCost.Bound.HIGH)};
+    }
+
+    private long remaining(StepCost.Bound bound) {
         if (R0 <= 0) return 0;
         if (pending.isEmpty()) return 0;
         List<ModuleWorkCost> residual = new ArrayList<>(pending.size());
@@ -248,7 +270,7 @@ public final class RemainingWork {
         for (Map.Entry<Path, ModuleWorkCost> e : pending.entrySet()) {
             List<StepCost> own = steps.get(e.getKey());
             ModuleWorkCost r = own != null
-                    ? stepResidual(e.getValue(), own, now)
+                    ? stepResidual(e.getValue(), own, now, bound)
                     : e.getValue().residual(doneFrac.getOrDefault(e.getKey(), 0.0));
             if (r.weight() > 0 || r.testWeight() > 0) residual.add(r);
         }
@@ -257,14 +279,14 @@ public final class RemainingWork {
         return Math.max(0, Math.round(idealWeights * weightToMs));
     }
 
-    /** The module's cost still to run, step by step (see the class comment). */
-    private ModuleWorkCost stepResidual(ModuleWorkCost c, List<StepCost> own, long now) {
+    /** The module's cost still to run, step by step (see the class comment), at {@code bound}. */
+    private ModuleWorkCost stepResidual(ModuleWorkCost c, List<StepCost> own, long now, StepCost.Bound bound) {
         Path dir = c.dir();
         Set<String> done = finished.getOrDefault(dir, Set.of());
         Map<String, Long> starts = started.getOrDefault(dir, Map.of());
         double pre = 0, test = 0, tail = 0, prePriced = 0, testPriced = 0;
         for (StepCost s : own) {
-            double w = s.weight();
+            double w = s.at(bound);
             if (s.kind() == StepCost.Kind.PRE) prePriced += w;
             if (s.kind() == StepCost.Kind.TEST) testPriced += w;
             double left;

@@ -240,6 +240,12 @@ export function foldEvent(cards, event) {
           // On hold the engine's countdown stands still: anchor it where the hold began, so the
           // resume shift (hold-end) brings it back exactly where it stood.
           card.residualAt = card.holdSince != null ? card.holdSince : (event.at ?? Date.now());
+          // The estimate's likely range rides the residual as gaps below and above it, so it
+          // decays with the countdown between samples (cards.etaCountdown shows it when wide).
+          if (typeof d.etaLowMs === 'number' && d.etaLowMs >= 0 && typeof d.etaHighMs === 'number' && d.etaHighMs >= 0) {
+            card.rangeBelowMs = Math.max(0, rem - d.etaLowMs);
+            card.rangeAboveMs = Math.max(0, d.etaHighMs - rem);
+          }
         }
         if (card.r0Ms == null) {
           if (rem != null) {

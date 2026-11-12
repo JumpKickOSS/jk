@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.wire.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressState;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;
@@ -181,6 +182,45 @@ final class HeaderProgress {
             this.solveLabel = "";
             plain.emitEtaKnown();
         }
+    }
+
+    /**
+     * The estimate's likely range as gaps below and above the residual (JK-4TEZ7): it rides the
+     * countdown, so the range decays with it between engine samples.
+     */
+    public void setEtaRange(long belowMillis, long aboveMillis) {
+        synchronized (lock) {
+            rangeBelowMs = Math.max(0, belowMillis);
+            rangeAboveMs = Math.max(0, aboveMillis);
+        }
+    }
+
+    private long rangeBelowMs = -1;
+    private long rangeAboveMs = -1;
+
+    /** A range is shown in place of the point once it spans more than this share of what remains. */
+    static final double WIDE_RANGE = 0.4;
+
+    /** Nor for less than this much left: a few seconds either way is a countdown, not a range. */
+    static final long WIDE_RANGE_MIN_MS = 10_000;
+
+    /**
+     * The countdown's text for {@code remainingMs}: {@code ~1m 32s}, or {@code 1m 20s–1m 50s} when
+     * the likely range is wide, since a point would claim a precision the estimate does not have.
+     */
+    String etaText(long remainingMs, String dash) {
+        long below;
+        long above;
+        synchronized (lock) {
+            below = rangeBelowMs;
+            above = rangeAboveMs;
+        }
+        if (below >= 0 && remainingMs >= WIDE_RANGE_MIN_MS && below + above > WIDE_RANGE * remainingMs) {
+            return DurationText.clockMillis(Math.max(0, remainingMs - below))
+                    + dash
+                    + DurationText.clockMillis(remainingMs + above);
+        }
+        return "~" + DurationText.clockMillis(remainingMs);
     }
 
     /**

@@ -87,6 +87,10 @@ public final class McpReads {
             m.put("maxReadyWidth", report.plan().maxReadyWidth());
             m.put("etaMillis", report.etaMillis());
             m.put("fullMillis", report.fullMillis());
+            // The estimate's likely range: the truth falls inside it about four runs in five.
+            m.put("etaLowMillis", report.lowMillis());
+            m.put("etaHighMillis", report.highMillis());
+            m.put("etaCoverage", 0.8);
             List<Map<String, Object>> edges = new ArrayList<>();
             for (var e : report.plan().edges().entrySet()) {
                 for (Path dep : e.getValue()) {

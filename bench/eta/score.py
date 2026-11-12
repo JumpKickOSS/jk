@@ -51,6 +51,8 @@ class Point:
     eta_ms: int | None
     true_ms: int
     eta_err: float | None
+    # Whether the truth fell inside the likely range shown (JK-4TEZ7); None when none was shown.
+    in_range: bool | None = None
 
 
 @dataclass
@@ -154,9 +156,14 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
         bar = float(bar) if isinstance(bar, (int, float)) else None
         rem = shown.get("remainingMs")
         eta = None
+        in_range = None
         if isinstance(rem, (int, float)) and rem >= 0 and shown.get("phase") != "preflight":
             # What the countdown showed: the last re-anchor, decayed by the wall since it.
             eta = max(0, int(rem - (at - shown["ts"])))
+            low, high = shown.get("etaLowMs"), shown.get("etaHighMs")
+            if isinstance(low, (int, float)) and isinstance(high, (int, float)) and low >= 0 and high >= 0:
+                # The range rides the residual: its gaps below and above stay as the countdown decays.
+                in_range = (eta - (rem - low)) <= true <= (eta + (high - rem))
         s.points.append(
             Point(
                 f,
@@ -165,6 +172,7 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
                 eta,
                 true,
                 None if eta is None or true <= 0 else (eta - true) / true,
+                in_range,
             )
         )
 
@@ -324,6 +332,13 @@ def main(argv: list[str]) -> int:
             f"  {100 * statistics.median(r0s) if r0s else 0:9.0f}%  " + " ".join(f"{c:>5}" for c in cells)
         )
     print("\n(cells: share of runs inside the target band; ! = below the required share)")
+    # Calibration of the likely range (JK-4TEZ7): the share of scored checkpoints whose truth fell
+    # inside the range shown, meant to be about 80%.
+    ranged = [p.in_range for s in scores for p in s.points if p.at in SCORED and p.in_range is not None]
+    if ranged:
+        cov = sum(1 for r in ranged if r) / len(ranged)
+        ok = 0.70 <= cov <= 0.90
+        print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} checkpoints (target 70-90%){'' if ok else ' !'}")
     return 1 if failed else 0
 
 

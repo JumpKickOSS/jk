@@ -116,4 +116,33 @@ class RemainingWorkStepsTest {
         now.addAndGet(5_000);
         assertThat(rw.remaining()).as("counting again").isCloseTo(before - 5_000, within(2L * MS));
     }
+
+    @Test
+    void the_likely_range_is_the_schedule_at_each_steps_low_and_high_and_narrows_as_steps_finish() {
+        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 96_000 / MS, 90_000 / MS, 0, 6_000 / MS);
+        RemainingWork rw = RemainingWork.seedSteps(
+                        List.of(cost),
+                        Map.of(
+                                A,
+                                List.of(
+                                        new StepCost(
+                                                "compile-java", 6_000 / MS, StepCost.Kind.PRE, 3_000 / MS, 12_000 / MS),
+                                        new StepCost(
+                                                "run-tests",
+                                                90_000 / MS,
+                                                StepCost.Kind.TEST,
+                                                60_000 / MS,
+                                                120_000 / MS))),
+                        4,
+                        false,
+                        false)
+                .withClock(clock);
+
+        assertThat(rw.remainingRange()).containsExactly(63_000, 132_000);
+
+        rw.stepStart(A, "compile-java");
+        now.addAndGet(6_000);
+        rw.stepFinish(A, "compile-java");
+        assertThat(rw.remainingRange()).as("a finished step leaves no range").containsExactly(60_000, 120_000);
+    }
 }

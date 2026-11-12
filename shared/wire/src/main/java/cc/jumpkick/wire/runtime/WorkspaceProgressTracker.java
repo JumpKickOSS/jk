@@ -83,6 +83,10 @@ public final class WorkspaceProgressTracker {
 
     private Snapshot last = Snapshot.unknown();
 
+    /**
+     * What the bar shows now. {@code lowMs} and {@code highMs} bound {@code remainingMs}: the
+     * estimate's likely range at the same anchor, {@code -1} when there is none (JK-4TEZ7).
+     */
     public record Snapshot(
             long numerator,
             long denominator,
@@ -91,10 +95,29 @@ public final class WorkspaceProgressTracker {
             int modulesComplete,
             int modulesTotal,
             long remainingMs,
-            long R0ms) {
+            long R0ms,
+            long lowMs,
+            long highMs) {
+
+        public Snapshot(
+                long numerator,
+                long denominator,
+                double percent,
+                String phase,
+                int modulesComplete,
+                int modulesTotal,
+                long remainingMs,
+                long R0ms) {
+            this(numerator, denominator, percent, phase, modulesComplete, modulesTotal, remainingMs, R0ms, -1, -1);
+        }
 
         static Snapshot unknown() {
             return new Snapshot(0, 0, Double.NaN, "preflight", 0, 0, -1, 0);
+        }
+
+        /** Whether the estimate carries a range. */
+        public boolean hasRange() {
+            return remainingMs >= 0 && lowMs >= 0 && highMs >= 0;
         }
 
         public boolean hasPercent() {
@@ -192,6 +215,22 @@ public final class WorkspaceProgressTracker {
         tickElapsed();
         return recompute();
     }
+
+    /**
+     * The estimate's likely range as it stands beside the residual {@code remainingMs} it was
+     * computed with: kept as the gaps below and above it, so it rides the residual's anchor and
+     * decays with the countdown between events.
+     */
+    public synchronized void noteRange(long remainingMs, long lowMs, long highMs) {
+        if (remainingMs < 0 || lowMs < 0 || highMs < 0) return;
+        rangeBelowMs = Math.max(0, remainingMs - lowMs);
+        rangeAboveMs = Math.max(0, highMs - remainingMs);
+    }
+
+    /** How far the likely range reaches below and above the residual; -1 until {@link #noteRange}. */
+    private long rangeBelowMs = -1;
+
+    private long rangeAboveMs = -1;
 
     public synchronized void modulesTotal(int modulesTotal) {
         this.modulesTotal = Math.max(0, modulesTotal);
@@ -334,7 +373,27 @@ public final class WorkspaceProgressTracker {
         return storeWeightAndStrategy(weightNum, weightDen, phaseName());
     }
 
+    /**
+     * Until the estimate arrives, execute moves the bar at most to this share. The weights it runs
+     * on before then count a fully cached module's slice as done: on jk's own tree they read 72%
+     * within a second of a 58 s test run, and the bar's peak hold pinned it there for 37 s until
+     * the clock caught up.
+     */
+    static final double PRE_ESTIMATE_SHARE = 0.15;
+
+    /** How long into execute the bar waits for the estimate before it follows the weights after all. */
+    static final long PRE_ESTIMATE_HOLD_MS = 5_000;
+
     private Snapshot storeWeightAndStrategy(long weightNum, long weightDen, String phase) {
+        if (!settled
+                && annotatedR0ms <= 0
+                && executeStartElapsedMs >= 0
+                && elapsedClockMs - executeStartElapsedMs < PRE_ESTIMATE_HOLD_MS
+                && weightDen > PREFLIGHT_UNITS) {
+            // Execute's share only: the preflight already done stays on the bar.
+            long executeCap = Math.round((weightDen - PREFLIGHT_UNITS) * PRE_ESTIMATE_SHARE);
+            weightNum = Math.min(weightNum, preflightNum + executeCap);
+        }
         HeaderProgressStrategy strat = mode.select(clock, weighted, annotatedR0ms, annotatedRemainingMs);
         // residualRemainingMs: private bar estimate (RemainingWork); -1 until first noteRemaining.
         long residual = annotatedRemainingMs; // already -1 or >=0
@@ -363,8 +422,23 @@ public final class WorkspaceProgressTracker {
         }
         double percent = den > 0 ? percentOf(num, den) : Double.NaN;
         if (settled) percent = 100.0;
+        long low = -1;
+        long high = -1;
+        if (annotatedRemainingMs >= 0 && rangeBelowMs >= 0 && !settled) {
+            low = Math.max(0, annotatedRemainingMs - rangeBelowMs);
+            high = annotatedRemainingMs + rangeAboveMs;
+        }
         last = new Snapshot(
-                num, den, percent, phase, modulesComplete, modulesTotal, annotatedRemainingMs, annotatedR0ms);
+                num,
+                den,
+                percent,
+                phase,
+                modulesComplete,
+                modulesTotal,
+                annotatedRemainingMs,
+                annotatedR0ms,
+                low,
+                high);
         return last;
     }
 

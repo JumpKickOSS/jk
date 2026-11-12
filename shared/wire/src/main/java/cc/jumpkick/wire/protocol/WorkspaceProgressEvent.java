@@ -9,7 +9,9 @@ import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
  * {@code progressPercent} is NaN when no percent applies (see {@link EngineProtocol#WORKSPACE_PROGRESS}).
  * {@code heldMs} is the time the build has been on hold for memory ({@link EngineProtocol#HOLD_START}),
  * -1 when it is not: a held event carries {@code "state": "on-hold"} and the held time, and its
- * remaining time is the countdown frozen where the hold found it.
+ * remaining time is the countdown frozen where the hold found it. {@code etaLowMs} and {@code
+ * etaHighMs} bound {@code remainingMs}, the estimate's likely range at the same anchor (JK-4TEZ7);
+ * -1 when it has none.
  */
 public record WorkspaceProgressEvent(
         String dir,
@@ -21,7 +23,9 @@ public record WorkspaceProgressEvent(
         int modulesTotal,
         long remainingMs,
         long r0Ms,
-        long heldMs) {
+        long heldMs,
+        long etaLowMs,
+        long etaHighMs) {
 
     /** The state a held event carries. */
     public static final String ON_HOLD = "on-hold";
@@ -37,6 +41,32 @@ public record WorkspaceProgressEvent(
             long remainingMs,
             long r0Ms) {
         this(dir, numerator, denominator, progressPercent, phase, modulesComplete, modulesTotal, remainingMs, r0Ms, -1);
+    }
+
+    public WorkspaceProgressEvent(
+            String dir,
+            long numerator,
+            long denominator,
+            double progressPercent,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long r0Ms,
+            long heldMs) {
+        this(
+                dir,
+                numerator,
+                denominator,
+                progressPercent,
+                phase,
+                modulesComplete,
+                modulesTotal,
+                remainingMs,
+                r0Ms,
+                heldMs,
+                -1,
+                -1);
     }
 
     /** Whether the build is on hold for memory. */
@@ -57,6 +87,8 @@ public record WorkspaceProgressEvent(
                 .number("R0", Math.max(0, r0Ms))
                 .optionalString("state", heldMs >= 0 ? ON_HOLD : null)
                 .optionalNumber("heldMs", heldMs, -1)
+                .optionalNumber("etaLowMs", etaLowMs, -1)
+                .optionalNumber("etaHighMs", etaHighMs, -1)
                 .finish();
     }
 
@@ -71,6 +103,8 @@ public record WorkspaceProgressEvent(
                 Jsonl.intValue(json, "modulesTotal", 0),
                 Jsonl.longValue(json, "remainingMs", -1),
                 Jsonl.longValue(json, "R0", 0),
-                ON_HOLD.equals(Jsonl.str(json, "state")) ? Math.max(0, Jsonl.longValue(json, "heldMs", 0)) : -1);
+                ON_HOLD.equals(Jsonl.str(json, "state")) ? Math.max(0, Jsonl.longValue(json, "heldMs", 0)) : -1,
+                Jsonl.longValue(json, "etaLowMs", -1),
+                Jsonl.longValue(json, "etaHighMs", -1));
     }
 }

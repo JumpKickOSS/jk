@@ -7,9 +7,12 @@ import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -42,6 +45,22 @@ public final class JobSession {
      */
     private final Set<String> completed = ConcurrentHashMap.newKeySet();
 
+    /** A step that started or finished, as its event named it, at {@code atMillis} (wall clock). */
+    public record StepMark(String dir, String step, boolean started, long atMillis) {}
+
+    /** Marks kept at most: several times the steps of jk's own forced build. */
+    private static final int MAX_STEP_MARKS = 20_000;
+
+    /**
+     * Steps that started or finished, kept like {@link #completed}: the build's first steps run
+     * while its work model is still being priced, and a model set late replays them, so a long step
+     * that began before it is counted down from its start instead of priced as never started (a
+     * 15 s guard read "16 s left" for its whole run).
+     */
+    private final Queue<StepMark> stepMarks = new ConcurrentLinkedQueue<>();
+
+    private final AtomicInteger stepMarkCount = new AtomicInteger();
+
     private final Object emitLock = new Object();
     private volatile long @Nullable [] emitState;
 
@@ -67,6 +86,7 @@ public final class JobSession {
         lastProgressDen = null;
         weights.clear();
         completed.clear();
+        stepMarks.clear();
         emitState = null;
         // accumulator is removed by the journal writer, not here
     }
@@ -112,6 +132,7 @@ public final class JobSession {
         this.lastEventAt = System.currentTimeMillis();
         if (remaining == null) return;
         synchronized (remaining) {
+            for (StepMark m : stepMarks) apply(remaining, m);
             for (String dir : completed) remaining.moduleComplete(Path.of(dir));
         }
     }
@@ -119,6 +140,25 @@ public final class JobSession {
     /** Record that the module in {@code dir} finished. */
     public void moduleCompleted(String dir) {
         if (!retired.get()) completed.add(dir);
+    }
+
+    /**
+     * Record a step's start or finish, then return the model to apply it to now; null when none is
+     * set yet ({@link #remaining(RemainingWork)} replays it). Recorded before it reads, as {@link
+     * #moduleCompleted} is, so no mark is lost to the race; applying one twice is harmless.
+     */
+    public @Nullable RemainingWork stepMarked(StepMark mark) {
+        if (retired.get()) return null;
+        if (stepMarkCount.incrementAndGet() <= MAX_STEP_MARKS) stepMarks.add(mark);
+        return remaining;
+    }
+
+    /** Apply {@code m} to {@code rw}; the caller holds {@code rw}'s lock. */
+    public static void apply(RemainingWork rw, StepMark m) {
+        Path p = Path.of(m.dir());
+        if (!rw.steps(p)) return;
+        if (m.started()) rw.stepStart(p, m.step(), m.atMillis());
+        else rw.stepFinish(p, m.step());
     }
 
     public @Nullable RemainingWork remaining() {

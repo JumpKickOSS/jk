@@ -91,7 +91,7 @@ public final class EtaModels {
             for (var e : m.steps().entrySet()) {
                 List<Object> rows = new ArrayList<>();
                 for (StepCost c : e.getValue())
-                    rows.add(List.of(c.step(), c.weight(), c.kind().name()));
+                    rows.add(List.of(c.step(), c.weight(), c.kind().name(), c.low(), c.high()));
                 steps.put(String.valueOf(e.getKey()), rows);
             }
             out.put("steps", steps);

@@ -147,7 +147,10 @@ public final class ExplainVerb implements HostedVerb {
                 // Schedule-aware ETA; 0 = fully cached. Same estimateEtaMillis as jk build countdown.
                 // fullMillis prices the same graph as a full rebuild (--redo) so explain can report
                 // rebuild effort as remaining/full (weight/time, not a count average).
-                host.sendQuiet(writer, ProtoEvents.eta(report.etaMillis(), report.fullMillis()));
+                host.sendQuiet(
+                        writer,
+                        ProtoEvents.eta(
+                                report.etaMillis(), report.fullMillis(), report.lowMillis(), report.highMillis()));
                 host.sendQuiet(
                         writer,
                         ProtoReads.explainDone(

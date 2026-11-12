@@ -53,6 +53,9 @@ public final class AggregateContext {
         if (snap.denominator() > 0) cm.progress(snap.numerator(), snap.denominator());
         // Residual RemainingWork: adaptive clock bar + countdown re-anchor (ends on time with R(t)).
         if (snap.remainingMs() >= 0) cm.setBarResidualRemaining(snap.remainingMs());
+        if (snap.hasRange()) {
+            cm.setEtaRange(snap.remainingMs() - snap.lowMs(), snap.highMs() - snap.remainingMs());
+        }
         // run-wide module remaining next to the wall-clock ETA.
         if (snap.modulesTotal() > 0) {
             cm.setModuleProgress(snap.modulesComplete(), snap.modulesTotal());
