@@ -14,10 +14,15 @@ import org.jspecify.annotations.Nullable;
  * {@link #current()} is {@code null} off a request.
  *
  * <p>A copy made with a {@code with} method is the same request: {@link RequestScope} keys on
- * {@link #io}, and forked workers register to {@link #id}.
+ * {@link #io}, and forked workers register to {@link #id}. A copy under another {@link #id} still
+ * serves the same {@link #job}: a compile scope opened inside a job narrows where its forks register,
+ * not which request the work belongs to, so the job's derived facts stay cached through it.
  *
- * @param id the engine's id for the job: positive for a job, {@code 0} for a request that is no job
- *     (a synchronous read, a command line), negative for a compile scope the engine owns
+ * @param id the scope forks register to and leases are charged to: the job's id for a job, {@code 0}
+ *     for a request that is no job (a synchronous read, a command line), negative for a compile scope
+ *     the engine owns
+ * @param job the engine job this request serves, positive, or {@code 0} for a request that is no job;
+ *     kept by {@link #withId}
  * @param io the request's byte ledger; every {@link Session#defaults()} built under it meters here
  * @param shell the environment of the shell that sent the request, or {@code null} for none
  * @param actor who the request's changes are recorded as, or {@code null} for the process default
@@ -25,6 +30,7 @@ import org.jspecify.annotations.Nullable;
  */
 public record Request(
         long id,
+        long job,
         IoLedger io,
         @Nullable RequestShell shell,
         @Nullable ChangeActor actor,
@@ -39,6 +45,7 @@ public record Request(
 
     public Request {
         Objects.requireNonNull(io);
+        if (job < 0) throw new IllegalArgumentException("a job id is positive, or 0 for no job: " + job);
         slots = Map.copyOf(slots);
     }
 
@@ -68,9 +75,9 @@ public record Request(
         void run() throws X;
     }
 
-    /** A request with {@code id} and {@code io} and nothing else. */
+    /** A request with {@code id} and {@code io} and nothing else: job {@code id} when it is positive. */
     public static Request of(long id, IoLedger io) {
-        return new Request(id, io, null, null, Map.of());
+        return new Request(id, Math.max(0, id), io, null, null, Map.of());
     }
 
     /** A request that is no job, with a ledger of its own. */
@@ -98,9 +105,12 @@ public record Request(
         return currentOrDetached().withActor(actor).call(work);
     }
 
-    /** True for an engine job: its derived facts are {@link RequestScope request-scoped}. */
+    /**
+     * True for a request serving an engine job, under whatever scope its forks register to: its
+     * derived facts are {@link RequestScope request-scoped}.
+     */
     public boolean isJob() {
-        return id > 0;
+        return job > 0;
     }
 
     /** {@code slot}'s value, or {@code null} when this request carries none. */
@@ -114,20 +124,20 @@ public record Request(
         Map<Slot<?>, Object> next = new IdentityHashMap<>(slots);
         if (value == null) next.remove(slot);
         else next.put(slot, value);
-        return new Request(id, io, shell, actor, next);
+        return new Request(id, job, io, shell, actor, next);
     }
 
-    /** This request under another id: the scope forks register to. */
+    /** This request under another id, the scope forks register to, serving the same job. */
     public Request withId(long next) {
-        return new Request(next, io, shell, actor, slots);
+        return new Request(next, job, io, shell, actor, slots);
     }
 
     public Request withShell(@Nullable RequestShell next) {
-        return new Request(id, io, next, actor, slots);
+        return new Request(id, job, io, next, actor, slots);
     }
 
     public Request withActor(@Nullable ChangeActor next) {
-        return new Request(id, io, shell, next, slots);
+        return new Request(id, job, io, shell, next, slots);
     }
 
     /** Run {@code body} with this request bound, keeping the session bound now. */
@@ -146,6 +156,6 @@ public record Request(
     /** Names only the id and the slot names: a shell and a keychain hold the caller's secrets. */
     @Override
     public String toString() {
-        return "Request[" + id + ", slots=" + slots.keySet() + "]";
+        return "Request[" + id + (job != id ? ", job " + job : "") + ", slots=" + slots.keySet() + "]";
     }
 }

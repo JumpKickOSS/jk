@@ -77,8 +77,8 @@ public final class WorkerScope {
     }
 
     /**
-     * Run {@code body} with forks registering here: the bound request under this scope's id, or a
-     * request that is no job off one.
+     * Run {@code body} with forks registering here: the bound request under this scope's id, still
+     * serving its job and so still in its job's request scope, or a request that is no job off one.
      */
     public <X extends Throwable> void run(Request.Action<X> body) throws X {
         bound().run(body);

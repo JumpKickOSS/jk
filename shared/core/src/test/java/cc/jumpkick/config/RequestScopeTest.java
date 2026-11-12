@@ -181,6 +181,24 @@ class RequestScopeTest {
     }
 
     @Test
+    void a_job_under_a_narrower_fork_scope_keeps_its_request_scope() {
+        // A compile scope opened inside a job registers its forks under an id of its own; the work
+        // still serves the job, so it reads and adds to the job's facts rather than going uncached.
+        IoLedger ledger = new IoLedger();
+        Request.of(7, ledger).run(() -> {
+            RequestScope job = RequestScope.current();
+            Request.currentOrDetached().withId(-3).run(() -> {
+                assertThat(Request.currentOrDetached().id()).isEqualTo(-3);
+                assertThat(RequestScope.hasRequest()).isTrue();
+                assertThat(RequestScope.current()).isSameAs(job);
+            });
+        });
+        Request.detached().withId(-3).run(() -> assertThat(RequestScope.hasRequest())
+                .as("a compile scope off a job is still no job")
+                .isFalse());
+    }
+
+    @Test
     void release_ends_the_scope_while_a_thread_still_holds_the_ledger() {
         // The weak key is not what ends a scope: a straggling task or a thread the job started still
         // holds the request — and the scope, and every listing the job memoised. JobEnvelope releases

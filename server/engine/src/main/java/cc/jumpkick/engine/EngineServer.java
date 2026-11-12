@@ -779,7 +779,7 @@ public final class EngineServer implements AutoCloseable {
     /** The bound job's id for dashboard events; {@code -1} outside a job. */
     private long eventRequestId() {
         Request r = Request.current();
-        return r != null && r.isJob() ? r.id() : -1;
+        return r != null && r.isJob() ? r.job() : -1;
     }
 
     private void onConnectionFinished() {

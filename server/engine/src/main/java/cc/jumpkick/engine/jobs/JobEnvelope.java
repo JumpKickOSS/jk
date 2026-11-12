@@ -505,7 +505,9 @@ public final class JobEnvelope {
      * {@code io}, recorded as {@code actor}. A synchronous read binds one too, under id {@code 0}.
      */
     public static Request requestOf(long id, IoLedger io, @Nullable ChangeActor actor, String requestLine) {
-        return new Request(id, io, RequestShell.of(ProtoSession.shellOf(requestLine)), actor, Map.of())
+        return Request.of(id, io)
+                .withShell(RequestShell.of(ProtoSession.shellOf(requestLine)))
+                .withActor(actor)
                 .with(
                         RequestKeychain.SLOT,
                         RequestKeychain.of(
