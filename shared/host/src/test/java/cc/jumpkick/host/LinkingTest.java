@@ -6,13 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileStore;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -177,8 +177,10 @@ class LinkingTest {
         Path c = Files.createDirectories(dir.resolve("c")).resolve("out");
         Linking.VolumePair ab = Objects.requireNonNull(Linking.VolumePair.of(a, b));
         assertThat(ab).isNotNull().isEqualTo(Linking.VolumePair.of(a, c));
-        Assumptions.assumeTrue(
-                Files.getFileStore(dir).supportsFileAttributeView("unix"), "a device attribute to key on");
-        assertThat(ab.source()).isEqualTo(String.valueOf(Files.getAttribute(dir, "unix:dev")));
+        FileStore store = Files.getFileStore(dir);
+        String device = store.supportsFileAttributeView("unix")
+                ? String.valueOf(Files.getAttribute(dir, "unix:dev"))
+                : "vsn:" + store.getAttribute("volume:vsn");
+        assertThat(ab.source()).isEqualTo(device);
     }
 }
