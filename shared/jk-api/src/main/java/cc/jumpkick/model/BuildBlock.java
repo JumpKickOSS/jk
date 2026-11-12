@@ -496,14 +496,6 @@ public record BuildBlock(
         return Math.max(0, cliOrGlobal);
     }
 
-    /** {@code orderAfter} plus every {@code testPluginJars} module, de-duplicated. */
-    public List<String> allOrderAfter() {
-        if (testPluginJars.isEmpty()) return orderAfter;
-        var all = new LinkedHashSet<>(orderAfter);
-        all.addAll(testPluginJars);
-        return List.copyOf(all);
-    }
-
     /**
      * {@code [dokka]}: how a Kotlin or mixed module's javadoc jar is documented. Dokka runs at
      * {@code version} — the manifest's selector, a pin by default — and writes {@code format}:

@@ -289,7 +289,7 @@
         "test-plugin-jars": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Plugin jars placed on the test worker's classpath."
+          "description": "Plugin jars handed to the test JVM, each built before this module's tests. A short name is the first-party worker jk-<name> when the workspace has one (helidon is jk-helidon, not a rule pack named helidon); a group:name coordinate is exactly that module."
         },
         "lint": {
           "type": "boolean",

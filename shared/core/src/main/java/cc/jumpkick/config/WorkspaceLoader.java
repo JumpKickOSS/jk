@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.LongAdder;
@@ -302,8 +303,8 @@ public final class WorkspaceLoader {
      * Two members may share an artifact name: each member's output lives under its own {@code
      * target/<module-rel>/}, so their jars never meet on disk. What a workspace cannot hold twice is a
      * {@code group:name:version} coordinate, since it publishes one artifact per coordinate. A
-     * shared name is refused only when some unit's bare {@code workspace = true} edge or {@code
-     * [build] order-after} names it, because that edge is spelled by name alone and would otherwise
+     * shared name is refused only when some unit's bare {@code workspace = true} edge, {@code
+     * [build] order-after} or {@code test-plugin-jars} names it, because that edge is spelled by name alone and would otherwise
      * pick one member silently; an edge that also names the {@code group} picks one member and is
      * refused only when no member carries that pair. The root counts as a unit when it declares a
      * name of its own.
@@ -328,10 +329,11 @@ public final class WorkspaceLoader {
                     .add(e);
         }
         for (Entry from : all) checkQualifiedEdges(workspaceRoot, from.dir, from.build, byName);
+        Set<String> names = Set.copyOf(byName.keySet());
         byName.values().removeIf(entries -> entries.size() < 2);
         if (byName.isEmpty()) return;
         for (Entry from : all) {
-            for (String name : bareEdgeNames(from.build)) {
+            for (String name : bareEdgeNames(from.build, names)) {
                 List<Entry> carriers = byName.get(name);
                 if (carriers == null) continue;
                 String paths = carriers.stream()
@@ -377,10 +379,13 @@ public final class WorkspaceLoader {
     }
 
     /**
-     * The sibling names a unit's bare {@code workspace = true} edges and {@code [build] order-after}
-     * spell; an edge that names the group is resolved by the pair and is not listed.
+     * The sibling names a unit's bare {@code workspace = true} edges, {@code [build] order-after}
+     * and {@code [build] test-plugin-jars} spell; an edge that names the group is resolved by the
+     * pair and is not listed, nor is a test-plugin-jars short name that the worker {@code
+     * jk-<short>} answers ({@link ModuleOrder#testPluginJarSibling}). {@code members} holds every
+     * member's name.
      */
-    private static List<String> bareEdgeNames(JkBuild unit) {
+    private static List<String> bareEdgeNames(JkBuild unit, Set<String> members) {
         List<String> names = new ArrayList<>();
         for (Scope scope : Scope.values()) {
             for (Dependency d : unit.dependencies().of(scope)) {
@@ -388,7 +393,12 @@ public final class WorkspaceLoader {
                 if (name != null && d.workspaceGroup() == null) names.add(name);
             }
         }
-        names.addAll(unit.build().allOrderAfter());
+        names.addAll(unit.build().orderAfter());
+        for (String ref : unit.build().testPluginJars()) {
+            if (ref.contains(":")) continue;
+            if (!ref.startsWith("jk-") && members.contains("jk-" + ref)) continue;
+            names.add(ref);
+        }
         return names;
     }
 

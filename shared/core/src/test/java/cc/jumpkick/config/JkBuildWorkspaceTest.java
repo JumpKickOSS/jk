@@ -458,6 +458,63 @@ class JkBuildWorkspaceTest {
                 .hasMessageContaining("add group = ");
     }
 
+    /**
+     * A test-plugin-jars short name is the worker {@code jk-<short>} when one is a member, so two
+     * members sharing the short name are no ambiguity for it.
+     */
+    @Test
+    void workspace_loader_accepts_a_test_plugin_jar_short_name_its_worker_answers(@TempDir Path tempDir)
+            throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group   = "org.tb"
+                name    = "root"
+                version = "4.4.0"
+
+                [workspace]
+                modules = ["common/edqs", "edqs", "jk-edqs", "application"]
+                """);
+        writeModule(tempDir, "common/edqs", "org.tb.common");
+        writeModule(tempDir, "edqs", "org.tb");
+        Path worker = Files.createDirectories(tempDir.resolve("jk-edqs"));
+        Files.writeString(worker.resolve("jk.toml"), "name = \"jk-edqs\"\n");
+        Path application = Files.createDirectories(tempDir.resolve("application"));
+        Files.writeString(application.resolve("jk.toml"), """
+                name = "application"
+
+                [build]
+                test-plugin-jars = ["edqs"]
+                """);
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThat(WorkspaceLoader.loadModules(tempDir, root)).hasSize(4);
+    }
+
+    /** Without a worker beside it, the short name is spelled by name alone and is refused. */
+    @Test
+    void workspace_loader_refuses_a_test_plugin_jar_short_name_two_members_carry(@TempDir Path tempDir)
+            throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group   = "org.tb"
+                name    = "root"
+                version = "4.4.0"
+
+                [workspace]
+                modules = ["common/edqs", "edqs", "application"]
+                """);
+        writeModule(tempDir, "common/edqs", "org.tb.common");
+        writeModule(tempDir, "edqs", "org.tb");
+        Path application = Files.createDirectories(tempDir.resolve("application"));
+        Files.writeString(application.resolve("jk.toml"), """
+                name = "application"
+
+                [build]
+                test-plugin-jars = ["edqs"]
+                """);
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("`application` depends on `edqs`, which matches");
+    }
+
     /** The group on the edge picks one member, so the same three-member workspace loads. */
     @Test
     void workspace_loader_accepts_a_group_qualified_edge_to_a_shared_name(@TempDir Path tempDir) throws IOException {

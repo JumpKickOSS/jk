@@ -145,18 +145,33 @@ public final class ModuleOrder {
             Map<String, Path> dirByName,
             Collection<Scope> scopes) {
         Set<Path> prereqs = siblingsIn(moduleDir, m, dirByCoord, dirByName, scopes);
-        // [build].order-after: build-order-only edges (no classpath/lock). Each entry names a
-        // sibling by project name or group:artifact coord. Short worker names (test-runner) also
-        // match first-party artifacts published as jk-<short>.
-        for (String ref : m.build().allOrderAfter()) {
+        // [build].order-after: build-order-only edges (no classpath/lock), each naming a sibling by
+        // project name or group:artifact coord.
+        for (String ref : m.build().orderAfter()) {
             Path depDir = dirByCoord.get(ref);
             if (depDir == null) depDir = dirByName.get(ref);
-            if (depDir == null && !ref.contains(":") && !ref.startsWith("jk-")) {
-                depDir = dirByName.get("jk-" + ref);
-            }
+            if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
+        }
+        // [build].test-plugin-jars: the worker (or rule pack) whose jar the tests load builds first.
+        for (String ref : m.build().testPluginJars()) {
+            Path depDir = testPluginJarSibling(ref, dirByCoord, dirByName);
             if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
         }
         return prereqs;
+    }
+
+    /**
+     * The sibling a {@code [build] test-plugin-jars} entry names, read the way the test JVM's jar
+     * property is: a coordinate names exactly that module, and a short name is the first-party
+     * worker {@code jk-<short>} before any sibling that merely carries the short name. A rule pack
+     * is often named for the framework its worker serves ({@code cc.jumpkick.guards:helidon} beside
+     * {@code jk-helidon}), so a name-first lookup ordered the tests after the pack and left the
+     * worker whose jar they load unbuilt.
+     */
+    public static <T> @Nullable T testPluginJarSibling(String ref, Map<String, T> byCoord, Map<String, T> byName) {
+        if (ref.contains(":")) return byCoord.get(ref);
+        T worker = ref.startsWith("jk-") ? null : byName.get("jk-" + ref);
+        return worker != null ? worker : byName.get(ref);
     }
 
     /**

@@ -4,12 +4,15 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -56,7 +59,7 @@ class BuildCommandTopoSortTest {
     void test_worker_jar_source_is_a_build_order_prerequisite() {
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         // engine hands a's worker jar to its test JVM → a must build first, with no
-        // explicit order-after. test-plugin-jars feeds allOrderAfter() as a build-order edge.
+        // explicit order-after: a test-plugin-jars entry is a build-order edge of its own.
         modules.put(Path.of("engine"), module("engine", "[build]\ntest-plugin-jars = [\"a\"]"));
         modules.put(Path.of("a"), module("a", ""));
 
@@ -65,6 +68,60 @@ class BuildCommandTopoSortTest {
         assertThat(sorted.indexOf(Path.of("a")))
                 .as("a builds before the module that consumes its worker jar")
                 .isLessThan(sorted.indexOf(Path.of("engine")));
+    }
+
+    /**
+     * A rule pack named for its framework sits beside the worker {@code jk-<short>}: the short name
+     * is the worker, whose jar the tests load, never the pack (engine's "helidon" once ordered its
+     * tests after cc.jumpkick.guards:helidon and left jk-helidon unbuilt).
+     */
+    @Test
+    void a_test_plugin_jar_short_name_is_the_worker_not_a_pack_that_shares_it() {
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(Path.of("engine"), module("engine", "[build]\ntest-plugin-jars = [\"helidon\"]"));
+        modules.put(Path.of("pack"), module("helidon", ""));
+        modules.put(Path.of("worker"), module("jk-helidon", ""));
+
+        assertThat(enginePrereqs(modules)).containsExactly(Path.of("worker"));
+    }
+
+    /** A coordinate names exactly that module: a pack's coordinate never widens to the worker. */
+    @Test
+    void a_test_plugin_jar_coordinate_names_exactly_that_module() {
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(Path.of("engine"), module("engine", "[build]\ntest-plugin-jars = [\"g:helidon\"]"));
+        modules.put(Path.of("pack"), module("helidon", ""));
+        modules.put(Path.of("worker"), module("jk-helidon", ""));
+
+        assertThat(enginePrereqs(modules)).containsExactly(Path.of("pack"));
+    }
+
+    /** A short name with no worker beside it is the module of that name. */
+    @Test
+    void a_test_plugin_jar_short_name_without_a_worker_is_the_module_of_that_name() {
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(Path.of("engine"), module("engine", "[build]\ntest-plugin-jars = [\"helidon\"]"));
+        modules.put(Path.of("pack"), module("helidon", ""));
+
+        assertThat(enginePrereqs(modules)).containsExactly(Path.of("pack"));
+    }
+
+    private static Set<Path> enginePrereqs(Map<Path, JkBuild> modules) {
+        JkBuild engine = Objects.requireNonNull(modules.get(Path.of("engine")));
+        return ModuleOrder.modulePrereqs(Path.of("engine"), engine, coords(modules), names(modules));
+    }
+
+    private static Map<String, Path> coords(Map<Path, JkBuild> modules) {
+        Map<String, Path> out = new LinkedHashMap<>();
+        modules.forEach(
+                (dir, m) -> out.put(m.project().group() + ":" + m.project().name(), dir));
+        return out;
+    }
+
+    private static Map<String, Path> names(Map<Path, JkBuild> modules) {
+        Map<String, Path> out = new LinkedHashMap<>();
+        modules.forEach((dir, m) -> out.put(m.project().name(), dir));
+        return out;
     }
 
     @Test
