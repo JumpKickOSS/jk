@@ -2,9 +2,11 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where each test compiler writes, and what each reads of the ones before it. Tests in one
@@ -29,6 +31,21 @@ record TestOutputs(Path testClasses, Path kotlinOut, Path groovyOut, boolean mix
                 mixedGroovy ? layout.groovyTestClassesDir() : testClasses,
                 mixedKotlin,
                 mixedGroovy);
+    }
+
+    /**
+     * The classpath every test compiler starts from: the main classes, the module's own fixtures,
+     * the resolved test compile classpath, then the Groovy jar a module with Groovy main or test
+     * sources needs ({@code null} for one without), since every Groovy class implements {@code
+     * groovy.lang.GroovyObject}.
+     */
+    static List<Path> baseClasspath(
+            Path mainClasses, JkBuild project, BuildLayout layout, List<Path> compileCp, @Nullable Path groovyJar) {
+        List<Path> out = PlannerFixtures.withOwnFixtures(project, layout, new ArrayList<>(List.of(mainClasses)));
+        out = new ArrayList<>(out);
+        out.addAll(compileCp);
+        if (groovyJar != null) out.add(groovyJar);
+        return out;
     }
 
     /** groovyc's classpath: the module's, then Kotlin's test output when Kotlin compiled beside it. */

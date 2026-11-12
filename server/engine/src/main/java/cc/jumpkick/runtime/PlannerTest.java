@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
 import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
 import static cc.jumpkick.runtime.PlannerSupport.effectiveSelection;
-import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
 import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
@@ -251,17 +250,16 @@ public final class PlannerTest {
     /** target/classes, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
     private static List<Path> testCompileClasspath(TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, TestSources src)
             throws Exception {
-        List<Path> compileCp = ctx.require(CLASSPATHS).testCompile();
-        List<Path> baseCp = new ArrayList<>();
-        baseCp.add(ctx.require(MAIN_CLASSES));
-        baseCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), baseCp);
-        baseCp.addAll(compileCp);
-        // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject
-        // javac (and groovyc itself) must resolve it from the version-matched jar.
-        if (cx.groovyModule() || !src.gvTest().isEmpty()) {
-            baseCp.add(groovyCompileJar(ctx, cas));
-        }
-        return baseCp;
+        return TestOutputs.baseClasspath(
+                ctx.require(MAIN_CLASSES),
+                ctx.require(PROJECT),
+                ctx.require(LAYOUT),
+                ctx.require(CLASSPATHS).testCompile(),
+                PlannerCompile.testGroovyJar(
+                        ctx.require(PROJECT),
+                        ctx.require(LOCKFILE),
+                        cas,
+                        cx.groovyModule() || !src.gvTest().isEmpty()));
     }
 
     /**

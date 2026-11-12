@@ -45,10 +45,11 @@ import org.junit.jupiter.api.io.TempDir;
  * and the preflight's walk find every module clean, and one source edit makes exactly the edited
  * module dirty. Each fixture is a workspace of the module under test beside a plain Java module, in
  * a shape whose run differs from the plain one: a Kotlin module with processors, a Kotlin or Groovy
- * module a plugin generates Java for, a plugin that hands the test JVM flags and classpath, a
- * plugin's provided jars on the test JVM's classpath, a Java module whose compile classpath,
- * processor path and test processor path each carry their own entries, and a Kotlin module whose
- * multi-release root compiles against the provided jars with no Java main sources.
+ * module a plugin generates Java for, a Groovy module tested in Java, a plugin that hands the test
+ * JVM flags and classpath, a plugin's provided jars on the test JVM's classpath, a Java module whose
+ * compile classpath, processor path and test processor path each carry their own entries, and a
+ * Kotlin module whose multi-release root compiles against the provided jars with no Java main
+ * sources.
  */
 @Tag("integration")
 class ForecastRunParityMatrixTest {
@@ -135,6 +136,14 @@ class ForecastRunParityMatrixTest {
                 [stub-contributions]
                 sources = true
                 """, Lib.GROOVY);
+        assertParity(ws, "src/com/example/Lib.groovy", true);
+    }
+
+    @Test
+    void groovy_with_java_tests() throws Exception {
+        Path ws = workspace("""
+                groovy = "5.0.4"
+                """, Lib.GROOVY_TESTED_IN_JAVA);
         assertParity(ws, "src/com/example/Lib.groovy", true);
     }
 
@@ -449,6 +458,16 @@ class ForecastRunParityMatrixTest {
                     }
                 }
                 """);
+
+        static final Lib GROOVY_TESTED_IN_JAVA = new Lib("Lib.groovy", """
+                package com.example
+
+                class Lib {
+                    static String greet() {
+                        "hi"
+                    }
+                }
+                """, JAVA.testFile(), JAVA.test());
     }
 
     private static void write(Path file, String text) throws IOException {

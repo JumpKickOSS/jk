@@ -144,9 +144,14 @@ public final class PlannerSupport {
      * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
      */
     static Path groovyCompileJar(TaskContext ctx, Cas cas) throws IOException {
-        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
+        return groovyCompileJar(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
+    }
+
+    /** As {@link #groovyCompileJar(TaskContext, Cas)} for {@code project} under {@code lock}. */
+    static Path groovyCompileJar(JkBuild project, Lockfile lock, Cas cas) throws IOException {
+        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
         try {
-            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
             return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

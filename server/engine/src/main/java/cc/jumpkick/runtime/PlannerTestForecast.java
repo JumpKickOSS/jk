@@ -23,7 +23,6 @@ import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -67,10 +66,17 @@ final class PlannerTestForecast {
             s.testDirty = true;
         } else if (!testSources.javacSources().isEmpty()) {
             int release = prepared.parsed().release();
-            List<Path> baseCp = new ArrayList<>();
-            baseCp.add(layout.classesDir());
-            baseCp.addAll(prepared.classpaths().testCompile());
-            baseCp = PlannerFixtures.withOwnFixtures(s.project, layout, baseCp);
+            List<Path> baseCp = TestOutputs.baseClasspath(
+                    layout.classesDir(),
+                    s.project,
+                    layout,
+                    prepared.classpaths().testCompile(),
+                    PlannerCompile.testGroovyJar(
+                            s.project,
+                            prepared.parsed().lock(),
+                            s.cas,
+                            prepared.parsed().shape().groovy()
+                                    || !testSources.gvTest().isEmpty()));
             Path testOut = layout.testClassesDir();
             // javac reads the Kotlin and Groovy test outputs beside it, as their records restore them.
             TestOutputs outs = TestOutputs.of(testSources, layout, testOut);
