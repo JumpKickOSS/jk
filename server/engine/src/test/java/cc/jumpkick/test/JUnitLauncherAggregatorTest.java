@@ -37,6 +37,29 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void a_class_s_wall_is_its_own_container_s_not_its_parameterized_methods_added_on_top() {
+        // LearnedHeapRetryTest ran 40 s and was recorded at 60 s: its two @ParameterizedTest
+        // containers' walls were added to the class container's, which already holds them. The live
+        // estimate floored the engine's suite at the recorded wall and read 19 s too long to the end.
+        var agg = new ResultAggregator();
+        String cls = "[engine:junit-jupiter]/[class:C]";
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"" + cls
+                        + "/[test-template:t(String)]/[test-template-invocation:#1]\","
+                        + "\"testClass\":\"C\",\"testMethod\":\"t(String)[#1]\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"duration_ms\":9000}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"" + cls + "/[test-template:t(String)]\","
+                        + "\"testClass\":\"C\",\"testMethod\":\"t(String)\",\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\",\"duration_ms\":10000}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"" + cls + "/[method:p()]\","
+                        + "\"testClass\":\"C\",\"testMethod\":\"p()\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"duration_ms\":5000}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"" + cls + "\","
+                + "\"testClass\":\"C\",\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\",\"duration_ms\":15500}");
+
+        assertThat(completed(agg).classWallMs()).containsEntry("C", 15_500L);
+    }
+
+    @Test
     void the_xml_names_an_invocation_by_its_display_name_and_a_plain_test_by_its_method(@TempDir Path dir)
             throws Exception {
         var xml = new XmlTestReport();
