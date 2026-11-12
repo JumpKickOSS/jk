@@ -367,12 +367,15 @@ public final class JvmOptions {
     }
 
     /**
-     * The heap budget one request planned with {@link #planAndApply}. The job's request carries its
-     * own under {@link #PLAN}, so concurrent builds each size their workers by their own plan.
+     * The heap budget one request planned with {@link #planAndApply}, and the heap flags jk chose
+     * for its forks. The job's request carries its own under {@link #PLAN}, so concurrent builds
+     * each size their workers by their own plan, and a flag jk chose for one build never makes the
+     * same flag another build's user wrote look like jk's.
      */
     public static final class PlannedHeap {
         private volatile boolean planned;
         private volatile HeapPlan.@Nullable Plan plan;
+        private final Set<String> heaps = ConcurrentHashMap.newKeySet();
     }
 
     /** The request's planned heap; a request without one plans into the engine's. */
@@ -508,29 +511,21 @@ public final class JvmOptions {
     }
 
     /**
-     * {@code -Xmx} values jk chose for a worker after the process-wide plan, so the budget may lower
-     * them. A flag the user wrote is not recorded here.
-     */
-    private static final Set<String> PLANNED_HEAPS = ConcurrentHashMap.newKeySet();
-
-    /**
-     * Record a heap flag jk chose so the budget may lower it. A flag the user wrote is not recorded
-     * here; {@link #userPinnedHeap} treats an unrecorded heap flag as theirs.
+     * Record a heap flag jk chose on the current request's {@link PlannedHeap}, so the budget may
+     * lower it. A flag the user wrote is not recorded; {@link #userPinnedHeap} treats an unrecorded
+     * heap flag as theirs, and so is every flag off a request that carries no plan.
      */
     public static void notePlannedHeap(String flag) {
         if (flag == null || flag.isEmpty()) return;
         String bare = bareJvmArg(flag);
-        if (pinsHeap(bare)) PLANNED_HEAPS.add(bare);
+        PlannedHeap held = plannedHeap();
+        if (held != null && pinsHeap(bare)) held.heaps.add(bare);
     }
 
     /** {@link #notePlannedHeap} for every heap flag on a command jk just rewrote. */
     public static void notePlannedCommand(List<String> command) {
         if (command == null) return;
         for (String arg : command) notePlannedHeap(arg);
-    }
-
-    public static void forgetPlannedHeapForTests(String flag) {
-        if (flag != null) PLANNED_HEAPS.remove(bareJvmArg(flag));
     }
 
     /**
@@ -596,7 +591,8 @@ public final class JvmOptions {
 
     /** Heap flags the plan, the batch/suite/sole forks, and {@link #notePlannedHeap} emit right now. */
     private static Set<String> plannedHeapFlags() {
-        Set<String> out = new HashSet<>(PLANNED_HEAPS);
+        PlannedHeap held = plannedHeap();
+        Set<String> out = held == null ? new HashSet<>() : new HashSet<>(held.heaps);
         collectHeapFlags(out, workerFlags(1));
         collectHeapFlags(out, batchFlags(1));
         collectHeapFlags(out, suiteFlags(1, List.of()));

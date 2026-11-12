@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.testing.Sleepers;
 import java.nio.file.Files;
@@ -110,28 +111,29 @@ class WorkerBudgetJobsTest {
 
     @Test
     void a_heap_larger_than_the_budget_is_lowered_and_the_jvm_still_starts() throws Exception {
-        SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
-            JvmOptions.notePlannedHeap("-Xmx2g");
-            WorkerLeases.Ledger ledger = ledger(300L << 20, 4);
-            String java =
-                    Path.of(System.getProperty("java.home"), "bin", "java").toString();
-            ProcessBuilder pb = new ProcessBuilder(java, "-Xmx2g", "-version")
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            Process process = new WorkerScope(12L).call(() -> JobWorkers.start(pb, ledger));
-            try {
-                assertThat(pb.command()).doesNotContain("-Xmx2g");
-                assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
-                        .isLessThanOrEqualTo(ledger.capacityBytes());
-                assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
-                assertThat(process.exitValue()).isZero();
-            } finally {
-                JvmOptions.forgetPlannedHeapForTests("-Xmx2g");
-                if (process.isAlive()) process.destroyForcibly();
-            }
-            awaitReleased(ledger);
-            return null;
-        });
+        Request.detached()
+                .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap())
+                .call(() -> SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
+                    JvmOptions.notePlannedHeap("-Xmx2g");
+                    WorkerLeases.Ledger ledger = ledger(300L << 20, 4);
+                    String java = Path.of(System.getProperty("java.home"), "bin", "java")
+                            .toString();
+                    ProcessBuilder pb = new ProcessBuilder(java, "-Xmx2g", "-version")
+                            .redirectErrorStream(true)
+                            .redirectOutput(ProcessBuilder.Redirect.DISCARD);
+                    Process process = new WorkerScope(12L).call(() -> JobWorkers.start(pb, ledger));
+                    try {
+                        assertThat(pb.command()).doesNotContain("-Xmx2g");
+                        assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
+                                .isLessThanOrEqualTo(ledger.capacityBytes());
+                        assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
+                        assertThat(process.exitValue()).isZero();
+                    } finally {
+                        if (process.isAlive()) process.destroyForcibly();
+                    }
+                    awaitReleased(ledger);
+                    return null;
+                }));
     }
 
     /** Abandons no wait: these tests end no request. */

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.StepScope;
@@ -92,28 +93,26 @@ class WorkerLeasesTest {
 
     @Test
     void a_planned_oversized_heap_is_clamped_to_the_budget() throws Exception {
-        SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
-            JvmOptions.notePlannedHeap("-Xmx1000001m");
-            try {
-                long budget = 200L << 20;
-                WorkerLeases.Ledger ledger = ledger(budget, 4);
-                List<String> command = List.of("java", "-Xmx1000001m", "-version");
-                assertThat(JvmOptions.userPinnedHeap(command)).isFalse();
-                try (WorkerLeases.Grant grant = ledger.acquire(command, null)) {
-                    assertThat(grant.userPinned()).isFalse();
-                    assertThat(grant.clamped()).isTrue();
-                    assertThat(grant.xmxBytes()).isLessThan(HeapFlags.parseXmx(command));
-                    assertThat(WorkerLeases.jvmLease(grant.xmxBytes())).isLessThanOrEqualTo(budget);
-                    assertThat(grant.bytes()).isLessThanOrEqualTo(budget);
-                    List<String> launched = JobWorkers.launchCommand(command, grant);
-                    assertThat(HeapFlags.parseXmx(launched)).isEqualTo(grant.xmxBytes());
-                    assertThat(launched).doesNotContain("-Xmx1000001m");
-                }
-            } finally {
-                JvmOptions.forgetPlannedHeapForTests("-Xmx1000001m");
-            }
-            return null;
-        });
+        Request.detached()
+                .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap())
+                .call(() -> SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
+                    JvmOptions.notePlannedHeap("-Xmx1000001m");
+                    long budget = 200L << 20;
+                    WorkerLeases.Ledger ledger = ledger(budget, 4);
+                    List<String> command = List.of("java", "-Xmx1000001m", "-version");
+                    assertThat(JvmOptions.userPinnedHeap(command)).isFalse();
+                    try (WorkerLeases.Grant grant = ledger.acquire(command, null)) {
+                        assertThat(grant.userPinned()).isFalse();
+                        assertThat(grant.clamped()).isTrue();
+                        assertThat(grant.xmxBytes()).isLessThan(HeapFlags.parseXmx(command));
+                        assertThat(WorkerLeases.jvmLease(grant.xmxBytes())).isLessThanOrEqualTo(budget);
+                        assertThat(grant.bytes()).isLessThanOrEqualTo(budget);
+                        List<String> launched = JobWorkers.launchCommand(command, grant);
+                        assertThat(HeapFlags.parseXmx(launched)).isEqualTo(grant.xmxBytes());
+                        assertThat(launched).doesNotContain("-Xmx1000001m");
+                    }
+                    return null;
+                }));
     }
 
     /**

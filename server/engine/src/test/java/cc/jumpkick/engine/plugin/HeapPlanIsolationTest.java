@@ -8,6 +8,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.task.IoLedger;
+import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -52,6 +53,27 @@ class HeapPlanIsolationTest {
         assertThat(JvmOptions.heapPlan())
                 .as("neither build planned the engine's")
                 .isNull();
+    }
+
+    @Test
+    void a_heap_flag_jk_chose_for_one_build_is_still_the_users_in_another() throws Exception {
+        List<String> command = List.of("java", "-Xmx3333m", "-version");
+        SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
+            planning(1).run(() -> {
+                JvmOptions.notePlannedHeap("-Xmx3333m");
+                assertThat(JvmOptions.userPinnedHeap(command))
+                        .as("jk chose it here")
+                        .isFalse();
+            });
+            planning(2).run(() -> assertThat(JvmOptions.userPinnedHeap(command))
+                    .as("this build's user wrote it")
+                    .isTrue());
+            return null;
+        });
+    }
+
+    private static Request planning(long id) {
+        return Request.of(id, new IoLedger()).with(JvmOptions.PLAN, new JvmOptions.PlannedHeap());
     }
 
     private static void build(
