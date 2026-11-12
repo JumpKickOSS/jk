@@ -63,13 +63,25 @@ public final class FileHashMemo {
      * Entries one store keeps of what neither of the last two builds touched. Around 200 B each, so
      * the cap is a heap bound before it is a disk one. It is soft: an entry the current or previous
      * build used is never evicted, so a workspace bigger than the cap holds its own footprint (two
-     * builds' worth at most) rather than evicting, in build order, the files the next build reads
-     * first and re-hashing every one of them.
+     * builds' worth at most, up to {@link #HARD_ENTRIES}) rather than evicting, in build order, the
+     * files the next build reads first and re-hashing every one of them.
      */
-    private static final int MAX_ENTRIES = 32_768;
+    static final int MAX_ENTRIES = 32_768;
 
-    /** Headroom over {@link #MAX_ENTRIES} before a trim runs, so inserts do not each pay for one. */
-    private static final int TRIM_SLACK = MAX_ENTRIES / 4;
+    /**
+     * Headroom over {@link #MAX_ENTRIES} before a trim runs, so inserts do not each pay for one; and
+     * the growth a trim that could not reach the cap waits out before it runs again.
+     */
+    static final int TRIM_SLACK = MAX_ENTRIES / 4;
+
+    /**
+     * The hard ceiling, protection or not: about 15 MB of entries, in an engine whose heap is a few
+     * hundred. One build whose working set is larger than this — a workspace hashing more files than
+     * any the cap was sized for, or a walk that strayed into trees it should not read — evicts the
+     * least recently used even of its own entries, so the memo degrades to re-hashing rather than
+     * to an engine out of memory. Below it the cap stays soft, as {@link #MAX_ENTRIES} explains.
+     */
+    static final int HARD_ENTRIES = MAX_ENTRIES * 2;
 
     private static final String STORE_FILE = "memo.v1";
 
@@ -225,13 +237,15 @@ public final class FileHashMemo {
 
     /**
      * The entries to drop so {@code entries} keeps {@code keep}, never one used at or after the tick
-     * {@code protectedFrom} (the last two builds): the least recently used first,
+     * {@code protectedFrom} (the last two builds) unless {@code entries} would still hold more than
+     * {@code ceiling}: the least recently used first,
      * ranked on one reading of every entry's use tick taken before the sort. A hit moves {@link
      * Entry#used} while a trim runs — the map is concurrent and nothing holds readers off — and a
      * sort keyed on the live field asks a comparator whose answers change under it, which TimSort
      * rejects as a contract violation. A tie on the tick breaks on the key, so the order is total.
      */
-    static List<Map.Entry<String, Entry>> victims(Map<String, Entry> entries, int keep, long protectedFrom) {
+    static List<Map.Entry<String, Entry>> victims(
+            Map<String, Entry> entries, int keep, long protectedFrom, int ceiling) {
         record Ranked(Map.Entry<String, Entry> entry, long used) {}
         List<Ranked> all = new ArrayList<>(entries.size());
         for (Map.Entry<String, Entry> e : entries.entrySet()) all.add(new Ranked(e, e.getValue().used));
@@ -239,8 +253,9 @@ public final class FileHashMemo {
         if (drop <= 0) return List.of();
         all.sort(Comparator.comparingLong(Ranked::used)
                 .thenComparing(r -> r.entry().getKey()));
+        int overCeiling = all.size() - ceiling;
         List<Map.Entry<String, Entry>> out = new ArrayList<>(drop);
-        for (int i = 0; i < drop && all.get(i).used() < protectedFrom; i++)
+        for (int i = 0; i < drop && (all.get(i).used() < protectedFrom || i < overCeiling); i++)
             out.add(all.get(i).entry());
         return out;
     }
@@ -282,7 +297,7 @@ public final class FileHashMemo {
     }
 
     /** The in-memory map for one cache root, plus the single file it persists to. */
-    private static final class Store {
+    static final class Store {
 
         private final Path file;
         private final MemoLog log;
@@ -297,6 +312,17 @@ public final class FileHashMemo {
         private volatile long previousBoundary = Long.MIN_VALUE;
 
         private volatile long lastBoundary = Long.MIN_VALUE;
+
+        /**
+         * The size an insert must pass to trim. A trim that cannot reach the cap — every entry left
+         * served one of the last two builds — moves it a slack above what it left, so the next one
+         * waits for that much growth instead of re-ranking the whole store on every insert to drop
+         * nothing. A build boundary makes older entries evictable, so it puts it back.
+         */
+        private volatile int trimAt = MAX_ENTRIES + TRIM_SLACK;
+
+        /** Trims run, for tests that bound how often a store ranks itself. */
+        private volatile int trimPasses;
 
         private Store(Path dir) {
             this.file = dir.resolve(STORE_FILE);
@@ -354,24 +380,40 @@ public final class FileHashMemo {
             entries.put(path, e);
             log.changed(path);
             dirty = true;
-            if (entries.size() > MAX_ENTRIES + TRIM_SLACK) trim();
+            if (entries.size() > trimAt) trim();
         }
 
-        /** Drop the least recently used down to {@link #MAX_ENTRIES}. One trim at a time. */
+        /**
+         * Drop the least recently used down to {@link #MAX_ENTRIES}, or as near as protection and
+         * {@link #HARD_ENTRIES} allow. One trim at a time.
+         */
         private void trim() {
             if (!trimming.compareAndSet(false, true)) return;
             try {
-                for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES, previousBoundary)) {
+                trimPasses++;
+                for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES, previousBoundary, HARD_ENTRIES)) {
                     if (entries.remove(victim.getKey(), victim.getValue())) log.dropped();
                 }
+                trimAt = Math.max(MAX_ENTRIES, entries.size()) + TRIM_SLACK;
             } finally {
                 trimming.set(false);
             }
         }
 
+        /** Test seam: entries in memory. */
+        int size() {
+            return entries.size();
+        }
+
+        /** Test seam: trims run since load. */
+        int trimPasses() {
+            return trimPasses;
+        }
+
         void flush() {
             previousBoundary = lastBoundary;
             lastBoundary = USE_TICK.get();
+            trimAt = MAX_ENTRIES + TRIM_SLACK;
             if (!dirty) return;
             dirty = false;
             try {

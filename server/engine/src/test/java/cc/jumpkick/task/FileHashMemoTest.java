@@ -397,11 +397,12 @@ class FileHashMemoTest {
             e.used = ticks[i];
             entries.put("k" + i, e);
         }
-        assertThat(FileHashMemo.victims(entries, 3, Long.MAX_VALUE))
+        assertThat(FileHashMemo.victims(entries, 3, Long.MAX_VALUE, Integer.MAX_VALUE))
                 .extracting(Map.Entry::getKey)
                 .containsExactly("k1", "k5", "k3", "k7", "k0");
-        assertThat(FileHashMemo.victims(entries, ticks.length, Long.MAX_VALUE)).isEmpty();
-        assertThat(FileHashMemo.victims(entries, ticks.length + 1, Long.MAX_VALUE))
+        assertThat(FileHashMemo.victims(entries, ticks.length, Long.MAX_VALUE, Integer.MAX_VALUE))
+                .isEmpty();
+        assertThat(FileHashMemo.victims(entries, ticks.length + 1, Long.MAX_VALUE, Integer.MAX_VALUE))
                 .isEmpty();
     }
 
@@ -432,7 +433,7 @@ class FileHashMemoTest {
         }
         try {
             for (int round = 0; round < 40; round++) {
-                assertThat(FileHashMemo.victims(entries, 10_000, Long.MAX_VALUE))
+                assertThat(FileHashMemo.victims(entries, 10_000, Long.MAX_VALUE, Integer.MAX_VALUE))
                         .hasSize(10_000);
             }
         } finally {
@@ -493,10 +494,52 @@ class FileHashMemoTest {
             e.used = i;
             entries.put("k" + i, e);
         }
-        assertThat(FileHashMemo.victims(entries, 2, 3))
+        assertThat(FileHashMemo.victims(entries, 2, 3, Integer.MAX_VALUE))
                 .as("only entries used before the protected tick go, however far over the cap")
                 .extracting(Map.Entry::getKey)
                 .containsExactly("k0", "k1", "k2");
-        assertThat(FileHashMemo.victims(entries, 2, 0)).isEmpty();
+        assertThat(FileHashMemo.victims(entries, 2, 0, Integer.MAX_VALUE)).isEmpty();
+        assertThat(FileHashMemo.victims(entries, 2, 0, 4))
+                .as("past the hard ceiling the least recently used go, protected or not")
+                .extracting(Map.Entry::getKey)
+                .containsExactly("k0", "k1");
+    }
+
+    /**
+     * One build that inserts more than the cap leaves nothing a trim may drop. Such a trim waits for
+     * another slack of growth before it runs again, rather than ranking the whole store on every
+     * insert to drop nothing; and the hard ceiling still bounds the store.
+     */
+    @Test
+    void a_trim_that_cannot_reach_the_cap_waits_for_growth(@TempDir Path dir) {
+        FileHashMemo.Store store = FileHashMemo.Store.load(dir);
+        int inserts = FileHashMemo.HARD_ENTRIES + 3 * FileHashMemo.TRIM_SLACK;
+        int bound = (inserts - FileHashMemo.MAX_ENTRIES) / FileHashMemo.TRIM_SLACK + 1;
+        for (int i = 0; i < inserts; i++) {
+            store.put("/f" + i, entry());
+            // Checked as it goes: a trim per insert is quadratic, and would otherwise run for minutes.
+            if (store.trimPasses() > bound) {
+                throw new AssertionError(store.trimPasses() + " trims by insert " + i
+                        + ": one trim per slack of growth, not one per insert");
+            }
+        }
+        assertThat(store.size()).isLessThanOrEqualTo(FileHashMemo.HARD_ENTRIES + FileHashMemo.TRIM_SLACK);
+    }
+
+    /** Once two build boundaries pass, what the store held before them is evictable, and a trim reaches the cap. */
+    @Test
+    void a_store_over_the_cap_trims_to_it_once_its_builds_are_past(@TempDir Path dir) {
+        FileHashMemo.Store store = FileHashMemo.Store.load(dir);
+        int inserts = FileHashMemo.MAX_ENTRIES + 2 * FileHashMemo.TRIM_SLACK;
+        for (int i = 0; i < inserts; i++) store.put("/f" + i, entry());
+        assertThat(store.size()).as("all of it served the build in progress").isEqualTo(inserts);
+        store.flush();
+        store.put("/next-build", entry());
+        store.flush();
+        assertThat(store.size()).isEqualTo(FileHashMemo.MAX_ENTRIES);
+    }
+
+    private static FileHashMemo.Entry entry() {
+        return new FileHashMemo.Entry(new StatIdentity(1, 1, 0, ""), false, "0".repeat(64));
     }
 }

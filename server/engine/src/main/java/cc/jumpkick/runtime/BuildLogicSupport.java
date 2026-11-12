@@ -516,17 +516,27 @@ public final class BuildLogicSupport {
      * actually matches the reach: a script declares no inputs, so the key covers everything it
      * could consume. Hashes come from {@link FileHashMemo}, so the steady-state cost is one stat
      * per file rather than a re-read.
+     *
+     * <p>The checkout ends where another begins: a directory below the root that carries its own
+     * {@code .git} ({@link WalkSkip#nestedCheckout}, a git worktree or a nested clone) is another
+     * branch's tree, so an edit there does not move this workspace's key, and a checkout holding
+     * a dozen worktrees does not hash a dozen copies of itself. The root keeps its own {@code .git}.
      */
     static List<String> workspaceInputTokens(Path rootDir) throws IOException {
         SCOPE_WALKS_FOR_TESTS.incrementAndGet();
         Path root = rootDir.toAbsolutePath().normalize();
         List<String> tokens = new ArrayList<>();
-        PathUtil.forEachRegularFile(root, WalkSkip::workspaceKey, (file, attrs) -> {
+        PathUtil.forEachRegularFile(root, BuildLogicSupport::outsideWorkspace, (file, attrs) -> {
             Path abs = file.toAbsolutePath().normalize();
             tokens.add("ws:" + slashed(root.relativize(abs)) + ":" + FileHashMemo.contentHash(abs, attrs));
         });
         Collections.sort(tokens);
         return tokens;
+    }
+
+    /** A directory below the walk root that the workspace scope leaves out, subtree and all. */
+    private static boolean outsideWorkspace(Path dir) {
+        return WalkSkip.workspaceKey(dir) || WalkSkip.nestedCheckout(dir);
     }
 
     /**
