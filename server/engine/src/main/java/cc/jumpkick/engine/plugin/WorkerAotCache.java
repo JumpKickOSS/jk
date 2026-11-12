@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
@@ -22,7 +24,6 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -55,8 +56,11 @@ public final class WorkerAotCache {
     /** Ceiling for one training run (fork, synthetic compile, assembly); typical is a few seconds. */
     static volatile long trainingTimeoutMillis = TimeUnit.SECONDS.toMillis(120);
 
-    /** Each worker JDK's {@code release} reading, once per engine. */
-    private static final Map<Path, Optional<Host>> HOSTS = new ConcurrentHashMap<>();
+    /**
+     * Each worker JDK's {@code release} reading, stamped by that file as a stat sees it through any
+     * link, so a {@code JAVA_HOME} pointer repointed at another JDK reads that JDK.
+     */
+    private static final StampedMemo<Path, FileStamp, Optional<Host>> HOSTS = StampedMemo.bounded(64);
 
     /**
      * A cache for a JDK other than the engine's that has gone this long unmapped is swept: the pin
@@ -110,8 +114,7 @@ public final class WorkerAotCache {
             String tool, @Nullable Path javaHome, String workerClasspath, List<String> jvmFlags, Trainer trainer) {
         if (!enabled() || javaHome == null) return List.of();
         try {
-            Host host = HOSTS.computeIfAbsent(normalize(javaHome), h -> Optional.ofNullable(host(h)))
-                    .orElse(null);
+            Host host = hostOf(javaHome);
             if (host == null || !host.eligible()) return List.of();
             Path cache = cacheFile(tool, host, workerClasspath, jvmFlags);
             if (usable(cache)) {
@@ -189,6 +192,14 @@ public final class WorkerAotCache {
                 return false;
             }
         }
+    }
+
+    /** What {@code javaHome}'s {@code release} file says now, or null when it cannot be read. */
+    static @Nullable Host hostOf(Path javaHome) {
+        Path home = normalize(javaHome);
+        FileStamp stamp = FileStamp.of(home.resolve("release"));
+        if (stamp == null) return null;
+        return HOSTS.get(home, stamp, () -> Optional.ofNullable(host(home))).orElse(null);
     }
 
     /** The JDK this engine runs on, or null when its {@code release} file cannot be read. */

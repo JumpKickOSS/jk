@@ -3,8 +3,11 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,5 +46,30 @@ class WorkerJvmFlagsTest {
         List<String> cmd = PluginLoader.command(home, "w.jar", ENGINE_CHOSEN, List.of("--pull"));
         assertThat(cmd).doesNotContain("--sun-misc-unsafe-memory-access=allow", "-Xlog:aot=off");
         assertThat(cmd).contains("-Xmx10108m", "-cp", "w.jar", "--pull");
+    }
+
+    @Test
+    void a_pointer_repointed_to_an_older_jdk_drops_the_flags_that_jdk_does_not_know(@TempDir Path dir)
+            throws Exception {
+        Path jdk25 = Files.createDirectories(dir.resolve("temurin-25"));
+        Files.writeString(jdk25.resolve("release"), "JAVA_VERSION=\"25.0.4\"\n");
+        Path jdk21 = Files.createDirectories(dir.resolve("temurin-21"));
+        Files.writeString(jdk21.resolve("release"), "JAVA_VERSION=\"21.0.12\"\n");
+        // A JAVA_HOME that is a pointer, as a toolchain manager's `current` link is.
+        Path current = dir.resolve("current");
+        Symlinks.create(current, jdk25);
+        // Judged as settled, so a reading is remembered rather than re-read for a fresh write.
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            assertThat(WorkerJvmFlags.forJdk(current, ENGINE_CHOSEN)).isEqualTo(ENGINE_CHOSEN);
+
+            Files.delete(current);
+            Symlinks.create(current, jdk21);
+
+            assertThat(WorkerJvmFlags.forJdk(current, ENGINE_CHOSEN))
+                    .containsExactly("-Xms64m", "-Xmx10108m", "-XX:+UseG1GC", "-XX:TrimNativeHeapInterval=60000");
+        } finally {
+            Settled.aheadForTests(null);
+        }
     }
 }

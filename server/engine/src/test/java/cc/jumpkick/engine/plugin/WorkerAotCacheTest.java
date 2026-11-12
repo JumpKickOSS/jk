@@ -4,10 +4,12 @@ package cc.jumpkick.engine.plugin;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.Sleepers;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -40,6 +42,7 @@ class WorkerAotCacheTest {
     void forget() {
         WorkerAotCache.forgetFailuresForTests();
         System.clearProperty("jk.worker.aot");
+        Settled.aheadForTests(null);
     }
 
     /** The key is a pure function of its inputs, and each input moves it; the name carries the JDK tag. */
@@ -123,6 +126,42 @@ class WorkerAotCacheTest {
                 }))
                 .as("the next worker on that JDK maps its own cache")
                 .anyMatch(f -> f.startsWith("-XX:AOTCache="));
+    }
+
+    /**
+     * A JAVA_HOME that is a pointer reads the JDK it points at now: repointed from a 25+ JDK to an
+     * older one, its worker maps no cache that JDK cannot open.
+     */
+    @Test
+    void a_pointer_repointed_to_an_older_jdk_maps_no_cache(@TempDir Path dir) throws Exception {
+        Path state = Files.createDirectories(dir.resolve("state"));
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        Path newer = Files.createDirectories(dir.resolve("temurin-27"));
+        Files.writeString(newer.resolve("release"), "JAVA_VERSION=\"27.0.1\"\n");
+        Path older = Files.createDirectories(dir.resolve("temurin-21"));
+        Files.writeString(older.resolve("release"), "JAVA_VERSION=\"21.0.12\"\n");
+        Path current = dir.resolve("current");
+        Symlinks.create(current, newer);
+        // Judged as settled, so a reading is remembered rather than re-read for a fresh write.
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        AtomicInteger forks = new AtomicInteger();
+        WorkerAotCache.Trainer trainer = (out, scratch) -> {
+            forks.incrementAndGet();
+            return Sleepers.writesLine("x", out);
+        };
+        assertThat(WorkerAotCache.flags("java-compiler", current, "/w/a.jar", List.of(), trainer))
+                .isEmpty();
+        waitUntil(() -> forks.get() == 1 && !WorkerAotCache.trainingInFlight());
+        assertThat(WorkerAotCache.flags("java-compiler", current, "/w/a.jar", List.of(), trainer))
+                .anyMatch(f -> f.startsWith("-XX:AOTCache="));
+
+        Files.delete(current);
+        Symlinks.create(current, older);
+
+        assertThat(WorkerAotCache.flags("java-compiler", current, "/w/a.jar", List.of(), trainer))
+                .isEmpty();
+        assertThat(WorkerAotCache.trainingInFlight()).isFalse();
+        assertThat(forks.get()).isEqualTo(1);
     }
 
     /**
