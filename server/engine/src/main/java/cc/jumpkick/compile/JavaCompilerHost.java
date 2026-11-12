@@ -100,15 +100,6 @@ public final class JavaCompilerHost {
         return WarmLinger.millis();
     }
 
-    /**
-     * Whether a resident compiler worker that has compiled for {@code project} is up and warm. A
-     * build that starts without one pays its JVM and JIT warm-up (~6 s on Helidon's cold build),
-     * which the ETA prices as a shape of its own.
-     */
-    public static boolean anyWarmWorkerFor(Path project) {
-        return CompilerPool.anyWarmResidentFor(project);
-    }
-
     /** Whether {@code req} goes on a resident pool rather than one of its job's. */
     static boolean resident(ForkedJavac.Request req) {
         String scala = req.scalaVersion();

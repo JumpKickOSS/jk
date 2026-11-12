@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
-import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -33,11 +31,7 @@ public final class WorkspaceExecute {
                 } else {
                     WorkspaceRunPhase.Run run =
                             WorkspaceRunPhase.run(((WorkspacePreparePhase.Ready) prepare).prepared(), listener);
-                    long closeOutFrom = Clock.SYSTEM.millis();
                     result = WorkspaceFinalPhase.complete(run);
-                    // What the estimate adds after the last module: measured on green runs only.
-                    if (result.success() && !run.cancelled())
-                        ScheduleBias.observeTail(resources.request().entryDir(), Clock.SYSTEM.millis() - closeOutFrom);
                 }
             } finally {
                 // No work model reaches the listener after the build: a pricing still running stops.

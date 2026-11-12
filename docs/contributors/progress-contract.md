@@ -105,9 +105,13 @@ Until it does, execute moves the bar at most to 15%: the plan's weights count a 
 module's slice as done and would pin the bar far ahead of the clock.
 
 **Likely range.** Each step's range is the 20th–80th percentile of the samples its price comes from,
-never narrower than 15% either side; a filtered suite's is ±30%; a step priced with no history of its
-own is half to twice its price. The range narrows as steps finish. Surfaces show `~1m 32s` when the
-range is narrow and `1m 20s–1m 50s` once it spans more than 40% of what remains (and at least 10 s).
+never narrower than 15% either side; a filtered suite's is ±30%; a step priced with no history of
+its own is half to twice its price. The range narrows as steps finish; a suite on its own rate
+projects its remainder at its low and high over its price, so the range does not shrink to a point
+as the last suite runs (it had, and half of warm checkpoints fell outside it). Warm runs' coverage
+is judged against the target; a cold run misses by more than any range it could honestly show.
+Surfaces show `~1m 32s` when the range is narrow and `1m 20s–1m 50s` once it spans more than 40% of
+what remains (and at least 10 s).
 `jk explain` prints `~1m 11s (likely 59s – 1m 30s)`.
 
 **On hold.** A fork that has waited half a second for a worker lease (`WorkerLeases`) puts its build
@@ -155,7 +159,6 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **Same lock view** | The forecast reads `jk-lock.toml` through `MemberRows.view`, as the build compiles: a partition row another member holds stays off this module's processor path, so forecast and live compile keys agree. |
 | **Same concurrency** | `etaConcurrency(jobs)` is the executor's module cap (`-j`, else resolved jobs). |
 | **Seed path lock** | Client freezes the R0 *seed path* when execute starts (provisional eta thrash guard). Residual still re-anchors the painted countdown mid-run. |
-| **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`) — residual display does not rewrite R0 for this KPI. |
 | **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
 | **Missing outputs (incl. post-`jk clean`)** | Input fingerprints can still match while jars/classes/binaries are gone. Preflight splits **input-dirty** vs **restore-needed**. Restore-needed modules restore from the action cache (no full compile/test/package plans); priced at `EffortWeights.RESTORE`. Dirty-memo dual-writes under `~/.jk/cache/projects/…` so clean does not erase fingerprints. |
 
@@ -188,8 +191,6 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 | `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range's gaps |
 | `MemoryHolds` | Which builds are on hold for memory, and for how long |
 | Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `state`, `heldMs` |
-
-`JK_ETA_STEPS=0` keeps the earlier module-weight model on one engine, for measurement only.
 
 ### Guards-off invariant (measured)
 

@@ -60,7 +60,6 @@ public final class StepWalls {
      * ran it most recently, and on a full rebuild that is the most contended measurement the ledger
      * holds: the dogfood engine's test compile reads a 6.8 s mean beside a 28 s last, taken while 24
      * modules compiled at once. A critical-path schedule adds such walls serially along the spine.
-     * A structural speed-up that leaves the mean stale is what {@code ScheduleBias} absorbs.
      *
      * <p>Heavy steps carry a credibility floor ({@link #heavyWallFloorMs}): a native-image or
      * write-image wall under it is a cache-restore blip and prices nothing.

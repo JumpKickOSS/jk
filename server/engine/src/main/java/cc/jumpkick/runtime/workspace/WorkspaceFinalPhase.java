@@ -12,7 +12,6 @@ import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.SettledReads;
 import cc.jumpkick.runtime.TestClassMatch;
-import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.task.VerifyCache;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -122,26 +121,11 @@ final class WorkspaceFinalPhase {
         // An estimate still being priced when the build ended has nothing to learn from: it was
         // never shown, and its schedule was never the one this run was measured against.
         resources.eta().close().ifPresent(model -> {
-            BuildEta.logSeedQuality(
-                    model.etaMs() - ScheduleBias.tailMs(request.entryDir()),
-                    run.executeWallMs(),
-                    resources.dirtyUnits().size());
-            Long requestId = JobWorkers.currentRequestId();
             if (!model.measured()) {
                 // Nothing measured to protect yet: a cold worker's compile walls are the history
                 // there is (a CI agent with a fresh engine per job has no other).
-                ColdWorkerRuns.keepWalls(requestId);
-                return;
+                ColdWorkerRuns.keepWalls(JobWorkers.currentRequestId());
             }
-            boolean startedWarm = requestId == null || !ColdWorkerRuns.cold(requestId);
-            ScheduleBias.observe(
-                    request.entryDir(),
-                    model.rawScheduleMs(),
-                    run.executeWallMs(),
-                    resources.dirtyUnits().size(),
-                    BuildEta.realWork(model.costs()),
-                    model.shape(),
-                    startedWarm);
         });
         StepTimings.record(request.cache(), resources.timingSamples(), StepTimings.DEFAULT_ALPHA, now);
         Calibration.learnFromSuccess(List.copyOf(resources.hostSamples()));

@@ -3,11 +3,8 @@ package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.run.TaskForecast;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -18,14 +15,6 @@ import org.junit.jupiter.api.Test;
  * build would hand it.
  */
 class EtaForecastParityTest {
-
-    private static TaskForecast.Task step(String name, boolean cached) {
-        return new TaskForecast.Task(name, cached ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN, "", null);
-    }
-
-    private static TaskForecast.Module module(Path dir, List<TaskForecast.Task> steps) {
-        return new TaskForecast.Module(dir, "ex:" + dir.getFileName(), steps, 1, 1, true, false);
-    }
 
     /**
      * Width is the widest simultaneously-ready wave, not the count of dirty modules. A spine edit
@@ -63,30 +52,5 @@ class EtaForecastParityTest {
         Map<Path, Set<Path>> edges = Map.of(x, Set.of(clean), y, Set.of(clean));
 
         assertThat(BuildGraph.maxReadyWidth(Set.of(x, y), edges)).isEqualTo(2);
-    }
-
-    /**
-     * The population the machine is divided by. On an incremental build most of the tree is dirty
-     * in the bookkeeping sense while forking no JVM at all, and counting those modules is what cut
-     * every suite's runner share by an order of magnitude.
-     */
-    @Test
-    void only_modules_with_real_work_claim_a_share_of_the_machine() {
-        Path dir = Path.of("/w/m");
-
-        assertThat(BuildEta.competesForMachine(
-                        module(dir, List.of(step(TaskNames.COMPILE_JAVA, false), step(TaskNames.RUN_TESTS, false)))))
-                .as("compiles and tests")
-                .isTrue();
-        assertThat(BuildEta.competesForMachine(
-                        module(dir, List.of(step(TaskNames.COMPILE_JAVA, true), step(TaskNames.RUN_TESTS, true)))))
-                .as("every step a cache hit")
-                .isFalse();
-        assertThat(BuildEta.competesForMachine(module(dir, List.of(step(TaskNames.RESTORE_OUTPUTS, false)))))
-                .as("restoring cached outputs is not competing for the machine")
-                .isFalse();
-        assertThat(BuildEta.competesForMachine(module(dir, List.of())))
-                .as("no steps at all")
-                .isFalse();
     }
 }

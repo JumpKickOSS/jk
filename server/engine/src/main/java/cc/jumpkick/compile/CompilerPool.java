@@ -186,19 +186,6 @@ final class CompilerPool {
         return pool != null && pool.hasReadyWorker() ? pool : null;
     }
 
-    /**
-     * Whether a resident pool that has compiled for {@code project} holds a worker that has said
-     * hello: that project's next compile runs warm. Pools are per JDK, so another project's warm
-     * pool says nothing about this one's.
-     */
-    static boolean anyWarmResidentFor(Path project) {
-        Path root = project.toAbsolutePath().normalize();
-        for (CompilerPool pool : POOLS.values()) {
-            if (pool.job == null && pool.projects.contains(root) && pool.hasReadyWorker()) return true;
-        }
-        return false;
-    }
-
     /** A fresh scope for one resident worker. */
     static long nextScope() {
         return SCOPES.getAndIncrement();

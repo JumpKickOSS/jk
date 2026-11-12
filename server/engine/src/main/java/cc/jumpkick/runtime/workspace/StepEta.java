@@ -2,9 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.EffortWeights;
@@ -32,7 +30,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
-/** The estimate priced step by step, beside {@link BuildEta}'s module-weight estimate. */
+/** The build's estimate, priced step by step from the project's {@link StepLedger}. */
 public final class StepEta {
 
     /**
@@ -52,15 +50,6 @@ public final class StepEta {
     private StepEta() {}
 
     /**
-     * Whether the estimate is priced step by step from the project's {@link StepLedger}, with a
-     * live remainder that counts each module down by its steps. {@code JK_ETA_STEPS=0} keeps the
-     * module-weight model, so the two can be measured on one engine.
-     */
-    static boolean stepPriced() {
-        return EnvValues.bool(ProcessEnv::get, "JK_ETA_STEPS").orElse(true);
-    }
-
-    /**
      * The estimate priced step by step: each step the forecast runs at its own recent wall from the
      * project's {@link StepLedger} under this run's status and shape (the same work set first), a
      * step with no history at the module-weight price, and the schedule in ms at {@link
@@ -77,8 +66,7 @@ public final class StepEta {
             boolean skipTests,
             boolean verbose,
             boolean parallelTests,
-            int maxModuleConcurrency,
-            boolean workerWarm) {
+            int maxModuleConcurrency) {
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         Set<String> frontier = new TreeSet<>();
@@ -168,18 +156,7 @@ public final class StepEta {
                 ledger.runs(),
                 "frontier",
                 frontier.size());
-        return new BuildService.EtaModel(
-                ms,
-                costs,
-                concurrency,
-                serialEta,
-                ms,
-                ledger.runs() > 0,
-                BuildEta.buildShape(plan),
-                workerWarm,
-                steps,
-                frontier,
-                curves);
+        return new BuildService.EtaModel(ms, costs, concurrency, serialEta, ledger.runs() > 0, steps, frontier, curves);
     }
 
     /**

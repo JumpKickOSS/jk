@@ -223,7 +223,7 @@ class BuildMetricsTest {
     @Test
     void cancelled_wins_over_success_so_truncated_ctrl_c_wall_never_trains_eta(@TempDir Path dir) {
         // A force-killed runner can racy-report success=true with a short wall. Cancelled must win
-        // so applyHistoryPrior / okHistory never blend that truncated sample into the ok average.
+        // so no estimator blends that truncated sample into the ok average.
         Path f = file(dir);
         record(f, build("/p", true, 10_000), NOW);
         record(f, new BuildMetrics.Outcome("build", "/p", "g:n", true, true, 400, List.of()), NOW + 1);

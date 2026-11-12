@@ -8,8 +8,6 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
-import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
@@ -230,22 +228,14 @@ public final class BuildService {
             List<EffortWeights.ModuleCost> costs,
             int concurrency,
             boolean serial,
-            /** The schedule simulation BEFORE the learned {@link ScheduleBias} — what bias observations compare against. */
-            long rawScheduleMs,
             /**
-             * Whether most modules were priced from their own measured step walls. A schedule priced
-             * from cold priors is off by the missing history, not by contention, and teaching the
-             * bias that gap overshot every later build until the bias decayed.
+             * Whether the estimate was priced from the step ledger's history. A first build has
+             * none: its compile walls are the history there is, and a cold worker's are kept.
              */
             boolean measured,
-            /** Full, whole-over-outputs or incremental: a {@link ScheduleBias} shape. */
-            ScheduleBias.Shape shape,
-            /** Whether the build started with a warm compiler worker: a {@link ScheduleBias} shape. */
-            boolean workerWarm,
             /**
-             * Per module, the steps it is priced to run with their own prices: a model priced step by
-             * step ({@code BuildEta.stepPriced}), whose live remainder counts each module down by its
-             * steps. Empty for a model priced by module weights.
+             * Per module, the steps it is priced to run with their own prices: the live remainder
+             * counts each module down by its steps. Empty for an empty estimate.
              */
             Map<Path, List<StepCost>> steps,
             /**
@@ -264,44 +254,8 @@ public final class BuildService {
             curves = curves == null ? Map.of() : Map.copyOf(curves);
         }
 
-        public EtaModel(
-                long etaMs,
-                List<EffortWeights.ModuleCost> costs,
-                int concurrency,
-                boolean serial,
-                long rawScheduleMs,
-                boolean measured,
-                ScheduleBias.Shape shape,
-                boolean workerWarm,
-                Map<Path, List<StepCost>> steps) {
-            this(
-                    etaMs,
-                    costs,
-                    concurrency,
-                    serial,
-                    rawScheduleMs,
-                    measured,
-                    shape,
-                    workerWarm,
-                    steps,
-                    Set.of(),
-                    Map.of());
-        }
-
         public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
-            this(etaMs, costs, concurrency, serial, 0, false, ScheduleBias.Shape.INCREMENTAL, true, Map.of());
-        }
-
-        public EtaModel(
-                long etaMs,
-                List<EffortWeights.ModuleCost> costs,
-                int concurrency,
-                boolean serial,
-                long rawScheduleMs,
-                boolean measured,
-                ScheduleBias.Shape shape,
-                boolean workerWarm) {
-            this(etaMs, costs, concurrency, serial, rawScheduleMs, measured, shape, workerWarm, Map.of());
+            this(etaMs, costs, concurrency, serial, false, Map.of(), Set.of(), Map.of());
         }
 
         static EtaModel empty() {
@@ -310,8 +264,8 @@ public final class BuildService {
 
         /**
          * The estimate's likely range, {@code {low, high}} ms: its steps scheduled at the low, then
-         * the high end of each one's own range (JK-4TEZ7). A model priced by module weights has no
-         * range: both ends are the estimate.
+         * the high end of each one's own range (JK-4TEZ7). An estimate with no steps has no range:
+         * both ends are the estimate.
          */
         public long[] range(boolean parallelTests) {
             if (steps.isEmpty() || costs.isEmpty()) return new long[] {etaMs, etaMs};
@@ -371,65 +325,6 @@ public final class BuildService {
     static List<ModuleWorkCost> orderCostsLikeUnits(
             List<BuildGraph.BuildUnit> units, List<EffortWeights.ModuleCost> costs) {
         return BuildEta.orderCostsLikeUnits(units, costs);
-    }
-
-    static List<EffortWeights.ModuleCost> etaCostsFromExplainPlan(
-            ExplainPlan plan,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            int maxModuleConcurrency) {
-        return BuildEta.etaCostsFromExplainPlan(
-                plan, cache, workers, jdksDir, profile, skipTests, verbose, maxModuleConcurrency);
-    }
-
-    /**
-     * Steps that should not contribute full historical walls to open-loop ETA. Cascade-forced
-     * compile/package/native and resource-only producers almost always action-cache hit for
-     * compile/test; billing suite walls for them was the multi-minute dogfood miss.
-     */
-    static boolean shouldDiscountCascadeStep(
-            TaskForecast.Task s,
-            boolean localCompile,
-            boolean resourceDrift,
-            boolean keepFullTests,
-            boolean testResourceDrift) {
-        return BuildEta.shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests, testResourceDrift);
-    }
-
-    static boolean hasLocalCompileContent(TaskForecast.Module m) {
-        return BuildEta.hasLocalCompileContent(m);
-    }
-
-    static boolean hasLocalContentWork(TaskForecast.Module m) {
-        return BuildEta.hasLocalContentWork(m);
-    }
-
-    static boolean hasResourceDriftWork(TaskForecast.Module m) {
-        return BuildEta.hasResourceDriftWork(m);
-    }
-
-    static boolean hasTestResourceDriftWork(TaskForecast.Module m) {
-        return BuildEta.hasTestResourceDriftWork(m);
-    }
-
-    static boolean hasHeavyPackagingTail(TaskForecast.Module m) {
-        return BuildEta.hasHeavyPackagingTail(m);
-    }
-
-    static boolean isCascadeForcedStep(TaskForecast.Task s) {
-        return BuildEta.isCascadeForcedStep(s);
-    }
-
-    static boolean isCompileStepName(String name) {
-        return BuildEta.isCompileStepName(name);
-    }
-
-    static boolean isCompileOrPackageStep(String name) {
-        return BuildEta.isCompileOrPackageStep(name);
     }
 
     /**
@@ -517,58 +412,6 @@ public final class BuildService {
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
         return WorkspaceExecute.buildWorkspace(req, listener);
-    }
-
-    static final double OPEN_LOOP_OVER_ESTIMATE = BuildEta.OPEN_LOOP_OVER_ESTIMATE;
-
-    static long preferSlightOverEstimate(long baseMs) {
-        return BuildEta.preferSlightOverEstimate(baseMs);
-    }
-
-    static boolean isFullWorkShape(HistoryShape hist, List<EffortWeights.ModuleCost> costs) {
-        return BuildEta.isFullWorkShape(hist, costs);
-    }
-
-    static int substantialModuleCount(List<EffortWeights.ModuleCost> costs) {
-        return BuildEta.substantialModuleCount(costs);
-    }
-
-    static void logSeedQuality(long seedMs, long actualExecuteMs, int dirtyModules) {
-        BuildEta.logSeedQuality(seedMs, actualExecuteMs, dirtyModules);
-    }
-
-    static long applyHistoryPrior(long base, BuildMetrics.@Nullable Stats okHist) {
-        return BuildEta.applyHistoryPrior(base, okHist);
-    }
-
-    static BuildMetrics.Stats okHistory(Path entryDir) {
-        return BuildEta.okHistory(entryDir);
-    }
-
-    static HistoryShape historyShape() {
-        return BuildEta.historyShape();
-    }
-
-    /**
-     * @param rebuild whether this run is a force/rebuild (full work)
-     * @param dirtyModules dirty module count, or {@code -1} when unknown at seed time
-     */
-    public record HistoryShape(boolean rebuild, int dirtyModules) {
-        public String kind() {
-            return rebuild ? "build:rebuild" : "build";
-        }
-
-        /** Metrics dir key: {@code path} or {@code path#dN} when dirty count known. */
-        public String dirKey(@Nullable Path entryDir) {
-            if (entryDir == null) return "";
-            String base = BuildMetrics.slashKey(entryDir.toString());
-            if (dirtyModules >= 0) return base + "#d" + dirtyModules;
-            return base;
-        }
-    }
-
-    static BuildMetrics.Stats okHistory(Path entryDir, HistoryShape shape) {
-        return BuildEta.okHistory(entryDir, shape);
     }
 
     /**

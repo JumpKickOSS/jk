@@ -367,25 +367,6 @@ public final class BuildMetrics {
         return Optional.ofNullable(invocations.get(kind + SEP + slashKey(dir)));
     }
 
-    /**
-     * Merged OK stats for {@code kind} across every dirty-count shape of {@code dir}
-     * ({@code dir} itself plus {@code dir#dN} rows). shaped the write side, which made
-     * exact bare-path lookups read a key that is never written.
-     */
-    public Stats okAcrossShapes(String kind, @Nullable String dir) {
-        long count = 0, total = 0, min = Long.MAX_VALUE, max = 0;
-        for (Entry e : invocations.values()) {
-            if (!kind.equals(e.kind()) || !sameBaseDir(dir, e.dir())) continue;
-            Stats ok = e.ok();
-            if (ok.count() == 0) continue;
-            count += ok.count();
-            total += ok.totalMillis();
-            min = Math.min(min, ok.minMillis());
-            max = Math.max(max, ok.maxMillis());
-        }
-        return count == 0 ? Stats.EMPTY : new Stats(count, total, min, max);
-    }
-
     /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
     public static boolean sameBaseDir(@Nullable String dir, @Nullable String candidate) {
         String a = slashKey(dir);
