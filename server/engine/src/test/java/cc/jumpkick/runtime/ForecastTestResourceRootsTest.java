@@ -7,9 +7,9 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.FilteredResources;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
@@ -45,7 +45,8 @@ class ForecastTestResourceRootsTest {
 
     private static @Nullable String key(Path dir, JkBuild project) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("target/classes"));
-        return PlannerSupport.runTestsStampKey(dir, project, false, classes, dir.resolve("jk-lock.toml"), List.of());
+        return TestStampInputs.of(TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                .forecastKey(false, classes, null, dir.resolve("jk-lock.toml"));
     }
 
     @Test

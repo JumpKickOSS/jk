@@ -8,6 +8,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.ToolIdentity;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,7 +75,8 @@ class TestStampToolsTest {
     private static List<String> extras(JkBuild project, Path dir, Path bin) throws Exception {
         return SessionContext.where(
                 Session.defaults().withVariant(null, Map.of("PATH", bin.toString())),
-                () -> PlannerSupport.testStampExtras(dir, project));
+                () -> TestStampInputs.of(TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                        .extras());
     }
 
     private static Path fakeTool(Path bin, String name, String versionOutput) throws Exception {

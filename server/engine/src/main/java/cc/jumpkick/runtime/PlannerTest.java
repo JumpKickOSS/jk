@@ -11,10 +11,8 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompilerJdk;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TierTags;
-import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -22,7 +20,6 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -566,20 +563,20 @@ public final class PlannerTest {
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
         PlannerSetup.awaitSiblingTestRuntime(ctx, in);
-        List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
         // Worker jars feed both the forked JVM and the TestStamp
         // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
         // matches what the suite actually loads — same set forecast uses.
         Map<String, String> workerJars =
                 PlannerSetup.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
+        TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
+        List<Path> testRtCp = stamp.runtimeClasspath();
         Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());
         WorkerEnv testEnv = TestLaunch.withFastTierWalls(
                 TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);
-        TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
-        List<String> testJvmArgs = tier.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls));
+        TestTier tier = stamp.tier();
+        List<String> testJvmArgs = stamp.jvmArgs();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
-        SuiteDiscovery.Rekey rekey = () -> testStampKey(
-                ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
+        SuiteDiscovery.Rekey rekey = () -> testStampKey(ctx, in, stamp, affected, testSrcs);
         String stampKey = rekey.key();
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
@@ -841,16 +838,27 @@ public final class PlannerTest {
     private record Judged(
             @Nullable TestSummary result, @Nullable String noMatch) {}
 
-    /**
-     * {@code [test] fast-method-budget} in milliseconds: the module's own, else its workspace
-     * root's, so one line at the root holds every member to it; 0 when neither sets one.
-     */
-    static long fastMethodBudget(JkBuild module, Path moduleDir) throws IOException {
-        long own = module.build().testFastMethodBudgetMs();
-        if (own > 0) return own;
-        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
-        if (root == null || root.normalize().equals(moduleDir.normalize())) return 0;
-        return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
+    /** The run-tests stamp's inputs as this run reads them: what the classpath step published, the worker jars awaited. */
+    private static TestStampInputs stampInputs(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild projectUnderTest,
+            @Nullable PluginDeclarations pluginDecls,
+            Map<String, String> workerJars)
+            throws IOException {
+        return TestStampInputs.of(
+                new TestStampInputs.Facts(
+                        in.dir(),
+                        projectUnderTest,
+                        ctx.require(LAYOUT),
+                        in.profileName(),
+                        in.session().testSelection(),
+                        pluginDecls,
+                        workerJars,
+                        ctx.require(TEST_RUNTIME_CP),
+                        PlannerKsp.contributedProvidedFor(ctx),
+                        compileTestKeys(ctx)),
+                ClasspathFingerprint.ON_DISK);
     }
 
     /**
@@ -860,29 +868,16 @@ public final class PlannerTest {
     private static @Nullable String testStampKey(
             TaskContext ctx,
             BuildPlanner.Inputs in,
-            JkBuild projectUnderTest,
-            TestSelection effectiveSel,
+            TestStampInputs stamp,
             AffectedTestRun.@Nullable Outcome affected,
-            Map<String, String> workerJars,
-            List<String> testJvmArgs,
-            List<Path> testSrcs,
-            List<Path> testRtCp)
+            List<Path> testSrcs)
             throws Exception {
         List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
-        List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
-                NodeTestStamp.testStampExtras(
-                        workerJars,
-                        effectiveSel,
-                        projectUnderTest,
-                        testJvmArgs,
-                        in.dir(),
-                        ClasspathFingerprint.ON_DISK),
-                compileTestKeys(ctx)));
-        extras.addAll(SuiteEnvKeys.profileEnv(projectUnderTest, in.profileName()));
+        List<String> extras = new ArrayList<>(stamp.extras());
         if (affected != null && !affected.stampToken().isBlank()) {
             extras.add("affected:" + affected.stampToken());
         }
-        return TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, testRtCp, extras);
+        return TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, stamp.runtimeClasspath(), extras);
     }
 
     /**

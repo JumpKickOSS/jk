@@ -8,6 +8,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,11 +37,13 @@ class ForecastSelectionStampTest {
                 """);
         JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
 
-        List<String> unit =
-                SessionContext.where(Session.defaults(), () -> PlannerSupport.testStampExtras(dir, project));
+        List<String> unit = SessionContext.where(Session.defaults(), () -> TestStampInputs.of(
+                        TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                .extras());
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
-        List<String> all = SessionContext.where(
-                Session.defaults().withTestSelection(widened), () -> PlannerSupport.testStampExtras(dir, project));
+        List<String> all = SessionContext.where(Session.defaults().withTestSelection(widened), () -> TestStampInputs.of(
+                        TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                .extras());
 
         String unitSel =
                 unit.stream().filter(e -> e.startsWith("sel:")).findFirst().orElseThrow();
@@ -65,11 +68,14 @@ class ForecastSelectionStampTest {
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         Path lock = Files.writeString(dir.resolve("jk-lock.toml"), "v=1");
 
-        List<String> whole =
-                SessionContext.where(Session.defaults(), () -> PlannerSupport.testStampExtras(dir, project));
+        List<String> whole = SessionContext.where(Session.defaults(), () -> TestStampInputs.of(
+                        TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                .extras());
         TestSelection filtered = TestSelection.DEFAULT.withClasses(List.of("FooTest"));
-        List<String> partial = SessionContext.where(
-                Session.defaults().withTestSelection(filtered), () -> PlannerSupport.testStampExtras(dir, project));
+        List<String> partial =
+                SessionContext.where(Session.defaults().withTestSelection(filtered), () -> TestStampInputs.of(
+                                TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
+                        .extras());
 
         String wholeKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), lock, List.of(), whole);
         String partialKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), lock, List.of(), partial);

@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -78,7 +79,8 @@ class TestStampWorkerJarsParityTest {
         assertThat(Path.of(workers.get("jk.engine.jar")))
                 .as("the workspace sibling jar must win")
                 .isEqualTo(engineJar.normalize());
-        var extras = PlannerSupport.testStampExtras(cli, project);
+        var extras = TestStampInputs.of(TestStampInputs.Facts.of(cli, project), ClasspathFingerprint.ON_DISK)
+                .extras();
         assertThat(extras).anyMatch(s -> s.startsWith("sel:"));
         assertThat(extras).anyMatch(s -> s.startsWith("jk:"));
         assertThat(extras).anyMatch(s -> s.startsWith("worker:"));
@@ -128,7 +130,8 @@ class TestStampWorkerJarsParityTest {
         JkBuild project = JkBuildParser.parse(lib.resolve("jk.toml"));
         assertThat(PlannerSupport.needsNestedEngineIsolation(project)).isFalse();
         assertThat(PlannerSupport.testStampWorkerJars(lib, project)).isEmpty();
-        var extras = PlannerSupport.testStampExtras(lib, project);
+        var extras = TestStampInputs.of(TestStampInputs.Facts.of(lib, project), ClasspathFingerprint.ON_DISK)
+                .extras();
         assertThat(extras).noneMatch(s -> s.startsWith("worker:"));
     }
 

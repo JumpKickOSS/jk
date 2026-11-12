@@ -374,8 +374,9 @@ public final class PlannerSetup {
         List<Path> compileTestCp =
                 new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true, project, in.dir()));
         compileTestCp.addAll(testSiblings.siblingClosureClasses());
-        List<Path> testRuntimeCp = new ArrayList<>(resolver.testRuntimeClasspathFor(lock, true, project, in.dir()));
-        testRuntimeCp.addAll(testSiblings.siblingClosureJars());
+        List<Path> lockAndSiblingsRuntime =
+                new ArrayList<>(resolver.testRuntimeClasspathFor(lock, true, project, in.dir()));
+        lockAndSiblingsRuntime.addAll(testSiblings.siblingClosureJars());
         // A plugin's contributed provided classpath is provided scope by another door: on both test
         // classpaths, as a [provided-dependencies] row is, and in no artifact. Its test-only entries
         // (a platform's test framework) join here and nowhere else.
@@ -383,12 +384,9 @@ public final class PlannerSetup {
         // here and never run with.
         compileTestCp.addAll(contributedProvided);
         compileTestCp.addAll(provided.testOnly());
-        for (Path p : provided.testRuntime()) {
-            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-        }
         ctx.put(PROVIDED_CP, provided.runtime());
         ctx.put(COMPILE_TEST_CP, compileTestCp);
-        ctx.put(TEST_RUNTIME_CP, testRuntimeCp);
+        ctx.put(TEST_RUNTIME_CP, provided.onTestRuntime(lockAndSiblingsRuntime));
     }
 
     /**

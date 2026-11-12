@@ -646,7 +646,7 @@ public final class PreflightMemo {
     /**
      * Every input the module's steps read, as one digest: its manifest, lock and source trees by
      * content, and, when tests run, every input of its run-tests stamp that is not a file of the
-     * tree ({@link PlannerSupport#testStampExtras}: environment values, tool identities, the
+     * tree ({@link TestStampInputs#extras}: environment values, tool identities, the
      * request's JVM flags, worker jars). A memo that vouched for files alone would leave a module
      * whose suite sees a new environment unscheduled, and its stamp never consulted.
      */

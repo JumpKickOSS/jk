@@ -2,8 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerKsp.contributedProvidedFor;
-import static cc.jumpkick.runtime.PlannerKsp.pluginTestClasspath;
 import static cc.jumpkick.runtime.PlannerSupport.groovyRuntime;
 import static cc.jumpkick.runtime.PlannerSupport.kotlinStdlib;
 import static cc.jumpkick.runtime.PlannerSupport.needsNestedEngineIsolation;
@@ -71,19 +69,6 @@ import org.jspecify.annotations.Nullable;
 final class TestLaunch {
 
     private TestLaunch() {}
-
-    /**
-     * The plugin steps' contributed arguments, then {@code [test] jvm-args}, system-properties and
-     * the active profile's jvm-args — what rides the fork and its stamp alike. The module's own
-     * flags come last, so they win over a framework plugin's.
-     */
-    static List<String> testJvmArgs(
-            TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, @Nullable PluginDeclarations pluginDecls)
-            throws IOException {
-        List<String> args = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
-        args.addAll(PlannerSupport.testJvmArgs(project, in.profileName()));
-        return args;
-    }
 
     /** The active profile's {@code env}: what every forked test JVM of this run is given on top of {@code [test] env}. */
     static Map<String, String> profileEnv(JkBuild project, @Nullable String profileName) {
@@ -164,22 +149,6 @@ final class TestLaunch {
                 + CoverageResults.pct(counters.linesCovered(), counters.linesMissed()) + " · branches "
                 + CoverageResults.pct(counters.branchesCovered(), counters.branchesMissed()) + " · html "
                 + in.dir().relativize(index));
-    }
-
-    /**
-     * The resolved test runtime classpath plus own fixtures, plugin test-classpath contributions
-     * (contributesTestClasspath — e.g. the android plugin's Robolectric test_config dir), and the
-     * provided platform (android.jar) LAST: unit tests calling framework stubs get the platform's
-     * throw-on-call contract (AGP's default posture), and anything real on the classpath shadows it.
-     */
-    static List<Path> testRuntimeClasspath(TaskContext ctx, @Nullable PluginDeclarations pluginDecls) throws Exception {
-        List<Path> testRtCp = new ArrayList<>(ctx.require(TEST_RUNTIME_CP));
-        testRtCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp);
-        testRtCp =
-                new ArrayList<>(PlannerVersions.withOwnVersions(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp));
-        testRtCp.addAll(pluginTestClasspath(ctx.require(LAYOUT), pluginDecls));
-        testRtCp.addAll(contributedProvidedFor(ctx));
-        return testRtCp;
     }
 
     /**

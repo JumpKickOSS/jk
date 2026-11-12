@@ -189,11 +189,19 @@ final class PlannerTestForecast {
             String why = jarOnly ? "run tests · dependency jar changed · " + tests : "run tests · " + tests;
             return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, why, null);
         }
-        List<Path> testRt =
-                new ArrayList<>(PlannerSupport.testRuntimeClasspath(s.dir, s.project, prepared.lock(), s.resolver));
-        for (Path p : prepared.provided().testRuntime()) {
-            if (!testRt.contains(p)) testRt.add(p);
-        }
+        TestStampInputs stamp = TestStampInputs.of(
+                TestStampInputs.Facts.forecast(
+                        s.dir,
+                        s.project,
+                        layout,
+                        s.profileName,
+                        prepared.pkgDecls(),
+                        prepared.lock(),
+                        s.resolver,
+                        prepared.provided(),
+                        new TestStamp.CompileTestKeys(
+                                s.compileTestKey, s.compileTestKotlinKey, s.compileTestGroovyKey)),
+                s.restored.identity());
         long ts = Perf.start();
         String mainFp = null;
         if (!s.classesTreeWhole(layout)) {
@@ -206,18 +214,7 @@ final class PlannerTestForecast {
                         s.dir, compact, layout, s.project, s.actionCache, s.compileMainKey, null);
             if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
         }
-        String stampKey = PlannerSupport.runTestsStampKey(
-                s.dir,
-                s.project,
-                compact,
-                layout.classesDir(),
-                mainFp,
-                s.lockFile,
-                testRt,
-                new TestStamp.CompileTestKeys(s.compileTestKey, s.compileTestKotlinKey, s.compileTestGroovyKey),
-                s.restored.identity(),
-                s.profileName,
-                prepared.pkgDecls());
+        String stampKey = stamp.forecastKey(compact, layout.classesDir(), mainFp, s.lockFile);
         Perf.end("  test-stamp-key", ts);
         var marker = stampKey == null
                 ? Optional.<ActionCache.ActionRecord>empty()

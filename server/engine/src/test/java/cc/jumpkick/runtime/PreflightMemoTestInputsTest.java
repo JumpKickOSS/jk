@@ -9,6 +9,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -97,18 +98,22 @@ class PreflightMemoTestInputsTest {
     void the_run_tests_stamp_keys_the_requests_flags_and_the_tier_timeout(@TempDir Path tmp) throws Exception {
         project(tmp);
         JkBuild plain = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        List<String> base = SessionContext.where(withProbe("1"), () -> PlannerSupport.testStampExtras(tmp, plain));
+        List<String> base = SessionContext.where(withProbe("1"), () -> TestStampInputs.of(
+                        TestStampInputs.Facts.of(tmp, plain), ClasspathFingerprint.ON_DISK)
+                .extras());
         List<String> flagged = SessionContext.where(
                 withProbe("1").withJvm(new PluginTuning(null, null, null, List.of("-Djprobe=2"))),
-                () -> PlannerSupport.testStampExtras(tmp, plain));
+                () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, plain), ClasspathFingerprint.ON_DISK)
+                        .extras());
         assertThat(flagged).isNotEqualTo(base).contains("jvm-user-args:-Djprobe=2");
 
         Files.writeString(tmp.resolve("jk.toml"), Files.readString(tmp.resolve("jk.toml")) + """
                 fast-method-budget = "250ms"
                 """);
         JkBuild budgeted = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        List<String> withBudget =
-                SessionContext.where(withProbe("1"), () -> PlannerSupport.testStampExtras(tmp, budgeted));
+        List<String> withBudget = SessionContext.where(withProbe("1"), () -> TestStampInputs.of(
+                        TestStampInputs.Facts.of(tmp, budgeted), ClasspathFingerprint.ON_DISK)
+                .extras());
         assertThat(withBudget).isNotEqualTo(base);
     }
 }

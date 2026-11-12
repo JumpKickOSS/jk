@@ -14,7 +14,6 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TierTags;
@@ -31,8 +30,6 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
@@ -48,17 +45,14 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
-import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.GroovyToolResolver;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
-import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.MirroredOutputs;
-import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -668,39 +662,6 @@ public final class PlannerSupport {
     }
 
     /**
-     * The run-tests stamp's identity tokens for {@code project} at {@code dir} — the same set the
-     * build folds into its {@link cc.jumpkick.task.TestStamp} key, so {@code jk explain}'s forecast
-     * predicts test-skip without drifting.
-     */
-    public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
-        return testStampExtras(dir, project, null, ClasspathFingerprint.ON_DISK);
-    }
-
-    /**
-     * As above under the named profile ({@code null} = the auto-selected one) with the plugin jars
-     * read through {@code identity} — see {@link #runTestsStampKey}.
-     */
-    public static List<String> testStampExtras(
-            Path dir, JkBuild project, @Nullable String profileName, ClasspathFingerprint.EntryIdentity identity)
-            throws IOException {
-        // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
-        // live run (PlannerTest feeds in.session().testSelection()), or a widened build
-        // (`jk build -A`) forecasts "tests cached" off the unit-tier marker and the whole
-        // workspace short-circuits to "up to date" without running the widened tier.
-        TestSelection selection = effectiveSelection(SessionContext.current().testSelection(), dir, profileName);
-        TestTier tier = TestTier.of(selection, profileName, PlannerTest.fastMethodBudget(project, dir));
-        List<String> extras = new ArrayList<>(NodeTestStamp.testStampExtras(
-                testStampWorkerJars(dir, project),
-                selection,
-                project,
-                tier.suiteJvmArgs(testJvmArgs(project, profileName)),
-                dir,
-                identity));
-        extras.addAll(SuiteEnvKeys.profileEnv(project, profileName));
-        return extras;
-    }
-
-    /**
      * Every flag the module's forked test JVMs get beyond jk's own tuning: {@code [test] jvm-args},
      * one {@code -D} per {@code [test] system-properties} entry, then the active profile's {@code
      * jvm-args}, so the profile wins where they disagree. Empty when the module declares none and no
@@ -733,126 +694,6 @@ public final class PlannerSupport {
         List<Path> cp = new ArrayList<>(resolver.testRuntimeClasspathFor(lock, false, project, dir));
         cp.addAll(sib.siblingClosureJars());
         return cp;
-    }
-
-    /**
-     * Full {@link cc.jumpkick.task.TestStamp} key for the default {@code jk build} selection
-     * single factory for forecast and any offline checker. {@code testRuntimeCp} must match the
-     * build's runtime classpath for the stamp (lock deps + workspace sibling jars; plugin
-     * contributions optional for non-plugin modules).
-     */
-    public static @Nullable String runTestsStampKey(
-            Path dir, JkBuild project, boolean compact, Path mainClasses, Path lockFile, List<Path> testRuntimeCp)
-            throws IOException {
-        return runTestsStampKey(dir, project, compact, mainClasses, null, lockFile, testRuntimeCp);
-    }
-
-    /**
-     * {@code mainClassesFingerprint} overrides the on-disk main-classes tree when non-null (post-
-     * {@code jk clean} projection from the compile action record).
-     */
-    public static @Nullable String runTestsStampKey(
-            Path dir,
-            JkBuild project,
-            boolean compact,
-            Path mainClasses,
-            @Nullable String mainClassesFingerprint,
-            Path lockFile,
-            List<Path> testRuntimeCp)
-            throws IOException {
-        return runTestsStampKey(
-                dir,
-                project,
-                compact,
-                mainClasses,
-                mainClassesFingerprint,
-                lockFile,
-                testRuntimeCp,
-                TestStamp.CompileTestKeys.NONE,
-                ClasspathFingerprint.ON_DISK,
-                null,
-                null);
-    }
-
-    /**
-     * {@code compileTestKeys} are the test compiles' action keys, one per language the module
-     * compiles tests in — the same inputs the live run-tests folds through {@link
-     * TestStamp#withCompileTest}. The runtime classpath is read through {@code identity}: after
-     * {@code jk clean} the sibling jars and the fixtures tree the stamp hashes are gone until the
-     * build restores them, and the forecast reads each as the bytes that come back. {@code
-     * pluginDecls} are the module's plugin declarations, whose test-source contributions the live
-     * run stamps too; null when the caller has none to offer.
-     */
-    public static @Nullable String runTestsStampKey(
-            Path dir,
-            JkBuild project,
-            boolean compact,
-            Path mainClasses,
-            @Nullable String mainClassesFingerprint,
-            Path lockFile,
-            List<Path> testRuntimeCp,
-            TestStamp.CompileTestKeys compileTestKeys,
-            ClasspathFingerprint.EntryIdentity identity,
-            @Nullable String profileName,
-            @Nullable PluginDeclarations pluginDecls)
-            throws IOException {
-        List<String> discovered =
-                TestSuites.available(dir, compact, project.build().testClassSuites());
-        // Session selection for suite resolution too — --all widens the suite set, and the
-        // forecast's source list must cover the same files the live run stamps.
-        var resolved = SessionContext.current().testSelection().resolve(discovered);
-        List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        // The same factory the live plan fills TEST_SOURCES from, so the forecast stamps exactly
-        // the files the run stamps: every selected suite's sources in every language, plus the
-        // `[test] extra-src` files that belong to the tier and to no suite.
-        BuildLayout layout = BuildLayout.of(dir, project);
-        List<Path> stampSrcs = TestSources.collect(project, dir, compact, suites, layout, pluginDecls)
-                .all();
-        List<Path> stampRt = PlannerVersions.withOwnVersions(
-                project, layout, PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp));
-        List<String> stampExtras =
-                TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
-        List<String> compiledSuites =
-                TestSuites.compiled(dir, compact, suites, project.build().testClassSuites());
-        // As the live copy: the test KSP round's output roots, then the suites' resources.
-        List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
-        stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
-        if (compiledSuites.contains(TestSuites.DEFAULT)) {
-            // The live run keys the default suite's [resources] test-dirs and staged test-filtered
-            // roots too. A staged root that no longer holds what its source expands to is one the
-            // run restages: nothing on disk prices it, so the suite is forecast to run.
-            if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
-            stampRes.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
-        }
-        String key = TestStamp.computeKey(
-                stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
-        if (Perf.enabled()) {
-            // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
-            // the same module, the forecast is predicting a suite re-run the build will skip. That
-            // is how `jk explain`'s missing test selection was found — every input printed here
-            // matched and only the key differed, which narrowed it to the one input not printed.
-            Perf.note(
-                    "fstamp " + dir,
-                    "key",
-                    key,
-                    "src",
-                    stampSrcs.size(),
-                    "res",
-                    stampRes.size(),
-                    "rt",
-                    stampRt.size(),
-                    "extras",
-                    stampExtras.size(),
-                    "X",
-                    stampExtras,
-                    "suites",
-                    suites,
-                    "cpFp",
-                    ClasspathFingerprint.of(stampRt, identity),
-                    "mainFp",
-                    mainClassesFingerprint != null ? mainClassesFingerprint : ClasspathFingerprint.entry(mainClasses));
-        }
-        return key;
     }
 
     /**

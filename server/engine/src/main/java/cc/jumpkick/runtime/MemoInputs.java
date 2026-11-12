@@ -196,7 +196,8 @@ final class MemoInputs {
                     ? "sibling:" + root.relativize(abs).toString().replace('\\', '/')
                     : ClasspathFingerprint.ON_DISK.of(jar);
         };
-        return PlannerSupport.testStampExtras(moduleDir, project, null, identity);
+        return TestStampInputs.of(TestStampInputs.Facts.of(moduleDir, project), identity)
+                .extras();
     }
 
     /**

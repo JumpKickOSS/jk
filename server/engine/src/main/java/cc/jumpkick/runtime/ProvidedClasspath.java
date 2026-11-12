@@ -158,6 +158,15 @@ public final class ProvidedClasspath {
             return jars.stream().filter(j -> !j.compileOnly()).map(Jar::path).toList();
         }
 
+        /** {@code cp}, then each of {@link #testRuntime} it does not hold yet: the test runtime classpath the classpath step publishes. */
+        List<Path> onTestRuntime(List<Path> cp) {
+            List<Path> out = new ArrayList<>(cp);
+            for (Path p : testRuntime()) {
+                if (!out.contains(p)) out.add(p);
+            }
+            return out;
+        }
+
         /** On the test classpaths alone. */
         List<Path> testOnly() {
             return jars.stream().filter(Jar::testOnly).map(Jar::path).toList();
