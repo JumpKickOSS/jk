@@ -44,10 +44,10 @@ final class ForecastPackagingTails {
             @Nullable Boolean knownResourceDrift,
             boolean compileDirty)
             throws IOException {
-        BuildLayout layout = prepared.layout();
-        boolean noSources = prepared.mainSrc().isEmpty()
-                && prepared.ktSrc().isEmpty()
-                && prepared.gvSrc().isEmpty();
+        BuildLayout layout = prepared.parsed().layout();
+        boolean noSources = prepared.parsed().mainSrc().isEmpty()
+                && prepared.parsed().ktSrc().isEmpty()
+                && prepared.parsed().gvSrc().isEmpty();
         if (!project.assembly() || noSources) return null;
         if (compileDirty) {
             return new TaskForecast.Task(
@@ -74,7 +74,6 @@ final class ForecastPackagingTails {
             JkBuild project,
             Path dir,
             Prepared prepared,
-            List<Path> mainCp,
             ActionKey.EntryToken abiToken,
             ActionCache actionCache,
             Cas cas,
@@ -85,29 +84,32 @@ final class ForecastPackagingTails {
             return new TaskForecast.Task(
                     TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.RUN, "javadoc · compile changed", null);
         }
-        BuildLayout layout = prepared.layout();
-        List<Path> javaSources = prepared.mainSrc().stream()
+        BuildLayout layout = prepared.parsed().layout();
+        List<Path> javaSources = prepared.parsed().mainSrc().stream()
                 .filter(p -> p.toString().endsWith(".java"))
                 .toList();
         // The live step documents against what javac saw plus the module's own classes.
-        List<Path> classpath = new ArrayList<>(mainCp);
+        List<Path> classpath = new ArrayList<>(prepared.classpaths().main());
         classpath.add(layout.classesDir());
         List<String> options = JavadocTool.options(
                 project.project().javadocMode(),
-                prepared.release(),
-                PlannerCompile.javacOptions(prepared.javacArgs(), project.javac()));
+                prepared.parsed().release(),
+                PlannerCompile.javacOptions(prepared.parsed().javacArgs(), project.javac()));
         // Kotlin sources make it a Dokka run; an exact [dokka] version (the default) needs no catalog.
-        String dokkaVersion = prepared.ktSrc().isEmpty()
+        String dokkaVersion = prepared.parsed().ktSrc().isEmpty()
                 ? null
                 : DokkaResolver.version(project, RepoGroupBuilder.buildFor(project, null, cas));
         // Scala sources (in a module without Kotlin) make it a scaladoc run at the compiler's release.
-        List<Path> scalaSources = PlannerJavadoc.scaladocSources(prepared.mainSrc(), prepared.ktSrc());
-        String scalaVersion = scalaSources.isEmpty() ? null : PlannerJavadoc.scaladocVersion(project, prepared.lock());
+        List<Path> scalaSources = PlannerJavadoc.scaladocSources(
+                prepared.parsed().mainSrc(), prepared.parsed().ktSrc());
+        String scalaVersion = scalaSources.isEmpty()
+                ? null
+                : PlannerJavadoc.scaladocVersion(project, prepared.parsed().lock());
         String jdKey = PackagingKeys.javadoc(
                         layout.javadocJar(),
                         dir,
                         javaSources,
-                        scalaSources.isEmpty() ? prepared.ktSrc() : scalaSources,
+                        scalaSources.isEmpty() ? prepared.parsed().ktSrc() : scalaSources,
                         classpath,
                         abiToken,
                         options,

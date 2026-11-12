@@ -465,6 +465,6 @@ public final class PlannerTails {
     static TaskForecast.@Nullable Task forecastJavadoc(ForecastScope s) throws Exception {
         s.projectOwnOutputs();
         return ForecastPackagingTails.javadoc(
-                s.project, s.dir, s.prepared(), s.mainCp, s.restored.abiToken(), s.actionCache, s.cas, s.compileDirty);
+                s.project, s.dir, s.prepared(), s.restored.abiToken(), s.actionCache, s.cas, s.compileDirty);
     }
 }

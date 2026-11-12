@@ -63,6 +63,18 @@ record ModuleShape(
         return procs != null && !procs.isEmpty();
     }
 
+    /**
+     * The module declares a processor compile-test reads: either table's, or the test table's alone
+     * under its {@code inherit = false}.
+     */
+    static boolean hasTestProcessorDeps(JkBuild build) {
+        for (Scope scope : ProcessorPaths.testScopes(build)) {
+            List<Dependency> declared = build.dependencies().byScope().get(scope);
+            if (declared != null && !declared.isEmpty()) return true;
+        }
+        return false;
+    }
+
     private static boolean contributesSources(@Nullable PluginDeclarations decls) {
         if (decls == null) return false;
         for (TaskDecl step : decls.steps()) {

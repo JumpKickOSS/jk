@@ -427,11 +427,12 @@ public final class PlannerResources {
      */
     static TaskForecast.@Nullable Task forecastCopy(ForecastScope s) throws Exception {
         ForecastScope.Prepared p = s.prepared();
-        Path classes = p.layout().classesDir();
+        Path classes = p.parsed().layout().classesDir();
         if (s.compileDirty || !Files.isDirectory(classes)) return null;
         // A KSP round that runs mirrors output nothing knows yet into the tree.
-        s.mainResourceDrift =
-                s.kspRuns() || TaskForecaster.mainResourcesOutOfSync(s.dir, s.project, p.compact(), classes);
+        s.mainResourceDrift = s.kspRuns()
+                || TaskForecaster.mainResourcesOutOfSync(
+                        s.dir, s.project, p.parsed().compact(), classes);
         BuildBlock.BuildInfo buildInfo = s.project.build().buildInfo();
         if (buildInfo != null) {
             // A rewritten git.properties changes the classes tree package-jar keys on, so the
@@ -441,8 +442,8 @@ public final class PlannerResources {
         }
         if (s.project.build().moduleServices()) {
             // Services files written from module-info change the tree package-jar keys on, too.
-            s.moduleServicesDrift =
-                    PlannerModuleServices.outOfSync(classes, PlannerModuleServices.incremental(p.layout()));
+            s.moduleServicesDrift = PlannerModuleServices.outOfSync(
+                    classes, PlannerModuleServices.incremental(p.parsed().layout()));
             s.mainResourceDrift |= s.moduleServicesDrift;
         }
         s.knownResourceDrift = s.mainResourceDrift;

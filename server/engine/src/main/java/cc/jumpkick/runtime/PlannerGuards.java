@@ -3,13 +3,12 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.guard.eval.GuardMessages.WITHHELD;
 import static cc.jumpkick.guard.eval.GuardMessages.withheldNotice;
-import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
-import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
@@ -341,7 +340,7 @@ final class PlannerGuards {
                             List.of(moduleDir),
                             EvalContext.lazy(() -> FactsIndexing.load(main)),
                             testFacts(test),
-                            () -> ctx.get(CLASSPATH).orElse(List.of()));
+                            () -> ctx.require(CLASSPATHS).main());
                     // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
                     Path guardClasses = ctx.require(LAYOUT).guardClassesDir();
                     List<Rule> suiteRules = List.of();
@@ -390,8 +389,7 @@ final class PlannerGuards {
                         List<Path> runtimeCp = PlannerGuardSuite.classpath(
                                 ctx.require(PROJECT),
                                 ctx.require(LAYOUT),
-                                ctx.get(TEST_RUNTIME_CP)
-                                        .orElseGet(() -> ctx.get(CLASSPATH).orElse(List.of())),
+                                ctx.require(CLASSPATHS).testRuntime(),
                                 library);
                         GuardSuiteRunner.Inputs inputs = new GuardSuiteRunner.Inputs(
                                 g.root(),
@@ -1126,7 +1124,7 @@ final class PlannerGuards {
     /** The module lane's price: its verdict under the lane's key, stale whenever the compile runs. */
     static TaskForecast.@Nullable Task forecastModuleLane(ForecastScope s) throws Exception {
         return GuardKeys.forecastModuleLane(
-                        s.dir, s.prepared().layout(), s.actionCache, s.force || s.compileDirty, s.skipTests)
+                        s.dir, s.prepared().parsed().layout(), s.actionCache, s.force || s.compileDirty, s.skipTests)
                 .orElse(null);
     }
 

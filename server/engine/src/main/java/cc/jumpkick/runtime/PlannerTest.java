@@ -251,7 +251,7 @@ public final class PlannerTest {
     /** target/classes, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
     private static List<Path> testCompileClasspath(TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, TestSources src)
             throws Exception {
-        List<Path> compileCp = ctx.require(COMPILE_TEST_CP);
+        List<Path> compileCp = ctx.require(CLASSPATHS).testCompile();
         List<Path> baseCp = new ArrayList<>();
         baseCp.add(ctx.require(MAIN_CLASSES));
         baseCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), baseCp);
@@ -405,12 +405,7 @@ public final class PlannerTest {
         // request builder discovers classpath processors
         // when none are declared, exactly as compile-main does, so a Lombok-using test sees its
         // generated members.
-        List<Path> shared = ctx.require(PROCESSOR_CP);
-        List<Path> processorCp = ProcessorPaths.forTest(
-                ctx.require(PROJECT),
-                shared,
-                ctx.get(JAVAC_PROCESSOR_CP).orElse(shared),
-                ctx.get(TEST_PROCESSOR_CP).orElse(shared));
+        ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);
         ScalaCompile.Setup scalaSetup =
@@ -422,8 +417,8 @@ public final class PlannerTest {
                 new PlannerCompile.TestCompile(
                         src.javacSources(),
                         javaCp,
-                        processorCp,
-                        ctx.require(CONTRIBUTED_TEST_PROCESSOR_CP),
+                        classpaths.javacTestProcessor(),
+                        classpaths.contributedTestProcessor(),
                         javaTestOut,
                         ctx.require(PROJECT).javac().testRelease(ctx.require(RELEASE)),
                         javacArgs,
@@ -431,7 +426,7 @@ public final class PlannerTest {
                         ctx.require(JAVA_HOME),
                         scalaSetup,
                         ctx.require(MAIN_CLASSES),
-                        ProcessorPaths.discovers(ctx.require(PROJECT)),
+                        classpaths.testProcessorDiscovery(),
                         CompilerJdk.pinned(ctx.require(PROJECT), in.session())),
                 genDir,
                 cas,
@@ -855,8 +850,8 @@ public final class PlannerTest {
                         in.session().testSelection(),
                         pluginDecls,
                         workerJars,
-                        ctx.require(TEST_RUNTIME_CP),
-                        PlannerKsp.contributedProvidedFor(ctx),
+                        ctx.require(CLASSPATHS).testRuntime(),
+                        ctx.require(CLASSPATHS).providedRuntime(),
                         compileTestKeys(ctx)),
                 ClasspathFingerprint.ON_DISK);
     }

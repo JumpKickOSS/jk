@@ -42,7 +42,7 @@ final class PlannerTestForecast {
         if (s.skipTests || !s.haveTests()) return null;
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
-        BuildLayout layout = prepared.layout();
+        BuildLayout layout = prepared.parsed().layout();
         TestSources testSources = s.testSources();
         if (!s.compileDirty) {
             s.compileTestKotlinKey = testSources.ktTest().isEmpty()
@@ -66,10 +66,10 @@ final class PlannerTestForecast {
                     null);
             s.testDirty = true;
         } else if (!testSources.javacSources().isEmpty()) {
-            int release = prepared.release();
+            int release = prepared.parsed().release();
             List<Path> baseCp = new ArrayList<>();
             baseCp.add(layout.classesDir());
-            baseCp.addAll(s.testCompileCp());
+            baseCp.addAll(prepared.classpaths().testCompile());
             baseCp = PlannerFixtures.withOwnFixtures(s.project, layout, baseCp);
             Path testOut = layout.testClassesDir();
             // javac reads the Kotlin and Groovy test outputs beside it, as their records restore them.
@@ -77,22 +77,23 @@ final class PlannerTestForecast {
             if (outs.mixedKotlin()) s.restored.projectFromRecord(outs.kotlinOut(), s.compileTestKotlinKey);
             if (outs.mixedGroovy()) s.restored.projectFromRecord(outs.groovyOut(), s.compileTestGroovyKey);
             List<Path> javacCp = outs.javacClasspath(baseCp);
-            ScalaCompile.Setup testScala =
-                    testSources.scTest().isEmpty() ? null : ScalaCompile.prepare(s.project, prepared.lock(), s.cas);
+            ScalaCompile.Setup testScala = testSources.scTest().isEmpty()
+                    ? null
+                    : ScalaCompile.prepare(s.project, prepared.parsed().lock(), s.cas);
             List<Path> testSrc = testSources.javacSources();
             CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
                     testSrc,
                     javacCp,
-                    prepared.javacTestProcessorCp(s.project),
-                    prepared.contributedProcessors().test(),
+                    prepared.classpaths().javacTestProcessor(),
+                    prepared.classpaths().contributedTestProcessor(),
                     testOut,
                     s.project.javac().testRelease(release),
-                    prepared.javacArgs(),
+                    prepared.parsed().javacArgs(),
                     s.project.javac().forTests(),
                     prepared.javaHome(),
                     testScala,
                     layout.classesDir(),
-                    ProcessorPaths.discovers(s.project),
+                    prepared.classpaths().testProcessorDiscovery(),
                     CompilerJdk.pinned(s.project, SessionContext.current())));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path stateDir = ActionKey.stateDir(
@@ -139,7 +140,7 @@ final class PlannerTestForecast {
                 && Files.isDirectory(layout.classesDir())
                 && Files.isDirectory(layout.testClassesDir())
                 && TaskForecaster.resourcesOutOfSync(
-                        ModuleLayout.testResourcesDir(s.dir, prepared.compact()), layout.testClassesDir())) {
+                        ModuleLayout.testResourcesDir(s.dir, prepared.parsed().compact()), layout.testClassesDir())) {
             return new TaskForecast.Task(
                     TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, TaskForecast.TEST_RESOURCES_CHANGED, null);
         }
@@ -174,8 +175,8 @@ final class PlannerTestForecast {
         if (s.skipTests || !s.haveTests()) return null;
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
-        boolean compact = prepared.compact();
-        BuildLayout layout = prepared.layout();
+        boolean compact = prepared.parsed().compact();
+        BuildLayout layout = prepared.parsed().layout();
         int estimated = TestSupport.estimateAllSuiteTestCount(s.dir, compact);
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
@@ -195,10 +196,8 @@ final class PlannerTestForecast {
                         s.project,
                         layout,
                         s.profileName,
-                        prepared.pkgDecls(),
-                        prepared.lock(),
-                        s.resolver,
-                        prepared.provided(),
+                        prepared.parsed().pkgDecls(),
+                        prepared.classpaths(),
                         new TestStamp.CompileTestKeys(
                                 s.compileTestKey, s.compileTestKotlinKey, s.compileTestGroovyKey)),
                 s.restored.identity());

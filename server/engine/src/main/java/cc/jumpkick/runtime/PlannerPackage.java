@@ -445,8 +445,8 @@ public final class PlannerPackage {
     static TaskForecast.@Nullable Task forecastJar(ForecastScope s) throws Exception {
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
-        BuildLayout layout = prepared.layout();
-        boolean noSources = prepared.noSources();
+        BuildLayout layout = prepared.parsed().layout();
+        boolean noSources = prepared.parsed().noSources();
         if (noSources
                 && (s.project.isWorkspaceRoot() || (Files.isRegularFile(layout.mainJar()) && !s.mainResourceDrift))) {
             // A source-less member packages a jar of its copied resources that sibling classpaths
@@ -471,7 +471,7 @@ public final class PlannerPackage {
             return new TaskForecast.Task(
                     TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · KSP round runs", null);
         }
-        ActivePlugins.@Nullable Declared plugin = prepared.plugin();
+        ActivePlugins.@Nullable Declared plugin = prepared.parsed().plugin();
         if (PackagingKeys.ownsPackaging(plugin)) {
             // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android): the
             // build runs the packager under its own token bag, so the key comes from the same body
@@ -484,7 +484,8 @@ public final class PlannerPackage {
         byte[] sbom = null;
         if (s.project.isApplication()) {
             try {
-                sbom = PlannerPlugin.applicationSbom(s.project, prepared.lock());
+                sbom = PlannerPlugin.applicationSbom(
+                        s.project, prepared.parsed().lock());
             } catch (Exception e) {
                 // best-effort: a missing SBOM keys an empty sbom: token, like a null one
                 Log.debug("forecastJar: best-effort", e);
@@ -497,7 +498,7 @@ public final class PlannerPackage {
         if (classesTok == null) {
             classesTok = PackagingKeys.classesTokenForPackage(
                     s.dir,
-                    prepared.compact(),
+                    prepared.parsed().compact(),
                     layout,
                     s.project,
                     s.actionCache,
@@ -507,7 +508,7 @@ public final class PlannerPackage {
         // A worker's vendored sibling class dirs are the declared set the build lists, each read
         // as the tree the build restores.
         String contribTok = PlannerSupport.contributionsToken(
-                PackagingKeys.packagedContributions(prepared.pkgDecls(), layout, s.dir, s.project),
+                PackagingKeys.packagedContributions(prepared.parsed().pkgDecls(), layout, s.dir, s.project),
                 s.restored.identity());
         String pkgKey = PackagingKeys.packageJar(jar, s.dir, s.project, classesTok, contribTok, sbom)
                 .key();

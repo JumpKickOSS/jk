@@ -875,8 +875,8 @@ public final class PlannerNative {
      */
     static TaskForecast.@Nullable Task forecast(ForecastScope s) throws Exception {
         ForecastScope.Prepared p = s.prepared();
-        if (p.noSources()) return null;
-        BuildLayout layout = p.layout();
+        if (p.parsed().noSources()) return null;
+        BuildLayout layout = p.parsed().layout();
         TaskForecast.Task step = ForecastPackagingTails.nativeImage(
                 s.project,
                 s.dir,

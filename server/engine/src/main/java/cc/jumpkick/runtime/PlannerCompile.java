@@ -462,7 +462,7 @@ public final class PlannerCompile {
         AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         return Task.builder(TaskNames.COMPILE_JAVA)
-                .forecast(StepForecast.priced(s -> PlannerCompileForecast.java(ForecastScope.of(s))))
+                .forecast(StepForecast.priced(PlannerCompileForecast::java))
                 .stage(BuildStage.COMPILE)
                 .label("Compiling")
                 .kind(TaskKind.CPU)
@@ -520,9 +520,8 @@ public final class PlannerCompile {
             ctx.put(BUILD_OUTCOME, "no-sources");
             return;
         }
-        List<Path> baseClasspath = ctx.require(CLASSPATH);
+        ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         Path groovyJar = cx.mixedGroovy() ? groovyCompileJar(ctx, cas) : null;
-        List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
         boolean rerun = in.session().config().rebuildOr(false);
         // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
         // of the request the stamp is derived from — a scala-version bump must invalidate
@@ -535,9 +534,9 @@ public final class PlannerCompile {
                 hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
         CompileRequest request = mainCompileRequest(new MainCompile(
                 sources,
-                baseClasspath,
-                processorCp,
-                ctx.require(CONTRIBUTED_PROCESSOR_CP),
+                classpaths.main(),
+                classpaths.javacProcessor(),
+                classpaths.contributedProcessor(),
                 ctx.require(LAYOUT),
                 javaOut,
                 ctx.require(RELEASE),
@@ -862,7 +861,7 @@ public final class PlannerCompile {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_KOTLIN)
-                .forecast(StepForecast.priced(s -> PlannerCompileForecast.kotlin(ForecastScope.of(s))))
+                .forecast(StepForecast.priced(PlannerCompileForecast::kotlin))
                 .stage(BuildStage.COMPILE)
                 .label("Kotlin")
                 .kind(TaskKind.CPU)
@@ -909,7 +908,7 @@ public final class PlannerCompile {
                         ctx.put(KOTLIN_OUTCOME, "no-sources");
                         return;
                     }
-                    List<Path> classpath = ctx.require(CLASSPATH);
+                    List<Path> classpath = ctx.require(CLASSPATHS).main();
                     // Freshness inputs: Kotlin sources plus — in a mixed module — the Java
                     // sources, since kotlinc compiles against the Java output (kotlincCp
                     // includes `classes`) and a Java edit can make our .class files stale. The
@@ -1023,7 +1022,7 @@ public final class PlannerCompile {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         return Task.builder(TaskNames.COMPILE_GROOVY)
-                .forecast(StepForecast.priced(s -> PlannerCompileForecast.groovy(ForecastScope.of(s))))
+                .forecast(StepForecast.priced(PlannerCompileForecast::groovy))
                 .stage(BuildStage.COMPILE)
                 .label("Groovy")
                 .kind(TaskKind.CPU)
@@ -1068,7 +1067,7 @@ public final class PlannerCompile {
                         return;
                     }
                     List<Path> classpath = groovyClasspath(
-                            ctx.require(CLASSPATH),
+                            ctx.require(CLASSPATHS).main(),
                             ctx.require(LAYOUT),
                             kotlinModule && !kotlinSources(ctx).isEmpty());
                     // Freshness inputs: Groovy sources plus — in a mixed module — the Java

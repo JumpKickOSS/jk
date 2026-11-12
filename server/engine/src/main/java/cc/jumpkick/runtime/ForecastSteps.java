@@ -313,9 +313,10 @@ final class ForecastSteps {
             // members are invisible to every consumer and their edits are body-only.
             own = SourceApiIndex.classify(
                     dir,
-                    SourceApiIndex.load(SourceApiIndex.path(prepared.layout().buildDir())),
-                    prepared.mainSrc(),
-                    !prepared.processorCp().isEmpty());
+                    SourceApiIndex.load(
+                            SourceApiIndex.path(prepared.parsed().layout().buildDir())),
+                    prepared.parsed().mainSrc(),
+                    !prepared.classpaths().processor().isEmpty());
         } catch (IOException e) {
             Log.debug("ownApiHint: no baseline", e);
             return SourceApiIndex.Hint.UNKNOWN;

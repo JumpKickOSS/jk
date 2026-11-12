@@ -37,12 +37,13 @@ class ProcessorClasspathTest {
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
         assertThat(siblings.missingSiblingClasses()).isEmpty();
 
-        List<Path> cp = PlannerSupport.processorClasspath(
+        List<Path> cp = ModuleClasspaths.processorPath(
                 consumer,
                 build,
                 Lockfile.empty("test"),
                 new ClasspathResolver(new Cas(tmp.resolve("cas"))),
                 siblings,
+                Set.of(Scope.PROCESSOR),
                 false);
 
         // The sibling's <module>/target/classes, the tree, not the jar: javac loads the processor and its service
@@ -110,24 +111,10 @@ class ProcessorClasspathTest {
         JkBuild build = JkBuildParser.parse(consumer.resolve("jk.toml"));
         ClasspathResolver resolver = new ClasspathResolver(new Cas(tmp.resolve("cas")));
 
-        List<Path> main = PlannerSupport.processorClasspath(
-                consumer,
-                build,
-                Lockfile.empty("test"),
-                resolver,
-                WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR)),
-                false);
-        List<Path> test = PlannerSupport.processorClasspath(
-                consumer,
-                build,
-                Lockfile.empty("test"),
-                resolver,
-                WorkspaceClasspath.resolve(consumer, build, ClasspathResolver.PROCESSOR_PATH),
-                ClasspathResolver.PROCESSOR_PATH,
-                false);
+        ModuleClasspaths classpaths = derive(consumer, build, Lockfile.empty("test"), resolver);
 
-        assertThat(main).isEmpty();
-        assertThat(test).contains(root.resolve("proc/target/classes"));
+        assertThat(classpaths.processor()).isEmpty();
+        assertThat(classpaths.javacTestProcessor()).contains(root.resolve("proc/target/classes"));
     }
 
     @Test
@@ -164,29 +151,22 @@ class ProcessorClasspathTest {
 
         Files.writeString(consumer.resolve("jk.toml"), tables + "tproc = { workspace = true }\n");
         JkBuild inheriting = JkBuildParser.parse(consumer.resolve("jk.toml"));
-        List<Path> shared = List.of(procClasses);
-        assertThat(ProcessorPaths.forTest(
-                        inheriting,
-                        shared,
-                        shared,
-                        ProcessorPaths.testClosure(inheriting, lock, resolver, consumer, false)))
+        ModuleClasspaths inherited = derive(consumer, inheriting, lock, resolver);
+        assertThat(inherited.processor()).containsExactly(procClasses);
+        assertThat(inherited.javacTestProcessor())
                 .as("by default compile-test runs the shared table's processor beside its own")
                 .containsExactly(procClasses, tproc);
+        assertThat(inherited.kspTestProcessor()).containsExactly(procClasses, tproc);
 
         Files.writeString(consumer.resolve("jk.toml"), tables + "inherit = false\ntproc = { workspace = true }\n");
         JkBuild own = JkBuildParser.parse(consumer.resolve("jk.toml"));
-        assertThat(ProcessorPaths.forTest(
-                        own, shared, shared, ProcessorPaths.testClosure(own, lock, resolver, consumer, false)))
+        assertThat(derive(consumer, own, lock, resolver).javacTestProcessor())
                 .as("inherit = false: the test table alone, the main-only processor stays off the tests")
-                .containsExactly(tproc);
-        assertThat(ProcessorPaths.forecastTest(own, lock, resolver, consumer, shared))
-                .as("the forecast derives the path the build does")
                 .containsExactly(tproc);
 
         Files.writeString(consumer.resolve("jk.toml"), tables + "inherit = false\n");
         JkBuild none = JkBuildParser.parse(consumer.resolve("jk.toml"));
-        assertThat(ProcessorPaths.forTest(
-                        none, shared, shared, ProcessorPaths.testClosure(none, lock, resolver, consumer, false)))
+        assertThat(derive(consumer, none, lock, resolver).javacTestProcessor())
                 .as("an empty non-inheriting table declares nothing, so compile-test discovers on its classpath")
                 .isEmpty();
     }
@@ -211,6 +191,19 @@ class ProcessorClasspathTest {
                 .containsExactly(
                         "[processor-dependencies] com.example:nope",
                         "[test-processor-dependencies] com.example:test-nope");
+    }
+
+    /** The classpaths of the module at {@code dir}, as the forecast derives them. */
+    private static ModuleClasspaths derive(Path dir, JkBuild build, Lockfile lock, ClasspathResolver resolver)
+            throws Exception {
+        return ModuleClasspaths.derive(
+                dir,
+                build,
+                ModuleShape.of(build, dir, null),
+                lock,
+                resolver,
+                ModuleClasspaths.Contributions.NONE,
+                ModuleClasspaths.Mode.FORECAST);
     }
 
     /** A two-module workspace: {@code consumer} takes {@code proc} as a processor, and proc has compiled. */

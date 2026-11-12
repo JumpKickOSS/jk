@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_CP;
-import static cc.jumpkick.runtime.BuildPlanner.CONTRIBUTED_PROCESSOR_CP;
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
-import static cc.jumpkick.runtime.BuildPlanner.JAVAC_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
-import static cc.jumpkick.runtime.BuildPlanner.PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
@@ -215,17 +212,16 @@ public final class PlannerFixtures {
                         return;
                     }
                     PlannerSetup.awaitSiblingTestCompile(ctx, in);
-                    List<Path> compileCp = ctx.require(COMPILE_TEST_CP);
+                    ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
                     List<Path> classpath = new ArrayList<>();
                     classpath.add(ctx.require(MAIN_CLASSES));
-                    classpath.addAll(compileCp);
-                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                    classpath.addAll(classpaths.testCompile());
                     List<String> javacArgs = ctx.require(JAVAC_ARGS);
                     CompileRequest request = fixturesCompileRequest(
                             sources,
                             classpath,
-                            processorCp,
-                            ctx.require(CONTRIBUTED_PROCESSOR_CP),
+                            classpaths.javacProcessor(),
+                            classpaths.contributedProcessor(),
                             out,
                             ctx.require(RELEASE),
                             javacArgs,
@@ -302,16 +298,16 @@ public final class PlannerFixtures {
                 s.compileDirty,
                 s.project,
                 s.dir,
-                p.layout(),
-                p.javacProcessorCp(),
-                p.contributedProcessors().main(),
-                p.release(),
-                p.javacArgs(),
+                p.parsed().layout(),
+                p.classpaths().javacProcessor(),
+                p.classpaths().contributedProcessor(),
+                p.parsed().release(),
+                p.parsed().javacArgs(),
                 p.javaHome(),
                 s.cache,
                 s.actionCache,
                 s.workerJar,
-                s.testCompileCp(),
+                p.classpaths().testCompile(),
                 s.restored);
         return out.isEmpty() ? null : out.getFirst();
     }

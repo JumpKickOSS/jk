@@ -70,7 +70,8 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
-    public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
+    /** Every classpath the module's compiles and tests read; published by {@code resolve-deps}. */
+    static final BuildPlanKey<ModuleClasspaths> CLASSPATHS = BuildPlanKey.scalar("classpaths", ModuleClasspaths.class);
 
     public static final BuildPlanKey<List<Path>> JAVA_SOURCES = BuildPlanKey.list("java-sources", Path.class);
 
@@ -79,30 +80,6 @@ public final class BuildPlanner {
     public static final BuildPlanKey<List<Path>> GROOVY_SOURCES = BuildPlanKey.list("groovy-sources", Path.class);
 
     public static final BuildPlanKey<List<String>> JAVAC_ARGS = BuildPlanKey.list("javac-args", String.class);
-
-    public static final BuildPlanKey<List<Path>> PROCESSOR_CP = BuildPlanKey.list("processor-cp", Path.class);
-
-    /** The javac half of the processor split — set by the ksp step (KSP jars removed). */
-    public static final BuildPlanKey<List<Path>> JAVAC_PROCESSOR_CP =
-            BuildPlanKey.list("javac-processor-cp", Path.class);
-
-    /** The compile-test processor path: {@link #PROCESSOR_CP} plus the {@code [test-processor-dependencies]} closure. */
-    public static final BuildPlanKey<List<Path>> TEST_PROCESSOR_CP = BuildPlanKey.list("test-processor-cp", Path.class);
-
-    /** The annotation-processor jars the module's plugins append to compile-main's processor path. */
-    public static final BuildPlanKey<List<Path>> CONTRIBUTED_PROCESSOR_CP =
-            BuildPlanKey.list("contributed-processor-cp", Path.class);
-
-    /** The annotation-processor jars the module's plugins append to compile-test's processor path. */
-    public static final BuildPlanKey<List<Path>> CONTRIBUTED_TEST_PROCESSOR_CP =
-            BuildPlanKey.list("contributed-test-processor-cp", Path.class);
-
-    /** The [[contribute.provided-classpath]] jars (platform), published for the test step. */
-    public static final BuildPlanKey<List<Path>> PROVIDED_CP = BuildPlanKey.list("provided-cp", Path.class);
-
-    public static final BuildPlanKey<List<Path>> COMPILE_TEST_CP = BuildPlanKey.list("cp-test", Path.class);
-
-    public static final BuildPlanKey<List<Path>> TEST_RUNTIME_CP = BuildPlanKey.list("cp-runtime", Path.class);
 
     public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
 
@@ -208,19 +185,11 @@ public final class BuildPlanner {
             NODE_INSTALLED,
             NODE_EXPORTS,
             RELEASE,
-            CLASSPATH,
+            CLASSPATHS,
             JAVA_SOURCES,
             KOTLIN_SOURCES,
             GROOVY_SOURCES,
             JAVAC_ARGS,
-            PROCESSOR_CP,
-            JAVAC_PROCESSOR_CP,
-            TEST_PROCESSOR_CP,
-            CONTRIBUTED_PROCESSOR_CP,
-            CONTRIBUTED_TEST_PROCESSOR_CP,
-            PROVIDED_CP,
-            COMPILE_TEST_CP,
-            TEST_RUNTIME_CP,
             ACTION_KEY,
             KOTLIN_ACTION_KEY,
             GROOVY_ACTION_KEY,

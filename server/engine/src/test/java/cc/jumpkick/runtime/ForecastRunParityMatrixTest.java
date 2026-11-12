@@ -45,8 +45,10 @@ import org.junit.jupiter.api.io.TempDir;
  * and the preflight's walk find every module clean, and one source edit makes exactly the edited
  * module dirty. Each fixture is a workspace of the module under test beside a plain Java module, in
  * a shape whose run differs from the plain one: a Kotlin module with processors, a Kotlin or Groovy
- * module a plugin generates Java for, a plugin that hands the test JVM flags and classpath, and a
- * plugin's provided jars on the test JVM's classpath.
+ * module a plugin generates Java for, a plugin that hands the test JVM flags and classpath, a
+ * plugin's provided jars on the test JVM's classpath, a Java module whose compile classpath,
+ * processor path and test processor path each carry their own entries, and a Kotlin module whose
+ * multi-release root compiles against the provided jars with no Java main sources.
  */
 @Tag("integration")
 class ForecastRunParityMatrixTest {
@@ -151,6 +153,46 @@ class ForecastRunParityMatrixTest {
                 [provided-matrix]
                 """, Lib.JAVA);
         assertParity(ws, "src/com/example/Lib.java");
+    }
+
+    @Test
+    void java_with_processors_and_a_sibling() throws Exception {
+        // The sibling's classes tree on the compile classpath, the processor path, and a test
+        // table that does not inherit it: compile-test's own path.
+        Path ws = workspace("""
+                [dependencies]
+                b = { workspace = true }
+
+                [processor-dependencies]
+                auto-service = { group = "com.google.auto.service", version = "1.1.1" }
+
+                [test-processor-dependencies]
+                inherit = false
+                auto-service = { group = "com.google.auto.service", version = "1.1.1" }
+                """, Lib.JAVA);
+        assertParity(ws, "src/com/example/Lib.java", true);
+    }
+
+    @Test
+    void kotlin_with_provided_jars_and_a_multi_release_root() throws Exception {
+        // No Java main sources, so compile-java prices nothing; compile-versions still compiles
+        // against the main classpath, the plugin's provided jar included.
+        Path ws = workspace("""
+                kotlin = "^2.4.10"
+
+                [provided-matrix]
+
+                [multi-release]
+                25 = "mr/java25"
+                """, Lib.KOTLIN);
+        write(ws.resolve("a/mr/java25/com/example/Versioned.java"), """
+                package com.example;
+
+                public final class Versioned {
+                    private Versioned() {}
+                }
+                """);
+        assertParity(ws, "src/com/example/Lib.kt");
     }
 
     /**

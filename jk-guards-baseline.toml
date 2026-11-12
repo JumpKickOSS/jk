@@ -2197,7 +2197,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 275, edges = 1026 }
+"server/engine" = { classes = 276, edges = 1031 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
@@ -2206,7 +2206,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope"
-value  = 22
+value  = 21
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2222,11 +2222,6 @@ reason = "the runtime packages as the coupling guard first measured them"
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
 value  = 21
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-efferent-coupling.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerCompileForecast"
-value  = 16
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2265,11 +2260,6 @@ value  = 37
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerTestForecast"
-value  = 16
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-efferent-coupling.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PluginBuild"
 value  = 16
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2296,7 +2286,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 275, edges = 1026 }
+"server/engine" = { classes = 276, edges = 1031 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2389,13 +2379,8 @@ value  = 14
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerCompile"
-value  = 7
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerFixtures"
-value  = 21
+value  = 20
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2534,11 +2519,6 @@ value  = 5
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport~cc.jumpkick.runtime.PlannerVersions"
-value  = 2
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport~cc.jumpkick.runtime.PluginBuild"
 value  = 2
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2585,7 +2565,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 275, edges = 1026 }
+"server/engine" = { classes = 276, edges = 1041 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -2609,7 +2589,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport"
-value  = 24
+value  = 18
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"

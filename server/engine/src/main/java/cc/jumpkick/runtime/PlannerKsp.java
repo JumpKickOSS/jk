@@ -26,9 +26,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
-import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildStage;
@@ -196,11 +194,6 @@ public final class PlannerKsp {
         return out;
     }
 
-    /** The provided-classpath contribution (platform jars), re-read for the test step. */
-    static List<Path> contributedProvidedFor(TaskContext ctx) {
-        return ctx.get(PROVIDED_CP).orElse(List.of());
-    }
-
     /**
      * The processor-authored diagnostics in a successful KSP round's output.
      *
@@ -346,34 +339,22 @@ public final class PlannerKsp {
     }
 
     /**
-     * Whether a Kotlin module declares any processor a test round could run: either table's, or the
-     * test table's alone under its {@code inherit = false}.
-     */
-    private static boolean mayRunTestRound(JkBuild project, boolean kotlinModule) {
-        if (!kotlinModule) return false;
-        for (Scope scope : ProcessorPaths.testScopes(project)) {
-            List<Dependency> declared = project.dependencies().byScope().get(scope);
-            if (declared != null && !declared.isEmpty()) return true;
-        }
-        return false;
-    }
-
-    /**
      * Remove the output of each round the module can no longer run, before anything reads it: the
      * main round's when no {@code ksp} step is planned, the test round's when the module declares
      * no processor at all. What a removed processor generated must not compile, ship or test.
      */
     static void dropRetiredRounds(BuildPlanner.Ctx cx, BuildLayout layout, JkBuild project) throws IOException {
         if (!cx.ksp()) PathUtil.deleteRecursively(kspOutBase(layout));
-        if (!mayRunTestRound(project, cx.kotlinModule())) dropTestRound(layout);
+        // A test round runs only in a Kotlin module that declares a processor compile-test reads.
+        if (!cx.kotlinModule() || !ModuleShape.hasTestProcessorDeps(project)) dropTestRound(layout);
     }
 
     /** The main KSP2 round: split the processors, then run the round over the main sources. */
     private static void runKsp(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
-        List<Path> processorCp = ctx.require(PROCESSOR_CP);
+        ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
+        List<Path> processorCp = classpaths.processor();
         var split = KspProcessors.split(processorCp);
-        ctx.put(JAVAC_PROCESSOR_CP, split.javac());
         BuildLayout layout = ctx.require(LAYOUT);
         if (split.ksp().isEmpty()) {
             // Processors that are all javac's leave nothing of an earlier round to read.
@@ -390,7 +371,7 @@ public final class PlannerKsp {
                 TaskNames.KSP,
                 kspSourceRoots(cx.in(), project, layout, pluginDecls, cx.compact()),
                 mainRoundInputs(kotlinSources(ctx), javaSources(ctx), layout, pluginDecls),
-                ctx.require(CLASSPATH),
+                classpaths.main(),
                 processorCp,
                 split.ksp());
         if (runRound(ctx, cx, round) == RoundOutcome.KEPT) {
@@ -655,9 +636,7 @@ public final class PlannerKsp {
         BuildLayout layout = ctx.require(LAYOUT);
         if (!cx.kotlinModule()) return dropped(dropTestRound(layout));
         Path outBase = kspTestOutBase(layout);
-        List<Path> shared = ctx.require(PROCESSOR_CP);
-        List<Path> processorCp = ProcessorPaths.forTest(
-                ctx.require(PROJECT), shared, shared, ctx.get(TEST_PROCESSOR_CP).orElse(List.of()));
+        List<Path> processorCp = ctx.require(CLASSPATHS).kspTestProcessor();
         List<Path> kspJars = KspProcessors.split(processorCp).ksp();
         List<Path> roots =
                 testSourceRoots(ctx.require(PROJECT), cx.in().dir(), cx.compact(), compiledSuites, layout, decls);

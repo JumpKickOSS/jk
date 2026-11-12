@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
@@ -9,7 +8,6 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -48,9 +46,8 @@ record TestStampInputs(
      *
      * @param sessionSelection the request's selection, before the workspace's tags are resolved
      * @param workerJars the test worker jars by role, as {@link PlannerSupport#testStampWorkerJars} lists them
-     * @param resolvedRuntime the test runtime classpath the classpath step publishes: lock rows,
-     *     sibling jars and the provided test-runtime jars ({@link ProvidedClasspath.Provided#onTestRuntime})
-     * @param providedRuntime the provided jars the test JVM also gets last ({@link ProvidedClasspath.Provided#runtime})
+     * @param resolvedRuntime the test runtime classpath the classpath step publishes ({@link ModuleClasspaths#testRuntime})
+     * @param providedRuntime the provided jars the test JVM also gets last ({@link ModuleClasspaths#providedRuntime})
      * @param compileTestKeys the test compiles' action keys
      */
     record Facts(
@@ -66,9 +63,8 @@ record TestStampInputs(
             TestStamp.CompileTestKeys compileTestKeys) {
 
         /**
-         * What the forecast reads of a module before its build: the lock's and siblings' test
-         * runtime with the provided jars, as the classpath step publishes it, under the session's
-         * selection.
+         * What the forecast reads of a module before its build: its test runtime and provided jars
+         * as the classpath step publishes them, under the session's selection.
          */
         static Facts forecast(
                 Path dir,
@@ -76,9 +72,7 @@ record TestStampInputs(
                 BuildLayout layout,
                 @Nullable String profileName,
                 @Nullable PluginDeclarations pluginDecls,
-                Lockfile lock,
-                ClasspathResolver resolver,
-                ProvidedClasspath.Provided provided,
+                ModuleClasspaths classpaths,
                 TestStamp.CompileTestKeys compileTestKeys)
                 throws IOException {
             return new Facts(
@@ -89,8 +83,8 @@ record TestStampInputs(
                     SessionContext.current().testSelection(),
                     pluginDecls,
                     PlannerSupport.testStampWorkerJars(dir, project),
-                    provided.onTestRuntime(PlannerSupport.testRuntimeClasspath(dir, project, lock, resolver)),
-                    provided.runtime(),
+                    classpaths.testRuntime(),
+                    classpaths.providedRuntime(),
                     compileTestKeys);
         }
 

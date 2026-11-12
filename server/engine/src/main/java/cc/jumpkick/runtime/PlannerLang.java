@@ -558,7 +558,7 @@ public final class PlannerLang {
         // Joint mode sweeps.java sources through a real javac pass — annotation processors
         // must run there or generated members fail resolution.
         List<Path> processorCp =
-                javaSourceRoots == null ? List.of() : ctx.get(PROCESSOR_CP).orElse(List.of());
+                javaSourceRoots == null ? List.of() : ctx.require(CLASSPATHS).processor();
         return groovyRequest(
                 ctx.require(PROJECT),
                 ctx.require(LOCKFILE),

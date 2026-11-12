@@ -6,13 +6,13 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompilerJdk;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileToolchain;
@@ -38,19 +38,17 @@ final class PlannerCompileForecast {
      * JavaCompile#predict} on the very request the build keys — the shared {@link
      * #mainCompileRequest} over the same classpath, processors and toolchain.
      */
-    static TaskForecast.@Nullable Task java(ForecastScope s) throws Exception {
+    static TaskForecast.@Nullable Task java(StepForecast.Scope scope) throws Exception {
+        ForecastScope s = ForecastScope.of(scope);
         ForecastScope.Prepared prepared = s.prepared();
-        List<Path> mainSrc = prepared.mainSrc();
+        List<Path> mainSrc = prepared.parsed().mainSrc();
         if (mainSrc.isEmpty()) return null;
         KspForecast.Round round = prepared.mainRound();
         if (round.runs() && round.rewrites(mainSrc)) return kspRewrite(s, TaskNames.COMPILE_JAVA);
-        var lock = prepared.lock();
-        BuildLayout layout = prepared.layout();
-        int release = prepared.release();
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(s.dir, s.project, WorkspaceClasspath.COMPILE_SCOPES);
-        List<Path> cp = prepared.withProvided(
-                PlannerSupport.mainCompileClasspath(s.dir, s.project, lock, s.resolver, sib, false));
-        s.mainCp = cp;
+        var lock = prepared.parsed().lock();
+        BuildLayout layout = prepared.parsed().layout();
+        int release = prepared.parsed().release();
+        List<Path> cp = prepared.classpaths().main();
         Path out = layout.classesDir();
         // Same stamp gate as the live compile: a post-rebuild tree with a fresh stamp is cached
         // even when action-cache keys were not rewritten (a --rebuild skips the store). The input
@@ -58,7 +56,7 @@ final class PlannerCompileForecast {
         // inputs here and stamp-matches.
         Path groovyJar = null;
         boolean groovyJarUnavailable = false;
-        if (prepared.mixedGroovy()) {
+        if (prepared.parsed().mixedGroovy()) {
             try {
                 String groovyVersion = CompileToolchain.groovyVersionFor(lock, s.project);
                 var repos = RepoGroupBuilder.buildFor(s.project, null, s.cas);
@@ -80,19 +78,19 @@ final class PlannerCompileForecast {
         CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                 mainSrc,
                 cp,
-                prepared.javacProcessorCp(),
-                prepared.contributedProcessors().main(),
+                prepared.classpaths().javacProcessor(),
+                prepared.classpaths().contributedProcessor(),
                 layout,
                 out,
                 release,
-                prepared.javacArgs(),
+                prepared.parsed().javacArgs(),
                 s.project.javac(),
                 prepared.javaHome(),
-                prepared.mixedKotlin(),
-                prepared.mixedGroovy(),
+                prepared.parsed().mixedKotlin(),
+                prepared.parsed().mixedGroovy(),
                 groovyJar,
                 scalaSetup,
-                new ProcessorResources(s.dir, s.project, prepared.compact()),
+                new ProcessorResources(s.dir, s.project, prepared.parsed().compact()),
                 CompilerJdk.pinned(s.project, SessionContext.current())));
         Optional<FreshnessStamp.Stamp> fresh = Optional.empty();
         // A stamp over generated sources the KSP round is about to restore answers for the old ones.
@@ -174,15 +172,18 @@ final class PlannerCompileForecast {
      * action key of the build's own kotlinc request — never the tasks/ pointer, whose last record
      * may belong to another edit of the sources.
      */
-    static TaskForecast.@Nullable Task kotlin(ForecastScope s) throws Exception {
+    static TaskForecast.@Nullable Task kotlin(StepForecast.Scope scope) throws Exception {
+        ForecastScope s = ForecastScope.of(scope);
         ForecastScope.Prepared prepared = s.prepared();
-        if (prepared.ktSrc().isEmpty()) return null;
-        BuildLayout layout = prepared.layout();
+        if (prepared.parsed().ktSrc().isEmpty()) return null;
+        BuildLayout layout = prepared.parsed().layout();
         KspForecast.Round round = prepared.mainRound();
-        boolean rewritten = round.rewrites(prepared.ktSrc()) || round.rewrites(prepared.mainSrc());
+        boolean rewritten = round.rewrites(prepared.parsed().ktSrc())
+                || round.rewrites(prepared.parsed().mainSrc());
         if (round.runs() && rewritten) return kspRewrite(s, TaskNames.COMPILE_KOTLIN);
         ForecastLangArms arms = s.arms();
-        ForecastLangArms.KotlinArm arm = arms.kotlinArm(prepared, prepared.mixedWithJava());
+        ForecastLangArms.KotlinArm arm =
+                arms.kotlinArm(prepared, prepared.parsed().mixedWithJava());
         if (!s.compileDepDirty && !s.force && !rewritten && arms.kotlinStampFresh(prepared, arm)) {
             s.compileKotlinKey = FreshnessStamp.stampedKey(layout.compileStampDir(), BuildStamps.KOTLIN)
                     .orElse(null);
@@ -209,10 +210,11 @@ final class PlannerCompileForecast {
     }
 
     /** compile-groovy's price: the stamp, then the action key of the build's own groovyc request. */
-    static TaskForecast.@Nullable Task groovy(ForecastScope s) throws Exception {
+    static TaskForecast.@Nullable Task groovy(StepForecast.Scope scope) throws Exception {
+        ForecastScope s = ForecastScope.of(scope);
         ForecastScope.Prepared prepared = s.prepared();
-        if (prepared.gvSrc().isEmpty()) return null;
-        BuildLayout layout = prepared.layout();
+        if (prepared.parsed().gvSrc().isEmpty()) return null;
+        BuildLayout layout = prepared.parsed().layout();
         ForecastLangArms.LangStep step = s.arms().groovyStep(prepared);
         if (step.task().cached()) {
             s.restored.projectFromRecord(layout.groovyClassesDir(), s.compileGroovyKey = step.key());
