@@ -67,11 +67,13 @@ class TaskForecasterDepScopeTest {
         var onlyEngine = TaskForecaster.depDirtiness(unit, Set.of(eng, core), Set.of(eng), byCoord, byName);
         assertThat(onlyEngine.compileDepDirty()).isFalse();
         assertThat(onlyEngine.testDepDirty()).isTrue();
+        assertThat(onlyEngine.testDeps()).containsExactly(eng);
 
         // Core dirty — main compile dep
         var onlyCore = TaskForecaster.depDirtiness(unit, Set.of(eng, core), Set.of(core), byCoord, byName);
         assertThat(onlyCore.compileDepDirty()).isTrue();
         assertThat(onlyCore.testDepDirty()).isFalse();
+        assertThat(onlyCore.testDeps()).isEmpty();
 
         // Both dirty
         var both = TaskForecaster.depDirtiness(unit, Set.of(eng, core), Set.of(eng, core), byCoord, byName);

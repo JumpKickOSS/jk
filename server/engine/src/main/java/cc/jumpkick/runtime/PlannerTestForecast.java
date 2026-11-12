@@ -138,7 +138,11 @@ final class PlannerTestForecast {
                     release,
                     "out",
                     testOut);
-            step = ForecastSteps.compileStep(TaskNames.COMPILE_TEST, pred, false, req);
+            // The prediction keys a test-scope sibling's jar as it is on disk, before the build
+            // rebuilds it: an API edit there (a core edit a plugin's test fixtures read) hit here
+            // and recompiled 17 sources in the build. A dirty test-scope sibling keeps the step
+            // running unless its edit is body-only, as a compile-scope one does for main.
+            step = ForecastSteps.compileStep(TaskNames.COMPILE_TEST, pred, s.testDepDirty, s.force, req, s.testDepHint);
             s.compileTestKey = pred.actionKey();
             if (!step.cached()) s.testDirty = true;
         } else {

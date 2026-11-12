@@ -89,6 +89,12 @@ public final class ForecastScope implements StepForecast.Scope {
     /** What this module's dirty compile-scope dependencies' edits look like, for its compile texts. */
     final TaskForecaster.DepHint depHint;
 
+    /**
+     * What this module's dirty test-scope-only dependencies' edits look like: the test compile keys
+     * on their ABI as the main compile keys on its dependencies'.
+     */
+    final TaskForecaster.DepHint testDepHint;
+
     /** A main compile, or a compile-scope sibling's, will run: everything packaged from the classes is dirty. */
     boolean compileDirty;
 
@@ -207,6 +213,7 @@ public final class ForecastScope implements StepForecast.Scope {
         this.testDepDirty = dep.testDepDirty();
         this.runtimeDepDirty = dep.runtimeDepDirty();
         this.depHint = TaskForecaster.depHint(dep.compileDeps(), hints);
+        this.testDepHint = TaskForecaster.depHint(dep.testDeps(), hints);
         // Whether this module's classes change is the compile forecasts' verdict, set as each
         // prices its step: a dirty compile-scope sibling whose edit leaves its ABI alone leaves the
         // ABI-keyed compile hitting, and then nothing downstream of the classes (package, javadoc,

@@ -19,9 +19,11 @@ import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 
 /** Seeds host resources and the sole ETA/work model before module preparation. */
@@ -155,19 +157,25 @@ final class WorkspaceResourcePhase {
                     preflight.graph(), request.cache(), request.skipTests(), null, request.profile());
         }
         ExplainPlan selected = BuildForecasting.restrictToSelection(plan, preflight.dirty());
-        return request.testOnly() ? withoutPackagingTails(selected) : selected;
+        return request.testOnly()
+                ? withoutPackagingTails(selected, WorkspacePreflightPhase.launchedAssemblies(preflight.graph()))
+                : selected;
     }
 
     /**
      * {@code plan} without the packaging tails (assembly, native image, sources jar): a test run
-     * never packages past the jar. A forced test run's forecast listed them as runs, and the
-     * estimate priced jk's 50 s native image into every forced integration run.
+     * packages past the jar only for the fat jar a sibling's suite launches ({@code launched},
+     * {@code PlannerTails.joinTests}). A forced test run's forecast listed them all as runs, and the
+     * estimate priced jk's 50 s native image into every forced integration run; dropping the
+     * launched fat jar too left the engine's 1.3 s assembly out of every {@code jk test}.
      */
-    static ExplainPlan withoutPackagingTails(ExplainPlan plan) {
+    static ExplainPlan withoutPackagingTails(ExplainPlan plan, Set<Path> launched) {
         List<TaskForecast.Module> modules = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
+            boolean fatJarLaunched = launched.contains(BuildGraph.canonicalPath(m.dir()));
             List<TaskForecast.Task> steps = m.steps().stream()
-                    .filter(t -> !TaskNames.PACKAGING_TAILS.contains(t.name()))
+                    .filter(t -> !TaskNames.PACKAGING_TAILS.contains(t.name())
+                            || (fatJarLaunched && TaskNames.PACKAGE_ASSEMBLY.equals(t.name())))
                     .toList();
             modules.add(new TaskForecast.Module(
                     m.dir(), m.coord(), steps, m.sourceCount(), m.testCount(), m.producesJar(), false, m.reason()));
