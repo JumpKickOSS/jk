@@ -288,15 +288,14 @@ class JkBuildParserProjectTest {
     }
 
     @Test
-    void parses_build_test_worker_jars_as_order_after() {
+    void parses_build_test_plugin_jars() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
 
                 [build]
                 test-plugin-jars = ["publisher", "image-builder"]
                 """);
         assertThat(parsed.build().testPluginJars()).containsExactly("publisher", "image-builder");
-        // test-plugin-jars modules must build first → they're order-after prerequisites
-        assertThat(parsed.build().allOrderAfter()).contains("publisher", "image-builder");
+        assertThat(parsed.build().orderAfter()).isEmpty();
     }
 
     @Test
