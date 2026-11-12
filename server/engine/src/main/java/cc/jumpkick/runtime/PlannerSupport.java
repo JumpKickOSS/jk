@@ -868,8 +868,8 @@ public final class PlannerSupport {
             Path moduleDir,
             ClasspathFingerprint.EntryIdentity identity) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        List<String> extras = new ArrayList<>(
-                testStampExtras(workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, identity));
+        List<String> extras = new ArrayList<>(testStampExtras(
+                workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, moduleDir, identity));
         extras.addAll(SuiteEnvKeys.tokens(build, moduleDir, selection == null ? TestSelection.DEFAULT : selection));
         return extras;
     }
@@ -885,6 +885,7 @@ public final class PlannerSupport {
             List<String> jvmArgs,
             SecretRedactor redactor,
             EnvLookup lookup,
+            Path moduleDir,
             ClasspathFingerprint.EntryIdentity identity) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + BuildIdentity.cacheKeyVersion());
@@ -922,7 +923,7 @@ public final class PlannerSupport {
         // it says to --version — so a node or git upgrade retests the suites that shell out to it.
         String path = BuildEnv.machine().get("PATH");
         for (String tool : build.testTools()) {
-            extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path));
+            extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path, moduleDir));
         }
         // Plugin jars by content — a plugin change retests the module that forks it. A wiped
         // plugin jar the forecast knows the build restores reads as the bytes that come back.

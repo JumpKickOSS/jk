@@ -421,7 +421,8 @@ public final class SuiteReads {
             if (parent != null && parent.startsWith(root) && !inBuildOutput(parent, root, outputs)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
-        for (String c : d.commands()) out.add("proc:" + executable(c) + "=" + programIdentity(executable(c)));
+        for (String c : d.commands())
+            out.add("proc:" + executable(c) + "=" + programIdentity(executable(c), moduleDir));
         if (d.network()) out.add("network");
         return out;
     }
@@ -537,7 +538,7 @@ public final class SuiteReads {
      * A started program by content when the command named its file, else by what the PATH the suite
      * gets resolves the name to and what it says to {@code --version}.
      */
-    private static String programIdentity(String program) {
+    private static String programIdentity(String program, Path moduleDir) {
         try {
             Path file = Path.of(program);
             if (file.isAbsolute()) {
@@ -546,7 +547,7 @@ public final class SuiteReads {
         } catch (InvalidPathException | IOException unreadable) {
             return "unreadable";
         }
-        return ToolIdentity.of(program, BuildEnv.machine().get("PATH"));
+        return ToolIdentity.of(program, BuildEnv.machine().get("PATH"), moduleDir);
     }
 
     /** The program a recorded command line started: its first word. */

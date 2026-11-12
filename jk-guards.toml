@@ -1074,6 +1074,10 @@ in     = "cc.jumpkick.config.CredentialHelpers"
 reason = "a ${cmd:} credential helper runs under exactly the request's shell (BuildEnv.callerEnv()): the inherited map is cleared before it is set"
 
 [[guards.child-env-owner.allow]]
+in     = "cc.jumpkick.task.ToolIdentity"
+reason = "a [test] tool's --version runs under the request's shell (BuildEnv.callerEnv()) with the suite's PATH, as the suite would run it: the inherited map is cleared before it is set"
+
+[[guards.child-env-owner.allow]]
 in     = "cc.jumpkick.engine.runtime.TemplateClone"
 reason = "a template clone runs git under the request's shell (BuildEnv.callerEnv()) with prompts off: the inherited map is cleared before it is set"
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -9,7 +11,6 @@ import cc.jumpkick.host.SearchPath;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +24,11 @@ import org.jspecify.annotations.Nullable;
  * toolchain manager changes the path; a tool that is not on the PATH is {@code missing}, so a
  * suite that went green with the tool and now runs without it is retested rather than replayed.
  *
- * <p>Memoized per executable by its path, size and modification time: the version subprocess runs
- * once per binary per engine lifetime, not once per build.
+ * <p>The version is asked in the suite's directory with the request's environment, as the suite
+ * would ask it: a toolchain manager's shim ({@code mise}, {@code asdf}, {@code volta}) answers
+ * with the version the directory and the shell select, which can change without the binary
+ * changing. So the answer is remembered for one request only, and a tool that gave no version line
+ * is asked again rather than remembered as having none.
  */
 public final class ToolIdentity {
 
@@ -34,18 +38,27 @@ public final class ToolIdentity {
     /** A tool that hangs on {@code --version} is not going to tell us anything better later. */
     private static final long VERSION_TIMEOUT_MILLIS = 5_000;
 
-    private static final Map<String, String> VERSIONS = new ConcurrentHashMap<>();
+    /** What {@link #probe} answers when the tool printed no version line or did not exit in time. */
+    static final String NO_VERSION = "no-version";
+
+    /** The request-scope key of one tool's version as asked from one directory. */
+    private record VersionKey(Path exe, Path dir, @Nullable String path) {}
+
+    /** The request-scope key of the versions this request has read. */
+    private record Versions() {}
+
+    private static final Versions VERSIONS = new Versions();
 
     private ToolIdentity() {}
 
     /**
      * {@code <path>=<version line>} for {@code tool} resolved on {@code path} (the PATH the test JVM
-     * gets), or {@link #MISSING}.
+     * gets), or {@link #MISSING}, its version asked in {@code dir}, the directory the suite runs in.
      */
-    public static String of(String tool, @Nullable String path) {
+    public static String of(String tool, @Nullable String path, Path dir) {
         Path exe = resolve(tool, path);
         if (exe == null) return MISSING;
-        return exe + "=" + version(exe);
+        return exe + "=" + version(exe, dir, path);
     }
 
     /**
@@ -67,39 +80,48 @@ public final class ToolIdentity {
         return null;
     }
 
-    private static String version(Path exe) {
-        String key;
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(exe, BasicFileAttributes.class);
-            key = exe + "|" + attrs.size() + "|" + attrs.lastModifiedTime().toMillis();
-        } catch (IOException e) {
-            return "unreadable";
-        }
-        return VERSIONS.computeIfAbsent(key, k -> probe(exe));
+    private static String version(Path exe, Path dir, @Nullable String path) {
+        // Off a request the scope hands out a fresh map every time, so nothing is remembered.
+        Map<VersionKey, String> versions = RequestScope.current().get(VERSIONS, k -> new ConcurrentHashMap<>());
+        VersionKey key = new VersionKey(exe, dir, path);
+        String known = versions.get(key);
+        if (known != null) return known;
+        String v = probe(exe, dir, path, VERSION_TIMEOUT_MILLIS);
+        // A timeout or a silent tool is asked again rather than remembered as having no version.
+        if (!v.equals(NO_VERSION)) versions.put(key, v);
+        return v;
     }
 
     /** The first non-blank line {@code --version} prints, or a word saying why there is none. */
-    static String probe(Path exe) {
-        return probe(exe, VERSION_TIMEOUT_MILLIS);
+    static String probe(Path exe, Path dir, @Nullable String path) {
+        return probe(exe, dir, path, VERSION_TIMEOUT_MILLIS);
     }
 
     /**
-     * As {@link #probe(Path)}, giving up after {@code timeoutMillis}. The output is read on its own
-     * thread, so a tool that prints nothing and never exits cannot hold the caller past the bound.
+     * As {@link #probe(Path, Path, String)}, giving up after {@code timeoutMillis}. Run in {@code
+     * dir} with the caller's environment and {@code path} as its {@code PATH}. The output is read on
+     * its own thread, so a tool that prints nothing and never exits cannot hold the caller past the
+     * bound.
      */
-    static String probe(Path exe, long timeoutMillis) {
+    static String probe(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
+        ProcessBuilder pb = new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true);
+        if (Files.isDirectory(dir)) pb.directory(dir.toFile());
+        Map<String, String> env = pb.environment();
+        env.clear();
+        env.putAll(BuildEnv.callerEnv());
+        if (path != null) env.put("PATH", path);
         try {
-            Process p = JobWorkers.start(new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true));
+            Process p = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(p, null, Duration.ofMillis(timeoutMillis), 4096);
-            if (c.timedOut()) return "no-version";
+            if (c.timedOut()) return NO_VERSION;
             return c.output()
                     .lines()
                     .map(String::trim)
                     .filter(l -> !l.isEmpty())
                     .findFirst()
-                    .orElse("no-version");
+                    .orElse(NO_VERSION);
         } catch (IOException e) {
-            return "no-version";
+            return NO_VERSION;
         }
     }
 }
