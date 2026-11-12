@@ -476,35 +476,33 @@ public final class PlannerKsp {
      */
     @KeyOwner(
             step = TaskNames.KSP,
-            unpaired = "the forecast checks the same stamp in KspForecast.decide",
+            unpaired = "the round writes its stamp; the forecast reads it through roundStampFresh",
             forecastsStep = true)
     static RoundOutcome runRound(TaskContext ctx, BuildPlanner.Ctx cx, Round round) throws Exception {
         BuildPlanner.Inputs in = cx.in();
         Path outBase = round.outBase();
-        List<Path> stampCp = new ArrayList<>(round.classpath());
-        stampCp.addAll(round.kspJars());
+        List<Path> stampCp = stampClasspath(round.classpath(), round.kspJars());
         boolean rerun = in.session().config().rebuildOr(false);
         JkBuild project = ctx.require(PROJECT);
         String kotlinVersion = kotlinVersion(ctx.require(LOCKFILE), project);
         // Processor options and the toolchain are round inputs no file mtime reflects; the digest
         // is what makes a `ksp-options` edit with untouched sources re-run the round.
         String kspVersion = KspResolver.versionFor(project);
-        String optionsDigest = kspStampDigest(
-                project,
-                ctx.require(LOCKFILE),
-                in.dir(),
-                kotlinVersion,
-                kspVersion,
-                ctx.require(JAVA_HOME),
-                ctx.require(RELEASE));
+        String optionsDigest =
+                roundDigest(project, ctx.require(LOCKFILE), in.dir(), ctx.require(JAVA_HOME), ctx.require(RELEASE));
         // The warnings the round's outputs were made with: a fresh stamp without them is not up to date.
         Path warnings = CompileWarnings.currentFile(
                 ctx.require(LAYOUT).buildDir().resolve("incremental"), CompileWarnings.roundFile(round.producer()));
         Optional<List<CompileWarnings.Kept>> kept =
                 rerun ? Optional.empty() : CompileWarnings.readCurrent(warnings, round.stampInputs());
         if (kept.isPresent()
-                && FreshnessStamp.isFresh(
-                        outBase, BuildStamps.KSP, round.stampInputs(), stampCp, ctx.require(RELEASE), optionsDigest)) {
+                && roundStampFresh(
+                        outBase,
+                        round.stampInputs(),
+                        round.classpath(),
+                        round.kspJars(),
+                        ctx.require(RELEASE),
+                        optionsDigest)) {
             for (CompileWarnings.Kept k : kept.get())
                 ctx.replayedWarn(k.tool(), "", k.warning().describe());
             return RoundOutcome.KEPT;
@@ -584,6 +582,36 @@ public final class PlannerKsp {
                 optionsDigest,
                 readClock);
         return outcome;
+    }
+
+    /**
+     * A round's option digest ({@link #kspStampDigest}) over the module's Kotlin and KSP versions:
+     * what its stamp records and its action key hashes.
+     */
+    @KeyOwner(step = TaskNames.KSP)
+    static String roundDigest(JkBuild project, Lockfile lock, Path dir, Path javaHome, int release) throws IOException {
+        return kspStampDigest(
+                project, lock, dir, kotlinVersion(lock, project), KspResolver.versionFor(project), javaHome, release);
+    }
+
+    /**
+     * Whether the freshness stamp under a round's {@code outBase} vouches for it: the hand-written
+     * sources it reads, its classpath and KSP jars, the release and the round's option digest
+     * ({@link #kspStampDigest}).
+     */
+    @KeyOwner(step = TaskNames.KSP)
+    static boolean roundStampFresh(
+            Path outBase, List<Path> stampInputs, List<Path> classpath, List<Path> kspJars, int release, String digest)
+            throws IOException {
+        return FreshnessStamp.isFresh(
+                outBase, BuildStamps.KSP, stampInputs, stampClasspath(classpath, kspJars), release, digest);
+    }
+
+    /** A round's stamped classpath: its compile classpath, then its KSP jars. */
+    private static List<Path> stampClasspath(List<Path> classpath, List<Path> kspJars) {
+        List<Path> out = new ArrayList<>(classpath);
+        out.addAll(kspJars);
+        return out;
     }
 
     /** Record what a round wrote under {@code outBase}, an empty round as the verdict that it wrote nothing. */

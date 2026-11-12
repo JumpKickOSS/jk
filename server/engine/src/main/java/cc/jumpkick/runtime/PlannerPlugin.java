@@ -41,6 +41,7 @@ import cc.jumpkick.runtime.schema.SchemaFiles;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.RunNotices;
@@ -734,11 +735,11 @@ public final class PlannerPlugin {
      * With no compile outcome to read the build counts as one that wrote classes.
      */
     static boolean recompiled(TaskContext ctx) {
-        List<String> outcomes = new ArrayList<>();
-        ctx.get(BUILD_OUTCOME).ifPresent(outcomes::add);
-        ctx.get(KOTLIN_OUTCOME).ifPresent(outcomes::add);
-        ctx.get(GROOVY_OUTCOME).ifPresent(outcomes::add);
-        return outcomes.isEmpty() || !outcomes.stream().allMatch(PlannerPackage::settledOutcome);
+        List<CompileStamp> compiles = new ArrayList<>();
+        ctx.get(JAVA_COMPILE).ifPresent(compiles::add);
+        ctx.get(KOTLIN_COMPILE).ifPresent(compiles::add);
+        ctx.get(GROOVY_COMPILE).ifPresent(compiles::add);
+        return compiles.isEmpty() || !compiles.stream().allMatch(CompileStamp::settled);
     }
 
     /**

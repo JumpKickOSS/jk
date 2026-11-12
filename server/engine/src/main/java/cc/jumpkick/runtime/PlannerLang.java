@@ -402,12 +402,6 @@ public final class PlannerLang {
         }
     }
 
-    /** {@link #groovyStampDigest} from the running step's published state. */
-    static String groovyStampDigest(TaskContext ctx, Path moduleDir) {
-        return groovyStampDigest(
-                ctx.require(PROJECT), ctx.require(LOCKFILE), moduleDir, ctx.require(RELEASE), ctx.require(JAVA_HOME));
-    }
-
     /**
      * Resolve {@link KotlinConfig} for the module at {@code moduleDir}. Plugin contributions are
      * looked up against the module dir — that is where the lock that pins the installed plugins

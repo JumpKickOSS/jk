@@ -4,9 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
-import static cc.jumpkick.runtime.PlannerNative.groovySources;
-import static cc.jumpkick.runtime.PlannerNative.javaSources;
-import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
@@ -22,14 +19,17 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
+import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyOwner;
@@ -238,52 +238,14 @@ public final class PlannerPackage {
      */
     @KeyOwner(step = TaskNames.WRITE_STAMP, unpaired = "the stamp rides its compile; the forecast reads what it writes")
     static Task writeStampStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_JAVA)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
-                .execute(ctx -> {
-                    String outcome = ctx.get(BUILD_OUTCOME).orElse("");
-                    if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
-                        ctx.label("stamp unchanged");
-                        ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
-                        ctx.progress(1);
-                        return;
-                    }
-                    ctx.label("write freshness stamp");
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    Path javaOut = classes; // javac always writes to java/main/
-                    List<Path> sources = ctx.require(JAVA_SOURCES);
-                    // The classpath lines and option digest compile-java checked — the ones its
-                    // action key hashed — so the next check compares like with like; the stamp's
-                    // instant is the clock before that compile read its first source.
-                    String actionKey = ctx.get(ACTION_KEY).orElse("");
-                    FreshnessStamp.write(
-                            javaOut,
-                            BuildStamps.JAVA,
-                            TaskNames.COMPILE_MAIN,
-                            actionKey,
-                            sources,
-                            FreshnessStamp.ClasspathTokens.of(ctx.require(JAVA_STAMP_TOKENS)),
-                            ctx.require(RELEASE),
-                            ctx.require(JAVA_STAMP_DIGEST),
-                            ctx.require(JAVA_STAMP_CLOCK));
-                    ctx.progress(1);
-                })
+                .execute(ctx -> writeStamp(ctx, JAVA_COMPILE, BuildStamps.JAVA, TaskNames.COMPILE_MAIN))
                 .build();
     }
 
@@ -291,50 +253,14 @@ public final class PlannerPackage {
             step = TaskNames.WRITE_STAMP_KOTLIN,
             unpaired = "the stamp rides its compile; the forecast reads what it writes")
     static Task writeStampKotlinStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP_KOTLIN)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_KOTLIN)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
-                .execute(ctx -> {
-                    String outcome = ctx.get(KOTLIN_OUTCOME).orElse("");
-                    if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
-                        ctx.label("stamp unchanged");
-                        ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
-                        ctx.progress(1);
-                        return;
-                    }
-                    ctx.label("write freshness stamp");
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    List<Path> freshInputs = new ArrayList<>(kotlinSources(ctx));
-                    if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
-                    // The classpath as the compile checked it: ABI token lines, never paths. The
-                    // key names the record the merged tree is held against on the next build.
-                    FreshnessStamp.write(
-                            classes,
-                            BuildStamps.KOTLIN,
-                            TaskNames.COMPILE_KOTLIN,
-                            ctx.get(KOTLIN_ACTION_KEY).orElse(""),
-                            freshInputs,
-                            FreshnessStamp.ClasspathTokens.of(ctx.require(KOTLIN_STAMP_TOKENS)),
-                            ctx.require(RELEASE),
-                            ctx.require(KOTLIN_STAMP_DIGEST),
-                            ctx.require(KOTLIN_STAMP_CLOCK));
-                    ctx.progress(1);
-                })
+                .execute(ctx -> writeStamp(ctx, KOTLIN_COMPILE, BuildStamps.KOTLIN, TaskNames.COMPILE_KOTLIN))
                 .build();
     }
 
@@ -342,42 +268,43 @@ public final class PlannerPackage {
             step = TaskNames.WRITE_STAMP_GROOVY,
             unpaired = "the stamp rides its compile; the forecast reads what it writes")
     static Task writeStampGroovyStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_GROOVY)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
-                .execute(ctx -> {
-                    String outcome = ctx.get(GROOVY_OUTCOME).orElse("");
-                    if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
-                        ctx.label("stamp unchanged");
-                        ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
-                        ctx.progress(1);
-                        return;
-                    }
-                    ctx.label("write freshness stamp");
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    List<Path> freshInputs = new ArrayList<>(groovySources(ctx));
-                    if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
-                    // The token lines compile-groovy checked — the ones its action key hashed —
-                    // and that key, for the next build's wholeness check of the merged tree.
-                    FreshnessStamp.write(
-                            classes,
-                            BuildStamps.GROOVY,
-                            TaskNames.COMPILE_GROOVY,
-                            ctx.get(GROOVY_ACTION_KEY).orElse(""),
-                            freshInputs,
-                            FreshnessStamp.ClasspathTokens.of(ctx.require(GROOVY_STAMP_TOKENS)),
-                            ctx.require(RELEASE),
-                            ctx.require(GROOVY_STAMP_DIGEST),
-                            ctx.require(GROOVY_STAMP_CLOCK));
-                    ctx.progress(1);
-                })
+                .execute(ctx -> writeStamp(ctx, GROOVY_COMPILE, BuildStamps.GROOVY, TaskNames.COMPILE_GROOVY))
                 .build();
+    }
+
+    /**
+     * A write-stamp body: records what the compile that published {@code compiled} checked (its
+     * inputs, token lines, option digest and clock) and the action key its tree is held against,
+     * unless it compiled nothing.
+     */
+    private static void writeStamp(
+            TaskContext ctx, BuildPlanKey<CompileStamp> compiled, String stampName, String taskId) throws IOException {
+        CompileStamp stamp = ctx.require(compiled);
+        if (stamp.settled()) {
+            ctx.label("stamp unchanged");
+            ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
+            ctx.progress(1);
+            return;
+        }
+        ctx.label("write freshness stamp");
+        FreshnessStamp.write(
+                ctx.require(MAIN_CLASSES),
+                stampName,
+                taskId,
+                stamp.actionKey(),
+                stamp.inputs(),
+                FreshnessStamp.ClasspathTokens.of(stamp.tokens()),
+                ctx.require(RELEASE),
+                stamp.digest(),
+                stamp.clock());
+        ctx.progress(1);
     }
 
     static Task assembleClassesStep(BuildPlanner.Ctx cx) {
@@ -408,12 +335,9 @@ public final class PlannerPackage {
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
-                    String jOutcome = ctx.get(BUILD_OUTCOME).orElse("");
-                    String kOutcome = ctx.get(KOTLIN_OUTCOME).orElse("");
-                    String gOutcome = ctx.get(GROOVY_OUTCOME).orElse("");
-                    boolean settled = settledOutcome(jOutcome)
-                            && (!mixed || settledOutcome(kOutcome))
-                            && (!mixedGroovy || settledOutcome(gOutcome));
+                    boolean settled = settled(ctx, JAVA_COMPILE)
+                            && (!mixed || settled(ctx, KOTLIN_COMPILE))
+                            && (!mixedGroovy || settled(ctx, GROOVY_COMPILE));
                     if (settled) { // all unchanged → classes already holds every language's output
                         ctx.label("up to date");
                         ctx.progress(1);
@@ -438,8 +362,9 @@ public final class PlannerPackage {
                 .build();
     }
 
-    static boolean settledOutcome(String outcome) {
-        return outcome.equals("up-to-date") || outcome.equals("no-sources");
+    /** Whether the compile that publishes {@code compiled} left the classes tree as it was; false when it did not run. */
+    static boolean settled(TaskContext ctx, BuildPlanKey<CompileStamp> compiled) {
+        return ctx.get(compiled).map(CompileStamp::settled).orElse(false);
     }
 
     // ---- forecast ---------------------------------------------------------------------------

@@ -62,14 +62,16 @@ refuses a step that declares nothing.
 
 A predictor is built by the same factory as the step's body and reads the same key owner: the
 method annotated `@KeyOwner(step = ...)` that derives the key (`PackagingKeys`, `GuardKeys`,
-`NodeKeys`, the shared compile requests, `JavaCompile.key`, `TestStampInputs.key`) or a fact it
-hashes (`EffectiveManifest`, `ModuleShape`, `ModuleClasspaths`, `TestStampInputs`). Three guard tests read them from
+`NodeKeys`, the shared compile requests and stamp checks, `JavaCompile.key`, `TestStampInputs.key`)
+or a fact it hashes (`EffectiveManifest`, `ModuleShape`, `ModuleClasspaths`, `TestStampInputs`,
+`CompileInputs`). Three guard tests read them from
 bytecode: `forecast-key-parity` refuses a key composed outside an owner, `forecast-key-owner-callers`
 an owner that only the build or only the forecast calls, and `forecast-key-unpaired-claim` an
 owner declared `unpaired` that misstates whether the forecast names its step. A caller is
 forecast-side when its class's name contains `Forecast`, its method's name `forecast` or
 `predict`, or its signature takes a `ForecastScope` or `StepForecast.Scope` or returns a
-`TaskForecast.Task`; every other caller is build-side. It receives the module's `ForecastScope`: what every predictor reads of the
+`TaskForecast.Task`; every other caller is build-side, except another owner, which counts for
+the sides that call it (`CompileInputs` over the request builders and stamp digests). It receives the module's `ForecastScope`: what every predictor reads of the
 module (its lock, layout, sources, toolchain), what the steps it requires left for it (whether the
 compile runs, the keys a wiped tree is projected from, resource drift), and the workspace state it
 keys siblings by (the restore ledger, the dependencies' dirtiness and API hints).

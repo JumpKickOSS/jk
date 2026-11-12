@@ -490,8 +490,7 @@ public final class ForecastScope implements StepForecast.Scope {
 
     /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */
     ForecastLangArms arms() {
-        return new ForecastLangArms(
-                project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint, restored);
+        return new ForecastLangArms(actionCache, compileDepDirty, force, depHint, restored);
     }
 
     /** A dedicated node module's node directory, or null for any other module. */

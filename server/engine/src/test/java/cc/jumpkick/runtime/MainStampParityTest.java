@@ -151,7 +151,7 @@ class MainStampParityTest {
         Path groovyJar = AbiJars.jar(dir.resolve("groovy.jar"), AbiJars.classReturning(1));
         Files.createDirectories(layout.groovyClassesDir());
 
-        CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest req = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(source(dir)),
                 List.of(dep),
                 List.of(),
@@ -204,7 +204,7 @@ class MainStampParityTest {
                 mainCompile(sources, List.of(dep), List.of(processor), layout, out, List.of(), javaHome, false));
     }
 
-    private static PlannerCompile.MainCompile mainCompile(
+    private static CompileInputs.MainCompile mainCompile(
             List<Path> sources,
             List<Path> classpath,
             List<Path> processorPath,
@@ -213,7 +213,7 @@ class MainStampParityTest {
             List<String> javacArgs,
             Path javaHome,
             boolean mixedKotlin) {
-        return new PlannerCompile.MainCompile(
+        return new CompileInputs.MainCompile(
                 sources,
                 classpath,
                 processorPath,

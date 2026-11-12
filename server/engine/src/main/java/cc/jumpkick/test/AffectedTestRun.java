@@ -15,11 +15,13 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.MainAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -57,8 +59,8 @@ public final class AffectedTestRun {
         }
         if (dirty == null) dirty = List.of();
 
-        Map<String, ClassAbi.Fingerprint> pre =
-                ctx.get(BuildPlanner.PRE_COMPILE_ABI).orElse(Map.of());
+        Optional<MainAbi> mainAbi = ctx.get(BuildPlanner.MAIN_ABI);
+        Map<String, ClassAbi.Fingerprint> pre = mainAbi.map(MainAbi::before).orElse(Map.of());
         Map<String, ClassAbi.Fingerprint> current = AbiIndex.scanClasses(classesDir);
         // Dependency modules' changed types (classified at their compiles) rank this module's
         // importers too — a dependent in the cone is not "nothing affected".
@@ -82,7 +84,7 @@ public final class AffectedTestRun {
             }
         }
 
-        List<Path> compiled = ctx.get(BuildPlanner.COMPILED_MAIN_SOURCES).orElse(List.of());
+        List<Path> compiled = mainAbi.map(MainAbi::compiled).orElse(List.of());
         Path rel = wsRoot.relativize(moduleDir);
         String why = AffectedTestsCompute.hasLocalDirty(wsRoot, moduleDir, dirty) ? "dirty" : "dependent";
         AffectedTests.ModuleRow coneRow =

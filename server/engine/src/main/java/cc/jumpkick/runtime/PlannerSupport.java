@@ -45,7 +45,6 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
-import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.GroovyToolResolver;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.runtime.base.ResourceMirror;
@@ -144,19 +143,7 @@ public final class PlannerSupport {
      * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
      */
     static Path groovyCompileJar(TaskContext ctx, Cas cas) throws IOException {
-        return groovyCompileJar(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
-    }
-
-    /** As {@link #groovyCompileJar(TaskContext, Cas)} for {@code project} under {@code lock}. */
-    static Path groovyCompileJar(JkBuild project, Lockfile lock, Cas cas) throws IOException {
-        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
-        try {
-            RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
-            return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted resolving the Groovy compile jar", e);
-        }
+        return CompileInputs.groovyCompileJar(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
     }
 
     /**

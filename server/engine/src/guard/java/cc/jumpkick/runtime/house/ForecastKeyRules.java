@@ -36,7 +36,9 @@ import org.jspecify.annotations.Nullable;
  * enclosing method's name), or its descriptor names {@code ForecastScope}, {@code StepForecast.Scope} or {@code
  * TaskForecast.Task} (a step's predictor). Every other caller is <b>build-side</b>. A call from the
  * owner's own class is followed to that method's callers, so an owner's forecast entry point in
- * the same class ({@code PackagingKeys.assemblyActionCached}) counts for the side that calls it.
+ * the same class ({@code PackagingKeys.assemblyActionCached}) counts for the side that calls it;
+ * so is a call from another {@code @KeyOwner}, so an owner a shared input owner calls ({@code
+ * CompileInputs} over a request builder) counts for the sides that call the input owner.
  */
 @GuardSuite(scope = Scope.MODULE)
 final class ForecastKeyRules {
@@ -56,9 +58,7 @@ final class ForecastKeyRules {
             Sig.of("cc.jumpkick.task.FreshnessStamp#isFresh"),
             Sig.of("cc.jumpkick.task.FreshnessStamp#freshStamp"),
             Sig.of("cc.jumpkick.task.FreshnessStamp#write"),
-            Sig.of("cc.jumpkick.task.FreshnessStamp#optionsDigest"),
-            Sig.of("cc.jumpkick.runtime.CompileUpToDate#java"),
-            Sig.of("cc.jumpkick.runtime.CompileUpToDate#groovy"));
+            Sig.of("cc.jumpkick.task.FreshnessStamp#optionsDigest"));
 
     /** The classes that declare the key functions: calls among their own overloads are not sites. */
     private static final Set<String> FAMILY_CLASSES = Set.of(
@@ -67,8 +67,7 @@ final class ForecastKeyRules {
             "cc/jumpkick/compile/KotlincRequest",
             "cc/jumpkick/compile/GroovycRequest",
             "cc/jumpkick/task/TestStamp",
-            "cc/jumpkick/task/FreshnessStamp",
-            "cc/jumpkick/runtime/CompileUpToDate");
+            "cc/jumpkick/task/FreshnessStamp");
 
     private static final String TASK = "cc/jumpkick/run/Task";
     private static final String STEP_FORECAST = "cc/jumpkick/run/StepForecast";
@@ -221,6 +220,10 @@ final class ForecastKeyRules {
                 return;
             }
             if (!caller.outer().equals(ownerClass)) {
+                if (caller.keyOwner() != null) {
+                    for (Node up : callersOf(caller)) side(up, caller.outer(), seen, out);
+                    return;
+                }
                 out.add(Side.BUILD);
                 return;
             }

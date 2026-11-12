@@ -81,7 +81,7 @@ class ForecastKeyOwnerTest {
 
     private static CompileRequest mainWithResources(
             Path src, BuildLayout layout, List<Path> processorPath, ProcessorResources resources) {
-        return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        return PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 processorPath,
@@ -124,7 +124,7 @@ class ForecastKeyOwnerTest {
         Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"21.0.5+11\"\n");
         var scala = new ScalaCompile.Setup("3.8.4", List.of(compiler), List.of(stdlib), compiler, compiler);
 
-        CompileRequest full = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest full = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -154,7 +154,7 @@ class ForecastKeyOwnerTest {
 
         // Load-bearing, not decorative: drop the toolchain and the sibling languages and forJavac
         // computes a different key. That is exactly the drift the forecast used to ship.
-        CompileRequest bare = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest bare = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -248,7 +248,7 @@ class ForecastKeyOwnerTest {
         Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"25.0.1+9\"\n");
         String plugin = "-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=t";
 
-        CompileRequest main = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest main = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -286,7 +286,7 @@ class ForecastKeyOwnerTest {
         JavacConfig warn = new JavacConfig(
                 Map.of("ErrorProne", List.of("-Xep:NullAway:WARN", "-XepOpt:NullAway:AnnotatedPackages=t")),
                 project.build().javac().args());
-        CompileRequest relaxed = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        CompileRequest relaxed = PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),
@@ -336,7 +336,7 @@ class ForecastKeyOwnerTest {
 
     private static CompileRequest debugRequest(
             JkBuild project, BuildLayout layout, Path src, Path jdk, DebugInfo debug) {
-        return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+        return PlannerCompile.mainCompileRequest(new CompileInputs.MainCompile(
                 List.of(src),
                 List.of(),
                 List.of(),

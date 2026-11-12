@@ -205,7 +205,7 @@ class CompileTestProcessorTest {
 
     @Test
     void compileMainHandsJavacTheDeclaredPathThenTheContributedOne(@TempDir Path dir) {
-        PlannerCompile.MainCompile in = new PlannerCompile.MainCompile(
+        CompileInputs.MainCompile in = new CompileInputs.MainCompile(
                 List.of(dir.resolve("src/A.java")),
                 List.of(procDir, pluginProcDir),
                 List.of(procDir),

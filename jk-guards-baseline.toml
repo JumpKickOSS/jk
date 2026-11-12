@@ -1447,11 +1447,19 @@ population = { examined = 15 }
 [file-size]
 population = { units = 4145 }
 
+[forecast-key-owner-callers]
+[forecast-key-owner-callers.populations]
+"server/engine" = { examined = 58 }
+
 [forecast-key-parity]
 [forecast-key-parity.populations]
 "server/engine" = { examined = 49 }
 [forecast-key-parity.scope-reasons]
 "server/engine" = "the guard now counts key-family call sites read from bytecode, not engine source files"
+
+[forecast-key-unpaired-claim]
+[forecast-key-unpaired-claim.populations]
+"server/engine" = { examined = 17 }
 
 [git-writes-are-pinned]
 population = { files = 2240 }
@@ -1567,6 +1575,14 @@ population = { files = 2240 }
 
 [method-size]
 population = { units = 34572 }
+
+[module-classpath-owner]
+[module-classpath-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
+
+[module-languages-owner]
+[module-languages-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
 
 [named-exit-codes]
 population = { files = 2203 }
@@ -2199,7 +2215,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 276, edges = 1033 }
+"server/engine" = { classes = 276, edges = 1028 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
@@ -2223,7 +2239,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
-value  = 21
+value  = 19
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2238,12 +2254,12 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerPackage"
-value  = 17
+value  = 16
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin"
-value  = 20
+value  = 19
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2288,7 +2304,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 276, edges = 1033 }
+"server/engine" = { classes = 276, edges = 1028 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2363,11 +2379,6 @@ reason = "the runtime packages as the coupling guard first measured them"
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastLanes~cc.jumpkick.runtime.TaskForecaster"
 value  = 2
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.ForecastLangArms~cc.jumpkick.runtime.ForecastScope"
-value  = 15
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2466,11 +2477,6 @@ value  = 3
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PlannerCompile"
-value  = 3
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PlannerFixtures"
 value  = 3
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2487,7 +2493,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.PlannerCompileForecast"
-value  = 5
+value  = 4
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2503,11 +2509,6 @@ reason = "the runtime packages as the coupling guard first measured them"
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerNode~cc.jumpkick.runtime.PlannerNodeSteps"
 value  = 20
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerPackage~cc.jumpkick.runtime.PlannerPlugin"
-value  = 3
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2567,7 +2568,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 276, edges = 1041 }
+"server/engine" = { classes = 276, edges = 1028 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -2586,7 +2587,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
-value  = 19
+value  = 18
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
@@ -2708,6 +2709,10 @@ population = { examined = 48 }
 [test-paths-from-checkout-root]
 population = { files = 1920 }
 
+[test-stamp-extras-owner]
+[test-stamp-extras-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
+
 [test-tier-docs]
 population = { examined = 5 }
 
@@ -2731,6 +2736,10 @@ population = { files = 1920 }
 
 [tree-copy-owner]
 population = { files = 2203 }
+
+[variant-apply-owner]
+[variant-apply-owner.populations]
+"server/engine" = { classes = 1745, sites = 124284 }
 
 [wire-prefix-pairs]
 population = { files = 2257 }

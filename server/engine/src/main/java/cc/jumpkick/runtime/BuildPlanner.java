@@ -21,7 +21,8 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.CompileStamp;
+import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.test.AffectedTests;
 import java.nio.file.Path;
 import java.util.List;
@@ -81,14 +82,6 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<List<String>> JAVAC_ARGS = BuildPlanKey.list("javac-args", String.class);
 
-    public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
-
-    /** The Kotlin main compile's action key: what its stamp records, and what the merged tree is held against. */
-    public static final BuildPlanKey<String> KOTLIN_ACTION_KEY = BuildPlanKey.scalar("kotlin-action-key", String.class);
-
-    /** The Groovy main compile's action key, recorded by its stamp the same way. */
-    public static final BuildPlanKey<String> GROOVY_ACTION_KEY = BuildPlanKey.scalar("groovy-action-key", String.class);
-
     /** The javac test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
     public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
             BuildPlanKey.scalar("compile-test-action-key", String.class);
@@ -101,46 +94,17 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> COMPILE_TEST_GROOVY_ACTION_KEY =
             BuildPlanKey.scalar("compile-test-groovy-action-key", String.class);
 
-    /**
-     * The option digest each compile checked its freshness stamp against, published for the
-     * write-stamp step so the stamp records exactly what the compile compared.
-     */
-    public static final BuildPlanKey<String> JAVA_STAMP_DIGEST = BuildPlanKey.scalar("java-stamp-digest", String.class);
+    /** What compile-java decided, for write-stamp, assemble-classes and the steps after them. */
+    public static final BuildPlanKey<CompileStamp> JAVA_COMPILE =
+            BuildPlanKey.scalar("java-compile", CompileStamp.class);
 
-    /**
-     * The classpath token lines compile-main checked its freshness stamp against ({@code
-     * ActionKey.javacClasspathTokens} of the request it keyed), published for write-stamp so the
-     * stamp records the same lines the key hashed.
-     */
-    public static final BuildPlanKey<List<String>> JAVA_STAMP_TOKENS =
-            BuildPlanKey.list("java-stamp-tokens", String.class);
+    /** What compile-kotlin decided; its action key is what the merged tree is held against. */
+    public static final BuildPlanKey<CompileStamp> KOTLIN_COMPILE =
+            BuildPlanKey.scalar("kotlin-compile", CompileStamp.class);
 
-    public static final BuildPlanKey<String> KOTLIN_STAMP_DIGEST =
-            BuildPlanKey.scalar("kotlin-stamp-digest", String.class);
-
-    /** As {@link #JAVA_STAMP_TOKENS} for compile-kotlin ({@code PlannerLang.kotlinStampTokens}). */
-    public static final BuildPlanKey<List<String>> KOTLIN_STAMP_TOKENS =
-            BuildPlanKey.list("kotlin-stamp-tokens", String.class);
-
-    public static final BuildPlanKey<String> GROOVY_STAMP_DIGEST =
-            BuildPlanKey.scalar("groovy-stamp-digest", String.class);
-
-    /** As {@link #JAVA_STAMP_TOKENS} for compile-groovy ({@code ActionKey.groovycClasspathTokens}). */
-    public static final BuildPlanKey<List<String>> GROOVY_STAMP_TOKENS =
-            BuildPlanKey.list("groovy-stamp-tokens", String.class);
-
-    /**
-     * The filesystem clock ({@code FreshnessStamp.clockNow}) before compile-main read its first
-     * input, published for write-stamp as the stamp's instant: a source edited while javac ran is
-     * stale on the next check instead of hiding behind a stamp written after it.
-     */
-    public static final BuildPlanKey<Long> JAVA_STAMP_CLOCK = BuildPlanKey.scalar("java-stamp-clock", Long.class);
-
-    /** As {@link #JAVA_STAMP_CLOCK} for compile-kotlin. */
-    public static final BuildPlanKey<Long> KOTLIN_STAMP_CLOCK = BuildPlanKey.scalar("kotlin-stamp-clock", Long.class);
-
-    /** As {@link #JAVA_STAMP_CLOCK} for compile-groovy. */
-    public static final BuildPlanKey<Long> GROOVY_STAMP_CLOCK = BuildPlanKey.scalar("groovy-stamp-clock", Long.class);
+    /** What compile-groovy decided. */
+    public static final BuildPlanKey<CompileStamp> GROOVY_COMPILE =
+            BuildPlanKey.scalar("groovy-compile", CompileStamp.class);
 
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
@@ -152,9 +116,11 @@ public final class BuildPlanner {
     static final BuildPlanKey<SuiteResources> SUITE_RESOURCES =
             BuildPlanKey.scalar("suite-resources", SuiteResources.class);
 
+    /**
+     * {@code built} once a packaging step wrote the module's artifact anew, whatever its compiles
+     * found cached; absent while none did, and the module's outcome is then compile-java's.
+     */
     public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
-    public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.scalar("kotlin-outcome", String.class);
-    public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.scalar("groovy-outcome", String.class);
 
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
@@ -167,11 +133,8 @@ public final class BuildPlanner {
     /** The suite a {@code --class} that matched nothing in this module named instead, when one owns it. */
     public static final BuildPlanKey<String> CLASS_SUITE_HINT = BuildPlanKey.scalar("class-suite-hint", String.class);
 
-    public static final BuildPlanKey<Map<String, ClassAbi.Fingerprint>> PRE_COMPILE_ABI =
-            BuildPlanKey.map("pre-compile-abi", String.class, ClassAbi.Fingerprint.class);
-
-    public static final BuildPlanKey<List<Path>> COMPILED_MAIN_SOURCES =
-            BuildPlanKey.list("compiled-main-sources", Path.class);
+    /** What a javac main compile that ran changed, for {@code --affected}. */
+    public static final BuildPlanKey<MainAbi> MAIN_ABI = BuildPlanKey.scalar("main-abi", MainAbi.class);
 
     public static final BuildPlanKey<AffectedTests> AFFECTED_TESTS =
             BuildPlanKey.scalar("affected-tests", AffectedTests.class);
@@ -190,27 +153,16 @@ public final class BuildPlanner {
             KOTLIN_SOURCES,
             GROOVY_SOURCES,
             JAVAC_ARGS,
-            ACTION_KEY,
-            KOTLIN_ACTION_KEY,
-            GROOVY_ACTION_KEY,
+            JAVA_COMPILE,
+            KOTLIN_COMPILE,
+            GROOVY_COMPILE,
             COMPILE_TEST_ACTION_KEY,
             COMPILE_TEST_KOTLIN_ACTION_KEY,
             COMPILE_TEST_GROOVY_ACTION_KEY,
-            JAVA_STAMP_DIGEST,
-            JAVA_STAMP_TOKENS,
-            KOTLIN_STAMP_DIGEST,
-            KOTLIN_STAMP_TOKENS,
-            GROOVY_STAMP_DIGEST,
-            GROOVY_STAMP_TOKENS,
-            JAVA_STAMP_CLOCK,
-            KOTLIN_STAMP_CLOCK,
-            GROOVY_STAMP_CLOCK,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
             SUITE_RESOURCES,
             BUILD_OUTCOME,
-            KOTLIN_OUTCOME,
-            GROOVY_OUTCOME,
             MAIN_CLASSES,
             TEST_CLASSES,
             LAYOUT,
@@ -218,8 +170,7 @@ public final class BuildPlanner {
             TAG_EXCLUDED,
             NO_TEST_SOURCES,
             CLASS_SUITE_HINT,
-            PRE_COMPILE_ABI,
-            COMPILED_MAIN_SOURCES,
+            MAIN_ABI,
             AFFECTED_TESTS);
 
     /**

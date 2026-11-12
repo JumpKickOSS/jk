@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
@@ -20,6 +24,9 @@ import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -28,7 +35,9 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
@@ -222,6 +231,7 @@ class ForecastRunParityMatrixTest {
         lock(ws, cache);
         build(ws, cache);
 
+        assertCompileInputsAgree(ws, cache);
         assertThat(dirty(walk(ws, cache))).as("the walk right after a build").isEmpty();
         assertThat(dirty(explain(ws, cache)))
                 .as("jk explain right after a build")
@@ -259,6 +269,98 @@ class ForecastRunParityMatrixTest {
                 .filter(s -> COMPILES.contains(s.name()) && !s.cached())
                 .map(s -> s.name() + " (" + s.text() + ")")
                 .toList();
+    }
+
+    /**
+     * Module {@code a}'s forecast derives each main compile's inputs as the build did: the stamp each
+     * compile wrote holds under the sources, classpath token lines and option digest the forecast
+     * derives, and names the action key of the request the forecast builds.
+     */
+    private static void assertCompileInputsAgree(Path ws, Path cache) throws Exception {
+        BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
+        BuildGraph.BuildUnit unit = graph.topoOrder().stream()
+                .filter(u -> u.dir().getFileName().toString().equals("a"))
+                .findFirst()
+                .orElseThrow();
+        ForecastScope s = ForecastScope.alone(
+                unit,
+                TaskForecaster.effectiveManifest(unit, EffectiveManifest.Selection.ambient()),
+                cache,
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas()));
+        ForecastScope.Prepared prepared = s.prepared();
+        ForecastScope.Parsed parsed = prepared.parsed();
+        CompileInputs.Module module = PlannerCompileForecast.compileInputs(s, prepared);
+        BuildLayout layout = parsed.layout();
+        String version = BuildIdentity.cacheKeyVersion();
+        List<String> compiled = new ArrayList<>();
+        if (!parsed.mainSrc().isEmpty()) {
+            CompileRequest request = PlannerCompile.mainCompileRequest(
+                    CompileInputs.java(module, parsed.mainSrc(), CompileInputs.groovyJar(module)));
+            List<String> tokens = ActionKey.javacClasspathTokens(request, s.restored.abiToken());
+            assertStamp(
+                    layout.classesDir(),
+                    BuildStamps.JAVA,
+                    request.sources(),
+                    tokens,
+                    parsed.release(),
+                    ActionKey.javacOptionsDigest(request),
+                    ActionKey.forJavac(
+                            ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, layout.classesDir()),
+                            request,
+                            version,
+                            tokens));
+            compiled.add(TaskNames.COMPILE_JAVA);
+        }
+        if (!parsed.ktSrc().isEmpty()) {
+            CompileInputs.Kotlin inputs = CompileInputs.kotlin(module, parsed.ktSrc(), parsed.mainSrc());
+            KotlinClasspathAbi.Snapshotter snapshotter = s.restored.kotlinSnapshotter();
+            assertStamp(
+                    layout.compileStampDir(),
+                    BuildStamps.KOTLIN,
+                    inputs.stampInputs(),
+                    PlannerLang.kotlinStampTokens(inputs.classpath(), snapshotter),
+                    parsed.release(),
+                    inputs.config().digest(),
+                    ActionKey.forKotlinc(
+                            CompileInputs.kotlinTaskId(module),
+                            CompileInputs.kotlinWorker(module, inputs).request(),
+                            version,
+                            snapshotter));
+            compiled.add(TaskNames.COMPILE_KOTLIN);
+        }
+        if (!parsed.gvSrc().isEmpty()) {
+            CompileInputs.Groovy inputs =
+                    CompileInputs.groovy(module, parsed.gvSrc(), parsed.mainSrc(), parsed.ktSrc());
+            GroovycRequest request = CompileInputs.groovyRequest(module, inputs);
+            assertStamp(
+                    layout.compileStampDir(),
+                    BuildStamps.GROOVY,
+                    inputs.stampInputs(),
+                    ActionKey.groovycClasspathTokens(request, s.restored.abiToken()),
+                    parsed.release(),
+                    CompileInputs.groovyDigest(module),
+                    ActionKey.forGroovyc(CompileInputs.groovyTaskId(module), request, version, s.restored.abiToken()));
+            compiled.add(TaskNames.COMPILE_GROOVY);
+        }
+        assertThat(compiled).as("a's main compiles").isNotEmpty();
+    }
+
+    /** The stamp {@code name} under {@code dir} holds under the forecast's inputs and names {@code key}. */
+    private static void assertStamp(
+            Path dir, String name, List<Path> inputs, List<String> tokens, int release, String digest, String key)
+            throws IOException {
+        Path file = dir.resolve(name);
+        String written = Files.isRegularFile(file) ? Files.readString(file) : "(none)";
+        Optional<FreshnessStamp.Stamp> stamp = FreshnessStamp.freshStamp(
+                dir, name, inputs, FreshnessStamp.ClasspathTokens.of(tokens), release, digest);
+        assertThat(stamp)
+                .as(
+                        "%s holds under the forecast's inputs %s, tokens %s and digest %s; the build wrote:%n%s",
+                        name, inputs, tokens, digest, written)
+                .isPresent();
+        assertThat(stamp.get().actionKey())
+                .as("%s names the forecast's action key", name)
+                .isEqualTo(key);
     }
 
     private static final Set<String> COMPILES =

@@ -2,18 +2,14 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.KspProcessors;
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.KspResolver;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
-import cc.jumpkick.task.FreshnessStamp;
-import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -155,10 +151,6 @@ final class KspForecast {
         return decide(in, TaskNames.COMPILE_TEST, outBase, inputs, classpath, testProcessorCp, kspJars);
     }
 
-    @KeyOwner(
-            step = TaskNames.KSP,
-            unpaired = "the build checks the same stamp in PlannerKsp.runRound",
-            forecastsStep = true)
     private static Round decide(
             Inputs in,
             String producer,
@@ -168,18 +160,9 @@ final class KspForecast {
             List<Path> processorCp,
             List<Path> kspJars)
             throws IOException {
-        String digest = PlannerKsp.kspStampDigest(
-                in.project(),
-                in.lock(),
-                in.dir(),
-                PlannerKsp.kotlinVersion(in.lock(), in.project()),
-                KspResolver.versionFor(in.project()),
-                in.javaHome(),
-                in.release());
-        List<Path> stampCp = new ArrayList<>(classpath);
-        stampCp.addAll(kspJars);
+        String digest = PlannerKsp.roundDigest(in.project(), in.lock(), in.dir(), in.javaHome(), in.release());
         boolean fresh = StepWarnings.kept(in.dir(), CompileWarnings.roundFile(producer))
-                && FreshnessStamp.isFresh(outBase, BuildStamps.KSP, stampInputs, stampCp, in.release(), digest);
+                && PlannerKsp.roundStampFresh(outBase, stampInputs, classpath, kspJars, in.release(), digest);
         // The processor path is in the key by content: a processor bump names another record.
         String key = PlannerKsp.roundKey(outBase, digest, stampInputs, classpath, processorCp, in.identity());
         Map<String, String> outputs = in.actionCache()

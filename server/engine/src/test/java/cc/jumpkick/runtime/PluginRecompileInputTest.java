@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.CompileStamp;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -20,19 +22,29 @@ class PluginRecompileInputTest {
 
     @Test
     void a_compile_that_found_its_classes_up_to_date_is_not_a_recompile() {
-        assertThat(PlannerPlugin.recompiled(context(Map.of(BuildPlanner.BUILD_OUTCOME, "up-to-date"))))
+        assertThat(PlannerPlugin.recompiled(context(Map.of(BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate()))))
                 .isFalse();
-        assertThat(PlannerPlugin.recompiled(context(
-                        Map.of(BuildPlanner.BUILD_OUTCOME, "up-to-date", BuildPlanner.KOTLIN_OUTCOME, "no-sources"))))
+        assertThat(PlannerPlugin.recompiled(context(Map.of(
+                        BuildPlanner.JAVA_COMPILE,
+                        CompileStamp.upToDate(),
+                        BuildPlanner.KOTLIN_COMPILE,
+                        CompileStamp.noSources()))))
+                .isFalse();
+    }
+
+    @Test
+    void an_artifact_written_anew_over_up_to_date_classes_is_not_a_recompile() {
+        assertThat(PlannerPlugin.recompiled(context(Map.of(
+                        BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate(), BuildPlanner.BUILD_OUTCOME, "built"))))
                 .isFalse();
     }
 
     @Test
     void a_compile_that_wrote_classes_is_a_recompile() {
-        assertThat(PlannerPlugin.recompiled(context(Map.of(BuildPlanner.BUILD_OUTCOME, "built"))))
+        assertThat(PlannerPlugin.recompiled(context(Map.of(BuildPlanner.JAVA_COMPILE, compiled()))))
                 .isTrue();
-        assertThat(PlannerPlugin.recompiled(context(
-                        Map.of(BuildPlanner.BUILD_OUTCOME, "up-to-date", BuildPlanner.KOTLIN_OUTCOME, "compiled"))))
+        assertThat(PlannerPlugin.recompiled(context(Map.of(
+                        BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate(), BuildPlanner.KOTLIN_COMPILE, compiled()))))
                 .as("one language recompiled is enough")
                 .isTrue();
     }
@@ -42,7 +54,11 @@ class PluginRecompileInputTest {
         assertThat(PlannerPlugin.recompiled(context(Map.of()))).isTrue();
     }
 
-    private static TaskContext context(Map<BuildPlanKey<String>, String> values) {
+    private static CompileStamp compiled() {
+        return new CompileStamp("compiled", List.of(), "", List.of(), 0L, "");
+    }
+
+    private static TaskContext context(Map<BuildPlanKey<?>, ?> values) {
         Map<BuildPlanKey<?>, Object> state = new HashMap<>(values);
         return new TaskContext() {
             @Override

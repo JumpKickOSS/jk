@@ -127,8 +127,8 @@ class BuildPlannerGroovyStepTest {
                 "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
         BuildLayout layout = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
         List<Path> cp = List.of(dir.resolve("a.jar"));
-        assertThat(PlannerCompile.groovyClasspath(cp, layout, false)).isEqualTo(cp);
-        assertThat(PlannerCompile.groovyClasspath(cp, layout, true))
+        assertThat(CompileInputs.groovyClasspath(cp, layout, false)).isEqualTo(cp);
+        assertThat(CompileInputs.groovyClasspath(cp, layout, true))
                 .containsExactly(cp.get(0), layout.kotlinClassesDir());
     }
 
