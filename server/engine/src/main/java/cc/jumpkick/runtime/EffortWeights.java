@@ -607,7 +607,7 @@ public final class EffortWeights {
         boolean lockStale = !rerun && AutoLock.isStale(in.dir(), in.lockFile());
         if (lockStale) rerun = true;
 
-        int sync = predictSync(in, cas);
+        int sync = predictSync(in);
         // Learned per-unit rates (cold ⇒ empty ⇒ static Task-1 weights). Keyed by
         // module dir, the same key the recorder writes at build end. One metrics view for the
         // whole prediction: every step below prices against the same fold.
@@ -990,28 +990,17 @@ public final class EffortWeights {
         }
     }
 
-    /** Fetch weight: 8 per artifact not already in the CAS (all of them under {@code  --force}). */
-    private static int predictSync(BuildPlanner.Inputs in, Cas cas) {
-        try {
-            int perFetch = artifactFetchWeight();
-            if (!Files.exists(in.lockFile())) return perFetch; // first run resolves+fetches
-            Lockfile lock = LockfileReader.read(in.lockFile());
-            int fetches = 0;
-            for (Lockfile.Artifact a : lock.artifacts()) {
-                String checksum = a.checksum();
-                if (checksum == null) continue; // pom-only / path / git — nothing to fetch
-                // Only artifacts missing from the CAS cost anything to sync. --force/--refresh does
-                // NOT re-download blobs already present: the CAS is content-addressed (a stored
-                // sha256 is byte-identical), so a forced build resolves entirely from local disk
-                // it even succeeds offline. Reserving a per-artifact download here for cached deps
-                // was the bug that made `jk explain -F` predict tens of seconds of phantom fetch.
-                String hex = a.checksumHex();
-                if (hex == null || !cas.contains(hex)) fetches++;
-            }
-            return fetches == 0 ? SKIP : fetches * perFetch;
-        } catch (Exception e) {
-            return SKIP;
-        }
+    /**
+     * resolve-deps' weight. The workspace's SYNC phase puts every locked artifact on disk before
+     * any module plan runs (resolve-deps requires them present and fetches nothing), and that phase
+     * carries its own share of the bar: with a lock, the step only derives classpaths. Without one,
+     * the module's first build resolves and fetches inside parse-build. This reserved a fetch for
+     * each locked artifact missing from the store CAS, where the artifacts no longer live (they are
+     * in the store's repository tree): about 390 units on jk's own modules, which every module
+     * reported done the moment it started, sending its progress to ~45% at once.
+     */
+    private static int predictSync(BuildPlanner.Inputs in) {
+        return Files.exists(in.lockFile()) ? SKIP : artifactFetchWeight();
     }
 
     /**

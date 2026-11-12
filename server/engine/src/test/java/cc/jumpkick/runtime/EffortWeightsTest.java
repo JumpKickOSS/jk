@@ -174,6 +174,53 @@ class EffortWeightsTest {
         assertThat(warm.compileGroovy()).isEqualTo(EffortWeights.TOKEN);
     }
 
+    /**
+     * With a lock, resolve-deps fetches nothing (the workspace's SYNC phase has, and carries its own
+     * bar share): its weight is a touch whatever the store CAS holds. It reserved a fetch per locked
+     * artifact missing from the store CAS, where artifacts no longer live, so every module jumped to
+     * ~45% the moment it started.
+     */
+    @Test
+    void resolve_deps_reserves_no_fetch_when_the_module_is_locked(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+            group = "t"
+            name = "m"
+            version = "0.1.0"
+            jdk = 25
+            """);
+        StringBuilder lock =
+                new StringBuilder("version = 1\ngenerated-by = \"test\"\nresolution-algorithm = \"pubgrub-v1\"\n");
+        for (int i = 0; i < 50; i++) {
+            lock.append("""
+
+                [[artifact]]
+                name     = "g:a%d:jar:"
+                version  = "1.0"
+                source   = "central"
+                checksum = "sha256:%064x"
+                """.formatted(i, i + 1));
+        }
+        Files.writeString(dir.resolve("jk-lock.toml"), lock.toString());
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
+                dir,
+                dir.resolve("cache"),
+                dir.resolve("jk.toml"),
+                dir.resolve("jk-lock.toml"),
+                dir,
+                1,
+                0,
+                null,
+                null,
+                true,
+                false,
+                false,
+                false,
+                Set.of(),
+                SessionContext.current());
+        var plan = EffortWeights.predict(in, new Cas(dir.resolve("cache")), true, false, false, false, false);
+        assertThat(plan.sync()).isEqualTo(EffortWeights.TOKEN);
+    }
+
     @Test
     void running_tests_carry_a_startup_floor_plus_per_method() {
         // The JVM-startup floor is paid even by a zero-method suite, so a small,

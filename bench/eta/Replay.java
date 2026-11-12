@@ -62,12 +62,16 @@ public class Replay {
         final Map<Path, Long> den = new HashMap<>();
         /** Per module: steps started and finished (any step but the suite and the tails). */
         final Map<Path, Set<String>> preStarted = new HashMap<>();
+
         final Map<Path, Set<String>> preFinished = new HashMap<>();
         /** Per module: the suite's tick total, read when it first reports (the plan's ticks not yet spent). */
         final Map<Path, Long> suiteTicks = new HashMap<>();
+
         final Map<Path, Long> tailTicks = new HashMap<>();
         final Map<Path, ModuleWorkCost> costOf = new HashMap<>();
         final Map<Path, Long> reported = new HashMap<>();
+        /** Per module: the ticks resolve-deps reported (its whole weight, reported at once). */
+        final Map<Path, Long> resolveTicks = new HashMap<>();
 
         void seed(List<ModuleWorkCost> c, long r0, int conc, boolean serial, boolean pt, long at) {
             this.costs = c;
@@ -86,6 +90,22 @@ public class Replay {
         String name();
 
         long remaining(State s, long now);
+    }
+
+    /**
+     * Today's engine model fed the module fraction with resolve-deps' weight taken out of both
+     * sides: what the engine would show once that step stops reserving a fetch per locked artifact.
+     */
+    static final class V6 implements Model {
+        RemainingWork rw;
+
+        public String name() {
+            return "V6 engine, no resolve-deps fetch weight";
+        }
+
+        public long remaining(State s, long now) {
+            return rw == null ? -1 : rw.remaining();
+        }
     }
 
     /** Today's engine model, from the jar. Driven alongside the state so fidelity is checked. */
@@ -218,8 +238,8 @@ public class Replay {
         }
 
         public String name() {
-            return (timeAware ? "V4" + (globalScale ? "c" : "d") : "V4" + (globalScale ? "a" : "b"))
-                    + " step-weighted" + (timeAware ? ", time floor" : "") + (globalScale ? ", global scale" : ", no global scale");
+            return (timeAware ? "V4" + (globalScale ? "c" : "d") : "V4" + (globalScale ? "a" : "b")) + " step-weighted"
+                    + (timeAware ? ", time floor" : "") + (globalScale ? ", global scale" : ", no global scale");
         }
 
         double scaleMs(State s) {
@@ -257,7 +277,10 @@ public class Replay {
             double estMs = weight * scale;
             double elapsed = Math.max(0, now - start);
             double overrun = OVERRUN_SHARE * elapsed / estMs;
-            return Math.max(share, Math.min(overrun, 1.0 - Math.min(1.0, (preDone + testDone + tailDone) / (double) Math.max(1, den))));
+            return Math.max(
+                    share,
+                    Math.min(
+                            overrun, 1.0 - Math.min(1.0, (preDone + testDone + tailDone) / (double) Math.max(1, den))));
         }
     }
 
@@ -279,7 +302,9 @@ public class Replay {
         }
 
         public String name() {
-            return globalScale ? "V5a step-finished + suite ticks, global scale" : "V5b step-finished + suite ticks, no global scale";
+            return globalScale
+                    ? "V5a step-finished + suite ticks, global scale"
+                    : "V5b step-finished + suite ticks, no global scale";
         }
 
         double scaleMs(State s) {
@@ -401,6 +426,7 @@ public class Replay {
         long wall = end - t0;
 
         V0 v0 = new V0();
+        V6 v6 = new V6();
         List<Model> models = new ArrayList<>(List.of(
                 v0,
                 new V1(),
@@ -412,7 +438,8 @@ public class Replay {
                 new V4(true, true),
                 new V4(false, true),
                 new V5(true),
-                new V5(false)));
+                new V5(false),
+                v6));
         if (wanted != null) models.removeIf(m -> !wanted.contains(m.name().split(" ")[0]));
 
         State st = new State();
@@ -435,6 +462,7 @@ public class Replay {
                         num(s, "ts"));
                 st.frac.clear();
                 v0.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
+                v6.rw = RemainingWork.seed(costs, st.r0, st.concurrency, st.serial, st.parallelTests);
             }
             String type = String.valueOf(e.get("type"));
             switch (type) {
@@ -451,13 +479,19 @@ public class Replay {
                     long ticks = Math.max(0, num(e, "ticks"));
                     st.steps.computeIfAbsent(Path.of(dir), k -> new LinkedHashMap<>())
                             .computeIfAbsent(task.toString(), k -> new long[2])[0] = ticks;
-                    if (pre(task.toString())) st.preStarted.computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>()).add(task.toString());
+                    if (pre(task.toString()))
+                        st.preStarted
+                                .computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>())
+                                .add(task.toString());
                 }
                 case "task-finish" -> {
                     String dir = dirOf(e, dirOfCoord);
                     Object task = e.get("task");
                     if (dir == null || task == null) break;
-                    if (pre(task.toString())) st.preFinished.computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>()).add(task.toString());
+                    if (pre(task.toString()))
+                        st.preFinished
+                                .computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>())
+                                .add(task.toString());
                 }
                 case "progress", "buildplan-start" -> {
                     String dir = dirOf(e, dirOfCoord);
@@ -476,7 +510,8 @@ public class Replay {
                         Map<Path, Long> mine = suite ? st.suiteTicks : tail ? st.tailTicks : null;
                         Map<Path, Long> other = suite ? st.tailTicks : st.suiteTicks;
                         if (mine != null && !mine.containsKey(p)) {
-                            long unspent = Math.max(1, den - st.reported.getOrDefault(p, 0L) - other.getOrDefault(p, 0L));
+                            long unspent =
+                                    Math.max(1, den - st.reported.getOrDefault(p, 0L) - other.getOrDefault(p, 0L));
                             ModuleWorkCost c = st.costOf.get(p);
                             // A suite and a tail run beside each other: until the other reports, it
                             // keeps its weight's share of the unspent ticks.
@@ -489,6 +524,15 @@ public class Replay {
                         }
                     }
                     if (delta > 0) st.reported.merge(p, delta, Long::sum);
+                    if (task != null && TaskNames.RESOLVE_DEPS.equals(task.toString()) && delta > 0) {
+                        st.resolveTicks.merge(p, delta, Long::sum);
+                    }
+                    if (v6.rw != null) {
+                        long rt = st.resolveTicks.getOrDefault(p, 0L);
+                        long d6 = den - rt;
+                        double f6 = d6 <= 0 ? f : Math.min(1.0, Math.max(0.0, (num(e, "numerator") - rt) / (double) d6));
+                        v6.rw.moduleProgress(p, f6);
+                    }
                     if (task != null && delta > 0) {
                         st.steps.computeIfAbsent(p, k -> new LinkedHashMap<>())
                                 .computeIfAbsent(task.toString(), k -> new long[2])[1] += delta;
@@ -500,6 +544,7 @@ public class Replay {
                     if (dir == null) break;
                     Path p = Path.of(dir);
                     if (v0.rw != null) v0.rw.moduleComplete(p);
+                    if (v6.rw != null) v6.rw.moduleComplete(p);
                     st.done.add(p);
                 }
                 case "workspace-progress" -> {
