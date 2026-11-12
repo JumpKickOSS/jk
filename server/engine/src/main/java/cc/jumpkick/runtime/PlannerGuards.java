@@ -15,6 +15,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
@@ -85,7 +86,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -1021,9 +1021,10 @@ final class PlannerGuards {
 
     // ---- rules memo ---------------------------------------------------------------------------
 
-    private record Memo(String stamp, LoadResult load) {}
+    /** The rule layers' stamp and the manifest's {@code [guards]} table, which the rule set carries. */
+    private record RulesStamp(String layers, GuardsConfig config) {}
 
-    private static final Map<Path, Memo> RULES = new ConcurrentHashMap<>();
+    private static final StampedMemo<Path, RulesStamp, LoadResult> RULES = StampedMemo.bounded(16);
 
     /** The rule layers parsed once per content stamp; every lane of every module shares the result. */
     static LoadResult rules(GuardsPlan g) throws IOException {
@@ -1043,12 +1044,13 @@ final class PlannerGuards {
         // Every layer the load reads is in the stamp: the root file, the lock (pack pins), the members'
         // files and the packs' unpack markers. A pack the lock pins but the store has not unpacked yet
         // changes the stamp when it lands, so the memo never outlives its inputs.
-        String stamp = GuardRules.stamp(g.root());
-        Memo m = RULES.get(file);
-        if (m != null && m.stamp.equals(stamp)) return m.load;
-        LoadResult load = loader.get();
-        RULES.put(file, new Memo(stamp, load));
-        recordRulesHash(g.root(), file);
+        RulesStamp stamp = new RulesStamp(GuardRules.stamp(g.root()), g.config());
+        boolean[] loaded = {false};
+        LoadResult load = RULES.get(file, stamp, () -> {
+            loaded[0] = true;
+            return loader.get();
+        });
+        if (loaded[0]) recordRulesHash(g.root(), file);
         return load;
     }
 
