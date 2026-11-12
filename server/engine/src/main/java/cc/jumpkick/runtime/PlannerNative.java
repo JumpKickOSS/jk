@@ -35,6 +35,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -492,7 +493,8 @@ public final class PlannerNative {
             throws Exception {
         long effectiveBytes = NativeEffort.estimateInputBytes(dir);
         if (effectiveBytes < 1024) effectiveBytes = NativeEffort.sumExistingBytes(classpath);
-        NativeEffort.recordSuccessInputBytes(dir, effectiveBytes);
+        RunMeasures measures = RunMeasures.current();
+        if (measures != null) measures.nativeInputBytes(dir.toString(), effectiveBytes);
         // Size-aware reservation; reweight may shrink only (never grow the bar).
         int sized = NativeEffort.weight(dir);
         try {

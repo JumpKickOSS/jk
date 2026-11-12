@@ -14,6 +14,7 @@ import cc.jumpkick.mvn.PomShadow;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,9 +36,10 @@ import org.jspecify.annotations.Nullable;
  * the first reader and shared by the rest.
  *
  * <p>Rendering happens once per POM change; the rows of the import report that {@code jk import}
- * would grade Tier 3 are parked per module until the next build's parse step {@linkplain
- * #drainTier3 drains} them into its warnings, so a build says once what the shadow does not carry.
- * The reactor's own rows ride with the first leaf that drains. A render that failed on a read —
+ * would grade Tier 3 are parked beside each module's shadow until the next build's parse step
+ * {@linkplain #drainTier3 drains} them into its warnings, whichever request rendered it, so a build
+ * says once what the shadow does not carry. The reactor's own rows ride with the first leaf that
+ * drains. A render that failed on a read —
  * a repository that stopped answering — is {@linkplain ShadowRenderFailures remembered}, so the
  * job's next reader of the same POM gets the failure at once rather than waiting the stall window
  * out again.
@@ -46,10 +48,11 @@ public final class ShadowManifests {
 
     private ShadowManifests() {}
 
-    private static final Map<Path, List<String>> PENDING_TIER3 = new ConcurrentHashMap<>();
+    /** A rendering's Tier-3 rows, one per line, beside the module's shadow until a build reports them. */
+    static final String PENDING_TIER3 = "pending-tier3.txt";
 
-    /** What a rendering changed from the POM's own words (raised pins), reported once like the rows. */
-    private static final Map<Path, List<String>> PENDING_NOTES = new ConcurrentHashMap<>();
+    /** What a rendering changed from the POM's own words (raised pins), parked and reported like the rows. */
+    static final String PENDING_NOTES = "pending-notes.txt";
 
     /** Leaf module → the reactor root whose rendering wrote its shadow. */
     private static final Map<Path, Path> ROOT_OF = new ConcurrentHashMap<>();
@@ -147,12 +150,12 @@ public final class ShadowManifests {
                 Path target = ManifestPaths.shadowManifestPath(rendered.moduleDir());
                 Files.createDirectories(Objects.requireNonNull(target.getParent(), "shadow dir"));
                 AtomicWrites.replace(target, rendered.toml());
-                PENDING_TIER3.put(rendered.moduleDir(), rendered.tier3());
+                park(rendered.moduleDir(), PENDING_TIER3, rendered.tier3());
                 if (!rendered.moduleDir().equals(module)) leaves.add(rendered.moduleDir());
                 Log.debug("shadow manifest rendered", target);
             }
             recordLeaves(module, leaves);
-            PENDING_NOTES.put(module, raisePins(module));
+            park(module, PENDING_NOTES, raisePins(module));
         } catch (IOException e) {
             FAILURES.remember(module, e);
             throw new UncheckedIOException(e);
@@ -201,15 +204,44 @@ public final class ShadowManifests {
         Path module = dir.toAbsolutePath().normalize();
         List<String> rows = new ArrayList<>();
         Path root = ROOT_OF.get(module);
-        if (root != null) rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(root), List.of()));
-        rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(module), List.of()));
+        if (root != null) rows.addAll(take(root, PENDING_TIER3));
+        rows.addAll(take(module, PENDING_TIER3));
         List<String> out = new ArrayList<>();
         for (String row : rows) {
             out.add(row + ": ignored when building from " + ManifestPaths.POM + "; jk import " + ManifestPaths.POM
                     + " writes a jk.toml to edit");
         }
-        if (root != null) out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(root), List.of()));
-        out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(module), List.of()));
+        if (root != null) out.addAll(take(root, PENDING_NOTES));
+        out.addAll(take(module, PENDING_NOTES));
         return List.copyOf(out);
+    }
+
+    /** Park {@code lines} under {@code name} beside {@code module}'s shadow, replacing any not yet reported. */
+    private static void park(Path module, String name, List<String> lines) throws IOException {
+        Path file = ManifestPaths.shadowDir(module).resolve(name);
+        if (lines.isEmpty()) {
+            Files.deleteIfExists(file);
+            return;
+        }
+        Files.createDirectories(ManifestPaths.shadowDir(module));
+        AtomicWrites.replace(file, String.join("\n", lines) + "\n");
+    }
+
+    /**
+     * The lines parked under {@code name} beside {@code module}'s shadow, and gone from there; empty
+     * when none are, or when a racing drain removed them first, so only one build reports them.
+     */
+    private static List<String> take(Path module, String name) {
+        Path file = ManifestPaths.shadowDir(module).resolve(name);
+        try {
+            List<String> lines = Files.readAllLines(file);
+            Files.delete(file);
+            return lines;
+        } catch (NoSuchFileException none) {
+            return List.of();
+        } catch (IOException e) {
+            Log.debug("shadow: cannot take " + file, e);
+            return List.of();
+        }
     }
 }

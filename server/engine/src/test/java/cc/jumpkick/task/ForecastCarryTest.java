@@ -5,13 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.runtime.TaskForecaster;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A forecast's lanes on the cpu pool read through the same projection, entry memo and plan-worker limit as the forecast. */
+/**
+ * A forecast's lanes on the cpu pool read through the same projection, entry memo and plan-worker
+ * limit as the forecast, and report to its progress listener.
+ */
 class ForecastCarryTest {
 
     @Test
@@ -51,5 +56,20 @@ class ForecastCarryTest {
                         .get());
 
         assertThat(onLane).isEqualTo(JavaCompile.PlanWorkers.NONE);
+    }
+
+    @Test
+    void a_lane_reports_to_the_forecasts_progress_listener() throws Exception {
+        AtomicInteger told = new AtomicInteger();
+        TaskForecaster.ModuleProgress progress = (done, total) -> told.set(done);
+
+        ScopedValue.where(TaskForecaster.PROGRESS, progress).call(() -> JkThreads.cpu()
+                .submit(() -> {
+                    TaskForecaster.ModuleProgress seen = ContextPropagator.get(TaskForecaster.PROGRESS);
+                    if (seen != null) seen.moduleDone(3, 4);
+                })
+                .get());
+
+        assertThat(told).hasValue(3);
     }
 }

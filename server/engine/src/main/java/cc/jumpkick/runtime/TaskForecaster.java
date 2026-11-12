@@ -22,6 +22,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
@@ -117,8 +118,15 @@ public final class TaskForecaster {
         }
     }
 
-    /** Told each module the walk finishes, as (done, total); bound by the preflight's cache check. */
+    /**
+     * Told each module the walk finishes, as (done, total); bound by the preflight's cache check and
+     * carried onto the lanes that price the modules.
+     */
     public static final ScopedValue<ModuleProgress> PROGRESS = ScopedValue.newInstance();
+
+    static {
+        ContextPropagator.carry(PROGRESS);
+    }
 
     /** A forecast walk's progress: {@code done} of {@code total} modules priced. */
     @FunctionalInterface
@@ -218,12 +226,11 @@ public final class TaskForecaster {
         // moves. A module's verdict is published before any consumer starts, so a consumer reads
         // its prereqs' dirtiness complete.
         List<BuildGraph.BuildUnit> walked = new ArrayList<>(byDir.values());
-        // Read once on the caller: the lanes run on pool threads the scoped value does not reach.
-        ModuleProgress progress = PROGRESS.isBound() ? PROGRESS.get() : null;
         AtomicInteger priced = new AtomicInteger();
         ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), u -> {
             one.accept(u);
             if (seeds.contains(u.dir())) dirty.add(u.dir());
+            ModuleProgress progress = ContextPropagator.get(PROGRESS);
             if (progress != null) progress.moduleDone(priced.incrementAndGet(), walked.size());
         });
         // Anything the walk could not reach — a cycle the graph resolve should already have

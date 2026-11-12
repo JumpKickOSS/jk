@@ -206,11 +206,8 @@ final class RunMetricsToml {
                             .append('\n');
                 }
             }
-            // No input-bytes field here: nothing ever read it, and its value was wrong anyway —
-            // BuildService's success fold takes (removes) the recorded bytes before the journal
-            // write runs, so this always fell back to a fresh disk walk that could differ from
-            // what ms/MB learning actually used. Size learning rides the in-memory
-            // recordSuccessInputBytes → hostSamples path.
+            // No input-bytes field: size learning takes a native image's input bytes from the
+            // run's measures when its step finishes (RunMeasures.nativeInputBytes), before this.
             modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
     }

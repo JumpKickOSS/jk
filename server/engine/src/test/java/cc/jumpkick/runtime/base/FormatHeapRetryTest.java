@@ -26,8 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A format worker that runs out of its heap climbs the heap ladder and finishes, each file counted
- * once across the attempts, and the next run starts at a heap that fits. A pinned heap is not
- * retried.
+ * once across the attempts, each retry a warning on the step, and the next run starts at a heap
+ * that fits. A pinned heap is not retried.
  */
 class FormatHeapRetryTest {
 
@@ -79,6 +79,9 @@ class FormatHeapRetryTest {
         assertThat(r.result().errors().get(0).message())
                 .startsWith("format worker ran out of heap at 128 MiB, 256 MiB")
                 .contains("[jvm] args");
+        assertThat(r.notes())
+                .as("the retries before the step gave up are still reported")
+                .startsWith("retried with 256 MiB heap after running out of 128 MiB");
     }
 
     @Test
@@ -97,37 +100,37 @@ class FormatHeapRetryTest {
         assertThat(Files.readString(dir.resolve("heaps"))).isEqualTo("-Xmx128m\n");
     }
 
-    /** {@code notes} are the heap-retry lines the format step noted. */
-    private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed, List<String> notes) {}
+    /** The format step's run; {@link #notes} are its heap-retry warnings. */
+    private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed) {
+        List<String> notes() {
+            return result.warnings().stream()
+                    .filter(w -> w.code().equals(HeapNotes.CODE))
+                    .map(w -> String.valueOf(w.message()))
+                    .toList();
+        }
+    }
 
     /** One format step over {@code total} files, forking {@code java} at the heap {@code heaps} chooses. */
     private static Run run(Path java, LearnedHeaps heaps, HeapScope.Key key, int total) {
         List<String> observed = new ArrayList<>();
-        List<String> notes = new ArrayList<>();
         Long heap = FormatWorker.startHeap(heaps, key);
         List<String> base = heap == null
                 ? List.of(java.toString(), "-Xmx128m", "Worker")
                 : List.of(java.toString(), "-Xmx64m", "Worker");
         Task format = Task.builder("format")
                 .ticks(total)
-                .execute(ctx -> {
-                    try {
-                        FormatWorker.runWorker(
-                                ctx,
-                                h -> FormatWorker.atHeap(base, h),
-                                Files.createTempFile("jk-format-", ".spec"),
-                                heap,
-                                key,
-                                heaps,
-                                0,
-                                total,
-                                false,
-                                null,
-                                (path, status, msg, index, tot) -> observed.add(path));
-                    } finally {
-                        notes.addAll(HeapNotes.drain());
-                    }
-                })
+                .execute(ctx -> FormatWorker.runWorker(
+                        ctx,
+                        h -> FormatWorker.atHeap(base, h),
+                        Files.createTempFile("jk-format-", ".spec"),
+                        heap,
+                        key,
+                        heaps,
+                        0,
+                        total,
+                        false,
+                        null,
+                        (path, status, msg, index, tot) -> observed.add(path)))
                 .build();
         BuildPlan plan = BuildPlan.builder("format")
                 .stateKeys(
@@ -138,7 +141,7 @@ class FormatHeapRetryTest {
                         FormatWorker.WORKER_EXIT)
                 .addTask(format)
                 .build();
-        return new Run(plan, plan.run(), observed, notes);
+        return new Run(plan, plan.run(), observed);
     }
 
     /**

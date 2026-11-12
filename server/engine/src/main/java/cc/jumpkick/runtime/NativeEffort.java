@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.OptionalDouble;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Prices {@code native-image} wall time for ETA and bar weights.
@@ -77,8 +76,6 @@ public final class NativeEffort {
     static final long MAX_NATIVE_MS = 20 * 60_000L;
 
     private static final long MIB = 1024L * 1024L;
-
-    private static final ConcurrentHashMap<String, Long> LAST_INPUT_BYTES = new ConcurrentHashMap<>();
 
     private NativeEffort() {}
 
@@ -259,17 +256,6 @@ public final class NativeEffort {
     static long clampNativeMs(long ms) {
         if (ms < WALL_FLOOR_MS) return WALL_FLOOR_MS;
         return Math.min(MAX_NATIVE_MS, ms);
-    }
-
-    public static void recordSuccessInputBytes(Path moduleDir, long inputBytes) {
-        if (moduleDir == null || inputBytes < 1024) return;
-        LAST_INPUT_BYTES.put(moduleDir.toString(), inputBytes);
-    }
-
-    public static long takeLastInputBytes(String moduleDir) {
-        if (moduleDir == null) return 0;
-        Long v = LAST_INPUT_BYTES.remove(moduleDir);
-        return v == null ? 0 : v;
     }
 
     /**

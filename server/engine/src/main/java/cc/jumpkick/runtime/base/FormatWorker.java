@@ -137,7 +137,8 @@ public final class FormatWorker {
      * <p>A worker that runs out of its own heap is started again up the {@link HeapLadder}; one the
      * kernel killed for memory is started once more at the same heap. A re-run reports every file
      * again, and only the files no earlier attempt reported are counted. The peak each attempt
-     * reached is learned under {@code key}, so the next run starts at a heap that fits.
+     * reached is learned under {@code key}, so the next run starts at a heap that fits, and each
+     * retry is one {@link HeapNotes#CODE} warning on the step.
      *
      * @param heap the first heap, or {@code null} when the user pinned worker memory
      * @param preClean files the freshness index settled before the fork: part of {@code total}, so
@@ -191,6 +192,7 @@ public final class FormatWorker {
                 }
             }
         }
+        HeapNotes.flush(ctx);
         if (freshness != null) freshness.save();
         ctx.put(CHANGED, tally.changed.get());
         ctx.put(CLEAN, preClean + tally.clean.get());

@@ -19,6 +19,7 @@ import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.SettledReads;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunMeasures;
@@ -524,7 +525,8 @@ public final class JobEnvelope {
         if (a.plan()) host.cacheGate().readLock().lock();
         try {
             // One binding for the job: its id, ledger, shell, keychain, results sink, actor, worker
-            // scope, measures, live-unit count and heap plan reach every pool task and every thread it starts.
+            // scope, measures, settled suite reads, live-unit count and heap plan reach every pool task and every
+            // thread it starts.
             // Test runs and coverage published anywhere under it land on its record.
             BuildAccumulator acc = host.accumulatorOf(eventRequestId);
             Request request = requestOf(eventRequestId, io, a.actor(), a.requestLine())
@@ -532,6 +534,7 @@ public final class JobEnvelope {
                     .with(RunResults.SLOT, acc != null ? acc.results() : new RunResults())
                     .with(RunMeasures.SLOT, acc != null ? acc.measures() : new RunMeasures())
                     .with(LiveUnits.SLOT, new LiveUnits())
+                    .with(SettledReads.SLOT, new SettledReads())
                     .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap());
             request.run(() -> runBound(a, io));
         } catch (Throwable t) {

@@ -41,4 +41,21 @@ class RunMeasuresTest {
         assertThat(taken.takeRunners("/ws/app")).isEqualTo(4);
         assertThat(taken.takeClassWalls("/ws/app")).containsEntry("a.ATest", 300L);
     }
+
+    @Test
+    void native_input_bytes_are_the_runs_own_and_taken_once_under_any_spelling() {
+        RunMeasures mine = new RunMeasures();
+        RunMeasures other = new RunMeasures();
+        mine.nativeInputBytes("C:\\Users\\me\\ws\\app", 64L << 20);
+        mine.nativeInputBytes("C:\\Users\\me\\ws\\tiny", 512);
+
+        assertThat(other.takeNativeInputBytes("c:/Users/me/ws/app"))
+                .as("another run's")
+                .isZero();
+        assertThat(mine.takeNativeInputBytes("c:/Users/me/ws/tiny"))
+                .as("under a KiB")
+                .isZero();
+        assertThat(mine.takeNativeInputBytes("c:/Users/me/ws/app")).isEqualTo(64L << 20);
+        assertThat(mine.takeNativeInputBytes("C:\\Users\\me\\ws\\app")).isZero();
+    }
 }

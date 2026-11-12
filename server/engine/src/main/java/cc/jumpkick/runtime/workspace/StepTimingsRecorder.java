@@ -170,8 +170,9 @@ public final class StepTimingsRecorder implements BuildPlanListener {
                 hostSink.add(
                         new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_ASSEMBLY_MS, wallMs, MAX_PACKAGE_MS));
             case TaskNames.NATIVE_IMAGE -> {
-                // Size-conditioned host rates when this process recorded input bytes for the module.
-                long bytes = NativeEffort.takeLastInputBytes(moduleKey);
+                // Size-conditioned host rates when this run recorded input bytes for the module.
+                RunMeasures measures = RunMeasures.current();
+                long bytes = measures == null ? 0 : measures.takeNativeInputBytes(moduleKey);
                 if (bytes <= 0) bytes = NativeEffort.estimateInputBytes(Path.of(moduleKey));
                 for (HostLearnedRates.HostSample s : NativeEffort.hostSamples(wallMs, bytes)) {
                     hostSink.add(s);

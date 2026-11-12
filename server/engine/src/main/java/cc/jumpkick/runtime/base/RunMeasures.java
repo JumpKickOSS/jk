@@ -12,8 +12,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What one run measured for its {@code metrics.toml} beyond its step records: each module's
- * test-class walls and the runner count its suite ran with, and whether the run paid a compiler
- * worker's warm-up. Owned by the run's accumulator, reached through the request under {@link #SLOT},
+ * test-class walls and the runner count its suite ran with, the input bytes its native image was
+ * sized at, and whether the run paid a compiler worker's warm-up. Owned by the run's accumulator, reached through the request under {@link #SLOT},
  * and taken whole once when the run is journaled, whether or not history keeps it.
  *
  * <p>A runner count travels with the walls because a stored suite wall predicts nothing without the
@@ -31,6 +31,7 @@ public final class RunMeasures {
 
     private final ConcurrentHashMap<String, Map<String, Long>> classWalls = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> runners = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> nativeInputBytes = new ConcurrentHashMap<>();
     private final AtomicBoolean coldWorker = new AtomicBoolean();
 
     /** The measures of the request bound now, or {@code null} off one. */
@@ -59,6 +60,22 @@ public final class RunMeasures {
     public void runners(String moduleDir, int count) {
         if (moduleDir == null || moduleDir.isBlank() || count <= 0) return;
         runners.put(key(moduleDir), count);
+    }
+
+    /**
+     * {@code moduleDir}'s native image was sized at {@code bytes} of effective input, so its wall
+     * teaches the host's size-conditioned rates; under a KiB is no size worth learning from.
+     */
+    public void nativeInputBytes(String moduleDir, long bytes) {
+        if (moduleDir == null || moduleDir.isBlank() || bytes < 1024) return;
+        nativeInputBytes.put(key(moduleDir), bytes);
+    }
+
+    /** {@code moduleDir}'s native input bytes, removed; {@code 0} when none or already taken. */
+    public long takeNativeInputBytes(@Nullable String moduleDir) {
+        if (moduleDir == null) return 0;
+        Long bytes = nativeInputBytes.remove(key(moduleDir));
+        return bytes == null ? 0 : bytes;
     }
 
     /** A compiler worker was started for one of this run's compiles: the run pays its warm-up. */

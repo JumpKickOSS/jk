@@ -23,6 +23,10 @@
 [archive-stream-owner]
 population = { files = 2203 }
 
+[async-names-its-executor]
+[async-names-its-executor.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+
 [atomic-move-owner]
 [atomic-move-owner.populations]
 "clients/cli" = { classes = 817, sites = 52816 }
@@ -577,6 +581,10 @@ population = { examined = 2 }
 
 [cache-tiers]
 population = { constants = 29, files = 2266, literals = 44297 }
+
+[carried-value-owners]
+[carried-value-owners.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
@@ -1381,7 +1389,7 @@ population = { examined = 15 }
 
 [engine-static-memo]
 [engine-static-memo.populations]
-"server/engine" = { classes = 1674 }
+"server/engine" = { classes = 1673 }
 "server/guard" = { classes = 189 }
 "server/io" = { classes = 74 }
 "server/resolver" = { classes = 125 }
@@ -1555,23 +1563,7 @@ at     = "cc.jumpkick.runtime.KotlinAbiWarmup#RECORDING"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.NativeEffort#LAST_INPUT_BYTES"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.PlannerGuards#RULES"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.SettledReads#SETTLED"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ShadowManifests#PENDING_NOTES"
-reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
-[[engine-static-memo.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ShadowManifests#PENDING_TIER3"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 [[engine-static-memo.entries]]
 in     = "server/engine"
@@ -2058,6 +2050,10 @@ in     = "shared/wire"
 at     = "cc.jumpkick.wire.protocol.EventCatalog#ROWS"
 reason = "engine-reachable static holders that predate this rule; the memo sweep converts, scopes or allows each and shrinks this to zero"
 
+[executors-through-jkthreads]
+[executors-through-jkthreads.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+
 [file-size]
 population = { units = 4145 }
 
@@ -2402,6 +2398,14 @@ population = { files = 4230 }
 
 [no-historical-narration]
 population = { files = 4452 }
+
+[no-inheritable-thread-local]
+[no-inheritable-thread-local.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
+
+[no-parallel-streams]
+[no-parallel-streams.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
 
 [no-retired-code-markers]
 population = { files = 2306 }
@@ -2809,6 +2813,10 @@ population = { examined = 5 }
 
 [tests-skip-symlinks-on-windows]
 population = { files = 1920 }
+
+[thread-local-owner]
+[thread-local-owner.populations]
+"server/engine" = { classes = 1730, sites = 123434 }
 
 [tree-copy-owner]
 population = { files = 2203 }
