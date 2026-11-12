@@ -2196,8 +2196,8 @@ reason = "PlannerCompile's compile steps become per-plan CompileSteps (compile-j
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
-value  = 26
-reason = "PlannerTest's steps become per-plan TestCompileSteps (compile-test) and TestSteps (run-tests), each body beside its predictor, which removes PlannerTest's entry of 36, PlannerTestForecast's of 18 and the PlannerTest~TestLaunch mutual pair; the two step classes read the test owners PlannerTest and PlannerTestForecast read between them, and CorePlan builds both"
+value  = 27
+reason = "PlannerGuards' lane steps become the per-plan GuardSteps, each body beside its predictor, which takes the GuardKeys~PlannerGuards mutual pair from 25 to 14; CorePlan builds GuardSteps and still reads the guards plan and the lane decisions from PlannerGuards"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope"
@@ -2266,7 +2266,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 286, edges = 1054 }
+"server/engine" = { classes = 287, edges = 1059 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2370,7 +2370,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.GuardKeys~cc.jumpkick.runtime.PlannerGuards"
-value  = 25
+value  = 14
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2484,8 +2484,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 49
-reason = "the KSP rounds run in the per-plan KspArm, which reads the plan keys from BuildPlanner as PlannerKsp's step bodies did, and PlannerKsp still reads them for the command line it derives"
+value  = 50
+reason = "the guard lanes run in the per-plan GuardSteps, which reads the plan keys from BuildPlanner as PlannerGuards' step bodies did, and PlannerGuards still reads them for the output lane the packaging tails plan"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"

@@ -73,8 +73,8 @@ final class CorePlan {
         // The declared tails plan from the manifest this plan was built from.
         if (parsedBuild != null) b.fact(JkBuild.class, parsedBuild);
         if (nodeKind != NodeShape.Kind.NONE || testNode) b.addTask(PlannerNodeSetup.ensureNodeStep());
-        if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, cx);
-        if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx);
+        if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, s);
+        if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx, s);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
         if (nodeKind == NodeShape.Kind.SIDE_BY_SIDE) nodeArm().planSideBySide(b);
@@ -244,7 +244,8 @@ final class CorePlan {
             Task writeStamp,
             Task writeStampKotlin,
             Task writeStampGroovy,
-            Task assembleClasses) {}
+            Task assembleClasses,
+            GuardSteps guards) {}
 
     private Steps steps(BuildPlanner.Ctx cx) {
         SetupSteps setup = new SetupSteps(cx);
@@ -331,7 +332,8 @@ final class CorePlan {
                 writeStamp,
                 writeStampKotlin,
                 writeStampGroovy,
-                assembleClasses);
+                assembleClasses,
+                new GuardSteps(cx));
     }
 
     // ---- graph ---------------------------------------------------------------------------
@@ -345,9 +347,9 @@ final class CorePlan {
      * A dedicated node module: its node steps, joined with the root guard lanes when it is the
      * invocation root.
      */
-    private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
+    private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, Steps s) {
         List<String> leaves = new ArrayList<>(nodeArm().plan(b));
-        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
+        String guardTerminal = s.guards().appendRootLanes(b, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) leaves.add(guardTerminal);
         if (leaves.size() == 1) return b.terminal(leaves.get(0));
         b.addTask(Task.builder(BuildPlanner.DELIVER_JOIN)
@@ -370,8 +372,8 @@ final class CorePlan {
         return new NodeArm(in, project, nodeDir, actionCache, !in.compileOnly() && !PlannerResources.skipJUnit(in));
     }
 
-    private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
-        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
+    private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
+        String guardTerminal = s.guards().appendRootLanes(b, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) {
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
@@ -430,8 +432,8 @@ final class CorePlan {
             boolean afterTests = PlannerGuards.indexesTestClasses(in);
             if (afterTests) after.add(TaskNames.COMPILE_TEST);
             BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;
-            b.addTask(PlannerGuards.moduleStep(cx, guardStage, afterTests, after.toArray(String[]::new)));
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, !in.testOnly(), guardStage);
+            b.addTask(s.guards().module(guardStage, afterTests, after.toArray(String[]::new)));
+            s.guards().appendRootLanes(b, TaskNames.GUARD, !in.testOnly(), guardStage);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
             b.alsoKeep(
                     TaskNames.GUARD,
@@ -442,7 +444,7 @@ final class CorePlan {
                     TaskNames.GUARD_OUTPUT);
         } else if (cx.guards().enabled()) {
             // on-build = false: the module lanes wait for the gate; the model lane still runs.
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly(), BuildStage.COMPILE);
+            s.guards().appendRootLanes(b, TaskNames.RESOLVE_DEPS, !in.testOnly(), BuildStage.COMPILE);
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
                     TaskNames.GUARD_WORKSPACE,
