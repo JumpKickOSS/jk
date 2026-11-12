@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.PomReactorScan;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.mvn.FrontendCollector;
@@ -22,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's {@link ManifestPaths.ShadowSource}: a module with a {@code pom.xml} and no {@code
@@ -53,7 +55,7 @@ public final class ShadowManifests {
     private static final Map<Path, Path> ROOT_OF = new ConcurrentHashMap<>();
 
     /** Per-module render gate: two readers racing on the same POM render it once. */
-    private static final Map<Path, Object> GATES = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Path> GATES = new KeyedLocks<>();
 
     private static final ShadowRenderFailures FAILURES = ShadowRenderFailures.forStallWindow();
 
@@ -84,7 +86,7 @@ public final class ShadowManifests {
         if (PomShadow.isCurrent(shadow, module)) return shadow;
         Optional<Path> root = PomReactorScan.reactorRootOf(module);
         if (root.isEmpty()) {
-            synchronized (GATES.computeIfAbsent(module, k -> new Object())) {
+            try (KeyedLocks.Held held = GATES.hold(module)) {
                 if (!PomShadow.isCurrent(shadow, module)) render(module);
             }
             return shadow;
@@ -95,7 +97,7 @@ public final class ShadowManifests {
         // the root has to render again.
         materialize(root.get());
         if (PomShadow.isCurrent(shadow, module)) return shadow;
-        synchronized (GATES.computeIfAbsent(root.get(), k -> new Object())) {
+        try (KeyedLocks.Held held = GATES.hold(root.get())) {
             if (!PomShadow.isCurrent(shadow, module)) render(root.get());
         }
         if (PomShadow.isCurrent(shadow, module)) return shadow;
@@ -140,19 +142,37 @@ public final class ShadowManifests {
             List<PomShadow.Shadow> shadows = PomReactorScan.declaresModules(pom)
                     ? PomShadow.renderReactor(importer, pom)
                     : List.of(PomShadow.render(importer, pom));
+            List<Path> leaves = new ArrayList<>();
             for (PomShadow.Shadow rendered : shadows) {
                 Path target = ManifestPaths.shadowManifestPath(rendered.moduleDir());
                 Files.createDirectories(Objects.requireNonNull(target.getParent(), "shadow dir"));
                 AtomicWrites.replace(target, rendered.toml());
                 PENDING_TIER3.put(rendered.moduleDir(), rendered.tier3());
-                if (!rendered.moduleDir().equals(module)) ROOT_OF.put(rendered.moduleDir(), module);
+                if (!rendered.moduleDir().equals(module)) leaves.add(rendered.moduleDir());
                 Log.debug("shadow manifest rendered", target);
             }
+            recordLeaves(module, leaves);
             PENDING_NOTES.put(module, raisePins(module));
         } catch (IOException e) {
             FAILURES.remember(module, e);
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * {@code root}'s rendering wrote {@code leaves}: they are its leaves now, a leaf it no longer
+     * renders is no longer its, and {@code root} itself is nobody's leaf, so a reactor that was
+     * restructured reports each leaf's rows under the root that renders it today.
+     */
+    static void recordLeaves(Path root, List<Path> leaves) {
+        ROOT_OF.values().removeIf(root::equals);
+        ROOT_OF.remove(root);
+        for (Path leaf : leaves) ROOT_OF.put(leaf, root);
+    }
+
+    /** The reactor root whose rendering wrote {@code leaf}'s shadow, or {@code null}. Test seam. */
+    static @Nullable Path rootOf(Path leaf) {
+        return ROOT_OF.get(leaf);
     }
 
     /**
