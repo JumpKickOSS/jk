@@ -62,7 +62,7 @@ public final class StepEta {
 
     /**
      * The estimate priced step by step: each step the forecast runs at its own recent wall from the
-     * project's {@link StepLedger} under this run's status and shape (the same frontier first), a
+     * project's {@link StepLedger} under this run's status and shape (the same work set first), a
      * step with no history at the module-weight price, and the schedule in ms at {@link
      * WorkModel#MS_PER_WEIGHT} with no learned scale on top: the steps' own walls already carry
      * what the scale stood in for.
@@ -81,19 +81,30 @@ public final class StepEta {
             boolean workerWarm) {
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
+        Set<String> frontier = new TreeSet<>();
+        int compilable = 0;
+        int compiling = 0;
+        for (TaskForecast.Module m : plan.modules()) {
+            if (m.steps().stream().anyMatch(t -> StepLedger.isMainCompile(t.name()))) compilable++;
+            if (m.steps().stream().anyMatch(t -> (distrust || !t.cached()) && StepLedger.isMainCompile(t.name()))) {
+                compiling++;
+            }
+            // The run's work set: what else runs beside a step decides its wall as much as the
+            // step does (the engine's suite took 43 s beside a build's packaging and 56 s beside
+            // the CLI's suite), and the ledger records each run under the set it was priced with.
+            if (distrust || m.steps().stream().anyMatch(t -> !t.cached()))
+                frontier.add(m.dir().toString());
+        }
+        // A build that compiles most of its modules is a full rebuild whether or not it was forced:
+        // the ledger records it as one (StepLedger.fullRebuild), so it is priced as one.
         RunShapes.Shape shape = new RunShapes.Shape(
                 profile == null ? "" : profile,
-                distrust,
+                distrust || StepLedger.fullRebuild(compiling, compilable),
                 !SessionContext.current().testSelection().classes().isEmpty());
-        Set<String> frontier = new TreeSet<>();
-        for (TaskForecast.Module m : plan.modules()) {
-            if (m.steps().stream().anyMatch(t -> (distrust || !t.cached()) && BuildEta.isCompileStepName(t.name()))) {
-                frontier.add(m.dir().toString());
-            }
-        }
         StepLedger ledger = StepLedger.load(ProjectBuilds.projectHome(entryDir));
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         Map<Path, List<StepCost>> steps = new LinkedHashMap<>();
+        Map<String, int[]> curves = new LinkedHashMap<>();
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
         List<String> projectDirs =
@@ -102,13 +113,18 @@ public final class StepEta {
             Path dir = m.dir();
             Set<Path> prereqs = plan.edges().getOrDefault(dir, Set.of());
             List<StepCost> own = new ArrayList<>();
-            for (TaskForecast.Task t : m.steps()) {
+            for (TaskForecast.Task t : stepsOf(m, distrust, ledger, shape)) {
                 Priced priced =
                         stepMs(ledger, shape, frontier, dir, t, distrust, prereqs, metrics, timings, projectDirs, m);
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
                 own.add(new StepCost(
                         t.name(), weightOf(priced.ms()), kind, weightOf(priced.low()), weightOf(priced.high())));
+            }
+            for (StepCost c : own) {
+                if (c.kind() != StepCost.Kind.TEST) continue;
+                int[] curve = ledger.curve(dir.toString(), shape, frontier);
+                if (curve != null) curves.put(dir.toString(), curve);
             }
             if (own.isEmpty()) {
                 costs.add(EffortWeights.costOf(dir, prereqs, EffortWeights.TOKEN, 0));
@@ -145,7 +161,17 @@ public final class StepEta {
                 "frontier",
                 frontier.size());
         return new BuildService.EtaModel(
-                ms, costs, concurrency, serialEta, ms, ledger.runs() > 0, BuildEta.buildShape(plan), workerWarm, steps);
+                ms,
+                costs,
+                concurrency,
+                serialEta,
+                ms,
+                ledger.runs() > 0,
+                BuildEta.buildShape(plan),
+                workerWarm,
+                steps,
+                frontier,
+                curves);
     }
 
     /**
@@ -166,6 +192,22 @@ public final class StepEta {
         static Priced spread(long ms, double down, double up) {
             return new Priced(ms, Math.round(ms * down), Math.round(ms * up));
         }
+    }
+
+    /**
+     * The steps {@code m} runs: its forecast's, or, for a forced build's module the forecast lists
+     * with none (a clean module reads as cached, and a forced build runs it all again), the steps
+     * the last run of this shape ran there. Priced as a token before: on jk's own tree a forced
+     * build left 36 of its 61 modules (about 400 s of compiles and suites) out of the estimate.
+     */
+    static List<TaskForecast.Task> stepsOf(
+            TaskForecast.Module m, boolean distrust, StepLedger ledger, RunShapes.Shape shape) {
+        if (!distrust || !m.steps().isEmpty()) return m.steps();
+        List<TaskForecast.Task> out = new ArrayList<>();
+        for (String step : ledger.stepsRun(m.dir().toString(), shape)) {
+            out.add(new TaskForecast.Task(step, TaskForecast.Status.RUN, "", null));
+        }
+        return out;
     }
 
     /** A step's ms in schedule weight units, rounded up so a short step still weighs one. */

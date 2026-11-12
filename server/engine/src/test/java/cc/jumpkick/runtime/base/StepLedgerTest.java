@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -87,8 +89,8 @@ class StepLedgerTest {
         assertThat(ledger.price("/ws/g", "guard", "SUCCESS", filteredTest, Set.of()))
                 .hasValue(15_000);
         assertThat(ledger.price("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of()))
-                .as("no run of the default shape: the latest runs of any")
-                .hasValue(40_000);
+                .as("no run of the default shape: the latest runs under the same load, a light one")
+                .hasValue(15_000);
     }
 
     @Test
@@ -139,5 +141,142 @@ class StepLedgerTest {
         assertThat(ledger.runs()).isEqualTo(StepLedger.MAX_RUNS);
         assertThat(ledger.price("/ws/a", "write-stamp", "SUCCESS", DEFAULT, Set.of()))
                 .isEmpty();
+    }
+
+    /** A run whose main compiles ran in {@code compiling} of {@code modules} modules, and a guard. */
+    private static List<StepLedger.Sample> build(int modules, int compiling, long guardMs) {
+        List<StepLedger.Sample> out = new ArrayList<>();
+        for (int i = 0; i < modules; i++) {
+            out.add(new StepLedger.Sample("/ws/m" + i, "compile-java", i < compiling ? "SUCCESS" : "SKIPPED", 2_000));
+        }
+        out.add(new StepLedger.Sample("/ws/g", "guard", "SUCCESS", guardMs));
+        return out;
+    }
+
+    @Test
+    void a_first_build_that_compiles_most_modules_is_recorded_as_a_full_rebuild(@TempDir Path home) {
+        StepLedger.append(home, DEFAULT, build(6, 6, 69_000));
+        StepLedger ledger = StepLedger.load(home);
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        assertThat(ledger.price(
+                        "/ws/g",
+                        "guard",
+                        "SUCCESS",
+                        full,
+                        Set.of("/ws/m0", "/ws/m1", "/ws/m2", "/ws/m3", "/ws/m4", "/ws/m5")))
+                .as("a cold first build is a full rebuild: priced so for the next one")
+                .hasValue(69_000);
+        assertThat(StepLedger.fullRebuild(3, 6)).isTrue();
+        assertThat(StepLedger.fullRebuild(2, 6)).isFalse();
+        assertThat(StepLedger.fullRebuild(2, 2)).as("too few modules to tell").isFalse();
+    }
+
+    @Test
+    void a_step_seen_only_under_a_full_rebuild_is_priced_for_a_light_run_at_the_load_ratio(@TempDir Path home) {
+        StepLedger.append(home, DEFAULT, build(6, 6, 60_000));
+        StepLedger ledger = StepLedger.load(home);
+        assertThat(ledger.price("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of("/ws/m0")))
+                .as("no step has run under both loads: the default ratio")
+                .hasValue(Math.round(60_000 * StepLedger.DEFAULT_LIGHT_OVER_HEAVY));
+        assertThat(ledger.range("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of("/ws/m0")))
+                .as("a price read across loads is a wide one")
+                .hasValueSatisfying(r -> assertThat(r[1] - r[0]).isGreaterThanOrEqualTo(2 * 12_000));
+    }
+
+    @Test
+    void the_load_ratio_is_learned_from_steps_that_ran_under_both(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        for (String step : List.of("guard", "package-jar", "javadoc")) {
+            StepLedger.append(home, full, List.of(new StepLedger.Sample("/ws/a", step, "SUCCESS", 10_000)));
+            StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/a", step, "SUCCESS", 3_000)));
+        }
+        StepLedger.append(home, full, List.of(new StepLedger.Sample("/ws/b", "guard", "SUCCESS", 40_000)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.lightOverHeavy()).isEqualTo(0.3);
+        assertThat(ledger.price("/ws/b", "guard", "SUCCESS", DEFAULT, Set.of())).hasValue(12_000);
+    }
+
+    @Test
+    void a_compile_is_never_priced_across_loads(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        StepLedger.append(home, full, List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 20_000)));
+        assertThat(StepLedger.load(home).price("/ws/a", "compile-java", "SUCCESS", DEFAULT, Set.of()))
+                .as("a full compile is other work than an incremental one")
+                .isEmpty();
+    }
+
+    @Test
+    void a_suite_under_a_profile_it_never_ran_in_borrows_its_default_wall_as_a_floor(@TempDir Path home) {
+        RunShapes.Shape integration = new RunShapes.Shape("integration", false, false);
+        StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/core", "run-tests", "SUCCESS", 8_000)));
+        StepLedger ledger = StepLedger.load(home);
+        assertThat(ledger.price("/ws/core", "run-tests", "SUCCESS", integration, Set.of()))
+                .hasValue(8_000);
+        assertThat(ledger.range("/ws/core", "run-tests", "SUCCESS", integration, Set.of()))
+                .hasValueSatisfying(r -> assertThat(r[1]).isEqualTo(24_000));
+    }
+
+    @Test
+    void the_steps_a_shape_last_ran_in_a_module_are_what_a_forced_build_runs_there_again(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        StepLedger.append(
+                home,
+                full,
+                List.of(
+                        new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 1_300),
+                        new StepLedger.Sample("/ws/a", "run-tests", "SUCCESS", 4_000),
+                        new StepLedger.Sample("/ws/a", "package-jar", "SKIPPED", 30)));
+        StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/a", "run-tests", "SUCCESS", 2_000)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.stepsRun("/ws/a", full)).containsExactly("compile-java", "run-tests");
+        assertThat(ledger.stepsRun("/ws/b", full)).isEmpty();
+    }
+
+    @Test
+    void a_suite_reads_its_class_share_through_its_latest_curve_of_the_same_shape_first(@TempDir Path home) {
+        int[] build = {100, 200, 300, 400, 500, 600, 700, 800, 900};
+        int[] test = {300, 450, 520, 600, 650, 700, 750, 800, 810};
+        int[] integration = {270, 400, 500, 600, 640, 700, 760, 820, 870};
+        List<StepLedger.Sample> suite = List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 40_000));
+        StepLedger.append(home, DEFAULT, Set.of("/ws/engine"), Map.of("/ws/engine", build), suite);
+        StepLedger.append(home, DEFAULT, Set.of("/ws/engine", "/ws/cli"), Map.of("/ws/engine", test), suite);
+        RunShapes.Shape tier = new RunShapes.Shape("integration", false, false);
+        StepLedger.append(home, tier, Set.of("/ws/engine"), Map.of("/ws/engine", integration), suite);
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.curve("/ws/engine", DEFAULT, Set.of("/ws/engine"))).containsExactly(build);
+        assertThat(ledger.curve("/ws/engine", DEFAULT, Set.of("/ws/other")))
+                .as("the same shape's latest")
+                .containsExactly(test);
+        assertThat(ledger.curve("/ws/engine", new RunShapes.Shape("", true, false), Set.of()))
+                .as("another shape of the same profile")
+                .containsExactly(test);
+        assertThat(ledger.curve("/ws/engine", tier, Set.of())).containsExactly(integration);
+        assertThat(ledger.curve("/ws/cli", DEFAULT, Set.of())).isNull();
+    }
+
+    @Test
+    void a_run_is_recorded_under_the_work_set_it_was_priced_with(@TempDir Path home) {
+        Set<String> build = Set.of("/ws/engine");
+        Set<String> test = Set.of("/ws/engine", "/ws/maven-spy");
+        // A 30 ms no-op compile of /ws/web would have keyed the run by compiles under a set no
+        // forecast prices with: the jk test run then priced its suite from the build's.
+        List<StepLedger.Sample> testRun = List.of(
+                new StepLedger.Sample("/ws/web", "compile-java", "SUCCESS", 30),
+                new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 56_000));
+        StepLedger.append(
+                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 43_000)));
+        StepLedger.append(home, DEFAULT, test, testRun);
+        StepLedger.append(
+                home, DEFAULT, build, List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 44_000)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, test))
+                .hasValue(56_000);
+        assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, build))
+                .as("the upper median of the build's two")
+                .hasValue(44_000);
     }
 }

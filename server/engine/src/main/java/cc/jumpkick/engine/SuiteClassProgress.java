@@ -3,8 +3,12 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.SuiteCurve;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A running suite's progress as the share of its class walls done: each class at its recorded wall
@@ -21,8 +25,12 @@ final class SuiteClassProgress {
     private double total;
     private double done;
     private final Map<String, Boolean> finished = new HashMap<>();
+    /** When the suite started on the build's clock; negative until {@link #started}. */
+    private long startMillis = -1;
+    /** Each finished class's {@code {share, atMillis}}, for the suite's {@link SuiteCurve}. */
+    private final List<double[]> points = new ArrayList<>();
 
-    private SuiteClassProgress(Map<String, Long> expected) {
+    SuiteClassProgress(Map<String, Long> expected) {
         this.expected = expected;
         for (long ms : expected.values()) total += Math.max(0, ms);
     }
@@ -41,6 +49,11 @@ final class SuiteClassProgress {
      * says nothing about the rest, and read as a share the first class would finish the suite.
      */
     synchronized double finished(String className, long millis) {
+        return finished(className, millis, -1);
+    }
+
+    /** {@link #finished(String, long)}, the class finishing at {@code atMillis} on the build's clock. */
+    synchronized double finished(String className, long millis, long atMillis) {
         if (expected.isEmpty()) return UNKNOWN;
         if (finished.put(className, Boolean.TRUE) != null) return share();
         Long known = expected.get(className);
@@ -49,7 +62,26 @@ final class SuiteClassProgress {
             done += Math.max(0, millis);
             total += Math.max(0, millis);
         }
-        return share();
+        double share = share();
+        if (atMillis >= 0) points.add(new double[] {share, atMillis});
+        return share;
+    }
+
+    /** The suite started at {@code atMillis} on the build's clock. */
+    synchronized void started(long atMillis) {
+        if (startMillis < 0) startMillis = atMillis;
+    }
+
+    /**
+     * The finished suite's curve ({@link SuiteCurve}), the suite having ended at {@code endMillis};
+     * {@code null} when its start or its classes' walls are unknown.
+     */
+    synchronized int @Nullable [] curve(long endMillis) {
+        long wall = endMillis - startMillis;
+        if (startMillis < 0 || wall <= 0 || points.isEmpty()) return null;
+        List<double[]> shares = new ArrayList<>();
+        for (double[] p : points) shares.add(new double[] {p[0], (p[1] - startMillis) / wall});
+        return SuiteCurve.of(shares);
     }
 
     private double share() {

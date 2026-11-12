@@ -22,6 +22,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.RunShapes;
+import cc.jumpkick.runtime.base.SuiteCurve;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ErrorLineEvent;
@@ -247,6 +248,14 @@ public final class SsePublisher implements SseEvents {
         // Marked on the session first: a step that starts before the model is priced is replayed
         // into it when it arrives, from when it really started.
         var mark = new JobSession.StepMark(dir, step, started, Clock.SYSTEM.millis());
+        if (TaskNames.isRunTests(step)) {
+            SuiteClassProgress suite = suiteProgressOf(requestId, dir, step);
+            if (started) suite.started(mark.atMillis());
+            else {
+                int[] curve = suite.curve(mark.atMillis());
+                if (curve != null) RunShapes.markCurve(requestId, dir, curve);
+            }
+        }
         RemainingWork rw = s.stepMarked(mark);
         if (rw == null) return;
         synchronized (rw) {
@@ -269,13 +278,11 @@ public final class SsePublisher implements SseEvents {
         Path p = Path.of(dir);
         synchronized (rw) {
             if (!rw.steps(p)) return;
-            String suite =
-                    TaskNames.RUN_TESTS.equals(step) ? RunShapes.of(requestId).suite() : step;
-            double f = suiteProgress
-                    .computeIfAbsent(requestId + "\n" + dir, k -> SuiteClassProgress.of(dir, suite))
-                    .finished(className, millis);
+            double f = suiteProgressOf(requestId, dir, step).finished(className, millis, Clock.SYSTEM.millis());
             if (f == SuiteClassProgress.UNKNOWN) return;
-            rw.suiteProgress(p, f);
+            // The class share read as time through the suite's last curve: its last classes run
+            // alone, so the share runs ahead of its clock (SuiteCurve).
+            rw.suiteProgress(p, SuiteCurve.timeShare(RunShapes.pricedCurve(requestId, dir), f));
             tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
         }
         emitWorkspaceProgress(requestId, writer, false);
@@ -361,6 +368,12 @@ public final class SsePublisher implements SseEvents {
 
     /** Per request and module, its running suite's class progress. */
     private final ConcurrentHashMap<String, SuiteClassProgress> suiteProgress = new ConcurrentHashMap<>();
+
+    private SuiteClassProgress suiteProgressOf(long requestId, String dir, String step) {
+        String suite =
+                TaskNames.RUN_TESTS.equals(step) ? RunShapes.of(requestId).suite() : step;
+        return suiteProgress.computeIfAbsent(requestId + "\n" + dir, k -> SuiteClassProgress.of(dir, suite));
+    }
 
     public void trackModuleComplete(long requestId, String dir, long lastDen, @Nullable BufferedWriter writer) {
         if (requestId <= 0) return;

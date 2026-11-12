@@ -34,7 +34,12 @@ final class RunStepLedger {
                 for (BuildRecord.Task t : m.steps()) samples.add(sample(m.dir(), t, held));
             }
         }
-        StepLedger.append(projectHome, RunShapes.of(finished.requestId()), samples);
+        StepLedger.append(
+                projectHome,
+                RunShapes.of(finished.requestId()),
+                RunShapes.frontierOf(finished.requestId()),
+                RunShapes.curvesOf(finished.requestId()),
+                samples);
     }
 
     /**

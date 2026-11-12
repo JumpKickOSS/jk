@@ -247,9 +247,45 @@ public final class BuildService {
              * step ({@code BuildEta.stepPriced}), whose live remainder counts each module down by its
              * steps. Empty for a model priced by module weights.
              */
-            Map<Path, List<StepCost>> steps) {
+            Map<Path, List<StepCost>> steps,
+            /**
+             * The modules a step-priced model expects to run a step in, the work set its steps were
+             * priced under: the step ledger records the finished run under it ({@code RunShapes}).
+             */
+            Set<String> frontier,
+            /**
+             * Per module dir, the curve its suite's class share is read as time through ({@code
+             * SuiteCurve}): the latest its suite measured in the ledger.
+             */
+            Map<String, int[]> curves) {
         public EtaModel {
             steps = steps == null ? Map.of() : Map.copyOf(steps);
+            frontier = frontier == null ? Set.of() : Set.copyOf(frontier);
+            curves = curves == null ? Map.of() : Map.copyOf(curves);
+        }
+
+        public EtaModel(
+                long etaMs,
+                List<EffortWeights.ModuleCost> costs,
+                int concurrency,
+                boolean serial,
+                long rawScheduleMs,
+                boolean measured,
+                ScheduleBias.Shape shape,
+                boolean workerWarm,
+                Map<Path, List<StepCost>> steps) {
+            this(
+                    etaMs,
+                    costs,
+                    concurrency,
+                    serial,
+                    rawScheduleMs,
+                    measured,
+                    shape,
+                    workerWarm,
+                    steps,
+                    Set.of(),
+                    Map.of());
         }
 
         public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {

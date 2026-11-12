@@ -21,6 +21,7 @@
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.SuiteCurve;
 import cc.jumpkick.runtime.workspace.StepEta;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
@@ -406,6 +407,12 @@ public class Replay {
         }
         String sig = profile + "|" + forced + "|" + filtered + "|" + String.join(",", frontier);
         SHAPE.put(runId, sig);
+        // The work set, as the engine keys a suite's curve by it first: the modules with a step that ran.
+        Set<String> work = new TreeSet<>();
+        for (var e : ran.entrySet()) {
+            for (String[] r : e.getValue()) if (r[1].equals("SUCCESS")) work.add(e.getKey());
+        }
+        WORK_SET.put(run, profile + "|" + forced + "|" + filtered + "|" + String.join(",", work));
         if (filtered) SELECTED.put(run, classesRan);
     }
 
@@ -810,8 +817,27 @@ public class Replay {
 
     static long CURRENT_RUN_ID;
 
+    /** Per suite and profile, the curve its latest replayed run measured ({@link SuiteCurve}). */
+    static final Map<String, int[]> LAST_CURVE = new HashMap<>();
+
+    /** The running replay's class shares per suite dir, each {@code {share, ts}}. */
+    static final Map<String, List<double[]>> CURVE_POINTS = new HashMap<>();
+
+    static String curveKey(Path run, String dir) {
+        return PROFILE.getOrDefault(run, "") + '\n' + dir;
+    }
+
+    static final Map<Path, String> WORK_SET = new HashMap<>();
+
+    /** The curve the engine would read: the same shape and work set's latest, else the profile's. */
+    static int[] curveFor(Path run, String dir) {
+        int[] own = LAST_CURVE.get(WORK_SET.getOrDefault(run, "") + '\n' + dir);
+        return own != null ? own : LAST_CURVE.get(curveKey(run, dir));
+    }
+
     static void replay(Path run, boolean series, Set<String> wanted, Map<String, List<double[]>> byModel)
             throws Exception {
+        CURVE_POINTS.clear();
         Path modelFile = run.resolve("eta-model.jsonl");
         Path details = run.resolve("details.jsonl");
         if (!Files.isRegularFile(modelFile) || !Files.isRegularFile(details)) {
@@ -935,7 +961,13 @@ public class Replay {
                         // A suite with no recorded class has no measure (SuiteClassProgress.UNKNOWN):
                         // the engine leaves it on the clock rather than reading it as done.
                         if (v0.rw != null && v0.rw.steps(Path.of(dir)) && v8.hasClassHistory(st, Path.of(dir))) {
-                            v0.rw.suiteProgress(Path.of(dir), v8.classShare(st, Path.of(dir)));
+                            double share = v8.classShare(st, Path.of(dir));
+                            CURVE_POINTS
+                                    .computeIfAbsent(dir, k -> new ArrayList<>())
+                                    .add(new double[] {share, ts});
+                            // The engine reads the share as time through the suite's last curve.
+                            int[] curve = curveFor(run, dir);
+                            v0.rw.suiteProgress(Path.of(dir), SuiteCurve.timeShare(curve, share));
                         }
                     }
                 }
@@ -946,6 +978,20 @@ public class Replay {
                     st.stepDone
                             .computeIfAbsent(Path.of(dir), k -> new HashSet<>())
                             .add(task.toString());
+                    if (TaskNames.isRunTests(task.toString()) && st.suiteStart.containsKey(Path.of(dir))) {
+                        long start = st.suiteStart.get(Path.of(dir));
+                        double suiteWall = Math.max(1, ts - start);
+                        List<double[]> shares = new ArrayList<>();
+                        for (double[] p : CURVE_POINTS.getOrDefault(dir, List.of())) {
+                            shares.add(new double[] {p[0], (p[1] - start) / suiteWall});
+                        }
+                        int[] curve = SuiteCurve.of(shares);
+                        // A filtered suite's curve is its selection's, not the suite's.
+                        if (curve != null && SELECTED.get(run) == null) {
+                            LAST_CURVE.put(curveKey(run, dir), curve);
+                            LAST_CURVE.put(WORK_SET.getOrDefault(run, "") + '\n' + dir, curve);
+                        }
+                    }
                     if (v0.rw != null) v0.rw.stepFinish(Path.of(dir), task.toString());
                     if (pre(task.toString()))
                         st.preFinished

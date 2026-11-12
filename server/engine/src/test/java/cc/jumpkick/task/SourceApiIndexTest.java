@@ -71,6 +71,32 @@ class SourceApiIndexTest {
                 .isEqualTo(SourceApiIndex.Kind.API_CHANGED);
     }
 
+    /**
+     * A processor generates from fields and annotated members, never from a bare private method:
+     * renaming one is a body edit even where processors run (jk's engine runs Lombok, and the ETA
+     * corpus's body edit renames a private method).
+     */
+    @Test
+    void a_bare_private_method_is_a_body_even_where_a_processor_runs(@TempDir Path module) throws IOException {
+        String withHelper = LIB.replace(
+                "public static int twice",
+                "private static int helper0() {\n        return 0;\n    }\n\n    public static int twice");
+        Path src = Files.createDirectories(module.resolve("src/p"));
+        Path lib = Files.writeString(src.resolve("Lib.java"), withHelper);
+        Map<String, SourceApiIndex.Row> baseline = SourceApiIndex.of(module, List.of(lib));
+
+        Files.writeString(lib, withHelper.replace("helper0", "helper1"));
+        assertThat(SourceApiIndex.classify(module, baseline, List.of(lib), true).kind())
+                .as("a renamed bare private method")
+                .isEqualTo(SourceApiIndex.Kind.BODY_ONLY);
+
+        Files.writeString(
+                lib, withHelper.replace("private static int helper0", "@Deprecated private static int helper0"));
+        assertThat(SourceApiIndex.classify(module, baseline, List.of(lib), true).kind())
+                .as("an annotated private method is a processor's input")
+                .isEqualTo(SourceApiIndex.Kind.API_CHANGED);
+    }
+
     @Test
     void a_source_that_appears_or_disappears_is_an_api_change(@TempDir Path module) throws IOException {
         Path src = Files.createDirectories(module.resolve("src/p"));

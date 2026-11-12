@@ -124,6 +124,25 @@ class RemainingWorkStepsTest {
         assertThat(rw.remaining()).isEqualTo(60_000); // half done in 60 s: the rest at that rate
     }
 
+    /**
+     * The engine suite's last class ran alone for 10 s and reported nothing: its remainder counts
+     * down from the wall its rate projected, where the rate read at the clock grew it as it ran.
+     */
+    @Test
+    void a_suite_that_reports_nothing_counts_down_from_its_last_projection() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(40_000);
+        rw.suiteProgress(A, 0.80);
+        assertThat(rw.remaining()).as("40 s for 80%: 10 s more").isCloseTo(10_000, within((long) MS));
+        now.addAndGet(3_000);
+        assertThat(rw.remaining()).as("3 s on with nothing reported").isCloseTo(7_000, within((long) MS));
+        now.addAndGet(20_000);
+        assertThat(rw.remaining()).as("past its projection: the overrun floor").isCloseTo(4_500, within((long) MS));
+    }
+
     @Test
     void a_finished_module_leaves_nothing() {
         RemainingWork rw = model();

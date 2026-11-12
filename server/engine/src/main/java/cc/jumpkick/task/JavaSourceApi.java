@@ -76,7 +76,15 @@ public final class JavaSourceApi {
      */
     public enum View {
         DECLARATIONS("java-src:"),
-        EXPORTED("java-api:");
+        EXPORTED("java-api:"),
+        /**
+         * What an annotation processor can shape output from: {@link #DECLARATIONS} less private
+         * methods that carry no annotation. A processor generates from fields, types and annotated
+         * members (Lombok's accessors from private fields), never from an unannotated private
+         * method, so renaming one is a body edit even in a module that runs a processor. The
+         * forecast's body-only hint reads it; compile keys keep {@link #DECLARATIONS}.
+         */
+        PROCESSOR("java-proc:");
 
         private final String memoNamespace;
 
@@ -250,7 +258,7 @@ public final class JavaSourceApi {
             Map<URI, String> shapes = new LinkedHashMap<>();
             for (CompilationUnitTree unit : task.parse()) {
                 StringBuilder sb = new StringBuilder();
-                renderUnit(unit, sb, view == View.EXPORTED);
+                renderUnit(unit, sb, view);
                 shapes.put(unit.getSourceFile().toUri().normalize(), sb.toString());
             }
             Set<URI> errored = new HashSet<>();
@@ -289,7 +297,7 @@ public final class JavaSourceApi {
         return Files.size(blob != null ? blob : file);
     }
 
-    private static void renderUnit(CompilationUnitTree unit, StringBuilder sb, boolean exported) {
+    private static void renderUnit(CompilationUnitTree unit, StringBuilder sb, View view) {
         ExpressionTree pkg = unit.getPackageName();
         sb.append("package ").append(pkg == null ? "" : pkg).append('\n');
         for (ImportTree imp : unit.getImports())
@@ -297,11 +305,12 @@ public final class JavaSourceApi {
         ModuleTree module = unit.getModule();
         if (module != null) sb.append(module.toString().strip()).append('\n');
         for (Tree decl : unit.getTypeDecls()) {
-            if (decl instanceof ClassTree c) renderClass(c, sb, 0, exported);
+            if (decl instanceof ClassTree c) renderClass(c, sb, 0, view);
         }
     }
 
-    private static void renderClass(ClassTree c, StringBuilder sb, int depth, boolean exported) {
+    private static void renderClass(ClassTree c, StringBuilder sb, int depth, View view) {
+        boolean exported = view == View.EXPORTED;
         indent(sb, depth)
                 .append(c.getModifiers().toString().strip())
                 .append(' ')
@@ -319,12 +328,16 @@ public final class JavaSourceApi {
         for (Tree member : c.getMembers()) {
             if (member instanceof ClassTree nested) {
                 if (exported && isPrivate(nested.getModifiers())) continue;
-                renderClass(nested, sb, depth + 1, exported);
+                renderClass(nested, sb, depth + 1, view);
             } else if (member instanceof VariableTree field) {
                 if (exported && !record && isPrivate(field.getModifiers())) continue;
                 renderField(c, field, implicitlyFinalFields, sb, depth + 1);
             } else if (member instanceof MethodTree method) {
                 if (exported && isPrivate(method.getModifiers())) continue;
+                // A processor reads fields and annotated members; a bare private method is a body.
+                if (view == View.PROCESSOR
+                        && isPrivate(method.getModifiers())
+                        && method.getModifiers().getAnnotations().isEmpty()) continue;
                 renderMethod(method, sb, depth + 1);
             }
             // Initializer blocks are bodies.

@@ -6,6 +6,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.base.HostLearnedRates;
@@ -46,7 +48,8 @@ final class WorkspaceResourcePhase {
         List<HostLearnedRates.HostSample> hostSamples = Collections.synchronizedList(new ArrayList<>());
 
         Calibration.ensureAnnounced(incoming.jdksDir(), listener::onPreflight);
-        RunShapes.mark(JobWorkers.currentRequestId(), shape(incoming));
+        Long requestId = JobWorkers.currentRequestId();
+        RunShapes.mark(requestId, shape(incoming));
 
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
@@ -74,6 +77,7 @@ final class WorkspaceResourcePhase {
         boolean workerWarm = JavaCompilerHost.anyWarmWorkerFor(request.entryDir());
         BackgroundEta eta = BackgroundEta.deferred(
                 () -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests, workerWarm), model -> {
+                    RunShapes.markPriced(requestId, model.frontier(), model.curves());
                     List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
                     listener.onWorkModel(new WorkModel(
                             model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered, model.steps()));
@@ -155,7 +159,25 @@ final class WorkspaceResourcePhase {
             plan = BuildForecasting.explainFromGraph(
                     preflight.graph(), request.cache(), request.skipTests(), null, request.profile());
         }
-        return BuildForecasting.restrictToSelection(plan, preflight.dirty());
+        ExplainPlan selected = BuildForecasting.restrictToSelection(plan, preflight.dirty());
+        return request.testOnly() ? withoutPackagingTails(selected) : selected;
+    }
+
+    /**
+     * {@code plan} without the packaging tails (assembly, native image, sources jar): a test run
+     * never packages past the jar. A forced test run's forecast listed them as runs, and the
+     * estimate priced jk's 50 s native image into every forced integration run.
+     */
+    static ExplainPlan withoutPackagingTails(ExplainPlan plan) {
+        List<TaskForecast.Module> modules = new ArrayList<>();
+        for (TaskForecast.Module m : plan.modules()) {
+            List<TaskForecast.Task> steps = m.steps().stream()
+                    .filter(t -> !TaskNames.PACKAGING_TAILS.contains(t.name()))
+                    .toList();
+            modules.add(new TaskForecast.Module(
+                    m.dir(), m.coord(), steps, m.sourceCount(), m.testCount(), m.producesJar(), false, m.reason()));
+        }
+        return new ExplainPlan(modules, plan.edges(), plan.maxReadyWidth(), plan.errors());
     }
 
     /**

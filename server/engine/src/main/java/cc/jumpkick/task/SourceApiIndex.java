@@ -31,8 +31,9 @@ public final class SourceApiIndex {
     private SourceApiIndex() {}
 
     /**
-     * One source's baseline: its content hash, its {@link JavaSourceApi.View#DECLARATIONS}
-     * digest and its {@link JavaSourceApi.View#EXPORTED} digest.
+     * One source's baseline: its content hash, its {@link JavaSourceApi.View#PROCESSOR} digest
+     * (what a module that runs a processor exposes) and its {@link JavaSourceApi.View#EXPORTED}
+     * digest.
      */
     public record Row(String contentSha, String apiToken, String exportedToken) {}
 
@@ -127,7 +128,7 @@ public final class SourceApiIndex {
         }
         if (!toDigest.isEmpty()) {
             List<Path> files = new ArrayList<>(toDigest);
-            Map<Path, String> declarations = JavaSourceApi.digests(files, JavaSourceApi.View.DECLARATIONS);
+            Map<Path, String> declarations = JavaSourceApi.digests(files, JavaSourceApi.View.PROCESSOR);
             Map<Path, String> exported = JavaSourceApi.digests(files, JavaSourceApi.View.EXPORTED);
             for (Path src : files) {
                 String rel = Objects.requireNonNull(relative(module, src), "under the module");
@@ -147,8 +148,8 @@ public final class SourceApiIndex {
      * skipped, changed content is re-digested and compared, a source without a row or a row
      * without a source is an API change. With {@code privateMembersMatter} — the module runs an
      * annotation processor, which may shape public output from a private field — the comparison
-     * is the full declaration digest; otherwise the exported one, and a private edit reads as
-     * body-only. {@code sources} that are not {@code .java} make the answer {@link Kind#UNKNOWN}:
+     * is the processor digest (every field and annotated member); otherwise the exported one, and a
+     * private edit reads as body-only. {@code sources} that are not {@code .java} make the answer {@link Kind#UNKNOWN}:
      * the index knows nothing about them.
      */
     public static Hint classify(
@@ -179,8 +180,7 @@ public final class SourceApiIndex {
             if (!seen.containsKey(rel)) moved.add(rel);
         }
         if (!changed.isEmpty()) {
-            JavaSourceApi.View view =
-                    privateMembersMatter ? JavaSourceApi.View.DECLARATIONS : JavaSourceApi.View.EXPORTED;
+            JavaSourceApi.View view = privateMembersMatter ? JavaSourceApi.View.PROCESSOR : JavaSourceApi.View.EXPORTED;
             Map<Path, String> digests = JavaSourceApi.digests(changed, view);
             for (Path abs : changed) {
                 String rel = Objects.requireNonNull(relative(module, abs), "under the module");

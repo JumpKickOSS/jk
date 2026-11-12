@@ -34,8 +34,9 @@ import java.util.Set;
  * WorkModel#MS_PER_WEIGHT}, with no scale from a seed it would have to match, and counts a module
  * down step by step: a finished step leaves nothing, one not yet started its whole price, a running
  * one its price less its elapsed time (held at {@link #OVERRUN_FLOOR} of it once it overruns), and
- * a running suite the share of its class walls still to run, following its own rate once {@link
- * #RATE_FROM} of it is done. The plan's tick fraction is not read for such a module: its ticks are
+ * a running suite the share of its wall still to run, following its own rate once {@link
+ * #RATE_FROM} of it is done: the wall that rate projects when the share was last reported, less
+ * its elapsed time (held at {@link #OVERRUN_FLOOR} once it overruns). The plan's tick fraction is not read for such a module: its ticks are
  * spread evenly over steps of very different length.
  */
 public final class RemainingWork {
@@ -179,11 +180,18 @@ public final class RemainingWork {
         finished.computeIfAbsent(dir, k -> new HashSet<>()).add(step);
     }
 
-    /** The running suite of the module at {@code dir} has run {@code fracDone} of its class walls. */
+    /**
+     * The running suite of the module at {@code dir} is {@code fracDone} of the way through its
+     * wall, as its class walls and its curve read it.
+     */
     public synchronized void suiteProgress(Path dir, double fracDone) {
         if (dir == null || !steps.containsKey(dir)) return;
         suiteDone.put(dir, clamp01(fracDone));
+        suiteAt.put(dir, heldSince >= 0 ? heldSince : clock.millis());
     }
+
+    /** When each running suite's share was last reported, on the step clock. */
+    private final Map<Path, Long> suiteAt = new HashMap<>();
 
     /**
      * The build went on hold (a memory wait): running steps stop counting down until {@link
@@ -200,6 +208,7 @@ public final class RemainingWork {
         heldSince = -1;
         if (held == 0) return;
         for (Map<String, Long> starts : started.values()) starts.replaceAll((step, at) -> at + held);
+        suiteAt.replaceAll((dir, at) -> at + held);
     }
 
     /** When the current hold began; -1 when not on hold. */
@@ -295,9 +304,16 @@ public final class RemainingWork {
             else {
                 double elapsed = Math.max(0, now - starts.get(s.step())) / (double) WorkModel.MS_PER_WEIGHT;
                 Double f = s.kind() == StepCost.Kind.TEST ? suiteDone.get(dir) : null;
-                if (f != null && f > 0) {
-                    left = f >= RATE_FROM ? elapsed * (1 - f) / f : w * (1 - f);
-                    left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w * (1 - f), left);
+                if (f != null && f > 0 && f >= RATE_FROM) {
+                    // The suite's own rate, projected from when its share was last reported and
+                    // counted down from there: a long last class running alone reports nothing for
+                    // seconds, and the rate read at the clock grew the remainder as it ran.
+                    long at = suiteAt.getOrDefault(dir, now);
+                    double reported = Math.max(0, at - starts.get(s.step())) / (double) WorkModel.MS_PER_WEIGHT;
+                    left = reported / f - elapsed;
+                    left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w, left);
+                } else if (f != null && f > 0) {
+                    left = Math.max(OVERRUN_FLOOR * w * (1 - f), w * (1 - f));
                 } else {
                     left = Math.max(OVERRUN_FLOOR * w, w - elapsed);
                 }

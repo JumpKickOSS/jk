@@ -22,34 +22,61 @@ Status: **normative** for TUI / wire progress. Implementations live under
 
 ```
 price(step)   = median wall of the step's latest samples (StepLedger), first rung that has any:
-                same shape + same frontier, same shape, compatible shape + same frontier, compatible shape
+                same shape + same work set, same shape, compatible shape + same load + same work set,
+                compatible shape + same load, other load × load ratio, (a suite) default profile as a floor
+module(t)     = prefix + max(suite, packaging tails, guard chain)
 R0            = WorkSchedule of the scheduled modules' step prices, in ms
 R(t)          = WorkSchedule of what remains:
                   finished step       → 0
                   not started         → its price
                   running step        → max(5% of price, price − elapsed)
-                  running suite       → share of its class walls still to run (SuiteClassProgress);
-                                        past a quarter done, elapsed × (1 − f) / f
+                  running suite       → f = its class-wall share read through its curve (SuiteCurve);
+                                        price × (1 − f), then past a quarter done the wall its rate
+                                        projected at the last class (t_f / f) less elapsed, ≥ 5% of price
 range         = R(t) scheduled at each unfinished step's low, then high bound
 countdown     = R_anchor − Δwork-time   # re-anchored on every engine sample, at least once a second
 bar           = min(99%, work-elapsed / (work-elapsed + R(t)))
 ```
 
-A step's **shape** is the run's test profile, whether it was forced (`-F`/rebuild) and whether a
-class filter narrowed its suites; the **frontier** is the set of modules whose main compile runs.
+A step's **shape** is the run's test profile, whether it is a full rebuild and whether a class
+filter narrowed its suites; the **work set** is the set of modules the forecast runs any step in,
+and a run is recorded under the set its estimate was priced with, so the next run the forecast sees
+the same way finds it: what runs beside a step decides its wall as much as the step does (the
+engine's suite took 43 s beside a build's packaging and 56 s beside the CLI's suite). A full
+rebuild is a forced one (`-F`/rebuild) or one that compiles at least half of its modules (four or
+more): a first build on an empty cache does a forced build's work beside a forced build's load.
 The whole shape comes first because it carries the run's load as well as its work: a guard beside
-every compile of a forced build is not the guard of a filtered test run. Where the whole shape has
-no history, the step keeps only what changes its own work: a suite keeps to its profile and is never
-priced from a filtered run; a compile or native image keeps to forced or not.
+every compile of a full rebuild is not the guard of a filtered test run. Where the whole shape has
+no history, the step keeps only what changes its own work (a suite keeps to its profile and is never
+priced from a filtered run; a compile or native image keeps to a full rebuild or not) and prefers
+runs under its own load. A step seen only under the other load is read at the **load ratio**: the
+median, over the steps that ran under both, of their light wall over their full-rebuild wall (0.5
+until three steps have). A suite under a profile it never ran in borrows its default profile's wall
+as a floor, with a range up to three times it.
+
+A module's steps run in three branches after its prefix (the compiles and the jar): the suite, the
+packaging tails, and the guard chain (`compile-guard`, `guard`), which nothing waits for. A forced
+build's forecast lists a clean module with no steps; the estimate prices the steps the last run of
+the same shape ran there. A test run's estimate drops the packaging tails it never runs.
+
+Steps the build starts before the estimate arrives are recorded on the request and replayed into the
+model when it does, each counted down from its real start.
 
 A step's status matters: a cache hit is a restore, priced from restores, never from runs. A filtered
 suite (`--class`) is priced as its test JVM plus the recorded walls of the classes it selects, or a
 touch in a module it selects nothing in. A step with no history of its own falls back to the
 module-weight price of that step alone.
 
+**A running suite.** Its classes run side by side and its last few alone, so the share of its class
+walls done runs ahead of its clock: the engine's suite was 84% done by class walls at 71% of its wall.
+Each finished suite records its **curve**, the share of its wall that had passed at each tenth of its
+class walls, into its run's ledger line; the next run reads its class share through the latest curve
+of the same shape and work set (else the same shape, else the same profile and filter), and that
+suite's curve holds from run to run. Between class finishes the suite counts down from the wall its
+rate last projected: a long last class reports nothing for seconds.
+
 **Re-pricing.** The engine re-notes each live request's residual on every step and test-class event
-and once a second in between (`EtaStepTicker`), so a suite past its rate grows its remainder rather
-than letting the countdown decay to zero while it runs.
+and once a second in between (`EtaStepTicker`), so a running step counts down between events.
 
 **Before the estimate.** The estimate is priced beside the build and arrives within a second or two.
 Until it does, execute moves the bar at most to 15%: the plan's weights count a fully cached
@@ -129,10 +156,11 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape and frontier; prices and ranges |
+| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set and suite curves; prices and ranges |
 | `StepEta` | Prices every step the forecast runs; the step-priced `R0` |
 | `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its range, step by step |
-| `SuiteClassProgress` | A running suite's share of its class walls done, under the run's own tier |
+| `SuiteClassProgress` | A running suite's share of its class walls done, under the run's own tier, and its curve when it finishes |
+| `SuiteCurve` | A suite's class share read as the share of its wall: the curve its last run measured |
 | `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range's gaps |
 | `MemoryHolds` | Which builds are on hold for memory, and for how long |
 | Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `state`, `heldMs` |
@@ -200,7 +228,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
   projects/<id>/
     identity.toml
     project-metrics.toml
-    step-ledger.jsonl # the latest runs' step walls, shape and frontier (StepLedger)
+    step-ledger.jsonl # the latest runs' step walls, shape, work set and suite curves (StepLedger)
     runs/<build-number>/
       record.json
       details.jsonl

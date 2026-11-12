@@ -5,6 +5,8 @@ import cc.jumpkick.run.TaskNames;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -51,6 +53,61 @@ public final class RunShapes {
     public static void mark(@Nullable Long requestId, Shape shape) {
         if (requestId == null || requestId <= 0 || shape == null) return;
         SHAPES.put(requestId, shape);
+    }
+
+    /** What a request's estimate was priced under, and what its run measured, by request id. */
+    private record Priced(Set<String> frontier, Map<String, int[]> curves, Map<String, int[]> measured) {}
+
+    private static final Map<Long, Priced> PRICED = Collections.synchronizedMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Long, Priced> eldest) {
+            return size() > MAX;
+        }
+    });
+
+    private static Priced priced(long requestId) {
+        return PRICED.computeIfAbsent(
+                requestId, k -> new Priced(Set.of(), new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
+    }
+
+    /**
+     * {@code requestId}'s estimate was priced under the work set {@code frontier}, its suites'
+     * class shares read as time through {@code curves} (by module dir, {@link SuiteCurve}): its run
+     * is recorded under the same set, so the next run the forecast sees the same way finds it.
+     */
+    public static void markPriced(@Nullable Long requestId, Set<String> frontier, Map<String, int[]> curves) {
+        if (requestId == null || requestId <= 0 || frontier == null) return;
+        synchronized (PRICED) {
+            Priced was = priced(requestId);
+            Map<String, int[]> read = new ConcurrentHashMap<>(curves == null ? Map.of() : curves);
+            PRICED.put(requestId, new Priced(Set.copyOf(frontier), read, was.measured()));
+        }
+    }
+
+    /** The work set {@code requestId}'s estimate was priced under, or {@code null} when none was. */
+    public static @Nullable Set<String> frontierOf(long requestId) {
+        Priced p = PRICED.get(requestId);
+        return p == null || p.frontier().isEmpty() && p.curves().isEmpty() ? null : p.frontier();
+    }
+
+    /** The curve {@code requestId}'s estimate reads the suite of {@code dir} through, or {@code null}. */
+    public static int @Nullable [] pricedCurve(long requestId, String dir) {
+        Priced p = PRICED.get(requestId);
+        return p == null ? null : p.curves().get(dir);
+    }
+
+    /** {@code requestId}'s suite in {@code dir} finished, its clock following {@code curve}. */
+    public static void markCurve(long requestId, String dir, int[] curve) {
+        if (requestId <= 0 || dir == null || curve == null) return;
+        synchronized (PRICED) {
+            priced(requestId).measured().put(dir, curve.clone());
+        }
+    }
+
+    /** The curves {@code requestId}'s finished suites measured, by module dir. */
+    public static Map<String, int[]> curvesOf(long requestId) {
+        Priced p = PRICED.get(requestId);
+        return p == null ? Map.of() : Map.copyOf(p.measured());
     }
 
     /** {@code requestId}'s shape, or the default shape when it was never marked. */

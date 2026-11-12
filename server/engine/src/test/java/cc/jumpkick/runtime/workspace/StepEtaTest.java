@@ -74,4 +74,25 @@ class StepEtaTest {
         assertThat(StepEta.kindOf("guard-workspace")).isEqualTo(StepCost.Kind.TAIL);
         assertThat(StepEta.kindOf("package-assembly")).isEqualTo(StepCost.Kind.TAIL);
     }
+
+    @Test
+    void a_forced_builds_stepless_module_runs_what_the_last_forced_build_ran_there(@TempDir Path home) {
+        Path app = home.resolve("app");
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        StepLedger.append(
+                home,
+                full,
+                List.of(
+                        new StepLedger.Sample(app.toString(), "compile-java", "SUCCESS", 1_300),
+                        new StepLedger.Sample(app.toString(), "run-tests", "SUCCESS", 4_000)));
+        StepLedger ledger = StepLedger.load(home);
+        TaskForecast.Module clean = new TaskForecast.Module(app, "g:app", List.of(), 10, 100, false, false);
+
+        assertThat(StepEta.stepsOf(clean, true, ledger, full))
+                .extracting(TaskForecast.Task::name)
+                .containsExactly("compile-java", "run-tests");
+        assertThat(StepEta.stepsOf(clean, false, ledger, RunShapes.Shape.DEFAULT))
+                .as("not forced: a clean module runs nothing")
+                .isEmpty();
+    }
 }
