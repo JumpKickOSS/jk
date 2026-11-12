@@ -52,7 +52,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -123,20 +122,10 @@ final class GuardKeys {
         md.update((tag + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
     }
 
-    /** The baseline parsed once per content: every lane of a build reads the same file. */
+    /** The baseline as {@link BaselineFile#read} memoizes it: every lane of a build reads the same file. */
     private static Baseline parsedBaseline(Path file) throws IOException {
-        Path abs = file.toAbsolutePath().normalize();
-        String hash = FileHashMemo.contentHash(abs);
-        Parsed held = PARSED.get(abs);
-        if (held != null && held.hash().equals(hash)) return held.baseline();
-        Baseline read = BaselineFile.read(abs);
-        PARSED.put(abs, new Parsed(hash, read));
-        return read;
+        return BaselineFile.read(file.toAbsolutePath().normalize());
     }
-
-    private record Parsed(String hash, Baseline baseline) {}
-
-    private static final Map<Path, Parsed> PARSED = new ConcurrentHashMap<>();
 
     static void addRuleTokens(List<String> tokens, LoadResult load) {
         for (var e : load.rules().sourceDigests().entrySet()) tokens.add("rules:" + e.getKey() + ":" + e.getValue());
