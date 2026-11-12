@@ -1724,8 +1724,9 @@ why        = "a second planner is how build verbs drifted apart in which phases 
 # G129. A static field the engine can reach that holds mutable state lives as long as the resident
 # engine, days, so "this cannot change while a build runs" is no reason to keep it. It is a bounded
 # or trimmable memo (StampedMemo, StoreFileMemo, LruMemo), or an allow entry naming the field says
-# why the engine's lifetime is safe, with a reason from the vocabulary below. Baselined at the
-# count found when the rule landed; the baseline only shrinks.
+# why the engine's lifetime is safe, with a reason from the vocabulary below: `seam:` is a
+# collaborator wired in once or a test's override, `stamped:` a hand-kept memo that re-checks its
+# inputs on every read. The baseline the rule landed with is spent; a new holder fails at once.
 [guards.engine-static-memo]
 kind           = "statics"
 reachable-from = "server/engine"
@@ -1750,6 +1751,8 @@ reasons        = [
   "TTL ",
   "log-once:",
   "deliberate negative:",
+  "seam:",
+  "stamped:",
 ]
 baseline       = true
 instead        = "StampedMemo.bounded(n) or a Request slot, or an allow entry naming the field: `<reason prefix>: why the engine's lifetime is safe`"
@@ -1838,6 +1841,438 @@ reason = "live registry: the POM walks running now"
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.repo.EffectivePomBuilder#WAITING_ON"
 reason = "live registry: the threads parked on a running walk"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.CompilerBudget#CEILINGS"
+reason = "live registry: the heap ceiling of each compiler worker alive now; a worker's entry goes when it stops"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.CompilerPool#POOLS"
+reason = "live registry: the compiler pools open now by key; a job's pools leave when the job ends, the rest when they close"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.compile.KotlincSnapshots#RECORDING"
+reason = "seam: empty in production; a test installs a recording to watch the forks"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.EngineAotTrainer#recording"
+reason = "live registry: the one training recording in flight; shutdown stops it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.api.WireWriter#STREAMS"
+reason = "live registry: the writer of each client stream open now; closing the stream removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.graph.GraphRunner#PENDING"
+reason = "live registry: the workspaces with a graph refresh queued now; the refresh removes its workspace as it starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.graph.GraphRunner#SLOTS"
+reason = "live registry: the graph refreshes running now per workspace and the slot they share; the last one out removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.graph.GraphRunner#compiler"
+reason = "seam: the engine's job submitter, installed once as the server starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.http.CacheSnapshot#m2Reading"
+reason = "TTL 3600s: the size of ~/.m2, which jk neither budgets nor prunes, walked at most hourly for the dashboard"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.jobs.LastBuiltRoot#LAST"
+reason = "live registry: the one root the last admitted plan job ran in, replaced by every plan job"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#SHEDDERS"
+reason = "live registry: the owners that shed their idle workers under memory pressure, one per name"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#forTests"
+reason = "seam: null in production; a test pins the pressure level"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#sysctlbyname"
+reason = "engine-process fact: libc's sysctlbyname handle, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.JvmOptions#enginePlan"
+reason = "engine-process fact: the engine's own worker budget, planned at start for its core count and again by a caller with no request of its own; a build that plans carries its plan on its request"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.MemoryProbe#cached"
+reason = "TTL 5s: one memory reading answers every heap plan for five seconds"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.ProjectActivity#LAST"
+reason = "live registry: when each project was last worked on through the engine, for the warm workers' linger; dropped whole past 1024 projects"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.UserPluginPins#registered"
+reason = "live registry: the config.toml path pins registered now, re-synced whenever the file or a pinned jar moves"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.UserPluginPins#seen"
+reason = "stamped: the settled stamps of config.toml and every pinned jar at the last sync; any move re-syncs"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmLinger#ciForTests"
+reason = "seam: null in production; a test pins whether the host is CI"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerContainment#state"
+reason = "engine-process fact: the cgroup arrangement this engine made of itself at start"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerLaunchClasspath#REPORTED"
+reason = "log-once: one note per shelf POM walked from the store instead"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerLeases#replaced"
+reason = "seam: null in production; a test swaps the engine's ledger"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.runtime.NewProjectOps#versionLookup"
+reason = "seam: null in production; a test answers the templates' Maven versions"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.giter8.Giter8TemplateIndex#PICKER_MEMO"
+reason = "TTL 5s: one scan of the template roots answers the picker for five seconds"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.giter8.JkTemplateToml#REFUSED"
+reason = "log-once: one warning per refused template"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.BuildForks#STAGED"
+reason = "content-keyed: a store and a worker coordinate staged once; a coordinate's bytes never change, the store's GC and wipes forget the set, and a fork lost since is the needing step's to fetch"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.Calibration#MEMO"
+reason = "engine-process fact: this host's calibration, written only by this engine, which replaces the memo with each write; a user config change drops it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.KotlinAbiWarmup#RECORDING"
+reason = "seam: empty in production; a test installs a recording to watch the warmups"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.ShadowManifests#ROOT_OF"
+reason = "live registry: the reactor root whose last rendering wrote each leaf's shadow; a root's next rendering replaces its leaves"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.ShadowManifests#pinRaises"
+reason = "seam: the lock module's pin raiser, installed once as the engine starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.TestGates#GATES"
+reason = "lock registry: one gate per checkout while a suite holds or waits for it; the last one out removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.KtsSession#cancelGrace"
+reason = "seam: two seconds in production; a test shortens it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RecentClassWalls#CACHE"
+reason = "stamped: each checkout's merged class walls by the runs directory's mtime, which every build moves by adding its run"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RecentClassWalls#RUNS"
+reason = "stamped: each run's parsed walls by its metrics file's size and mtime (a run's metrics are written once), dropped when its run is pruned"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.SessionAggregates#MEMOS"
+reason = "stamped: every read re-checks the ledger files an aggregate came from; the least recently read go past 8 MiB"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.TestStorePool#CHECKED"
+reason = "TTL 3600s: when this engine last asked whether each test-store pool was due a reap"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.CasPrewriter$Watcher#ACTIVE"
+reason = "live registry: the prewriters running now; each removes itself when it closes"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.CasPrewriter$Watcher#OWNERS"
+reason = "live registry: the prewriters watching each directory; the last one out cancels the watch and removes it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.PortablePath#OWNERS"
+reason = "TTL 5s: a module's owning workspace root, re-walked after five seconds; dropped whole past 4096"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.PortablePath#ROOTS"
+reason = "TTL 5s: a directory's workspace root, re-walked after five seconds so a manifest that appears is found; dropped whole past 4096"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.ClassPredicates#DOTTED"
+reason = "content-keyed: a compiled package pattern by its text"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.EvalContext#HIERARCHIES"
+reason = "live registry: the type hierarchy of each evaluation context alive now, held weakly"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.EvalContext#MEMOS"
+reason = "live registry: the memos of each evaluation context alive now, held weakly"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.Evaluators#BY_KIND"
+reason = "seam: the shipped evaluator of each kind; a test registers its own and restores the defaults"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.GuardThrash#LAST_RUN"
+reason = "live registry: each lane's red sites at its last run, replaced by its next; forgetting them at an engine restart is the design"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.GuardThrash#STREAKS"
+reason = "live registry: how many runs in a row each red site of a lane has been red, replaced by the lane's next run"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.eval.TypeHierarchy#JDK_SUPERS"
+reason = "engine-process fact: the platform class loader's answers, the same for this JVM's life"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.rules.Rule#GLOBS"
+reason = "content-keyed: a compiled glob by its text"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.DownloadSlots#LEGS"
+reason = "lock registry: one leg semaphore per repository host asked, that host's queue for the engine's life"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.PomRuntimeClasspath#RESOLVE_CACHE"
+reason = "stamped: keyed by the worker jar's and POM's size and mtime and the repository URL; each hit re-stats its jars, and only successes are kept, 256 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.PomRuntimeClasspath#STORE_REPOS"
+reason = "content-keyed: the worker repository group by store root, official URL and extra store, 32 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoGroup#ARTIFACT_HIT_CACHE"
+reason = "content-keyed: an artifact hit by the repositories asked and its coordinate, never a -SNAPSHOT one: a release coordinate's bytes do not change, each hit re-stats its file, misses are not kept, 16384 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoGroup#POM_HIT_CACHE"
+reason = "content-keyed: a POM hit by the repositories asked and its coordinate, never a -SNAPSHOT one: a release coordinate's bytes do not change, each hit re-stats its file, misses are not kept, 16384 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoGroup#VERSIONS_CACHE"
+reason = "TTL 60s: a version listing answers for a minute, 8192 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.resolver.GradleMarkerAnswers#LOADED"
+reason = "content-keyed: whether a POM carries Gradle's metadata marker, by the POM's sha256; another process appending to the file only adds answers this one would compute the same"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.resolver.KmpRedirects#PROCESS_CACHE"
+reason = "content-keyed: a released module's Gradle metadata facts by repositories and coordinate; only definite answers are kept, 8192 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.FetchTimings#memo"
+reason = "engine-process fact: the sample window this process last wrote to its timings file; a sample another engine wrote and this one overwrites only slows an advisory prior"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.LockTimings#memo"
+reason = "engine-process fact: the sample window this process last wrote to its timings file; a sample another engine wrote and this one overwrites only slows an advisory prior"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.WindowsFileIdentity#closeHandle"
+reason = "engine-process fact: kernel32's CloseHandle, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.WindowsFileIdentity#createFileW"
+reason = "engine-process fact: kernel32's CreateFileW, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.cache.WindowsFileIdentity#getFileInformationByHandle"
+reason = "engine-process fact: kernel32's GetFileInformationByHandle, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.http.InFlightRequests#IN_FLIGHT"
+reason = "live registry: the HTTP requests in flight now; each removes itself when it ends"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.RepoArtifactStore#CLAIMS"
+reason = "engine-process fact: the loopback trees this process has claimed with its own token"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.builds.ProjectIds#CACHE"
+reason = "TTL 60s: a directory's project id, read again after a minute; dropped whole past 4096"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers#SLOTS"
+reason = "TTL per helper (15m unless its #ttl= says otherwise): a credential helper's output by argv and environment; dropped whole past 256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers#runner"
+reason = "seam: runs the helper process in production; a test answers for it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.DiskGuard#LISTENERS"
+reason = "live registry: the listeners told when disk runs short, each removed by its owner"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.DiskGuard#PROBES"
+reason = "TTL 5s: one free-space probe per volume answers for five seconds"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.GlobalConfig#lastAutoDetection"
+reason = "engine-process fact: the terminal's last glyph detection, made by the CLI process that paints it; no engine path detects"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.GlobalConfig#resolvedNerdFont"
+reason = "engine-process fact: the terminal's glyph caps, resolved by the CLI process that paints them; no engine path reads them"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.MacPrefs#cf"
+reason = "engine-process fact: the CoreFoundation handles, looked up once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.RequestScope#SCOPES"
+reason = "live registry: the scope of each request alive now, keyed weakly by its ledger"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.ResolvedSecrets#BY_WORKSPACE"
+reason = "live registry: the credential values jk resolved for each workspace, so text leaving the process masks them; dropped whole past 32 workspaces"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SearchCeiling#last"
+reason = "content-keyed: the parsed JK_CEILING value by its text, one entry"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SecretRedactor#KNOWN"
+reason = "live registry: every secret value this process was told about, so the shared engine log masks each; 4096 at most"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SecretRedactor#MEMO"
+reason = "content-keyed: a redactor by its set of values; dropped whole past 64"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.SessionContext#current"
+reason = "engine-process fact: the process's fallback session, installed at start; every request binds its own over it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#LAST"
+reason = "live registry: the last finished job's tree counters for engine status, replaced by each job"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#loadFailureForTest"
+reason = "seam: null in production; a test makes a tree load fail"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#resolved"
+reason = "engine-process fact: [engine] policy is fixed for the process's life, as documented, and the pool ceiling derives from this JVM's -Xmx"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.layout.InputTrees#testConfig"
+reason = "seam: null in production; a test supplies the engine config"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.library.LibraryCatalog#bundledLayer"
+reason = "engine-process fact: the library catalogue bundled in this process's jar"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.lock.LockManifestDigest#MEMO"
+reason = "stamped: every manifest the digest read, every probed absence and every glob's expansion is re-checked, settle-aware, on each read; one entry per lock owner"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.lock.ManifestPaths#shadows"
+reason = "seam: the engine's shadow renderer, installed once; the plain path elsewhere"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#ARCHIVES"
+reason = "live registry: the jar of each plugin installed now, removed with its plugin"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.manifest.PluginTableRegistry#BY_TABLE"
+reason = "live registry: the plugins installed now by owned table; installs and removals replace it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.AccessLedger#OPEN"
+reason = "live registry: one ledger per access directory per process, buffering uses until it flushes (at exit too); a process uses a handful of stores"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.FileLocks#ENTRIES"
+reason = "lock registry: one entry per lock file this JVM has locked, never a second, since closing a second channel would release the first's OS lock"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.PoolUse#POOLED"
+reason = "deliberate negative: whether a tree carries the pool marker; the engine marks a pool before using it, and a hot path pays a lookup, not a stat"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.PoolUse#STAMPED"
+reason = "TTL 3600s: a unit stamped within the hour is not stamped again; past 4096 the older entries go first"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.TestHomes#PASSES"
+reason = "TTL 600s: the last reap pass over each test-homes root; a quiet pass is not repeated for ten minutes"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.version.Versions#PARSED"
+reason = "content-keyed: a parsed version by its text; dropped whole past 16384, and the idle trim empties it"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Forks#opener"
+reason = "seam: starts the process in production; the engine installs its worker starter once"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.Log$Backend#JK"
+reason = "engine-process fact: this process's logger backend, installed as logging starts"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.WorkingDirectory#pinned"
+reason = "seam: null in a real jk; a test suite pins a temporary directory"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.ContextPropagator#CARRIED"
+reason = "live registry: the scoped values every hop carries, each registered once by its owner's static initializer"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#cpu"
+reason = "live registry: the process's shared CPU pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#cpuReal"
+reason = "live registry: the executor under the shared CPU pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#io"
+reason = "live registry: the process's shared I/O pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#ioReal"
+reason = "live registry: the executor under the shared I/O pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#platform"
+reason = "live registry: the process's shared platform-thread pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.JkThreads#platformReal"
+reason = "live registry: the executor under the shared platform-thread pool, made on first use and shut down at exit"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.SessionCancel#hold"
+reason = "seam: does nothing by default; the planner binds it once to whichever session is current when a task waits"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.run.StepScope#ON_CLOSE"
+reason = "live registry: the listeners told when a step closes, each added once by its owner"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.plugin.build.Transfers#REPLIES"
+reason = "seam: the forked plugin process's reply channel, installed once; null prints the report lines"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.jdk.JdkEnsure#REGISTRIES"
+reason = "stamped: one JDK registry per JDK root and Gradle build; each re-scans when jk's JDK root moves and every 30 s for roots other tools own; dropped whole past 64"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.jdk.JdkInventory#SHARED"
+reason = "stamped: one inventory per JDK root and state file; each snapshot re-stats the file and re-parses when it moves"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.wire.protocol.CliSessionIdentity#current"
+reason = "engine-process fact: this process's own session identity, worked out once"
 
 # G130. A request's values reach other threads only as ScopedValues the propagator carries. An
 # InheritableThreadLocal copies whichever request happened to create a pool's thread into every task
