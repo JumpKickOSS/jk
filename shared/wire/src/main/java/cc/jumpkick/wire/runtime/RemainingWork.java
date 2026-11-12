@@ -33,11 +33,12 @@ import java.util.Set;
  * <p>A model seeded with each module's steps ({@link #seedSteps}) is priced in ms at {@link
  * WorkModel#MS_PER_WEIGHT}, with no scale from a seed it would have to match, and counts a module
  * down step by step: a finished step leaves nothing, one not yet started its whole price, a running
- * one its price less its elapsed time (held at {@link #OVERRUN_FLOOR} of it once it overruns), and
- * a running suite the share of its wall still to run, following its own rate once {@link
- * #RATE_FROM} of it is done: the wall that rate projects when the share was last reported, less
- * its elapsed time (held at {@link #OVERRUN_FLOOR} once it overruns). The plan's tick fraction is not read for such a module: its ticks are
- * spread evenly over steps of very different length.
+ * one its price less its elapsed time, never less than a quarter of that elapsed time up to what its
+ * high bound leaves ({@link #overrun}), and a running suite the share of its wall still to run,
+ * following its own rate once {@link #RATE_FROM} of it is done: the wall that rate projects when the
+ * share was last reported, less its elapsed time (held at {@link #OVERRUN_FLOOR} once it overruns).
+ * The plan's tick fraction is not read for such a module: its ticks are spread evenly over steps of
+ * very different length.
  *
  * <p>A hold stops the step clock, but a suite's rate is read on the wall clock: its share is what
  * its classes really did, and they keep running while another fork of the build waits for memory.
@@ -389,9 +390,9 @@ public final class RemainingWork {
                     if (s.weight() > 0) left *= s.at(bound) / (double) s.weight();
                     left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w, left);
                 } else if (f != null && f > 0) {
-                    left = Math.max(OVERRUN_FLOOR * w * (1 - f), w * (1 - f));
+                    left = Math.max(overrun(s, bound, w, elapsed), w * (1 - f));
                 } else {
-                    left = Math.max(OVERRUN_FLOOR * w, w - elapsed);
+                    left = Math.max(overrun(s, bound, w, elapsed), w - elapsed);
                 }
                 if (s.kind() == StepCost.Kind.TEST) {
                     left = Math.max(left, classFloor(dir, clock.millis()) / (double) WorkModel.MS_PER_WEIGHT);
@@ -420,6 +421,24 @@ public final class RemainingWork {
                 suiteWall1,
                 c.suiteClasses());
     }
+
+    /**
+     * The least a running step has left: a share of the time it has run ({@link #OVERRUN_SHARE}),
+     * never past what its high bound leaves, never under {@link #OVERRUN_FLOOR} of its price {@code
+     * w}. It takes over from the clock's countdown at four-fifths of the price, so the remainder
+     * never jumps as the price passes. A step still running past its price is likely a long one: an
+     * integration suite priced at 110 s from its default profile's wall ran 249 s, and held at a
+     * twentieth of its price it read 4 s left for its last three minutes.
+     */
+    private static double overrun(StepCost s, StepCost.Bound bound, double w, double elapsed) {
+        double scale = s.at(bound) > 0 ? w / s.at(bound) : 1;
+        double high = s.at(StepCost.Bound.HIGH) * scale;
+        double grown = Math.min(OVERRUN_SHARE * elapsed, Math.max(0, high - elapsed));
+        return Math.max(OVERRUN_FLOOR * w, grown);
+    }
+
+    /** A step past its price has this share of its elapsed time left, at most ({@link #overrun}). */
+    static final double OVERRUN_SHARE = 0.25;
 
     private static double clamp01(double v) {
         if (v < 0) return 0;

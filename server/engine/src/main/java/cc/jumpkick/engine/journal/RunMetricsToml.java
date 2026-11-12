@@ -16,7 +16,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -27,8 +29,11 @@ final class RunMetricsToml {
 
     /** Writes nothing for a running, failed or cancelled run, or one with no wall to record. */
     static void write(Path dir, BuildRecord finished) throws IOException {
-        if (finished == null || finished.running()) return;
-        if (!finished.success() || finished.cancelled()) return;
+        if (finished == null || finished.running() || finished.cancelled()) return;
+        if (!finished.success()) {
+            writeClassWallsOnly(dir, finished);
+            return;
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("# run metrics — successful steps/modules only\n");
         if (finished.millis() > 0) {
@@ -110,6 +115,31 @@ final class RunMetricsToml {
             }
         }
         if (sb.length() > 40) {
+            Files.writeString(dir.resolve(ProjectBuilds.METRICS), sb.toString(), StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * A failed run teaches no step wall, but its suites' classes ran for real: their walls are
+     * kept, and the next run reads its suites' progress by them.
+     */
+    private static void writeClassWallsOnly(Path dir, BuildRecord finished) throws IOException {
+        StringBuilder sb = new StringBuilder("# run metrics — a failed run's test-class walls only\n");
+        String root = finished.dir();
+        Map<String, String> suiteSteps = new LinkedHashMap<>();
+        List<String> dirs = new ArrayList<>();
+        if (root != null) dirs.add(root);
+        if (finished.modules() != null) {
+            for (BuildRecord.Module m : finished.modules()) {
+                if (m != null && m.dir() != null && !dirs.contains(m.dir())) dirs.add(m.dir());
+            }
+        }
+        for (String moduleDir : dirs) {
+            var suite = TestSuiteTiers.take(moduleDir);
+            if (suite != null) suiteSteps.put(moduleDir, suite.step());
+            appendTestClassWalls(sb, moduleDir, root, suiteSteps);
+        }
+        if (sb.indexOf("[test-class.") >= 0) {
             Files.writeString(dir.resolve(ProjectBuilds.METRICS), sb.toString(), StandardCharsets.UTF_8);
         }
     }

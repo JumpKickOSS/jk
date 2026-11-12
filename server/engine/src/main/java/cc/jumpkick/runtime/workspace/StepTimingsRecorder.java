@@ -87,8 +87,19 @@ public final class StepTimingsRecorder implements BuildPlanListener {
 
     @Override
     public void planFinish(BuildPlanResult result) {
+        if (result == null || result.cancelled() || result.userCancelled()) return;
+        if (!result.success()) {
+            // A failed plan trains no rate, but its suite's classes ran for real and their walls
+            // price the next run's: a first integration run of the engine failed on one class, and
+            // the next ran 249 s with no class walls to read its progress by.
+            TestSummary sum = testSummary == null ? null : testSummary.get();
+            if (sum != null && !sum.classWallMs().isEmpty()) {
+                TestSuiteTiers.put(moduleKey, suite);
+                TestClassWalls.put(moduleKey, suite.step(), sum.classWallMs());
+            }
+            return;
+        }
         // Cancelled or failed plans must not train rates — truncated walls poison ETA.
-        if (result == null || !result.success() || result.cancelled() || result.userCancelled()) return;
         // Compile / other count-scaled steps: deferred from stepFinish.
         for (var e : durationByStep.entrySet()) {
             String step = e.getKey();

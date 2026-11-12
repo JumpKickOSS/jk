@@ -221,6 +221,29 @@ class RunMetricsTomlTest {
                 .containsPattern("\\[test-class\\.\"[^\"]*clients/cli@integration\"\\.\"a\"]");
     }
 
+    /** A failed run trains no wall, but its suite's classes ran for real and their walls stay. */
+    @Test
+    void a_failed_run_keeps_its_class_walls_and_nothing_else() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        Path mod = dir.resolve("server/engine");
+        TestSuiteTiers.put(mod.toString(), new TestSuiteTiers.Suite("run-tests@all_integration", false));
+        TestClassWalls.put(mod.toString(), "run-tests@all_integration", Map.of("a.SlowIT", 9_000L));
+        var modules = List.of(new BuildRecord.Module(
+                "g:engine",
+                mod.toString(),
+                false,
+                0,
+                250_000,
+                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "FAILED", 249_000, 0L))));
+        String locator = requireNonNull(
+                j.append(withModules(record(1_700_000_000_000L, false, "g:a"), modules), BuildJournal.Snapshot.NONE));
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+
+        assertThat(toml)
+                .containsPattern("\\[test-class\\.\"[^\"]*server/engine@all_integration\"\\.\"a\"]")
+                .doesNotContain("wall-ms");
+    }
+
     @Test
     void a_default_suite_keeps_the_bare_row() throws Exception {
         Path mod = dir.resolve("clients/cli");

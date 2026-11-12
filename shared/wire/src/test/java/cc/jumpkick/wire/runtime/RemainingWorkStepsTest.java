@@ -154,6 +154,37 @@ class RemainingWorkStepsTest {
         assertThat(rw.remaining()).isEqualTo(90_300); // 5% of the compile's price + the suite
     }
 
+    /**
+     * An integration suite priced at 110 s from its default profile's wall ran 249 s, and held at a
+     * twentieth of its price it read 4 s left for its last three minutes: a running step never has
+     * less left than a quarter of the time it has run, up to what its high bound leaves.
+     */
+    @Test
+    void a_running_step_has_a_share_of_its_run_left_up_to_its_high_bound() {
+        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 110_000 / MS, 110_000 / MS, 0, 0);
+        RemainingWork rw = RemainingWork.seedSteps(
+                        List.of(cost),
+                        Map.of(
+                                A,
+                                List.of(new StepCost(
+                                        "run-tests", 110_000 / MS, StepCost.Kind.TEST, 80_000 / MS, 330_000 / MS, 0))),
+                        4,
+                        false,
+                        false)
+                .withClock(clock);
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(60_000);
+        assertThat(rw.remaining()).as("well under its price: the clock").isCloseTo(50_000, within((long) MS));
+        now.addAndGet(40_000);
+        assertThat(rw.remaining())
+                .as("past four-fifths of it: a quarter of its run")
+                .isCloseTo(25_000, within((long) MS));
+        now.addAndGet(100_000);
+        assertThat(rw.remaining()).as("200 s in: a quarter of it").isCloseTo(50_000, within((long) MS));
+        now.addAndGet(120_000);
+        assertThat(rw.remaining()).as("320 s in: what the high bound leaves").isCloseTo(10_000, within((long) MS));
+    }
+
     @Test
     void a_running_suite_follows_its_class_walls_then_its_own_rate() {
         RemainingWork rw = model();
