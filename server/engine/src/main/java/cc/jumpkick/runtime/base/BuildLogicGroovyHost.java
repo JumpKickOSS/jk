@@ -2,6 +2,8 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
@@ -18,11 +20,13 @@ import cc.jumpkick.repo.RepoGroup;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -265,29 +269,55 @@ public final class BuildLogicGroovyHost {
                     "206b6edca13aeafe4f10995589b7cefd7aff403a24cb34cf085893e2b3e44b19"));
 
     /**
-     * The verified closure, once per engine process. {@link #published} hashes every jar (groovy
-     * alone is ~8 MB), and a truncated download only needs catching on the first touch; before
-     * this every script evaluation on a cache miss re-hashed all seven.
+     * The jars last verified under each tool cache, stamped by each jar's stat. {@link #published}
+     * hashes every jar (groovy alone is ~8 MB), so a jar whose stat is unchanged is not hashed again;
+     * one that is gone or rewritten (a wiped tool cache) is verified, and fetched, again.
      */
-    private static volatile Path @Nullable [] verifiedJars;
+    private static final StampedMemo<Path, List<@Nullable FileStamp>, List<Path>> VERIFIED = StampedMemo.bounded(4);
+
+    private static List<@Nullable FileStamp> stamps(List<Path> jars) {
+        List<@Nullable FileStamp> out = new ArrayList<>();
+        for (Path jar : jars) out.add(FileStamp.of(jar));
+        return out;
+    }
 
     /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from {@code repos}. */
     static Path[] ensureJars(Supplier<RepoGroup> repos) throws IOException {
-        Path[] known = verifiedJars;
-        if (known != null) return known;
-        Path cache = toolCache();
+        return ensureJars(toolCache(), PINNED_JARS, jar -> fetchVerified(jar, repos.get()));
+    }
+
+    /** A pinned jar's verified bytes, fetched from wherever the caller fetches. */
+    interface Fetch {
+        Path fetch(PinnedJar jar) throws IOException;
+    }
+
+    /** As {@link #ensureJars(Supplier)}: {@code pins} under {@code cache}, a missing or off-pin one through {@code fetch}. */
+    static Path[] ensureJars(Path cache, List<PinnedJar> pins, Fetch fetch) throws IOException {
+        try {
+            return VERIFIED.getDiscovered(cache, BuildLogicGroovyHost::stamps, () -> {
+                        try {
+                            return verify(cache, pins, fetch);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    })
+                    .toArray(Path[]::new);
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static List<Path> verify(Path cache, List<PinnedJar> pins, Fetch fetch) throws IOException {
         Files.createDirectories(cache);
-        Path[] jars = new Path[PINNED_JARS.size()];
-        for (int i = 0; i < jars.length; i++) {
-            PinnedJar jar = PINNED_JARS.get(i);
+        List<Path> jars = new ArrayList<>();
+        for (PinnedJar jar : pins) {
             Path out = cache.resolve(jar.fileName());
             if (!published(out, jar.sha256())) {
-                publish(fetchVerified(jar, repos.get()), out, jar.sha256());
+                publish(Objects.requireNonNull(fetch.fetch(jar)), out, jar.sha256());
             }
-            jars[i] = out;
+            jars.add(out);
         }
-        verifiedJars = jars;
-        return jars;
+        return List.copyOf(jars);
     }
 
     /**
