@@ -696,7 +696,11 @@ public class Replay {
 
         /** A class's wall from the runs this one may read ({@link #usable}): their mean. */
         double causalWall(List<long[]> rows) {
-            return rows.stream().filter(r -> usable(r)).mapToLong(r -> r[1]).average().orElse(0);
+            return rows.stream()
+                    .filter(r -> usable(r))
+                    .mapToLong(r -> r[1])
+                    .average()
+                    .orElse(0);
         }
 
         /** A class wall this run may read: an earlier run's when causal, else any other run's. */
@@ -852,6 +856,9 @@ public class Replay {
         if (runs.size() > 1) {
             System.out.println(
                     "\nall runs: median |ETA err| and median bar err (pts) at 25/50/75%, share of runs inside ±20% / ±10 pts");
+            System.out.printf(
+                    "  V0 range coverage: %.0f%% of %d checkpoints%n",
+                    100.0 * RANGE[0] / Math.max(1, RANGE[1]), RANGE[1]);
             for (var e : byModel.entrySet()) {
                 List<double[]> rows = e.getValue();
                 double[] etaAbs = rows.stream().mapToDouble(r -> r[0]).sorted().toArray();
@@ -1049,6 +1056,8 @@ public class Replay {
         int nextSeed = 0;
         List<Double> fidelity = new ArrayList<>();
         Map<Model, List<long[]>> points = new LinkedHashMap<>();
+        // V0's likely range at each sample, {work ts, remaining, low, high}: scored as score.py does.
+        List<long[]> ranges = new ArrayList<>();
         for (Model m : models) points.put(m, new ArrayList<>());
         for (Map<?, ?> e : events) {
             long ts = num(e, "ts");
@@ -1278,6 +1287,10 @@ public class Replay {
                         long r = m.remaining(st, ts);
                         if (r >= 0) points.get(m).add(new long[] {work.applyAsLong(ts), r});
                     }
+                    if (v0.rw != null && !"preflight".equals(e.get("phase"))) {
+                        long[] range = v0.rw.remainingRange();
+                        ranges.add(new long[] {work.applyAsLong(ts), v0.rw.remaining(), range[0], range[1]});
+                    }
                     long recorded = num(e, "remainingMs");
                     if (v0.rw != null && recorded >= 0 && !"preflight".equals(e.get("phase"))) {
                         long replayed = v0.rw.remaining();
@@ -1357,7 +1370,36 @@ public class Replay {
                         .add(new double[] {etaSum / nScored, barSum / nScored, etaOk ? 1 : 0, barOk ? 1 : 0});
             }
         }
+        // The range rides the residual, as score.py reads it: its gaps below and above stay as the
+        // countdown decays from the sample.
+        StringBuilder cover = new StringBuilder();
+        for (double f : SCORED) {
+            long at = t0 + Math.round(f * wall);
+            long[] shown = null;
+            for (long[] r : ranges) {
+                if (r[0] > at) break;
+                shown = r;
+            }
+            long trueMs = end - at;
+            if (shown == null || trueMs <= 0) {
+                cover.append(" -");
+                continue;
+            }
+            long etaMs = Math.max(0, shown[1] - (at - shown[0]));
+            boolean in = etaMs - (shown[1] - shown[2]) <= trueMs && trueMs <= etaMs + (shown[3] - shown[1]);
+            RANGE[0] += in ? 1 : 0;
+            RANGE[1]++;
+            cover.append(String.format(
+                    " %s(-%d%%/+%d%%)",
+                    in ? "in" : "OUT",
+                    Math.round(100.0 * (shown[1] - shown[2]) / Math.max(1, shown[1])),
+                    Math.round(100.0 * (shown[3] - shown[1]) / Math.max(1, shown[1]))));
+        }
+        System.out.printf("  V0 range at 25/50/75%%:%s%n", cover);
     }
+
+    /** V0's likely range over every run: checkpoints inside it, checkpoints scored. */
+    static final long[] RANGE = {0, 0};
 
     /** The replay's clock: the timestamp of the event being replayed. */
     static final long[] REPLAY_NOW = {0};

@@ -332,13 +332,26 @@ def main(argv: list[str]) -> int:
             f"  {100 * statistics.median(r0s) if r0s else 0:9.0f}%  " + " ".join(f"{c:>5}" for c in cells)
         )
     print("\n(cells: share of runs inside the target band; ! = below the required share)")
-    # Calibration of the likely range (JK-4TEZ7): the share of scored checkpoints whose truth fell
-    # inside the range shown, meant to be about 80%.
-    ranged = [p.in_range for s in scores for p in s.points if p.at in SCORED and p.in_range is not None]
-    if ranged:
+    # Calibration of the likely range (JK-4TEZ7): the share of warm runs' scored checkpoints whose
+    # truth fell inside the range shown, meant to be about 80%, as the scoreboard's eta dimension
+    # judges it. A cold run's estimate misses by more than any range it could honestly show; its
+    # coverage is reported, not judged.
+    for warm in (True, False):
+        ranged = [
+            p.in_range
+            for s in scores
+            if s.warm == warm
+            for p in s.points
+            if p.at in SCORED and p.in_range is not None
+        ]
+        if not ranged:
+            continue
         cov = sum(1 for r in ranged if r) / len(ranged)
-        ok = 0.70 <= cov <= 0.90
-        print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} checkpoints (target 70-90%){'' if ok else ' !'}")
+        if warm:
+            ok = 0.70 <= cov <= 0.90
+            print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} warm checkpoints (target 70-90%){'' if ok else ' !'}")
+        else:
+            print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} cold checkpoints")
     return 1 if failed else 0
 
 

@@ -384,6 +384,9 @@ public final class RemainingWork {
                     double reported = Math.max(0, at - began) / (double) WorkModel.MS_PER_WEIGHT;
                     double ran = Math.max(0, wall - began) / (double) WorkModel.MS_PER_WEIGHT;
                     left = reported / f - ran;
+                    // The rate's remainder spreads as the suite's own walls do: its range is the
+                    // projection at the step's low and high over its price, not a point.
+                    if (s.weight() > 0) left *= s.at(bound) / (double) s.weight();
                     left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w, left);
                 } else if (f != null && f > 0) {
                     left = Math.max(OVERRUN_FLOOR * w * (1 - f), w * (1 - f));

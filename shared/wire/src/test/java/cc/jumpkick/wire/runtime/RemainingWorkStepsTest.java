@@ -255,6 +255,33 @@ class RemainingWorkStepsTest {
                 .isCloseTo(4_500, within((long) MS));
     }
 
+    /**
+     * A suite on its own rate kept no range: low and high were one point, and every checkpoint past
+     * it fell outside the range shown (run 6 of jk's 2026-11-12 corpus, 52% of warm checkpoints
+     * inside). The projection spreads as the suite's walls do.
+     */
+    @Test
+    void a_suite_on_its_rate_projects_its_range_at_its_low_and_high_over_its_price() {
+        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 90_000 / MS, 90_000 / MS, 0, 0);
+        RemainingWork rw = RemainingWork.seedSteps(
+                        List.of(cost),
+                        Map.of(
+                                A,
+                                List.of(new StepCost(
+                                        "run-tests", 90_000 / MS, StepCost.Kind.TEST, 60_000 / MS, 120_000 / MS))),
+                        4,
+                        false,
+                        false)
+                .withClock(clock);
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(40_000);
+        rw.suiteProgress(A, 0.80);
+        assertThat(rw.remaining()).as("40 s for 80%").isCloseTo(10_000, within((long) MS));
+        long[] range = rw.remainingRange();
+        assertThat(range[0]).as("at two thirds of its price").isCloseTo(6_667, within((long) MS));
+        assertThat(range[1]).as("at four thirds of its price").isCloseTo(13_333, within((long) MS));
+    }
+
     @Test
     void the_likely_range_is_the_schedule_at_each_steps_low_and_high_and_narrows_as_steps_finish() {
         ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 96_000 / MS, 90_000 / MS, 0, 6_000 / MS);
