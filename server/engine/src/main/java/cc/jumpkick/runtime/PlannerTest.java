@@ -34,7 +34,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
@@ -58,10 +57,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -607,11 +602,12 @@ public final class PlannerTest {
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
-        // Test execution is serialized across concurrently-built units unless the
-        // user opted into parallel tests — shared ports/locks/fixtures. The worker
-        // count is decided once the gate is held: a suite parked at the gate is
+        // Test execution is serialized across the checkout's concurrently-built units
+        // unless the user opted into parallel tests — shared ports/locks/fixtures. The
+        // worker count is decided once the gate is held: a suite parked at the gate is
         // not running, and the ones running when it starts are what it shares with.
         boolean gated = !in.session().parallelTests();
+        TestGates.Hold[] gate = new TestGates.Hold[1];
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
         // The agent and the report tool come first: a coverage run that cannot fetch
         // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
@@ -621,7 +617,7 @@ public final class PlannerTest {
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
-                PlannerTest::awaitTestGate);
+                () -> gate[0] = TestGates.acquire(ctx.require(LAYOUT).workspaceRoot(), SessionCancel::cancelled));
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         TagExcludedCapture tagExcluded;
@@ -663,7 +659,7 @@ public final class PlannerTest {
             }
         } finally {
             HeapNotes.flush(ctx);
-            if (gated) TEST_GATE.release();
+            if (gate[0] != null) gate[0].close();
             // A run stopped part way keeps the classes it got through, under the stamp it started with.
             if (result == null) ledger.store(actionCache, testTaskId, stampKey);
         }
@@ -975,7 +971,7 @@ public final class PlannerTest {
 
     /**
      * Coverage tooling resolves before the serial test gate is taken, never inside it. The fetch
-     * can take seconds or fail outright, and the gate is process-wide: a fetch behind it would park
+     * can take seconds or fail outright, and the gate is the checkout's: a fetch behind it would park
      * every other module's suite behind a download, and a failed fetch would leave the gate held
      * for good. So a failing {@code resolve} throws with the gate untouched, and {@code gate} runs
      * only once {@code resolve} has answered.
@@ -990,32 +986,6 @@ public final class PlannerTest {
         if (gated) gate.run();
         return tools;
     }
-
-    /**
-     * Wait for the serial-test gate without counting as a running unit: a suite parked here is
-     * sharing the machine with nobody yet, and counting it would hand every gated suite a fraction
-     * of the machine it then uses alone.
-     */
-    static void awaitTestGate() {
-        awaitGate(TEST_GATE, SessionCancel::cancelled);
-    }
-
-    /**
-     * Take {@code gate}, giving up with a {@link CancellationException} once {@code cancelled}
-     * answers true: a suite parked behind another workspace's tests stays cancellable.
-     */
-    static void awaitGate(Semaphore gate, BooleanSupplier cancelled) {
-        try (LiveUnits.Lease parked = LiveUnits.stepOut()) {
-            while (!gate.tryAcquire(GATE_POLL_MS, TimeUnit.MILLISECONDS)) {
-                if (cancelled.getAsBoolean()) throw new CancellationException("test run cancelled");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new CancellationException("test run interrupted");
-        }
-    }
-
-    private static final long GATE_POLL_MS = 200;
 
     /** What a finished run leaves for later builds under the same inputs. */
     enum Stamp {

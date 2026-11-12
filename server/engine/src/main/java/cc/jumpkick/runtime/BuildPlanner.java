@@ -24,7 +24,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -249,9 +248,6 @@ public final class BuildPlanner {
             PRE_COMPILE_ABI,
             COMPILED_MAIN_SOURCES,
             AFFECTED_TESTS);
-
-    /** Serializes {@code run-tests} across concurrent modules unless {@code parallelTests}. */
-    static final Semaphore TEST_GATE = new Semaphore(1);
 
     /** Everything a build needs that isn't carried through the plan's state. */
     public record Inputs(
