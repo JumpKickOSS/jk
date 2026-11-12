@@ -186,6 +186,25 @@ class WorkerContainmentTest {
     }
 
     @Test
+    void the_engine_budget_is_read_again_when_the_containment_changes() throws Exception {
+        Assumptions.assumeTrue(WorkerContainment.envBudgetBytes() <= 0, "the budget is overridden");
+        Path workers = root.resolve("workers");
+        Files.createDirectories(workers);
+        EngineLimits.Budget budget = new EngineLimits.Budget();
+        try {
+            WorkerContainment.armForTest(workers, 300L << 20, 0);
+            assertThat(budget.getAsLong()).isEqualTo(300L << 20);
+            WorkerContainment.armForTest(workers, 500L << 20, 0);
+            assertThat(budget.getAsLong()).isEqualTo(500L << 20);
+            WorkerContainment.resetForTest();
+            assertThat(budget.getAsLong()).isEqualTo(WorkerContainment.budgetBytes());
+        } finally {
+            WorkerContainment.resetForTest();
+            WorkerContainment.install();
+        }
+    }
+
+    @Test
     @EnabledOnOs(OS.LINUX)
     void a_worker_joins_its_own_capped_group_and_a_kill_there_is_a_kill_at_its_cap() throws Exception {
         Path workers = root.resolve("workers");
@@ -360,7 +379,9 @@ class WorkerContainmentTest {
     /**
      * A child over a small {@code memory.max}, with swap pinned at 0, is SIGKILL'd. This process
      * stays up, and the death is reported as killed for memory. Skips when no memory-delegated
-     * cgroup can be created — a shared session cgroup, for example.
+     * cgroup can be created — a shared session cgroup, for example. The hog leases from a ledger
+     * of its own with room for its pinned heap: the armed group's 64 MiB is the kill line, not the
+     * lease budget.
      */
     @Test
     @EnabledOnOs(OS.LINUX)
@@ -373,7 +394,8 @@ class WorkerContainmentTest {
         try {
             long seen = oomKills(bench.dir);
             WorkerContainment.armForTest(bench.dir, bench.maxBytes, seen);
-            hog = JobWorkers.start(hogCommand(err));
+            WorkerLeases.Ledger roomy = new WorkerLeases.Ledger(() -> 4 * GIB, () -> 4, id -> false);
+            hog = JobWorkers.start(hogCommand(err), roomy);
             boolean placed = awaitPlacement(bench, hog);
             if (hog.isAlive() && !placed) {
                 hog.destroyForcibly();

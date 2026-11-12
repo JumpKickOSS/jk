@@ -311,6 +311,14 @@ public final class WorkerContainment {
         }
     }
 
+    /**
+     * The containment {@link #install} or {@link #armForTest} settled on, compared by identity: a
+     * cached budget read under another one is stale. Null before install.
+     */
+    static @Nullable Object stateIdentity() {
+        return state;
+    }
+
     /** The workers directory {@link #install} is using, or null before install and outside cgroup mode. */
     static @Nullable Path workersGroup() {
         State s = state;
