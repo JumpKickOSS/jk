@@ -29,9 +29,9 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.SourceRefs;
 import cc.jumpkick.runtime.base.StepTimings;
-import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
@@ -423,7 +423,8 @@ public final class EffortWeights {
      * over the same project-preferring aggregates every other learned weight reads.
      */
     static Map<String, Long> loadClassWalls(String moduleDir) {
-        Map<String, Long> live = TestClassWalls.get(moduleDir);
+        RunMeasures measures = RunMeasures.current();
+        Map<String, Long> live = measures == null ? Map.of() : measures.classWalls(moduleDir);
         if (!live.isEmpty()) return live;
         if (moduleDir == null || moduleDir.isBlank()) return Map.of();
         try {

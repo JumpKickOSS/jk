@@ -14,6 +14,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
@@ -289,7 +290,13 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
-        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> host.accumulator, id -> 0L, host::log)
+        new JobWatchdog(
+                        new WorkerScopes(),
+                        JobLimits.DEFAULTS,
+                        () -> 1_000L,
+                        id -> host.accumulator,
+                        id -> 0L,
+                        host::log)
                 .enforceDeadline(
                         7L,
                         Session.CancelToken.live(),
@@ -610,7 +617,13 @@ class JobEnvelopeTest {
 
         FakeEnvelopeHost byDeadline = new FakeEnvelopeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
-        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> byDeadline.accumulator, id -> 0L, byDeadline::log)
+        new JobWatchdog(
+                        new WorkerScopes(),
+                        JobLimits.DEFAULTS,
+                        () -> 1_000L,
+                        id -> byDeadline.accumulator,
+                        id -> 0L,
+                        byDeadline::log)
                 .enforceDeadline(
                         2L,
                         Session.CancelToken.live(),

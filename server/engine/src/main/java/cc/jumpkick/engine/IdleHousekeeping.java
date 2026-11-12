@@ -16,7 +16,6 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.AbiMemo;
 import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.CacheStats;
@@ -343,31 +342,19 @@ public final class IdleHousekeeping {
 
     /**
      * Drop process-wide memos whose payoff is intra-build so the trailing GC has something to
-     * reclaim: resolve memos (rebuilt cheaply from the on-disk caches), the metrics aggregate, and
-     * any unclaimed test-wall snapshots. All are optimisations, never correctness.
+     * reclaim: the metrics aggregate. The resolve memos are not among them: they are bounded, and
+     * the settled trim ({@link MemoTrim}) drops them once the engine has sat idle, so a build that
+     * follows a lock inside that window still finds its POMs built. All are optimisations, never
+     * correctness.
      *
      * <p>The file-hash and ABI memos are persisted here rather than dropped: they do not grow with
      * the number of builds, and their whole payoff is the build after this one.
      */
-    private void dropHeapResidue() {
-        dropHeapResidue(historyConfig.enabled());
-    }
-
-    /**
-     * Release the per-build memos. The resolve memos are not among them: they are bounded, and the
-     * settled trim ({@link MemoTrim}) drops them once the engine has sat idle, so a build that
-     * follows a lock inside that window still finds its POMs built. The class-wall buffer is
-     * dropped only when history is on: the finish path has harvested it into {@code metrics.toml}
-     * by then and the estimator reads it back from disk. With history off there is no harvest, so
-     * the buffer is the only cross-build test ETA the process has, and an idle boundary must not
-     * reset it to cold priors.
-     */
-    static void dropHeapResidue(boolean historyEnabled) {
+    private static void dropHeapResidue() {
         try {
             FileHashMemo.flush();
             AbiMemo.flush();
             BuildMetrics.clearSessionAggregatesMemo();
-            if (historyEnabled) TestClassWalls.takeAll();
         } catch (RuntimeException e) {
             // hygiene, never load-bearing
             Log.debug("dropHeapResidue: hygiene, never load-bearing", e);

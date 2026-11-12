@@ -15,6 +15,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.IoLedger;
@@ -148,6 +149,13 @@ class RepoGroupBuilderWireNoticeTest {
         @Override
         public ReentrantReadWriteLock cacheGate() {
             return gate;
+        }
+
+        private final WorkerScopes workers = new WorkerScopes();
+
+        @Override
+        public WorkerScopes workers() {
+            return workers;
         }
 
         @Override

@@ -5,10 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.Locale;
-import java.util.Map;
-import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -23,12 +20,8 @@ public final class MemoryNotes {
     /** A finished wait shorter than this is recorded and not printed. */
     private static final long OUTPUT_AFTER_NANOS = 500_000_000L;
 
-    /**
-     * Each step's summed wait until its scope closes. Weakly keyed: a wait can land after the
-     * step's close (a fork it handed off), and a strongly held step pinned its whole build plan
-     * for the life of the engine.
-     */
-    private static final Map<TaskContext, AtomicLong> NANOS = Collections.synchronizedMap(new WeakHashMap<>());
+    /** The step's summed wait, written once when its scope closes. */
+    private static final StepScope.Local<AtomicLong> NANOS = new StepScope.Local<>(AtomicLong::new);
 
     static {
         StepScope.onClose(MemoryNotes::flush);
@@ -64,39 +57,28 @@ public final class MemoryNotes {
     static void noteGranted(long waitedNanos) {
         if (waitedNanos <= 0) return;
         Log.info("jk engine: " + waitedPhrase(waitedNanos));
-        TaskContext ctx = StepScope.current();
-        if (ctx == null) return;
-        recordWait(ctx, waitedNanos);
+        recordWait(waitedNanos);
     }
 
     /**
-     * Count {@code waitedNanos} on {@code ctx}. Half a second or more is also a line on the step's
-     * output and one share of the results' single wait line.
+     * Count {@code waitedNanos} on this thread's step. Half a second or more is also a line on the
+     * step's output and one share of the results' single wait line. Outside a step, nothing.
      */
-    static void recordWait(TaskContext ctx, long waitedNanos) {
-        if (ctx == null || waitedNanos <= 0) return;
+    static void recordWait(long waitedNanos) {
+        TaskContext ctx = StepScope.current();
+        AtomicLong held = StepScope.local(NANOS);
+        if (ctx == null || held == null || waitedNanos <= 0) return;
         ctx.waited(Duration.ofNanos(waitedNanos));
         if (waitedNanos < OUTPUT_AFTER_NANOS) return;
         ctx.output(waitedPhrase(waitedNanos));
-        add(ctx, waitedNanos);
+        held.addAndGet(waitedNanos);
     }
 
-    /** Add {@code nanos} to the step's memory wait. A null step is ignored. */
-    public static void add(TaskContext ctx, long nanos) {
-        if (ctx == null || nanos <= 0) return;
-        NANOS.computeIfAbsent(ctx, k -> new AtomicLong()).addAndGet(nanos);
-    }
-
-    /** Test seam: how many steps hold a wait. */
-    static int held() {
-        return NANOS.size();
-    }
-
-    /** One warning for {@code ctx} when it waited, then forget it. A second close is a no-op. */
+    /** One warning for the closing step {@code ctx} when it waited. */
     static void flush(TaskContext ctx) {
-        AtomicLong held = NANOS.remove(ctx);
+        AtomicLong held = StepScope.local(NANOS);
         if (held == null) return;
-        long nanos = held.get();
+        long nanos = held.getAndSet(0);
         if (nanos <= 0) return;
         String phrase = waitedPhrase(nanos);
         if (WorkerContainment.leaseBudget().source() == WorkerContainment.BudgetSource.OVERRIDE) {

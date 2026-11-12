@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.engine.api.InFlightBuilds;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -17,6 +18,9 @@ public interface JobRuntime {
     ReentrantReadWriteLock cacheGate();
 
     IoLedger runIo(long id);
+
+    /** The live jobs' worker scopes by id: what a cancel, a suspend or a drain stops. */
+    WorkerScopes workers();
 
     InFlightBuilds inFlight();
 

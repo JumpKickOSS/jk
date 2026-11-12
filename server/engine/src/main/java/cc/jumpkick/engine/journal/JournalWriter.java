@@ -21,6 +21,7 @@ import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
@@ -257,6 +258,8 @@ public final class JournalWriter {
             return null;
         }
         List<MarkdownTestReport.ModuleRun> tests = a.results().takeTests();
+        // Taken whether or not history keeps them: they are this run's, and nothing reads them later.
+        RunMeasures measures = a.measures().take();
         try {
             if (a.discarded()) {
                 deleteStub(a);
@@ -297,7 +300,8 @@ public final class JournalWriter {
                         LockPaths.lockFile(dir),
                         a.diagnosticsText(),
                         iteration.testOutcomes(),
-                        iteration.sources());
+                        iteration.sources(),
+                        measures);
                 String jid = a.journalId();
                 String locator = jid != null && !jid.isBlank()
                         ? completeInPlace(jid, record, snapshot)

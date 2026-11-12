@@ -14,6 +14,7 @@ import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
@@ -35,6 +36,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -57,19 +59,26 @@ public final class BuildAccumulator {
     /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
     private final @Nullable ChromeTimeline timeline;
     /** request was {@code --redo}/{@code --force} — train {@code build:rebuild} metrics. */
+    @Getter
     private final boolean rebuild;
 
     /**
      * This run's byte accounting. The job's request carries it, so every session the request builds
      * meters into it (see {@link cc.jumpkick.task.IoLedger}).
      */
+    @Getter
     private final IoLedger io = new IoLedger();
 
     /**
      * The test runs and coverage this request's modules publish. Carried by the job's request for
      * its life, drained once when the record is written.
      */
+    @Getter
     private final RunResults results = new RunResults();
+
+    /** What this run measured for its metrics beyond its steps; carried by the job's request. */
+    @Getter
+    private final RunMeasures measures = new RunMeasures();
 
     private final SlowestTests slowest = new SlowestTests();
 
@@ -121,6 +130,7 @@ public final class BuildAccumulator {
     }
 
     /** Start-time build number; 0 when unnumbered. */
+    @Getter
     private final long buildNumber;
     /** In-flight journal id from begin(); null when history disabled or non-journaled. */
     private final @Nullable String journalId;
@@ -174,10 +184,6 @@ public final class BuildAccumulator {
         this.requestId = requestId;
     }
 
-    public boolean rebuild() {
-        return rebuild;
-    }
-
     /**
      * The wall clock of the run another tool performed — Maven's, for a {@code jk mvn} — which
      * {@link #toRecord} takes as the record's headline duration in place of the journaling job's
@@ -200,10 +206,6 @@ public final class BuildAccumulator {
         return coord;
     }
 
-    public long buildNumber() {
-        return buildNumber;
-    }
-
     public @Nullable String journalId() {
         return journalId;
     }
@@ -211,14 +213,6 @@ public final class BuildAccumulator {
     /** The slowest test classes and methods this request ran, fed as each class finishes. */
     public SlowestTests slowest() {
         return slowest;
-    }
-
-    public RunResults results() {
-        return results;
-    }
-
-    public IoLedger io() {
-        return io;
     }
 
     public String dir() {

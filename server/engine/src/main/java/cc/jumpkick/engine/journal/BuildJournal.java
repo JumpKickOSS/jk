@@ -11,6 +11,7 @@ import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.runtime.base.RunMeasures;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
@@ -180,12 +181,23 @@ public final class BuildJournal {
             @Nullable Path lockfile,
             @Nullable String diagnosticsText,
             @Nullable String testOutcomes,
-            @Nullable String sources) {
-        public static final Snapshot NONE = new Snapshot(null, null, null, null, null);
+            @Nullable String sources,
+            RunMeasures measures) {
+        public static final Snapshot NONE = new Snapshot(null, null, null);
 
-        /** Without the per-run snapshots a {@link JobDelta} compares. */
+        /** Without the per-run snapshots a {@link JobDelta} compares, or any measures. */
         public Snapshot(@Nullable Path resultsMd, @Nullable Path lockfile, @Nullable String diagnosticsText) {
             this(resultsMd, lockfile, diagnosticsText, null, null);
+        }
+
+        /** Without measures beyond the record's steps. */
+        public Snapshot(
+                @Nullable Path resultsMd,
+                @Nullable Path lockfile,
+                @Nullable String diagnosticsText,
+                @Nullable String testOutcomes,
+                @Nullable String sources) {
+            this(resultsMd, lockfile, diagnosticsText, testOutcomes, sources, new RunMeasures());
         }
     }
 
@@ -253,7 +265,7 @@ public final class BuildJournal {
                     Files.writeString(
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
                 } else {
-                    RunMetricsToml.write(tmp, withIds);
+                    RunMetricsToml.write(tmp, withIds, snapshot.measures());
                 }
                 if (Files.isDirectory(target)) {
                     // A live entry (its details.jsonl is being written) is only ever rewritten in
@@ -387,7 +399,7 @@ public final class BuildJournal {
             BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
             writeRecord(tmp, toWrite);
             writeSnapshot(tmp, snapshot, previousRun(target));
-            RunMetricsToml.write(tmp, toWrite);
+            RunMetricsToml.write(tmp, toWrite, snapshot.measures());
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
             // the record sees the old bytes or the new ones, and a Windows handle on it is waited

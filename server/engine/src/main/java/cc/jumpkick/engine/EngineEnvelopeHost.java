@@ -11,6 +11,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
@@ -48,6 +49,12 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
     private final SessionLog sessionLog;
+    private final WorkerScopes workers;
+
+    @Override
+    public WorkerScopes workers() {
+        return workers;
+    }
 
     @Override
     public @Nullable String episodeFor(

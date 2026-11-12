@@ -9,6 +9,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.RunSnapshots;
+import cc.jumpkick.engine.plugin.AsOneStep;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -30,11 +32,11 @@ import org.junit.jupiter.params.provider.ValueSource;
  * A suite whose planned heap is too small climbs the heap ladder until it passes, and the next run
  * starts at the heap that passed. A pinned heap is not retried.
  */
+@ExtendWith(AsOneStep.class)
 class LearnedHeapRetryTest {
 
     @AfterEach
     void reset() {
-        HeapNotes.clear();
         SessionContext.reset();
     }
 

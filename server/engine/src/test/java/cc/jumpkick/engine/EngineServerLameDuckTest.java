@@ -142,7 +142,7 @@ class EngineServerLameDuckTest extends EngineServerHarness {
             // A worker the stuck job forked: the drain deadline must not leave it behind.
             Process sleeper = new ProcessBuilder("sleep", "300").start();
             this.worker = sleeper;
-            JobWorkers.runAs(jid, () -> JobWorkers.register(sleeper));
+            requireNonNull(engine.workers().get(jid)).run(() -> JobWorkers.register(sleeper));
 
             long stopAt = System.currentTimeMillis();
             try (Client stopper = new Client(socket)) {

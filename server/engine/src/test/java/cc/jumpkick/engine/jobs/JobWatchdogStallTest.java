@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -30,7 +31,13 @@ class JobWatchdogStallTest {
         AtomicLong lastEvent = new AtomicLong(0L);
         List<String> logs = new CopyOnWriteArrayList<>();
         JobWatchdog watchdog = new JobWatchdog(
-                NO_HEARTBEAT_NO_DEADLINE, now::get, id -> null, id -> lastEvent.get(), logs::add, 5_000L);
+                new WorkerScopes(),
+                NO_HEARTBEAT_NO_DEADLINE,
+                now::get,
+                id -> null,
+                id -> lastEvent.get(),
+                logs::add,
+                5_000L);
         Session.CancelToken token = Session.CancelToken.live();
         JobWatchdog.Watch watch = Objects.requireNonNull(
                 watchdog.watch(7L, "test", "/tmp/app", token, new AtomicReference<>(), null, UNBOUNDED, 1_000L),
@@ -66,7 +73,13 @@ class JobWatchdogStallTest {
         AtomicLong lastEvent = new AtomicLong(1_000L);
         List<String> logs = new CopyOnWriteArrayList<>();
         JobWatchdog watchdog = new JobWatchdog(
-                NO_HEARTBEAT_NO_DEADLINE, now::get, id -> null, id -> lastEvent.get(), logs::add, 2_000L);
+                new WorkerScopes(),
+                NO_HEARTBEAT_NO_DEADLINE,
+                now::get,
+                id -> null,
+                id -> lastEvent.get(),
+                logs::add,
+                2_000L);
         JobWatchdog.Watch watch = Objects.requireNonNull(watchdog.watch(
                 8L, "build", "/tmp/lib", Session.CancelToken.live(), new AtomicReference<>(), null, UNBOUNDED, 1_000L));
         for (int i = 0; i < 4; i++) {
@@ -80,8 +93,14 @@ class JobWatchdogStallTest {
     @Test
     void the_watch_thread_ends_with_the_job() throws Exception {
         List<String> logs = new CopyOnWriteArrayList<>();
-        JobWatchdog watchdog =
-                new JobWatchdog(NO_HEARTBEAT_NO_DEADLINE, () -> 1_000L, id -> null, id -> 1_000L, logs::add, 5_000L);
+        JobWatchdog watchdog = new JobWatchdog(
+                new WorkerScopes(),
+                NO_HEARTBEAT_NO_DEADLINE,
+                () -> 1_000L,
+                id -> null,
+                id -> 1_000L,
+                logs::add,
+                5_000L);
         CountDownLatch done = new CountDownLatch(1);
         Thread thread = Objects.requireNonNull(watchdog.start(
                 9L,

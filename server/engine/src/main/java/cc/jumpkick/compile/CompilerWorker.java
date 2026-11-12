@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
@@ -78,8 +79,8 @@ final class CompilerWorker {
 
     private final CompilerPool pool;
 
-    /** The {@link JobWorkers} scope the process runs under: its own, or a job's for a job-scoped pool. */
-    final long scope;
+    /** The {@link WorkerScope} the process runs under: its own, or a job's for a job-scoped pool. */
+    final WorkerScope scope;
 
     final Map<Long, CompileWork> inflight = new ConcurrentHashMap<>();
 
@@ -106,7 +107,7 @@ final class CompilerWorker {
 
     private @Nullable Thread io;
 
-    CompilerWorker(CompilerPool pool, long scope, Launcher launcher) {
+    CompilerWorker(CompilerPool pool, WorkerScope scope, Launcher launcher) {
         this.pool = pool;
         this.scope = scope;
         this.launcher = launcher;
@@ -118,8 +119,8 @@ final class CompilerWorker {
      * its pool, binds its own scope before it forks, and each item brings its own session.
      */
     void start() {
-        io = detached("jk-javac-worker-" + scope, this::drive);
-        detached("jk-javac-dispatch-" + scope, this::dispatchLoop);
+        io = detached("jk-javac-worker-" + scope.id(), this::drive);
+        detached("jk-javac-dispatch-" + scope.id(), this::dispatchLoop);
     }
 
     /** A virtual thread with no inherited context. Reads no session of a request. */
@@ -214,7 +215,7 @@ final class CompilerWorker {
 
     /** The worker's io thread: the process it forks registers to {@link #scope}, the only request it carries. */
     private void drive() {
-        JobWorkers.runAs(scope, () -> {
+        scope.run(() -> {
             Throwable ended = null;
             try {
                 launcher.run(this);
@@ -234,7 +235,7 @@ final class CompilerWorker {
     void attach(PluginProcess.Conversation conversation) {
         channel = conversation;
         String hello = hello(concurrencyOverride());
-        detached("jk-javac-hello-" + scope, () -> sendWhenConnected(conversation, hello, () -> dead));
+        detached("jk-javac-hello-" + scope.id(), () -> sendWhenConnected(conversation, hello, () -> dead));
     }
 
     /**
@@ -291,9 +292,9 @@ final class CompilerWorker {
     void send(String json) {
         PluginProcess.Conversation c = channel;
         try {
-            if (c == null || !c.offer(json)) Log.debug("zinc worker " + scope + " not connected; dropped " + json);
+            if (c == null || !c.offer(json)) Log.debug("zinc worker " + scope.id() + " not connected; dropped " + json);
         } catch (RuntimeException e) {
-            Log.debug("zinc worker " + scope + " send failed: " + e.getMessage());
+            Log.debug("zinc worker " + scope.id() + " send failed: " + e.getMessage());
         }
     }
 
@@ -312,7 +313,7 @@ final class CompilerWorker {
      */
     void idleNow() {
         int generation = idleGeneration.incrementAndGet();
-        detached("jk-javac-trim-" + scope, () -> {
+        detached("jk-javac-trim-" + scope.id(), () -> {
             try {
                 Thread.sleep(pool.trimAfterIdle);
             } catch (InterruptedException e) {
@@ -350,7 +351,7 @@ final class CompilerWorker {
         Process p = process;
         if (stop != null) stop.run();
         else if (p != null) JobWorkers.destroyTree(p);
-        else JobWorkers.shutdownForRequest(scope, 0L);
+        else scope.shutdown(0L);
     }
 
     /** Stop the process because {@code job}'s compile on it would not answer its cancel. */

@@ -14,12 +14,14 @@ import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.listen.SseFrame;
-import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.secret.RequestKeychain;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
@@ -90,8 +92,9 @@ public final class JobEnvelope {
         this.refusals = new JobRefusals(host);
         this.limits = limits;
         this.admission = admission;
-        this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf, host::lastEventAt, host::log);
-        this.live = new LiveJobRegistry(host::accumulatorOf, host::log, limits.cancelGraceMs());
+        this.watchdogs = new JobWatchdog(
+                host.workers(), limits, host::nowMillis, host::accumulatorOf, host::lastEventAt, host::log);
+        this.live = new LiveJobRegistry(host.workers(), host::accumulatorOf, host::log, limits.cancelGraceMs());
         this.settlement = new JobSettlement(host, host, host, host);
     }
 
@@ -520,13 +523,16 @@ public final class JobEnvelope {
         // when their open never happened.
         if (a.plan()) host.cacheGate().readLock().lock();
         try {
-            JobWorkers.begin(eventRequestId);
-            // One binding for the job: its id, ledger, shell, keychain, results sink and actor reach
-            // every pool task and every thread it starts. Test runs and coverage published anywhere
-            // under it land on its record.
+            // One binding for the job: its id, ledger, shell, keychain, results sink, actor, worker
+            // scope, measures, live-unit count and heap plan reach every pool task and every thread it starts.
+            // Test runs and coverage published anywhere under it land on its record.
             BuildAccumulator acc = host.accumulatorOf(eventRequestId);
             Request request = requestOf(eventRequestId, io, a.actor(), a.requestLine())
-                    .with(RunResults.SLOT, acc != null ? acc.results() : new RunResults());
+                    .with(WorkerScope.SLOT, host.workers().open(eventRequestId))
+                    .with(RunResults.SLOT, acc != null ? acc.results() : new RunResults())
+                    .with(RunMeasures.SLOT, acc != null ? acc.measures() : new RunMeasures())
+                    .with(LiveUnits.SLOT, new LiveUnits())
+                    .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap());
             request.run(() -> runBound(a, io));
         } catch (Throwable t) {
             // The setup and teardown around the body are outside its own catch, and a throw
@@ -539,11 +545,8 @@ public final class JobEnvelope {
             // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
             // burn its full 15s join before this force-kill ran. Killing the process
             // first unblocks readLine, so end()'s join returns promptly.
-            // Never clear() the registry without shutdown, or a racing cancel thread's
-            // shutdownForRequest finds an empty set and plugin/javac children keep running.
-            JobWorkers.shutdownForRequest(eventRequestId, 0L);
+            host.workers().shutdown(eventRequestId, 0L);
             JavaCompilerHost.end(eventRequestId);
-            LiveUnits.end(eventRequestId);
             if (a.plan()) host.cacheGate().readLock().unlock();
             // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
             // hold, cancel watches liveJobs — this order means a job never looks finished
@@ -646,7 +649,7 @@ public final class JobEnvelope {
                     a.cancelSignal(),
                     () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, a.deadline()),
                     () -> {
-                        JobWorkers.shutdownForRequest(eventRequestId, 0L);
+                        host.workers().shutdown(eventRequestId, 0L);
                         LiveJobRegistry.interruptRunner(runnerRef.get());
                     });
             // The runner is abandoned: whatever it is still doing, the facts it memoized for this
@@ -661,8 +664,7 @@ public final class JobEnvelope {
             Thread.interrupted();
             if (watchdog != null) watchdog.interrupt();
             // Belts: any leftover workers die now (grace 0 — request is ending).
-            JobWorkers.shutdownForRequest(eventRequestId, 0L);
-            JobWorkers.clear(eventRequestId);
+            host.workers().close(eventRequestId);
             // The runner finally releases the checkout slot after the body returns. Releasing it
             // here while that thread is still in the body admits the next build onto the same tree.
             // A runner that never started, or that died without counting down, still has to be released.
@@ -774,7 +776,7 @@ public final class JobEnvelope {
     }
 
     private List<JobRow> liveRows() {
-        return live.rows(JobWorkers::liveCountForRequest, host::lastEventAt);
+        return live.rows(host.workers()::liveCount, host::lastEventAt);
     }
 
     /** Whether a job's cancel token means a real cancel — see {@link JobSettlement#effectiveCancelled}. */

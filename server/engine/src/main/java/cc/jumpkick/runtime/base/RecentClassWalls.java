@@ -63,13 +63,12 @@ public final class RecentClassWalls {
     }
 
     private static Map<String, Long> live(Path moduleDir) {
-        Map<String, Long> direct = TestClassWalls.get(moduleDir.toString());
+        RunMeasures measures = RunMeasures.current();
+        if (measures == null) return Map.of();
+        Map<String, Long> direct = measures.classWalls(moduleDir.toString());
         if (!direct.isEmpty()) return direct;
         try {
-            Path abs = moduleDir.toAbsolutePath().normalize();
-            Map<String, Long> normalized = TestClassWalls.get(abs.toString());
-            if (!normalized.isEmpty()) return normalized;
-            return TestClassWalls.get(abs.toAbsolutePath().toString());
+            return measures.classWalls(moduleDir.toAbsolutePath().normalize().toString());
         } catch (RuntimeException e) {
             return Map.of();
         }

@@ -2,9 +2,9 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.HostPressure;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.KeepWarm;
 import cc.jumpkick.engine.plugin.ProjectActivity;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
@@ -67,7 +67,7 @@ final class CompilerPool {
     /** Every pool not yet closed, registered or not: a credit coming back anywhere wakes them all. */
     private static final Set<CompilerPool> LIVE = ConcurrentHashMap.newKeySet();
 
-    /** One {@link JobWorkers} scope per resident worker, counting up from below every job and ephemeral id. */
+    /** One {@link WorkerScope} id per resident worker, counting up from below every job and ephemeral id. */
     private static final AtomicLong SCOPES = new AtomicLong(Long.MIN_VALUE);
 
     private static final Clock CLOCK = Clock.SYSTEM;
@@ -104,6 +104,9 @@ final class CompilerPool {
 
     /** The job a job-scoped pool belongs to, whose scope its worker runs under; null for a resident pool. */
     private final @Nullable Long job;
+
+    /** The scope of the job a job-scoped pool was made under, which its worker forks into. */
+    private final @Nullable WorkerScope jobScope;
 
     /** Guarded by {@code this}. */
     private final ArrayDeque<CompileWork> queue = new ArrayDeque<>();
@@ -148,6 +151,7 @@ final class CompilerPool {
     CompilerPool(String key, @Nullable Long job, Starter starter, SpecFile specs, Duration trimAfterIdle) {
         this.key = key;
         this.job = job;
+        this.jobScope = job == null ? null : WorkerScope.current();
         this.starter = starter;
         this.specs = specs;
         this.trimAfterIdle = trimAfterIdle;
@@ -161,7 +165,7 @@ final class CompilerPool {
      * that has ended; nothing would ever retire it.
      */
     static CompilerPool forKey(String key, @Nullable Long job, Supplier<CompilerPool> make, CompileWork item) {
-        if (job != null && JobWorkers.ended(job)) {
+        if (job != null && item.ended()) {
             throw new UncheckedIOException(new InterruptedIOException("job " + job + " has ended"));
         }
         CompilerPool[] held = new CompilerPool[1];
@@ -205,9 +209,11 @@ final class CompilerPool {
     }
 
     /** The scope a worker of this pool runs under: its job's, or one of its own. */
-    long workerScope() {
+    WorkerScope workerScope() {
+        WorkerScope scope = jobScope;
+        if (scope != null) return scope;
         Long j = job;
-        return j != null ? j : nextScope();
+        return new WorkerScope(j != null ? j : nextScope());
     }
 
     /** The job a job-scoped pool belongs to, or null for a resident pool. */
@@ -306,7 +312,7 @@ final class CompilerPool {
      */
     void enqueue(CompileWork w) {
         w.enqueuedNanos = CLOCK.nanos();
-        if (JobWorkers.ended(w.job)) {
+        if (w.ended()) {
             w.fail(new InterruptedIOException("compile of an ended job"));
             return;
         }
@@ -314,7 +320,7 @@ final class CompilerPool {
             if (!closed) {
                 queue.addLast(w);
                 // A worker started for this job's compile: the job pays its warm-up.
-                if (ensureWorker()) ColdWorkerRuns.mark(w.job);
+                if (ensureWorker() && w.measures != null) w.measures.startedWorker();
                 notifyAll();
                 return;
             }
@@ -423,7 +429,7 @@ final class CompilerPool {
     private void dropEnded() {
         for (Iterator<CompileWork> it = queue.iterator(); it.hasNext(); ) {
             CompileWork w = it.next();
-            if (JobWorkers.ended(w.job)) {
+            if (w.ended()) {
                 it.remove();
                 w.fail(new InterruptedIOException("compile of an ended job"));
             }
@@ -480,7 +486,7 @@ final class CompilerPool {
                 if (charged) w.deaths++;
                 boolean again = !closed
                         && !w.done()
-                        && !JobWorkers.ended(w.job)
+                        && !w.ended()
                         && (stoppedFor == null || w.job != stoppedFor)
                         && w.deaths < 2;
                 if (!again) {

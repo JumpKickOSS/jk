@@ -5,7 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
@@ -42,13 +42,18 @@ public final class LiveJobRegistry {
     private static final String CANCEL_BY_DISCONNECT = "the client disconnected before the job finished";
 
     private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
+    private final WorkerScopes workers;
     private final Function<Long, @Nullable BuildAccumulator> accumulatorOf;
     private final Consumer<String> log;
     private final long cancelGraceMs;
 
     /** @param cancelGraceMs the shared worker SIGTERM-to-SIGKILL window a remote cancel uses */
     LiveJobRegistry(
-            Function<Long, @Nullable BuildAccumulator> accumulatorOf, Consumer<String> log, long cancelGraceMs) {
+            WorkerScopes workers,
+            Function<Long, @Nullable BuildAccumulator> accumulatorOf,
+            Consumer<String> log,
+            long cancelGraceMs) {
+        this.workers = workers;
         this.accumulatorOf = accumulatorOf;
         this.log = log;
         this.cancelGraceMs = cancelGraceMs;
@@ -98,7 +103,7 @@ public final class LiveJobRegistry {
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             // Workers first (SIGTERM → grace → SIGKILL), then interrupt the runner so
             // the scheduler does not join the rest of the DAG.
-            int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
+            int killed = workers.shutdown(eventRequestId, cancelGraceMs);
             interruptRunner(runnerRef != null ? runnerRef.get() : null);
             if (killed > 0) {
                 log.accept("jk engine: cancel job "
@@ -175,10 +180,10 @@ public final class LiveJobRegistry {
         if (job == null) return false;
         if (suspend) {
             job.token().suspend();
-            int stopped = JobWorkers.hold(jid);
+            int stopped = workers.hold(jid);
             log.accept("jk engine: suspended job " + jid + " (" + stopped + " worker process(es) stopped)");
         } else {
-            JobWorkers.release(jid);
+            workers.release(jid);
             job.token().resume();
             log.accept("jk engine: resumed job " + jid);
         }

@@ -22,9 +22,9 @@ class MemoryNotesTest {
         List<String> warnings = new ArrayList<>();
         TaskContext ctx = recording(output, warnings);
         StepScope.run(ctx, () -> {
-            MemoryNotes.recordWait(ctx, 200_000_000L);
-            MemoryNotes.recordWait(ctx, 2_000_000_000L);
-            MemoryNotes.recordWait(ctx, 1_000_000_000L);
+            MemoryNotes.recordWait(200_000_000L);
+            MemoryNotes.recordWait(2_000_000_000L);
+            MemoryNotes.recordWait(1_000_000_000L);
         });
         assertThat(output).containsExactly("waited 2s for memory", "waited 1s for memory");
         String phrase = MemoryNotes.waitedPhrase(3_000_000_000L);
@@ -34,20 +34,6 @@ class MemoryNotesTest {
         assertThat(warnings).containsExactly("memory-wait " + phrase);
         StepScope.run(ctx, () -> {});
         assertThat(warnings).hasSize(1);
-    }
-
-    /** A wait whose step never closes its scope goes with the step, not with the engine. */
-    @Test
-    void a_wait_on_a_step_that_never_closes_does_not_outlive_the_step() throws Exception {
-        int before = MemoryNotes.held();
-        MemoryNotes.add(recording(new ArrayList<>(), new ArrayList<>()), 2_000_000_000L);
-        assertThat(MemoryNotes.held()).isEqualTo(before + 1);
-
-        for (int i = 0; i < 50 && MemoryNotes.held() > before; i++) {
-            System.gc();
-            Thread.sleep(20);
-        }
-        assertThat(MemoryNotes.held()).isEqualTo(before);
     }
 
     private static TaskContext recording(List<String> output, List<String> warnings) {

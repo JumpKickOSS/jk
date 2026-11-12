@@ -34,7 +34,6 @@ class FormatHeapRetryTest {
     @AfterEach
     void reset() {
         WarmWorkers.shutdown();
-        HeapNotes.clear();
         SessionContext.reset();
     }
 
@@ -53,7 +52,7 @@ class FormatHeapRetryTest {
                 .as("the file the dead attempt reported is counted once")
                 .contains(4);
         assertThat(first.observed()).hasSize(4);
-        assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
+        assertThat(first.notes()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(dir.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
 
         LearnedHeaps learned = new LearnedHeaps(state);
@@ -64,7 +63,7 @@ class FormatHeapRetryTest {
         Files.writeString(dir.resolve("heaps"), "");
         Run second = run(java, learned, key, 4);
         assertThat(second.result().success()).isTrue();
-        assertThat(HeapNotes.drain()).isEmpty();
+        assertThat(second.notes()).isEmpty();
         assertThat(Files.readString(dir.resolve("heaps"))).doesNotContain("-Xmx128m");
     }
 
@@ -94,33 +93,41 @@ class FormatHeapRetryTest {
 
         Run r = run(java, heaps, key, 2);
         assertThat(r.result().success()).isFalse();
-        assertThat(HeapNotes.drain()).isEmpty();
+        assertThat(r.notes()).isEmpty();
         assertThat(Files.readString(dir.resolve("heaps"))).isEqualTo("-Xmx128m\n");
     }
 
-    private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed) {}
+    /** {@code notes} are the heap-retry lines the format step noted. */
+    private record Run(BuildPlan plan, BuildPlanResult result, List<String> observed, List<String> notes) {}
 
     /** One format step over {@code total} files, forking {@code java} at the heap {@code heaps} chooses. */
     private static Run run(Path java, LearnedHeaps heaps, HeapScope.Key key, int total) {
         List<String> observed = new ArrayList<>();
+        List<String> notes = new ArrayList<>();
         Long heap = FormatWorker.startHeap(heaps, key);
         List<String> base = heap == null
                 ? List.of(java.toString(), "-Xmx128m", "Worker")
                 : List.of(java.toString(), "-Xmx64m", "Worker");
         Task format = Task.builder("format")
                 .ticks(total)
-                .execute(ctx -> FormatWorker.runWorker(
-                        ctx,
-                        h -> FormatWorker.atHeap(base, h),
-                        Files.createTempFile("jk-format-", ".spec"),
-                        heap,
-                        key,
-                        heaps,
-                        0,
-                        total,
-                        false,
-                        null,
-                        (path, status, msg, index, tot) -> observed.add(path)))
+                .execute(ctx -> {
+                    try {
+                        FormatWorker.runWorker(
+                                ctx,
+                                h -> FormatWorker.atHeap(base, h),
+                                Files.createTempFile("jk-format-", ".spec"),
+                                heap,
+                                key,
+                                heaps,
+                                0,
+                                total,
+                                false,
+                                null,
+                                (path, status, msg, index, tot) -> observed.add(path));
+                    } finally {
+                        notes.addAll(HeapNotes.drain());
+                    }
+                })
                 .build();
         BuildPlan plan = BuildPlan.builder("format")
                 .stateKeys(
@@ -131,7 +138,7 @@ class FormatHeapRetryTest {
                         FormatWorker.WORKER_EXIT)
                 .addTask(format)
                 .build();
-        return new Run(plan, plan.run(), observed);
+        return new Run(plan, plan.run(), observed, notes);
     }
 
     /**

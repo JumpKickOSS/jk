@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.engine.plugin.JobWorkers;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import cc.jumpkick.config.Request;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Build units running right now, per job — the denominator for a decision a task can only make when
- * it dispatches.
+ * Build units running right now in one job — the denominator for a decision a task can only make
+ * when it dispatches.
  *
  * <p>The workspace plans a test-worker share from the graph's widest point, which stops describing
  * the machine as soon as the graph narrows: the last module standing is sharing with nobody.
@@ -19,14 +18,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Counting units is the honest denominator: it is the number the plan-time share was dividing by,
  * read late instead of early.
  *
- * <p>Keyed by {@link JobWorkers} request, because an engine serves concurrent builds and a
- * process-wide count would let one job size itself off another's width.
+ * <p>Each job's {@link Request} carries its own count under {@link #SLOT}, because an engine serves
+ * concurrent builds and a process-wide count would let one job size itself off another's width.
+ * The count goes when the request does, so a unit that enters after its job ended counts nowhere
+ * that outlives the job.
  */
 public final class LiveUnits {
 
-    private static final ConcurrentMap<Long, AtomicInteger> BY_REQUEST = new ConcurrentHashMap<>();
+    /** The job's count; a request without one counts nothing. */
+    public static final Request.Slot<LiveUnits> SLOT = new Request.Slot<>("live-units");
 
-    private LiveUnits() {}
+    private static final Lease NONE = () -> {};
+
+    private final AtomicInteger running = new AtomicInteger();
+
+    /** A count for a new job, starting at none. */
+    public LiveUnits() {}
 
     /** A held slot; closing releases it. */
     public interface Lease extends AutoCloseable {
@@ -34,39 +41,34 @@ public final class LiveUnits {
         void close();
     }
 
-    /** Count this thread's unit as running until the lease closes. A no-op outside a job scope. */
+    /** Count this thread's unit as running until the lease closes. A no-op outside a job. */
     public static Lease enter() {
-        Long id = JobWorkers.currentRequestId();
-        if (id == null) return () -> {};
-        AtomicInteger running = BY_REQUEST.computeIfAbsent(id, k -> new AtomicInteger());
-        running.incrementAndGet();
-        return running::decrementAndGet;
+        LiveUnits units = current();
+        if (units == null) return NONE;
+        units.running.incrementAndGet();
+        return units.running::decrementAndGet;
     }
 
     /**
      * Stop counting this thread's unit until the lease closes — for a wait the unit spends doing
-     * nothing, such as parking at the serial-test gate. A no-op outside a job scope or when the
-     * job counts nothing.
+     * nothing, such as parking at the serial-test gate. A no-op outside a job or when the job counts
+     * nothing.
      */
     public static Lease stepOut() {
-        Long id = JobWorkers.currentRequestId();
-        if (id == null) return () -> {};
-        AtomicInteger running = BY_REQUEST.get(id);
-        if (running == null || running.get() <= 0) return () -> {};
-        running.decrementAndGet();
-        return running::incrementAndGet;
+        LiveUnits units = current();
+        if (units == null || units.running.get() <= 0) return NONE;
+        units.running.decrementAndGet();
+        return units.running::incrementAndGet;
     }
 
     /** Units running in this thread's job, including the caller's own; {@code 0} outside a job. */
     public static int running() {
-        Long id = JobWorkers.currentRequestId();
-        if (id == null) return 0;
-        AtomicInteger running = BY_REQUEST.get(id);
-        return running == null ? 0 : Math.max(0, running.get());
+        LiveUnits units = current();
+        return units == null ? 0 : Math.max(0, units.running.get());
     }
 
-    /** Drop the job's counter at teardown, alongside the other per-request state. */
-    public static void end(long requestId) {
-        BY_REQUEST.remove(requestId);
+    private static @Nullable LiveUnits current() {
+        Request request = Request.current();
+        return request == null ? null : request.get(SLOT);
     }
 }

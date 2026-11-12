@@ -1,37 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import org.jspecify.annotations.Nullable;
 
 /**
  * One line per heap retry in the current step, drained into the run's warnings so the results and
  * the agent report both carry it. The build stays green; the line says what was retried.
  *
- * <p>Notes are kept per request and per step, and a step belongs to one module, so in a parallel
- * workspace build each module drains only its own retries.
+ * <p>Notes are a {@link StepScope.Local} of the step that retried, and a step belongs to one module,
+ * so in a parallel workspace build each module drains only its own retries, and a step that never
+ * drains leaves nothing behind.
  */
 public final class HeapNotes {
 
     /** Diagnostic code. The agent report prints warnings with this code even when the run is OK. */
     public static final String CODE = "heap-retry";
 
-    private static final ConcurrentHashMap<Key, List<String>> BY_STEP = new ConcurrentHashMap<>();
-
-    private static final ThreadLocal<List<String>> LOCAL = ThreadLocal.withInitial(ArrayList::new);
-
-    static {
-        // A step that never flushed leaves nothing behind once it ends.
-        StepScope.onClose(step -> BY_STEP.keySet().removeIf(k -> k.step() == step));
-    }
-
-    /** A request's notes from one step; {@code step} is null for a note made outside any step. */
-    private record Key(long request, @Nullable TaskContext step) {}
+    private static final StepScope.Local<List<String>> NOTES = new StepScope.Local<>(ArrayList::new);
 
     private HeapNotes() {}
 
@@ -45,43 +34,33 @@ public final class HeapNotes {
         return "retried with " + next + " heap after running out of " + WorkerLeases.format(failedBytes);
     }
 
-    /** Remember {@code text} for this thread's step. A thread with no job scope keeps it on the thread. */
+    /** Remember {@code text} for this thread's step. Outside a step it reaches the engine log only. */
     public static void note(String text) {
         if (text == null || text.isBlank()) return;
-        Long id = JobWorkers.currentRequestId();
-        if (id != null) {
-            BY_STEP.computeIfAbsent(new Key(id, StepScope.current()), k -> new CopyOnWriteArrayList<>())
-                    .add(text);
+        List<String> notes = StepScope.local(NOTES);
+        if (notes == null) {
+            Log.info("jk engine: " + text);
             return;
         }
-        LOCAL.get().add(text);
+        synchronized (notes) {
+            notes.add(text);
+        }
     }
 
-    /** The lines noted for this thread's step since the last drain, in order. */
+    /** The lines noted for this thread's step since the last drain, in order; none outside a step. */
     public static List<String> drain() {
-        return drain(StepScope.current());
+        List<String> notes = StepScope.local(NOTES);
+        if (notes == null) return List.of();
+        synchronized (notes) {
+            List<String> out = List.copyOf(notes);
+            notes.clear();
+            return out;
+        }
     }
 
-    /** Drain the lines {@code ctx}'s step noted into it as {@link #CODE} warnings. Never fails the step. */
+    /** Drain this thread's step's lines into {@code ctx} as {@link #CODE} warnings. Never fails the step. */
     public static void flush(TaskContext ctx) {
         if (ctx == null) return;
-        for (String line : drain(ctx)) ctx.warn(CODE, line);
-    }
-
-    /** Forget every note. Tests. */
-    public static void clear() {
-        BY_STEP.clear();
-        LOCAL.remove();
-    }
-
-    private static List<String> drain(@Nullable TaskContext step) {
-        Long id = JobWorkers.currentRequestId();
-        if (id != null) {
-            List<String> lines = BY_STEP.remove(new Key(id, step));
-            return lines == null ? List.of() : List.copyOf(lines);
-        }
-        List<String> lines = LOCAL.get();
-        LOCAL.remove();
-        return List.copyOf(lines);
+        for (String line : drain()) ctx.warn(CODE, line);
     }
 }

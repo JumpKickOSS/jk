@@ -33,9 +33,9 @@ class TestJvmFlagsTest {
         List<String> output = new ArrayList<>();
         TaskContext ctx = recording(output);
         StepScope.run(ctx, () -> {
-            TestJvmFlags.note(ctx, command("/t/w0", "1g"));
-            TestJvmFlags.note(ctx, command("/t/w1", "1g"));
-            TestJvmFlags.note(ctx, command("/t/w0", "2g"));
+            TestJvmFlags.note(command("/t/w0", "1g"));
+            TestJvmFlags.note(command("/t/w1", "1g"));
+            TestJvmFlags.note(command("/t/w0", "2g"));
         });
         assertThat(output)
                 .containsExactly(

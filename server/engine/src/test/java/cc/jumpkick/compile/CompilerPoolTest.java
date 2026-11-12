@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
@@ -161,12 +161,11 @@ class CompilerPoolTest {
     @Test
     void a_compile_of_an_ended_job_is_refused_and_one_that_ignores_its_cancel_has_its_worker_stopped(@TempDir Path dir)
             throws Exception {
-        long ended = job();
-        JobWorkers.begin(ended);
-        JobWorkers.shutdownForRequest(ended, 0L);
+        WorkerScope ended = new WorkerScope(job());
+        ended.shutdown(0L);
         Fakes fakes = new Fakes(2);
         CompilerPool pool = pool(dir, fakes);
-        CompileWork late = item(dir, "late", ended);
+        CompileWork late = ended.call(() -> item(dir, "late", ended.id()));
         pool.enqueue(late);
         assertThatThrownBy(late.compile::join).cause().isInstanceOf(InterruptedIOException.class);
         assertThat(fakes.started).as("no worker for a compile nobody waits on").isEmpty();

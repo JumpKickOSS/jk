@@ -7,6 +7,7 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.testing.Await;
@@ -149,6 +150,13 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     }
 
     final IoLedger io = new IoLedger();
+
+    private final WorkerScopes workers = new WorkerScopes();
+
+    @Override
+    public WorkerScopes workers() {
+        return workers;
+    }
 
     @Override
     public IoLedger runIo(long id) {

@@ -5,7 +5,7 @@ import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
@@ -32,6 +32,7 @@ final class JobWatchdog {
     /** Silence after which a live job is named in the engine log: thirty minutes. */
     static final long STALL_NOTE_MS = 30 * 60_000L;
 
+    private final WorkerScopes workers;
     private final JobLimits limits;
     private final LongSupplier nowMillis;
     private final Function<Long, @Nullable BuildAccumulator> accumulatorOf;
@@ -40,22 +41,25 @@ final class JobWatchdog {
     private final long stallNoteMs;
 
     JobWatchdog(
+            WorkerScopes workers,
             JobLimits limits,
             LongSupplier nowMillis,
             Function<Long, @Nullable BuildAccumulator> accumulatorOf,
             LongUnaryOperator lastEventAt,
             Consumer<String> log) {
-        this(limits, nowMillis, accumulatorOf, lastEventAt, log, STALL_NOTE_MS);
+        this(workers, limits, nowMillis, accumulatorOf, lastEventAt, log, STALL_NOTE_MS);
     }
 
     /** As above with the stall silence supplied — a test names a job after milliseconds. */
     JobWatchdog(
+            WorkerScopes workers,
             JobLimits limits,
             LongSupplier nowMillis,
             Function<Long, @Nullable BuildAccumulator> accumulatorOf,
             LongUnaryOperator lastEventAt,
             Consumer<String> log,
             long stallNoteMs) {
+        this.workers = workers;
         this.limits = limits;
         this.nowMillis = nowMillis;
         this.accumulatorOf = accumulatorOf;
@@ -202,7 +206,7 @@ final class JobWatchdog {
         long now = nowMillis.getAsLong();
         long basis = Math.max(Math.max(lastEventAt.applyAsLong(jid), start), lastNoted);
         if (now - basis < stallNoteMs) return lastNoted;
-        int workers = JobWorkers.liveCountForRequest(jid);
+        int workers = this.workers.liveCount(jid);
         log.accept("jk engine: job " + jid + " (" + kind + " " + dir + ") has emitted no task event for "
                 + JobRow.duration(now - Math.max(lastEventAt.applyAsLong(jid), start)) + "; "
                 + workers + (workers == 1 ? " worker process" : " worker processes") + " alive, "
@@ -228,7 +232,7 @@ final class JobWatchdog {
         BuildAccumulator a = accumulatorOf.apply(eventRequestId);
         if (a != null) a.markUserCancelled(true, deadline.reason());
         WireWriter.unpace(writer);
-        int killed = JobWorkers.shutdownForRequest(eventRequestId, limits.cancelGraceMs());
+        int killed = workers.shutdown(eventRequestId, limits.cancelGraceMs());
         LiveJobRegistry.interruptRunner(runnerThread);
         WireWriter.sendNoWait(
                 writer,

@@ -13,25 +13,13 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /** Heap-retry notes reach the step that retried, not whichever module of the request flushes first. */
 class HeapNotesTest {
 
-    private static final long REQUEST = 7_301L;
-
-    @AfterEach
-    void forget() {
-        HeapNotes.clear();
-    }
-
     @Test
     void each_module_of_a_parallel_build_flushes_only_its_own_retries() {
-        JobWorkers.runAs(REQUEST, this::twoModulesFlush);
-    }
-
-    private void twoModulesFlush() {
         List<String> appWarnings = new ArrayList<>();
         List<String> libWarnings = new ArrayList<>();
         TaskContext appTests = recording(appWarnings);
@@ -67,11 +55,9 @@ class HeapNotesTest {
     @Test
     void a_step_that_ends_without_flushing_leaves_no_notes_behind() {
         TaskContext step = recording(new ArrayList<>());
-        JobWorkers.runAs(REQUEST, () -> {
-            StepScope.run(step, () -> HeapNotes.note("retried with 256 MiB heap after running out of 128 MiB"));
+        StepScope.run(step, () -> HeapNotes.note("retried with 256 MiB heap after running out of 128 MiB"));
 
-            StepScope.run(step, () -> assertThat(HeapNotes.drain()).isEmpty());
-        });
+        StepScope.run(step, () -> assertThat(HeapNotes.drain()).isEmpty());
     }
 
     private static void await(CountDownLatch latch) {

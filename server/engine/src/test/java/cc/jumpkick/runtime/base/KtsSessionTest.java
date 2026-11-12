@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import cc.jumpkick.engine.plugin.HostPressure;
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.BuildPlan;
@@ -272,13 +272,13 @@ class KtsSessionTest {
         Path out = Files.createDirectories(dir.resolve("o"));
         KtsSession.shutdown(); // the host must be born inside the first build
 
-        JobWorkers.begin(9101L);
-        JobWorkers.runAs(9101L, () -> {
+        WorkerScope first = new WorkerScope(9101L);
+        first.run(() -> {
             try {
                 BuildLogicKtsHost.evaluate(script, project, out);
             } finally {
                 // What JobEnvelope's teardown does when the build ends: kill the request's workers.
-                JobWorkers.shutdownForRequest(9101L, 0L);
+                first.shutdown(0L);
             }
         });
         long pid = KtsSession.hostPid();
@@ -286,12 +286,12 @@ class KtsSessionTest {
                 .as("the host outlives the build that started it")
                 .isTrue();
 
-        JobWorkers.begin(9102L);
-        JobWorkers.runAs(9102L, () -> {
+        WorkerScope second = new WorkerScope(9102L);
+        second.run(() -> {
             try {
                 BuildLogicKtsHost.evaluate(script, project, out);
             } finally {
-                JobWorkers.shutdownForRequest(9102L, 0L);
+                second.shutdown(0L);
             }
         });
         assertThat(KtsSession.hostPid())
@@ -316,19 +316,19 @@ class KtsSessionTest {
         KtsSession.shutdown(); // the host must be born inside build A
 
         // Build A runs its script and is about to end.
-        JobWorkers.begin(9201L);
-        JobWorkers.runAs(9201L, () -> BuildLogicKtsHost.evaluate(quick, project, outA));
+        WorkerScope a = new WorkerScope(9201L);
+        a.run(() -> BuildLogicKtsHost.evaluate(quick, project, outA));
 
         // Build B's script is in flight on another thread when A ends.
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        JobWorkers.begin(9202L);
+        WorkerScope bScope = new WorkerScope(9202L);
         Thread b = new Thread(() -> {
             try {
-                JobWorkers.runAs(9202L, () -> BuildLogicKtsHost.evaluate(slow, project, outB));
+                bScope.run(() -> BuildLogicKtsHost.evaluate(slow, project, outB));
             } catch (Throwable t) {
                 failure.set(t);
             } finally {
-                JobWorkers.shutdownForRequest(9202L, 0L);
+                bScope.shutdown(0L);
             }
         });
         b.start();
@@ -336,7 +336,7 @@ class KtsSessionTest {
         while (!Files.exists(outB.resolve("started")) && System.nanoTime() < deadline) Thread.sleep(20);
         assertThat(outB.resolve("started")).as("B's script is running").exists();
 
-        JobWorkers.shutdownForRequest(9201L, 0L);
+        a.shutdown(0L);
         // B's script holds until A has ended.
         Files.writeString(outB.resolve("release"), "1");
 

@@ -99,7 +99,7 @@ public final class FormatWorker {
      */
     static @Nullable Long startHeap(LearnedHeaps heaps, HeapScope.Key key) {
         if (!JvmOptions.autoHeapEnabled()) return null;
-        HeapPlan.Plan plan = JvmOptions.processHeapPlan();
+        HeapPlan.Plan plan = JvmOptions.heapPlan();
         long planned = plan != null ? plan.xmxBytes() : LearnedHeaps.FLOOR_BYTES;
         return heaps.choose(key.project(), key.module(), key.kind(), key.jdk(), planned);
     }

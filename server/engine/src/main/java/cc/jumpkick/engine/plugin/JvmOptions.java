@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.jdk.JavaHomes;
@@ -204,7 +205,7 @@ public final class JvmOptions {
      * request's {@linkplain #tuning() tuning} — so a {@code --ram-percent} flag or a {@code [jvm]}
      * table reaches the worker.
      *
-     * <p>When a {@linkplain #processHeapPlan() heap plan} is in effect (the default — no explicit
+     * <p>When a {@linkplain #heapPlan() heap plan} is in effect (the default — no explicit
      * heap tuning), absolute {@code -Xms}/{@code -Xmx}/ {@code -XX:SoftMaxHeapSize} from the plan
      * replace the relative {@code MaxRAMPercentage}; the plan already accounts for how many JVMs run
      * at once, so {@code concurrency} is ignored in that case.
@@ -360,19 +361,35 @@ public final class JvmOptions {
 
     private static List<String> workerFlags(int concurrency, String defaultGc, Role role, List<String> userArgs) {
         PluginTuning s = tuning();
-        HeapPlan.Plan plan = processHeapPlan();
+        HeapPlan.Plan plan = heapPlan();
         if (plan != null && autoHeapEnabled(s)) return absoluteFlags(plan, s, defaultGc, role, userArgs);
         return flags(s, concurrency, defaultGc, role, userArgs);
     }
 
-    /** Process-wide heap budget from {@link #planAndApply}, or null when explicit tuning wins. */
-    private static volatile HeapPlan.@Nullable Plan heapPlan;
+    /**
+     * The heap budget one request planned with {@link #planAndApply}. The job's request carries its
+     * own under {@link #PLAN}, so concurrent builds each size their workers by their own plan.
+     */
+    public static final class PlannedHeap {
+        private volatile boolean planned;
+        private volatile HeapPlan.@Nullable Plan plan;
+    }
+
+    /** The request's planned heap; a request without one plans into the engine's. */
+    public static final Request.Slot<PlannedHeap> PLAN = new Request.Slot<>("heap-plan");
 
     /**
-     * Probe memory, compute the heap budget for {@code requestedJvms} desired forks, and stash it
-     * for {@link #workerFlags}. Each worker's {@code -Xmx} is then lowered, when it has to be, so
-     * that many leases fit in {@link WorkerLeases#engine()}. A no-op (returns {@code null}) when the
-     * request supplied explicit heap tuning — those settings then drive sizing as before.
+     * The engine's heap budget, planned at start and by any caller without a request of its own;
+     * the plan of a request that has not planned. Null when explicit tuning wins.
+     */
+    private static volatile HeapPlan.@Nullable Plan enginePlan;
+
+    /**
+     * Probe memory, compute the heap budget for {@code requestedJvms} desired forks, and keep it for
+     * {@link #workerFlags}: on the current request's {@link PlannedHeap}, or as the engine's plan off
+     * one. Each worker's {@code -Xmx} is then lowered, when it has to be, so that many leases fit in
+     * {@link WorkerLeases#engine()}. Plans {@code null} when the request supplied explicit heap
+     * tuning — those settings then drive sizing as before.
      */
     public static HeapPlan.@Nullable Plan planAndApply(int requestedJvms) {
         return planAndApply(requestedJvms, WorkerLeases.engine());
@@ -380,13 +397,16 @@ public final class JvmOptions {
 
     /** As {@link #planAndApply(int)}, fitting the plan into {@code leases}. */
     public static HeapPlan.@Nullable Plan planAndApply(int requestedJvms, WorkerLeases.Ledger leases) {
-        if (!autoHeapEnabled(tuning())) {
-            heapPlan = null;
-            return null;
+        HeapPlan.Plan plan = autoHeapEnabled(tuning())
+                ? fitWorkerBudget(HeapPlan.compute(MemoryProbe.probe().availableBytes(), requestedJvms), leases)
+                : null;
+        PlannedHeap held = plannedHeap();
+        if (held == null) {
+            enginePlan = plan;
+        } else {
+            held.plan = plan;
+            held.planned = true;
         }
-        HeapPlan.Plan plan =
-                fitWorkerBudget(HeapPlan.compute(MemoryProbe.probe().availableBytes(), requestedJvms), leases);
-        heapPlan = plan;
         return plan;
     }
 
@@ -416,9 +436,18 @@ public final class JvmOptions {
         return new HeapPlan.Plan(n, xms, soft, xmx, plan.warning());
     }
 
-    /** The applied heap budget, or {@code null} if none (explicit tuning / not yet planned). */
-    public static HeapPlan.@Nullable Plan processHeapPlan() {
-        return heapPlan;
+    /**
+     * The heap budget in effect: the current request's plan once it has planned, else the engine's;
+     * {@code null} for none (explicit tuning / not yet planned).
+     */
+    public static HeapPlan.@Nullable Plan heapPlan() {
+        PlannedHeap held = plannedHeap();
+        return held != null && held.planned ? held.plan : enginePlan;
+    }
+
+    private static @Nullable PlannedHeap plannedHeap() {
+        Request request = Request.current();
+        return request == null ? null : request.get(PLAN);
     }
 
     /**
@@ -432,13 +461,12 @@ public final class JvmOptions {
     }
 
     /**
-     * Test-only: undo {@link #planAndApply}. Production code never calls this (a real process's plan
-     * is meant to live for the process's whole lifetime); it exists because a test that spins up a
-     * real {@code EngineServer} (which calls {@code planAndApply} as a side effect of starting)
-     * would otherwise leak that process-wide static into unrelated tests sharing the same test JVM.
+     * Test-only: undo the engine's {@link #planAndApply}. A test that spins up a real {@code
+     * EngineServer} (which plans as a side effect of starting) would otherwise leak the engine's
+     * plan into unrelated tests sharing the same test JVM.
      */
     public static void resetSharedPlanForTests() {
-        heapPlan = null;
+        enginePlan = null;
     }
 
     /**

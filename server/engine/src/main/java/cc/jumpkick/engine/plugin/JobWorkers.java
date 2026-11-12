@@ -3,19 +3,15 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.Request;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.Os;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -25,50 +21,12 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Per-request registry of forked worker {@link Process}es (plugin/test JVMs). On cancel or job wall
- * deadline the engine shuts them down so a wedged worker cannot pin the runner forever.
- *
- * <p>A fork registers via {@link #register} to the id of the {@link Request} bound where it starts,
- * which reaches every pool task and thread the request uses; a request that is no job (id {@code
- * 0}) and no request at all register nothing.
- *
- * <p><strong>Cancel contract</strong> {@link #shutdownForRequest} signals <em>all</em>
- * live workers first (tight loop — effectively simultaneous), then waits one shared wall-clock
- * grace (the caller's configured shared window for the whole set, not per process), then
- * force-kills survivors, then waits once more — also shared — for those kills to land. Cancel never
- * hangs: both waits are bounded, and a process that outlasts the second one is left to the OS.
- * Plugins must treat that shared sub-second window as all they get.
- *
- * <p>The second wait is what makes "shut down" mean gone rather than told to go. A force-kill
- * returns as soon as the OS accepts it, and until termination finishes the worker still holds its
- * handles — so a caller that kills a worker and deletes the tree it was writing can find that tree
- * undeletable on Windows, at a moment and in a place unrelated to the cancel.
- *
- * <p><strong>Windows:</strong> {@link Process#destroy} is <em>not</em> SIGTERM. On the HotSpot
- * Windows implementation it typically maps to an immediate terminate (similar to
- * {@link Process#destroyForcibly}); there is no portable “ask politely then wait” OS signal.
- * The grace wait still bounds our side of the join; do not rely on Windows workers running
- * shutdown hooks after {@code destroy}. Prefer designing workers so cancel is observed via the
- * session cancel token / stdin EOF where possible, and treat force-kill as the portable last step.
+ * Starts worker {@link Process}es (plugin, test and compiler JVMs) under the engine's memory leases
+ * and containment, and registers each with the {@link WorkerScope} of the request bound where it
+ * starts, so that request's cancel or wall deadline can stop it. A request that carries no scope (a
+ * synchronous read, a one-shot probe) registers nothing.
  */
 public final class JobWorkers {
-
-    private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
-
-    /** Requests whose workers are stopped: no new fork of theirs starts until {@link #release}. */
-    private static final Set<Long> HELD = ConcurrentHashMap.newKeySet();
-
-    /**
-     * Requests whose shutdown already ran. A cpu-pool thread still draining after cancel can call
-     * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
-     * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
-     * process) or added to the already-removed set after the kill loop (escaped worker).
-     * Cleared on {@link #begin} in case a request id is ever reused; on overflow only ids far behind
-     * the newest of the same sign are evicted, so a request still mid-shutdown keeps its tombstone.
-     */
-    private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
-
-    private static final int MAX_TOMBSTONES = 4_096;
 
     /**
      * How long a force-kill waits for the process to actually be gone. Paid only on the kill path,
@@ -77,26 +35,6 @@ public final class JobWorkers {
     private static final long KILL_SETTLE_MS = 5_000;
 
     private JobWorkers() {}
-
-    /** Request {@code requestId} starts: a shutdown recorded for an earlier use of its id is forgotten. */
-    public static void begin(long requestId) {
-        TOMBSTONES.remove(requestId);
-    }
-
-    /**
-     * Run {@code body} with forks registering to {@code requestId}: the bound request under that id,
-     * or a request that is no job off one. Does not clear a shutdown tombstone, so a fork for a job
-     * that has already ended is still killed on register.
-     */
-    public static <X extends Throwable> void runAs(long requestId, Request.Action<X> body) throws X {
-        Request.currentOrDetached().withId(requestId).run(body);
-    }
-
-    /** {@link #runAs} for a body with a result. */
-    public static <T extends @Nullable Object, X extends Throwable> T callAs(long requestId, Request.Body<T, X> body)
-            throws X {
-        return Request.currentOrDetached().withId(requestId).call(body);
-    }
 
     /**
      * Request id this thread's forks belong to, or {@code null} when no job scope is bound
@@ -107,9 +45,13 @@ public final class JobWorkers {
         return r == null || r.id() == 0 ? null : r.id();
     }
 
-    /** Test seam: the request scope currently open on this thread, or {@code null}. */
-    static @Nullable Long currentScope() {
-        return currentRequestId();
+    /**
+     * True when the scope bound on this thread forks for {@code requestId} and has ended: a lease
+     * this thread is still waiting for belongs to a request that is over. Read on the waiting thread.
+     */
+    static boolean ended(long requestId) {
+        WorkerScope scope = WorkerScope.current();
+        return scope != null && scope.id() == requestId && scope.ended();
     }
 
     /** Test seam: force the shared CPU pool's threads to exist under the caller's scope. */
@@ -130,56 +72,11 @@ public final class JobWorkers {
         for (var f : pending) f.get(10, TimeUnit.SECONDS);
     }
 
-    /**
-     * True once {@link #shutdownForRequest} has run for {@code requestId}: the job is over, and a
-     * result that arrives under its scope after this — a test pool unblocked by the kill — belongs
-     * to no report.
-     */
-    public static boolean ended(long requestId) {
-        return TOMBSTONES.contains(requestId);
-    }
-
-    /** Forked processes of {@code requestId} still alive right now; {@code 0} when none or unknown. */
-    public static int liveCountForRequest(long requestId) {
-        Set<Process> set = BY_REQUEST.get(requestId);
-        if (set == null) return 0;
-        int n = 0;
-        for (Process p : set) if (p.isAlive()) n++;
-        return n;
-    }
-
-    /** Forget all processes for {@code requestId} without killing them (scope end after clean exit). */
-    public static void clear(long requestId) {
-        BY_REQUEST.remove(requestId);
-    }
-
-    /** Track {@code process} for the current request, if any. */
+    /** Track {@code process} for the current request's scope, if any; an ended scope kills it. */
     public static void register(Process process) {
         if (process == null) return;
-        Long id = currentRequestId();
-        if (id == null) return;
-        if (TOMBSTONES.contains(id)) {
-            // Request already shut down — kill on arrival instead of resurrecting the entry.
-            forceKillAndAwait(process);
-            return;
-        }
-        // Added inside the map's compute, so an unregister dropping the scope's emptied set cannot
-        // orphan the set this process lands in.
-        BY_REQUEST.compute(id, (k, set) -> {
-            Set<Process> tracked = set == null ? ConcurrentHashMap.newKeySet() : set;
-            tracked.add(process);
-            return tracked;
-        });
-        // Shutdown may have tombstoned + drained between the check above and the add: our set
-        // (or entry) may be orphaned. Kill directly — signalTree is idempotent, so racing the
-        // shutdown's own kill loop is harmless.
-        if (TOMBSTONES.contains(id)) {
-            forceKillAndAwait(process);
-            Set<Process> orphan = BY_REQUEST.remove(id);
-            if (orphan != null) {
-                for (Process p : orphan) forceKillAndAwait(p);
-            }
-        }
+        WorkerScope scope = WorkerScope.current();
+        if (scope != null) scope.register(process);
     }
 
     /**
@@ -266,7 +163,8 @@ public final class JobWorkers {
             Consumer<WorkerLeases.Grant> onGrant)
             throws IOException {
         WorkerLeases.Ledger leases = WorkerLeases.engine();
-        if (leaseRequest != null) awaitReleased(leaseRequest);
+        WorkerScope scope = WorkerScope.current();
+        if (leaseRequest != null && scope != null) scope.awaitReleased();
         WorkerLeases.Grant grant;
         try {
             grant = leases.acquireBytes(bytes, true, leaseRequest);
@@ -305,7 +203,8 @@ public final class JobWorkers {
             LearnedHeaps heaps)
             throws IOException {
         Long request = track ? currentRequestId() : null;
-        if (request != null) awaitReleased(request);
+        WorkerScope scope = track ? WorkerScope.current() : null;
+        if (scope != null) scope.awaitReleased();
         WorkerLeases.Grant grant;
         try {
             grant = resident != null
@@ -347,7 +246,7 @@ public final class JobWorkers {
             WorkerContainment.sweep();
         });
         String what = resident != null ? resident.name() : WorkerRss.describe(command);
-        if (what.equals(WorkerRss.TEST_JVM)) TestJvmFlags.note(StepScope.current(), command);
+        if (what.equals(WorkerRss.TEST_JVM)) TestJvmFlags.note(command);
         WorkerContainment.contain(process, WorkerRss.workerCapBytes(grant.bytes(), leases.capacityBytes()), what);
         grant.watch(process.pid(), what, StepScope.current());
         gc.observe(process);
@@ -367,195 +266,11 @@ public final class JobWorkers {
         return command;
     }
 
-    /**
-     * Stop tracking {@code process} (e.g. after it exits normally). A scope left with nothing to
-     * track is forgotten: a compiler worker's scope is never shut down when the worker retires.
-     */
+    /** Stop tracking {@code process} (after it exits normally) in the current request's scope. */
     public static void unregister(Process process) {
         if (process == null) return;
-        Long id = currentRequestId();
-        if (id != null) {
-            untrack(id, process);
-            return;
-        }
-        // Fallback: scan (rare — process ended on a different thread than start).
-        for (Long scope : List.copyOf(BY_REQUEST.keySet())) untrack(scope, process);
-    }
-
-    private static void untrack(long scope, Process process) {
-        BY_REQUEST.computeIfPresent(scope, (k, set) -> {
-            set.remove(process);
-            return set.isEmpty() ? null : set;
-        });
-    }
-
-    /** Test seam: whether {@code requestId} has an entry at all. */
-    static boolean tracksScope(long requestId) {
-        return BY_REQUEST.containsKey(requestId);
-    }
-
-    /**
-     * Immediate hard kill of every process still registered for {@code requestId} (no grace). Prefer
-     * {@link #shutdownForRequest(long, long)} for user cancel. Returns how many were alive when
-     * shutdown started.
-     */
-    public static int destroyForRequest(long requestId) {
-        return shutdownForRequest(requestId, 0L);
-    }
-
-    /**
-     * Stop ({@code SIGSTOP}) every process {@code requestId} forked, children included, and hold
-     * its next forks until {@link #release}: a suspended job's workers keep their memory and use no
-     * CPU. POSIX only; returns how many processes were stopped.
-     */
-    public static int hold(long requestId) {
-        HELD.add(requestId);
-        return signalRequest(requestId, "-STOP");
-    }
-
-    /** Continue ({@code SIGCONT}) what {@link #hold} stopped and let held forks start. Idempotent. */
-    public static int release(long requestId) {
-        if (!HELD.remove(requestId)) return 0;
-        synchronized (HELD) {
-            HELD.notifyAll();
-        }
-        return signalRequest(requestId, "-CONT");
-    }
-
-    /** Wait while {@code requestId} is held. */
-    private static void awaitReleased(long requestId) throws InterruptedIOException {
-        synchronized (HELD) {
-            while (HELD.contains(requestId)) {
-                try {
-                    HELD.wait(1_000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new InterruptedIOException("cancelled while suspended");
-                }
-            }
-        }
-    }
-
-    /** Send {@code signal} to every live process {@code requestId} forked and its descendants, in one {@code kill}. */
-    private static int signalRequest(long requestId, String signal) {
-        if (Os.isWindows()) return 0;
-        Set<Process> set = BY_REQUEST.get(requestId);
-        if (set == null) return 0;
-        List<String> command = new ArrayList<>(List.of("kill", signal));
-        for (Process p : set) {
-            if (!p.isAlive()) continue;
-            command.add(Long.toString(p.pid()));
-            for (ProcessHandle h : descendantsOf(p)) command.add(Long.toString(h.pid()));
-        }
-        int n = command.size() - 2;
-        if (n == 0) return 0;
-        try {
-            Process kill = new ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            kill.waitFor(5, TimeUnit.SECONDS);
-        } catch (IOException e) {
-            Log.debug("job " + requestId + ": kill " + signal + " failed", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return n;
-    }
-
-    /**
-     * Shut down <em>all</em> workers for {@code requestId}
-     *
-     * <ol>
-     * <li>If {@code graceMs > 0}: {@link Process#destroy} on <strong>every</strong> live process
-     * first (tight loop — one shared signal phase; not staggered per worker).
-     * <li>Wait up to {@code graceMs} <strong>once</strong> for the set to exit (shared wall clock;
-     * early exit if all dead). Never {@code graceMs × N}.
-     * <li>{@link Process#destroyForcibly} any survivors.
-     * </ol>
-     *
-     * If {@code graceMs <= 0}, force-kills immediately. Always finishes; never waits unboundedly.
-     * Returns how many processes were alive when shutdown began.
-     *
-     * <p>On Windows, step 1 may already be terminal (no SIGTERM); step 2 still bounds our wait.
-     */
-    public static int shutdownForRequest(long requestId, long graceMs) {
-        // A stopped worker would not act on SIGTERM until continued.
-        release(requestId);
-        // Tombstone FIRST so a register racing us kills its process on arrival, and drop any
-        // lease still queued for this job so a fork blocked in launch does not outlive the cancel.
-        if (TOMBSTONES.size() >= MAX_TOMBSTONES) {
-            long window = MAX_TOMBSTONES / 2;
-            TOMBSTONES.removeIf(id -> (requestId >= 0) == (id >= 0) && Math.abs(requestId - id) > window);
-        }
-        TOMBSTONES.add(requestId);
-        WorkerLeases.engine().cancelRequest(requestId);
-        Set<Process> set = BY_REQUEST.remove(requestId);
-        if (set == null || set.isEmpty()) return 0;
-        int aliveAtStart = 0;
-        boolean soft = graceMs > 0;
-        // Snapshot each tree before signalling: after the root dies its descendants() is empty, and
-        // phase 3 still has to outlast the grandchildren.
-        Map<Process, List<ProcessHandle>> trees = new HashMap<>();
-        // Phase 1: signal everyone first (simultaneous for practical purposes), including
-        // grandchildren (native-image under a plugin JVM, etc.).
-        for (Process p : set) {
-            try {
-                if (p.isAlive()) {
-                    aliveAtStart++;
-                    trees.put(p, descendantsOf(p));
-                    signalTree(p, !soft);
-                }
-            } catch (RuntimeException e) {
-                // best-effort
-                Log.debug("shutdownForRequest: best-effort", e);
-            }
-        }
-        // Phase 2: one shared grace for the whole set, then force leftovers.
-        if (soft && aliveAtStart > 0) {
-            long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(graceMs);
-            while (System.nanoTime() < deadlineNanos) {
-                if (!anyAlive(set)) break;
-                try {
-                    Thread.sleep(20L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-            for (Process p : set) {
-                try {
-                    if (p.isAlive() || anyDescendantAlive(p)) signalTree(p, true);
-                } catch (RuntimeException e) {
-                    // best-effort
-                    Log.debug("shutdownForRequest: best-effort", e);
-                }
-            }
-        }
-        // Phase 3: one shared wait for the whole set, so "shut down" means gone rather than
-        // told to go. Shared, not per process, for the same reason the grace above is.
-        if (aliveAtStart > 0) awaitGone(set, trees, KILL_SETTLE_MS);
-        return aliveAtStart;
-    }
-
-    private static boolean anyAlive(Set<Process> set) {
-        for (Process p : set) {
-            try {
-                if (p.isAlive() || anyDescendantAlive(p)) return true;
-            } catch (RuntimeException e) {
-                // treat as dead
-                Log.debug("anyAlive: treat as dead", e);
-            }
-        }
-        return false;
-    }
-
-    private static boolean anyDescendantAlive(Process p) {
-        try {
-            return p.descendants().anyMatch(ProcessHandle::isAlive);
-        } catch (RuntimeException e) {
-            return false;
-        }
+        WorkerScope scope = WorkerScope.current();
+        if (scope != null) scope.unregister(process);
     }
 
     /**
@@ -574,15 +289,15 @@ public final class JobWorkers {
      * <p>Every force-kill outside the batched cancel path goes through here. Returning while the
      * corpse still holds its handles is what makes a kill look successful and a later delete fail.
      */
-    private static void forceKillAndAwait(Process process) {
+    static void forceKillAndAwait(Process process) {
         // Snapshot first: once the root is gone its descendants() is empty, and the grandchildren
         // still to outlast have been reparented away from us.
         List<ProcessHandle> tree = descendantsOf(process);
         signalTree(process, true);
-        awaitGone(List.of(process), Map.of(process, tree), KILL_SETTLE_MS);
+        awaitGone(List.of(process), Map.of(process, tree));
     }
 
-    private static List<ProcessHandle> descendantsOf(Process p) {
+    static List<ProcessHandle> descendantsOf(Process p) {
         try {
             return p.descendants().toList();
         } catch (RuntimeException e) {
@@ -604,8 +319,7 @@ public final class JobWorkers {
      * <p>Bounded, and bounded is not the same as hanging: a process that will not die inside the
      * budget is left to the OS and the caller carries on.
      */
-    private static void awaitGone(
-            Collection<Process> processes, Map<Process, List<ProcessHandle>> trees, long budgetMs) {
+    static void awaitGone(Collection<Process> processes, Map<Process, List<ProcessHandle>> trees) {
         List<CompletableFuture<?>> exits = new ArrayList<>();
         for (Process p : processes) {
             try {
@@ -618,7 +332,7 @@ public final class JobWorkers {
         }
         if (exits.isEmpty()) return;
         try {
-            CompletableFuture.allOf(exits.toArray(CompletableFuture[]::new)).get(budgetMs, TimeUnit.MILLISECONDS);
+            CompletableFuture.allOf(exits.toArray(CompletableFuture[]::new)).get(KILL_SETTLE_MS, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (ExecutionException | TimeoutException | RuntimeException e) {
@@ -628,7 +342,7 @@ public final class JobWorkers {
     }
 
     /** SIGTERM (or SIGKILL when {@code force}) the process and every live descendant. */
-    private static void signalTree(Process p, boolean force) {
+    static void signalTree(Process p, boolean force) {
         try {
             if (force) {
                 p.descendants().forEach(h -> {
@@ -655,11 +369,5 @@ public final class JobWorkers {
             // best-effort
             Log.debug("signalTree: best-effort", e);
         }
-    }
-
-    /** Test seam: how many processes are tracked for {@code requestId}. */
-    static int trackedCount(long requestId) {
-        Set<Process> set = BY_REQUEST.get(requestId);
-        return set == null ? 0 : set.size();
     }
 }

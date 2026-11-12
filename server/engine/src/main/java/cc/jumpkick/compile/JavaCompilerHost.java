@@ -16,6 +16,7 @@ import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -32,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * Scala compile, or any compile while the linger is {@code 0}, goes on a pool of its job's, retired
  * with the job. Compile and {@code jk explain} PLAN share the pools.
  *
- * <p>A compile needs a {@link JobWorkers} request scope; outside one ({@code jk explain}, a forecast,
+ * <p>A compile needs a {@link WorkerScope}; outside one ({@code jk explain}, a forecast,
  * a test) {@link #scoped} binds an ephemeral scope for it, which ends with the call.
  */
 public final class JavaCompilerHost {
@@ -46,14 +47,13 @@ public final class JavaCompilerHost {
      * ephemeral one ({@code jk explain}, a forecast) whose compiles and workers end with the call.
      */
     public static <T extends @Nullable Object, X extends Throwable> T scoped(Request.Body<T, X> body) throws X {
-        if (JobWorkers.currentRequestId() != null) return body.call();
-        long id = EPHEMERAL.getAndDecrement();
-        JobWorkers.begin(id);
+        if (WorkerScope.current() != null) return body.call();
+        WorkerScope scope = new WorkerScope(EPHEMERAL.getAndDecrement());
         try {
-            return JobWorkers.callAs(id, body);
+            return scope.call(body);
         } finally {
-            end(id);
-            JobWorkers.shutdownForRequest(id, 0L);
+            end(scope.id());
+            scope.shutdown(0L);
         }
     }
 
@@ -66,15 +66,17 @@ public final class JavaCompilerHost {
     }
 
     static ForkedJavac.Result compile(ForkedJavac.Request req) {
-        Long id = JobWorkers.currentRequestId();
-        if (id == null) return scoped(() -> compile(req));
+        WorkerScope scope = WorkerScope.current();
+        if (scope == null) return scoped(() -> compile(req));
+        long id = scope.id();
         CompileWork w = CompileWork.compile(req).forJob(id, SessionContext.current());
         return poolFor(id, req, w).submit(w);
     }
 
     static ForkedJavac.Plan plan(ForkedJavac.Request req) {
-        Long id = JobWorkers.currentRequestId();
-        if (id == null) return scoped(() -> plan(req));
+        WorkerScope scope = WorkerScope.current();
+        if (scope == null) return scoped(() -> plan(req));
+        long id = scope.id();
         CompileWork w = CompileWork.plan(req).forJob(id, SessionContext.current());
         return poolFor(id, req, w).submitPlan(w);
     }

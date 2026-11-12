@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -43,9 +44,31 @@ class StepScopeTest {
 
         StepScope.run(step, () -> events.add("body"));
 
-        assertThat(events).containsExactly("body", "closed null");
+        assertThat(events).as("listeners run while the step is still bound").containsExactly("body", "closed package");
         assertThat(StepScope.closed()).isGreaterThan(before);
         assertThat(StepScope.current()).isNull();
+    }
+
+    @Test
+    void a_local_is_the_steps_own_on_every_pool_and_gone_with_its_scope() throws Exception {
+        StepScope.Local<List<String>> notes = new StepScope.Local<>(CopyOnWriteArrayList::new);
+        TaskContext step = step("test");
+
+        List<String> kept = StepScope.call(step, () -> {
+            List<String> mine = StepScope.local(notes);
+            for (ExecutorService pool : List.of(JkThreads.cpu(), JkThreads.io(), JkThreads.platform())) {
+                call(() -> pool.submit(() ->
+                                Objects.requireNonNull(StepScope.local(notes)).add("noted"))
+                        .get());
+            }
+            return mine;
+        });
+
+        assertThat(kept).containsExactly("noted", "noted", "noted");
+        assertThat(StepScope.local(notes)).as("outside a step").isNull();
+        assertThat(StepScope.call(step, () -> StepScope.local(notes)))
+                .as("the next run of the same step starts empty")
+                .isEmpty();
     }
 
     private static TaskContext sample(ExecutorService pool) {

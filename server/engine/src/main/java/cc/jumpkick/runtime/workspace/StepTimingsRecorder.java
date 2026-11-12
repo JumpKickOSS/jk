@@ -11,9 +11,8 @@ import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.NativeEffort;
 import cc.jumpkick.runtime.base.HostLearnedRates;
+import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.StepTimings;
-import cc.jumpkick.runtime.base.TestClassWalls;
-import cc.jumpkick.runtime.base.TestSuiteRunners;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -141,15 +140,16 @@ public final class StepTimingsRecorder implements BuildPlanListener {
             }
         }
         // Per-class walls for next ETA (no method counting). Buffer for journal metrics.toml.
-        if (sum != null && !sum.classWallMs().isEmpty()) {
-            TestClassWalls.put(moduleKey, sum.classWallMs());
+        RunMeasures measures = RunMeasures.current();
+        if (measures != null && sum != null && !sum.classWallMs().isEmpty()) {
+            measures.classWalls(moduleKey, sum.classWallMs());
         }
         // The concurrency this wall was produced at, same hand-off. Without it the wall recorded
         // above is not a prediction of anything: it is one runner count's outcome. Capped at the
         // class count: runners past the classes ran nothing, and normalizing with them would store
         // the wall as if they had.
-        if (sum != null && sum.workers() > 0) {
-            TestSuiteRunners.put(moduleKey, TestSuiteScaling.effectiveRunners(sum.workers(), classes));
+        if (measures != null && sum != null && sum.workers() > 0) {
+            measures.runners(moduleKey, TestSuiteScaling.effectiveRunners(sum.workers(), classes));
         }
     }
 

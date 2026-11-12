@@ -91,8 +91,7 @@ class WorkerBudgetJobsTest {
     void killing_a_fork_returns_its_lease() throws Exception {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
         long before = ledger.snapshot().leasedBytes();
-        JobWorkers.begin(11L);
-        Process process = JobWorkers.callAs(11L, () -> JobWorkers.start(Sleepers.sleeper(30), ledger));
+        Process process = new WorkerScope(11L).call(() -> JobWorkers.start(Sleepers.sleeper(30), ledger));
         try {
             assertThat(ledger.snapshot().leasedBytes()).isGreaterThan(before);
             process.destroyForcibly();
@@ -106,7 +105,6 @@ class WorkerBudgetJobsTest {
             }
         } finally {
             if (process.isAlive()) process.destroyForcibly();
-            JobWorkers.clear(11L);
         }
     }
 
@@ -120,8 +118,7 @@ class WorkerBudgetJobsTest {
             ProcessBuilder pb = new ProcessBuilder(java, "-Xmx2g", "-version")
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            JobWorkers.begin(12L);
-            Process process = JobWorkers.callAs(12L, () -> JobWorkers.start(pb, ledger));
+            Process process = new WorkerScope(12L).call(() -> JobWorkers.start(pb, ledger));
             try {
                 assertThat(pb.command()).doesNotContain("-Xmx2g");
                 assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
@@ -131,29 +128,25 @@ class WorkerBudgetJobsTest {
             } finally {
                 JvmOptions.forgetPlannedHeapForTests("-Xmx2g");
                 if (process.isAlive()) process.destroyForcibly();
-                JobWorkers.clear(12L);
             }
             awaitReleased(ledger);
             return null;
         });
     }
 
-    /** Does not watch {@link JobWorkers} shutdown tombstones; those are process-wide. */
+    /** Abandons no wait: these tests end no request. */
     private static WorkerLeases.Ledger ledger(long capacityBytes, int cpu) {
         return new WorkerLeases.Ledger(() -> capacityBytes, () -> cpu, id -> false);
     }
 
     private static int run(WorkerLeases.Ledger ledger, long requestId, List<String> command) {
         try {
-            JobWorkers.begin(requestId);
-            return JobWorkers.callAs(requestId, () -> {
+            return new WorkerScope(requestId).call(() -> {
                 Process process = JobWorkers.start(new ProcessBuilder(command), ledger);
                 return process.waitFor();
             });
         } catch (Exception e) {
             throw new IllegalStateException(e);
-        } finally {
-            JobWorkers.clear(requestId);
         }
     }
 
