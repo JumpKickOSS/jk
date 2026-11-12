@@ -13,6 +13,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -154,6 +155,10 @@ final class KspForecast {
         return decide(in, TaskNames.COMPILE_TEST, outBase, inputs, classpath, testProcessorCp, kspJars);
     }
 
+    @KeyOwner(
+            step = TaskNames.KSP,
+            unpaired = "the build checks the same stamp in PlannerKsp.runRound",
+            forecastsStep = true)
     private static Round decide(
             Inputs in,
             String producer,

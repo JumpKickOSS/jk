@@ -40,6 +40,7 @@ import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.tool.GraalHomeLookup;
 import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
@@ -461,6 +462,11 @@ public final class PlannerNative {
      * metadata dir the args name — the trained one and each metadata-repository dir. Shared
      * libraries (+ generated C headers) aren't cached yet.
      */
+    @KeyOwner(
+            step = TaskNames.NATIVE_IMAGE,
+            unpaired =
+                    "the forecast replays the last record's tokens in PackagingKeys.nativeReplayMiss, not this live token bag",
+            forecastsStep = true)
     static ImageKey imageKey(
             Path javaHome,
             List<Path> classpath,

@@ -539,6 +539,10 @@ public final class GuardFixtures {
         ClasspathResolver resolver = new ClasspathResolver(cas);
         List<Path> testRuntime = new ArrayList<>();
         if (lock != null) testRuntime.addAll(resolver.testRuntimeClasspathFor(lock, false, build, moduleDir));
+        // A suite that reads its module's sibling types (a manifest parser, a wire constant) loads
+        // them from the siblings' classes trees, as the module lane's test runtime names them.
+        for (Path p : WorkspaceClasspath.resolve(moduleDir, build, WorkspaceClasspath.TEST_SCOPES)
+                .siblingClosureClasses()) if (!testRuntime.contains(p)) testRuntime.add(p);
         Path library = GuardSuiteLibrary.locate(root, cas).path();
         List<Path> runtimeCp = PlannerGuardSuite.classpath(build, layout, testRuntime, library);
         Path report = GuardSuites.report(work);

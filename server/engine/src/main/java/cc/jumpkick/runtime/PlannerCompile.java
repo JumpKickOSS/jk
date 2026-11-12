@@ -50,6 +50,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AbiIndex;
@@ -248,6 +249,7 @@ public final class PlannerCompile {
             boolean pinnedJdk) {}
 
     /** compile-main's request — the build's javac invocation and the forecast's key, from one body. */
+    @KeyOwner(step = TaskNames.COMPILE_JAVA)
     public static CompileRequest mainCompileRequest(MainCompile in) {
         List<Path> classpath = new ArrayList<>(in.classpath());
         // See Kotlin's output so Java can reference Kotlin types.
@@ -400,6 +402,7 @@ public final class PlannerCompile {
     }
 
     /** compile-test's request — the build's javac invocation and the forecast's key, from one body. */
+    @KeyOwner(step = TaskNames.COMPILE_TEST)
     public static CompileRequest testCompileRequest(TestCompile in) {
         List<Path> classpath = in.classpath();
         if (in.scala() != null) {
@@ -503,6 +506,10 @@ public final class PlannerCompile {
     }
 
     /** The compile-java body: the source union, the freshness stamp, javac in the worker, the ABI index. */
+    @KeyOwner(
+            step = TaskNames.COMPILE_JAVA,
+            unpaired = "the forecast checks the same stamp in PlannerCompileForecast.java",
+            forecastsStep = true)
     private static void runCompileJava(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
         BuildPlanner.Inputs in = cx.in();
@@ -857,6 +864,10 @@ public final class PlannerCompile {
         return out;
     }
 
+    @KeyOwner(
+            step = TaskNames.COMPILE_KOTLIN,
+            unpaired = "the forecast checks the same stamp in ForecastLangArms.kotlinStampFresh",
+            forecastsStep = true)
     static Task compileKotlinStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -1021,6 +1032,10 @@ public final class PlannerCompile {
                 .build();
     }
 
+    @KeyOwner(
+            step = TaskNames.COMPILE_GROOVY,
+            unpaired = "the forecast checks the same stamp in ForecastLangArms.groovyStep",
+            forecastsStep = true)
     static Task compileGroovyStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();

@@ -1449,7 +1449,9 @@ population = { units = 4145 }
 
 [forecast-key-parity]
 [forecast-key-parity.populations]
-"server/engine" = { examined = 559 }
+"server/engine" = { examined = 49 }
+[forecast-key-parity.scope-reasons]
+"server/engine" = "the guard now counts key-family call sites read from bytecode, not engine source files"
 
 [git-writes-are-pinned]
 population = { files = 2240 }

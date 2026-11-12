@@ -20,6 +20,7 @@ import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -95,6 +96,10 @@ final class ImageWrite {
     }
 
     /** As above, with the action-key tokens from {@code tokens}. */
+    @KeyOwner(
+            step = TaskNames.WRITE_IMAGE,
+            unpaired = "the image tail declares itself always run",
+            forecastsStep = true)
     static void restoreOrBuild(
             TaskContext ctx,
             JkBuild project,

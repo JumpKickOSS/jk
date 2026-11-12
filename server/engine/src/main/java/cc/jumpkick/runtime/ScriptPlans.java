@@ -38,6 +38,7 @@ import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.tool.JarManifest;
 import java.io.IOException;
 import java.net.URI;
@@ -190,6 +191,9 @@ public final class ScriptPlans {
                 .build();
     }
 
+    @KeyOwner(
+            step = TaskNames.COMPILE_JAVA,
+            unpaired = "a script's compile, planned outside any module: nothing forecasts it")
     private static CompileResult compileJava(Path script, ScriptHeader header, Path classesDir, List<Path> classpath)
             throws IOException {
         int release =
@@ -303,6 +307,9 @@ public final class ScriptPlans {
     }
 
     /** kotlinc over the script and its declared sources; a cache hit only re-materializes the files. */
+    @KeyOwner(
+            step = TaskNames.COMPILE_KOTLIN,
+            unpaired = "a script's compile, planned outside any module: nothing forecasts it")
     private static Task compileKotlinScriptStep(
             Path script,
             byte[] bytes,

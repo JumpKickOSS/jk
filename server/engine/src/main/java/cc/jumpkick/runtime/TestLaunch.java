@@ -240,22 +240,16 @@ final class TestLaunch {
         return testEnv.with(walls);
     }
 
-    /**
-     * Incremental test skip: a content key over every input that affects the outcome — own main
-     * output, test sources, the *content* of the runtime classpath (sibling modules included), the
-     * lock, and the toolchain/runner/plugin identity. Unchanged → skip the runner. Null only when
-     * computeKey failed open (unreadable input) — the caller treats that as "not cached".
-     */
-    static @Nullable String stampKey(
+    /** Notes the live run-tests stamp and what it read, beside the forecast's {@code fstamp} note. */
+    static void noteStampKey(
             TaskContext ctx,
             BuildPlanner.Inputs in,
+            @Nullable String stampKey,
             List<Path> testSrcs,
             List<Path> testResDirs,
             List<Path> testRtCp,
             List<String> extras)
             throws Exception {
-        String stampKey =
-                TestStamp.computeKey(testSrcs, ctx.require(MAIN_CLASSES), testResDirs, in.lockFile(), testRtCp, extras);
         if (Perf.enabled()) {
             Perf.note(
                     "live-test-stamp " + in.dir(),
@@ -276,7 +270,6 @@ final class TestLaunch {
                     "mainFp",
                     ClasspathFingerprint.entry(ctx.require(MAIN_CLASSES)));
         }
-        return stampKey;
     }
 
     /**

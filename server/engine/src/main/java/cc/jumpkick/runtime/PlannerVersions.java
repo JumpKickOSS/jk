@@ -33,6 +33,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -144,6 +145,7 @@ public final class PlannerVersions {
      * from one body. A source set with a {@code module-info.java} is the versioned descriptor of the
      * module the main classes form, so those classes patch it, as Maven's compiler plugin does.
      */
+    @KeyOwner(step = TaskNames.COMPILE_VERSIONS)
     public static CompileRequest versionsCompileRequest(
             List<Path> sources,
             List<Path> classpath,

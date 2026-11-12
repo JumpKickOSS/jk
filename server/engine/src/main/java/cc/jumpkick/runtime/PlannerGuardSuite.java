@@ -34,6 +34,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,6 +73,7 @@ public final class PlannerGuardSuite {
     }
 
     /** compile-guard's request — the build's javac invocation and the forecast's key, from one body. */
+    @KeyOwner(step = TaskNames.COMPILE_GUARD)
     public static CompileRequest guardCompileRequest(
             List<Path> sources,
             List<Path> classpath,
@@ -169,6 +171,11 @@ public final class PlannerGuardSuite {
         return !step.cached();
     }
 
+    @KeyOwner(
+            step = TaskNames.COMPILE_GUARD,
+            unpaired =
+                    "the step writes the suite's stamp after its compile; the forecast prices the compile by its key",
+            forecastsStep = true)
     static Task compileGuardStep(BuildPlanner.Ctx cx, boolean compact) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -222,7 +229,7 @@ public final class PlannerGuardSuite {
                     if (!rerun) {
                         try {
                             boolean restores = actionCache
-                                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
+                                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion()))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));

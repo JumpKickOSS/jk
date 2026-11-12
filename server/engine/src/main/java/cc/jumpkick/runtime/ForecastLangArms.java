@@ -17,7 +17,9 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -124,7 +126,7 @@ final class ForecastLangArms {
                     workingDir,
                     arm.config());
             request = worker.request();
-            key = ActionKey.forKotlinc(taskId, request, BuildIdentity.cacheKeyVersion(), snapshotter);
+            key = LangCompile.kotlinKey(taskId, request, BuildIdentity.cacheKeyVersion(), snapshotter);
         } catch (Exception e) {
             Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
             return new LangStep(
@@ -158,6 +160,10 @@ final class ForecastLangArms {
      * not yet memoized keys on content here, which can only make the forecast say "not fresh"
      * where the build, after one snapshot, would say fresh.
      */
+    @KeyOwner(
+            step = TaskNames.COMPILE_KOTLIN,
+            unpaired = "the build checks the same stamp in PlannerCompile.compileKotlinStep",
+            forecastsStep = true)
     boolean kotlinStampFresh(ForecastScope.Prepared prepared, KotlinArm arm) throws Exception {
         List<Path> freshInputs = new ArrayList<>(prepared.parsed().ktSrc());
         if (arm.mixedWithJava()) freshInputs.addAll(prepared.parsed().mainSrc());
@@ -180,6 +186,10 @@ final class ForecastLangArms {
      * known, as the build answers it. A toolchain that cannot be resolved read-only forecasts a
      * full compile: the pessimistic answer, never a false hit.
      */
+    @KeyOwner(
+            step = TaskNames.COMPILE_GROOVY,
+            unpaired = "the build checks the same stamp in PlannerCompile.compileGroovyStep",
+            forecastsStep = true)
     LangStep groovyStep(ForecastScope.Prepared prepared) throws Exception {
         BuildLayout layout = prepared.parsed().layout();
         List<Path> gvSrc = prepared.parsed().gvSrc();
@@ -255,7 +265,7 @@ final class ForecastLangArms {
                     new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null), null);
         }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
-        String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
+        String key = LangCompile.groovyKey(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
         boolean hit = ForecastSteps.present(actionCache, key);
         // groovyc keeps no incremental state, so the pointer is the only prior record.
         String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, null, ActionKey.snapshotInputs(req));

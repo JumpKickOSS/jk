@@ -12,6 +12,7 @@ import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyOwner;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -73,6 +74,7 @@ final class NodeKeys {
     private NodeKeys() {}
 
     /** {@code node-install}'s key: the package files, the install command, Node and the platform. */
+    @KeyOwner(step = TaskNames.NODE_INSTALL)
     static Keyed install(Path nodeDir, @Nullable String installOverride, String nodeToken) throws IOException {
         Map<String, String> inputs = new TreeMap<>();
         for (String name : INSTALL_FILES) {
@@ -90,6 +92,7 @@ final class NodeKeys {
      * {@code node-build}'s key: the node tree (less {@code out} and {@link #NEVER_INPUT}), the
      * command, the environment the build reads, the install it built against and Node.
      */
+    @KeyOwner(step = TaskNames.NODE_BUILD)
     static Keyed build(
             Path nodeDir,
             NodeProject project,
@@ -115,6 +118,7 @@ final class NodeKeys {
      * Node.
      * {@code fetched} is the {@code pkg@version} an unlocked npx runs, else {@code null}.
      */
+    @KeyOwner(step = TaskNames.NODE_STEP_PREFIX + "*")
     static Keyed step(
             Path nodeDir,
             Path moduleDir,
@@ -216,6 +220,7 @@ final class NodeKeys {
      * later}, here and in {@link #build}: the outputs of steps that run after this one, which it
      * never reads.
      */
+    @KeyOwner(step = TaskNames.NODE_TEST)
     static Keyed test(
             Path nodeDir,
             NodeProject project,
@@ -235,6 +240,7 @@ final class NodeKeys {
     }
 
     /** {@code node-package}'s key: the output's files, the root they sit under and the manifest attributes. */
+    @KeyOwner(step = TaskNames.NODE_PACKAGE)
     static Keyed pkg(Path nodeDir, Path out, String root, Map<String, String> manifest) throws IOException {
         Map<String, String> inputs = tree(out, List.of());
         inputs.put("root:", root);

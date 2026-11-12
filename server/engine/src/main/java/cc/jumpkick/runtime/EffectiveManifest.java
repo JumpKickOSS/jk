@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
@@ -63,6 +64,7 @@ public record EffectiveManifest(JkBuild build, Map<String, String> secrets) {
      * {@code parsed} under {@code selection}. Throws when the selection does not apply to the module
      * (an unselected mandatory dimension, an undeclared value) or an {@code env:} value is missing.
      */
+    @KeyOwner(step = "*")
     static EffectiveManifest of(JkBuild parsed, Path dir, Selection selection) {
         JkBuild build = BuildPlanner.applyAssemblyOverride(parsed, selection.session());
         var applied = VariantApply.apply(

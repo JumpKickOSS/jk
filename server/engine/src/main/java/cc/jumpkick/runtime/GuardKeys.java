@@ -40,6 +40,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -66,6 +67,7 @@ final class GuardKeys {
     private GuardKeys() {}
 
     /** The lane key: the lane's read-set tokens plus the baseline slice the verdict was judged against. */
+    @KeyOwner(step = TaskNames.GUARD + "*")
     static String laneKey(String taskId, List<String> tokens, String baselineSlice) {
         List<String> all = new ArrayList<>(tokens);
         all.add("baseline:" + baselineSlice);

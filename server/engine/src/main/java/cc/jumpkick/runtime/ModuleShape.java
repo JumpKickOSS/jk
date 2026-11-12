@@ -7,6 +7,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -40,6 +41,7 @@ record ModuleShape(
      * CompileSupport#resolveLanguages}). {@code decls} are the module's plugin declarations, null
      * when it has none.
      */
+    @KeyOwner(step = {TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY, TaskNames.KSP})
     static ModuleShape of(JkBuild project, Path dir, @Nullable PluginDeclarations decls) {
         boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
         if (CompileSupport.coordinatorOnly(project, dir)) {

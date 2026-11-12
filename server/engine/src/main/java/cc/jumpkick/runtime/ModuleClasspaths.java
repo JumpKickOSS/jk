@@ -7,6 +7,8 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -91,6 +93,14 @@ record ModuleClasspaths(
     }
 
     /** {@code project}'s classpaths at {@code dir} under {@code lock}, as {@code mode} reads them. */
+    @KeyOwner(
+            step = {
+                TaskNames.COMPILE_JAVA,
+                TaskNames.COMPILE_KOTLIN,
+                TaskNames.COMPILE_GROOVY,
+                TaskNames.COMPILE_TEST,
+                TaskNames.RUN_TESTS
+            })
     static ModuleClasspaths derive(
             Path dir,
             JkBuild project,

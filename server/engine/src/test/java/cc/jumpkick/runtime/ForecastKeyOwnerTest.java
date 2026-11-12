@@ -32,13 +32,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The derived values `jk explain` and the build have to agree on, asserted at the one body that
- * derives each — the shape concluded with after a prefix-set guard proved unable to
- * see a value drift behind an agreed token.
+ * derives each: a value can drift behind a token both sides agree on, and only the body sees it.
  *
  * <p>What is NOT asserted here: that the forecast calls these owners. A test cannot show that
- * without re-deriving the answer itself, which is the very duplication being removed —
- * {@code checkForecastKeyParity} arms A2 and C read the call sites instead, and go red when either
- * side stops going through the owner.
+ * without re-deriving the answer itself, which is the very duplication being removed. The {@code
+ * forecast-key-*} guard tests in {@code server/engine/src/guard} read the call sites instead: each
+ * owner is a {@code @KeyOwner}, and one the build or the forecast stops calling is red.
  */
 class ForecastKeyOwnerTest {
 

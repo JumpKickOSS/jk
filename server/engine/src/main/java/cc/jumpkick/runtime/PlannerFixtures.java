@@ -31,6 +31,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,6 +88,7 @@ public final class PlannerFixtures {
      * one body. Fixtures are production code for the suites that take them, so they run the
      * {@code [javac]} plugins compile-main runs, not the {@code [javac.test]} view.
      */
+    @KeyOwner(step = TaskNames.COMPILE_TEST_FIXTURES)
     public static CompileRequest fixturesCompileRequest(
             List<Path> sources,
             List<Path> classpath,
@@ -236,7 +238,7 @@ public final class PlannerFixtures {
                     if (!rerun) {
                         try {
                             boolean restores = actionCache
-                                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
+                                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion()))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));

@@ -21,6 +21,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.SourceApiIndex;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -38,6 +39,10 @@ final class PlannerCompileForecast {
      * JavaCompile#predict} on the very request the build keys — the shared {@link
      * #mainCompileRequest} over the same classpath, processors and toolchain.
      */
+    @KeyOwner(
+            step = TaskNames.COMPILE_JAVA,
+            unpaired = "the build checks the same stamp in PlannerCompile.runCompileJava",
+            forecastsStep = true)
     static TaskForecast.@Nullable Task java(StepForecast.Scope scope) throws Exception {
         ForecastScope s = ForecastScope.of(scope);
         ForecastScope.Prepared prepared = s.prepared();

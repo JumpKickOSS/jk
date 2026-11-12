@@ -10,6 +10,7 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +36,29 @@ import org.jspecify.annotations.Nullable;
 public final class LangCompile {
 
     private LangCompile() {}
+
+    /** A kotlinc step's action key: what {@link #run} looks up and records, and what the plan and the forecast price. */
+    @KeyOwner(step = {TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_TEST})
+    public static String kotlinKey(
+            String taskId, KotlincRequest request, String jkVersion, KotlinClasspathAbi.Snapshotter snapshotter)
+            throws IOException {
+        return ActionKey.forKotlinc(taskId, request, jkVersion, snapshotter);
+    }
+
+    /**
+     * A groovyc step's action key: what {@link #run} looks up and records, and what the plan and the
+     * forecast price. {@code cp} reads the compile classpath, as for {@link JavaCompile#key}.
+     */
+    @KeyOwner(step = {TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST})
+    public static String groovyKey(String taskId, GroovycRequest request, String jkVersion, ActionKey.EntryToken cp)
+            throws IOException {
+        return ActionKey.forGroovyc(taskId, request, jkVersion, cp);
+    }
+
+    /** {@link #groovyKey(String, GroovycRequest, String, ActionKey.EntryToken)} over the build's classpath tokens. */
+    public static String groovyKey(String taskId, GroovycRequest request, String jkVersion) throws IOException {
+        return groovyKey(taskId, request, jkVersion, ClasspathAbi::token);
+    }
 
     /**
      * Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each; {@code
@@ -118,7 +142,7 @@ public final class LangCompile {
         // kotlinc lists the Java source roots itself: a file added, removed or renamed there while
         // it runs is one the key never named.
         InputGuard javaRoots = InputGuard.of(request.javaSourceRoots());
-        String key = ActionKey.forKotlinc(taskId, request, jkVersion, snapshotter);
+        String key = kotlinKey(taskId, request, jkVersion, snapshotter);
 
         Path workingDir = request.workingDir();
         if (useCache) {
@@ -216,7 +240,7 @@ public final class LangCompile {
             ActionCache actionCache,
             WorkerEnv env)
             throws IOException {
-        String key = ActionKey.forGroovyc(taskId, request, jkVersion);
+        String key = groovyKey(taskId, request, jkVersion);
 
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);

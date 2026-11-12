@@ -25,6 +25,7 @@ import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.MirroredOutputs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -222,6 +223,7 @@ public final class BuildLogicSupport {
     }
 
     /** Run (or restore) every task registered at {@code anchor}. */
+    @KeyOwner(step = TaskNames.BUILD_LOGIC + "*", unpaired = "build-logic compile is not forecast")
     private static boolean runAnchor(
             Path projectDir,
             BuildLayout layout,

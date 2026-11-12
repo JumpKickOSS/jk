@@ -42,6 +42,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -573,6 +574,10 @@ public final class PlannerPlugin {
     /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
+    @KeyOwner(
+            step = "plugin-*",
+            unpaired = "a plugin step is priced by whether its module compiles, never by its key",
+            forecastsStep = true)
     static Task pluginTask(
             BuildPlanner.Ctx cx, @Nullable ActivePlugin declared, TaskDecl step, @Nullable TaskDecl transform) {
         // The step exists because this plugin declared it.

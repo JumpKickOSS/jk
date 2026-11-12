@@ -24,6 +24,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -45,6 +46,7 @@ final class PlannerWar {
 
     private PlannerWar() {}
 
+    @KeyOwner(step = TaskNames.PACKAGE_WAR, unpaired = "explain does not forecast the war at all")
     static Task warStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_WAR)
                 .forecast(StepForecast.RIDES)

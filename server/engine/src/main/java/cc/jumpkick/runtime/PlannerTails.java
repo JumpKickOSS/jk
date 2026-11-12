@@ -32,6 +32,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -351,6 +352,7 @@ public final class PlannerTails {
     }
 
     /** As {@link #sourcesStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
+    @KeyOwner(step = TaskNames.PACKAGE_SOURCES, unpaired = "explain does not forecast the sources jar at all")
     public static Task sourcesStep(Path cache, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_SOURCES)
                 .forecast(StepForecast.RIDES)

@@ -870,7 +870,10 @@ public final class PlannerTest {
         if (affected != null && !affected.stampToken().isBlank()) {
             extras.add("affected:" + affected.stampToken());
         }
-        return TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, stamp.runtimeClasspath(), extras);
+        // Unchanged inputs replay the green run; null (an unreadable input) is "not cached".
+        String key = stamp.key(testSrcs, ctx.require(MAIN_CLASSES), null, testResDirs, in.lockFile(), extras);
+        TestLaunch.noteStampKey(ctx, in, key, testSrcs, testResDirs, stamp.runtimeClasspath(), extras);
+        return key;
     }
 
     /**

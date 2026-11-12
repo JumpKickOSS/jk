@@ -46,6 +46,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ProjectedFiles;
 import java.io.ByteArrayOutputStream;
@@ -380,8 +381,7 @@ public final class PlannerKsp {
      * its processors keeps no generated code alive.
      */
     static boolean runsMainRound(JkBuild project, Path dir) {
-        return ModuleShape.hasProcessorDeps(project)
-                && CompileSupport.resolveLanguages(project.project(), dir).kotlin();
+        return ModuleShape.of(project, dir, null).ksp();
     }
 
     /**
@@ -474,6 +474,10 @@ public final class PlannerKsp {
      * outputs, restore them from the action record the round's inputs name or fork KSP and record
      * what it wrote, surface its diagnostics and stamp.
      */
+    @KeyOwner(
+            step = TaskNames.KSP,
+            unpaired = "the forecast checks the same stamp in KspForecast.decide",
+            forecastsStep = true)
     static RoundOutcome runRound(TaskContext ctx, BuildPlanner.Ctx cx, Round round) throws Exception {
         BuildPlanner.Inputs in = cx.in();
         Path outBase = round.outBase();
@@ -812,6 +816,7 @@ public final class PlannerKsp {
      * (language and API level), the KSP2 release, the JDK, the module name and every processor
      * option.
      */
+    @KeyOwner(step = TaskNames.KSP)
     static String kspStampDigest(
             JkBuild project,
             Lockfile lock,

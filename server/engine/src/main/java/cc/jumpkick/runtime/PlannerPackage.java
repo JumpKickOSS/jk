@@ -32,6 +32,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -235,6 +236,7 @@ public final class PlannerPackage {
      * True when a declared task must run before the compilers: source generation, or other
      * resolve-window work that does not consume classes (e.g. android-manifest feeds aapt2).
      */
+    @KeyOwner(step = TaskNames.WRITE_STAMP, unpaired = "the stamp rides its compile; the forecast reads what it writes")
     static Task writeStampStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -285,6 +287,9 @@ public final class PlannerPackage {
                 .build();
     }
 
+    @KeyOwner(
+            step = TaskNames.WRITE_STAMP_KOTLIN,
+            unpaired = "the stamp rides its compile; the forecast reads what it writes")
     static Task writeStampKotlinStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -333,6 +338,9 @@ public final class PlannerPackage {
                 .build();
     }
 
+    @KeyOwner(
+            step = TaskNames.WRITE_STAMP_GROOVY,
+            unpaired = "the stamp rides its compile; the forecast reads what it writes")
     static Task writeStampGroovyStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         Supplier<EffortWeights.Plan> plan = cx.plan();

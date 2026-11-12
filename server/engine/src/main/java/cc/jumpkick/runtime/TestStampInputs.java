@@ -10,9 +10,11 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -105,6 +107,7 @@ record TestStampInputs(
     }
 
     /** The stamp inputs of {@code facts}, with the worker jars read through {@code identity}. */
+    @KeyOwner(step = TaskNames.RUN_TESTS)
     static TestStampInputs of(Facts facts, ClasspathFingerprint.EntryIdentity identity) throws IOException {
         TestSelection selection =
                 PlannerSupport.effectiveSelection(facts.sessionSelection(), facts.dir(), facts.profileName());
@@ -120,6 +123,25 @@ record TestStampInputs(
         classpath.addAll(facts.providedRuntime());
         return new TestStampInputs(
                 facts, identity, selection, tier, List.copyOf(tier.suiteJvmArgs(jvmArgs)), List.copyOf(classpath));
+    }
+
+    /**
+     * The run-tests stamp a green run is stored under and the forecast looks up: the suite's sources
+     * and resources, the main classes ({@code mainClassesFingerprint} stands for a tree {@code jk
+     * clean} took, null to read it), the lock, this record's runtime classpath under its identity,
+     * and {@code extras}. Null when an input could not be read.
+     */
+    @KeyOwner(step = TaskNames.RUN_TESTS)
+    @Nullable
+    String key(
+            List<Path> sources,
+            Path mainClasses,
+            @Nullable String mainClassesFingerprint,
+            List<Path> resources,
+            Path lockFile,
+            List<String> extras) {
+        return TestStamp.computeKey(
+                sources, mainClasses, mainClassesFingerprint, resources, lockFile, runtimeClasspath, extras, identity);
     }
 
     /**
@@ -172,8 +194,7 @@ record TestStampInputs(
             if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
             stampRes.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
         }
-        String key = TestStamp.computeKey(
-                stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
+        String key = key(stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampExtras);
         if (Perf.enabled()) {
             // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
             // the same module, the forecast is predicting a suite re-run the build will skip. That

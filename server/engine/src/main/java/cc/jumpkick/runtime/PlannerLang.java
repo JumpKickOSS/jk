@@ -17,7 +17,6 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.kotlin.KotlinResolver;
-import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
@@ -25,6 +24,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.GroovyPluginSetup;
@@ -32,6 +32,7 @@ import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
@@ -107,7 +108,7 @@ public final class PlannerLang {
      * pins and the compile fetches.
      */
     static List<Coordinate> contributedKotlinPlugins(JkBuild project, Path moduleDir, Lockfile lock) {
-        if (!Languages.resolve(project.project(), moduleDir).kotlin()) return List.of();
+        if (!ModuleShape.of(project, moduleDir, null).kotlin()) return List.of();
         List<Coordinate> out = new ArrayList<>();
         for (var use : PluginContributions.kotlinPlugins(
                 project, moduleDir, kotlinPluginVersion(lock, project), lockModules(lock))) {
@@ -158,6 +159,7 @@ public final class PlannerLang {
          * JVM target, the module name, the JDK's identity, the args and the plugins with their
          * options. A change here moves no source or classpath mtime; only this does.
          */
+        @KeyOwner(step = TaskNames.COMPILE_KOTLIN)
         String digest() throws IOException {
             return FreshnessStamp.optionsDigest(digestParts());
         }
@@ -255,6 +257,7 @@ public final class PlannerLang {
         }
 
         /** The compile request, built once: what the worker is told and what the key hashes. */
+        @KeyOwner(step = {TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_TEST})
         synchronized KotlincRequest request() throws IOException {
             KotlincRequest built = request;
             if (built != null) return built;
@@ -379,6 +382,7 @@ public final class PlannerLang {
      * version, the JVM target and the args — the facts {@link #compileGroovySources} builds its
      * request from that no source or classpath mtime reflects.
      */
+    @KeyOwner(step = TaskNames.COMPILE_GROOVY)
     static String groovyStampDigest(JkBuild project, Lockfile lock, Path moduleDir, int release, Path javaHome) {
         List<String> parts = new ArrayList<>();
         String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
@@ -500,11 +504,11 @@ public final class PlannerLang {
         KotlinClasspathAbi.Snapshotter snapshotter = worker.snapshotter();
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a
-        // full kotlinc. Same forKotlinc key LangCompile.run looks up.
+        // full kotlinc. Same key LangCompile.run looks up.
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(ActionKey.forKotlinc(taskId, req, BuildIdentity.cacheKeyVersion(), snapshotter))
+                        .lookup(LangCompile.kotlinKey(taskId, req, BuildIdentity.cacheKeyVersion(), snapshotter))
                         .isPresent();
                 ctx.reweight(
                         restores
@@ -580,6 +584,7 @@ public final class PlannerLang {
      * so the forecast keys the compile the build will run. Creates nothing on disk — the forecast
      * is read-only; the build's overload makes the output and stub dirs before delegating here.
      */
+    @KeyOwner(step = {TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST})
     static GroovycRequest groovyRequest(
             JkBuild project,
             Lockfile lock,
@@ -633,11 +638,11 @@ public final class PlannerLang {
             throws IOException {
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a
-        // full groovyc. Same forGroovyc key LangCompile.run looks up.
+        // full groovyc. Same key LangCompile.run looks up.
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion()))
+                        .lookup(LangCompile.groovyKey(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
                 ctx.reweight(
                         restores
