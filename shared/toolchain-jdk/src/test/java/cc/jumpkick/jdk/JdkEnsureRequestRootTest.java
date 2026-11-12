@@ -37,6 +37,13 @@ class JdkEnsureRequestRootTest {
     }
 
     @Test
+    void the_shared_registries_stay_bounded_however_many_roots_ask(@TempDir Path tmp) {
+        for (int i = 0; i <= JdkEnsure.MAX_REGISTRIES; i++) JdkEnsure.sharedRegistry(tmp.resolve("jdks-" + i), null);
+
+        assertThat(JdkEnsure.sharedRegistryCount()).isLessThanOrEqualTo(JdkEnsure.MAX_REGISTRIES);
+    }
+
+    @Test
     void an_explicit_override_still_walks_its_one_directory_alone(@TempDir Path tmp) throws IOException {
         Path callers = Files.createDirectories(tmp.resolve("callers-jdks"));
         Path override = Files.createDirectories(tmp.resolve("override"));

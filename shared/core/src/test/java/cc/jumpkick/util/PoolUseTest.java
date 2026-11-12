@@ -43,6 +43,19 @@ class PoolUseTest {
     }
 
     @Test
+    void the_units_one_process_remembers_stamping_stay_bounded(@TempDir Path tmp) throws Exception {
+        Path tree = tmp.resolve("pooled");
+        PoolUse.mark(tree);
+        for (int i = 0; i <= PoolUse.MAX_STAMPED; i++) {
+            PoolUse.touch(tree, Files.createDirectories(tree.resolve("org/example/lib" + i + "/1.0")));
+        }
+
+        assertThat(PoolUse.stampedCount())
+                .as("an engine touches every artifact it resolves; the window it remembers is bounded")
+                .isLessThanOrEqualTo(PoolUse.MAX_STAMPED);
+    }
+
+    @Test
     void an_unmarked_tree_is_never_written(@TempDir Path tmp) throws Exception {
         Path tree = Files.createDirectories(tmp.resolve("store"));
         Path unit = old(tree.resolve("org/example/lib/1.0"));

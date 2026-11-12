@@ -284,10 +284,19 @@ public final class JdkEnsure {
         Path root = (jdksDirOverride != null ? jdksDirOverride : requestJdksRoot())
                 .toAbsolutePath()
                 .normalize();
-        if (jdksDirOverride != null) return REGISTRIES.computeIfAbsent(new Key(root, null), k -> new JdkRegistry(root));
+        if (jdksDirOverride != null) return shared(new Key(root, null), k -> new JdkRegistry(root));
         Path buildRoot = gradlePropertiesRoot(projectDir);
-        return REGISTRIES.computeIfAbsent(
-                new Key(root, buildRoot), k -> new JdkRegistry(root, Probes.defaultChain(root, buildRoot)));
+        return shared(new Key(root, buildRoot), k -> new JdkRegistry(root, Probes.defaultChain(root, buildRoot)));
+    }
+
+    /**
+     * {@code key}'s registry, made by {@code make} on a miss. Past {@link #MAX_REGISTRIES} the table
+     * is dropped whole: every request's JDK root and every Gradle build with properties keys one, and
+     * a registry dropped while a build holds it serves that build to the end.
+     */
+    private static JdkRegistry shared(Key key, Function<Key, JdkRegistry> make) {
+        if (REGISTRIES.size() >= MAX_REGISTRIES && !REGISTRIES.containsKey(key)) REGISTRIES.clear();
+        return REGISTRIES.computeIfAbsent(key, make);
     }
 
     /**
@@ -317,6 +326,14 @@ public final class JdkEnsure {
     }
 
     private static final ConcurrentMap<Key, JdkRegistry> REGISTRIES = new ConcurrentHashMap<>();
+
+    /** Registries kept before the table is dropped whole; see {@link #shared}. */
+    static final int MAX_REGISTRIES = 64;
+
+    /** How many shared registries this process holds. Test seam. */
+    static int sharedRegistryCount() {
+        return REGISTRIES.size();
+    }
 
     /** Test seam: forget every shared registry, so the next ensure re-probes the host. */
     public static void resetSharedRegistries() {

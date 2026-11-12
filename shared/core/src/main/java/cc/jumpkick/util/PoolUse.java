@@ -30,6 +30,13 @@ public final class PoolUse {
 
     private static final ConcurrentHashMap<Path, Long> STAMPED = new ConcurrentHashMap<>();
 
+    /**
+     * Units remembered before the ones stamped longer than {@link #EVERY_MILLIS} ago go, and the rest
+     * with them if that is not enough: an engine touches every artifact it resolves, and forgetting a
+     * unit costs one more stamp.
+     */
+    static final int MAX_STAMPED = 4_096;
+
     private PoolUse() {}
 
     /** Ask for use stamps in {@code tree}: writes {@link #MARKER} at its root, created. */
@@ -46,11 +53,22 @@ public final class PoolUse {
         Long last = STAMPED.get(unit);
         if (last != null && now - last < EVERY_MILLIS) return;
         STAMPED.put(unit, now);
+        if (STAMPED.size() > MAX_STAMPED) forgetStamped(now);
         try {
             Files.setLastModifiedTime(unit, FileTime.fromMillis(now));
         } catch (IOException | RuntimeException absent) {
             // Not there yet, or already evicted: the write that lands it stamps it anew.
             STAMPED.remove(unit);
         }
+    }
+
+    private static void forgetStamped(long now) {
+        STAMPED.values().removeIf(at -> now - at >= EVERY_MILLIS);
+        if (STAMPED.size() > MAX_STAMPED) STAMPED.clear();
+    }
+
+    /** How many units this process remembers stamping. Test seam. */
+    static int stampedCount() {
+        return STAMPED.size();
     }
 }
