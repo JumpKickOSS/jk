@@ -106,9 +106,19 @@ public final class EngineInstall {
     /** The pointer key naming the engine jar the install before this one ran, kept for a rollback. */
     public static final String PREVIOUS_ENGINE_SHA = "previous-engine-sha256";
 
+    /** The pointer key naming the version of the engine {@link #PREVIOUS_ENGINE_SHA} names. */
+    public static final String PREVIOUS_VERSION = "previous-version";
+
+    /** The pointer key naming the PATH client this install put in place, kept for a rollback. */
+    public static final String CLIENT_SHA = "client-sha256";
+
+    /** The pointer key naming the PATH client the install before this one put in place. */
+    public static final String PREVIOUS_CLIENT_SHA = "previous-client-sha256";
+
     /**
-     * The engine jars the store must keep for this install: the live one the pointer names, and the
-     * one the install before it named. Lower-case hex; empty when the pointer names neither.
+     * The engine jars and PATH clients the store must keep for this install: the live ones the
+     * pointer names, and the ones the install before it named, which {@link #rollback} puts back.
+     * Lower-case hex; empty when the pointer names none.
      */
     public Set<String> pinnedEngineShas() {
         Set<String> out = new HashSet<>();
@@ -116,7 +126,7 @@ public final class EngineInstall {
             Path pointer = configFile();
             if (!Files.isRegularFile(pointer)) return out;
             Map<String, String> cfg = AppInstallConfig.parse(Files.readString(pointer));
-            for (String key : List.of("engine-sha256", PREVIOUS_ENGINE_SHA)) {
+            for (String key : List.of("engine-sha256", PREVIOUS_ENGINE_SHA, CLIENT_SHA, PREVIOUS_CLIENT_SHA)) {
                 String sha = cfg.get(key);
                 if (sha != null && !sha.isBlank()) out.add(sha.strip().toLowerCase(Locale.ROOT));
             }
@@ -475,16 +485,90 @@ public final class EngineInstall {
         // always win. A stray -Djk-config.engine-sha256 could otherwise poison the digest and make
         // every command see a build-id mismatch and respawn the engine.
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
+        Map<String, String> before = pointerKeys();
         keys.put("version", version);
         keys.put("engine-sha256", engineJarSha);
         // The engine the pointer named until now stays the previous one, so a rollback still has its jar.
         String previous = previousEngineSha(engineJarSha);
-        if (previous != null) keys.put(PREVIOUS_ENGINE_SHA, previous);
+        if (previous != null) {
+            keys.put(PREVIOUS_ENGINE_SHA, previous);
+            String live = before.get("engine-sha256");
+            String previousVersion = live != null && live.equalsIgnoreCase(previous)
+                    ? before.get("version")
+                    : before.get(PREVIOUS_VERSION);
+            if (previousVersion != null && !previousVersion.isBlank()) keys.put(PREVIOUS_VERSION, previousVersion);
+        }
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
+        // The clients the pointer names are another install step's to change ({@link #recordClient}).
+        for (String key : List.of(CLIENT_SHA, PREVIOUS_CLIENT_SHA)) {
+            String sha = before.get(key);
+            if (sha != null && !sha.isBlank()) keys.put(key, sha);
+        }
         // Durably: a pointer torn by a power loss names no jar, and every later command sees an
         // install it cannot start rather than one it can re-derive.
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /** The pointer's keys as they stand, or none when it is missing or unreadable. */
+    private Map<String, String> pointerKeys() {
+        try {
+            Path pointer = configFile();
+            if (!Files.isRegularFile(pointer)) return Map.of();
+            return AppInstallConfig.parse(Files.readString(pointer));
+        } catch (IOException | RuntimeException unreadable) {
+            return Map.of();
+        }
+    }
+
+    /**
+     * Name {@code clientSha} as the PATH client this install put in place, the one named until now
+     * as the previous one, so {@link #rollback} can put it back. A no-op when the pointer is missing
+     * (nothing to roll back with) or already names {@code clientSha}.
+     */
+    public void recordClient(String clientSha) throws IOException {
+        Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
+        if (keys.isEmpty()) return;
+        String live = keys.get(CLIENT_SHA);
+        if (clientSha.equalsIgnoreCase(live)) return;
+        if (live != null && !live.isBlank()) keys.put(PREVIOUS_CLIENT_SHA, live);
+        keys.put(CLIENT_SHA, clientSha);
+        AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /** What {@link #rollback} put back: the engine's version and jar, and the client, when one was. */
+    public record RolledBack(
+            String version, Path engineJar, @Nullable Path client) {}
+
+    /**
+     * Put back the engine and PATH client the install before this one put in place, from the store
+     * that keeps them ({@link #pinnedEngineShas}); the ones replaced become the previous ones, so a
+     * second rollback undoes the first. Needs no engine: an install that left an engine and client
+     * that fail every command is rolled back from the client alone. Throws when the pointer names no
+     * previous engine, or the store no longer holds it.
+     */
+    public RolledBack rollback(Cas cas, Path binDir) throws IOException {
+        Map<String, String> keys = pointerKeys();
+        String engineSha = keys.get(PREVIOUS_ENGINE_SHA);
+        if (engineSha == null || engineSha.isBlank()) {
+            throw new IOException("no previous engine to roll back to: " + configFile() + " names none");
+        }
+        if (!Files.isRegularFile(cas.pathFor(engineSha))) {
+            throw new IOException("the previous engine " + engineSha + " is no longer in the store");
+        }
+        String version = keys.getOrDefault(PREVIOUS_VERSION, keys.get("version"));
+        if (version == null || version.isBlank()) {
+            throw new IOException("no version for the previous engine in " + configFile());
+        }
+        String clientSha = keys.get(PREVIOUS_CLIENT_SHA);
+        Materialized engine = materialize(version, cas, engineSha, true);
+        Path installed = null;
+        if (clientSha != null && !clientSha.isBlank() && Files.isRegularFile(cas.pathFor(clientSha))) {
+            installBinaries(cas.pathFor(clientSha), binDir);
+            recordClient(clientSha);
+            installed = pathClient(binDir);
+        }
+        return new RolledBack(engine.version(), engine.engineJar(), installed);
     }
 
     /**

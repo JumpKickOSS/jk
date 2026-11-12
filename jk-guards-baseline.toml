@@ -2260,8 +2260,8 @@ reason = "PlannerSupport split by concern: TestLaunch reads the language runtime
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"
-value  = 20
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 21
+reason = "the runtime packages as the coupling guard first measured them, and InstallFreshness: an install's preflight decides which modules it rebuilds, and a jar packaged from other classes than its tree is one (JK-MAG71)"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspaceRunPhase"

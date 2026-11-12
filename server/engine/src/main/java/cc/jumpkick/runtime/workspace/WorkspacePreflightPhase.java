@@ -192,8 +192,10 @@ public final class WorkspacePreflightPhase {
                         + ")",
                 forecastStart);
 
+        Set<Path> scheduled = scheduled(units, forecast.dirty(), forecast.restoreNeeded());
         List<String> refused = installRefusals(request, units);
         if (!refused.isEmpty()) return completed(false, Exit.FAILURE, refused);
+        scheduled = withStaleInstallJars(request, graph, units, scheduled, listener);
 
         return new Ready(new Context(
                 request,
@@ -203,7 +205,7 @@ public final class WorkspacePreflightPhase {
                 immutableOrderedSet(moduleDirs),
                 immutableOrderedSet(jarConsumed),
                 launchedAssemblies(graph),
-                scheduled(units, forecast.dirty(), forecast.restoreNeeded()),
+                scheduled,
                 forecast.preflight()));
     }
 
@@ -230,6 +232,55 @@ public final class WorkspacePreflightPhase {
             if (hidden != null) refused.add(hidden);
         }
         return refused;
+    }
+
+    /**
+     * {@code scheduled} plus every module an install would not rebuild whose jar on disk was packaged
+     * from other classes than its classes tree holds ({@link InstallFreshness}): the install would
+     * ship that jar as it is. Each is rebuilt instead, with every module that depends on it, whose
+     * fat jar or image bundles it; the run says so. A contribution that replaces a compiled class
+     * reads as stale too, and costs a repackage the packaging cache answers.
+     */
+    static Set<Path> withStaleInstallJars(
+            WorkspaceRequest request,
+            BuildGraph.Result graph,
+            List<BuildGraph.BuildUnit> units,
+            Set<Path> scheduled,
+            WorkspaceBuildListener listener) {
+        if (request.target() != WorkspaceTarget.INSTALL) return scheduled;
+        WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
+        LinkedHashSet<Path> out = new LinkedHashSet<>(scheduled);
+        for (BuildGraph.BuildUnit unit : units) {
+            if (scheduled.contains(unit.dir())) continue;
+            Path dir = BuildGraph.canonicalPath(unit.dir());
+            if (spec.hasSelection()
+                    && spec.selectedModules().stream()
+                            .noneMatch(sel -> BuildGraph.canonicalPath(sel).equals(dir))) {
+                continue;
+            }
+            if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) continue;
+            String stale = InstallFreshness.stale(unit.dir(), unit.manifest());
+            if (stale == null) continue;
+            listener.onNote(stale);
+            out.add(unit.dir());
+        }
+        if (out.size() == scheduled.size()) return scheduled;
+        // Every module reading a rebuilt one, transitively: its packaging re-keys on the new jar.
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (BuildGraph.BuildUnit unit : units) {
+                if (out.contains(unit.dir())) continue;
+                for (Path prereq : graph.edges().getOrDefault(unit.dir(), Set.of())) {
+                    if (out.contains(prereq)) {
+                        out.add(unit.dir());
+                        grew = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return Collections.unmodifiableSet(out);
     }
 
     private static Optional<Completed> freshenLock(

@@ -67,7 +67,12 @@ jk self update --check      # is there a newer release? installs nothing
 jk self update --download   # fetch and verify it now; install later
 jk self update              # install the latest (a download already made is reused)
 jk self update 0.16.2       # go back to a release, and hold there
+jk self rollback            # put back the engine and client the last install replaced
 ```
+
+`jk self rollback` needs no network and no running engine: the store keeps the engine and client
+the last install replaced, so an install that left a JumpKick that fails every command can still be
+undone. A second rollback undoes the first.
 
 `self-update` in `~/.jk/config.toml` (or env `JK_SELF_UPDATE`, which wins) picks the behaviour:
 

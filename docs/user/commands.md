@@ -51,7 +51,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk skill` | Skill for agents (core, one topic, install the folder, or update AGENTS.md) | [Skill](skill.md) |
 | `jk cache …` / `jk storage …` | Disk hygiene | [Cache](cache.md) |
 | `jk clean` | Delete `target/` | [Cache](cache.md) |
-| `jk self nuke` / `jk self update` | Product data / upgrade | [Cache](cache.md), [Install](install.md) |
+| `jk self nuke` / `jk self update` / `jk self rollback` | Product data / upgrade / undo the last install | [Cache](cache.md), [Install](install.md) |
 | `jk env` | Layered environment | [Install](install.md) |
 | `jk doctor` | Host health | [Config](config.md) |
 | `jk wrapper` | Bootstrap scripts | [Wrapper](wrapper.md) |

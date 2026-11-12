@@ -126,6 +126,58 @@ class EngineInstallTest {
     }
 
     @Test
+    void rollback_puts_back_the_engine_and_client_before_and_a_second_undoes_it(@TempDir Path tmp) throws Exception {
+        // JK-MAG71: an install that leaves an engine and client failing every command is undone from
+        // the client alone, from the store that keeps the install before it.
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        Path bin = home.resolve("bin");
+        EngineInstall store = install(home);
+        Path good = Files.writeString(
+                Files.createDirectories(tmp.resolve("good")).resolve("jk-engine-0.12.0.jar"), "engine-good");
+        Path bad = Files.writeString(
+                Files.createDirectories(tmp.resolve("bad")).resolve("jk-engine-0.13.0.jar"), "engine-bad");
+        String goodClient = Hashing.sha256Hex("client-good".getBytes());
+        String badClient = Hashing.sha256Hex("client-bad".getBytes());
+        cas.put("client-good".getBytes(), goodClient);
+        cas.put("client-bad".getBytes(), badClient);
+
+        store.materializeFromFiles("0.12.0", cas, good);
+        EngineInstall.installBinaries(cas.pathFor(goodClient), bin, false);
+        store.recordClient(goodClient);
+        store.materializeFromFiles("0.13.0", cas, bad);
+        EngineInstall.installBinaries(cas.pathFor(badClient), bin, false);
+        store.recordClient(badClient);
+        assertThat(store.pinnedEngineShas())
+                .as("the store keeps both engines and both clients")
+                .containsExactlyInAnyOrder(Hashing.sha256Hex(good), Hashing.sha256Hex(bad), goodClient, badClient);
+
+        var back = store.rollback(cas, bin);
+        assertThat(back.version()).isEqualTo("0.12.0");
+        assertThat(store.engineJarPath()).hasContent("engine-good");
+        assertThat(bin.resolve("jk")).hasContent("client-good");
+        assertThat(back.client()).isEqualTo(bin.resolve("jk"));
+
+        var again = store.rollback(cas, bin);
+        assertThat(again.version()).as("a second rollback undoes the first").isEqualTo("0.13.0");
+        assertThat(store.engineJarPath()).hasContent("engine-bad");
+        assertThat(bin.resolve("jk")).hasContent("client-bad");
+    }
+
+    @Test
+    void rollback_with_no_previous_engine_says_so(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        store.materializeFromFiles(
+                "0.12.0", cas, Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-only"));
+
+        assertThatThrownBy(() -> store.rollback(cas, home.resolve("bin")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("no previous engine");
+    }
+
+    @Test
     void survives_pointer_deletion_by_recovering_version_from_the_jar(@TempDir Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));

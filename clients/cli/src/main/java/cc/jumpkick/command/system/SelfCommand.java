@@ -83,7 +83,7 @@ public final class SelfCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage this jk installation (update, nuke)";
+        return "Manage this jk installation (update, rollback, nuke)";
     }
 
     @Override
@@ -94,6 +94,7 @@ public final class SelfCommand extends GroupCommand {
                 new SelfShelveCommand(),
                 new WriteLauncherSub(),
                 new RetireOldEnginesSub(),
+                new RollbackSub(),
                 new SetupTerminalSub(),
                 new SelfDesktopCommand(),
                 new SelfNukeCommand());
@@ -161,6 +162,43 @@ public final class SelfCommand extends GroupCommand {
                 return p.getFileName().toString().endsWith(".jar") ? Optional.of(p) : Optional.empty();
             } catch (RuntimeException | URISyntaxException e) {
                 return Optional.empty();
+            }
+        }
+    }
+
+    /**
+     * {@code jk self rollback} — put back the engine and PATH client the install before this one put
+     * in place, from the store that keeps them. Runs in this client alone, never asking an engine,
+     * so an install that left an engine or client failing every command can still be undone; the
+     * engines of this home are stopped first, and the next command starts the engine put back. A
+     * second rollback undoes the first.
+     */
+    static final class RollbackSub implements CliCommand {
+
+        @Override
+        public String name() {
+            return "rollback";
+        }
+
+        @Override
+        public String description() {
+            return "Undo the last install: its engine and client";
+        }
+
+        @Override
+        public int run(Invocation in) {
+            EngineInstall install = EngineInstall.current();
+            try {
+                EngineFleet.stopAll(false);
+                EngineInstall.RolledBack back = install.rollback(JkStores.storeCas(), JkDirs.binDir());
+                CommandWedge.printOk(
+                        "Rollback",
+                        "jk-engine " + back.version() + " (" + back.engineJar().getFileName() + ")"
+                                + (back.client() == null ? "; the client is unchanged" : " and its client"));
+                return Exit.SUCCESS;
+            } catch (IOException e) {
+                CommandWedge.printFail("Rollback", e.getMessage());
+                return Exit.FAILURE;
             }
         }
     }
@@ -647,6 +685,8 @@ public final class SelfCommand extends GroupCommand {
             }
             EngineInstall.Materialized engine =
                     install.materialize(prepared.version(), cas, prepared.engineSha256(), downgrade);
+            // A native client is named beside its engine, so `jk self rollback` can put both back.
+            if (prepared.client() != PreparedUpdate.Client.JVM) install.recordClient(prepared.clientSha256());
             keepWhatsNew(install);
             PreparedUpdate.delete(install.engineHome());
             StoreCasGc.afterInstall();

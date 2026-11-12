@@ -928,7 +928,11 @@ public final class InstallCommand {
                 }
                 return jvmLauncher;
             }
-            return installProductBin(Path.of(plan.linkSrcs().get(0)), binDir(), JkStores.storeCas());
+            return installProductBin(
+                    Path.of(plan.linkSrcs().get(0)),
+                    binDir(),
+                    JkStores.storeCas(),
+                    new EngineInstall(JkDirs.productLib()));
         }
         // The jars land first and the launcher last: a launcher on PATH never names a jar that is
         // not there yet.
@@ -953,9 +957,20 @@ public final class InstallCommand {
      * process running this install keeps its inode; {@code jkx} is re-linked to the new binary.
      */
     public static Path installProductBin(Path builtBinary, Path binDir, Cas cas) throws IOException {
+        return installProductBin(builtBinary, binDir, cas, null);
+    }
+
+    /**
+     * As {@link #installProductBin(Path, Path, Cas)}, naming the client in the engine's install
+     * pointer ({@link EngineInstall#recordClient}), which keeps the one it replaces in the store for
+     * {@code jk self rollback}.
+     */
+    public static Path installProductBin(Path builtBinary, Path binDir, Cas cas, @Nullable EngineInstall pointer)
+            throws IOException {
         String sha = Hashing.sha256Hex(builtBinary);
         cas.putFile(builtBinary, sha);
         EngineInstall.installBinaries(cas.pathFor(sha), binDir);
+        if (pointer != null) pointer.recordClient(sha);
         return binDir.resolve(BuildLayout.nativeExecutableFileName("jk"));
     }
 
