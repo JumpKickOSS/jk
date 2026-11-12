@@ -12,6 +12,7 @@ import cc.jumpkick.engine.journal.RunSnapshots;
 import cc.jumpkick.engine.plugin.AsOneStep;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
@@ -43,6 +44,14 @@ class LearnedHeapRetryTest {
     @Test
     void a_suite_that_outgrows_its_first_heap_passes_on_one_retry_and_the_next_run_needs_none(@TempDir Path dir)
             throws Exception {
+        // A job's request carries its heap plan, where the heaps jk chose for its forks are recorded.
+        Request.detached().with(JvmOptions.PLAN, new JvmOptions.PlannedHeap()).call(() -> {
+            outgrowsItsFirstHeap(dir);
+            return null;
+        });
+    }
+
+    private static void outgrowsItsFirstHeap(Path dir) throws Exception {
         Path home = fakeJdk(dir);
         Path classes = Files.createDirectories(dir.resolve("classes"));
         Path cache = Files.createDirectories(dir.resolve("cache"));
