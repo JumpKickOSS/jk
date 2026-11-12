@@ -78,6 +78,13 @@ public interface BuildPlanListener {
     default void testClassStarted(String step, String className) {}
 
     /**
+     * What the run's estimate priced {@code step} at and which layer priced it ({@code
+     * StepCost.Rung}), said just before its {@link #stepFinish}; not said for a step it did not price.
+     * A listener that wraps others must pass it on, or the run's record loses it.
+     */
+    default void stepPriced(String step, long predictedMs, String rung) {}
+
+    /**
      * @param duration the step's wall clock, queue wait included
      * @param waited the part of that wall the step spent blocked on a shared resource ({@link
      *     TaskContext#waited}); {@code duration - waited} is the step's own work
