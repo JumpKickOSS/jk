@@ -1122,16 +1122,16 @@ final class PlannerGuards {
 
     // ---- forecast ---------------------------------------------------------------------------
 
-    /** The module lane's price: its verdict under the lane's key, stale whenever the compile runs. */
+    /** The module lane's price: its verdict under the plan's lane key, stale whenever the compile runs. */
     static TaskForecast.@Nullable Task forecastModuleLane(ForecastScope s) throws Exception {
         return GuardKeys.forecastModuleLane(
-                        s.dir, s.prepared().parsed().layout(), s.actionCache, s.force || s.compileDirty, s.skipTests)
+                        s.dir, s.prepared().parsed().layout(), s.actionCache, s.force || s.compileDirty, s.testsIndexed)
                 .orElse(null);
     }
 
     /** A root lane's price at the invocation root: its verdict under the lane's key. */
     static TaskForecast.@Nullable Task forecastRootLane(ForecastScope s, String lane) {
-        if (!PlannerResources.invocationRoot(s.dir) || lanesSkipped(s.skipTests, guardRequested())) return null;
+        if (!PlannerResources.invocationRoot(s.dir) || s.guardLanesSkipped) return null;
         Optional<TaskForecast.Task> verdict =
                 switch (lane) {
                     case TaskNames.GUARD_MODEL -> GuardKeys.forecastModelLane(s.dir, s.project, s.actionCache);

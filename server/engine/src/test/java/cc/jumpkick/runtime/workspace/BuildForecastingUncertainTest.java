@@ -10,8 +10,8 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -61,15 +61,14 @@ class BuildForecastingUncertainTest {
         assumeFalse(Files.isReadable(lock), "running as a user the permission bits do not bind");
         try {
             Path cache = tmp.resolve("cache");
-            var preflight =
-                    BuildForecasting.forecastWithFingerprints(graph, cache, false, tmp, WorkspaceTarget.PACKAGE);
+            var preflight = BuildForecasting.forecastWithFingerprints(graph, cache, false, tmp);
             assertThat(preflight.dirty()).contains(module);
             assertThat(preflight.reasons()).containsKey(module);
             assertThat(preflight.reasons().get(module))
                     .startsWith("rebuilt because the preflight could not read ")
                     .contains("jk-lock.toml");
 
-            ExplainPlan plan = BuildForecasting.explainFromGraph(graph, cache, false, tmp, null);
+            ExplainPlan plan = BuildForecasting.explainFromGraph(graph, cache, tmp, BuildKnobs.DEFAULTS);
             assertThat(plan.hasErrors()).isFalse();
             TaskForecast.Module explained = plan.modules().stream()
                     .filter(m -> m.dir().toAbsolutePath().normalize().equals(module))

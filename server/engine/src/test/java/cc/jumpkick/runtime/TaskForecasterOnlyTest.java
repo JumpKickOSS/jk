@@ -8,7 +8,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -56,7 +56,7 @@ class TaskForecasterOnlyTest {
                 .dir();
 
         List<TaskForecast.Module> plan =
-                ForecastWalk.of(graph, cas, actionCache, cache, true, WorkspaceTarget.PACKAGE, null, Set.of(a));
+                ForecastWalk.of(graph, cas, actionCache, cache, BuildKnobs.DEFAULTS.withSkipTests(true), Set.of(a));
 
         Map<String, Boolean> dirty = plan.stream()
                 .collect(Collectors.toMap(m -> m.dir().getFileName().toString(), TaskForecast.Module::dirty));

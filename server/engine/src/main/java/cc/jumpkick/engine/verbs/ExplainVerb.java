@@ -19,6 +19,7 @@ import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -106,13 +107,17 @@ public final class ExplainVerb implements HostedVerb {
                         etaJdksDir,
                         (stage, done, total, label) ->
                                 host.sendQuiet(writer, ProtoEvents.preflight(stage, done, total, label)));
-                ExplainReport.Knobs knobs =
-                        new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests(), selection);
+                // The knobs of the jk build being explained: the session carries its variant and env.
+                BuildKnobs knobs = BuildKnobs.of(session)
+                        .withProfile(req.profile())
+                        .withSkipTests(req.skipTests())
+                        .withSelection(selection);
+                int budget = maxModuleConcurrency;
                 // A quick forecast (jk status) must not start a compiler worker to plan a compile.
                 ExplainReport report = ScopedValue.where(
                                 JavaCompile.PLAN_WORKERS,
                                 req.quick() ? JavaCompile.PlanWorkers.WARM : JavaCompile.PlanWorkers.ANY)
-                        .call(() -> ExplainReport.compute(entryDir, entryBuild, cache, session, knobs));
+                        .call(() -> ExplainReport.compute(entryDir, entryBuild, cache, session, knobs, budget));
                 ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {
                     for (String err : plan.errors()) {

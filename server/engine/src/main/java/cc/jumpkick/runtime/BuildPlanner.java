@@ -24,6 +24,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -269,8 +270,7 @@ public final class BuildPlanner {
                 boolean testOnly,
                 boolean compileOnly) {
             Session session = SessionContext.current();
-            // testOnly still runs tests unless --scripts-only (guard scripts, no JUnit).
-            boolean skip = session.testSelection().scriptsOnly() || (!testOnly && skipTests);
+            boolean skip = BuildKnobs.skipsTests(session.testSelection(), testOnly, skipTests);
             int estimatedTestCount =
                     skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, CompileSupport.isSimpleLayout(dir));
             return of(dir, cache, session)

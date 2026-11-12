@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.task.VerifyCache;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -147,11 +148,13 @@ final class WorkspaceFinalPhase {
         medianRate(run.observedRates()).ifPresent(rate -> Calibration.refine(rate, now));
 
         if (shouldStoreCleanMemo(request)) {
+            // Under the knobs the preflight read the memo with: the goal's test policy applied.
+            BuildKnobs knobs = BuildKnobs.of(request);
             certifyClean(
                     request.entryDir(),
                     graph,
-                    request.skipTests(),
-                    request.profile(),
+                    knobs.skipTests(),
+                    knobs.profile(),
                     resources.preflight().forecast(),
                     ModuleInputProvenance.RunTrees.transforms(request.cache()));
         }

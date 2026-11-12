@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
@@ -9,9 +10,8 @@ import cc.jumpkick.runtime.EffectiveManifest;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
-import cc.jumpkick.wire.runtime.WorkspaceSpec;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,7 +27,7 @@ public final class ForecastWalk {
 
     private ForecastWalk() {}
 
-    /** Every module through PACKAGE, tests included. */
+    /** Every module through PACKAGE, tests included, under the ambient session's knobs. */
     public static List<TaskForecast.Module> of(BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache) {
         return of(graph, cas, actionCache, cache, false);
     }
@@ -35,43 +35,34 @@ public final class ForecastWalk {
     /** As above, without the test steps under {@code skipTests}. */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache, boolean skipTests) {
-        return of(graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE);
-    }
-
-    /** As above through {@code target}'s phase: COMPILE, TEST or PACKAGE. */
-    public static List<TaskForecast.Module> of(
-            BuildGraph.Result graph,
-            Cas cas,
-            ActionCache actionCache,
-            Path cache,
-            boolean skipTests,
-            WorkspaceTarget target) {
-        return of(graph, cas, actionCache, cache, skipTests, target, null, null);
+        return of(
+                graph,
+                cas,
+                actionCache,
+                cache,
+                BuildKnobs.of(SessionContext.current()).withSkipTests(skipTests),
+                null);
     }
 
     /**
-     * As above under {@code profile}, walking only {@code only} when it is not null (every other
-     * module reported with no work).
+     * Every module's plan under {@code knobs}, the build's own: its goal through that goal's phase
+     * (COMPILE, TEST or PACKAGE), its test policy, profile, variant and client env. Walks only
+     * {@code only} when it is not null, every other module reported with no work.
      */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph,
             Cas cas,
             ActionCache actionCache,
             Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
-            @Nullable String profile,
+            BuildKnobs knobs,
             @Nullable Set<Path> only) {
         if (graph.topoOrder().isEmpty()) return List.of();
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) moduleDirs.add(u.dir());
         Path entry = graph.topoOrder().getLast().dir();
-        WorkspaceRequest request = new WorkspaceRequest(
-                        entry, cache, null, 0, profile, skipTests, false, 0, null, false, false)
-                .withSpec(WorkspaceSpec.of(target));
+        WorkspaceRequest request = knobs.request(entry, cache);
         Set<Path> jarConsumed = WorkspacePreflightPhase.jarConsumed(graph);
         Set<Path> launched = WorkspacePreflightPhase.launchedAssemblies(graph);
-        // Every module's plan takes the request's variant and client env from the same knobs.
         EffectiveManifest.Selection manifest =
                 EffectiveManifest.Selection.of(ModulePipeline.inputs(entry, request, moduleDirs, false));
         TaskForecaster.Planner planner = new TaskForecaster.Planner() {
@@ -87,6 +78,6 @@ public final class ForecastWalk {
                 return manifest;
             }
         };
-        return TaskForecaster.of(graph, cas, actionCache, cache, skipTests, target, profile, only, planner);
+        return TaskForecaster.of(graph, cas, actionCache, cache, knobs, only, planner);
     }
 }

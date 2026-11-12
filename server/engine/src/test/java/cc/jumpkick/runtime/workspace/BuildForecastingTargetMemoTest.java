@@ -10,6 +10,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -79,20 +80,20 @@ class BuildForecastingTargetMemoTest {
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
         ModuleInputProvenance.record(tmp, graph, fps.fingerprints());
 
-        var clean = BuildForecasting.forecastWithFingerprints(
-                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);
+        var clean =
+                BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), tmp, BuildKnobs.DEFAULTS, false);
         assertThat(clean.dirty()).isEmpty();
         assertThat(clean.restoreNeeded()).isEmpty();
 
         Files.delete(layout.mainJar());
-        var missing = BuildForecasting.forecastWithFingerprints(
-                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);
+        var missing =
+                BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), tmp, BuildKnobs.DEFAULTS, false);
         assertThat(missing.restoreNeeded()).isNotEmpty();
 
         Files.write(layout.mainJar(), new byte[] {1, 2, 3});
         Files.writeString(tmp.resolve("src/main/java/App.java"), "class App { int changed; }\n");
-        var edited = BuildForecasting.forecastWithFingerprints(
-                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);
+        var edited =
+                BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), tmp, BuildKnobs.DEFAULTS, false);
         assertThat(edited.dirty()).isNotEmpty();
     }
 }

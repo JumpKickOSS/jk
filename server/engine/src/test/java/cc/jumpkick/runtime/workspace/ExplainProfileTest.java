@@ -13,8 +13,8 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.SettledHostCalibration;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -72,15 +72,14 @@ class ExplainProfileTest {
 
         Session session = Session.defaults().withCacheDir(cache);
         ExplainPlan strict = ExplainReport.compute(
-                        tmp, parsed, cache, session, new ExplainReport.Knobs("strict", 0, false))
+                        tmp, parsed, cache, session, BuildKnobs.DEFAULTS.withProfile("strict"), 0)
                 .plan();
         assertThat(dirty(strict))
                 .as("explain --profile strict reads the strict build's memo")
                 .isEmpty();
         assertThat(dirty(strict)).isEqualTo(buildDirty(session, graph, cache, tmp, "strict"));
 
-        ExplainPlan plain = ExplainReport.compute(tmp, parsed, cache, session, ExplainReport.Knobs.defaults())
-                .plan();
+        ExplainPlan plain = ExplainReport.compute(tmp, parsed, cache, session).plan();
         assertThat(dirty(plain))
                 .as("the default profile has no memo of its own: explain and build both schedule the module")
                 .isNotEmpty();
@@ -101,7 +100,7 @@ class ExplainProfileTest {
         BuildForecasting.Preflight pf = SessionContext.where(
                 session,
                 () -> BuildForecasting.forecastWithFingerprints(
-                        graph, cache, false, entryDir, WorkspaceTarget.PACKAGE, false, profile));
+                        graph, cache, entryDir, BuildKnobs.DEFAULTS.withProfile(profile), false));
         return Stream.concat(pf.dirty().stream(), pf.restoreNeeded().stream())
                 .map(BuildGraph::canonicalPath)
                 .collect(Collectors.toSet());

@@ -75,7 +75,7 @@ class GuardSuiteModelKeyTest {
     }
 
     private static TaskForecast.Task lane(Path root, BuildLayout layout, ActionCache cache) {
-        return GuardKeys.forecastModuleLane(root, layout, cache, false, false).orElseThrow();
+        return GuardKeys.forecastModuleLane(root, layout, cache, false, true).orElseThrow();
     }
 
     private static void compile(Path src, Path out, String pkg, String simpleName, String source) throws Exception {

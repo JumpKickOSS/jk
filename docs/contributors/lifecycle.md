@@ -80,7 +80,14 @@ keys siblings by (the restore ledger, the dependencies' dirtiness and API hints)
 the plan `ModulePipeline` builds for the goal's phase and prices its steps in dependency order,
 the main compiles first among the steps ready at once. Each verdict is reported under its step's
 name. Once every step is priced the module adds its own verdicts: `restore-outputs` when every step
-is cached but an output is missing, `order-check` when an order-after sibling is rebuilding.
+is cached but an output is missing, `order-check` when an order-after sibling is rebuilding. The
+outputs it checks are the ones the goal's plan produces: a `jk compile` brings back no jar.
+
+The walk plans every module under the build's `BuildKnobs`, the request's knobs read once: its
+goal, the goal's test policy applied (`jk compile` runs no tests whatever `--skip-tests` says),
+the profile, the variant and the client env, and the module selection. The build's preflight takes
+them from its `WorkspaceRequest`, `jk explain` from its flags and session, so a forecast prices the
+plan the build runs.
 
 The preflight decides which modules a run schedules in two parts:
 

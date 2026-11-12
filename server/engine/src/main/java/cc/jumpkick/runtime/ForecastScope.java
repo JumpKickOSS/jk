@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
@@ -23,7 +24,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.SourceApiIndex;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,7 +52,25 @@ public final class ForecastScope implements StepForecast.Scope {
     final BuildGraph.BuildUnit u;
     final TaskForecaster.DepDirtiness dep;
     final boolean force;
+
+    /** The request's knobs the module's plan is built under: its goal, profile and variant. */
+    final BuildKnobs knobs;
+
+    /**
+     * The plan runs no JUnit, as its {@link BuildPlanner.Inputs#skipTests} says: the goal's test
+     * policy, or a guard-scripts-only selection.
+     */
     final boolean skipTests;
+
+    /**
+     * The plan carries no guard lane, as {@code PlannerGuards.detect} skips them: tests skipped
+     * outside a test goal and no {@code --guard}.
+     */
+    final boolean guardLanesSkipped;
+
+    /** The plan's module lane indexes the test classes, as {@code PlannerGuards.indexesTestClasses} says. */
+    final boolean testsIndexed;
+
     final Cas cas;
     final ClasspathResolver resolver;
     final ActionCache actionCache;
@@ -66,9 +85,7 @@ public final class ForecastScope implements StepForecast.Scope {
     final RestoredOutputs restored;
 
     final Map<Path, TaskForecaster.ModuleHint> hints;
-    final WorkspaceTarget target;
     final @Nullable Path workerJar;
-    final @Nullable String profileName;
     final JkBuild project;
     final Path dir;
     final Path lockFile;
@@ -150,21 +167,23 @@ public final class ForecastScope implements StepForecast.Scope {
             BuildGraph.BuildUnit u,
             TaskForecaster.DepDirtiness dep,
             boolean force,
-            boolean skipTests,
+            BuildKnobs knobs,
             Cas cas,
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
             RestoredOutputs restored,
             Map<Path, TaskForecaster.ModuleHint> hints,
-            WorkspaceTarget target,
             @Nullable Path workerJar,
-            @Nullable String profileName,
             JkBuild project) {
         this.u = u;
         this.dep = dep;
         this.force = force;
-        this.skipTests = skipTests;
+        this.knobs = knobs;
+        TestSelection selection = SessionContext.current().testSelection();
+        this.skipTests = knobs.planSkipsTests(selection);
+        this.guardLanesSkipped = skipTests && !knobs.target().testOnly() && !selection.runGuardScripts();
+        this.testsIndexed = !knobs.target().compileOnly() && !skipTests;
         this.cas = cas;
         this.resolver = resolver;
         this.actionCache = actionCache;
@@ -172,9 +191,7 @@ public final class ForecastScope implements StepForecast.Scope {
         this.cache = cache;
         this.restored = restored;
         this.hints = hints;
-        this.target = target;
         this.workerJar = workerJar;
-        this.profileName = profileName;
         this.project = project;
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
@@ -197,15 +214,13 @@ public final class ForecastScope implements StepForecast.Scope {
                 unit,
                 TaskForecaster.DepDirtiness.NONE,
                 false,
-                false,
+                BuildKnobs.of(SessionContext.current()),
                 cas,
                 new ClasspathResolver(cas),
                 actionCache,
                 cache,
                 new RestoredOutputs(actionCache),
                 new ConcurrentHashMap<>(),
-                WorkspaceTarget.PACKAGE,
-                null,
                 null,
                 project);
     }
@@ -293,7 +308,7 @@ public final class ForecastScope implements StepForecast.Scope {
         // The build's own derivation, against the same lock and the same --profile: forecast
         // action keys must match the keys the build will actually use, and a profile whose
         // javac args differ from the default's keys a different compile.
-        List<String> javacArgs = PlannerSetup.effectiveJavacArgs(project, dir, lock, profileName);
+        List<String> javacArgs = PlannerSetup.effectiveJavacArgs(project, dir, lock, knobs.profile());
         // Resolved once: the declarations decide both the generated source roots compile-main
         // folds in and, at package time, whether jk packs the jar or a plugin does.
         ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);
@@ -676,20 +691,24 @@ public final class ForecastScope implements StepForecast.Scope {
         // from the tree would lack the same classes, build after build, until something
         // else moved the key. The restore brings the record's whole tree back.
         boolean incomplete = false;
+        // The jar and what is packaged beside it are outputs of a plan that packages: a compile or
+        // a test run that packages nothing (a sibling reads none of its jar) never brings them back.
+        boolean packages = knobs.target().packages() || verdicts.containsKey(TaskNames.PACKAGE_JAR);
         if (!p.parsed().noSources()) {
             incomplete = TaskForecaster.classesDirHasContent(layout.classesDir())
                     && !compileOutputsOnDisk(layout.classesDir());
-            outputsAbsent = !Files.isRegularFile(layout.mainJar())
-                    || !TaskForecaster.classesDirHasContent(layout.classesDir())
+            outputsAbsent = !TaskForecaster.classesDirHasContent(layout.classesDir())
                     || incomplete
-                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
-                    || ModuleOutputs.jlinkImageMissing(project, layout)
+                    || (packages
+                            && (!Files.isRegularFile(layout.mainJar())
+                                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
+                                    || ModuleOutputs.jlinkImageMissing(project, layout)))
                     || nativeBinaryToRestore;
         } else if (!project.isWorkspaceRoot()) {
             // Source-less member: the build still packages its jar, and a resources-only
             // module's classes tree (copied resources) is consumed straight off sibling
             // classpaths, so either missing is a missing output too.
-            outputsAbsent = !Files.isRegularFile(layout.mainJar())
+            outputsAbsent = (packages && !Files.isRegularFile(layout.mainJar()))
                     || (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()
                             && !TaskForecaster.classesDirHasContent(layout.classesDir()));
         }

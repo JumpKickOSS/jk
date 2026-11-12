@@ -35,7 +35,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.SourceApiIndex;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,17 +80,15 @@ public final class TaskForecaster {
      * step of the plan {@code planner} builds for it. {@code only} walks just those modules and
      * reports every other one with no work: for a caller that already knows the rest are clean and
      * their outputs present — a preflight memo hit, whose dirty set is build logic or a stale row
-     * and never moves a consumer's inputs. Null walks all. {@code profile} keys the compile steps
-     * with that profile's javac args, as the build does.
+     * and never moves a consumer's inputs. Null walks all. {@code knobs} are the ones {@code
+     * planner} plans under, which the steps' predictors read as the build's steps do.
      */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph,
             Cas cas,
             ActionCache actionCache,
             Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
-            @Nullable String profile,
+            BuildKnobs knobs,
             @Nullable Set<Path> only,
             Planner planner) {
         // One resolver for the whole walk: every module resolves its classpath against the same
@@ -108,8 +106,8 @@ public final class TaskForecaster {
             // The walk reads the same classpath entry once per module that names it, and a
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
             // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
-            return JavaCompilerHost.scoped(() -> ClasspathFingerprint.withEntryMemo(() -> forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only, planner)));
+            return JavaCompilerHost.scoped(() -> ClasspathFingerprint.withEntryMemo(
+                    () -> forecastModules(graph, cas, resolver, actionCache, cache, knobs, worker, only, planner)));
         } catch (RuntimeException | Error direct) {
             throw direct;
         } catch (Exception impossible) {
@@ -140,10 +138,8 @@ public final class TaskForecaster {
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
+            BuildKnobs knobs,
             @Nullable Path workerJar,
-            @Nullable String profile,
             @Nullable Set<Path> only,
             Planner planner) {
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
@@ -194,20 +190,7 @@ public final class TaskForecaster {
             DepDirtiness dep = depDirtiness(u, reads.getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
             TaskForecast.Module m = forecastModule(
-                    u,
-                    dep,
-                    force,
-                    skipTests,
-                    cas,
-                    resolver,
-                    actionCache,
-                    cache,
-                    restored,
-                    hints,
-                    target,
-                    workerJar,
-                    profile,
-                    planner);
+                    u, dep, force, knobs, cas, resolver, actionCache, cache, restored, hints, workerJar, planner);
             Perf.end("forecast " + u.coord(), t0);
             forecast.put(u.dir(), m);
             // Seed main-output dirtiness for *compile* consumers only when this module's
@@ -447,31 +430,27 @@ public final class TaskForecaster {
             BuildGraph.BuildUnit u,
             DepDirtiness dep,
             boolean force,
-            boolean skipTests,
+            BuildKnobs knobs,
             Cas cas,
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
             RestoredOutputs restored,
             Map<Path, ModuleHint> hints,
-            WorkspaceTarget target,
             @Nullable Path workerJar,
-            @Nullable String profile,
             Planner planner) {
         ForecastScope s = new ForecastScope(
                 u,
                 dep,
                 force,
-                skipTests,
+                knobs,
                 cas,
                 resolver,
                 actionCache,
                 cache,
                 restored,
                 hints,
-                target,
                 workerJar,
-                profile,
                 effectiveManifest(u, planner.manifest()));
         try {
             List<Task> steps = forecastOrder(planner.plan(u).steps());

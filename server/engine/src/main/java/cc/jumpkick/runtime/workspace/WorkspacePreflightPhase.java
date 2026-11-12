@@ -29,6 +29,7 @@ import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -324,11 +325,9 @@ public final class WorkspacePreflightPhase {
                             .call(() -> BuildForecasting.forecastWithFingerprints(
                                     graph,
                                     request.cache(),
-                                    request.skipTests(),
                                     request.entryDir(),
-                                    core,
-                                    true,
-                                    request.profile()));
+                                    BuildKnobs.of(request).withTarget(core),
+                                    true));
                 } catch (RuntimeException e) {
                     throw e;
                 } catch (Exception e) {

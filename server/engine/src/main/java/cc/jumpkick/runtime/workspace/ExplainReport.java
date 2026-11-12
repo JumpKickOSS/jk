@@ -5,10 +5,9 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Path;
-import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /**
  * One {@code jk explain} answer for every surface: the forecast plan plus both ETAs — the
@@ -17,43 +16,22 @@ import org.jspecify.annotations.Nullable;
  */
 public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
 
-    /**
-     * ETA inputs the session does not carry; {@link #defaults()} is the bare {@code jk explain}
-     * shape. Everything else the estimate needs (workers, JDK root, verbosity, test parallelism)
-     * is read off the session so it cannot differ from the build's.
-     */
-    public record Knobs(
-            @Nullable String profile,
-            int maxModuleConcurrency,
-            boolean skipTests,
-            /**
-             * The module dirs a {@code -m}/{@code --affected-since} selector resolved to; the plan
-             * prices their cone — selection plus prerequisites — as {@code jk build} with the same
-             * selector schedules it. Empty: the whole workspace.
-             */
-            Set<Path> selection) {
-
-        public Knobs {
-            selection = selection == null ? Set.of() : Set.copyOf(selection);
-        }
-
-        public Knobs(@Nullable String profile, int maxModuleConcurrency, boolean skipTests) {
-            this(profile, maxModuleConcurrency, skipTests, Set.of());
-        }
-
-        public static Knobs defaults() {
-            return new Knobs(null, 0, false);
-        }
+    /** The bare {@code jk explain}: {@code jk build}'s knobs under {@code session}, no module budget. */
+    public static ExplainReport compute(Path entryDir, JkBuild build, Path cache, Session session) throws Exception {
+        return compute(entryDir, build, cache, session, BuildKnobs.of(session), 0);
     }
 
     /**
-     * Forecast + ETAs under {@code session}. When the session already prices a rebuild
-     * ({@code config.rebuild}/{@code force}), the incremental ETA <em>is</em> the full one.
+     * Forecast + ETAs under {@code session} and the {@code knobs} of the {@code jk build} being
+     * explained; {@code maxModuleConcurrency} is its module budget, 0 for auto. Everything else the
+     * estimate needs (workers, JDK root, verbosity, test parallelism) is read off the session so it
+     * cannot differ from the build's. When the session already prices a rebuild ({@code
+     * config.rebuild}/{@code force}), the incremental ETA <em>is</em> the full one.
      */
-    public static ExplainReport compute(Path entryDir, JkBuild build, Path cache, Session session, Knobs k)
+    public static ExplainReport compute(
+            Path entryDir, JkBuild build, Path cache, Session session, BuildKnobs knobs, int maxModuleConcurrency)
             throws Exception {
-        ExplainPlan plan = SessionContext.where(
-                session, () -> BuildService.explain(entryDir, build, cache, k.skipTests(), k.profile(), k.selection()));
+        ExplainPlan plan = SessionContext.where(session, () -> BuildService.explain(entryDir, build, cache, knobs));
         if (plan.hasErrors()) {
             return new ExplainReport(plan, 0L, 0L);
         }
@@ -65,11 +43,11 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
                         cache,
                         session.requestedTestWorkers(),
                         session.jdksDir(),
-                        k.profile(),
-                        k.skipTests(),
+                        knobs.profile(),
+                        knobs.skipTests(),
                         session.verbose(),
                         session.parallelTests(),
-                        k.maxModuleConcurrency()));
+                        maxModuleConcurrency));
         JkConfig config = session.config();
         boolean alreadyFull = config.rebuildOr(false) || config.forceOr(false);
         long full;
@@ -85,11 +63,11 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
                             cache,
                             session.requestedTestWorkers(),
                             session.jdksDir(),
-                            k.profile(),
-                            k.skipTests(),
+                            knobs.profile(),
+                            knobs.skipTests(),
                             session.verbose(),
                             session.parallelTests(),
-                            k.maxModuleConcurrency()));
+                            maxModuleConcurrency));
         }
         return new ExplainReport(plan, eta, full);
     }

@@ -201,7 +201,7 @@ final class PlannerTestForecast {
                         s.dir,
                         s.project,
                         layout,
-                        s.profileName,
+                        s.knobs.profile(),
                         prepared.parsed().pkgDecls(),
                         prepared.classpaths(),
                         new TestStamp.CompileTestKeys(

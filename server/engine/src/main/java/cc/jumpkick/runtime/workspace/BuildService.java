@@ -11,6 +11,7 @@ import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkModel;
@@ -126,20 +127,14 @@ public final class BuildService {
     }
 
     /**
-     * Forecast the build without running it, under the request's {@code --skip-tests} and {@code
-     * --profile}, confined to {@code selection}'s cone — the modules {@code jk build -m} with the
-     * same selection schedules, priced the way its countdown seed prices them. An empty selection
-     * is the whole workspace. See {@link BuildForecasting#explain}.
+     * Forecast the build without running it, under the request's {@code knobs}, confined to their
+     * selection's cone — the modules {@code jk build -m} with the same selection schedules, priced
+     * the way its countdown seed prices them. An empty selection is the whole workspace. See {@link
+     * BuildForecasting#explain}.
      */
-    public static ExplainPlan explain(
-            Path entryDir,
-            JkBuild entryBuild,
-            Path cache,
-            boolean skipTests,
-            @Nullable String profile,
-            Set<Path> selection)
+    public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, BuildKnobs knobs)
             throws IOException {
-        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests, profile, selection);
+        return BuildForecasting.explain(entryDir, entryBuild, cache, knobs);
     }
 
     /**

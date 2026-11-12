@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.SettledHostCalibration;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,12 +44,13 @@ class ExplainSelectionConeTest {
         Path b = BuildGraph.canonicalPath(ws.resolve("b"));
         Path c = BuildGraph.canonicalPath(ws.resolve("c"));
 
-        ExplainPlan whole = BuildForecasting.explainFromGraph(graph, cache, false, null, null);
+        ExplainPlan whole = BuildForecasting.explainFromGraph(graph, cache, null, BuildKnobs.DEFAULTS);
         assertThat(whole.modules())
                 .extracting(m -> BuildGraph.canonicalPath(m.dir()))
                 .contains(a, b, c);
 
-        ExplainPlan cone = BuildForecasting.explainSelection(graph, cache, false, null, Set.of(c));
+        ExplainPlan cone =
+                BuildForecasting.explainSelection(graph, cache, BuildKnobs.DEFAULTS.withSelection(Set.of(c)));
 
         assertThat(cone.modules())
                 .extracting(m -> BuildGraph.canonicalPath(m.dir()))
@@ -89,7 +91,7 @@ class ExplainSelectionConeTest {
         Path ws = workspace(tmp);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         var root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        ExplainPlan plan = BuildService.explain(ws, root, cache, false, null, Set.of());
+        ExplainPlan plan = BuildService.explain(ws, root, cache, BuildKnobs.DEFAULTS);
         assertThat(plan.modules())
                 .extracting(m -> m.dir().getFileName().toString())
                 .contains("a", "b", "c");

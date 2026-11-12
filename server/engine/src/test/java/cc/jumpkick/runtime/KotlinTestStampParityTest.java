@@ -20,7 +20,7 @@ import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -106,8 +106,8 @@ class KotlinTestStampParityTest {
                         .isPresent();
 
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
-                List<TaskForecast.Module> modules = ForecastWalk.of(
-                        graph, JkStores.storeCas(), actionCache, cache, false, WorkspaceTarget.PACKAGE, null, null);
+                List<TaskForecast.Module> modules =
+                        ForecastWalk.of(graph, JkStores.storeCas(), actionCache, cache, BuildKnobs.DEFAULTS, null);
                 assertThat(modules).hasSize(1);
                 TaskForecast.Task runTests = modules.getFirst().steps().stream()
                         .filter(step -> step.name().equals(TaskNames.RUN_TESTS))

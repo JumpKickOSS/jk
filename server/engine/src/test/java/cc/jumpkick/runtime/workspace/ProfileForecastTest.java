@@ -24,7 +24,7 @@ import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.TestInputs;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -99,11 +99,17 @@ class ProfileForecastTest {
                         .as("the profile's -Werror keys a different compile")
                         .isFalse();
                 BuildForecasting.Preflight preflight = BuildForecasting.forecastWithFingerprints(
-                        graph, cache, false, project, WorkspaceTarget.PACKAGE, false, "strict");
+                        graph, cache, project, BuildKnobs.DEFAULTS.withProfile("strict"), false);
                 assertThat(preflight.dirty())
                         .as("the preflight schedules the module")
                         .contains(project);
-                assertThat(BuildService.explain(project, parsed, cache, false, "strict", Set.of(project))
+                assertThat(BuildService.explain(
+                                        project,
+                                        parsed,
+                                        cache,
+                                        BuildKnobs.DEFAULTS
+                                                .withProfile("strict")
+                                                .withSelection(Set.of(project)))
                                 .modules())
                         .as("explain -m under the profile prices the compile the default record does not cover")
                         .anyMatch(TaskForecast.Module::dirty);
@@ -132,7 +138,7 @@ class ProfileForecastTest {
     private static List<TaskForecast.Module> forecast(BuildGraph.Result graph, Path cache, @Nullable String profile) {
         Cas cas = JkStores.storeCas();
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-        return ForecastWalk.of(graph, cas, actionCache, cache, false, WorkspaceTarget.PACKAGE, profile, null);
+        return ForecastWalk.of(graph, cas, actionCache, cache, BuildKnobs.DEFAULTS.withProfile(profile), null);
     }
 
     private static TaskForecast.Task compileMain(List<TaskForecast.Module> modules) {

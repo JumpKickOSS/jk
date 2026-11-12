@@ -136,13 +136,13 @@ final class GuardKeys {
     }
 
     /**
-     * The forecast's {@code guard} step for one module, or empty when the workspace has no guards
-     * or {@code --skip-tests} skips the lanes. CACHED only when the facts index is current and the lane's verdict is in the cache; RUN
-     * otherwise, which is what makes the module dirty.
+     * The forecast's {@code guard} step for one module, or empty when the workspace has no guards.
+     * {@code testsIndexed} is whether the plan's lane indexes the test classes ({@link
+     * PlannerGuards#indexesTestClasses}). CACHED only when the facts index is current and the lane's
+     * verdict is in the cache; RUN otherwise, which is what makes the module dirty.
      */
     static Optional<TaskForecast.Task> forecastModuleLane(
-            Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean skipTests) {
-        if (PlannerGuards.lanesSkipped(skipTests, PlannerGuards.guardRequested())) return Optional.empty();
+            Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean testsIndexed) {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
         if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.guardRequested())) return Optional.empty();
@@ -151,7 +151,7 @@ final class GuardKeys {
         if (upstreamDirty) return Optional.of(run("guards · module recompiles"));
         try {
             LoadResult load = PlannerGuards.rules(g);
-            LaneProbe probe = probeModuleLane(root, dir, layout, load, !skipTests);
+            LaneProbe probe = probeModuleLane(root, dir, layout, load, testsIndexed);
             String key = probe.key();
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);

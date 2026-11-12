@@ -454,7 +454,7 @@ class CoexistenceBuildE2eTest {
     private static ExplainReport explain(Path dir, Path cache) throws Exception {
         JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
         Session session = Session.defaults().withWorkingDir(dir).withCacheDir(cache);
-        return ExplainReport.compute(dir, build, cache, session, ExplainReport.Knobs.defaults());
+        return ExplainReport.compute(dir, build, cache, session);
     }
 
     private static List<String> stepNames(ExplainReport report) {

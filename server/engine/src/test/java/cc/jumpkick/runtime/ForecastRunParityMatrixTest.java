@@ -9,6 +9,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
@@ -27,9 +28,10 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
-import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -58,7 +60,8 @@ import org.junit.jupiter.api.io.TempDir;
  * JVM flags and classpath, a plugin's provided jars on the test JVM's classpath, a Java module whose
  * compile classpath, processor path and test processor path each carry their own entries, and a
  * Kotlin module whose multi-release root compiles against the provided jars with no Java main
- * sources.
+ * sources. The request's knobs vary too: a {@code --variant}, {@code jk compile} and {@code
+ * --skip-tests} build, each forecast under the knobs it was built with.
  */
 @Tag("integration")
 class ForecastRunParityMatrixTest {
@@ -213,6 +216,39 @@ class ForecastRunParityMatrixTest {
         assertParity(ws, "src/com/example/Lib.kt");
     }
 
+    @Test
+    void a_variant_build() throws Exception {
+        // The selected value adds a source root the default does not compile.
+        Path ws = workspace("""
+                [variants.mode]
+                default = "a"
+                [variants.mode.a]
+                [variants.mode.b]
+                extra-src = ["src-b"]
+                """, Lib.JAVA);
+        write(ws.resolve("a/src-b/com/example/OnlyB.java"), """
+                package com.example;
+
+                public final class OnlyB {
+                    private OnlyB() {}
+                }
+                """);
+        assertParity(ws, "src/com/example/Lib.java", true, BuildKnobs.DEFAULTS.withVariant("mode=b"));
+    }
+
+    @Test
+    void jk_compile() throws Exception {
+        // No jar and no test classes: the goal never makes them, so none is missing.
+        Path ws = workspace(JAVA_MODULE, Lib.JAVA);
+        assertParity(ws, "src/com/example/Lib.java", true, BuildKnobs.DEFAULTS.withTarget(WorkspaceTarget.COMPILE));
+    }
+
+    @Test
+    void a_skip_tests_build() throws Exception {
+        Path ws = workspace(JAVA_MODULE, Lib.JAVA);
+        assertParity(ws, "src/com/example/Lib.java", false, BuildKnobs.DEFAULTS.withSkipTests(true));
+    }
+
     /**
      * Build {@code ws}, then: the walk and {@code jk explain} find every module clean; after one edit
      * of {@code edited} in module {@code a}, both find {@code a} and nothing else dirty.
@@ -227,38 +263,54 @@ class ForecastRunParityMatrixTest {
      * of the request the build made, and finds it.
      */
     private void assertParity(Path ws, String edited, boolean byKey) throws Exception {
+        assertParity(ws, edited, byKey, BuildKnobs.DEFAULTS);
+    }
+
+    /**
+     * As above with the build, the walk and {@code jk explain} under {@code knobs}; explain prices
+     * {@code jk build}, so a goal that does not package skips it.
+     */
+    private void assertParity(Path ws, String edited, boolean byKey, BuildKnobs knobs) throws Exception {
         Path cache = tmp.resolve("cache");
         lock(ws, cache);
-        build(ws, cache);
+        build(ws, cache, knobs);
 
-        assertCompileInputsAgree(ws, cache);
-        assertThat(dirty(walk(ws, cache))).as("the walk right after a build").isEmpty();
-        assertThat(dirty(explain(ws, cache)))
-                .as("jk explain right after a build")
+        assertCompileInputsAgree(ws, cache, knobs);
+        assertThat(dirty(walk(ws, cache, knobs)))
+                .as("the walk right after a build")
                 .isEmpty();
+        if (knobs.target().packages()) {
+            assertThat(dirty(explain(ws, cache, knobs)))
+                    .as("jk explain right after a build")
+                    .isEmpty();
+        }
 
         if (byKey) {
             Path a = ws.resolve("a");
             BuildLayout layout = BuildLayout.of(a, JkBuildParser.parse(a.resolve("jk.toml")));
             PathUtil.deleteRecursively(layout.compileStampDir());
-            assertThat(uncachedCompiles(walk(ws, cache)))
+            assertThat(uncachedCompiles(walk(ws, cache, knobs)))
                     .as("a's compiles without their freshness stamps")
                     .isEmpty();
 
             // Plugin-generated sources live in their step's scratch under target/: the build restores
             // them before its compiles read them, and the walk keys the compiles on them as restored.
             PathUtil.deleteRecursively(layout.moduleTargetDir());
-            assertThat(uncachedCompiles(walk(ws, cache)))
+            assertThat(uncachedCompiles(walk(ws, cache, knobs)))
                     .as("a's compiles once its target/ is gone")
                     .isEmpty();
         }
 
         Path source = ws.resolve("a").resolve(edited);
         Files.writeString(source, Files.readString(source) + "\n// edited\n");
-        assertThat(dirtyNames(walk(ws, cache))).as("the walk after editing a").containsExactly("a");
-        assertThat(dirtyNames(explain(ws, cache)))
-                .as("jk explain after editing a")
+        assertThat(dirtyNames(walk(ws, cache, knobs)))
+                .as("the walk after editing a")
                 .containsExactly("a");
+        if (knobs.target().packages()) {
+            assertThat(dirtyNames(explain(ws, cache, knobs)))
+                    .as("jk explain after editing a")
+                    .containsExactly("a");
+        }
     }
 
     /** Module {@code a}'s compiles that are not cached, for the failure message. */
@@ -276,6 +328,14 @@ class ForecastRunParityMatrixTest {
      * compile wrote holds under the sources, classpath token lines and option digest the forecast
      * derives, and names the action key of the request the forecast builds.
      */
+    private static void assertCompileInputsAgree(Path ws, Path cache, BuildKnobs knobs) throws Exception {
+        SessionContext.where(session(cache, knobs), () -> {
+            assertCompileInputsAgree(ws, cache);
+            return null;
+        });
+    }
+
+    /** As above under the ambient session's knobs. */
     private static void assertCompileInputsAgree(Path ws, Path cache) throws Exception {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         BuildGraph.BuildUnit unit = graph.topoOrder().stream()
@@ -366,20 +426,26 @@ class ForecastRunParityMatrixTest {
     private static final Set<String> COMPILES =
             Set.of(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY);
 
-    private static List<TaskForecast.Module> walk(Path ws, Path cache) throws IOException {
+    private static List<TaskForecast.Module> walk(Path ws, Path cache, BuildKnobs knobs) throws Exception {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        return ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, false);
+        return SessionContext.where(
+                session(cache, knobs),
+                () -> ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, knobs, null));
     }
 
-    private static List<TaskForecast.Module> explain(Path ws, Path cache) throws Exception {
+    private static List<TaskForecast.Module> explain(Path ws, Path cache, BuildKnobs knobs) throws Exception {
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        ExplainReport report = ExplainReport.compute(
-                ws, root, cache, Session.defaults().withCacheDir(cache), ExplainReport.Knobs.defaults());
+        ExplainReport report = ExplainReport.compute(ws, root, cache, session(cache, knobs), knobs, 0);
         assertThat(report.plan().errors()).isEmpty();
         return report.plan().modules();
+    }
+
+    /** The session a client sends beside a request under {@code knobs}: its variant and env. */
+    private static Session session(Path cache, BuildKnobs knobs) {
+        return Session.defaults().withCacheDir(cache).withVariant(knobs.variant(), knobs.clientEnv());
     }
 
     /** Each dirty module with the steps that are not cached, for the failure message. */
@@ -407,11 +473,11 @@ class ForecastRunParityMatrixTest {
         assertThat(lock.status()).as("workspace lock: %s", lock.error()).isZero();
     }
 
-    /** A full build, tests included. */
-    private static void build(Path ws, Path cache) {
-        WorkspaceResult result = WorkspaceExecute.buildWorkspace(
-                new WorkspaceRequest(ws, cache, null, 0, null, false, false, 2, null, false, false),
-                new WorkspaceBuildListener() {});
+    /** A build of every module under {@code knobs}. */
+    private static void build(Path ws, Path cache, BuildKnobs knobs) throws Exception {
+        WorkspaceResult result = SessionContext.where(
+                session(cache, knobs),
+                () -> WorkspaceExecute.buildWorkspace(knobs.request(ws, cache), new WorkspaceBuildListener() {}));
         assertThat(result.errors()).as("build errors").isEmpty();
         assertThat(result.success()).as("build success").isTrue();
     }

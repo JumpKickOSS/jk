@@ -236,7 +236,8 @@ final class MemoInputs {
      * workspace that declares {@code [test] exclude-tags} hit at all: its selection is never
      * {@link TestSelection#DEFAULT}, and refusing the memo whenever it differed from that zero
      * value made every build of such a workspace pay the whole forecast walk. A build that asks
-     * for docs covers the javadoc steps too, and reads a header of its own.
+     * for docs covers the javadoc steps too, and reads a header of its own. A variant selects
+     * other sources and dependencies, so a claim stored under one says nothing of another.
      */
     static String selectionHeader() {
         TestSelection selection = SessionContext.current().testSelection();
@@ -245,6 +246,10 @@ final class MemoInputs {
                 : Hashing.sha256Hex(selection.toString()).substring(0, 16);
         // A build that asks for docs (jk publish, jk javadoc) runs a javadoc step a plain build's
         // clean claim never covered: right after `jk build`, `jk javadoc` must not read "clean".
-        return SessionContext.current().javadoc() ? tests + "+javadoc" : tests;
+        String header = SessionContext.current().javadoc() ? tests + "+javadoc" : tests;
+        String variant = SessionContext.current().variant();
+        return variant == null || variant.isBlank()
+                ? header
+                : header + "+variant:" + Hashing.sha256Hex(variant).substring(0, 16);
     }
 }
