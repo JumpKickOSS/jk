@@ -15,7 +15,6 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
@@ -83,16 +82,16 @@ final class ForecastLangArms {
     /** The kotlinc config and compile classpath the build derives for this module. */
     record KotlinArm(PlannerLang.KotlinConfig config, List<Path> classpath, boolean mixedWithJava) {}
 
-    KotlinArm kotlinArm(ForecastScope.Prepared prepared) throws Exception {
-        var langs = CompileSupport.resolveLanguages(project.project(), dir);
+    /** {@code mixedWithJava}: javac runs in the module too, so kotlinc reads its Java roots. */
+    KotlinArm kotlinArm(ForecastScope.Prepared prepared, boolean mixedWithJava) throws Exception {
         List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
-                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls(), prepared.ksp());
+                mixedWithJava, prepared.compact(), dir, prepared.layout(), prepared.pkgDecls(), prepared.ksp());
         PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
                 project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
         List<Path> cp = prepared.withProvided(
                 PlannerSupport.mainCompileClasspath(dir, project, prepared.lock(), resolver, sib, false));
-        return new KotlinArm(config, cp, langs.java());
+        return new KotlinArm(config, cp, mixedWithJava);
     }
 
     /**

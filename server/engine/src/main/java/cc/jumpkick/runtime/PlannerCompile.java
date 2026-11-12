@@ -31,10 +31,8 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
-import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
@@ -848,12 +846,6 @@ public final class PlannerCompile {
         List<Path> out = new ArrayList<>(classpath);
         out.add(layout.kotlinClassesDir());
         return out;
-    }
-
-    /** True when the module declares {@code [processor-dependencies]} entries. */
-    static boolean hasProcessorDeps(JkBuild build) {
-        List<Dependency> procs = build.dependencies().byScope().get(Scope.PROCESSOR);
-        return procs != null && !procs.isEmpty();
     }
 
     static Task compileKotlinStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {

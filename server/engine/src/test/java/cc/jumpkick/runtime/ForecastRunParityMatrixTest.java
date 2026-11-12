@@ -44,8 +44,9 @@ import org.junit.jupiter.api.io.TempDir;
  * The forecast and the build read one module the same way: right after a build, {@code jk explain}
  * and the preflight's walk find every module clean, and one source edit makes exactly the edited
  * module dirty. Each fixture is a workspace of the module under test beside a plain Java module, in
- * a shape whose run differs from the plain one: a plugin that hands the test JVM flags and
- * classpath, and a plugin's provided jars on the test JVM's classpath.
+ * a shape whose run differs from the plain one: a Kotlin module with processors, a Kotlin or Groovy
+ * module a plugin generates Java for, a plugin that hands the test JVM flags and classpath, and a
+ * plugin's provided jars on the test JVM's classpath.
  */
 @Tag("integration")
 class ForecastRunParityMatrixTest {
@@ -99,6 +100,40 @@ class ForecastRunParityMatrixTest {
     void plain_java() throws Exception {
         Path ws = workspace(JAVA_MODULE, Lib.JAVA);
         assertParity(ws, "src/com/example/Lib.java", true);
+    }
+
+    @Test
+    void kotlin_with_processor_dependencies() throws Exception {
+        // A javac processor: the module runs javac beside kotlinc, and no KSP round.
+        Path ws = workspace("""
+                kotlin = "^2.4.10"
+
+                [processor-dependencies]
+                auto-service = { group = "com.google.auto.service", version = "1.1.1" }
+                """, Lib.KOTLIN);
+        assertParity(ws, "src/com/example/Lib.kt", true);
+    }
+
+    @Test
+    void kotlin_with_plugin_java_sources() throws Exception {
+        Path ws = workspace("""
+                kotlin = "^2.4.10"
+
+                [stub-contributions]
+                sources = true
+                """, Lib.KOTLIN_READING_GENERATED);
+        assertParity(ws, "src/com/example/Lib.kt", true);
+    }
+
+    @Test
+    void groovy_with_plugin_java_sources() throws Exception {
+        Path ws = workspace("""
+                groovy = "5.0.4"
+
+                [stub-contributions]
+                sources = true
+                """, Lib.GROOVY);
+        assertParity(ws, "src/com/example/Lib.groovy", true);
     }
 
     @Test
@@ -306,6 +341,69 @@ class ForecastRunParityMatrixTest {
                         assertEquals("hi", Lib.greet());
                         assertEquals("on", System.getProperty("stub.contributions"));
                         assertNotNull(LibTest.class.getResource("/stub-contributions.properties"));
+                    }
+                }
+                """);
+
+        static final Lib KOTLIN = new Lib("Lib.kt", """
+                package com.example
+
+                object Lib {
+                    fun greet(): String = "hi"
+                }
+                """, "LibTest.kt", """
+                package com.example
+
+                import org.junit.jupiter.api.Assertions.assertEquals
+                import org.junit.jupiter.api.Test
+
+                class LibTest {
+                    @Test
+                    fun greets() {
+                        assertEquals("hi", Lib.greet())
+                    }
+                }
+                """);
+
+        static final Lib KOTLIN_READING_GENERATED = new Lib("Lib.kt", """
+                package com.example
+
+                object Lib {
+                    fun greet(): String = Generated.NAME
+                }
+                """, "LibTest.kt", """
+                package com.example
+
+                import org.junit.jupiter.api.Assertions.assertEquals
+                import org.junit.jupiter.api.Test
+
+                class LibTest {
+                    @Test
+                    fun greets_with_the_generated_name() {
+                        assertEquals("generated", Lib.greet())
+                    }
+                }
+                """);
+
+        static final Lib GROOVY = new Lib("Lib.groovy", """
+                package com.example
+
+                class Lib {
+                    static String greet() {
+                        Generated.NAME
+                    }
+                }
+                """, "LibTest.groovy", """
+                package com.example
+
+                import static org.junit.jupiter.api.Assertions.assertEquals
+
+                import org.junit.jupiter.api.Test
+
+                class LibTest {
+                    @Test
+                    void greets_with_the_generated_name() {
+                        assertEquals("generated", Lib.greet())
                     }
                 }
                 """);

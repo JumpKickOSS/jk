@@ -434,16 +434,79 @@ public final class BuildPlanner {
             BuildLogicInputTokens buildLogicInputTokens,
             BuildLogicScope buildLogicScope,
             Path javaMainSrcDir,
-            boolean compact,
-            boolean mixed,
-            boolean mixedGroovy,
-            boolean kotlinModule,
-            boolean groovyModule,
-            boolean mixedWithJava,
-            String mainCompile,
-            boolean ksp,
+            ModuleShape shape,
+            Supplier<JkBuild> manifest,
             PlannerGuards.GuardsPlan guards,
-            PluginBuild.StepTools tools) {}
+            PluginBuild.StepTools tools) {
+
+        /** A module's context, with fresh step tools and its build-logic scope. */
+        static Ctx of(
+                Inputs in,
+                Cas cas,
+                ActionCache actionCache,
+                Supplier<EffortWeights.Plan> plan,
+                AtomicReference<@Nullable List<Path>> javaMainSrcRef,
+                AtomicReference<@Nullable List<Path>> kotlinMainSrcRef,
+                AtomicReference<@Nullable List<Path>> groovyMainSrcRef,
+                BuildLogicInputTokens buildLogicInputTokens,
+                Path javaMainSrcDir,
+                ModuleShape shape,
+                Supplier<JkBuild> manifest,
+                PlannerGuards.GuardsPlan guards) {
+            return new Ctx(
+                    in,
+                    cas,
+                    actionCache,
+                    plan,
+                    javaMainSrcRef,
+                    kotlinMainSrcRef,
+                    groovyMainSrcRef,
+                    buildLogicInputTokens,
+                    BuildLogicScope.of(in.dir()),
+                    javaMainSrcDir,
+                    shape,
+                    manifest,
+                    guards,
+                    new PluginBuild.StepTools());
+        }
+
+        boolean compact() {
+            return shape.compact();
+        }
+
+        /** Kotlin and Java: kotlinc, then javac against its output, then assemble-classes. */
+        boolean mixed() {
+            return shape.mixed();
+        }
+
+        /** Groovy and Java: joint groovyc, then javac, then assemble-classes. */
+        boolean mixedGroovy() {
+            return shape.mixedGroovy();
+        }
+
+        boolean kotlinModule() {
+            return shape.kotlin();
+        }
+
+        boolean groovyModule() {
+            return shape.groovy();
+        }
+
+        /** javac runs in this module, whatever else does. */
+        boolean mixedWithJava() {
+            return shape.java();
+        }
+
+        /** The step the main compile ends with. */
+        String mainCompile() {
+            return shape.mainCompile();
+        }
+
+        /** The module runs a main KSP round. */
+        boolean ksp() {
+            return shape.ksp();
+        }
+    }
 
     /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
     record KspDiagnostic(String severity, String message) {}

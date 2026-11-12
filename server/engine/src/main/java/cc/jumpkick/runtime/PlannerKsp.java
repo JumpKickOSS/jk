@@ -341,7 +341,7 @@ public final class PlannerKsp {
      * its processors keeps no generated code alive.
      */
     static boolean runsMainRound(JkBuild project, Path dir) {
-        return PlannerCompile.hasProcessorDeps(project)
+        return ModuleShape.hasProcessorDeps(project)
                 && CompileSupport.resolveLanguages(project.project(), dir).kotlin();
     }
 

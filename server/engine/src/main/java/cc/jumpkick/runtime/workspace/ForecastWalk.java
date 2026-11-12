@@ -2,8 +2,10 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.EffectiveManifest;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
@@ -69,9 +71,22 @@ public final class ForecastWalk {
                 .withSpec(WorkspaceSpec.of(target));
         Set<Path> jarConsumed = WorkspacePreflightPhase.jarConsumed(graph);
         Set<Path> launched = WorkspacePreflightPhase.launchedAssemblies(graph);
-        return TaskForecaster.of(
-                graph, cas, actionCache, cache, skipTests, target, profile, only, unit -> ModulePipeline.planned(
+        // Every module's plan takes the request's variant and client env from the same knobs.
+        EffectiveManifest.Selection manifest =
+                EffectiveManifest.Selection.of(ModulePipeline.inputs(entry, request, moduleDirs, false));
+        TaskForecaster.Planner planner = new TaskForecaster.Planner() {
+            @Override
+            public BuildPlan plan(BuildGraph.BuildUnit unit) throws Exception {
+                return ModulePipeline.planned(
                                 unit, request, moduleDirs, false, jarConsumed, launched, SiblingArtifacts.NONE)
-                        .plan());
+                        .plan();
+            }
+
+            @Override
+            public EffectiveManifest.Selection manifest() {
+                return manifest;
+            }
+        };
+        return TaskForecaster.of(graph, cas, actionCache, cache, skipTests, target, profile, only, planner);
     }
 }

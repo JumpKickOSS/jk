@@ -2197,11 +2197,11 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 273, edges = 1019 }
+"server/engine" = { classes = 275, edges = 1026 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
-value  = 26
+value  = 25
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2296,7 +2296,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 273, edges = 1019 }
+"server/engine" = { classes = 275, edges = 1026 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2315,7 +2315,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.CorePlan"
-value  = 18
+value  = 14
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2384,11 +2384,6 @@ value  = 2
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.ForecastSteps"
-value  = 4
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.KspForecast"
 value  = 14
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2405,7 +2400,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerKsp"
-value  = 4
+value  = 3
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2509,11 +2504,6 @@ value  = 5
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.PlannerKsp"
-value  = 5
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.StepWarnings"
 value  = 5
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2595,7 +2585,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 273, edges = 1019 }
+"server/engine" = { classes = 275, edges = 1026 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -2614,7 +2604,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
-value  = 20
+value  = 19
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
@@ -2634,7 +2624,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.base.CompileSupport"
-value  = 28
+value  = 27
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"

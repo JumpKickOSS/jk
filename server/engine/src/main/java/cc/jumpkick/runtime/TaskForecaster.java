@@ -68,9 +68,11 @@ public final class TaskForecaster {
     private TaskForecaster() {}
 
     /** A module's plan for the forecast's goal, as the one planner builds it; the workspace layer supplies it. */
-    @FunctionalInterface
     public interface Planner {
         BuildPlan plan(BuildGraph.BuildUnit unit) throws Exception;
+
+        /** What every module's plan reads its effective manifest under, which its steps are priced against. */
+        EffectiveManifest.Selection manifest();
     }
 
     /**
@@ -433,7 +435,8 @@ public final class TaskForecaster {
             case StepForecast.Rides r -> null;
             case StepForecast.Always a -> new TaskForecast.Task(step.name(), TaskForecast.Status.RUN, a.why(), null);
             case StepForecast.Priced p -> {
-                ForecastScope s = ForecastScope.alone(unit, cache, actionCache);
+                ForecastScope s = ForecastScope.alone(
+                        unit, effectiveManifest(unit, EffectiveManifest.Selection.ambient()), cache, actionCache);
                 s.price(step.name(), p.predictor());
                 yield s.verdict(step.name());
             }
@@ -468,7 +471,8 @@ public final class TaskForecaster {
                 hints,
                 target,
                 workerJar,
-                profile);
+                profile,
+                effectiveManifest(u, planner.manifest()));
         try {
             List<Task> steps = forecastOrder(planner.plan(u).steps());
             String unlocked = s.unlocked();
@@ -689,5 +693,20 @@ public final class TaskForecaster {
             return true; // unreadable ⇒ treat as dirty
         }
         return false;
+    }
+
+    /**
+     * The manifest the module's plan is built from ({@link EffectiveManifest}): a plugin's config
+     * carries the build type even when no variant is declared, and its packager keys on that
+     * config. A selection that does not apply fails the build itself; the forecast prices the
+     * parsed manifest.
+     */
+    static JkBuild effectiveManifest(BuildGraph.BuildUnit u, EffectiveManifest.Selection manifest) {
+        try {
+            return EffectiveManifest.of(u.manifest(), u.dir(), manifest).build();
+        } catch (RuntimeException e) {
+            Log.debug("forecast of " + u.dir() + " prices the parsed manifest: its variants do not apply", e);
+            return u.manifest();
+        }
     }
 }

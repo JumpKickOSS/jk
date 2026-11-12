@@ -9,7 +9,6 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JavaRelease;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.Errors;
@@ -34,7 +33,6 @@ import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
-import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildStage;
@@ -132,15 +130,10 @@ public final class PlannerSetup {
                     ctx.label("parse jk.toml");
                     JkBuild project;
                     try {
-                        // Same override the plan was built from (jk assemble -U/-W).
-                        // Plan construction and step bodies must read one effective config, or a
-                        // task gets scheduled against a config its body cannot.
-                        project = VariantApply.apply(
-                                        applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
-                                        in.dir(),
-                                        VariantApply.selection(in.variant(), in.session()),
-                                        in.clientEnv())
-                                .build();
+                        // The effective manifest the plan was built from: plan construction and
+                        // step bodies read one config, or a task gets scheduled against a config
+                        // its body cannot.
+                        project = cx.manifest().get();
                     } catch (RuntimeException e) {
                         ctx.error("toml", Errors.text(e));
                         throw e;

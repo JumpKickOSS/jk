@@ -182,7 +182,7 @@ final class PlannerCompileForecast {
         boolean rewritten = round.rewrites(prepared.ktSrc()) || round.rewrites(prepared.mainSrc());
         if (round.runs() && rewritten) return kspRewrite(s, TaskNames.COMPILE_KOTLIN);
         ForecastLangArms arms = s.arms();
-        ForecastLangArms.KotlinArm arm = arms.kotlinArm(prepared);
+        ForecastLangArms.KotlinArm arm = arms.kotlinArm(prepared, prepared.mixedWithJava());
         if (!s.compileDepDirty && !s.force && !rewritten && arms.kotlinStampFresh(prepared, arm)) {
             s.compileKotlinKey = FreshnessStamp.stampedKey(layout.compileStampDir(), BuildStamps.KOTLIN)
                     .orElse(null);

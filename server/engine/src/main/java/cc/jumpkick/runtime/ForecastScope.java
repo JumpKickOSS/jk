@@ -167,7 +167,8 @@ public final class ForecastScope implements StepForecast.Scope {
             Map<Path, TaskForecaster.ModuleHint> hints,
             WorkspaceTarget target,
             @Nullable Path workerJar,
-            @Nullable String profileName) {
+            @Nullable String profileName,
+            JkBuild project) {
         this.u = u;
         this.dep = dep;
         this.force = force;
@@ -182,7 +183,7 @@ public final class ForecastScope implements StepForecast.Scope {
         this.target = target;
         this.workerJar = workerJar;
         this.profileName = profileName;
-        this.project = ForecastSteps.planned(u.manifest(), u.dir());
+        this.project = project;
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
         this.compileDepDirty = dep.compileDepDirty();
@@ -198,7 +199,7 @@ public final class ForecastScope implements StepForecast.Scope {
      * A scope for pricing one module's tail on its own, outside a walk: no sibling is dirty and
      * nothing is restored ahead of it, so its steps answer from the caches alone.
      */
-    public static ForecastScope alone(BuildGraph.BuildUnit unit, Path cache, ActionCache actionCache) {
+    public static ForecastScope alone(BuildGraph.BuildUnit unit, JkBuild project, Path cache, ActionCache actionCache) {
         Cas cas = JkStores.storeCas();
         return new ForecastScope(
                 unit,
@@ -213,7 +214,8 @@ public final class ForecastScope implements StepForecast.Scope {
                 new ConcurrentHashMap<>(),
                 WorkspaceTarget.PACKAGE,
                 null,
-                null);
+                null,
+                project);
     }
 
     /** The engine's scope behind a predictor's argument. */
@@ -239,19 +241,39 @@ public final class ForecastScope implements StepForecast.Scope {
             List<Path> mainSrc,
             List<Path> ktSrc,
             List<Path> gvSrc,
-            boolean mixedKotlin,
-            boolean mixedGroovy,
-            boolean kotlinModule,
-            boolean kspPlanned,
+            ModuleShape shape,
             KspForecast.Round mainRound,
             ProvidedClasspath.Provided provided) {
+
+        /** javac reads the Kotlin output: Kotlin and Java in one module, as {@link ModuleShape#mixed}. */
+        boolean mixedKotlin() {
+            return shape.mixed();
+        }
+
+        boolean mixedGroovy() {
+            return shape.mixedGroovy();
+        }
+
+        /** javac runs in this module, whatever else does. */
+        boolean mixedWithJava() {
+            return shape.java();
+        }
+
+        boolean kotlinModule() {
+            return shape.kotlin();
+        }
+
+        /** The module plans a main KSP round. */
+        boolean kspPlanned() {
+            return shape.ksp();
+        }
 
         /**
          * The processor path javac runs, as the build's {@code ksp} step publishes it: the KSP jars
          * split off in a module that plans a main round, the whole path otherwise.
          */
         List<Path> javacProcessorCp() {
-            return kspPlanned ? KspProcessors.split(processorCp).javac() : processorCp;
+            return kspPlanned() ? KspProcessors.split(processorCp).javac() : processorCp;
         }
 
         /** compile-test's processor path as {@link ProcessorPaths#forTest} derives the build's. */
@@ -318,7 +340,10 @@ public final class ForecastScope implements StepForecast.Scope {
         // [build] extra-src overlay, plugin source roots, every .scala (one Zinc session
         // compiles both languages) and the generated roots — the KSP round's as the build will
         // leave them: none when no round runs, its record's when the build restores one.
-        boolean ksp = PlannerKsp.runsMainRound(project, dir);
+        // The compilers the plan runs, from the declarations the plan reads too: a Kotlin or
+        // Groovy module whose processors or plugin steps generate Java runs javac.
+        ModuleShape shape = ModuleShape.of(project, dir, pkgDecls);
+        boolean ksp = shape.ksp();
         List<Path> javaAndScala = PlannerCompile.javaAndScalaSources(
                 project, dir, compact, CompileSupport.collectJavaSources(mainSrcDir));
         List<Path> kotlin = PlannerCompile.mainKotlinSources(project, dir, compact);
@@ -333,11 +358,6 @@ public final class ForecastScope implements StepForecast.Scope {
         List<Path> ktSrc = PlannerCompile.mainKotlinSourcesWithGenerated(kotlin, layout, pkgDecls, ksp);
         List<Path> gvSrc = PlannerCompile.mainGroovySourcesWithGenerated(
                 PlannerCompile.mainGroovySources(project, dir, compact), layout, pkgDecls);
-        // The same predicate the planner composes the plan from — a source-list emptiness test
-        // is a different question and answers differently for a Scala module.
-        var langs = CompileSupport.resolveLanguages(project.project(), dir);
-        boolean mixedKotlin = (langs.java() || langs.scala()) && langs.kotlin();
-        boolean mixedGroovy = (langs.java() || langs.scala()) && langs.groovy();
         return new Prepared(
                 lock,
                 compact,
@@ -354,10 +374,7 @@ public final class ForecastScope implements StepForecast.Scope {
                 mainSrc,
                 ktSrc,
                 gvSrc,
-                mixedKotlin,
-                mixedGroovy,
-                langs.kotlin(),
-                ksp,
+                shape,
                 mainRound,
                 provided);
     }
