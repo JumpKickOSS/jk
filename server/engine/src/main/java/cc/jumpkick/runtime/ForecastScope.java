@@ -516,25 +516,15 @@ public final class ForecastScope implements StepForecast.Scope {
 
     /**
      * A node step's price in a dedicated node module: install, build, test and the declared steps
-     * are priced together, once, against the module's lock token. Null in any other module, where a
-     * node unit rides with the JVM steps around it.
+     * are priced together by {@code all}, once. Null in any other module, where a node unit rides
+     * with the JVM steps around it.
      */
-    TaskForecast.@Nullable Task nodeVerdict(String step) throws Exception {
-        Path nodeDir = nodeDir();
-        if (nodeDir == null) return null;
+    TaskForecast.@Nullable Task nodeVerdict(String step, Callable<List<TaskForecast.Task>> all) throws Exception {
+        if (nodeDir() == null) return null;
         Map<String, TaskForecast.Task> v = nodeVerdicts;
         if (v == null) {
             v = new LinkedHashMap<>();
-            for (TaskForecast.Task t : PlannerNode.forecast(
-                    project,
-                    dir,
-                    nodeDir,
-                    LockfileReader.read(lockFile),
-                    actionCache,
-                    skipTests,
-                    SessionContext.current().skipNode())) {
-                v.put(t.name(), t);
-            }
+            for (TaskForecast.Task t : all.call()) v.put(t.name(), t);
             nodeVerdicts = v;
         }
         return v.get(step);

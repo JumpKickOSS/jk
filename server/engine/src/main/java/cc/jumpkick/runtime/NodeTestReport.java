@@ -25,6 +25,9 @@ import org.w3c.dom.NodeList;
  */
 final class NodeTestReport {
 
+    /** The JUnit XML a node test step writes under the module's {@code surefire-reports/}. */
+    static final String TEST_REPORT = "TEST-node.xml";
+
     /** The test runners jk adds a JUnit reporter to. */
     enum Runner {
         VITEST,
@@ -165,6 +168,21 @@ final class NodeTestReport {
     }
 
     /** A test file's name as jest reports it (absolute), shortened to its last two segments. */
+    /**
+     * The run's summary: the report when the runner wrote one, else one test that is the script
+     * itself. A failing exit with a report that shows no failure counts the script as failed.
+     */
+    static TestSummary summary(@Nullable TestSummary report, NodeProcess.Result r, String module, String script) {
+        if (report != null && (r.ok() || report.failed() > 0)) return report;
+        if (r.ok()) return new TestSummary(1, 1, 0, 0, List.of());
+        TestFailureInfo failure = new TestFailureInfo(
+                module, "node", script, script, "", "`" + script + "` exited " + r.exit(), String.join("\n", r.tail()));
+        long total = report == null ? 1 : report.total() + 1;
+        long succeeded = report == null ? 0 : report.succeeded();
+        long skipped = report == null ? 0 : report.skipped();
+        return new TestSummary(total, succeeded, 1, skipped, List.of(failure));
+    }
+
     private static String relativeFile(String name) {
         Path p = Path.of(name);
         int n = p.getNameCount();

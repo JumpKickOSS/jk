@@ -8,7 +8,6 @@ import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
@@ -78,7 +77,7 @@ final class CorePlan {
         if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
-        if (nodeKind == NodeShape.Kind.SIDE_BY_SIDE) PlannerNode.planSideBySide(b, nodeUnit());
+        if (nodeKind == NodeShape.Kind.SIDE_BY_SIDE) nodeArm().planSideBySide(b);
         boolean skipJUnit = PlannerResources.skipJUnit(in);
         addTestsAndPackaging(b, cx, s, skipJUnit);
         return terminal(b, cx, skipJUnit);
@@ -341,7 +340,7 @@ final class CorePlan {
      * invocation root.
      */
     private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
-        List<String> leaves = new ArrayList<>(PlannerNode.plan(b, nodeUnit()));
+        List<String> leaves = new ArrayList<>(nodeArm().plan(b));
         String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) leaves.add(guardTerminal);
         if (leaves.size() == 1) return b.terminal(leaves.get(0));
@@ -358,11 +357,11 @@ final class CorePlan {
         return b.terminal(BuildPlanner.DELIVER_JOIN);
     }
 
-    /** The module's node build: a dedicated node module's, or the one beside its JVM sources. */
-    private PlannerNode.Unit nodeUnit() {
+    /** The module's node build, a dedicated node module's or the one beside its JVM sources; planned once. */
+    private NodeArm nodeArm() {
         JkBuild project = Objects.requireNonNull(parsedBuild, "node build manifest");
         Path nodeDir = Objects.requireNonNull(NodeShape.nodeDir(project, in.dir()), "node directory");
-        return new PlannerNode.Unit(in, project, in.dir(), nodeDir, NodeProject.infer(nodeDir, project.node()));
+        return new NodeArm(in, project, nodeDir, actionCache, !in.compileOnly() && !PlannerResources.skipJUnit(in));
     }
 
     private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
