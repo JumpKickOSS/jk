@@ -155,6 +155,13 @@ public final class JkBuildParser {
 
     private static final AtomicLong MANIFEST_READS = new AtomicLong();
 
+    private static final AtomicLong RESOLVES = new AtomicLong();
+
+    /** Resolves {@link #parse(Path)} computed rather than answered from the request, since process start or the last reset. */
+    public static long resolves() {
+        return RESOLVES.get();
+    }
+
     /** Manifest parses requested since process start (or the last {@link #resetStats()}). */
     public static long parseRequests() {
         return PARSE_REQUESTS.get();
@@ -169,6 +176,7 @@ public final class JkBuildParser {
     public static void resetStats() {
         PARSE_REQUESTS.set(0);
         MANIFEST_READS.set(0);
+        RESOLVES.set(0);
     }
 
     /** {@code Files.readString}, with the absent-file message every entry point shares. */
@@ -196,7 +204,8 @@ public final class JkBuildParser {
      *     its {@code [plugins]} pins in
      */
     public static JkBuild parse(Path file) throws IOException {
-        return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(file));
+        Path moduleDir = moduleDirOf(file.toAbsolutePath().normalize());
+        return ResolvedOnce.of(moduleDir, parseLocal(file), JkBuildParser::parseLocal, JkBuildParser::resolved);
     }
 
     /**
@@ -216,6 +225,7 @@ public final class JkBuildParser {
 
     /** The module at {@code moduleDir}, read as written, with what {@link #parse(Path)} adds: inheritance and user pins. */
     private static JkBuild resolved(Path moduleDir, JkBuild local) {
+        RESOLVES.incrementAndGet();
         JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, local);
         NodeShape.check(resolved, moduleDir);
         PluginJavaFloor.check(resolved, moduleDir);

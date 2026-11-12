@@ -93,6 +93,11 @@ public final class RequestScope {
         return SCOPES.computeIfAbsent(ledger, l -> new RequestScope());
     }
 
+    /** False for the scope of a caller with no request, which remembers nothing and computes every ask. */
+    public boolean remembers() {
+        return this != UNSCOPED;
+    }
+
     /**
      * True when a job's request is bound, so {@link #current()} returns a scope that actually
      * caches. Callers whose side effects must be balanced by a per-request teardown (a charge that
