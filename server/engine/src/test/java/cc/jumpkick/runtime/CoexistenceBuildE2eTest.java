@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -28,7 +27,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeAll;
@@ -445,22 +443,11 @@ class CoexistenceBuildE2eTest {
     private static BuildPlan plan(Path project, Path cache, boolean skipTests) {
         Path buildFile = ManifestPaths.manifestIn(project);
         Path lockFile = LockPaths.lockFile(project);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                buildFile,
-                lockFile,
-                LockPaths.lockOwnerDir(project),
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache)
+                .withBuildFile(buildFile)
+                .withLockFile(lockFile)
+                .withLockDir(LockPaths.lockOwnerDir(project))
+                .withSkipTests(skipTests);
         return BuildPlanner.fullPlan(in);
     }
 

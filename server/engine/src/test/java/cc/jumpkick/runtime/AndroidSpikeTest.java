@@ -7,7 +7,6 @@ import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
@@ -267,22 +266,7 @@ class AndroidSpikeTest {
                         List.of(),
                         List.of()));
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                CACHE,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, CACHE).withSkipTests(true);
         BuildPlan plan = BuildPlanner.fullPlan(in);
 
         assertThat(plan.steps().stream().map(p -> p.name()))

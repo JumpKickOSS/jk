@@ -14,7 +14,6 @@ import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -28,7 +27,6 @@ import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ProcessedResources;
@@ -420,99 +418,6 @@ public final class TaskForecaster {
             }
         }
         return new DepDirtiness(compile, test, order, compileDeps);
-    }
-
-    /**
-     * The {@link BuildPlanner.Inputs} a real {@code jk build} constructs for one module — the
-     * single factory both {@code jk build} and {@code jk
-     * explain}'s ETA use, so the two can't drift in what they feed the effort-weight prediction.
-     * The {@code jdksDir} default of {@code null} is load-bearing: it routes {@link
-     * cc.jumpkick.runtime.EffortWeights#jdkWeight} through the full JDK probe chain (PATH /
-     * JAVA_HOME / GraalVM / SDKMAN / …) instead of the empty {@code the managed JDK root}, so an
-     * already-installed JDK predicts a zero-cost {@code ensure-jdk} rather than a phantom download.
-     */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose) {
-        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, Set.of());
-    }
-
-    /**
-     * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean)} but carrying the sibling
-     * module dirs of the build graph, so the effort-weight prediction can borrow a project-tier learned
-     * rate for a not-yet-built module (see {@link cc.jumpkick.runtime.EffortWeights#learned}).
-     */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules) {
-        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, false);
-    }
-
-    /**
-     * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean, Set)} with {@code
-     * testOnly} — when true, plans stop before packaging ({@code jk test} / MCP {@code test}).
-     */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules,
-            boolean testOnly) {
-        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, testOnly, false);
-    }
-
-    /** As above with {@code compileOnly}: the plan stops after compiling ({@code jk compile}). */
-    public static BuildPlanner.Inputs inputsFor(
-            Path dir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            Set<Path> projectModules,
-            boolean testOnly,
-            boolean compileOnly) {
-        Path buildFile = ManifestPaths.manifestIn(dir);
-        Path lockFile = LockPaths.lockFile(dir);
-        // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
-        int workerCount = workers > 0 ? workers : 1;
-        // testOnly still runs tests unless --scripts-only (guard scripts, no JUnit).
-        boolean skip = SessionContext.current().testSelection().scriptsOnly() || (!testOnly && skipTests);
-        boolean compactEst = CompileSupport.isSimpleLayout(dir);
-        int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
-        return new BuildPlanner.Inputs(
-                        dir,
-                        cache,
-                        buildFile,
-                        lockFile,
-                        dir,
-                        workerCount,
-                        estimatedTestCount,
-                        profile,
-                        jdksDir,
-                        skip,
-                        verbose,
-                        testOnly,
-                        compileOnly,
-                        Set.of(),
-                        SessionContext.current())
-                .withProjectModules(projectModules);
     }
 
     /**

@@ -20,7 +20,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -94,22 +93,8 @@ class RebuildRunTestsMarkerTest {
                         project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
-                BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                        project,
-                        cache,
-                        project.resolve("jk.toml"),
-                        project.resolve("jk-lock.toml"),
-                        project,
-                        1,
-                        1,
-                        null,
-                        null,
-                        false,
-                        false,
-                        false,
-                        false,
-                        Set.of(),
-                        rebuild);
+                BuildPlanner.Inputs inputs =
+                        TestInputs.of(project, cache, rebuild).withEstimatedTestCount(1);
                 // Core + tails, like jk build: post- run-tests is a terminal-join leaf and
                 // a core-only plan prunes the whole test branch (no run, no marker).
                 BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);

@@ -7,7 +7,6 @@ import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
@@ -75,28 +74,13 @@ class AndroidReleaseTest {
                         null,
                         List.of(),
                         List.of()));
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                        app,
-                        cache,
-                        app.resolve("jk.toml"),
-                        app.resolve("jk-lock.toml"),
-                        app,
-                        1,
-                        0,
-                        null,
-                        null,
-                        true,
-                        false,
-                        false,
-                        false,
-                        Set.of(),
-                        SessionContext.current())
-                .withVariant(
-                        "release",
-                        Map.of(
-                                "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
-                                "RELEASE_STORE_PASSWORD", "rel-store-pass",
-                                "RELEASE_KEY_PASSWORD", "rel-key-pass"));
+        BuildPlanner.Inputs in = TestInputs.of(app, cache)
+                .withSkipTests(true)
+                .withVariant("release")
+                .withClientEnv(Map.of(
+                        "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
+                        "RELEASE_STORE_PASSWORD", "rel-store-pass",
+                        "RELEASE_KEY_PASSWORD", "rel-key-pass"));
         BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();

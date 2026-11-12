@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkBuild;
@@ -33,7 +32,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
@@ -318,22 +316,8 @@ class HelidonQuickstartE2eTest {
 
     /** The full build, or with {@code compileOnly} the compile goal {@code jk dev} rebuilds with. */
     private static BuildPlan plan(Path project, Path cache, boolean compileOnly) throws Exception {
-        return BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false,
-                false,
-                false,
-                compileOnly,
-                Set.of(),
-                SessionContext.current()));
+        return BuildPlanner.fullPlan(
+                TestInputs.of(project, cache).withEstimatedTestCount(1).withCompileOnly(compileOnly));
     }
 
     /**

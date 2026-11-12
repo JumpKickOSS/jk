@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.NodePin;
@@ -16,7 +15,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -66,22 +64,7 @@ class TestNodePlanTest {
 
     private static BuildPlan plan(Path project, Path cache) throws Exception {
         Files.createDirectories(cache);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
         PlannerTails.appendDeclaredTails(b, in);
         return b.build();

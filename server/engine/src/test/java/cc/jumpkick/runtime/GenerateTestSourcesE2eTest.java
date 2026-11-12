@@ -5,7 +5,6 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -20,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -116,22 +114,7 @@ class GenerateTestSourcesE2eTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache);
         return BuildPlanner.fullPlan(in).run();
     }
 

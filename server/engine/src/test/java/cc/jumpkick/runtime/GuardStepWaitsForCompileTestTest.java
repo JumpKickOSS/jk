@@ -12,7 +12,6 @@ import cc.jumpkick.run.TaskNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -89,22 +88,10 @@ class GuardStepWaitsForCompileTestTest {
 
     private static BuildPlanner.Inputs inputs(
             Path dir, boolean skipTests, boolean testOnly, boolean compileOnly, TestSelection selection) {
-        return new BuildPlanner.Inputs(
-                dir,
-                dir.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                testOnly,
-                compileOnly,
-                Set.of(),
-                SessionContext.current().withTestSelection(selection));
+        return TestInputs.of(dir, dir.resolve("cache"), SessionContext.current().withTestSelection(selection))
+                .withSkipTests(skipTests)
+                .withTestOnly(testOnly)
+                .withCompileOnly(compileOnly);
     }
 
     private static void scaffold(Path dir) throws Exception {

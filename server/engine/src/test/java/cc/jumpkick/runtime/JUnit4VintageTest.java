@@ -6,7 +6,6 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Request;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -17,7 +16,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -167,22 +165,7 @@ class JUnit4VintageTest {
                 .contains("org.junit.vintage:junit-vintage-engine:jar:")
                 .contains("org.junit.platform:junit-platform-launcher:jar:");
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false, // run the tests — that IS the assertion
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withEstimatedTestCount(1);
         return Request.detached().with(RunResults.SLOT, results).call(() -> {
             return BuildPlanner.fullPlan(in).run();
         });

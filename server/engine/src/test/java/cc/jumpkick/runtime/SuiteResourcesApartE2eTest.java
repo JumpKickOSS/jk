@@ -15,7 +15,6 @@ import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -132,22 +131,9 @@ class SuiteResourcesApartE2eTest {
 
     private static Run run(TestSelection selection) throws Exception {
         Session session = Session.defaults().withTestSelection(selection);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                tmp.resolve("cache"),
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                /* testOnly */ true,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(project, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withTestOnly(true);
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();
         return new Run(plan, SessionContext.where(session, plan::run));
     }

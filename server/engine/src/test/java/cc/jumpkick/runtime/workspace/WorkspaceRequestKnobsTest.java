@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.runtime.BuildPlanner;
-import cc.jumpkick.runtime.TaskForecaster;
+import cc.jumpkick.runtime.TestInputs;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.nio.file.Files;
@@ -44,8 +44,7 @@ class WorkspaceRequestKnobsTest {
                 .withEphemeralActions(true);
 
         // The operator handed to the NATIVE/IMAGE/COMPILE terminal branches, over neutral inputs…
-        BuildPlanner.Inputs decorated = ModulePipeline.requestKnobs(req, dirs)
-                .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
+        BuildPlanner.Inputs decorated = ModulePipeline.requestKnobs(req, dirs).apply(TestInputs.of(mod, req.cache()));
         // …and the PACKAGE/INSTALL path.
         BuildPlanner.Inputs packaged = ModulePipeline.inputs(mod, req, dirs, false);
 
@@ -76,8 +75,7 @@ class WorkspaceRequestKnobsTest {
         WorkspaceRequest req =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
 
-        BuildPlanner.Inputs decorated = ModulePipeline.requestKnobs(req, dirs)
-                .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
+        BuildPlanner.Inputs decorated = ModulePipeline.requestKnobs(req, dirs).apply(TestInputs.of(mod, req.cache()));
         BuildPlanner.Inputs packaged = ModulePipeline.inputs(mod, req, dirs, false);
 
         assertThat(decorated.workerCount()).isZero();

@@ -15,7 +15,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -108,23 +107,9 @@ class GuardLanePlanTest {
                 .contains(TaskNames.COMPILE_GUARD);
 
         BuildPlanner.Inputs in = inputs(project, dir.resolve("cache"), TestSelection.DEFAULT);
-        Map<String, Task> compile = index(BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
-                        in.dir(),
-                        in.cache(),
-                        in.buildFile(),
-                        in.lockFile(),
-                        in.lockDir(),
-                        1,
-                        0,
-                        null,
-                        null,
-                        true,
-                        false,
-                        false,
-                        true,
-                        Set.of(),
-                        in.session()))
-                .build());
+        Map<String, Task> compile =
+                index(BuildPlanner.coreBuilder(in.withSkipTests(true).withCompileOnly(true))
+                        .build());
         assertThat(compile).containsKey(TaskNames.COMPILE_JAVA);
         assertThat(compile.keySet()).noneMatch(n -> n.startsWith(TaskNames.GUARD));
         assertThat(compile).doesNotContainKey(TaskNames.COMPILE_GUARD);
@@ -198,22 +183,7 @@ class GuardLanePlanTest {
         assertThat(task(with, TaskNames.GUARD_OUTPUT).requires()).containsExactlyInAnyOrder(TaskNames.PACKAGE_SOURCES);
         // a test-only plan packages nothing: the lane follows the root lanes instead
         BuildPlanner.Inputs testOnly = inputs(project, dir.resolve("cache"), TestSelection.DEFAULT);
-        BuildPlan.Builder b = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
-                testOnly.dir(),
-                testOnly.cache(),
-                testOnly.buildFile(),
-                testOnly.lockFile(),
-                testOnly.lockDir(),
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                true,
-                false,
-                Set.of(),
-                testOnly.session()));
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(testOnly.withTestOnly(true));
         Map<String, Task> gated = index(b.build());
         assertThat(gated).containsKey(TaskNames.GUARD_OUTPUT);
         assertThat(task(gated, TaskNames.GUARD_OUTPUT).requires()).doesNotContain(TaskNames.PACKAGE_JAR);
@@ -253,21 +223,6 @@ class GuardLanePlanTest {
 
     private static BuildPlanner.Inputs inputs(Path project, Path cache, TestSelection sel) throws Exception {
         Files.createDirectories(cache);
-        return new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current().withTestSelection(sel));
+        return TestInputs.of(project, cache, SessionContext.current().withTestSelection(sel));
     }
 }

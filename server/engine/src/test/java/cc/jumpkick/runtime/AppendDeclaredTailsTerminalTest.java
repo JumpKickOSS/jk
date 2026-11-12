@@ -61,7 +61,7 @@ class AppendDeclaredTailsTerminalTest {
                 """ + applicationKeys);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Files.writeString(dir.resolve("jk-lock.toml"), "schema = 1\n");
-        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(dir, cache, 1, null, null, true, false);
+        BuildPlanner.Inputs inputs = TestInputs.of(dir, cache).withSkipTests(true);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, true);
         PlannerTails.appendDeclaredTails(b, inputs);
         return b.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());

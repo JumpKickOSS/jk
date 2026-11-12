@@ -16,7 +16,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -104,22 +103,10 @@ class TagExcludedSuiteE2eTest {
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
         TestSelection nightly = TestSelection.of(List.of(), false, List.of("nightly"), List.of(), true);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                "nightly",
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current().withTestSelection(nightly));
+        BuildPlanner.Inputs in = TestInputs.of(
+                        project, cache, SessionContext.current().withTestSelection(nightly))
+                .withEstimatedTestCount(1)
+                .withProfileName("nightly");
         return BuildPlanner.fullPlan(in);
     }
 }

@@ -14,7 +14,6 @@ import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -108,22 +107,7 @@ class KotlinGroovyModuleE2eTest {
         assertThat(lock.run().errors()).isEmpty();
 
         Session session = Session.defaults();
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(project, cache, session).withEstimatedTestCount(1);
         BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = SessionContext.where(session, plan::run);
         assertThat(result.errors()).isEmpty();

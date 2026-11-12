@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -16,7 +15,6 @@ import cc.jumpkick.runtime.base.TestStoreSeed;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -99,22 +97,7 @@ class GuardOutputLaneE2eTest {
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache);
         return BuildPlanner.fullPlan(in).run();
     }
 }

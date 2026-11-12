@@ -146,22 +146,7 @@ class EffortWeightsTest {
         for (Path f : sources) {
             Files.setLastModifiedTime(f, FileTime.fromMillis(past));
         }
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                dir,
-                dir.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(dir, dir.resolve("cache")).withSkipTests(true);
         var cas = new Cas(dir.resolve("cache"));
 
         var cold = EffortWeights.predict(in, cas, true, false, false, true, false);

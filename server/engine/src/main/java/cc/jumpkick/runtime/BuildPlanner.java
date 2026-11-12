@@ -9,13 +9,16 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClassAbi;
@@ -27,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import lombok.With;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -249,7 +253,19 @@ public final class BuildPlanner {
             COMPILED_MAIN_SOURCES,
             AFFECTED_TESTS);
 
-    /** Everything a build needs that isn't carried through the plan's state. */
+    /**
+     * Everything a build needs that isn't carried through the plan's state. Every component has a
+     * {@code with} copy; {@link #of} is where one starts.
+     *
+     * @param variant variant selection; {@code null} becomes {@code ""}
+     * @param clientEnv client-resolved env for {@code env:} indirection; {@code null} becomes empty
+     * @param siblings this module's side of the workspace schedule's artifact wait: what its package
+     *     and test steps call before reading a sibling's jar. Set by the workspace prepare phase; a
+     *     single-module plan keeps {@link SiblingArtifacts#NONE}
+     * @param compileTests a compile-only plan that also compiles the tests and runs none, the {@code
+     *     TEST_COMPILE} goal's
+     */
+    @With
     public record Inputs(
             Path dir,
             Path cache,
@@ -266,48 +282,39 @@ public final class BuildPlanner {
             boolean compileOnly,
             Set<Path> projectModules,
             Session session,
-            String variant,
+            @Nullable String variant,
             @Nullable Map<String, String> clientEnv,
             boolean ephemeralActions,
             SiblingArtifacts.Gate siblings,
             boolean compileTests) {
 
+        public Inputs {
+            variant = variant == null ? "" : variant;
+            clientEnv = clientEnv == null ? Map.of() : clientEnv;
+        }
+
         /**
-         * Variant and client env from the session; durable action cache. Commands that install a
-         * selection on the session ({@code jk run}, {@code test}, {@code image}, {@code native},
-         * {@code publish}) parameterize every plan factory without each one threading those fields.
+         * {@code dir}'s manifest and lock, one worker, no profile, the full lifecycle, and the
+         * variant and client env from {@code session}. Commands that install a selection on the
+         * session ({@code jk run}, {@code test}, {@code image}, {@code native}, {@code publish})
+         * parameterize every plan factory without each one threading those fields.
          */
-        public Inputs(
-                Path dir,
-                Path cache,
-                Path buildFile,
-                Path lockFile,
-                Path lockDir,
-                int workerCount,
-                int estimatedTestCount,
-                @Nullable String profileName,
-                @Nullable Path jdksDir,
-                boolean skipTests,
-                boolean verbose,
-                boolean testOnly,
-                boolean compileOnly,
-                Set<Path> projectModules,
-                Session session) {
-            this(
+        public static Inputs of(Path dir, Path cache, Session session) {
+            return new Inputs(
                     dir,
                     cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
+                    ManifestPaths.manifestIn(dir),
+                    LockPaths.lockFile(dir),
+                    dir,
+                    1,
+                    0,
+                    null,
+                    null,
+                    false,
+                    false,
+                    false,
+                    false,
+                    Set.of(),
                     session,
                     session.variant(),
                     session.clientEnv(),
@@ -316,29 +323,46 @@ public final class BuildPlanner {
                     false);
         }
 
-        /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
-        public Inputs withEphemeralActions(boolean ephemeralActions) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
+        /**
+         * The inputs a real {@code jk build} constructs for one module — the single factory both
+         * {@code jk build} and {@code jk explain}'s ETA use, so the two can't drift in what they feed
+         * the effort-weight prediction. A {@code jdksDir} of {@code null} is load-bearing: it routes
+         * {@link EffortWeights#jdkWeight} through the full JDK probe chain (PATH / JAVA_HOME / GraalVM
+         * / SDKMAN / …) instead of the empty managed JDK root, so an already-installed JDK predicts a
+         * zero-cost {@code ensure-jdk} rather than a phantom download.
+         *
+         * @param workers {@code 0} is auto at run-tests; the forecast prices it as one
+         * @param projectModules the build graph's module dirs, so the prediction can borrow a
+         *     project-tier learned rate for a not-yet-built module
+         * @param testOnly the plan stops before packaging ({@code jk test})
+         * @param compileOnly the plan stops after compiling ({@code jk compile})
+         */
+        public static Inputs forBuild(
+                Path dir,
+                Path cache,
+                int workers,
+                @Nullable Path jdksDir,
+                @Nullable String profile,
+                boolean skipTests,
+                boolean verbose,
+                Set<Path> projectModules,
+                boolean testOnly,
+                boolean compileOnly) {
+            Session session = SessionContext.current();
+            // testOnly still runs tests unless --scripts-only (guard scripts, no JUnit).
+            boolean skip = session.testSelection().scriptsOnly() || (!testOnly && skipTests);
+            int estimatedTestCount =
+                    skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, CompileSupport.isSimpleLayout(dir));
+            return of(dir, cache, session)
+                    .withWorkerCount(workers > 0 ? workers : 1)
+                    .withEstimatedTestCount(estimatedTestCount)
+                    .withProfileName(profile)
+                    .withJdksDir(jdksDir)
+                    .withSkipTests(skip)
+                    .withVerbose(verbose)
+                    .withTestOnly(testOnly)
+                    .withCompileOnly(compileOnly)
+                    .withProjectModules(projectModules);
         }
 
         /**
@@ -353,163 +377,6 @@ public final class BuildPlanner {
          */
         public Function<String, @Nullable String> env() {
             return BuildEnv.forModule(dir);
-        }
-
-        /** This request with a variant selection + client-resolved env attached. */
-        public Inputs withVariant(@Nullable String variant, @Nullable Map<String, String> clientEnv) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant == null ? "" : variant,
-                    clientEnv == null ? Map.of() : clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /** Copy with {@link #workerCount()} set (request-level {@code --workers}). */
-        public Inputs withWorkerCount(int workerCount) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /** Copy with {@link #profileName()} set (request-level {@code --profile}). */
-        public Inputs withProfileName(@Nullable String profileName) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
-        public Inputs withProjectModules(Set<Path> modules) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    modules == null ? Set.of() : modules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /**
-         * Copy with {@link #compileTests()} set: a compile-only plan that also compiles the tests and
-         * runs none, the {@code TEST_COMPILE} goal's.
-         */
-        public Inputs withCompileTests(boolean compileTests) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
-        }
-
-        /**
-         * Copy carrying this module's side of the workspace schedule's artifact wait: what its
-         * package and test steps call before reading a sibling's jar. Set by the workspace prepare
-         * phase; a single-module plan keeps {@link SiblingArtifacts#NONE}.
-         */
-        public Inputs withSiblings(SiblingArtifacts.Gate siblings) {
-            return new Inputs(
-                    dir,
-                    cache,
-                    buildFile,
-                    lockFile,
-                    lockDir,
-                    workerCount,
-                    estimatedTestCount,
-                    profileName,
-                    jdksDir,
-                    skipTests,
-                    verbose,
-                    testOnly,
-                    compileOnly,
-                    projectModules,
-                    session,
-                    variant,
-                    clientEnv,
-                    ephemeralActions,
-                    siblings,
-                    compileTests);
         }
     }
 

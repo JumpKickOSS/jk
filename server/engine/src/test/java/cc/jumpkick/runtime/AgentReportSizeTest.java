@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Request;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
@@ -21,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -108,22 +106,8 @@ class AgentReportSizeTest {
             throws Exception {
         writer.register(requestId, kind, project.toString(), "cli", null, true, false, 0L, null);
         boolean test = "test".equals(kind);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false,
-                false,
-                test,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in =
+                TestInputs.of(project, cache).withEstimatedTestCount(1).withTestOnly(test);
         BuildPlan plan = BuildPlanner.fullPlan(in);
         long start = System.nanoTime();
         BuildPlanResult result = Request.detached()

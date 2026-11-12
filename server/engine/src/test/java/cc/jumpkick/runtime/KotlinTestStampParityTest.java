@@ -24,7 +24,6 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -130,22 +129,7 @@ class KotlinTestStampParityTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache, Session session) {
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs inputs = TestInputs.of(project, cache, session).withEstimatedTestCount(1);
         return BuildPlanner.fullPlan(inputs).run();
     }
 

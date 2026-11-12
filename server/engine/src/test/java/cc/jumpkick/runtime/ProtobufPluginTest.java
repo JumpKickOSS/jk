@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.Interpolation;
@@ -16,7 +15,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -103,22 +101,7 @@ class ProtobufPluginTest {
                             .toList());
         });
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
@@ -192,22 +175,7 @@ class ProtobufPluginTest {
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -136,22 +135,7 @@ class AndroidWorkspaceTest {
                         null,
                         List.of(),
                         List.of()));
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                cache,
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, cache).withSkipTests(true);
         BuildPlan plan = BuildPlanner.fullPlan(in);
         return plan.run();
     }

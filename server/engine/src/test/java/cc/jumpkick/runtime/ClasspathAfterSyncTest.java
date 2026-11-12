@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -24,7 +23,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -146,22 +144,7 @@ class ClasspathAfterSyncTest {
         StashContext ctx = new StashContext();
         ctx.put(BuildPlanner.LOCKFILE, lock);
         ctx.put(BuildPlanner.PROJECT, project);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                store,
-                module.resolve("jk.toml"),
-                lockFile,
-                module,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, store).withLockFile(lockFile);
 
         PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
 
@@ -455,22 +438,7 @@ class ClasspathAfterSyncTest {
         }
 
         BuildPlanner.Inputs inputs(Path store, boolean skipTests) {
-            return new BuildPlanner.Inputs(
-                    app,
-                    store,
-                    app.resolve("jk.toml"),
-                    app.resolve("jk-lock.toml"),
-                    app,
-                    1,
-                    0,
-                    null,
-                    null,
-                    skipTests,
-                    false,
-                    false,
-                    false,
-                    Set.of(),
-                    SessionContext.current());
+            return TestInputs.of(app, store).withSkipTests(skipTests);
         }
     }
 
@@ -516,22 +484,7 @@ class ClasspathAfterSyncTest {
         ctx.put(BuildPlanner.LOCKFILE, lock);
         ctx.put(BuildPlanner.PROJECT, project);
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                store,
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, store);
 
         return new Fixture(ctx, in, lock, libJar);
     }

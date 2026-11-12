@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -14,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -113,23 +111,10 @@ class VariantSwitchTest {
     }
 
     private static BuildPlanResult buildVariant(Path project, Path cache, String selection) {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                        project,
-                        cache,
-                        project.resolve("jk.toml"),
-                        project.resolve("jk-lock.toml"),
-                        project,
-                        1,
-                        0,
-                        null,
-                        null,
-                        true,
-                        false,
-                        false,
-                        false,
-                        Set.of(),
-                        SessionContext.current())
-                .withVariant(selection, Map.of());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache)
+                .withSkipTests(true)
+                .withVariant(selection)
+                .withClientEnv(Map.of());
         BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         for (BuildPlanResult.Diagnostic d : result.errors()) {

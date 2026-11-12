@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -123,22 +122,10 @@ class BuildLogicGuardPlanTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                testOnly,
-                false,
-                Set.of(),
-                SessionContext.current().withTestSelection(sel));
+        BuildPlanner.Inputs in = TestInputs.of(
+                        project, cache, SessionContext.current().withTestSelection(sel))
+                .withSkipTests(skipTests)
+                .withTestOnly(testOnly);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
         if (!testOnly) PlannerTails.appendDeclaredTails(b, in);
         return b.build();

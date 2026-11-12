@@ -28,7 +28,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeAll;
@@ -319,22 +318,9 @@ class TestClassSelectionE2eTest {
 
     private static Standalone standalone(Path module, Path tmp, List<String> classes) throws Exception {
         Session session = Session.defaults().withTestSelection(TestSelection.DEFAULT.withClasses(classes));
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                tmp.resolve("cache"),
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                /* testOnly */ true,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(module, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withTestOnly(true);
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();
         return new Standalone(plan, SessionContext.where(session, plan::run));
     }

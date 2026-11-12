@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -221,22 +220,7 @@ class WorkspaceTestsKindE2eTest {
     }
 
     private static BuildPlanResult build(Path module, Path cache) {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                module,
-                cache,
-                module.resolve("jk.toml"),
-                module.resolve("jk-lock.toml"),
-                module,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(module, cache).withEstimatedTestCount(1);
         // Core + tails, like jk build: post- run-tests (and its compile-test) are on
         // the terminal-join branch, not the packaging path — a core-only plan prunes them.
         BuildPlan.Builder b = BuildPlanner.coreBuilder(in);

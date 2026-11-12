@@ -1713,7 +1713,6 @@ owner      = [
   "cc.jumpkick.runtime.workspace.ModulePipeline",
   "cc.jumpkick.runtime.BuildPlanner",
   "cc.jumpkick.runtime.PlannerTails",
-  "cc.jumpkick.runtime.TaskForecaster",
 ]
 source-set = "main"
 instead    = "plan through ModulePipeline; a goal's work past PACKAGE is a Tail that extend()s the plan (docs/contributors/lifecycle.md)"

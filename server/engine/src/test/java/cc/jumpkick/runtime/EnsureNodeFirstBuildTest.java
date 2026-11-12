@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -92,22 +91,9 @@ class EnsureNodeFirstBuildTest {
     }
 
     private static BuildPlan plan(Path web, Path tmp, Session session) {
-        return BuildPlanner.fullPlan(new BuildPlanner.Inputs(
-                web,
-                tmp.resolve("cache"),
-                web.resolve("jk.toml"),
-                web.resolve("jk-lock.toml"),
-                web,
-                1,
-                1,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                session));
+        return BuildPlanner.fullPlan(TestInputs.of(web, tmp.resolve("cache"), session)
+                .withEstimatedTestCount(1)
+                .withSkipTests(true));
     }
 
     private static long ran(BuildPlanResult result) {

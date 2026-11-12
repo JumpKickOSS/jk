@@ -7,7 +7,6 @@ import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -21,7 +20,6 @@ import java.lang.classfile.instruction.InvokeInstruction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,22 +57,7 @@ class HiltTransformTest {
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors().stream()
                         .filter(d -> d.message() == null || !d.message().contains("sun.misc.Unsafe"))

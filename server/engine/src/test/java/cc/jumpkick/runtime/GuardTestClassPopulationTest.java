@@ -16,7 +16,6 @@ import cc.jumpkick.runtime.base.TestStoreSeed;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -106,22 +105,9 @@ class GuardTestClassPopulationTest {
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current().withTestSelection(selection));
+        BuildPlanner.Inputs in = TestInputs.of(
+                        project, cache, SessionContext.current().withTestSelection(selection))
+                .withSkipTests(skipTests);
         return BuildPlanner.fullPlan(in).run();
     }
 }

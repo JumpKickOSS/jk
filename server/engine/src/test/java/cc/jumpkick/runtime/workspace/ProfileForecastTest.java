@@ -21,13 +21,13 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.PlannerTails;
+import cc.jumpkick.runtime.TestInputs;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -118,22 +118,7 @@ class ProfileForecastTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache, Session session, @Nullable String profile) {
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                profile,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs inputs = TestInputs.of(project, cache, session).withProfileName(profile);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         PlannerTails.appendDeclaredTails(builder, inputs);
         return builder.build().run();

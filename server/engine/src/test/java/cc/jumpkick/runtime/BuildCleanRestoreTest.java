@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -220,22 +219,7 @@ class BuildCleanRestoreTest {
     }
 
     private static BuildPlanner.Inputs inputs(Path project, Path cache, Session session, boolean skipTests) {
-        return new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        return TestInputs.of(project, cache, session).withSkipTests(skipTests);
     }
 
     private static void deleteTree(Path root) throws Exception {

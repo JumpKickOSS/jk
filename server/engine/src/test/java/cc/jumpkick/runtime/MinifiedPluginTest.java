@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -17,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
@@ -258,22 +256,7 @@ class MinifiedPluginTest {
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+        BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
         // The tails carry the additive artifacts (-all.jar, -min.jar); coreBuilder stops at the
         // thin jar, so a plan without them is not what `jk build` runs.
         var builder = BuildPlanner.coreBuilder(in);

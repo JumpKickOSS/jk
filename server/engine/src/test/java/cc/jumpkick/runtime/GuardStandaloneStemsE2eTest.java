@@ -16,7 +16,6 @@ import cc.jumpkick.run.TaskStatus;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -123,22 +122,7 @@ class GuardStandaloneStemsE2eTest {
         assertThat(lock.run().errors()).isEmpty();
         Session session = SessionContext.current()
                 .withTestSelection(TestSelection.of(List.of(), false, List.of(), List.of(), false, true));
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                session);
+        BuildPlanner.Inputs in = TestInputs.of(project, cache, session).withSkipTests(true);
         return SessionContext.where(session, () -> BuildPlanner.fullPlan(in).run());
     }
 

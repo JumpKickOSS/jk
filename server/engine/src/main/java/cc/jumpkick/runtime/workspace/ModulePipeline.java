@@ -11,7 +11,6 @@ import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.Tail;
-import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -191,7 +190,8 @@ public final class ModulePipeline {
         return inputs -> inputs.withWorkerCount(Math.max(0, request.workers()))
                 .withProfileName(request.profile())
                 .withProjectModules(moduleDirs)
-                .withVariant(request.variant(), request.clientEnv())
+                .withVariant(request.variant())
+                .withClientEnv(request.clientEnv())
                 .withEphemeralActions(request.ephemeralActions())
                 .withSiblings(siblings);
     }
@@ -211,7 +211,7 @@ public final class ModulePipeline {
             SiblingArtifacts.Gate siblings) {
         boolean skipTests = target.tests() == WorkspaceTarget.Tests.NOT_RUN || request.skipTests();
         return requestKnobs(request, moduleDirs, siblings)
-                .apply(TaskForecaster.inputsFor(
+                .apply(BuildPlanner.Inputs.forBuild(
                         dir,
                         request.cache(),
                         Math.max(0, request.workers()),

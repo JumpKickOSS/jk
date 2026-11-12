@@ -17,7 +17,6 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.StepWalls;
-import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ScheduleBias;
@@ -409,8 +408,8 @@ public final class BuildEta {
         }
         // Rebuild with an empty step list still means "all work" — fall back to plan shape.
         if (running.isEmpty() && distrust) {
-            BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
-                    mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
+            BuildPlanner.Inputs inputs = BuildPlanner.Inputs.forBuild(
+                    mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, false, false);
             for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
         }
         if (running.isEmpty()) {

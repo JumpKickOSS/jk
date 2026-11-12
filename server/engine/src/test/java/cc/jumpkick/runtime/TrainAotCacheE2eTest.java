@@ -25,7 +25,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
@@ -107,22 +106,9 @@ class TrainAotCacheE2eTest {
                 BuildPlan lock = LockPlans.lockBuildPlan(
                         project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
-                BuildPlanResult built = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
-                                project,
-                                cache,
-                                project.resolve("jk.toml"),
-                                lockFile,
-                                project,
-                                1,
-                                0,
-                                null,
-                                null,
-                                true,
-                                false,
-                                false,
-                                false,
-                                Set.of(),
-                                nested))
+                BuildPlanResult built = BuildPlanner.coreBuilder(TestInputs.of(project, cache, nested)
+                                .withLockFile(lockFile)
+                                .withSkipTests(true))
                         .build()
                         .run();
                 assertThat(built.errors()).isEmpty();
