@@ -43,6 +43,7 @@ population = { files = 2203 }
 "shared/wire" = { classes = 246, sites = 12211 }
 
 [atomic-move-owner]
+population = { files = 5722 }
 [atomic-move-owner.populations]
 "clients/cli" = { classes = 817, sites = 52816 }
 
@@ -600,6 +601,7 @@ population = { examined = 2 }
 population = { constants = 29, files = 2266, literals = 44297 }
 
 [carried-value-owners]
+population = { files = 2215 }
 [carried-value-owners.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
 
@@ -1564,6 +1566,9 @@ unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/protocol/SpecWriter
 value  = 27
 reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
 
+[local-repo-owner]
+population = { files = 2959 }
+
 [lock-version-is-one]
 population = { files = 18 }
 
@@ -1591,7 +1596,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 5055 }
+population = { units = 5578 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1710,10 +1715,6 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaParityTest.java"
-value  = 1
-reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaTest.java"
 value  = 1
 reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
 [[no-fqcn.entries]]
@@ -2133,6 +2134,9 @@ population = { examined = 15 }
 [process-output-owner]
 population = { examined = 5694 }
 
+[product-name-in-docs]
+population = { files = 90 }
+
 [properties-render-owner]
 [properties-render-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
@@ -2428,7 +2432,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.GuardKeys~cc.jumpkick.runtime.PlannerGuards"
-value  = 26
+value  = 25
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2620,6 +2624,9 @@ population = { files = 4230 }
 
 [schema-freeze]
 population = { files = 10 }
+
+[scoped-value-carried]
+population = { files = 2215 }
 
 [script-walks-never-follow-links]
 population = { files = 1 }
