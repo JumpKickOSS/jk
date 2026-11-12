@@ -252,6 +252,11 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
+    public void testClassStarted(String className) {
+        plan.emit(l -> l.testClassStarted(step, className));
+    }
+
+    @Override
     public boolean cancelled() {
         // Per-plan cancel (a sibling failure, or Ctrl-C torn down by the scheduler) OR a
         // session-level cancel signaled through the SessionCancel seam (a front-end's

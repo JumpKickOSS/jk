@@ -162,7 +162,7 @@ class RemainingWorkStepsTest {
         rw.stepStart(A, "run-tests");
         now.addAndGet(9_000);
         rw.suiteProgress(A, 0.10);
-        assertThat(rw.remaining()).isEqualTo(81_000); // 90% of the priced suite: under a quarter done
+        assertThat(rw.remaining()).isEqualTo(81_000); // 90% of the priced suite: under half done
         now.addAndGet(51_000);
         rw.suiteProgress(A, 0.50);
         assertThat(rw.remaining()).isEqualTo(60_000); // half done in 60 s: the rest at that rate
@@ -209,6 +209,50 @@ class RemainingWorkStepsTest {
         assertThat(rw.remaining()).as("just resumed").isEqualTo(before);
         now.addAndGet(5_000);
         assertThat(rw.remaining()).as("counting again").isCloseTo(before - 5_000, within(2L * MS));
+    }
+
+    /**
+     * A hold is one fork of the build waiting for memory; the others run on. The engine's suite
+     * started inside a 21 s hold and ran through it: its share is what it really did, and read
+     * against a clock that stood still its rate came out double and its remainder 19 s short.
+     */
+    @Test
+    void a_suite_that_runs_through_a_hold_reads_its_rate_on_the_wall_clock() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.hold();
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(20_000);
+        rw.resume();
+        now.addAndGet(20_000);
+        rw.suiteProgress(A, 0.50);
+        assertThat(rw.remaining())
+                .as("half done in the 40 s it ran, 20 s of them on hold: the rest at that rate")
+                .isCloseTo(40_000, within((long) MS));
+    }
+
+    /**
+     * The engine's longest class, 13 s, ran alone after 91% of the suite's class walls had
+     * finished; the share read the suite nearly done, and it showed 2 s left for 11 s.
+     */
+    @Test
+    void a_long_class_still_running_holds_its_suite_open_for_its_recorded_wall() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(50_000);
+        rw.suiteClassStarted(A, "LongTest", 20_000);
+        now.addAndGet(10_000);
+        rw.suiteProgress(A, 0.98);
+        assertThat(rw.remaining()).as("10 s into its 20 s").isCloseTo(10_000, within((long) MS));
+        now.addAndGet(1_000);
+        assertThat(rw.remaining()).as("counting down with it").isCloseTo(9_000, within((long) MS));
+        rw.suiteClassFinished(A, "LongTest");
+        assertThat(rw.remaining())
+                .as("finished: the suite's own rate again, at its overrun floor")
+                .isCloseTo(4_500, within((long) MS));
     }
 
     @Test

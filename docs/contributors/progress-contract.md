@@ -33,8 +33,10 @@ R(t)          = WorkSchedule of what remains:
                   running step        → max(5% of price, price − elapsed)
                   running suite       → price × its workers' scale (StepCost.scale) once it starts;
                                         f = its class-wall share read through its curve (SuiteCurve);
-                                        price × (1 − f), then past a quarter done the wall its rate
-                                        projected at the last class (t_f / f) less elapsed, ≥ 5% of price
+                                        price × (1 − f), then past half done the wall its rate
+                                        projected at the last class (t_f / f) less elapsed, ≥ 5% of price,
+                                        both on the wall clock; never less than a running class's
+                                        recorded wall less the time it has run
 range         = R(t) scheduled at each unfinished step's low, then high bound
 countdown     = R_anchor − Δwork-time   # re-anchored on every engine sample, at least once a second
 bar           = min(99%, work-elapsed / (work-elapsed + R(t)))
@@ -78,6 +80,12 @@ profile and filter). One run's curve is noisy where a long class ends (the engin
 through its wall at 90% of its class walls in one run and 76% in the next two); curves of another
 work set are not mixed in, since what runs beside a suite shapes its curve. Between class finishes the
 suite counts down from the wall its rate last projected: a long last class reports nothing for seconds.
+The rate takes over only past half the suite's wall: before it, the rate is mostly JVM start and
+discovery, and a remainder of `elapsed × (1 − f) / f` swings by `elapsed / f²` per unit of share (at
+a quarter, one curve's six points cut the engine's suite by 15 s). Neither share nor curve sees a long
+class running alone at the end, so each class's start reaches the model (`TaskContext.testClassStarted`)
+and the suite is held open for the recorded wall of every class still running: the engine's longest,
+13 s, ran on after 91% of its class walls had finished, and the suite had read 2 s left for 11 s.
 
 **A suite's workers.** The build picks a suite's test JVMs as it starts, from what else is running
 then (`TestWorkers.liveShare`): the engine's integration suite got 2 in one run and 4 in the next and
@@ -105,7 +113,9 @@ range is narrow and `1m 20s–1m 50s` once it spans more than 40% of what remain
 **On hold.** A fork that has waited half a second for a worker lease (`WorkerLeases`) puts its build
 on hold until the build's last waiting fork leaves the queue (`MemoryHolds`). While held, the
 engine's clock and the build's running steps stand still; every surface shows the hold and restores
-itself on resume:
+itself on resume. The forks not waiting run on, so a suite's rate is read on the wall clock: what
+its classes did through the hold is real progress, and read against a clock that stood still the
+engine's suite, started inside a 21 s hold, projected double its rate:
 
 | Surface | On hold |
 |---------|---------|

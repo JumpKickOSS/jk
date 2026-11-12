@@ -38,6 +38,9 @@ import java.util.Set;
  * #RATE_FROM} of it is done: the wall that rate projects when the share was last reported, less
  * its elapsed time (held at {@link #OVERRUN_FLOOR} once it overruns). The plan's tick fraction is not read for such a module: its ticks are
  * spread evenly over steps of very different length.
+ *
+ * <p>A hold stops the step clock, but a suite's rate is read on the wall clock: its share is what
+ * its classes really did, and they keep running while another fork of the build waits for memory.
  */
 public final class RemainingWork {
 
@@ -57,13 +60,22 @@ public final class RemainingWork {
     /** A running step past its price keeps this share of it as its remainder. */
     public static final double OVERRUN_FLOOR = 0.05;
 
-    /** The share of a suite's class walls after which its remainder follows its observed rate. */
-    public static final double RATE_FROM = 0.25;
+    /**
+     * The share of a suite's wall, read through its curve, after which its remainder follows its
+     * observed rate; before it, the share left of its price. Early on, the rate is mostly JVM start
+     * and discovery, and a remainder of {@code elapsed * (1 - f) / f} swings by {@code elapsed /
+     * f²} for each unit of share: at a quarter, one curve's 6 points cut the engine's suite by
+     * 15 s. Replaying jk's 2026-11-12 corpus runs 5 and 6, a quarter left 72% and 89% of warm runs
+     * inside the ETA band, a half 78% and 94%.
+     */
+    public static final double RATE_FROM = 0.5;
 
     /** Per module, the steps it is priced to run; empty for a tick-fraction model. */
     private final Map<Path, List<StepCost>> steps = new HashMap<>();
-    /** Per module, when each step started (ms). */
+    /** Per module, when each step started (ms), on the step clock, which stops through a hold. */
     private final Map<Path, Map<String, Long>> started = new HashMap<>();
+    /** Per module, when each step started (ms), on the wall clock: a suite's rate is read on it. */
+    private final Map<Path, Map<String, Long>> startedAt = new HashMap<>();
     /** Per module, the steps that finished. */
     private final Map<Path, Set<String>> finished = new HashMap<>();
     /** Per module, its running suite's share of class walls done (0..1). */
@@ -161,7 +173,8 @@ public final class RemainingWork {
     /** {@code step} of the module at {@code dir} started now. */
     public synchronized void stepStart(Path dir, String step) {
         // A step that starts on hold starts, on the step clock, when the hold began.
-        stepStart(dir, step, heldSince >= 0 ? heldSince : clock.millis());
+        long now = clock.millis();
+        start(dir, step, heldSince >= 0 ? heldSince : now, now);
     }
 
     /**
@@ -170,8 +183,13 @@ public final class RemainingWork {
      * run) counts down from when the step really began, not from when the model heard of it.
      */
     public synchronized void stepStart(Path dir, String step, long atMillis) {
+        start(dir, step, atMillis, atMillis);
+    }
+
+    private void start(Path dir, String step, long stepClock, long wallClock) {
         if (dir == null || step == null || !steps.containsKey(dir)) return;
-        started.computeIfAbsent(dir, k -> new HashMap<>()).putIfAbsent(step, atMillis);
+        started.computeIfAbsent(dir, k -> new HashMap<>()).putIfAbsent(step, stepClock);
+        startedAt.computeIfAbsent(dir, k -> new HashMap<>()).putIfAbsent(step, wallClock);
     }
 
     /** {@code step} of the module at {@code dir} finished. */
@@ -187,10 +205,10 @@ public final class RemainingWork {
     public synchronized void suiteProgress(Path dir, double fracDone) {
         if (dir == null || !steps.containsKey(dir)) return;
         suiteDone.put(dir, clamp01(fracDone));
-        suiteAt.put(dir, heldSince >= 0 ? heldSince : clock.millis());
+        suiteAt.put(dir, clock.millis());
     }
 
-    /** When each running suite's share was last reported, on the step clock. */
+    /** When each running suite's share was last reported, on the wall clock. */
     private final Map<Path, Long> suiteAt = new HashMap<>();
 
     /**
@@ -209,6 +227,37 @@ public final class RemainingWork {
     private final Map<Path, long[]> suiteWorkers = new HashMap<>();
 
     /**
+     * A class of the running suite of the module at {@code dir} started now, its recorded wall
+     * {@code expectedMs}: the suite does not finish before the class has run that long. Its share
+     * and curve cannot see a long class that runs alone at the end: the engine's longest, 13 s,
+     * ran on after 91% of its class walls had finished, and the suite read 2 s left for 11 s.
+     */
+    public synchronized void suiteClassStarted(Path dir, String className, long expectedMs) {
+        if (dir == null || className == null || expectedMs <= 0 || !steps.containsKey(dir)) return;
+        runningClasses
+                .computeIfAbsent(dir, k -> new HashMap<>())
+                .putIfAbsent(className, new long[] {expectedMs, clock.millis()});
+    }
+
+    /** A class of the running suite of the module at {@code dir} finished. */
+    public synchronized void suiteClassFinished(Path dir, String className) {
+        Map<String, long[]> running = dir == null ? null : runningClasses.get(dir);
+        if (running != null) running.remove(className);
+    }
+
+    /** Per module, its suite's classes running now: {@code {expectedMs, startedAt}} on the wall clock. */
+    private final Map<Path, Map<String, long[]>> runningClasses = new HashMap<>();
+
+    /** The longest the running classes of the suite of {@code dir} still have to run, in ms. */
+    private long classFloor(Path dir, long wall) {
+        long floor = 0;
+        for (long[] c : runningClasses.getOrDefault(dir, Map.of()).values()) {
+            floor = Math.max(floor, c[0] - Math.max(0, wall - c[1]));
+        }
+        return floor;
+    }
+
+    /**
      * The build went on hold (a memory wait): running steps stop counting down until {@link
      * #resume}, which takes the time held off their elapsed time. A hold is not work.
      */
@@ -223,7 +272,6 @@ public final class RemainingWork {
         heldSince = -1;
         if (held == 0) return;
         for (Map<String, Long> starts : started.values()) starts.replaceAll((step, at) -> at + held);
-        suiteAt.replaceAll((dir, at) -> at + held);
     }
 
     /** When the current hold began; -1 when not on hold. */
@@ -326,15 +374,24 @@ public final class RemainingWork {
                 if (f != null && f > 0 && f >= RATE_FROM) {
                     // The suite's own rate, projected from when its share was last reported and
                     // counted down from there: a long last class running alone reports nothing for
-                    // seconds, and the rate read at the clock grew the remainder as it ran.
-                    long at = suiteAt.getOrDefault(dir, now);
-                    double reported = Math.max(0, at - starts.get(s.step())) / (double) WorkModel.MS_PER_WEIGHT;
-                    left = reported / f - elapsed;
+                    // seconds, and the rate read at the clock grew the remainder as it ran. Both on
+                    // the wall clock: the engine's suite started 7 s into a 21 s hold and ran
+                    // through it, and read from the hold's end its rate was double and its
+                    // remainder 19 s short.
+                    long wall = clock.millis();
+                    long began = startedAt.getOrDefault(dir, Map.of()).getOrDefault(s.step(), starts.get(s.step()));
+                    long at = suiteAt.getOrDefault(dir, wall);
+                    double reported = Math.max(0, at - began) / (double) WorkModel.MS_PER_WEIGHT;
+                    double ran = Math.max(0, wall - began) / (double) WorkModel.MS_PER_WEIGHT;
+                    left = reported / f - ran;
                     left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w, left);
                 } else if (f != null && f > 0) {
                     left = Math.max(OVERRUN_FLOOR * w * (1 - f), w * (1 - f));
                 } else {
                     left = Math.max(OVERRUN_FLOOR * w, w - elapsed);
+                }
+                if (s.kind() == StepCost.Kind.TEST) {
+                    left = Math.max(left, classFloor(dir, clock.millis()) / (double) WorkModel.MS_PER_WEIGHT);
                 }
             }
             switch (s.kind()) {

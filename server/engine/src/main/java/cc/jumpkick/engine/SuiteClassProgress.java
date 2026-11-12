@@ -80,6 +80,12 @@ final class SuiteClassProgress {
         return new long[] {sum, longest};
     }
 
+    /** {@code className}'s recorded wall; {@code 0} when it has none. */
+    synchronized long expected(String className) {
+        Long ms = expected.get(className);
+        return ms == null ? 0 : Math.max(0, ms);
+    }
+
     /** The suite started at {@code atMillis} on the build's clock. */
     synchronized void started(long atMillis) {
         if (startMillis < 0) startMillis = atMillis;

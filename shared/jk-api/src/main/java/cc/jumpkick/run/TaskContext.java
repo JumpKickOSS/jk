@@ -102,6 +102,9 @@ public interface TaskContext {
     /** The step's test suite runs on {@code workers} test JVMs, decided as it starts. */
     default void testWorkers(int workers) {}
 
+    /** A class of the step's test suite started: {@code className} as its {@link #testClass} will name it. */
+    default void testClassStarted(String className) {}
+
     /** True when cancelled (sibling failure or Ctrl-C); poll in long loops. */
     boolean cancelled();
 

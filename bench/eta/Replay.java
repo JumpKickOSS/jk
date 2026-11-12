@@ -13,7 +13,8 @@
 //     RemainingWork from the jar, so a gap means the replay misses an input.
 //   - accuracy, per model: the remaining it would have shown against the true remaining (the
 //     run's end minus now), and the bar it would have drawn (elapsed / (elapsed + R), peak-held,
-//     capped at 99%) against the elapsed share, at 10/25/50/75/90% of the wall.
+//     capped at 99%) against the elapsed share, at 10/25/50/75/90% of the wall. Time on hold for
+//     memory is off the scored clock, as score.py takes it off; V0 hears each hold as the engine does.
 //
 // The models other than V0 are candidate live models (plan P2), tried here before any of them
 // goes into the engine. Each is a pure function of the recorded seed and events.
@@ -40,12 +41,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.LongUnaryOperator;
 import java.util.regex.Pattern;
 
 public class Replay {
 
     static final double[] CHECKPOINTS = {0.10, 0.25, 0.50, 0.75, 0.90};
     static final double[] SCORED = {0.25, 0.50, 0.75};
+
+    /**
+     * A suite's label as one of its classes or tests starts, {@code <coord> :: <SimpleName>[.test]
+     * [wN]}: the journal keeps a label each half second, so a class's first label of either kind
+     * stands for its start.
+     */
+    static final Pattern CLASS_LABEL = Pattern.compile(".* :: ([A-Za-z_$][\\w$]*)(?:\\.\\S*)?\\s+\\[w\\d+\\]");
+
     static final int MS_PER_WEIGHT = 150;
     /** A running step past its priced wall still keeps this share of it as remaining. */
     static final double CLOCK_FLOOR = 0.05;
@@ -321,20 +331,31 @@ public class Replay {
     static final Map<String, Map<String, Map<String, List<long[]>>>> CLASS_HISTORY = new HashMap<>();
 
     /**
+     * Class walls read as the engine reads them, the mean of the earlier runs' (MetricsHarvest folds
+     * every run before this one). {@code REPLAY_CLASS_WALLS=loo} reads the median of every other
+     * run's, later ones included: an oracle, which hid the live model's errors from its class
+     * weights (it replayed corpus run 5 at 13% median ETA error where the engine showed 18%).
+     */
+    static final boolean CAUSAL = !"loo".equals(System.getenv("REPLAY_CLASS_WALLS"));
+
+    /**
      * A filtered run's selected classes, by module: the selection is resolved before the suite
      * starts, so the pricer knows it; the replay reads it from the classes the run finished.
      */
     static final Map<Path, Map<String, Set<String>>> SELECTED = new HashMap<>();
 
-    /** Median wall of a class in the module's history, leave-one-out; -1 when none. */
+    /** A class's wall in the module's history, as {@link #CAUSAL} reads it; -1 when none. */
     static long classMs(String dir, String cls, long runId) {
+        boolean causal = CAUSAL;
         long[] walls = CLASS_HISTORY.getOrDefault(dir, Map.of()).values().stream()
                 .flatMap(m -> m.getOrDefault(cls, List.of()).stream())
-                .filter(r -> r[0] != runId)
+                .filter(r -> causal ? r[0] < runId : r[0] != runId)
                 .mapToLong(r -> r[1])
                 .sorted()
                 .toArray();
-        return walls.length == 0 ? -1 : walls[walls.length / 2];
+        if (walls.length == 0) return -1;
+        if (causal) return Math.round(Arrays.stream(walls).average().orElse(0));
+        return walls[walls.length / 2];
     }
 
     /** Each run's shape signature: profile, forced, filtered, and the frontier (modules that compile). */
@@ -622,18 +643,18 @@ public class Replay {
             double total = 0, finished = 0;
             for (var e : hist.entrySet()) {
                 long[] walls = e.getValue().stream()
-                        .filter(r -> r[0] != runId)
+                        .filter(r -> usable(r))
                         .mapToLong(r -> r[1])
                         .sorted()
                         .toArray();
                 if (walls.length == 0) continue;
-                double w = walls[walls.length / 2];
+                double w = CAUSAL ? causalWall(e.getValue()) : walls[walls.length / 2];
                 total += w;
                 if (done.containsKey(e.getKey())) finished += w;
             }
             for (var e : done.entrySet()) {
                 boolean known = hist.containsKey(e.getKey())
-                        && hist.get(e.getKey()).stream().anyMatch(r -> r[0] != runId);
+                        && hist.get(e.getKey()).stream().anyMatch(r -> usable(r));
                 if (!known) {
                     total += e.getValue();
                     finished += e.getValue();
@@ -642,12 +663,45 @@ public class Replay {
             return new double[] {total, finished};
         }
 
+        /**
+         * The recorded wall of {@code simpleName}, a class of the module's suite, as {@link
+         * #classTotals} weighs it, and its full name; null when none is recorded.
+         */
+        Map.Entry<String, Double> classWall(Path dirPath, String simpleName) {
+            String step = shapeKey(TaskNames.RUN_TESTS, PROFILE.getOrDefault(run, ""), false);
+            Map<String, List<long[]>> hist =
+                    CLASS_HISTORY.getOrDefault(dirPath.toString(), Map.of()).getOrDefault(step, Map.of());
+            for (var e : hist.entrySet()) {
+                String k = e.getKey();
+                if (!k.equals(simpleName) && !k.endsWith("." + simpleName)) continue;
+                long[] walls = e.getValue().stream()
+                        .filter(r -> usable(r))
+                        .mapToLong(r -> r[1])
+                        .sorted()
+                        .toArray();
+                if (walls.length == 0) return null;
+                double w = CAUSAL ? causalWall(e.getValue()) : walls[walls.length / 2];
+                return Map.entry(k, w);
+            }
+            return null;
+        }
+
         /** Whether the module's suite has any class recorded in the other runs (leave-one-out). */
         boolean hasClassHistory(State s, Path dirPath) {
             String step = shapeKey(TaskNames.RUN_TESTS, PROFILE.getOrDefault(run, ""), false);
             Map<String, List<long[]>> hist =
                     CLASS_HISTORY.getOrDefault(dirPath.toString(), Map.of()).getOrDefault(step, Map.of());
-            return hist.values().stream().flatMap(List::stream).anyMatch(r -> r[0] != runId);
+            return hist.values().stream().flatMap(List::stream).anyMatch(r -> usable(r));
+        }
+
+        /** A class's wall from the runs this one may read ({@link #usable}): their mean. */
+        double causalWall(List<long[]> rows) {
+            return rows.stream().filter(r -> usable(r)).mapToLong(r -> r[1]).average().orElse(0);
+        }
+
+        /** A class wall this run may read: an earlier run's when causal, else any other run's. */
+        boolean usable(long[] r) {
+            return CAUSAL ? r[0] >= 0 && r[0] < runId : r[0] != runId;
         }
 
         /** The module's running suite's share of class walls done, as {@link #suiteLeft} reads it. */
@@ -942,6 +996,29 @@ public class Replay {
             if ("workspace-finish".equals(e.get("type"))) end = num(e, "ts");
             else end = Math.max(end, num(e, "ts"));
         }
+        // Time on hold for memory comes off the scored clock, as bench/eta/score.py takes it off:
+        // the countdown stands still through a hold, and the run is judged on its working time.
+        List<long[]> holds = new ArrayList<>();
+        {
+            long since = -1;
+            for (Map<?, ?> e : events) {
+                Object type = e.get("type");
+                if ("hold-start".equals(type) && since < 0) since = num(e, "ts");
+                else if ("hold-end".equals(type) && since >= 0) {
+                    holds.add(new long[] {since, num(e, "ts")});
+                    since = -1;
+                }
+            }
+            if (since >= 0) holds.add(new long[] {since, end});
+        }
+        LongUnaryOperator work = at -> {
+            long held = 0;
+            for (long[] h : holds) {
+                if (at <= h[0]) break;
+                held += Math.min(at, h[1]) - h[0];
+            }
+            return at - held;
+        };
         long wall = end - t0;
 
         V0 v0 = new V0();
@@ -1049,15 +1126,33 @@ public class Replay {
                         v0.rw.suiteWorkers(Path.of(dir), w, walls[0], walls[1]);
                     }
                 }
+                case "label" -> {
+                    // A class's first label is its start (TestSupport labels a class as it starts):
+                    // "<coord> :: <SimpleName>  [wN]".
+                    String dir = dirOf(e, dirOfCoord);
+                    Object label = e.get("label");
+                    if (v0.rw == null
+                            || dir == null
+                            || label == null
+                            || !TaskNames.isRunTests(String.valueOf(e.get("task")))) break;
+                    var m = CLASS_LABEL.matcher(label.toString());
+                    if (!m.matches()) break;
+                    var known = v8.classWall(Path.of(dir), m.group(1));
+                    if (known == null) break;
+                    if (st.classesDone.getOrDefault(Path.of(dir), Map.of()).containsKey(known.getKey())) break;
+                    v0.rw.suiteClassStarted(Path.of(dir), known.getKey(), Math.round(known.getValue()));
+                }
                 case "class-finish" -> {
                     String dir = dirOf(e, dirOfCoord);
                     Object cls = e.get("testClass");
+                    if (v0.rw != null && dir != null && cls != null)
+                        v0.rw.suiteClassFinished(Path.of(dir), cls.toString());
                     if (dir != null && cls != null) {
                         st.classesDone
                                 .computeIfAbsent(Path.of(dir), k -> new HashMap<>())
                                 .put(cls.toString(), Math.max(0, num(e, "millis")));
-                        // The engine's suite share reads the session's class walls; the replay's
-                        // closest stand-in is the other runs' (leave-one-out) through V8's reading.
+                        // The engine's suite share reads the session's class walls: the earlier
+                        // runs' (CAUSAL), through V8's reading.
                         // A suite with no recorded class has no measure (SuiteClassProgress.UNKNOWN):
                         // the engine leaves it on the clock rather than reading it as done.
                         if (v0.rw != null && v0.rw.steps(Path.of(dir)) && v8.hasClassHistory(st, Path.of(dir))) {
@@ -1171,11 +1266,17 @@ public class Replay {
                     if (v6.rw != null) v6.rw.moduleComplete(p);
                     st.done.add(p);
                 }
+                case "hold-start" -> {
+                    if (v0.rw != null) v0.rw.hold();
+                }
+                case "hold-end" -> {
+                    if (v0.rw != null) v0.rw.resume();
+                }
                 case "workspace-progress" -> {
                     if (st.costs.isEmpty() && v0.rw == null) break;
                     for (Model m : models) {
                         long r = m.remaining(st, ts);
-                        if (r >= 0) points.get(m).add(new long[] {ts, r});
+                        if (r >= 0) points.get(m).add(new long[] {work.applyAsLong(ts), r});
                     }
                     long recorded = num(e, "remainingMs");
                     if (v0.rw != null && recorded >= 0 && !"preflight".equals(e.get("phase"))) {
@@ -1201,6 +1302,10 @@ public class Replay {
                         fidelity.stream().filter(f -> f <= 0.05).count(),
                         fidelity.size());
         System.out.printf("%n%s  %s  wall %.0fs  fidelity: %s%n", run.getFileName(), argv, wall / 1000.0, fid);
+        // Scored on working time: the points above are on it already.
+        t0 = work.applyAsLong(t0);
+        end = work.applyAsLong(end);
+        wall = end - t0;
         System.out.println(
                 "  model                                         ETA err @10   @25   @50   @75   @90    bar @25  @50  @75");
         for (Model m : models) {

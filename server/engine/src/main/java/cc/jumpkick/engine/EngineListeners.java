@@ -196,6 +196,11 @@ public final class EngineListeners {
             }
 
             @Override
+            public void trackTestClassStarted(String dir, String step, String className) {
+                sse.trackTestClassStarted(rid, dir, step, className);
+            }
+
+            @Override
             public BridgingPlanListener.Hooks planHooks(String dir) {
                 return EngineListeners.this.planHooks(rid, dir, writer, false);
             }

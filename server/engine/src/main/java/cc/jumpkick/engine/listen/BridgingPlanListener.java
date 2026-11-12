@@ -49,6 +49,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
         /** A step's test suite runs on {@code workers} test JVMs. */
         default void testWorkers(String dir, String step, int workers) {}
+
+        /** A class of a step's test suite started. */
+        default void testClassStarted(String dir, String step, String className) {}
     }
 
     private final String dir;
@@ -211,6 +214,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
     @Override
     public void testWorkers(String step, int workers) {
         hooks.testWorkers(dir, step, workers);
+    }
+
+    @Override
+    public void testClassStarted(String step, String className) {
+        hooks.testClassStarted(dir, step, className);
     }
 
     private TestFailureInfo redactFailureHoisted(TestFailureInfo f) {

@@ -278,6 +278,7 @@ public final class SsePublisher implements SseEvents {
         Path p = Path.of(dir);
         synchronized (rw) {
             if (!rw.steps(p)) return;
+            rw.suiteClassFinished(p, className);
             double f = suiteProgressOf(requestId, dir, step).finished(className, millis, Clock.SYSTEM.millis());
             if (f == SuiteClassProgress.UNKNOWN) return;
             // The class share read as time through the suite's last curve: its last classes run
@@ -307,6 +308,24 @@ public final class SsePublisher implements SseEvents {
             tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
         }
         emitWorkspaceProgress(requestId, writer, false);
+    }
+
+    /**
+     * A test class of a module's suite started: the suite runs at least as long as the class's
+     * recorded wall from now ({@link RemainingWork#suiteClassStarted}), which its share and curve
+     * cannot see when a long class runs alone at its end.
+     */
+    public void trackTestClassStarted(long requestId, String dir, String step, String className) {
+        if (requestId <= 0 || dir == null || className == null || !TaskNames.isRunTests(step)) return;
+        RemainingWork rw = remaining(requestId);
+        if (rw == null) return;
+        long expected = suiteProgressOf(requestId, dir, step).expected(className);
+        if (expected <= 0) return;
+        Path p = Path.of(dir);
+        synchronized (rw) {
+            if (!rw.steps(p)) return;
+            rw.suiteClassStarted(p, className, expected);
+        }
     }
 
     /**

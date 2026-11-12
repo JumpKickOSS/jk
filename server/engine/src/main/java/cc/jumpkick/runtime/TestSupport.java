@@ -555,6 +555,12 @@ public final class TestSupport {
                 if (!isTest && JUnitLauncher.classFromUniqueId(id).isEmpty()) {
                     return;
                 }
+                // A class container's start, named as its finish will be (TestClassTally): the
+                // live countdown holds its suite open for the class's recorded wall.
+                if (!isTest && JUnitUniqueIds.methodOf(id).isEmpty()) {
+                    String cls = JUnitUniqueIds.classOf(id);
+                    if (!cls.isEmpty()) ctx.testClassStarted(cls);
+                }
                 String detail = liveTestDetail(id, display, isTest);
                 if (!detail.isBlank()) {
                     ctx.label(progressLabel(module, detail, workerId, workerCount));
