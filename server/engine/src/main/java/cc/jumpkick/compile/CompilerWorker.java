@@ -212,21 +212,19 @@ final class CompilerWorker {
         }
     }
 
+    /** The worker's io thread: the process it forks registers to {@link #scope}, the only request it carries. */
     private void drive() {
-        Long previous = JobWorkers.bind(scope);
-        Throwable ended = null;
-        try {
-            launcher.run(this);
-        } catch (Exception e) {
-            ended = e;
-        } finally {
+        JobWorkers.runAs(scope, () -> {
+            Throwable ended = null;
             try {
+                launcher.run(this);
+            } catch (Exception e) {
+                ended = e;
+            } finally {
                 dead = true;
                 pool.workerDied(this, ended != null ? ended : new IOException("zinc worker exited"));
-            } finally {
-                JobWorkers.restore(previous);
             }
-        }
+        });
     }
 
     /**

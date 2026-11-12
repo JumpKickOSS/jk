@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -103,13 +104,9 @@ class TestNgEngineTest {
                 Set.of(),
                 SessionContext.current());
         RunResults results = new RunResults();
-        RunResults.open(results);
-        BuildPlanResult result;
-        try {
-            result = BuildPlanner.fullPlan(in).run();
-        } finally {
-            RunResults.close();
-        }
+        BuildPlanResult result = Request.detached()
+                .with(RunResults.SLOT, results)
+                .call(() -> BuildPlanner.fullPlan(in).run());
 
         assertThat(result.success()).as("one of the two TestNG tests fails").isFalse();
         assertThat(result.errors())

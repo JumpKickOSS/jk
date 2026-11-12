@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -18,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -127,7 +129,7 @@ class InputTreesTest {
         Files.writeString(src.resolve("A.java"), "class A {}");
         InputTrees.configureForTest(new JkEngineConfig(256, null, false, 32));
 
-        // No ambient ledger: a pool thread that pre-dates the request, a CLI-side helper. There is
+        // No job bound: a bare thread, a synchronous read, a CLI-side helper. There is
         // no finishJob for these, so a charge here would leak the pool for the engine's lifetime.
         for (int i = 0; i < 3; i++) {
             var snap = InputTrees.of(src);
@@ -264,12 +266,18 @@ class InputTreesTest {
         InputTrees.configureForTest(new JkEngineConfig(256, null, false, 32));
         inRequest(() -> {
             PathUtil.resetWalks();
-            // Threads created inside the request inherit the ambient ledger and so share one
-            // table — the shape of a job's lanes and tick suppliers.
+            // Threads the request starts carry its request and so share one table — the shape of
+            // a job's lanes and tick suppliers.
             AtomicInteger sized = new AtomicInteger();
+            CountDownLatch go = new CountDownLatch(1);
             Thread[] threads = new Thread[8];
             for (int t = 0; t < threads.length; t++) {
-                threads[t] = new Thread(() -> {
+                threads[t] = SessionContext.startPlatform("jk-input-trees-test", () -> {
+                    try {
+                        go.await();
+                    } catch (InterruptedException e) {
+                        throw new IllegalStateException(e);
+                    }
                     for (int i = 0; i < 25; i++) {
                         if (InputTrees.of(dir.resolve("src"))
                                         .withExtension(".java")
@@ -280,7 +288,7 @@ class InputTreesTest {
                     }
                 });
             }
-            for (Thread t : threads) t.start();
+            go.countDown();
             for (Thread t : threads) {
                 try {
                     t.join();
@@ -543,12 +551,12 @@ class InputTreesTest {
 
     private static void inRequest(Runnable body) {
         IoLedger ledger = new IoLedger();
-        IoLedger.open(ledger);
-        try {
-            SessionContext.runWhere(Session.defaults().withIo(ledger), body);
-        } finally {
-            InputTrees.finishJob();
-            IoLedger.close();
-        }
+        Request.of(1, ledger).run(() -> {
+            try {
+                SessionContext.runWhere(Session.defaults().withIo(ledger), body);
+            } finally {
+                InputTrees.finishJob();
+            }
+        });
     }
 }

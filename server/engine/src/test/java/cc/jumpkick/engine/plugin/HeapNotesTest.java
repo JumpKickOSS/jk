@@ -22,16 +22,18 @@ class HeapNotesTest {
     void forget() {
         HeapNotes.clear();
         StepScope.open(null);
-        JobWorkers.close();
     }
 
     @Test
     void each_module_of_a_parallel_build_flushes_only_its_own_retries() {
+        JobWorkers.runAs(REQUEST, this::twoModulesFlush);
+    }
+
+    private void twoModulesFlush() {
         List<String> appWarnings = new ArrayList<>();
         List<String> libWarnings = new ArrayList<>();
         TaskContext appTests = recording(appWarnings);
         TaskContext libTests = recording(libWarnings);
-        JobWorkers.open(REQUEST);
 
         StepScope.open(appTests);
         HeapNotes.note(HeapNotes.line(256L << 20, 128L << 20, false));
@@ -51,13 +53,14 @@ class HeapNotesTest {
     @Test
     void a_step_that_ends_without_flushing_leaves_no_notes_behind() {
         TaskContext step = recording(new ArrayList<>());
-        JobWorkers.open(REQUEST);
-        StepScope.open(step);
-        HeapNotes.note("retried with 256 MiB heap after running out of 128 MiB");
-        StepScope.close();
+        JobWorkers.runAs(REQUEST, () -> {
+            StepScope.open(step);
+            HeapNotes.note("retried with 256 MiB heap after running out of 128 MiB");
+            StepScope.close();
 
-        StepScope.open(step);
-        assertThat(HeapNotes.drain()).isEmpty();
+            StepScope.open(step);
+            assertThat(HeapNotes.drain()).isEmpty();
+        });
     }
 
     private static TaskContext recording(List<String> warnings) {

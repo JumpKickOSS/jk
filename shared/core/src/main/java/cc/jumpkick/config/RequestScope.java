@@ -20,12 +20,12 @@ import org.jspecify.annotations.Nullable;
  * stable while a build runs and stale the moment a {@code jk watch} iteration starts, so a
  * process-lifetime memo needs an invalidation story and a per-call memo is no memo at all.
  *
- * <p><strong>The answer is to scope to the request and never invalidate.</strong> A request already
- * has an identity: {@link IoLedger} is created once per invocation and shared by every copy of the
- * {@link Session} — its own javadoc says so, because byte accounting has exactly the same lifetime
- * requirement. Keying on that instance means a scope cannot outlive the request that made it, so
- * there is nothing to invalidate and nothing to get wrong. A {@code jk watch} iteration is a new
- * request, so it gets a new scope for free.
+ * <p><strong>The answer is to scope to the request and never invalidate.</strong> A job's {@link
+ * Request} already has an identity: its {@link IoLedger}, created once per job and shared by every
+ * copy of the request and of the {@link Session}, because byte accounting has exactly the same
+ * lifetime requirement. Keying on that instance means a scope cannot outlive the request that made
+ * it, so there is nothing to invalidate and nothing to get wrong. A {@code jk watch} iteration is a
+ * new request, so it gets a new scope for free.
  *
  * <p>The map holding scopes is <strong>weak-keyed</strong>: when a request's ledger becomes
  * unreachable its scope is collectable, so a long-lived engine does not accumulate one per build ever
@@ -88,7 +88,7 @@ public final class RequestScope {
     }
 
     /**
-     * True when an ambient request exists, so {@link #current()} returns a scope that actually
+     * True when a job's request is bound, so {@link #current()} returns a scope that actually
      * caches. Callers whose side effects must be balanced by a per-request teardown (a charge that
      * a close releases) must not perform them when this is false — the unscoped scope has no
      * teardown.
@@ -158,10 +158,9 @@ public final class RequestScope {
     }
 
     /**
-     * Ends the ambient request's scope: its facts are gone before the next request begins. The weak
-     * key alone cannot do this — the ledger is an inheritable thread-local, so every pooled thread
-     * born or borrowed during the job still holds it, and with it the scope and every input-tree
-     * listing the job memoised. Called once, where the ledger is closed.
+     * Ends the bound request's scope: its facts are gone before the next request begins. The weak
+     * key alone cannot do this — a straggling pool task or a thread the job started still holds the
+     * request, and with it the scope and every input-tree listing the job memoised.
      */
     public static void release() {
         IoLedger ledger = ambientLedger();
@@ -169,29 +168,30 @@ public final class RequestScope {
     }
 
     /**
-     * Ends the scope of the request that opened {@code ledger}, from any thread. For the job the
-     * engine gave up waiting on: its runner may still be walking a workspace long after the client
-     * has gone, and the scope it fills is not something that thread will ever release itself.
+     * Ends the scope of the request whose ledger is {@code ledger}, from any thread: where the job
+     * ends, and for the job the engine gave up waiting on, whose runner may still be walking a
+     * workspace long after the client has gone.
      */
     public static void release(IoLedger ledger) {
         SCOPES.remove(ledger);
     }
 
     /**
-     * The ledger the current request opened, or {@code null} when there is no request.
+     * The ledger of the job's request bound now, or {@code null} when there is none.
      *
-     * <p>Deliberately {@link IoLedger#ambient()} and not {@code SessionContext.current().io()}. The
+     * <p>Deliberately the bound {@link Request} and not {@code SessionContext.current().io()}. The
      * session is never null — off a request it is {@code Session.defaults()}, whose ledger is stable
      * for the life of the process — so keying on it would have turned this into a process-lifetime
      * cache with no invalidation, which is the exact thing the design exists to avoid.
      * {@code RequestScopeTest} caught that.
      *
-     * <p>{@code IoLedger.open} is called in one place, {@code JobEnvelope}, which is the engine's
-     * per-job boundary. So "a request exists" has a single unambiguous definition, and a caller
-     * outside one — the CLI, a unit test, a pool thread that pre-dates the request and inherits
-     * nothing — is uncached rather than wrongly cached.
+     * <p>Only a job counts ({@link Request#isJob()}): the engine binds one in {@code JobEnvelope},
+     * its per-job boundary, so "a request exists" has a single unambiguous definition, and a caller
+     * outside one — a synchronous read, the CLI, a unit test, a bare thread — is uncached rather
+     * than wrongly cached.
      */
     private static @Nullable IoLedger ambientLedger() {
-        return IoLedger.ambient();
+        Request r = Request.current();
+        return r != null && r.isJob() ? r.io() : null;
     }
 }

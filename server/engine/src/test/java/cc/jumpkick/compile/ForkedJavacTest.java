@@ -131,19 +131,20 @@ class ForkedJavacTest {
                 work);
 
         long job = 8801L;
-        JobWorkers.open(job);
-        try {
-            ForkedJavac.Result compiled = ForkedJavac.compile(req);
-            assertThat(compiled.success()).as("%s", compiled.diagnostics()).isTrue();
-            Files.writeString(src, "package a; public class A { public int n() { return 2; } }");
-            ForkedJavac.Plan plan = ForkedJavac.plan(req);
-            assertThat(plan.full()).isFalse();
-            assertThat(plan.sources()).isNotEmpty();
-        } finally {
-            JavaCompilerHost.end(job);
-            JobWorkers.shutdownForRequest(job, 0L);
-            JobWorkers.close();
-        }
+        JobWorkers.begin(job);
+        JobWorkers.runAs(job, () -> {
+            try {
+                ForkedJavac.Result compiled = ForkedJavac.compile(req);
+                assertThat(compiled.success()).as("%s", compiled.diagnostics()).isTrue();
+                Files.writeString(src, "package a; public class A { public int n() { return 2; } }");
+                ForkedJavac.Plan plan = ForkedJavac.plan(req);
+                assertThat(plan.full()).isFalse();
+                assertThat(plan.sources()).isNotEmpty();
+            } finally {
+                JavaCompilerHost.end(job);
+                JobWorkers.shutdownForRequest(job, 0L);
+            }
+        });
     }
 
     /**

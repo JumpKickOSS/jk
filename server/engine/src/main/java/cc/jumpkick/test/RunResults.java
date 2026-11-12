@@ -1,78 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.config.Request;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The test runs and coverage the modules of one request publish, keyed by module path, drained
  * into that request's record at journal-write. One instance lives on the request's {@code
- * BuildAccumulator}; the job envelope binds it as the ambient sink on the runner thread, and the
- * {@link ContextPropagator} hop carries it onto the shared pools, so a {@code run-tests} step
- * publishing from a worker thread reaches the request that scheduled it and no other. A publish
- * with no request open — a one-shot test, a probe — has no sink and is dropped.
+ * BuildAccumulator}; the job envelope binds it in the job's {@link Request} under {@link #SLOT}, which
+ * reaches every pool task and thread the job uses, so a {@code run-tests} step publishing from a
+ * worker thread reaches the request that scheduled it and no other. A publish with no request open
+ * — a one-shot test, a probe — has no sink and is dropped.
  */
 public final class RunResults {
 
-    private static final InheritableThreadLocal<RunResults> AMBIENT = new InheritableThreadLocal<>();
-
-    static {
-        // Propagated, not inherited: a pool worker created under one request would otherwise hold
-        // that request's sink for the engine's life (see SessionContext's ledger note).
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                RunResults captured = AMBIENT.get();
-                return () -> {
-                    RunResults previous = AMBIENT.get();
-                    open(captured);
-                    try {
-                        r.run();
-                    } finally {
-                        open(previous);
-                    }
-                };
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                RunResults captured = AMBIENT.get();
-                return () -> {
-                    RunResults previous = AMBIENT.get();
-                    open(captured);
-                    try {
-                        return c.call();
-                    } finally {
-                        open(previous);
-                    }
-                };
-            }
-        });
-    }
+    /** Where a request carries its sink. */
+    public static final Request.Slot<RunResults> SLOT = new Request.Slot<>("results");
 
     private final ConcurrentHashMap<String, MarkdownTestReport.ModuleRun> tests = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CoverageResults.Module> coverage = new ConcurrentHashMap<>();
 
-    /** Bind {@code sink} as this thread's ambient sink; {@code null} clears it. */
-    public static void open(@Nullable RunResults sink) {
-        if (sink == null) AMBIENT.remove();
-        else AMBIENT.set(sink);
-    }
-
-    /** Drop this thread's ambient binding. */
-    public static void close() {
-        AMBIENT.remove();
-    }
-
-    /** The request's sink on this thread, or {@code null} when no request is open. */
+    /** The bound request's sink, or {@code null} when no request carries one. */
     public static @Nullable RunResults ambient() {
-        return AMBIENT.get();
+        Request r = Request.current();
+        return r == null ? null : r.get(SLOT);
     }
 
     /**

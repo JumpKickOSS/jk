@@ -162,9 +162,8 @@ class CompilerPoolTest {
     void a_compile_of_an_ended_job_is_refused_and_one_that_ignores_its_cancel_has_its_worker_stopped(@TempDir Path dir)
             throws Exception {
         long ended = job();
-        JobWorkers.open(ended);
+        JobWorkers.begin(ended);
         JobWorkers.shutdownForRequest(ended, 0L);
-        JobWorkers.close();
         Fakes fakes = new Fakes(2);
         CompilerPool pool = pool(dir, fakes);
         CompileWork late = item(dir, "late", ended);

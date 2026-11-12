@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -182,12 +183,9 @@ class JUnit4VintageTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        RunResults.open(results);
-        try {
+        return Request.detached().with(RunResults.SLOT, results).call(() -> {
             return BuildPlanner.fullPlan(in).run();
-        } finally {
-            RunResults.close();
-        }
+        });
     }
 
     private static List<MarkdownTestReport.Entry> entries(RunResults results) {

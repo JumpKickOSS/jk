@@ -187,14 +187,15 @@ class ResidentCompilerTest {
     }
 
     private static <T extends @Nullable Object> T inJob(long job, Callable<T> work) throws Exception {
-        JobWorkers.open(job);
-        try {
-            return JkThreads.io().submit(work).get(180, TimeUnit.SECONDS);
-        } finally {
-            JobWorkers.shutdownForRequest(job, 0L);
-            JavaCompilerHost.end(job);
-            JobWorkers.close();
-        }
+        JobWorkers.begin(job);
+        return JobWorkers.callAs(job, () -> {
+            try {
+                return JkThreads.io().submit(work).get(180, TimeUnit.SECONDS);
+            } finally {
+                JobWorkers.shutdownForRequest(job, 0L);
+                JavaCompilerHost.end(job);
+            }
+        });
     }
 
     private static ForkedJavac.Result compileInJob(long job, ForkedJavac.Request req) throws Exception {

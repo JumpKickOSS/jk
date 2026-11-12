@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
 import java.io.IOException;
@@ -15,7 +14,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -28,11 +26,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Per-request registry of forked worker {@link Process}es (plugin/test JVMs). On cancel or job wall
- * deadline the engine shuts them down so a wedged worker cannot pin the runner forever /
+ * deadline the engine shuts them down so a wedged worker cannot pin the runner forever.
  *
- *
- * <p>Workers register via {@link #register} when a request scope is open ({@link #open}/{@link
- * #close}).
+ * <p>A fork registers via {@link #register} to the id of the {@link Request} bound where it starts,
+ * which reaches every pool task and thread the request uses; a request that is no job (id {@code
+ * 0}) and no request at all register nothing.
  *
  * <p><strong>Cancel contract</strong> {@link #shutdownForRequest} signals <em>all</em>
  * live workers first (tight loop — effectively simultaneous), then waits one shared wall-clock
@@ -55,19 +53,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JobWorkers {
 
-    /**
-     * The request a fork on this thread belongs to.
-     *
-     * <p>Inheritable so a thread the request runner creates itself still attaches to the same
-     * request. Inheritance alone is <em>not</em> enough, though: CPU steps (compile-java,
-     * compile-kotlin, plugin-*) run on {@code JkThreads.cpu()}, a process-wide ForkJoinPool whose
-     * threads inherit whatever scope happened to be open when the pool first created them — so a
-     * javac forked for request 7 could land under request 1 (or nowhere), and cancel would never
-     * kill it. The propagator registered below carries the submitting thread's scope across that
-     * pool hop, which is what makes the cancel contract in the class javadoc actually hold.
-     */
-    private static final InheritableThreadLocal<Long> CURRENT = new InheritableThreadLocal<>();
-
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
 
     /** Requests whose workers are stopped: no new fork of theirs starts until {@link #release}. */
@@ -78,7 +63,7 @@ public final class JobWorkers {
      * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
      * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
      * process) or added to the already-removed set after the kill loop (escaped worker).
-     * Cleared on {@link #open} in case a request id is ever reused; on overflow only ids far behind
+     * Cleared on {@link #begin} in case a request id is ever reused; on overflow only ids far behind
      * the newest of the same sign are evicted, so a request still mid-shutdown keeps its tombstone.
      */
     private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
@@ -91,87 +76,39 @@ public final class JobWorkers {
      */
     private static final long KILL_SETTLE_MS = 5_000;
 
-    static {
-        // SessionContext's static init uses bind() (displaces); force it to land before our add().
-        SessionContext.current();
-        ContextPropagator.add(new ContextPropagator.Propagator() {
-            @Override
-            public Runnable wrapRunnable(Runnable r) {
-                Long captured = CURRENT.get();
-                return () -> runWithScope(captured, r);
-            }
-
-            @Override
-            public <T> Callable<T> wrapCallable(Callable<T> c) {
-                Long captured = CURRENT.get();
-                return () -> {
-                    Long previous = CURRENT.get();
-                    setScope(captured);
-                    try {
-                        return c.call();
-                    } finally {
-                        setScope(previous);
-                    }
-                };
-            }
-        });
-    }
-
-    private static void runWithScope(Long captured, Runnable r) {
-        Long previous = CURRENT.get();
-        setScope(captured);
-        try {
-            r.run();
-        } finally {
-            setScope(previous);
-        }
-    }
-
-    private static void setScope(Long id) {
-        if (id == null) CURRENT.remove();
-        else CURRENT.set(id);
-    }
-
     private JobWorkers() {}
 
-    /** Open a request scope on this thread so subsequent {@link #register} calls attach here. */
-    public static void open(long requestId) {
+    /** Request {@code requestId} starts: a shutdown recorded for an earlier use of its id is forgotten. */
+    public static void begin(long requestId) {
         TOMBSTONES.remove(requestId);
-        CURRENT.set(requestId);
-    }
-
-    /** Drop the thread's request scope (does not kill processes). */
-    public static void close() {
-        CURRENT.remove();
     }
 
     /**
-     * Forks on this thread register to {@code requestId} until {@link #restore}. Returns the scope
-     * to put back. Does not clear a shutdown tombstone, so a fork for a job that has already ended
-     * is still killed on register.
+     * Run {@code body} with forks registering to {@code requestId}: the bound request under that id,
+     * or a request that is no job off one. Does not clear a shutdown tombstone, so a fork for a job
+     * that has already ended is still killed on register.
      */
-    public static @Nullable Long bind(long requestId) {
-        Long previous = CURRENT.get();
-        CURRENT.set(requestId);
-        return previous;
+    public static <X extends Throwable> void runAs(long requestId, Request.Action<X> body) throws X {
+        Request.currentOrDetached().withId(requestId).run(body);
     }
 
-    /** Put back the scope {@link #bind} returned. {@code null} clears it. */
-    public static void restore(@Nullable Long requestId) {
-        if (requestId == null) CURRENT.remove();
-        else CURRENT.set(requestId);
+    /** {@link #runAs} for a body with a result. */
+    public static <T extends @Nullable Object, X extends Throwable> T callAs(long requestId, Request.Body<T, X> body)
+            throws X {
+        return Request.currentOrDetached().withId(requestId).call(body);
     }
 
     /**
-     * Request id this thread's forks belong to, or {@code null} when no job scope is open
-     * (one-shot tests, probes).
+     * Request id this thread's forks belong to, or {@code null} when no job scope is bound
+     * (one-shot tests, probes, a synchronous read).
      */
-    public static Long currentRequestId() {
-        return CURRENT.get();
+    public static @Nullable Long currentRequestId() {
+        Request r = Request.current();
+        return r == null || r.id() == 0 ? null : r.id();
     }
 
     /** Test seam: the request scope currently open on this thread, or {@code null}. */
-    static Long currentScope() {
+    static @Nullable Long currentScope() {
         return currentRequestId();
     }
 
@@ -219,7 +156,7 @@ public final class JobWorkers {
     /** Track {@code process} for the current request, if any. */
     public static void register(Process process) {
         if (process == null) return;
-        Long id = CURRENT.get();
+        Long id = currentRequestId();
         if (id == null) return;
         if (TOMBSTONES.contains(id)) {
             // Request already shut down — kill on arrival instead of resurrecting the entry.
@@ -367,7 +304,7 @@ public final class JobWorkers {
             JvmOptions.HeapChoice choice,
             LearnedHeaps heaps)
             throws IOException {
-        Long request = track ? CURRENT.get() : null;
+        Long request = track ? currentRequestId() : null;
         if (request != null) awaitReleased(request);
         WorkerLeases.Grant grant;
         try {
@@ -436,7 +373,7 @@ public final class JobWorkers {
      */
     public static void unregister(Process process) {
         if (process == null) return;
-        Long id = CURRENT.get();
+        Long id = currentRequestId();
         if (id != null) {
             untrack(id, process);
             return;

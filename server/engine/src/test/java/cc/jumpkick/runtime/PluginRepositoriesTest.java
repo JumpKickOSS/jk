@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
@@ -248,13 +249,13 @@ class PluginRepositoriesTest {
 
     /** {@code body} as one command: its own request scope, released after. */
     private static void inRequest(Runnable body) {
-        IoLedger.open(new IoLedger());
-        try {
-            body.run();
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                body.run();
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test

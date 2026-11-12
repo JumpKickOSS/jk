@@ -106,12 +106,12 @@ public final class TaskForecaster {
             Log.debug("of: forecast without a worker still uses action-cache + zinc-file presence", e);
         }
         Path worker = workerJar;
-        try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
+        try {
             // The walk reads the same classpath entry once per module that names it, and a
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
             // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
-            return ClasspathFingerprint.withEntryMemo(() -> forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only, planner));
+            return JavaCompilerHost.scoped(() -> ClasspathFingerprint.withEntryMemo(() -> forecastModules(
+                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only, planner)));
         } catch (RuntimeException | Error direct) {
             throw direct;
         } catch (Exception impossible) {

@@ -271,8 +271,7 @@ public record Session(
     /**
      * A default session: empty config, current working directory, default cache/JDK roots, no tuning,
      * and a fresh {@link CancelToken#live live} cancellation token so a front-end can cancel it.
-     * Its {@link IoLedger} is the run's ambient one when a request is open on this thread (the engine
-     * opens one per request), else a fresh detached ledger.
+     * Its {@link IoLedger} is the bound {@link Request}'s, else a fresh detached ledger.
      */
     public static Session defaults() {
         return new Session(
@@ -303,9 +302,14 @@ public record Session(
                 false,
                 false,
                 new AffectedChanged(),
-                IoLedger.currentOrNew(),
+                requestIo(),
                 false,
                 false);
+    }
+
+    private static IoLedger requestIo() {
+        Request r = Request.current();
+        return r != null ? r.io() : new IoLedger();
     }
 
     /** A copy rooted at {@code dir}, absolutized — the working directory is never relative. */

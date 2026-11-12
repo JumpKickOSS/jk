@@ -60,14 +60,14 @@ public final class BuildAccumulator {
     private final boolean rebuild;
 
     /**
-     * This run's byte accounting. Opened as the ambient ledger on the runner thread, so every
-     * session the request builds meters into it (see {@link cc.jumpkick.task.IoLedger}).
+     * This run's byte accounting. The job's request carries it, so every session the request builds
+     * meters into it (see {@link cc.jumpkick.task.IoLedger}).
      */
     private final IoLedger io = new IoLedger();
 
     /**
-     * The test runs and coverage this request's modules publish. Bound as the ambient sink on the
-     * runner thread for the request's life, drained once when the record is written.
+     * The test runs and coverage this request's modules publish. Carried by the job's request for
+     * its life, drained once when the record is written.
      */
     private final RunResults results = new RunResults();
 

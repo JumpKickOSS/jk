@@ -174,47 +174,47 @@ class CredentialHelpersTest {
     void a_rerun_value_refused_again_in_the_same_request_is_not_run_a_third_time() {
         AtomicInteger runs = countingRunner(0);
         var cmd = CredentialHelpers.parse("helper", "w");
-        IoLedger.open(new IoLedger());
-        try {
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
-            assertThat(CredentialHelpers.forget("token-1")).isTrue();
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
+                assertThat(CredentialHelpers.forget("token-1")).isTrue();
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
 
-            // Another module's repository is refused token-2: the re-run's value, so no third run.
-            assertThat(CredentialHelpers.forget("token-2")).isFalse();
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
-            assertThat(runs).hasValue(2);
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+                // Another module's repository is refused token-2: the re-run's value, so no third run.
+                assertThat(CredentialHelpers.forget("token-2")).isFalse();
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+                assertThat(runs).hasValue(2);
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test
     void the_next_request_runs_a_helper_whose_rerun_was_refused_again() {
         AtomicInteger runs = countingRunner(0);
         var cmd = CredentialHelpers.parse("helper", "w");
-        IoLedger.open(new IoLedger());
-        try {
-            CredentialHelpers.value(cmd, Map.of(), "w");
-            CredentialHelpers.forget("token-1");
-            CredentialHelpers.value(cmd, Map.of(), "w");
-            assertThat(CredentialHelpers.forget("token-2")).isFalse();
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                CredentialHelpers.value(cmd, Map.of(), "w");
+                CredentialHelpers.forget("token-1");
+                CredentialHelpers.value(cmd, Map.of(), "w");
+                assertThat(CredentialHelpers.forget("token-2")).isFalse();
+            } finally {
+                RequestScope.release();
+            }
+        });
 
-        IoLedger.open(new IoLedger());
-        try {
-            // The user logged in again between commands: the refusal runs the helper once more.
-            assertThat(CredentialHelpers.forget("token-2")).isTrue();
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
-            assertThat(runs).hasValue(3);
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                // The user logged in again between commands: the refusal runs the helper once more.
+                assertThat(CredentialHelpers.forget("token-2")).isTrue();
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
+                assertThat(runs).hasValue(3);
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test
@@ -253,37 +253,37 @@ class CredentialHelpersTest {
     void a_hand_off_drops_a_value_an_earlier_request_printed_and_keeps_one_this_request_printed() {
         AtomicInteger runs = countingRunner(0);
         var cmd = CredentialHelpers.parse("helper", "w");
-        IoLedger.open(new IoLedger());
-        try {
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
-            assertThat(CredentialHelpers.renewForHandOff("token-1"))
-                    .as("printed during this request")
-                    .isFalse();
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
+                assertThat(CredentialHelpers.renewForHandOff("token-1"))
+                        .as("printed during this request")
+                        .isFalse();
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
+            } finally {
+                RequestScope.release();
+            }
+        });
 
-        IoLedger.open(new IoLedger());
-        try {
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w"))
-                    .as("still within its time to live")
-                    .isEqualTo("token-1");
-            assertThat(CredentialHelpers.renewForHandOff("token-1"))
-                    .as("printed by an earlier request")
-                    .isTrue();
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
-            assertThat(CredentialHelpers.renewForHandOff("token-2")).isFalse();
-            assertThat(runs).hasValue(2);
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w"))
+                        .as("still within its time to live")
+                        .isEqualTo("token-1");
+                assertThat(CredentialHelpers.renewForHandOff("token-1"))
+                        .as("printed by an earlier request")
+                        .isTrue();
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+                assertThat(CredentialHelpers.renewForHandOff("token-2")).isFalse();
+                assertThat(runs).hasValue(2);
 
-            // The hand-off's run is an ordinary one: a refusal of its value still runs the helper again.
-            assertThat(CredentialHelpers.forget("token-2")).isTrue();
-            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+                // The hand-off's run is an ordinary one: a refusal of its value still runs the helper again.
+                assertThat(CredentialHelpers.forget("token-2")).isTrue();
+                assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test

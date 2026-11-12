@@ -3,6 +3,7 @@ package cc.jumpkick.guard.extract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.guard.extract.FactsIndexing.Ensured;
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
@@ -31,24 +32,24 @@ class ClassStampsTest {
         Path classes = dir.resolve("classes");
         Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
         IoLedger ledger = new IoLedger();
-        IoLedger.open(ledger);
-        try {
-            Ensured built = FactsIndexing.ensure(classes, idx);
-            assertThat(FactsIndexing.freshDigest(classes, idx)).contains(built.bodyDigest());
-            assertThat(FactsIndexing.freshDigest(classes, idx)).contains(built.bodyDigest());
-            assertThat(FactsIndexing.ensure(classes, idx).tier()).isEqualTo(Ensured.Tier.FRESH);
-            assertThat(ClassStamps.memo().walks()).isEqualTo(1);
+        Request.of(1, ledger).run(() -> {
+            try {
+                Ensured built = FactsIndexing.ensure(classes, idx);
+                assertThat(FactsIndexing.freshDigest(classes, idx)).contains(built.bodyDigest());
+                assertThat(FactsIndexing.freshDigest(classes, idx)).contains(built.bodyDigest());
+                assertThat(FactsIndexing.ensure(classes, idx).tier()).isEqualTo(Ensured.Tier.FRESH);
+                assertThat(ClassStamps.memo().walks()).isEqualTo(1);
 
-            // A step rewrites the class while it runs; the next ask after it ends sees the change.
-            Files.setLastModifiedTime(
-                    sample,
-                    FileTime.fromMillis(Files.getLastModifiedTime(sample).toMillis() + 5_000));
-            StepScope.close();
-            assertThat(FactsIndexing.freshDigest(classes, idx)).isEmpty();
-            assertThat(ClassStamps.memo().walks()).isEqualTo(2);
-        } finally {
-            RequestScope.release(ledger);
-            IoLedger.close();
-        }
+                // A step rewrites the class while it runs; the next ask after it ends sees the change.
+                Files.setLastModifiedTime(
+                        sample,
+                        FileTime.fromMillis(Files.getLastModifiedTime(sample).toMillis() + 5_000));
+                StepScope.close();
+                assertThat(FactsIndexing.freshDigest(classes, idx)).isEmpty();
+                assertThat(ClassStamps.memo().walks()).isEqualTo(2);
+            } finally {
+                RequestScope.release(ledger);
+            }
+        });
     }
 }

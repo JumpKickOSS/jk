@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -89,7 +90,8 @@ class JdkInstallerTest {
         Path journal = tempDir.resolve("changes");
         InstalledJdk installed = ChangeJournal.into(
                 journal,
-                () -> ChangeActor.as(ChangeActor.shell(List.of("jdk", "install", "21")), () -> installer.install(pkg)));
+                () -> Request.actingAs(
+                        ChangeActor.shell(List.of("jdk", "install", "21")), () -> installer.install(pkg)));
         assertThat(installed.identifier()).isEqualTo("temurin-21.0.5");
         assertThat(installed.home().resolve("bin/java")).exists();
         assertThat(installed.home().resolve("release")).exists();

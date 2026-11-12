@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
@@ -15,6 +16,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -135,13 +137,9 @@ class IterationDeltaE2eTest {
         writer.register(requestId, "build", project.toString(), "mcp", SESSION, true, false, 0L, null);
         BuildPlan plan = plan(project, cache);
         long start = System.nanoTime();
-        BuildPlanResult result;
-        writer.openResults(requestId);
-        try {
-            result = plan.run();
-        } finally {
-            writer.closeResults();
-        }
+        BuildPlanResult result = Request.detached()
+                .with(RunResults.SLOT, writer.results(requestId))
+                .call(plan::run);
         long millis = Math.max(1, (System.nanoTime() - start) / 1_000_000);
         writer.accBuildPlanFinish(requestId, "", result);
         writer.accTests(requestId, plan.get(BuildPlanner.TEST_RESULT).orElse(null));

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.maven;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
@@ -97,29 +98,29 @@ class MavenRunReportTest {
         Path events = MavenRunFixture.write(tmp);
         MavenRunReport report = MavenRunReport.read(tmp, events);
         BuildAccumulator acc = new BuildAccumulator("mvn", tmp.toString(), "com.example:reactor", "cli");
-        RunResults.open(acc.results());
-        for (MavenRunReport.Module m : report.modules()) {
-            String dir = m.dir().toString();
-            for (MavenEvents.Step s : m.steps()) acc.addTask(dir, s.goal(), "", s.status(), s.millis(), 0);
-            acc.addBuildPlan(
-                    dir,
-                    new BuildPlanResult(
-                            "mvn",
-                            m.success(),
-                            Duration.ofMillis(m.millis()),
-                            List.of(),
-                            List.of(),
-                            m.errors(),
-                            false,
-                            false));
-            acc.addModule(
-                    new ModuleOutcome(m.coord(), m.dir(), m.success(), m.success() ? 0 : 1, m.millis(), true, false));
-            if (!m.tests().isEmpty()) MarkdownTestReport.publish(dir, m.coord(), m.tests());
-        }
+        Request.detached().with(RunResults.SLOT, acc.results()).run(() -> {
+            for (MavenRunReport.Module m : report.modules()) {
+                String dir = m.dir().toString();
+                for (MavenEvents.Step s : m.steps()) acc.addTask(dir, s.goal(), "", s.status(), s.millis(), 0);
+                acc.addBuildPlan(
+                        dir,
+                        new BuildPlanResult(
+                                "mvn",
+                                m.success(),
+                                Duration.ofMillis(m.millis()),
+                                List.of(),
+                                List.of(),
+                                m.errors(),
+                                false,
+                                false));
+                acc.addModule(new ModuleOutcome(
+                        m.coord(), m.dir(), m.success(), m.success() ? 0 : 1, m.millis(), true, false));
+                if (!m.tests().isEmpty()) MarkdownTestReport.publish(dir, m.coord(), m.tests());
+            }
+        });
         acc.addTests(report.tests());
         acc.stamp(JobOutcome.failed(1));
         BuildRecord record = acc.toRecord(5_000, false, 1_600, "0.13.7", null);
-        RunResults.close();
         String md = JkResultsMarkdown.render(record, null, null, acc.results().takeTests());
 
         assertThat(md).startsWith("# jk results — FAIL\n\n**FAIL** · `com.example:reactor`");

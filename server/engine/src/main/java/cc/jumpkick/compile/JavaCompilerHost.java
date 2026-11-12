@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -32,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * with the job. Compile and {@code jk explain} PLAN share the pools.
  *
  * <p>A compile needs a {@link JobWorkers} request scope; outside one ({@code jk explain}, a forecast,
- * a test) an ephemeral scope is opened for it, which ends with the call.
+ * a test) {@link #scoped} binds an ephemeral scope for it, which ends with the call.
  */
 public final class JavaCompilerHost {
 
@@ -41,18 +42,19 @@ public final class JavaCompilerHost {
     private JavaCompilerHost() {}
 
     /**
-     * Bind this thread to a job scope. Reuses the current {@link JobWorkers} request when one is open
-     * (build). Otherwise opens an ephemeral scope ({@code jk explain} / forecast).
+     * Run {@code body} under a compile scope: the bound request's when it has one (a build), else an
+     * ephemeral one ({@code jk explain}, a forecast) whose compiles and workers end with the call.
      */
-    public static Scope open() {
-        Long id = JobWorkers.currentRequestId();
-        boolean ephemeral = false;
-        if (id == null) {
-            id = EPHEMERAL.getAndDecrement();
-            JobWorkers.open(id);
-            ephemeral = true;
+    public static <T extends @Nullable Object, X extends Throwable> T scoped(Request.Body<T, X> body) throws X {
+        if (JobWorkers.currentRequestId() != null) return body.call();
+        long id = EPHEMERAL.getAndDecrement();
+        JobWorkers.begin(id);
+        try {
+            return JobWorkers.callAs(id, body);
+        } finally {
+            end(id);
+            JobWorkers.shutdownForRequest(id, 0L);
         }
-        return new Scope(id, ephemeral);
     }
 
     /**
@@ -65,22 +67,14 @@ public final class JavaCompilerHost {
 
     static ForkedJavac.Result compile(ForkedJavac.Request req) {
         Long id = JobWorkers.currentRequestId();
-        if (id == null) {
-            try (Scope ignored = open()) {
-                return compile(req);
-            }
-        }
+        if (id == null) return scoped(() -> compile(req));
         CompileWork w = CompileWork.compile(req).forJob(id, SessionContext.current());
         return poolFor(id, req, w).submit(w);
     }
 
     static ForkedJavac.Plan plan(ForkedJavac.Request req) {
         Long id = JobWorkers.currentRequestId();
-        if (id == null) {
-            try (Scope ignored = open()) {
-                return plan(req);
-            }
-        }
+        if (id == null) return scoped(() -> plan(req));
         CompileWork w = CompileWork.plan(req).forJob(id, SessionContext.current());
         return poolFor(id, req, w).submitPlan(w);
     }
@@ -231,28 +225,5 @@ public final class JavaCompilerHost {
         if (c instanceof RuntimeException re) return re;
         if (c instanceof IOException io) return new UncheckedIOException(io);
         return new RuntimeException(c);
-    }
-
-    /** {@link AutoCloseable} job/explain scope. */
-    public static final class Scope implements AutoCloseable {
-        private final long id;
-        private final boolean ephemeral;
-
-        private Scope(long id, boolean ephemeral) {
-            this.id = id;
-            this.ephemeral = ephemeral;
-        }
-
-        public long id() {
-            return id;
-        }
-
-        @Override
-        public void close() {
-            if (!ephemeral) return;
-            end(id);
-            JobWorkers.shutdownForRequest(id, 0L);
-            JobWorkers.close();
-        }
     }
 }

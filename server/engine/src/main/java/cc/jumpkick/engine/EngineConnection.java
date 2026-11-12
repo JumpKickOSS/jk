@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.api.WireWriter;
@@ -17,14 +16,13 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
-import cc.jumpkick.secret.RequestKeychain;
+import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.WorkCounters;
 import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobControlAckFrame;
 import cc.jumpkick.wire.protocol.JobControlFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -294,12 +292,9 @@ final class EngineConnection {
                 yield true;
             }
             case VerbShape.SyncRead() -> {
-                RequestKeychain.runWhere(
-                        ProtoSession.keychainOf(line),
-                        ProtoSession.keychainRefusedOf(line),
-                        () -> RequestShell.runWhere(
-                                ProtoSession.shellOf(line),
-                                () -> verb.run(line, Session.defaults().cancel(), writer)));
+                // A read is no job: its request carries the caller's shell and keychain, no job id.
+                JobEnvelope.requestOf(0, new IoLedger(), null, line)
+                        .run(() -> verb.run(line, Session.defaults().cancel(), writer));
                 yield false;
             }
         };

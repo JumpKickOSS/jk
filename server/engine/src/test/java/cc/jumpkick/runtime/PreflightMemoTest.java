@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
@@ -790,16 +791,17 @@ class PreflightMemoTest {
 
     private static PreflightMemo.Fingerprint fingerprintInRequest(Path module) {
         IoLedger ledger = new IoLedger();
-        IoLedger.open(ledger);
-        try {
-            PreflightMemo.Fingerprint[] out = new PreflightMemo.Fingerprint[1];
-            SessionContext.runWhere(
-                    Session.defaults().withIo(ledger), () -> out[0] = PreflightMemo.fingerprintModule(module, false));
-            return out[0];
-        } finally {
-            InputTrees.finishJob();
-            IoLedger.close();
-        }
+        return Request.of(1, ledger).call(() -> {
+            try {
+                PreflightMemo.Fingerprint[] out = new PreflightMemo.Fingerprint[1];
+                SessionContext.runWhere(
+                        Session.defaults().withIo(ledger),
+                        () -> out[0] = PreflightMemo.fingerprintModule(module, false));
+                return out[0];
+            } finally {
+                InputTrees.finishJob();
+            }
+        });
     }
 
     private static Path moduleDir(BuildGraph.Result graph, String name) {

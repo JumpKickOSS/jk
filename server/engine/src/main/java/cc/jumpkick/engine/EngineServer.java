@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.activity.ChangeNotices;
@@ -272,7 +273,6 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /** Event-request id for the hosted op on this thread (set around the runner). */
-    private final ThreadLocal<Long> currentEventRequestId = new ThreadLocal<>();
 
     /**
      * Fair RW lock: plans hold read for their run; cache maintenance holds write so sweeps
@@ -524,7 +524,6 @@ public final class EngineServer implements AutoCloseable {
                         sse,
                         journalWriter,
                         cacheGate,
-                        currentEventRequestId,
                         inFlightBuilds,
                         activeBuildPlans,
                         idle,
@@ -754,10 +753,10 @@ public final class EngineServer implements AutoCloseable {
      */
     private final ReentrantReadWriteLock sseConnect = new ReentrantReadWriteLock();
 
-    /** The current thread's hosted-request id for dashboard events; {@code -1} outside a request. */
+    /** The bound job's id for dashboard events; {@code -1} outside a job. */
     private long eventRequestId() {
-        Long id = currentEventRequestId.get();
-        return id != null ? id : -1;
+        Request r = Request.current();
+        return r != null && r.isJob() ? r.id() : -1;
     }
 
     private void onConnectionFinished() {

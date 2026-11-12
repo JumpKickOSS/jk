@@ -53,24 +53,24 @@ class WorkspaceClasspathSiblingIndexTest {
         }
         // One request, as a forecast is: the module list is loaded once and shared.
         IoLedger ledger = new IoLedger();
-        IoLedger.open(ledger);
-        try {
-            TomlScan.clearCache();
-            for (int i = 0; i < MODULES; i++) {
-                Path dir = root.resolve("m" + i);
-                JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
-                WorkspaceClasspath.resolve(dir, build, Set.of(Scope.MAIN));
+        Request.of(1, ledger).run(() -> {
+            try {
+                TomlScan.clearCache();
+                for (int i = 0; i < MODULES; i++) {
+                    Path dir = root.resolve("m" + i);
+                    JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
+                    WorkspaceClasspath.resolve(dir, build, Set.of(Scope.MAIN));
+                }
+                long scans = TomlScan.scans();
+                // A per-unit root walk scans the root once per unit per module: MODULES squared on top
+                // of the linear share, which is a few scans per module.
+                assertThat(scans)
+                        .as("TOML scans for resolving every one of %d modules", MODULES)
+                        .isLessThan((long) MODULES * MODULES / 2);
+            } finally {
+                RequestScope.release();
             }
-            long scans = TomlScan.scans();
-            // A per-unit root walk scans the root once per unit per module: MODULES squared on top
-            // of the linear share, which is a few scans per module.
-            assertThat(scans)
-                    .as("TOML scans for resolving every one of %d modules", MODULES)
-                    .isLessThan((long) MODULES * MODULES / 2);
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        });
     }
 
     private static void aged(Path file, String body) throws IOException {

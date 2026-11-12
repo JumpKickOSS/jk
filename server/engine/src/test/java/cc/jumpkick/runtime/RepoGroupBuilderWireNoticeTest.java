@@ -19,7 +19,6 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
-import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
@@ -152,12 +151,6 @@ class RepoGroupBuilderWireNoticeTest {
         }
 
         @Override
-        public void bindEventRequestId(long id) {}
-
-        @Override
-        public void unbindEventRequestId() {}
-
-        @Override
         public IoLedger runIo(long id) {
             return io;
         }
@@ -170,17 +163,6 @@ class RepoGroupBuilderWireNoticeTest {
         @Override
         public @Nullable BuildAccumulator accumulatorOf(long id) {
             return null;
-        }
-
-        @Override
-        public void openResults(long id) {
-            BuildAccumulator a = accumulatorOf(id);
-            RunResults.open(a == null ? new RunResults() : a.results());
-        }
-
-        @Override
-        public void closeResults() {
-            RunResults.close();
         }
 
         @Override

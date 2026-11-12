@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -384,22 +385,22 @@ class LockFreshnessTest {
                 """);
         Path lockFile = dir.resolve("jk-lock.toml");
         Files.writeString(lockFile, LockfileWriter.render(Lockfile.empty("test").withManifestsSha256("0".repeat(64))));
-        IoLedger.open(new IoLedger());
-        try {
-            assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
-            assertThat(LockFreshness.isStale(dir, lockFile))
-                    .as("the request's answer")
-                    .isTrue();
-            String live = LockManifestDigest.compute(dir);
-            Files.writeString(
-                    lockFile, LockfileWriter.render(Lockfile.empty("test").withManifestsSha256(live)));
-            Files.setLastModifiedTime(lockFile, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
-            assertThat(LockFreshness.isStale(dir, lockFile))
-                    .as("re-locked: a new stamp, asked again")
-                    .isFalse();
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+                assertThat(LockFreshness.isStale(dir, lockFile))
+                        .as("the request's answer")
+                        .isTrue();
+                String live = LockManifestDigest.compute(dir);
+                Files.writeString(
+                        lockFile, LockfileWriter.render(Lockfile.empty("test").withManifestsSha256(live)));
+                Files.setLastModifiedTime(lockFile, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+                assertThat(LockFreshness.isStale(dir, lockFile))
+                        .as("re-locked: a new stamp, asked again")
+                        .isFalse();
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 }

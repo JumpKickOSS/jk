@@ -26,9 +26,9 @@ import java.util.function.Supplier;
  * gets silence and reads it as agreement. So the scope has to be the run.
  *
  * <p>A run is identified by its {@link IoLedger}. That is not a convenient coincidence: the ledger
- * is the one object the engine already opens and closes around a request
- * ({@link IoLedger#open}/{@link IoLedger#close}), and every {@code Session} copy derived inside the
- * request — including work handed to the shared pools — carries the same instance. {@code Session}
+ * is the one object the engine already makes once per request and binds in its {@code Request},
+ * and every {@code Session} copy derived inside the request — including work handed to the shared
+ * pools — carries the same instance. {@code Session}
  * itself cannot serve: it is a record, copied freely by every {@code with*} call, so its identity
  * changes several times inside one build while the ledger's does not.
  *
@@ -39,8 +39,8 @@ import java.util.function.Supplier;
  * <h2>Where a note goes</h2>
  *
  * To the run's registered {@link Sink} when the engine opened one, and to the process
- * {@link Log} at warn otherwise. The engine opens a sink around every enveloped request — registered beside {@link
- * IoLedger#open} and removed in the same {@code finally} — and its sink turns a note into a WARN
+ * {@link Log} at warn otherwise. The engine opens a sink around every enveloped request — registered
+ * where it binds the request and removed in the same {@code finally} — and its sink turns a note into a WARN
  * wire line the CLI already prints, so the warning reaches the user who can act on it rather than
  * only the engine log. The log remains for everything outside a request: engine housekeeping
  * and tests.

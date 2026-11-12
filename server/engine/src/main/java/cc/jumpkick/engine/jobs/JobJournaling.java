@@ -40,12 +40,6 @@ public interface JobJournaling {
      */
     default void sessionLeader(String trigger, @Nullable String session, String leader) {}
 
-    /** Bind the request's results sink on the calling thread; see {@code JournalWriter#openResults}. */
-    void openResults(long id);
-
-    /** Drop the calling thread's results sink. */
-    void closeResults();
-
     /**
      * Persist the request's row. A no-op is journaled as a run-log line and no reports; for one
      * this returns its agent verdict, else {@code null}.

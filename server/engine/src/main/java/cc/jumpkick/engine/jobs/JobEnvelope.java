@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
@@ -21,6 +23,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.secret.RequestKeychain;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoJobs;
@@ -167,7 +170,8 @@ public final class JobEnvelope {
                 eventKind,
                 eventDir,
                 fingerprint,
-                eventRequestId);
+                eventRequestId,
+                ChangeActor.current());
         if (!(detached && plan)) return proceed(sub, () -> {});
         // A detached build (POST /api/build, MCP run) waits here only until it starts, is refused,
         // or is queued behind coordinator memory. Queued, its caller has the jid at once: the
@@ -206,7 +210,9 @@ public final class JobEnvelope {
             String eventKind,
             String eventDir,
             String fingerprint,
-            long eventRequestId) {}
+            long eventRequestId,
+            /** Who the job's changes are recorded as: the submitter's actor, read on its thread. */
+            ChangeActor actor) {}
 
     /** Admission, the plan slot and the start of {@code sub}; {@code onQueued} runs when it waits for memory. */
     private long proceed(Submission sub, Runnable onQueued) {
@@ -224,6 +230,7 @@ public final class JobEnvelope {
         String eventDir = sub.eventDir();
         String fingerprint = sub.fingerprint();
         long eventRequestId = sub.eventRequestId();
+        ChangeActor actor = sub.actor();
         boolean claimedBuildPlanSlot = false;
         if (plan) {
             Long refused = admitPlan(eventRequestId, eventKind, eventDir, workspaceStream, detached, writer, onQueued);
@@ -304,9 +311,10 @@ public final class JobEnvelope {
                 writer,
                 watch,
                 deadline,
+                actor,
                 new AtomicBoolean());
-        // The job body binds its own session inside the verb (SessionContext.where); unstarted so runnerRef is set
-        // first.
+        // The runner binds the job's request; the body binds its own session inside the verb
+        // (SessionContext.where). Unstarted so runnerRef is set first.
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
@@ -480,6 +488,7 @@ public final class JobEnvelope {
             @Nullable BufferedWriter writer,
             ConnectionWatch watch,
             WallDeadline deadline,
+            ChangeActor actor,
             /**
              * Set once the body has returned or thrown — its terminal is on the wire and only the
              * teardown remains — so the connection thread reads a client's EOF after that as the
@@ -487,32 +496,74 @@ public final class JobEnvelope {
              */
             AtomicBoolean bodyDone) {}
 
-    /** The runner thread: open the request's scopes, run the body, stamp the verdict, tear down. */
+    /**
+     * The request {@code requestLine} sends: its shell and keychain answers, under {@code id} with
+     * {@code io}, recorded as {@code actor}. A synchronous read binds one too, under id {@code 0}.
+     */
+    public static Request requestOf(long id, IoLedger io, @Nullable ChangeActor actor, String requestLine) {
+        return new Request(id, io, RequestShell.of(ProtoSession.shellOf(requestLine)), actor, Map.of())
+                .with(
+                        RequestKeychain.SLOT,
+                        RequestKeychain.of(
+                                ProtoSession.keychainOf(requestLine), ProtoSession.keychainRefusedOf(requestLine)));
+    }
+
+    /** The runner thread: bind the job's request, run the body, stamp the verdict, tear down. */
     private void runBody(Admitted a) {
-        String requestLine = a.requestLine();
-        JobBody runner = a.runner();
-        boolean plan = a.plan();
         long eventRequestId = a.eventRequestId();
         String eventDir = a.eventDir();
-        Session.CancelToken cancelToken = a.cancelToken();
-        CountDownLatch done = a.done();
-        BufferedWriter writer = a.writer();
         IoLedger io = host.runIo(eventRequestId);
-        DownloadsPublisher downloads = null;
         // Nothing between the lock and the try: a throw from the setup calls would
         // leak the read lock — one leak and the cache prune's write-lock tryLock never
         // succeeds again for the engine's life — and would strand the in-flight fingerprint
         // and the done latch. The teardown calls are all remove-style and safe to run even
         // when their open never happened.
-        if (plan) host.cacheGate().readLock().lock();
+        if (a.plan()) host.cacheGate().readLock().lock();
         try {
-            host.bindEventRequestId(eventRequestId);
-            JobWorkers.open(eventRequestId);
-            // Every Session this request builds adopts this ledger, so fetches/cache traffic on
-            // the shared pools all land in one place (see IoLedger).
-            IoLedger.open(io);
-            // Test runs and coverage published anywhere under this request land on its record.
-            host.openResults(eventRequestId);
+            JobWorkers.begin(eventRequestId);
+            // One binding for the job: its id, ledger, shell, keychain, results sink and actor reach
+            // every pool task and every thread it starts. Test runs and coverage published anywhere
+            // under it land on its record.
+            BuildAccumulator acc = host.accumulatorOf(eventRequestId);
+            Request request = requestOf(eventRequestId, io, a.actor(), a.requestLine())
+                    .with(RunResults.SLOT, acc != null ? acc.results() : new RunResults());
+            request.run(() -> runBound(a, io));
+        } catch (Throwable t) {
+            // The setup and teardown around the body are outside its own catch, and a throw
+            // there would otherwise reach nothing but the default uncaught handler: no log
+            // line, no wire terminal, and a client that reads EOF and blames a crash.
+            reportDeadJob(eventRequestId, eventDir, a.writer(), t);
+        } finally {
+            RequestScope.release(io);
+            // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
+            // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
+            // burn its full 15s join before this force-kill ran. Killing the process
+            // first unblocks readLine, so end()'s join returns promptly.
+            // Never clear() the registry without shutdown, or a racing cancel thread's
+            // shutdownForRequest finds an empty set and plugin/javac children keep running.
+            JobWorkers.shutdownForRequest(eventRequestId, 0L);
+            JavaCompilerHost.end(eventRequestId);
+            LiveUnits.end(eventRequestId);
+            if (a.plan()) host.cacheGate().readLock().unlock();
+            // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
+            // hold, cancel watches liveJobs — this order means a job never looks finished
+            // while cancelJob would still succeed. The hold still frees before the connection
+            // thread's teardown so a follow-up same-project build is not rejected.
+            live.unregisterLiveJob(eventRequestId);
+            host.inFlight().release(eventRequestId);
+            admission.release(eventRequestId);
+            a.done().countDown();
+        }
+    }
+
+    /** The job under its request: notices and downloads open, the body, the verdict stamped. */
+    private void runBound(Admitted a, IoLedger io) {
+        String requestLine = a.requestLine();
+        long eventRequestId = a.eventRequestId();
+        String eventDir = a.eventDir();
+        BufferedWriter writer = a.writer();
+        DownloadsPublisher downloads = null;
+        try {
             // Run-scoped notices join this request's stream for the run's life; the finally
             // removes the sink, or a later run's notice would ride the wrong request.
             RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, code, message));
@@ -520,23 +571,17 @@ public final class JobEnvelope {
             // from the run's board: to its CLI client on the wire, and to the dashboard and MCP
             // subscribers as the same event, so a job started from the web UI or by an agent shows
             // its downloads too.
-            final long rid = eventRequestId;
             downloads = DownloadsPublisher.start(
                     io.transfers(),
                     snapshot -> {
                         String line = ProtoEvents.downloads(snapshot);
                         if (writer != null) WireWriter.sendNoWait(writer, line);
-                        publishDownloads(line, rid);
+                        publishDownloads(line, eventRequestId);
                     },
                     eventRequestId);
             JobOutcome outcome;
             try {
-                // Every read of the caller's environment in this job answers from its shell.
-                outcome = RequestKeychain.where(
-                        ProtoSession.keychainOf(requestLine),
-                        ProtoSession.keychainRefusedOf(requestLine),
-                        () -> RequestShell.where(
-                                ProtoSession.shellOf(requestLine), () -> runner.run(requestLine, cancelToken, writer)));
+                outcome = a.runner().run(requestLine, a.cancelToken(), writer);
             } catch (Throwable t) {
                 // An escaped throw must not impersonate Declined: with clean rows already
                 // recorded and no failure row, the derived verdict would read green. Rule
@@ -560,38 +605,11 @@ public final class JobEnvelope {
                 }
                 acc.stamp(outcome);
             }
-        } catch (Throwable t) {
-            // The setup and teardown around the body are outside its own catch, and a throw
-            // there would otherwise reach nothing but the default uncaught handler: no log
-            // line, no wire terminal, and a client that reads EOF and blames a crash.
-            reportDeadJob(eventRequestId, eventDir, writer, t);
         } finally {
             if (downloads != null) downloads.close();
             RunNotices.closeSink(io);
+            // Inside the request: the input trees it walked are its own to release.
             InputTrees.finishJob();
-            RequestScope.release();
-            IoLedger.close();
-            host.closeResults();
-            // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
-            // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
-            // burn its full 15s join before this force-kill ran. Killing the process
-            // first unblocks readLine, so end()'s join returns promptly.
-            // Never clear() the registry without shutdown, or a racing cancel thread's
-            // shutdownForRequest finds an empty set and plugin/javac children keep running.
-            JobWorkers.shutdownForRequest(eventRequestId, 0L);
-            JavaCompilerHost.end(eventRequestId);
-            LiveUnits.end(eventRequestId);
-            JobWorkers.close();
-            host.unbindEventRequestId();
-            if (plan) host.cacheGate().readLock().unlock();
-            // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
-            // hold, cancel watches liveJobs — this order means a job never looks finished
-            // while cancelJob would still succeed. The hold still frees before the connection
-            // thread's teardown so a follow-up same-project build is not rejected.
-            live.unregisterLiveJob(eventRequestId);
-            host.inFlight().release(eventRequestId);
-            admission.release(eventRequestId);
-            done.countDown();
         }
     }
 

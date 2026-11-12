@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -84,12 +85,12 @@ class SourceScanBudgetTest {
 
     private static void inRequest(Runnable body) {
         IoLedger ledger = new IoLedger();
-        IoLedger.open(ledger);
-        try {
-            SessionContext.runWhere(Session.defaults().withIo(ledger), body);
-        } finally {
-            InputTrees.finishJob();
-            IoLedger.close();
-        }
+        Request.of(1, ledger).run(() -> {
+            try {
+                SessionContext.runWhere(Session.defaults().withIo(ledger), body);
+            } finally {
+                InputTrees.finishJob();
+            }
+        });
     }
 }

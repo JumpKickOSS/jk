@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.UserConfigEditor;
 import java.net.URI;
 import java.nio.file.Files;
@@ -32,7 +33,7 @@ class ProjectImportCredentialsTest {
         List<Path> wrote = new ArrayList<>();
         ChangeJournal.into(
                 journal,
-                () -> ChangeActor.as(
+                () -> Request.actingAs(
                         agent,
                         () -> ProjectImport.machineCredentials(
                                 ImportReport.builder().build(), List.of(table), config, wrote, pom)));

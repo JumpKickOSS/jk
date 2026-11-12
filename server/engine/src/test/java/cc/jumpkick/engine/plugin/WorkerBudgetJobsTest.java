@@ -91,8 +91,8 @@ class WorkerBudgetJobsTest {
     void killing_a_fork_returns_its_lease() throws Exception {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
         long before = ledger.snapshot().leasedBytes();
-        JobWorkers.open(11L);
-        Process process = JobWorkers.start(Sleepers.sleeper(30), ledger);
+        JobWorkers.begin(11L);
+        Process process = JobWorkers.callAs(11L, () -> JobWorkers.start(Sleepers.sleeper(30), ledger));
         try {
             assertThat(ledger.snapshot().leasedBytes()).isGreaterThan(before);
             process.destroyForcibly();
@@ -107,7 +107,6 @@ class WorkerBudgetJobsTest {
         } finally {
             if (process.isAlive()) process.destroyForcibly();
             JobWorkers.clear(11L);
-            JobWorkers.close();
         }
     }
 
@@ -118,11 +117,11 @@ class WorkerBudgetJobsTest {
             WorkerLeases.Ledger ledger = ledger(300L << 20, 4);
             String java =
                     Path.of(System.getProperty("java.home"), "bin", "java").toString();
-            JobWorkers.open(12L);
             ProcessBuilder pb = new ProcessBuilder(java, "-Xmx2g", "-version")
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            Process process = JobWorkers.start(pb, ledger);
+            JobWorkers.begin(12L);
+            Process process = JobWorkers.callAs(12L, () -> JobWorkers.start(pb, ledger));
             try {
                 assertThat(pb.command()).doesNotContain("-Xmx2g");
                 assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
@@ -133,7 +132,6 @@ class WorkerBudgetJobsTest {
                 JvmOptions.forgetPlannedHeapForTests("-Xmx2g");
                 if (process.isAlive()) process.destroyForcibly();
                 JobWorkers.clear(12L);
-                JobWorkers.close();
             }
             awaitReleased(ledger);
             return null;
@@ -146,15 +144,16 @@ class WorkerBudgetJobsTest {
     }
 
     private static int run(WorkerLeases.Ledger ledger, long requestId, List<String> command) {
-        JobWorkers.open(requestId);
         try {
-            Process process = JobWorkers.start(new ProcessBuilder(command), ledger);
-            return process.waitFor();
+            JobWorkers.begin(requestId);
+            return JobWorkers.callAs(requestId, () -> {
+                Process process = JobWorkers.start(new ProcessBuilder(command), ledger);
+                return process.waitFor();
+            });
         } catch (Exception e) {
             throw new IllegalStateException(e);
         } finally {
             JobWorkers.clear(requestId);
-            JobWorkers.close();
         }
     }
 

@@ -210,13 +210,13 @@ public final class InputTrees {
                     table.misses.get(),
                     table.streamOnly);
             released = table.bytes;
-            // The listings die with the job whether or not the scope object does: a pooled thread that
-            // inherited this request's ledger would otherwise keep every FileRef alive for the engine's life.
+            // The listings die with the job whether or not the scope object does: a straggling task
+            // that still holds this request would otherwise keep every FileRef alive.
             table.byKey.clear();
             table.covering.clear();
             table.bytes = 0;
             // Nothing may retain against a released table: a straggler still holding the
-            // ambient ledger (a lane outliving the runner on cancel) would charge the pool with
+            // request (a lane outliving the runner on cancel) would charge the pool with
             // no finishJob left to give it back.
             table.streamOnly = true;
         }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.model.Coordinate;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,7 +68,7 @@ class ToolLauncherKtsTest {
 
         Path launcher = ChangeJournal.into(
                 journal,
-                () -> ChangeActor.as(
+                () -> Request.actingAs(
                         ChangeActor.shell(List.of("tool", "install", "com.example:hello:1.0")),
                         () -> ToolLauncher.install(tmp.resolve("envs"), tmp.resolve("bin"), tmp.resolve("jdk"), env)));
 

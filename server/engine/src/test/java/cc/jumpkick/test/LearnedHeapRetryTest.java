@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.RunSnapshots;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -35,7 +36,6 @@ class LearnedHeapRetryTest {
     void reset() {
         HeapNotes.clear();
         SessionContext.reset();
-        RunResults.close();
     }
 
     @Test
@@ -136,25 +136,29 @@ class LearnedHeapRetryTest {
         Path cache = Files.createDirectories(dir.resolve("cache"));
         SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
         RunResults sink = new RunResults();
-        RunResults.open(sink);
-        JUnitLauncher launcher = new JUnitLauncher()
-                .withModuleLabel("g:app")
-                .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
-        TestSummary summary = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
-        assertThat(summary.failed()).isZero();
+        Request.detached().with(RunResults.SLOT, sink).run(() -> {
+            JUnitLauncher launcher = new JUnitLauncher()
+                    .withModuleLabel("g:app")
+                    .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
+            TestSummary summary =
+                    launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+            assertThat(summary.failed()).isZero();
 
-        List<MarkdownTestReport.ModuleRun> runs = sink.takeTests();
-        assertThat(runs)
-                .singleElement()
-                .extracting(MarkdownTestReport.ModuleRun::label)
-                .isEqualTo("g:app");
-        List<MarkdownTestReport.Entry> entries = runs.getFirst().entries();
-        assertThat(entries).hasSize("escaped".equals(mode) ? 2 : 1).allMatch(MarkdownTestReport.Entry::isPass);
-        assertThat(entries).extracting(MarkdownTestReport.Entry::displayName).contains("alloc()");
-        assertThat(RunSnapshots.testOutcomes(runs))
-                .containsEntry("demo.Big#alloc()", RunSnapshots.PASS)
-                .doesNotContainValue(RunSnapshots.FAIL);
-        awaitPeaks(dir.resolve("state"), 2);
+            List<MarkdownTestReport.ModuleRun> runs = sink.takeTests();
+            assertThat(runs)
+                    .singleElement()
+                    .extracting(MarkdownTestReport.ModuleRun::label)
+                    .isEqualTo("g:app");
+            List<MarkdownTestReport.Entry> entries = runs.getFirst().entries();
+            assertThat(entries).hasSize("escaped".equals(mode) ? 2 : 1).allMatch(MarkdownTestReport.Entry::isPass);
+            assertThat(entries)
+                    .extracting(MarkdownTestReport.Entry::displayName)
+                    .contains("alloc()");
+            assertThat(RunSnapshots.testOutcomes(runs))
+                    .containsEntry("demo.Big#alloc()", RunSnapshots.PASS)
+                    .doesNotContainValue(RunSnapshots.FAIL);
+            awaitPeaks(dir.resolve("state"), 2);
+        });
     }
 
     /** The retry's results are the run's JUnit XML: one test, not none and not the dead attempt's too. */
@@ -274,27 +278,28 @@ class LearnedHeapRetryTest {
         Path reports = dir.resolve("reports");
         SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
         RunResults sink = new RunResults();
-        RunResults.open(sink);
-        JUnitLauncher launcher = new JUnitLauncher()
-                .withModuleLabel("g:app")
-                .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
-        TestSummary summary =
-                launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop(), reports);
+        Request.detached().with(RunResults.SLOT, sink).run(() -> {
+            JUnitLauncher launcher = new JUnitLauncher()
+                    .withModuleLabel("g:app")
+                    .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
+            TestSummary summary =
+                    launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop(), reports);
 
-        assertThat(summary.failed()).isEqualTo(2);
-        assertThat(summary.failures())
-                .extracting(f -> f.className() + " " + f.message())
-                .containsExactlyInAnyOrder("demo.B expected 1", "demo.C Java heap space");
-        List<MarkdownTestReport.Entry> entries = sink.takeTests().getFirst().entries();
-        assertThat(entries)
-                .extracting(e -> e.className() + " " + (e.isPass() ? "pass" : e.failureMessage()))
-                .containsExactlyInAnyOrder("demo.A pass", "demo.B expected 1", "demo.C Java heap space");
-        assertThat(Files.readString(reports.resolve("TEST-demo.C.xml"))).contains("Java heap space");
-        assertThat(HeapNotes.drain())
-                .containsExactly(
-                        "retried with 256 MiB heap after running out of 128 MiB",
-                        "retried with 512 MiB heap after running out of 256 MiB",
-                        "retried with 1.0 GiB heap after running out of 512 MiB");
+            assertThat(summary.failed()).isEqualTo(2);
+            assertThat(summary.failures())
+                    .extracting(f -> f.className() + " " + f.message())
+                    .containsExactlyInAnyOrder("demo.B expected 1", "demo.C Java heap space");
+            List<MarkdownTestReport.Entry> entries = sink.takeTests().getFirst().entries();
+            assertThat(entries)
+                    .extracting(e -> e.className() + " " + (e.isPass() ? "pass" : e.failureMessage()))
+                    .containsExactlyInAnyOrder("demo.A pass", "demo.B expected 1", "demo.C Java heap space");
+            assertThat(Files.readString(reports.resolve("TEST-demo.C.xml"))).contains("Java heap space");
+            assertThat(HeapNotes.drain())
+                    .containsExactly(
+                            "retried with 256 MiB heap after running out of 128 MiB",
+                            "retried with 512 MiB heap after running out of 256 MiB",
+                            "retried with 1.0 GiB heap after running out of 512 MiB");
+        });
     }
 
     /**

@@ -24,23 +24,24 @@ class JobWorkersTest {
     @Test
     void destroy_kills_registered_alive_process() throws Exception {
         long req = 42L;
-        JobWorkers.open(req);
-        Process p = Sleepers.sleeper(60).start();
-        try {
-            JobWorkers.register(p);
-            assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
-            assertThat(p.isAlive()).isTrue();
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            Process p = Sleepers.sleeper(60).start();
+            try {
+                JobWorkers.register(p);
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+                assertThat(p.isAlive()).isTrue();
 
-            int killed = JobWorkers.destroyForRequest(req);
-            assertThat(killed).isEqualTo(1);
-            assertThat(p.waitFor(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(p.isAlive()).isFalse();
-            assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
-        } finally {
-            if (p.isAlive()) p.destroyForcibly();
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+                int killed = JobWorkers.destroyForRequest(req);
+                assertThat(killed).isEqualTo(1);
+                assertThat(p.waitFor(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(p.isAlive()).isFalse();
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
+            } finally {
+                if (p.isAlive()) p.destroyForcibly();
+                JobWorkers.clear(req);
+            }
+        });
     }
 
     /**
@@ -51,45 +52,47 @@ class JobWorkersTest {
     @DisabledOnOs(OS.WINDOWS)
     void a_held_request_stops_its_workers_and_its_next_fork_until_released() throws Exception {
         long req = 4242L;
-        JobWorkers.open(req);
-        Process p = Sleepers.sleeper(60).start();
-        try {
-            JobWorkers.register(p);
-            assertThat(JobWorkers.hold(req)).isEqualTo(1);
-            Await.until(Duration.ofSeconds(5), () -> state(p.pid()) == 'T');
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            Process p = Sleepers.sleeper(60).start();
+            try {
+                JobWorkers.register(p);
+                assertThat(JobWorkers.hold(req)).isEqualTo(1);
+                Await.until(Duration.ofSeconds(5), () -> state(p.pid()) == 'T');
 
-            CountDownLatch forked = new CountDownLatch(1);
-            Thread fork = Thread.ofPlatform().start(() -> {
-                JobWorkers.bind(req);
-                try {
-                    Process next = JobWorkers.start(Sleepers.sleeper(1));
-                    forked.countDown();
-                    next.waitFor();
-                } catch (Exception e) {
-                    throw new IllegalStateException(e);
-                }
-            });
-            assertThat(forked.await(500, TimeUnit.MILLISECONDS))
-                    .as("held at the fork")
-                    .isFalse();
+                CountDownLatch forked = new CountDownLatch(1);
+                Thread fork = Thread.ofPlatform().start(() -> {
+                    try {
+                        JobWorkers.runAs(req, () -> {
+                            Process next = JobWorkers.start(Sleepers.sleeper(1));
+                            forked.countDown();
+                            next.waitFor();
+                        });
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+                assertThat(forked.await(500, TimeUnit.MILLISECONDS))
+                        .as("held at the fork")
+                        .isFalse();
 
-            assertThat(JobWorkers.release(req)).isEqualTo(1);
-            assertThat(forked.await(5, TimeUnit.SECONDS)).isTrue();
-            Await.until(Duration.ofSeconds(5), () -> state(p.pid()) != 'T');
-            fork.join(5_000);
+                assertThat(JobWorkers.release(req)).isEqualTo(1);
+                assertThat(forked.await(5, TimeUnit.SECONDS)).isTrue();
+                Await.until(Duration.ofSeconds(5), () -> state(p.pid()) != 'T');
+                fork.join(5_000);
 
-            JobWorkers.hold(req);
-            Await.until(Duration.ofSeconds(5), () -> state(p.pid()) == 'T');
-            JobWorkers.shutdownForRequest(req, 2_000);
-            assertThat(p.waitFor(5, TimeUnit.SECONDS))
-                    .as("a stopped worker still ends on cancel")
-                    .isTrue();
-        } finally {
-            if (p.isAlive()) p.destroyForcibly();
-            JobWorkers.release(req);
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+                JobWorkers.hold(req);
+                Await.until(Duration.ofSeconds(5), () -> state(p.pid()) == 'T');
+                JobWorkers.shutdownForRequest(req, 2_000);
+                assertThat(p.waitFor(5, TimeUnit.SECONDS))
+                        .as("a stopped worker still ends on cancel")
+                        .isTrue();
+            } finally {
+                if (p.isAlive()) p.destroyForcibly();
+                JobWorkers.release(req);
+                JobWorkers.clear(req);
+            }
+        });
     }
 
     /** The process state letter from {@code ps} ({@code T} = stopped), or {@code ?}; macOS has no {@code /proc}. */
@@ -102,23 +105,24 @@ class JobWorkersTest {
     @Test
     void start_registers_when_a_request_scope_is_open() throws Exception {
         long req = 55L;
-        JobWorkers.open(req);
-        Process p = JobWorkers.start(Sleepers.sleeper(30));
-        try {
-            assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
-            assertThat(p.isAlive()).isTrue();
-        } finally {
-            if (p.isAlive()) p.destroyForcibly();
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            Process p = JobWorkers.start(Sleepers.sleeper(30));
+            try {
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+                assertThat(p.isAlive()).isTrue();
+            } finally {
+                if (p.isAlive()) p.destroyForcibly();
+                JobWorkers.clear(req);
+            }
+        });
     }
 
     @Test
     void register_without_scope_is_noop() throws Exception {
         Process p = Sleepers.sleeper(1).start();
         try {
-            JobWorkers.register(p); // no open() — ignored
+            JobWorkers.register(p); // no request bound — ignored
             assertThat(JobWorkers.destroyForRequest(999L)).isEqualTo(0);
         } finally {
             p.destroyForcibly();
@@ -128,102 +132,106 @@ class JobWorkersTest {
     @Test
     void unregister_removes_from_tracking() throws Exception {
         long req = 7L;
-        JobWorkers.open(req);
-        Process p = Sleepers.sleeper(30).start();
-        try {
-            JobWorkers.register(p);
-            JobWorkers.unregister(p);
-            assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
-            assertThat(JobWorkers.destroyForRequest(req)).isEqualTo(0);
-            assertThat(p.isAlive()).isTrue();
-        } finally {
-            p.destroyForcibly();
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            Process p = Sleepers.sleeper(30).start();
+            try {
+                JobWorkers.register(p);
+                JobWorkers.unregister(p);
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
+                assertThat(JobWorkers.destroyForRequest(req)).isEqualTo(0);
+                assertThat(p.isAlive()).isTrue();
+            } finally {
+                p.destroyForcibly();
+                JobWorkers.clear(req);
+            }
+        });
     }
 
     @Test
     void late_register_after_shutdown_kills_on_arrival_and_leaks_nothing() throws Exception {
-        // : a cpu-pool thread still draining after cancel may register a fresh process
+        // A cpu-pool thread still draining after cancel may register a fresh process
         // AFTER shutdownForRequest ran. It must not resurrect a BY_REQUEST entry (permanent
         // leak) nor escape the kill.
         long req = 97L;
-        JobWorkers.open(req);
-        Process p = Sleepers.sleeper(60).start();
-        try {
-            assertThat(JobWorkers.shutdownForRequest(req, 0L)).isEqualTo(0); // nothing yet
-            JobWorkers.register(p); // late registration from a draining thread
-            assertThat(JobWorkers.trackedCount(req)).isEqualTo(0); // no resurrected entry
-            assertThat(p.waitFor(5, TimeUnit.SECONDS)).isTrue(); // killed on arrival
-            assertThat(p.isAlive()).isFalse();
-            // A fresh scope open for the same id clears the tombstone: registration works again.
-            JobWorkers.open(req);
-            Process q = Sleepers.sleeper(60).start();
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            Process p = Sleepers.sleeper(60).start();
             try {
-                JobWorkers.register(q);
-                assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+                assertThat(JobWorkers.shutdownForRequest(req, 0L)).isEqualTo(0); // nothing yet
+                JobWorkers.register(p); // late registration from a draining thread
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(0); // no resurrected entry
+                assertThat(p.waitFor(5, TimeUnit.SECONDS)).isTrue(); // killed on arrival
+                assertThat(p.isAlive()).isFalse();
+                // A request that starts again under the same id clears the tombstone: registration works again.
+                JobWorkers.begin(req);
+                Process q = Sleepers.sleeper(60).start();
+                try {
+                    JobWorkers.register(q);
+                    assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+                } finally {
+                    if (q.isAlive()) q.destroyForcibly();
+                    JobWorkers.clear(req);
+                }
             } finally {
-                if (q.isAlive()) q.destroyForcibly();
+                if (p.isAlive()) p.destroyForcibly();
                 JobWorkers.clear(req);
             }
-        } finally {
-            if (p.isAlive()) p.destroyForcibly();
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+        });
     }
 
     @Test
     void destroy_is_idempotent() throws Exception {
         long req = 11L;
-        JobWorkers.open(req);
-        List<Process> kids = new ArrayList<>();
-        try {
-            for (int i = 0; i < 3; i++) {
-                Process p = Sleepers.sleeper(60).start();
-                kids.add(p);
-                JobWorkers.register(p);
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            List<Process> kids = new ArrayList<>();
+            try {
+                for (int i = 0; i < 3; i++) {
+                    Process p = Sleepers.sleeper(60).start();
+                    kids.add(p);
+                    JobWorkers.register(p);
+                }
+                assertThat(JobWorkers.destroyForRequest(req)).isEqualTo(3);
+                assertThat(JobWorkers.destroyForRequest(req)).isEqualTo(0);
+            } finally {
+                for (Process p : kids) {
+                    if (p.isAlive()) p.destroyForcibly();
+                }
+                JobWorkers.clear(req);
             }
-            assertThat(JobWorkers.destroyForRequest(req)).isEqualTo(3);
-            assertThat(JobWorkers.destroyForRequest(req)).isEqualTo(0);
-        } finally {
-            for (Process p : kids) {
-                if (p.isAlive()) p.destroyForcibly();
-            }
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+        });
     }
 
     @Test
     void shutdown_with_grace_terminates_and_does_not_hang() throws Exception {
         long req = 99L;
-        JobWorkers.open(req);
-        // Ignore SIGTERM-friendly process: sleep still exits on destroy() on macOS/Linux.
-        Process p = Sleepers.sleeper(120).start();
-        try {
-            JobWorkers.register(p);
-            long t0 = System.nanoTime();
-            int killed = JobWorkers.shutdownForRequest(req, 300L);
-            long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
-            assertThat(killed).isEqualTo(1);
-            assertThat(p.isAlive()).isFalse();
-            // LIVENESS, not performance. Size the bound against the failure mode, not against the
-            // grace: this catches a shutdown that ignores its grace and waits out the child's own
-            // 120s sleep, and any bound well under that catches it just as well. Ten times the
-            // grace was the tighter choice and it measured the machine instead — forking and
-            // reaping a child under a full parallel suite outruns 3s on a loaded Windows box,
-            // which is the thing the line above says this must not become.
-            assertThat(ms)
-                    .as("honoured the 300ms grace rather than waiting out the child's own 120s sleep")
-                    .isLessThan(30_000L);
-            assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
-        } finally {
-            if (p.isAlive()) p.destroyForcibly();
-            JobWorkers.close();
-            JobWorkers.clear(req);
-        }
+        JobWorkers.begin(req);
+        JobWorkers.runAs(req, () -> {
+            // Ignore SIGTERM-friendly process: sleep still exits on destroy() on macOS/Linux.
+            Process p = Sleepers.sleeper(120).start();
+            try {
+                JobWorkers.register(p);
+                long t0 = System.nanoTime();
+                int killed = JobWorkers.shutdownForRequest(req, 300L);
+                long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
+                assertThat(killed).isEqualTo(1);
+                assertThat(p.isAlive()).isFalse();
+                // LIVENESS, not performance. Size the bound against the failure mode, not against the
+                // grace: this catches a shutdown that ignores its grace and waits out the child's own
+                // 120s sleep, and any bound well under that catches it just as well. Ten times the
+                // grace was the tighter choice and it measured the machine instead — forking and
+                // reaping a child under a full parallel suite outruns 3s on a loaded Windows box,
+                // which is the thing the line above says this must not become.
+                assertThat(ms)
+                        .as("honoured the 300ms grace rather than waiting out the child's own 120s sleep")
+                        .isLessThan(30_000L);
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
+            } finally {
+                if (p.isAlive()) p.destroyForcibly();
+                JobWorkers.clear(req);
+            }
+        });
     }
 
     @Test
@@ -233,27 +241,21 @@ class JobWorkersTest {
     }
 
     /**
-     * CPU steps run on a process-wide ForkJoinPool whose threads inherit whatever scope
-     * was open when the pool created them. A fork must attach to the request that submitted the
-     * work, not to that stale inherited one.
+     * CPU steps run on a process-wide ForkJoinPool whose threads are created inside whichever request
+     * first needed them. A fork must attach to the request that submitted the work, not to that one.
      */
     @Test
     void request_scope_rides_the_shared_cpu_pool() throws Exception {
-        // Warm the pool from a thread carrying a *different* (stale) scope, so its threads inherit
-        // 111 — exactly the situation that used to misattribute later requests' workers.
-        JobWorkers.open(111L);
-        JobWorkers.warmPoolForTest();
-        JobWorkers.close();
+        // Warm the pool under a *different* request, so its threads are created inside 111.
+        JobWorkers.runAs(111L, JobWorkers::warmPoolForTest);
 
-        JobWorkers.open(222L);
-        try {
+        JobWorkers.begin(222L);
+        JobWorkers.runAs(222L, () -> {
             Long seen = JkThreads.cpu().submit(JobWorkers::currentScope).get(10, TimeUnit.SECONDS);
             assertThat(seen)
                     .as("pool task must see the submitting request's scope")
                     .isEqualTo(222L);
-        } finally {
-            JobWorkers.close();
-        }
+        });
 
         // With no scope open, a pool task must not inherit a stale one either.
         Long unscoped = JkThreads.cpu().submit(JobWorkers::currentScope).get(10, TimeUnit.SECONDS);

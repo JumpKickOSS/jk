@@ -18,10 +18,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,19 +31,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 class JavaProducerAnalysisCompileTest {
-
-    /** One job scope per test, so a test's builds share a compiler worker as a build's modules do. */
-    private JavaCompilerHost.@Nullable Scope job;
-
-    @BeforeEach
-    void openJob() {
-        job = JavaCompilerHost.open();
-    }
-
-    @AfterEach
-    void closeJob() {
-        if (job != null) job.close();
-    }
 
     private static final String T1 = "package lib; public class T { public int a() { return 1; } }";
     private static final String T2 =
@@ -215,17 +199,15 @@ class JavaProducerAnalysisCompileTest {
         }
 
         JavaCompile.Prediction predict(List<Path> classpath) throws IOException {
-            try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
-                return JavaCompile.predict(
-                        taskId,
-                        request(classpath),
-                        "jk-test",
-                        ws.actionCache,
-                        stateDir,
-                        ws.workerJar,
-                        gen,
-                        WorkerEnv.strict());
-            }
+            return JavaCompilerHost.scoped(() -> JavaCompile.predict(
+                    taskId,
+                    request(classpath),
+                    "jk-test",
+                    ws.actionCache,
+                    stateDir,
+                    ws.workerJar,
+                    gen,
+                    WorkerEnv.strict()));
         }
 
         private CompileRequest request(List<Path> classpath) throws IOException {

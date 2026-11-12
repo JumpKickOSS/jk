@@ -272,26 +272,28 @@ class KtsSessionTest {
         Path out = Files.createDirectories(dir.resolve("o"));
         KtsSession.shutdown(); // the host must be born inside the first build
 
-        JobWorkers.open(9101L);
-        try {
-            BuildLogicKtsHost.evaluate(script, project, out);
-        } finally {
-            // What JobEnvelope's teardown does when the build ends: kill the request's workers.
-            JobWorkers.shutdownForRequest(9101L, 0L);
-            JobWorkers.close();
-        }
+        JobWorkers.begin(9101L);
+        JobWorkers.runAs(9101L, () -> {
+            try {
+                BuildLogicKtsHost.evaluate(script, project, out);
+            } finally {
+                // What JobEnvelope's teardown does when the build ends: kill the request's workers.
+                JobWorkers.shutdownForRequest(9101L, 0L);
+            }
+        });
         long pid = KtsSession.hostPid();
         assertThat(KtsSession.hostAlive())
                 .as("the host outlives the build that started it")
                 .isTrue();
 
-        JobWorkers.open(9102L);
-        try {
-            BuildLogicKtsHost.evaluate(script, project, out);
-        } finally {
-            JobWorkers.shutdownForRequest(9102L, 0L);
-            JobWorkers.close();
-        }
+        JobWorkers.begin(9102L);
+        JobWorkers.runAs(9102L, () -> {
+            try {
+                BuildLogicKtsHost.evaluate(script, project, out);
+            } finally {
+                JobWorkers.shutdownForRequest(9102L, 0L);
+            }
+        });
         assertThat(KtsSession.hostPid())
                 .as("the next build reuses the same host")
                 .isEqualTo(pid);
@@ -314,20 +316,19 @@ class KtsSessionTest {
         KtsSession.shutdown(); // the host must be born inside build A
 
         // Build A runs its script and is about to end.
-        JobWorkers.open(9201L);
-        BuildLogicKtsHost.evaluate(quick, project, outA);
+        JobWorkers.begin(9201L);
+        JobWorkers.runAs(9201L, () -> BuildLogicKtsHost.evaluate(quick, project, outA));
 
         // Build B's script is in flight on another thread when A ends.
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        JobWorkers.begin(9202L);
         Thread b = new Thread(() -> {
-            JobWorkers.open(9202L);
             try {
-                BuildLogicKtsHost.evaluate(slow, project, outB);
+                JobWorkers.runAs(9202L, () -> BuildLogicKtsHost.evaluate(slow, project, outB));
             } catch (Throwable t) {
                 failure.set(t);
             } finally {
                 JobWorkers.shutdownForRequest(9202L, 0L);
-                JobWorkers.close();
             }
         });
         b.start();
@@ -336,7 +337,6 @@ class KtsSessionTest {
         assertThat(outB.resolve("started")).as("B's script is running").exists();
 
         JobWorkers.shutdownForRequest(9201L, 0L);
-        JobWorkers.close();
         // B's script holds until A has ended.
         Files.writeString(outB.resolve("release"), "1");
 

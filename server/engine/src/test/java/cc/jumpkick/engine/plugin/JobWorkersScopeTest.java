@@ -49,18 +49,19 @@ class JobWorkersScopeTest {
         long scope = 7_331_007L;
         Process first = new Held();
         Process second = new Held();
-        JobWorkers.open(scope);
-        try {
-            JobWorkers.register(first);
-            JobWorkers.register(second);
-            JobWorkers.unregister(first);
-            assertThat(JobWorkers.tracksScope(scope)).isTrue();
-            assertThat(JobWorkers.trackedCount(scope)).isEqualTo(1);
-            JobWorkers.unregister(second);
-            assertThat(JobWorkers.tracksScope(scope)).isFalse();
-        } finally {
-            JobWorkers.close();
-            JobWorkers.clear(scope);
-        }
+        JobWorkers.begin(scope);
+        JobWorkers.runAs(scope, () -> {
+            try {
+                JobWorkers.register(first);
+                JobWorkers.register(second);
+                JobWorkers.unregister(first);
+                assertThat(JobWorkers.tracksScope(scope)).isTrue();
+                assertThat(JobWorkers.trackedCount(scope)).isEqualTo(1);
+                JobWorkers.unregister(second);
+                assertThat(JobWorkers.tracksScope(scope)).isFalse();
+            } finally {
+                JobWorkers.clear(scope);
+            }
+        });
     }
 }

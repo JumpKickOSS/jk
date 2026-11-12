@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
@@ -192,13 +193,13 @@ class ModuleOutputsTest {
 
     /** Run {@code body} the way a real request runs: with an {@link IoLedger} opened around it. */
     private static void inRequest(Body body) throws Exception {
-        IoLedger.open(new IoLedger());
-        try {
-            body.run();
-        } finally {
-            RequestScope.release();
-            IoLedger.close();
-        }
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                body.run();
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test
