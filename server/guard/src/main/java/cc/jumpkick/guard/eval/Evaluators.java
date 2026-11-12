@@ -33,6 +33,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.STATICS, new StaticsEvaluator());
         BY_KIND.put(Kind.LAYERS, new LayersEvaluator());
         BY_KIND.put(Kind.CYCLES, new CyclesEvaluator());
+        BY_KIND.put(Kind.COUPLING, new CouplingEvaluator());
         BY_KIND.put(Kind.SPLIT_PACKAGE, new SplitPackageEvaluator());
         BY_KIND.put(Kind.API, new ApiEvaluator());
         BY_KIND.put(Kind.TIERS, new TiersEvaluator());

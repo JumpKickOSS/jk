@@ -84,6 +84,7 @@ measured over test classes a build compiled; `jk build` and `jk test` judge it, 
 | statics | bytecode | module | static fields holding mutable state outside a managed holder |
 | layers | model | model | package or module layering and visibility |
 | cycles | bytecode | module | slices free of cycles |
+| coupling | bytecode | module | class pairs that reach into each other, and classes that reach too far |
 | split-package | bytecode | workspace | one module owns a package |
 | api | bytecode | workspace | public API compatibility ratchet |
 | depend | model | model | dependency policy over manifest and resolved lock |
@@ -170,6 +171,9 @@ key can hold a rule back: one older than the key refuses it like any unknown key
 | cycles | matching |  | string | slice pattern, e.g. com.acme.features.(*).. |
 | cycles | over |  | string | cycles over modules instead of packages [modules] |
 | cycles | across-modules |  | bool | follow package edges across module boundaries |
+| coupling | measure | yes | string | mutual: class pairs that reference each other's members; efferent: classes one class references; static-fan-in: classes referencing a static-only holder [mutual \| efferent \| static-fan-in] |
+| coupling | packages |  | string list | package patterns whose top-level classes are measured; default every package |
+| coupling | cap |  | int | efferent and static-fan-in: the most classes one class may reach or be reached by (default 15) |
 | api | against | yes | string | a jar path, a g:a:v the lock pins, previous-release, or baseline |
 | api | breaking |  | string | what a breaking change does [forbid \| baseline] |
 | api | packages |  | string list | API package globs; default the module's exported packages |
@@ -226,7 +230,7 @@ key can hold a rule back: one older than the key refuses it like any unknown key
 | commit | patterns |  | string list | several such regexes |
 | commit | forbid-trailers |  | string list | trailer globs, e.g. Co-Authored-By: *bot* |
 | commit | require |  | string list | regexes the message must match |
-| common | kind | yes | string | the closed rule kind [forbid \| annotate \| classes \| statics \| layers \| cycles \| split-package \| api \| depend \| toolchain \| tiers \| text \| metric \| vocabulary \| parity \| generated \| output \| commit \| test] |
+| common | kind | yes | string | the closed rule kind [forbid \| annotate \| classes \| statics \| layers \| cycles \| coupling \| split-package \| api \| depend \| toolchain \| tiers \| text \| metric \| vocabulary \| parity \| generated \| output \| commit \| test] |
 | common | why | yes | string | one sentence: the defect this rule prevents |
 | common | scope |  | string or list | module globs the rule applies to; default every module |
 | common | source-set |  | string | which compiled sources a bytecode rule reads [main \| test \| guard \| all] |

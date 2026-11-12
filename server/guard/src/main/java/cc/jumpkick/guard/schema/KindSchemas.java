@@ -201,6 +201,35 @@ final class KindSchemas {
                 matching = "com.acme.features.(*).."
                 why      = "a cyclic component has no edge anyone can name to cut"
                 """);
+        define(
+                m,
+                Kind.COUPLING,
+                InsteadRule.OPTIONAL,
+                List.of(
+                        choice(
+                                "measure",
+                                true,
+                                "mutual: class pairs that reference each other's members; efferent: classes one class references; static-fan-in: classes referencing a static-only holder",
+                                "mutual",
+                                "efferent",
+                                "static-fan-in"),
+                        optional(
+                                "packages",
+                                STRING_LIST,
+                                "package patterns whose top-level classes are measured; default every package"),
+                        optional(
+                                "cap",
+                                INT,
+                                "efferent and static-fan-in: the most classes one class may reach or be reached by (default 15)")),
+                List.of(),
+                """
+                [guards.no-mutual-classes]
+                kind     = "coupling"
+                measure  = "mutual"
+                packages = ["com.acme.billing.."]
+                baseline = true
+                why      = "two classes that call each other are one class split by line count"
+                """);
         define(m, Kind.SPLIT_PACKAGE, InsteadRule.ABSENT, List.of(), List.of(), """
                 [guards.one-module-per-package]
                 kind = "split-package"

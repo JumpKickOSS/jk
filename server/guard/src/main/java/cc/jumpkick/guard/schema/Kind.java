@@ -17,6 +17,11 @@ public enum Kind {
     STATICS("statics", Substrate.BYTECODE, Lane.MODULE, "static fields holding mutable state outside a managed holder"),
     LAYERS("layers", Substrate.MODEL, Lane.MODEL, "package or module layering and visibility"),
     CYCLES("cycles", Substrate.BYTECODE, Lane.MODULE, "slices free of cycles"),
+    COUPLING(
+            "coupling",
+            Substrate.BYTECODE,
+            Lane.MODULE,
+            "class pairs that reach into each other, and classes that reach too far"),
     SPLIT_PACKAGE("split-package", Substrate.BYTECODE, Lane.WORKSPACE, "one module owns a package"),
     API("api", Substrate.BYTECODE, Lane.WORKSPACE, "public API compatibility ratchet"),
     DEPEND("depend", Substrate.MODEL, Lane.MODEL, "dependency policy over manifest and resolved lock"),
