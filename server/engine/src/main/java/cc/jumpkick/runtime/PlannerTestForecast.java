@@ -46,7 +46,7 @@ final class PlannerTestForecast {
         ForecastScope.Prepared prepared = s.prepared();
         BuildLayout layout = prepared.layout();
         TestSources testSources = s.testSources();
-        if (!s.compileDirty) {
+        if (!s.compileApiDirty()) {
             s.compileTestKotlinKey = testSources.ktTest().isEmpty()
                     ? null
                     : lastTestCompileKey(s.actionCache, TaskNames.COMPILE_TEST_KOTLIN, layout);
@@ -56,14 +56,15 @@ final class PlannerTestForecast {
         }
         // Kotlin and Groovy tests keyed as the build's passes key them, ahead of javac, which reads
         // their outputs.
-        TaskForecast.Task langMiss =
-                s.testRound().runs() || s.compileDirty || s.kspRuns() ? null : testLangMiss(s, prepared, testSources);
+        TaskForecast.Task langMiss = s.testRound().runs() || s.compileApiDirty() || s.kspRuns()
+                ? null
+                : testLangMiss(s, prepared, testSources);
         TaskForecast.Task step;
         if (s.testRound().runs()) {
             // The round runs inside this step, and its output is unknown until it does.
             step = new TaskForecast.Task(TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "KSP test round runs", null);
             s.testDirty = true;
-        } else if (s.compileDirty || s.kspRuns()) {
+        } else if (s.compileApiDirty() || s.kspRuns()) {
             // Dependency-only dirtiness: the tests recompile only if main really does.
             step = new TaskForecast.Task(
                     TaskNames.COMPILE_TEST,

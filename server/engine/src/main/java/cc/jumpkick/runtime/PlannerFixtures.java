@@ -299,7 +299,7 @@ public final class PlannerFixtures {
         s.testDirty |= addForecast(
                 out,
                 s.skipTests,
-                s.compileDirty,
+                s.compileApiDirty(),
                 s.project,
                 s.dir,
                 p.layout(),

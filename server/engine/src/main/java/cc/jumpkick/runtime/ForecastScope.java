@@ -108,6 +108,18 @@ public final class ForecastScope implements StepForecast.Scope {
     /** What this module's own edit looks like to its consumers; published into {@link #hints}. */
     SourceApiIndex.Hint ownHint = SourceApiIndex.Hint.UNKNOWN;
 
+    /**
+     * Whether a compile keyed on this module's classes by ABI (its tests, fixtures and guard suite)
+     * sees them change: the main compile runs and its API may move. A body-only edit ({@link
+     * #ownHint}, its dependencies' edits body-only too) recompiles main to the same ABI, so those
+     * compiles key against the classes on disk, whose ABI is the one the build will write, and hit
+     * as the build's do. A forced build always runs them.
+     */
+    boolean compileApiDirty() {
+        if (!compileDirty) return false;
+        return force || ownHint.kind() != SourceApiIndex.Kind.BODY_ONLY;
+    }
+
     /** The keys each compile priced by: the records a wiped classes or test tree is projected from. */
     @Nullable
     String compileMainKey, compileKotlinKey, compileGroovyKey;

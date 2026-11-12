@@ -297,7 +297,7 @@ public final class PlannerGuardSuite {
         List<TaskForecast.Task> out = new ArrayList<>();
         addForecast(
                 out,
-                s.compileDirty,
+                s.compileApiDirty(),
                 s.project,
                 s.dir,
                 p.compact(),
