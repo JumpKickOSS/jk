@@ -469,6 +469,7 @@ public final class PlannerNative {
      * libraries (+ generated C headers) aren't cached yet.
      */
     /** The image's key from its resolved inputs, the classpath read through {@code identity}. */
+    @KeyOwner(step = TaskNames.NATIVE_IMAGE)
     static ImageKey imageKey(KeyInputs in, ClasspathFingerprint.EntryIdentity identity) throws Exception {
         return imageKey(
                 in.javaHome(),
@@ -483,35 +484,11 @@ public final class PlannerNative {
                 identity);
     }
 
-    @KeyOwner(step = TaskNames.NATIVE_IMAGE)
-    static ImageKey imageKey(
-            Path javaHome,
-            List<Path> classpath,
-            List<String> allArgs,
-            @Nullable String mainClass,
-            boolean shared,
-            Path out,
-            @Nullable Path frameworkSources,
-            @Nullable Path trainReach,
-            List<Path> metadataDirs)
-            throws Exception {
-        return imageKey(
-                javaHome,
-                classpath,
-                allArgs,
-                mainClass,
-                shared,
-                out,
-                frameworkSources,
-                trainReach,
-                metadataDirs,
-                ClasspathFingerprint.ON_DISK);
-    }
-
     /**
      * The key, with each classpath entry read through {@code identity}: the step reads what is on
      * disk; the forecast reads a wiped jar as the one the build restores before it keys on it.
      */
+    @KeyOwner(step = TaskNames.NATIVE_IMAGE)
     static ImageKey imageKey(
             Path javaHome,
             List<Path> classpath,

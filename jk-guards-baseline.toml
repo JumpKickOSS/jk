@@ -1572,7 +1572,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 5578 }
+population = { units = 5614 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1689,10 +1689,6 @@ reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reason
 unit   = "server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java"
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaParityTest.java"
-value  = 1
-reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
 [[no-fqcn.entries]]
 unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java"
 value  = 1
@@ -2195,7 +2191,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 279, edges = 1024 }
+"server/engine" = { classes = 280, edges = 1031 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
@@ -2214,7 +2210,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys"
-value  = 19
+value  = 17
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2229,8 +2225,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerNative"
-value  = 17
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 19
+reason = "frozen higher on 2026-11-12: the forecast keys the image through the step's own key inputs (KeyInputs, imageKey), reading what the step reads"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerPackage"
@@ -2258,14 +2254,14 @@ value  = 36
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTestForecast"
+value  = 18
+reason = "frozen on 2026-11-12: the Kotlin and Groovy test passes are keyed through the build's own owners (LangCompile, TestOutputs, ModuleClasspaths, CompileInputs) and the suite's run rules (SuiteRunRules)"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestLaunch"
 value  = 20
 reason = "PlannerSupport split by concern: TestLaunch reads the language runtimes, the self-host engine and the sibling rule packs from their owners, and PlannerPackage the packaged tree and the language-output mirror, where one class held all of them"
-[[runtime-efferent-coupling.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspaceFinalPhase"
-value  = 16
-reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"
@@ -2279,7 +2275,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 279, edges = 1024 }
+"server/engine" = { classes = 280, edges = 1031 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2383,8 +2379,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.TaskForecaster"
-value  = 18
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 21
+reason = "frozen higher on 2026-11-12: the test compile's forecast reads its test-scope siblings' dirtiness and hint (DepDirtiness.testDeps, depHint)"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastSteps~cc.jumpkick.runtime.TaskForecaster"
@@ -2513,7 +2509,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.BuildEta~cc.jumpkick.runtime.workspace.BuildService"
-value  = 31
+value  = 6
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2538,7 +2534,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 279, edges = 1024 }
+"server/engine" = { classes = 280, edges = 1031 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -2547,13 +2543,13 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 45
+value  = 44
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"
-value  = 27
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 30
+reason = "frozen higher on 2026-11-12: the step-priced estimate's StepEta, ExplainReport and resource phase read the module cost record it holds (EffortWeights.ModuleCost)"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
@@ -23,7 +24,6 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
@@ -62,7 +62,8 @@ public final class StepLedger {
 
     private static final ReentrantLock WRITE = new ReentrantLock();
 
-    private static final ConcurrentHashMap<Path, StepLedger> MEMO = new ConcurrentHashMap<>();
+    /** The ledgers read, one per project home, each re-read once its file's stamp moves. */
+    private static final StampedMemo<Path, FileTime, StepLedger> MEMO = StampedMemo.bounded(32);
 
     /** One step's wall in a finished run. */
     public record Sample(String dir, String step, String status, long ms) {
@@ -248,7 +249,7 @@ public final class StepLedger {
             if (lines.size() > MAX_RUNS) lines = new ArrayList<>(lines.subList(lines.size() - MAX_RUNS, lines.size()));
             Files.createDirectories(projectHome);
             AtomicWrites.replace(file, String.join("\n", lines) + "\n");
-            MEMO.remove(projectHome);
+            MEMO.forget(projectHome);
         } catch (IOException | RuntimeException e) {
             Log.debug("StepLedger.append: not recorded", e);
         } finally {
@@ -266,11 +267,8 @@ public final class StepLedger {
         } catch (IOException e) {
             return empty();
         }
-        StepLedger memo = MEMO.get(projectHome);
-        if (memo != null && now.equals(memo.stamp)) return memo;
-        StepLedger read = read(file, now);
-        MEMO.put(projectHome, read);
-        return read;
+        FileTime stamp = now;
+        return MEMO.get(projectHome, stamp, () -> read(file, stamp));
     }
 
     private static StepLedger read(Path file, FileTime stamp) {

@@ -19,7 +19,7 @@ class PlannerTestExclusiveTest {
     @Test
     void without_exclusive_every_module_runs_its_suite() throws Exception {
         Path lib = Files.createDirectories(ws.resolve("lib"));
-        assertThat(PlannerTest.selectedForTests(TestSelection.DEFAULT, lib)).isTrue();
+        assertThat(SuiteRunRules.selectedForTests(TestSelection.DEFAULT, lib)).isTrue();
     }
 
     @Test
@@ -27,8 +27,8 @@ class PlannerTestExclusiveTest {
         Path app = Files.createDirectories(ws.resolve("app"));
         Path lib = Files.createDirectories(ws.resolve("lib"));
         TestSelection sel = TestSelection.DEFAULT.withOnlyModules(List.of(app.toString()));
-        assertThat(PlannerTest.selectedForTests(sel, app)).isTrue();
-        assertThat(PlannerTest.selectedForTests(sel, lib)).isFalse();
+        assertThat(SuiteRunRules.selectedForTests(sel, app)).isTrue();
+        assertThat(SuiteRunRules.selectedForTests(sel, lib)).isFalse();
     }
 
     @Test
@@ -37,7 +37,7 @@ class PlannerTestExclusiveTest {
         TestSelection sel = TestSelection.DEFAULT.withOnlyModules(
                 List.of(ws.resolve("lib").resolve("..").resolve("app").toString()));
         Files.createDirectories(ws.resolve("lib"));
-        assertThat(PlannerTest.selectedForTests(sel, app)).isTrue();
+        assertThat(SuiteRunRules.selectedForTests(sel, app)).isTrue();
     }
 
     @Test
@@ -47,6 +47,6 @@ class PlannerTestExclusiveTest {
                 TestSelection.DEFAULT.withClasses(List.of("OrdersTest")).withOnlyModules(List.of(app.toString()));
         assertThat(sel.classes()).containsExactly("OrdersTest");
         assertThat(sel.withClasses(List.of("BarTest")).onlyModules()).containsExactly(app.toString());
-        assertThat(PlannerTest.selectedForTests(sel, app)).isTrue();
+        assertThat(SuiteRunRules.selectedForTests(sel, app)).isTrue();
     }
 }

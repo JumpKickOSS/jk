@@ -10,7 +10,6 @@ import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompilerJdk;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TierTags;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -514,35 +513,13 @@ public final class PlannerTest {
                 .build();
     }
 
-    /**
-     * Why {@code project}'s suite must run whatever its last green marker says, or {@code null}: a
-     * rebuild bypasses the caches, a debug request needs a JVM to attach to, and a coverage run
-     * needs a report a replayed marker does not have. The run and the forecast both ask this.
-     */
-    static @Nullable String forcedRunReason(Session session, JkBuild project) {
-        if (session.config().rebuildOr(false)) return "rebuild";
-        if (session.debugJvm() != null) return "debug";
-        if (session.coverage() || project.build().testCoverage()) return "coverage";
-        return null;
-    }
-
-    /** Whether {@code moduleDir}'s suite runs: always, unless {@code --exclusive} left it out of the selection. */
-    static boolean selectedForTests(TestSelection selection, Path moduleDir) {
-        if (!selection.exclusive()) return true;
-        Path dir = BuildGraph.canonicalPath(moduleDir);
-        return selection.onlyModules().stream()
-                .map(Path::of)
-                .map(BuildGraph::canonicalPath)
-                .anyMatch(dir::equals);
-    }
-
     /** Run one module's suite, or replay its last green run when nothing it reads has changed. */
     private static void runTests(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
-        if (!selectedForTests(in.session().testSelection(), in.dir())) {
+        if (!SuiteRunRules.selectedForTests(in.session().testSelection(), in.dir())) {
             ctx.label(TaskNames.TESTS_NOT_SELECTED);
             ctx.cached();
             return;
@@ -600,7 +577,7 @@ public final class PlannerTest {
         // marker would leave the debugger with nothing to reach.
         // A coverage run is a request for a report; a replayed green marker has none.
         boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
-        boolean rerun = forcedRunReason(in.session(), projectUnderTest) != null;
+        boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
         if (!rerun && stampKey != null && TestLaunch.replayGreenRun(ctx, actionCache, stampKey)) {
             return; // skip — nothing changed since last green run
         }

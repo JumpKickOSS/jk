@@ -109,7 +109,7 @@ public final class StepEta {
         Calibration calibration = Calibration.load();
         List<String> projectDirs =
                 plan.modules().stream().map(m -> m.dir().toString()).toList();
-        for (TaskForecast.Module m : BuildEta.pricedModules(plan, distrust)) {
+        for (TaskForecast.Module m : pricedModules(plan, distrust)) {
             Path dir = m.dir();
             Set<Path> prereqs = plan.edges().getOrDefault(dir, Set.of());
             List<StepCost> own = new ArrayList<>();
@@ -155,7 +155,7 @@ public final class StepEta {
             costs.add(moduleCost(dir, prereqs, own));
             steps.put(dir, List.copyOf(own));
         }
-        int concurrency = BuildEta.etaConcurrency(maxModuleConcurrency);
+        int concurrency = etaConcurrency(maxModuleConcurrency);
         boolean serialEta = concurrency <= 1;
         if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
         if (!serialEta && !shape.filtered()) atDispatchShares(costs, steps, suiteWalls, concurrency, workers);
@@ -174,6 +174,24 @@ public final class StepEta {
                 frontier.size());
         return new BuildService.EtaModel(
                 ms, costs, concurrency, serialEta, ledger.runs() > 0, steps, frontier, curves, fullRebuild);
+    }
+
+    /** The modules an estimate prices: every dirty one, or all of them on a forced run. */
+    static List<TaskForecast.Module> pricedModules(ExplainPlan plan, boolean distrust) {
+        List<TaskForecast.Module> priced = new ArrayList<>();
+        for (TaskForecast.Module m : plan.modules()) {
+            if (distrust || m.dirty()) priced.add(m);
+        }
+        return priced;
+    }
+
+    /**
+     * Module-concurrency budget for the ETA schedule: the executor's own cap, so explain and the
+     * live countdown clamp the same way: the request's {@code -j} when it carries one, else the
+     * engine's resolved jobs (every core).
+     */
+    static int etaConcurrency(int maxModuleConcurrency) {
+        return Math.max(1, TestWorkers.jobsBudget(maxModuleConcurrency));
     }
 
     /** A module's cost from its steps: {@code prefix + max(suite, tail, lane)}, the gate inside the prefix. */

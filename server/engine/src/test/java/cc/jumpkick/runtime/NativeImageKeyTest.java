@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -31,19 +32,57 @@ class NativeImageKeyTest {
         List<String> args = List.of("-H:ConfigurationFileDirectories=" + train.toAbsolutePath());
 
         String untrained = PlannerNative.imageKey(
-                        javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of())
+                        javaHome,
+                        List.of(jar),
+                        args,
+                        "app.Main",
+                        false,
+                        out,
+                        null,
+                        null,
+                        List.of(),
+                        ClasspathFingerprint.ON_DISK)
                 .key();
         String first = PlannerNative.imageKey(
-                        javaHome, List.of(jar), args, "app.Main", false, out, null, train, List.of())
+                        javaHome,
+                        List.of(jar),
+                        args,
+                        "app.Main",
+                        false,
+                        out,
+                        null,
+                        train,
+                        List.of(),
+                        ClasspathFingerprint.ON_DISK)
                 .key();
         assertThat(first).as("the train dir is an input when it is used").isNotEqualTo(untrained);
-        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train, List.of())
+        assertThat(PlannerNative.imageKey(
+                                javaHome,
+                                List.of(jar),
+                                args,
+                                "app.Main",
+                                false,
+                                out,
+                                null,
+                                train,
+                                List.of(),
+                                ClasspathFingerprint.ON_DISK)
                         .key())
                 .as("the same trained content keys the same image")
                 .isEqualTo(first);
 
         Files.writeString(train.resolve("reachability-metadata.json"), "{\"workload\":\"second\"}");
-        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train, List.of())
+        assertThat(PlannerNative.imageKey(
+                                javaHome,
+                                List.of(jar),
+                                args,
+                                "app.Main",
+                                false,
+                                out,
+                                null,
+                                train,
+                                List.of(),
+                                ClasspathFingerprint.ON_DISK)
                         .key())
                 .as("a retrain behind the same path is a different image")
                 .isNotEqualTo(first);
@@ -66,21 +105,58 @@ class NativeImageKeyTest {
         List<String> args = List.of("-H:ConfigurationFileDirectories=" + netty.toAbsolutePath());
 
         String first = PlannerNative.imageKey(
-                        javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of(netty))
+                        javaHome,
+                        List.of(jar),
+                        args,
+                        "app.Main",
+                        false,
+                        out,
+                        null,
+                        null,
+                        List.of(netty),
+                        ClasspathFingerprint.ON_DISK)
                 .key();
         assertThat(PlannerNative.imageKey(
-                                javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of(netty))
+                                javaHome,
+                                List.of(jar),
+                                args,
+                                "app.Main",
+                                false,
+                                out,
+                                null,
+                                null,
+                                List.of(netty),
+                                ClasspathFingerprint.ON_DISK)
                         .key())
                 .as("the same metadata keys the same image")
                 .isEqualTo(first);
-        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of())
+        assertThat(PlannerNative.imageKey(
+                                javaHome,
+                                List.of(jar),
+                                args,
+                                "app.Main",
+                                false,
+                                out,
+                                null,
+                                null,
+                                List.of(),
+                                ClasspathFingerprint.ON_DISK)
                         .key())
                 .as("the dir counts as an input only when it is one")
                 .isNotEqualTo(first);
 
         Files.writeString(netty.resolve("reflect-config.json"), "[{\"name\":\"io.netty.Fixed\"}]");
         assertThat(PlannerNative.imageKey(
-                                javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of(netty))
+                                javaHome,
+                                List.of(jar),
+                                args,
+                                "app.Main",
+                                false,
+                                out,
+                                null,
+                                null,
+                                List.of(netty),
+                                ClasspathFingerprint.ON_DISK)
                         .key())
                 .as("rewritten metadata behind the same path is a different image")
                 .isNotEqualTo(first);
@@ -105,8 +181,17 @@ class NativeImageKeyTest {
             Files.writeString(train.resolve("reachability-metadata.json"), "{\"workload\":\"first\"}");
             List<String> args = List.of(
                     "-H:+UnlockExperimentalVMOptions", "-H:ConfigurationFileDirectories=" + train.toAbsolutePath());
-            PlannerNative.ImageKey key =
-                    PlannerNative.imageKey(graal, List.of(jar), args, "app.Main", false, out, null, train, List.of());
+            PlannerNative.ImageKey key = PlannerNative.imageKey(
+                    graal,
+                    List.of(jar),
+                    args,
+                    "app.Main",
+                    false,
+                    out,
+                    null,
+                    train,
+                    List.of(),
+                    ClasspathFingerprint.ON_DISK);
             assertThat(key.tokens()).noneMatch(t -> t.contains(tmp.toString()));
             if (first == null) first = key.key();
             else assertThat(key.key()).isEqualTo(first);

@@ -179,8 +179,7 @@ final class ForecastLangArms {
      */
     @Nullable
     String kotlinTestKey(
-            ForecastScope s,
-            ForecastScope.Prepared prepared,
+            CompileInputs.Module module,
             List<Path> sources,
             List<Path> classpath,
             Path outputDir,
@@ -188,24 +187,24 @@ final class ForecastLangArms {
             @Nullable List<Path> javaRoots) {
         try {
             Path workingDir = ActionKey.stateDir(
-                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(s.cache)),
+                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(module.cache())),
                     TaskNames.COMPILE_TEST_KOTLIN,
                     testClasses);
             PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
-                    s.project,
-                    s.dir,
-                    s.cache,
-                    s.cas,
+                    module.project(),
+                    module.dir(),
+                    module.cache(),
+                    module.cas(),
                     sources,
                     classpath,
                     outputDir,
                     workingDir,
                     PlannerLang.kotlinConfig(
-                            s.project,
-                            prepared.parsed().lock(),
-                            s.dir,
-                            prepared.parsed().release(),
-                            prepared.javaHome(),
+                            module.project(),
+                            module.lock(),
+                            module.dir(),
+                            module.release(),
+                            module.javaHome(),
                             javaRoots));
             return LangCompile.kotlinKey(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses),
@@ -224,8 +223,7 @@ final class ForecastLangArms {
      */
     @Nullable
     String groovyTestKey(
-            ForecastScope s,
-            ForecastScope.Prepared prepared,
+            CompileInputs.Module module,
             List<Path> sources,
             List<Path> classpath,
             Path outputDir,
@@ -233,18 +231,18 @@ final class ForecastLangArms {
             @Nullable List<Path> javaRoots) {
         try {
             GroovycRequest req = PlannerLang.groovyRequest(
-                    s.project,
-                    prepared.parsed().lock(),
-                    s.dir,
-                    s.cas,
+                    module.project(),
+                    module.lock(),
+                    module.dir(),
+                    module.cas(),
                     sources,
                     classpath,
                     outputDir,
                     javaRoots,
                     null,
-                    javaRoots == null ? List.of() : prepared.classpaths().processor(),
-                    prepared.parsed().release(),
-                    prepared.javaHome());
+                    javaRoots == null ? List.of() : module.classpaths().processor(),
+                    module.release(),
+                    module.javaHome());
             return LangCompile.groovyKey(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses),
                     req,

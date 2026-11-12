@@ -2,11 +2,9 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.host.Log;
-import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
-import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import java.nio.file.Path;
@@ -135,7 +133,7 @@ public final class BuildEta {
      * dogfood rebuild keeps 24 modules in flight where that width says 14.
      */
     static int etaConcurrency(int maxModuleConcurrency) {
-        return Math.max(1, TestWorkers.jobsBudget(maxModuleConcurrency));
+        return StepEta.etaConcurrency(maxModuleConcurrency);
     }
 
     /**
@@ -163,14 +161,5 @@ public final class BuildEta {
         // covers the workspace) never starts or finishes, so it is left out: kept, it held the
         // residual up to its share of the schedule and the bar stalled two thirds of the way.
         return ordered;
-    }
-
-    /** The modules an estimate prices: every dirty one, or all of them on a forced run. */
-    static List<TaskForecast.Module> pricedModules(ExplainPlan plan, boolean distrust) {
-        List<TaskForecast.Module> priced = new ArrayList<>();
-        for (TaskForecast.Module m : plan.modules()) {
-            if (distrust || m.dirty()) priced.add(m);
-        }
-        return priced;
     }
 }

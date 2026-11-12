@@ -27,18 +27,19 @@ class PlannerTestForcedRunTest {
     void rebuild_debug_and_coverage_each_force_a_run_and_nothing_else_does() throws Exception {
         JkBuild project = JkBuildParser.parse(TOML);
         Session plain = Session.defaults();
-        assertThat(PlannerTest.forcedRunReason(plain, project)).isNull();
-        assertThat(PlannerTest.forcedRunReason(plain.withConfig(JkConfig.empty().withRebuild(true)), project))
+        assertThat(SuiteRunRules.forcedRunReason(plain, project)).isNull();
+        assertThat(SuiteRunRules.forcedRunReason(
+                        plain.withConfig(JkConfig.empty().withRebuild(true)), project))
                 .isEqualTo("rebuild");
-        assertThat(PlannerTest.forcedRunReason(plain.withDebugJvm(new DebugJvm("localhost", 5005, false)), project))
+        assertThat(SuiteRunRules.forcedRunReason(plain.withDebugJvm(new DebugJvm("localhost", 5005, false)), project))
                 .isEqualTo("debug");
-        assertThat(PlannerTest.forcedRunReason(plain.withCoverage(true), project))
+        assertThat(SuiteRunRules.forcedRunReason(plain.withCoverage(true), project))
                 .isEqualTo("coverage");
     }
 
     @Test
     void a_module_that_always_measures_coverage_always_runs() throws Exception {
         JkBuild project = JkBuildParser.parse(TOML + "\n[test]\ncoverage = true\n");
-        assertThat(PlannerTest.forcedRunReason(Session.defaults(), project)).isEqualTo("coverage");
+        assertThat(SuiteRunRules.forcedRunReason(Session.defaults(), project)).isEqualTo("coverage");
     }
 }

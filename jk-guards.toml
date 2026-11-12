@@ -1923,6 +1923,30 @@ instead        = "StampedMemo.bounded(n) or a Request slot, or an allow entry na
 why            = "a static memo in the resident engine outlives every build that filled it and goes stale or grows for days"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.journal.EtaModels#BY_REQUEST"
+reason = "live registry: the work models of runs not yet journaled, by request id; drained as the journal writes each run, at most 64"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RunShapes#SHAPES"
+reason = "live registry: each live run's shape by request id, read as the journal records the run, at most 256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RunShapes#PRICED"
+reason = "live registry: each live run's priced work set and curves by request id, read as the journal records the run, at most 256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.MemoryHolds#HOLDS"
+reason = "live registry: the jobs on hold for memory now, each removed as it resumes"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.MemoryHolds#TOTAL_NANOS"
+reason = "live registry: each recent run's total time on hold, read as it is journaled, at most 256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.MemoryHolds#listener"
+reason = "seam: the engine's hold listener, wired once at startup"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.config.TrimRegistry#MEMOS"
 reason = "live registry: every memo that can trim itself, held weakly"
 
@@ -2620,6 +2644,10 @@ owner      = "cc.jumpkick.run.JkThreads"
 fixture    = "server/guard/fixtures/executors-through-jkthreads"
 instead    = "JkThreads.cpu() / io() / platform(); a pool that must stay private wraps each task with ContextPropagator.wrapCallable and is an allow entry"
 why        = "a pool of one's own carries no request onto its tasks unless each is wrapped by hand"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.EtaStepTicker"
+reason = "one engine-lifetime ticker re-noting live requests' remainders by request id; it reads no carried value"
 
 [[guards.executors-through-jkthreads.allow]]
 in     = "cc.jumpkick.resolver.MemberSolves"

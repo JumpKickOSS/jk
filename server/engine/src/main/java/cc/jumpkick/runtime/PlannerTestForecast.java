@@ -207,10 +207,10 @@ final class PlannerTestForecast {
         TestOutputs outs = TestOutputs.of(src, layout, testClasses);
         boolean javaTests = !src.javaTest().isEmpty();
         ForecastLangArms arms = s.arms();
+        CompileInputs.Module module = PlannerCompileForecast.compileInputs(s, prepared);
         if (!src.ktTest().isEmpty()) {
             String key = arms.kotlinTestKey(
-                    s,
-                    prepared,
+                    module,
                     src.ktTest(),
                     baseCp,
                     outs.kotlinOut(),
@@ -223,8 +223,7 @@ final class PlannerTestForecast {
         }
         if (!src.gvTest().isEmpty()) {
             String key = arms.groovyTestKey(
-                    s,
-                    prepared,
+                    module,
                     src.gvTest(),
                     outs.groovyClasspath(baseCp),
                     outs.groovyOut(),
@@ -288,7 +287,7 @@ final class PlannerTestForecast {
     static TaskForecast.@Nullable Task runTests(ForecastScope s) throws Exception {
         if (s.skipTests || !s.haveTests()) return null;
         // As the run decides it first: a module --exclusive left out runs no suite.
-        if (!PlannerTest.selectedForTests(SessionContext.current().testSelection(), s.dir)) {
+        if (!SuiteRunRules.selectedForTests(SessionContext.current().testSelection(), s.dir)) {
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, TaskNames.TESTS_NOT_SELECTED, null);
         }
@@ -299,9 +298,9 @@ final class PlannerTestForecast {
         int estimated = TestSupport.estimateAllSuiteTestCount(s.dir, compact);
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
-        // The run's own rule (PlannerTest.forcedRunReason): a rebuild, debug or coverage run never
+        // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never
         // replays a green marker, so neither does its forecast.
-        String forced = PlannerTest.forcedRunReason(SessionContext.current(), s.project);
+        String forced = SuiteRunRules.forcedRunReason(SessionContext.current(), s.project);
         if (forced != null) {
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS, TaskForecast.Status.RUN, "run tests · " + forced + " · " + tests, null);
