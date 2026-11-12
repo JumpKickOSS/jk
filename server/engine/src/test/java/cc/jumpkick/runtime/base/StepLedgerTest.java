@@ -292,6 +292,72 @@ class StepLedgerTest {
     }
 
     @Test
+    void a_suite_priced_from_another_shape_says_so_and_names_the_class_walls_of_its_sample(@TempDir Path home) {
+        RunShapes.Shape forced = new RunShapes.Shape("", true, false);
+        Set<String> all = Set.of("/ws/engine", "/ws/cli");
+        Set<String> edit = Set.of("/ws/engine");
+        StepLedger.append(
+                home,
+                forced,
+                all,
+                Map.of(),
+                Map.of("/ws/engine", new long[] {2, 150_000, 12_700}),
+                List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 80_000)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.ownShape("/ws/engine", "run-tests", "SUCCESS", forced, all))
+                .isTrue();
+        assertThat(ledger.ownShape("/ws/engine", "run-tests", "SUCCESS", DEFAULT, edit))
+                .as("a body edit's first run reads the first build's suite, beside other work")
+                .isFalse();
+        assertThat(ledger.classWalls("/ws/engine", "run-tests", "SUCCESS", DEFAULT, edit))
+                .containsExactly(150_000, 12_700);
+        assertThat(ledger.workers("/ws/engine", "run-tests", "SUCCESS", DEFAULT, edit))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void a_compile_with_no_wall_under_this_load_is_read_from_the_full_rebuild_or_the_project(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        StepLedger.append(
+                home,
+                full,
+                List.of(
+                        new StepLedger.Sample("/ws/engine", "compile-java", "SUCCESS", 17_000),
+                        new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 4_000)));
+        StepLedger.append(
+                home,
+                DEFAULT,
+                List.of(
+                        new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 500),
+                        new StepLedger.Sample("/ws/b", "compile-java", "SUCCESS", 900),
+                        new StepLedger.Sample("/ws/c", "compile-java", "SUCCESS", 2_100)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.coldCompile("/ws/engine", "compile-java", "SUCCESS", DEFAULT, true))
+                .as("a one-file edit: the project's light compiles' median")
+                .hasValue(900);
+        assertThat(ledger.coldCompile("/ws/engine", "compile-java", "SUCCESS", DEFAULT, false))
+                .as("a full compile: the full rebuild's, at the load ratio")
+                .hasValue(Math.round(17_000 * StepLedger.DEFAULT_LIGHT_OVER_HEAVY));
+        assertThat(ledger.coldCompile("/ws/tiny", "compile-java", "SUCCESS", DEFAULT, false))
+                .as("nothing known of the module")
+                .isEmpty();
+    }
+
+    @Test
+    void a_suite_teaches_no_load_ratio(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        for (String dir : List.of("/ws/a", "/ws/b", "/ws/c")) {
+            StepLedger.append(home, full, List.of(new StepLedger.Sample(dir, "run-tests", "SUCCESS", 10_000)));
+            StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample(dir, "run-tests", "SUCCESS", 3_000)));
+        }
+        assertThat(StepLedger.load(home).lightOverHeavy())
+                .as("a light run's suite is faster for its JVMs, which are priced apart")
+                .isEqualTo(StepLedger.DEFAULT_LIGHT_OVER_HEAVY);
+    }
+
+    @Test
     void an_even_count_of_samples_is_priced_at_the_newer_middle_one(@TempDir Path home) {
         Set<String> build = Set.of("/ws/engine");
         StepLedger.append(

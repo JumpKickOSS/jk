@@ -374,6 +374,45 @@ public final class StepLedger {
 
     static final double MIN_SPREAD = 0.15;
 
+    /**
+     * A compile's wall when {@link #price} has none of its own under this run's load, which it never
+     * reads across loads (a full rebuild's compile is other work than an incremental one). A full
+     * compile is the same work as a full rebuild's: that module's wall there, at the {@link
+     * #lightOverHeavy load ratio}. A partial compile is mostly the compiler's own cost, not the
+     * module's: the median, over the modules that ran this step under this load, of each one's newest
+     * wall (three modules at least), never above its own full compile's. The engine's first one-file
+     * edit priced its compile at the 17 s its first build's full compile took, for 2 s.
+     */
+    public OptionalLong coldCompile(String dir, String step, String status, RunShapes.Shape shape, boolean partial) {
+        List<Indexed> rows = index.getOrDefault(key(dir, step, status), List.of());
+        List<Long> heavy = new ArrayList<>();
+        for (int i = rows.size() - 1; i >= 0 && heavy.size() < ANY_FRONTIER; i--) {
+            if (rows.get(i).run().shape().forced() != shape.forced())
+                heavy.add(rows.get(i).ms());
+        }
+        double ratio = shape.forced() ? 1 / lightOverHeavy() : lightOverHeavy();
+        OptionalLong full = heavy.isEmpty() ? OptionalLong.empty() : OptionalLong.of(Math.round(median(heavy) * ratio));
+        if (!partial) return full;
+        List<Long> walls = new ArrayList<>();
+        for (Map.Entry<String, List<Indexed>> e : index.entrySet()) {
+            String[] k = e.getKey().split("\n", -1);
+            if (!k[1].equals(step) || !k[2].equals(status)) continue;
+            List<Indexed> moduleRows = e.getValue();
+            for (int i = moduleRows.size() - 1; i >= 0; i--) {
+                if (moduleRows.get(i).run().shape().forced() == shape.forced()) {
+                    walls.add(moduleRows.get(i).ms());
+                    break;
+                }
+            }
+        }
+        if (walls.size() < MIN_COLD_COMPILE_MODULES) return full;
+        long typical = median(walls);
+        return OptionalLong.of(full.isPresent() ? Math.min(typical, full.getAsLong()) : typical);
+    }
+
+    /** Modules whose compiles under a load must be known before a partial compile is read from them. */
+    static final int MIN_COLD_COMPILE_MODULES = 3;
+
     /** The least spread of a price read across loads: the load ratio is one number for every step. */
     static final double LOAD_SPREAD = 0.4;
 
@@ -394,11 +433,39 @@ public final class StepLedger {
     }
 
     /**
+     * The class walls of the suite sample {@link #workers} names, {@code {sum, longest}} ms, which
+     * re-price the suite at another count of JVMs ({@link StepCost#scale}); zeros when not recorded.
+     */
+    public long[] classWalls(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        return rung(dir, step, status, shape, frontier).classWalls().clone();
+    }
+
+    /**
+     * Whether {@link #price} reads runs of this very shape and frontier: the same work beside the
+     * step, so the same test JVMs for a suite. A price borrowed from other runs ran beside other
+     * work, on the JVMs that work left it.
+     */
+    public boolean ownShape(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        return rung(dir, step, status, shape, frontier).own();
+    }
+
+    /**
      * The samples {@link #price} reads, newest first, the factor it reads them at, the least spread
      * around them, and for a suite the test JVMs they were read at.
      */
-    private record Rung(List<Long> samples, double scale, double spreadBelow, double spreadAbove, int workers) {
-        static final Rung NONE = new Rung(List.of(), 1, MIN_SPREAD, MIN_SPREAD, 0);
+    private record Rung(
+            List<Long> samples,
+            double scale,
+            double spreadBelow,
+            double spreadAbove,
+            int workers,
+            long[] classWalls,
+            boolean own) {
+        static final Rung NONE = new Rung(List.of(), 1, MIN_SPREAD, MIN_SPREAD, 0, new long[2], false);
+
+        Rung borrowed() {
+            return new Rung(samples, scale, spreadBelow, spreadAbove, workers, classWalls, false);
+        }
 
         long at(long ms) {
             return Math.round(ms * scale);
@@ -457,14 +524,19 @@ public final class StepLedger {
             if (sameLoadFrontier.size() < SAME_FRONTIER && frontierMatches) sameLoadFrontier.add(r);
             if (sameLoad.size() < ANY_FRONTIER) sameLoad.add(r);
         }
-        for (List<Indexed> rung : List.of(sameShapeFrontier, sameShape, sameLoadFrontier, sameLoad)) {
-            if (!rung.isEmpty()) return read(rung, dir, suite, 1, MIN_SPREAD, MIN_SPREAD);
+        if (!sameShapeFrontier.isEmpty()) return read(sameShapeFrontier, dir, suite, 1, MIN_SPREAD, MIN_SPREAD);
+        for (List<Indexed> rung : List.of(sameShape, sameLoadFrontier, sameLoad)) {
+            if (!rung.isEmpty())
+                return read(rung, dir, suite, 1, MIN_SPREAD, MIN_SPREAD).borrowed();
         }
         if (!otherLoad.isEmpty()) {
             double ratio = lightOverHeavy();
-            return read(otherLoad, dir, suite, shape.forced() ? 1 / ratio : ratio, LOAD_SPREAD, LOAD_SPREAD);
+            return read(otherLoad, dir, suite, shape.forced() ? 1 / ratio : ratio, LOAD_SPREAD, LOAD_SPREAD)
+                    .borrowed();
         }
-        if (!defaultProfile.isEmpty()) return read(defaultProfile, dir, suite, 1, MIN_SPREAD, PROFILE_SPREAD_ABOVE);
+        if (!defaultProfile.isEmpty())
+            return read(defaultProfile, dir, suite, 1, MIN_SPREAD, PROFILE_SPREAD_ABOVE)
+                    .borrowed();
         return Rung.NONE;
     }
 
@@ -490,7 +562,7 @@ public final class StepLedger {
             double at = workers > 0 ? StepCost.scale(r.run().workersOf(dir), workers, walls[0], walls[1]) : 1;
             samples.add(Math.round(r.ms() * at));
         }
-        return new Rung(samples, scale, below, above, workers);
+        return new Rung(samples, scale, below, above, workers, walls, true);
     }
 
     /** Whether a full rebuild changes the step's work, not only the load it runs beside. */
@@ -511,8 +583,8 @@ public final class StepLedger {
 
     /**
      * What a step's wall in a light run is of its wall in a full rebuild: the median, over the
-     * steps that ran under both (same profile and filter, work the load does not change), of their
-     * light median over their heavy one; {@link #DEFAULT_LIGHT_OVER_HEAVY} until {@link
+     * steps that ran under both (same profile and filter, work the load does not change, suites
+     * aside), of their light median over their heavy one; {@link #DEFAULT_LIGHT_OVER_HEAVY} until {@link
      * #MIN_LOAD_PAIRS} steps have. A step seen under one load only is priced for the other at this
      * ratio: a full rebuild runs every step beside every compile.
      */
@@ -522,7 +594,10 @@ public final class StepLedger {
         List<Double> ratios = new ArrayList<>();
         for (Map.Entry<String, List<Indexed>> e : index.entrySet()) {
             String step = e.getKey().split("\n", -1)[1];
-            if (loadChangesWork(step)) continue;
+            // A suite's light run is faster mostly for the test JVMs the light build gives it,
+            // which the estimate prices on its own (StepEta's dispatch share): taught here too,
+            // it would be counted twice.
+            if (loadChangesWork(step) || TaskNames.isRunTests(step)) continue;
             Map<String, List<Long>> light = new HashMap<>();
             Map<String, List<Long>> heavy = new HashMap<>();
             for (Indexed r : e.getValue()) {

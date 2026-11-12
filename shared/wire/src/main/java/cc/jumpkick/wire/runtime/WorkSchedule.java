@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Wall-time schedule model for workspace module costs — shared by ETA seed, residual {@code R(t)},
@@ -66,6 +67,22 @@ public final class WorkSchedule {
      * the scan picked.
      */
     static long listSchedule(List<ModuleWorkCost> mods, int concurrency) {
+        return listSchedule(mods, concurrency, null);
+    }
+
+    /**
+     * Per module, the modules in flight when its suite dispatches in {@code mods}' schedule (itself
+     * counted): what the executor divides the jobs budget by to pick the suite's test JVMs
+     * ({@code TestWorkers.liveShare}). A module missing from the map never dispatched.
+     */
+    public static Map<Path, Integer> inFlightAtDispatch(List<ModuleWorkCost> mods, int concurrency) {
+        Map<Path, Integer> inFlight = new HashMap<>();
+        if (mods != null && !mods.isEmpty()) listSchedule(mods, Math.max(1, concurrency), inFlight);
+        return inFlight;
+    }
+
+    private static long listSchedule(
+            List<ModuleWorkCost> mods, int concurrency, @Nullable Map<Path, Integer> inFlightAtDispatch) {
         if (mods == null || mods.isEmpty()) return 0;
         int slots = Math.max(1, concurrency);
         // Caller order, first occurrence — same as live WorkspaceScheduler's unit list; a dir
@@ -167,6 +184,7 @@ public final class WorkSchedule {
                 case ARTIFACT -> {}
                 case DISPATCH -> {
                     ModuleWorkCost m = cost[e.module()];
+                    if (inFlightAtDispatch != null) inFlightAtDispatch.put(m.dir(), flying);
                     long fin = t + Math.max(m.suiteAt(shareAt(slots, flying, m)), m.tailWeight());
                     events.add(new Event(fin, e.module(), Kind.FINISH));
                     end = Math.max(end, fin);

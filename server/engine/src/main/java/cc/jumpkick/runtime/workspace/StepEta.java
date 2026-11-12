@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.base.StepLedger;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.SuiteSelection;
 import cc.jumpkick.test.SuiteClassFilter;
+import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.StepCost;
@@ -93,6 +94,7 @@ public final class StepEta {
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         Map<Path, List<StepCost>> steps = new LinkedHashMap<>();
         Map<String, int[]> curves = new LinkedHashMap<>();
+        Map<Path, long[]> suiteWalls = new HashMap<>();
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
         List<String> projectDirs =
@@ -121,28 +123,20 @@ public final class StepEta {
                 if (c.kind() != StepCost.Kind.TEST) continue;
                 int[] curve = ledger.curve(dir.toString(), shape, frontier);
                 if (curve != null) curves.put(dir.toString(), curve);
+                if (!ledger.ownShape(dir.toString(), c.step(), "SUCCESS", shape, frontier))
+                    suiteWalls.put(dir, ledger.classWalls(dir.toString(), c.step(), "SUCCESS", shape, frontier));
             }
             if (own.isEmpty()) {
                 costs.add(EffortWeights.costOf(dir, prereqs, EffortWeights.TOKEN, 0));
                 continue;
             }
-            int pre = 0, test = 0, tail = 0, lane = 0, gate = 0;
-            for (StepCost c : own) {
-                switch (c.kind()) {
-                    case PRE -> pre += c.weight();
-                    case TEST -> test += c.weight();
-                    case TAIL -> tail = Math.max(tail, c.weight());
-                    case LANE -> lane += c.weight();
-                }
-                if (c.kind() == StepCost.Kind.PRE && EffortWeights.gatesDependents(c.step())) gate += c.weight();
-            }
-            tail = Math.max(tail, lane);
-            costs.add(new EffortWeights.ModuleCost(dir, prereqs, pre + test + tail, test, tail, gate, 0, 0));
+            costs.add(moduleCost(dir, prereqs, own));
             steps.put(dir, List.copyOf(own));
         }
         int concurrency = BuildEta.etaConcurrency(maxModuleConcurrency);
         boolean serialEta = concurrency <= 1;
         if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
+        if (!serialEta && !shape.filtered()) atDispatchShares(costs, steps, suiteWalls, concurrency, workers);
         List<ModuleWorkCost> work = new ArrayList<>();
         for (EffortWeights.ModuleCost c : costs) work.add(c.toWorkCost());
         long ms = WorkSchedule.schedule(work, concurrency, serialEta, parallelTests) * WorkModel.MS_PER_WEIGHT;
@@ -157,6 +151,77 @@ public final class StepEta {
                 "frontier",
                 frontier.size());
         return new BuildService.EtaModel(ms, costs, concurrency, serialEta, ledger.runs() > 0, steps, frontier, curves);
+    }
+
+    /** A module's cost from its steps: {@code prefix + max(suite, tail, lane)}, the gate inside the prefix. */
+    private static EffortWeights.ModuleCost moduleCost(Path dir, Set<Path> prereqs, List<StepCost> own) {
+        int pre = 0, test = 0, tail = 0, lane = 0, gate = 0;
+        for (StepCost c : own) {
+            switch (c.kind()) {
+                case PRE -> pre += c.weight();
+                case TEST -> test += c.weight();
+                case TAIL -> tail = Math.max(tail, c.weight());
+                case LANE -> lane += c.weight();
+            }
+            if (c.kind() == StepCost.Kind.PRE && EffortWeights.gatesDependents(c.step())) gate += c.weight();
+        }
+        tail = Math.max(tail, lane);
+        return new EffortWeights.ModuleCost(dir, prereqs, pre + test + tail, test, tail, gate, 0, 0);
+    }
+
+    /**
+     * Each suite re-priced at the test JVMs the build will give it: the executor picks them as the
+     * suite dispatches, the jobs budget over the modules in flight then ({@code TestWorkers.liveShare},
+     * floored at the plan's share), or the {@code -w} the user gave. The ledger's price is for the
+     * JVMs its newest sample ran on: the engine's suite took 80 s on 2 in a first build, beside
+     * every module, and the next body edit priced it at 80 s for a suite that got 8 and took 41 s.
+     * The schedule says how many modules are in flight at each suite's dispatch; a suite is read at
+     * that share through its class walls ({@link StepCost#scale}), and the share becomes the JVMs it
+     * is priced for, which the live model re-prices from once the suite starts on its own count. A
+     * suite whose sample ran on one JVM is left alone: it may be serial-tagged, and one JVM is what
+     * it will get again. So is a suite priced from runs of this very shape and frontier
+     * ({@link StepLedger#ownShape}): the same work beside it gave it the same JVMs each time.
+     */
+    private static void atDispatchShares(
+            List<EffortWeights.ModuleCost> costs,
+            Map<Path, List<StepCost>> steps,
+            Map<Path, long[]> suiteWalls,
+            int jobs,
+            int requestedWorkers) {
+        List<ModuleWorkCost> work = new ArrayList<>();
+        for (EffortWeights.ModuleCost c : costs) work.add(c.toWorkCost());
+        Map<Path, Integer> inFlight = WorkSchedule.inFlightAtDispatch(work, jobs);
+        int widest =
+                inFlight.values().stream().mapToInt(Integer::intValue).max().orElse(1);
+        int planShare = TestWorkers.autoShare(jobs, widest);
+        for (int i = 0; i < costs.size(); i++) {
+            Path dir = costs.get(i).dir();
+            List<StepCost> own = steps.get(dir);
+            Integer running = inFlight.get(dir);
+            long[] walls = suiteWalls.get(dir);
+            if (own == null || running == null || walls == null) continue;
+            int share = requestedWorkers > 0 ? requestedWorkers : TestWorkers.liveShare(planShare, jobs, running);
+            List<StepCost> repriced = new ArrayList<>(own.size());
+            boolean moved = false;
+            for (StepCost c : own) {
+                if (c.kind() != StepCost.Kind.TEST || c.workers() <= 1 || c.workers() == share) {
+                    repriced.add(c);
+                    continue;
+                }
+                double f = StepCost.scale(c.workers(), share, walls[0], walls[1]);
+                repriced.add(new StepCost(
+                        c.step(),
+                        (int) Math.max(1, Math.round(c.weight() * f)),
+                        c.kind(),
+                        (int) Math.round(c.low() * f),
+                        (int) Math.round(c.high() * f),
+                        share));
+                moved = true;
+            }
+            if (!moved) continue;
+            steps.put(dir, List.copyOf(repriced));
+            costs.set(i, moduleCost(dir, costs.get(i).prereqs(), repriced));
+        }
     }
 
     /**
@@ -232,6 +297,11 @@ public final class StepEta {
             return new Priced(ms, range[0], range[1]);
         }
         if (!runs) return Priced.exact(0);
+        if (name.startsWith("compile-") && t.status() != TaskForecast.Status.CACHED) {
+            OptionalLong cold =
+                    ledger.coldCompile(dir.toString(), name, status, shape, t.status() == TaskForecast.Status.PARTIAL);
+            if (cold.isPresent()) return Priced.spread(cold.getAsLong(), 0.5, 2.0);
+        }
         Map<String, Integer> counts = new HashMap<>();
         if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
         if (m.sourceCount() > 0) {

@@ -5,10 +5,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class WorkScheduleTest {
+
+    @Test
+    void a_suite_dispatching_alone_counts_one_module_in_flight_and_one_beside_another_counts_two() {
+        // a and b compile together; a's suite dispatches at 10 beside b, which compiles until 50;
+        // c waits on b and reaches its suite at 60, with a and b done.
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        Path c = Path.of("/c");
+        Map<Path, Integer> inFlight = WorkSchedule.inFlightAtDispatch(
+                List.of(
+                        new ModuleWorkCost(a, Set.of(), 30, 20),
+                        new ModuleWorkCost(b, Set.of(), 50, 0),
+                        new ModuleWorkCost(c, Set.of(b), 20, 10)),
+                8);
+        assertThat(inFlight).containsEntry(a, 2).containsEntry(c, 1);
+    }
 
     @Test
     void serial_is_sum() {
