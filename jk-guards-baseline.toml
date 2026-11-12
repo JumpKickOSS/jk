@@ -41,7 +41,7 @@ population = { files = 2203 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1730, sites = 123328 }
+"server/engine" = { classes = 1742, sites = 123843 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -258,23 +258,11 @@ at     = "cc.jumpkick.giter8.Giter8Apply#apply(Ljava/nio/file/Path;Ljava/nio/fil
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanCatalogLayout(Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;)Z -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanFrameworkDir(Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;)Z -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanNested(Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;I)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanRoot(Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.giter8.PluginTemplates#scanJar(Ljava/lang/String;Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -447,10 +435,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "shared/core"
 at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#isEmptyDir(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#isLegacyLangKindLayout(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/core"

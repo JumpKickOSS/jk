@@ -160,7 +160,6 @@ public final class OfficialTemplatesFreshen {
         if (!Files.isDirectory(dest)
                 || isEmptyDir(dest)
                 || !isRepositoryRoot(dest)
-                || isLegacyLangKindLayout(dest)
                 || !looksLikeTemplateMonorepo(dest)) {
             PathUtil.deleteRecursivelyOrThrow(dest);
             Files.createDirectories(dest.getParent());
@@ -181,20 +180,19 @@ public final class OfficialTemplatesFreshen {
     }
 
     /**
-     * True when {@code dest} looks like a usable templates monorepo
-     * ({@code <lang>/<framework>/*.g8}). A bare {@code .git} from a failed clone is not.
+     * True when {@code dest} looks like a usable templates monorepo: a language directory holding
+     * a {@code .g8} tree, directly or under a framework. A bare {@code .git} from a failed clone is
+     * not.
      */
     static boolean looksLikeTemplateMonorepo(Path dest) {
         if (dest == null || !Files.isDirectory(dest)) return false;
-        if (isLegacyLangKindLayout(dest)) return false;
-        for (String lang : List.of("java", "kotlin", "groovy")) {
+        for (String lang : List.of("java", "kotlin", "groovy", "scala")) {
             Path langDir = dest.resolve(lang);
             if (!Files.isDirectory(langDir)) continue;
+            if (hasG8Child(langDir)) return true;
             try (var frameworks = Files.list(langDir)) {
-                if (frameworks.anyMatch(fw -> Files.isDirectory(fw)
-                        && !fw.getFileName().toString().startsWith(".")
-                        && !fw.getFileName().toString().endsWith(".g8")
-                        && hasG8Child(fw))) {
+                if (frameworks.anyMatch(fw ->
+                        Files.isDirectory(fw) && !fw.getFileName().toString().startsWith(".") && hasG8Child(fw))) {
                     return true;
                 }
             } catch (IOException ignored) {
@@ -205,27 +203,8 @@ public final class OfficialTemplatesFreshen {
         return Files.isDirectory(nested) && looksLikeTemplateMonorepo(nested);
     }
 
-    /** Old {@code <lang>/<name>.g8} catalog — wipe and re-clone. */
-    static boolean isLegacyLangKindLayout(Path dest) {
-        if (dest == null || !Files.isDirectory(dest)) return false;
-        for (String lang : List.of("java", "kotlin", "groovy")) {
-            Path langDir = dest.resolve(lang);
-            if (!Files.isDirectory(langDir)) continue;
-            try (var children = Files.list(langDir)) {
-                if (children.anyMatch(
-                        p -> Files.isDirectory(p) && p.getFileName().toString().endsWith(".g8"))) {
-                    return true;
-                }
-            } catch (IOException ignored) {
-                // try next lang
-            }
-        }
-        Path nested = dest.resolve("templates");
-        return Files.isDirectory(nested) && isLegacyLangKindLayout(nested);
-    }
-
-    private static boolean hasG8Child(Path frameworkDir) {
-        try (var tmpls = Files.list(frameworkDir)) {
+    private static boolean hasG8Child(Path dir) {
+        try (var tmpls = Files.list(dir)) {
             return tmpls.anyMatch(
                     p -> Files.isDirectory(p) && p.getFileName().toString().endsWith(".g8"));
         } catch (IOException e) {

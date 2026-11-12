@@ -55,7 +55,7 @@ import org.junit.jupiter.api.io.TempDir;
 class NewProjectWizardE2eTest {
 
     private static final String SPRING_BOOT = "java/spring-boot/webmvc-security-actuator-jpa-h2";
-    private static final String CLI = "java/none/cli";
+    private static final String CLI = "java/cli";
 
     @TempDir
     static Path state;

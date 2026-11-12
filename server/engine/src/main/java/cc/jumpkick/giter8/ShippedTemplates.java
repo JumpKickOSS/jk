@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ShippedTemplates {
 
-    /** Where the engine jar holds the trees, as {@code <lang>/<framework>/<name>.g8/}. */
+    /** Where the engine jar holds the trees, laid out as {@link TemplateLayout} says. */
     public static final String RESOURCE_ROOT = "cc/jumpkick/giter8/shipped";
 
     private ShippedTemplates() {}
@@ -66,18 +66,11 @@ public final class ShippedTemplates {
         if (root == null || !Files.isDirectory(root)) return List.of();
         List<TemplateSpec> out = new ArrayList<>();
         try {
-            for (Path langDir : childDirs(root)) {
-                String lang = name(langDir);
-                for (Path frameworkDir : childDirs(langDir)) {
-                    String framework = name(frameworkDir);
-                    if (!JkTemplateToml.isKebab(framework)) continue;
-                    for (Path tmpl : childDirs(frameworkDir)) {
-                        TemplateSpec spec =
-                                PluginTemplates.specFromRoot(TemplateSpec.SOURCE_SHIPPED, null, lang, framework, tmpl);
-                        if (spec != null) out.add(spec);
-                    }
-                }
-            }
+            TemplateLayout.scan(root, (lang, framework, tmpl) -> {
+                TemplateSpec spec =
+                        PluginTemplates.specFromRoot(TemplateSpec.SOURCE_SHIPPED, null, lang, framework, tmpl);
+                if (spec != null) out.add(spec);
+            });
         } catch (IOException e) {
             Log.debug("shipped templates: scan of " + root + " failed", e);
             return List.of();
@@ -86,27 +79,12 @@ public final class ShippedTemplates {
         return List.copyOf(out);
     }
 
-    private static List<Path> childDirs(Path dir) throws IOException {
-        List<Path> out = new ArrayList<>();
-        PathUtil.forEachChild(dir, (child, attrs) -> {
-            if (attrs.isDirectory()) out.add(child);
-            return true;
-        });
-        return out;
-    }
-
-    /** A zip filesystem may spell a directory's name with its trailing separator. */
-    private static String name(Path dir) {
-        String n = String.valueOf(dir.getFileName());
-        return n.endsWith("/") ? n.substring(0, n.length() - 1) : n;
-    }
-
     /** Extract {@code spec}'s tree to a temp dir. Caller owns cleanup. */
     public static Path materialize(TemplateSpec spec) throws IOException {
         Path root = root();
         Path src = root == null
                 ? null
-                : root.resolve(spec.language()).resolve(spec.framework()).resolve(spec.name() + ".g8");
+                : root.resolve(TemplateLayout.relativeDir(spec.language(), spec.framework(), spec.name()));
         if (src == null || !Files.isDirectory(src)) {
             throw new IOException("shipped template not found: " + spec.id());
         }

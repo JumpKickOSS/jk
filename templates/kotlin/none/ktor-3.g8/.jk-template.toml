@@ -1,5 +1,0 @@
-language = "kotlin"
-framework = "none"
-name = "ktor-3"
-description = "Ktor service with Koin DI and Exposed/H2"
-layouts = ["traditional", "simple"]

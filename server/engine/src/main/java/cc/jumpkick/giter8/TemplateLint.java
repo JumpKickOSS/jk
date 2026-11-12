@@ -14,9 +14,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk template lint}: {@link JkTemplateToml#load}'s lint over one template directory, or
- * over every {@code .jk-template.toml} under a tree. A template at
- * {@code <lang>/<framework>/<name>.g8} must also declare that language, framework and name, or the
- * catalogue leaves it out.
+ * over every {@code .jk-template.toml} under a tree. A template must declare the language,
+ * framework and name its position ({@link TemplateLayout}) gives it, or the catalogue leaves it out.
  */
 public final class TemplateLint {
 
@@ -93,15 +92,24 @@ public final class TemplateLint {
         }
         String dirName = template.getFileName().toString();
         String name = JkTemplateToml.nameFromDir(dirName);
-        Path frameworkDir = template.getParent();
-        if (name == null || !dirName.endsWith(".g8") || frameworkDir == null) return null;
-        Path langDir = frameworkDir.getParent();
-        if (langDir == null || !JkTemplateToml.isLang(langDir.getFileName().toString())) return null;
-        String lang = langDir.getFileName().toString();
-        String framework = frameworkDir.getFileName().toString();
+        String[] at = TemplateLayout.position(template);
+        if (name == null || !dirName.endsWith(".g8") || at == null) return null;
+        String lang = at[0];
+        String framework = at[1];
+        if (!TemplateSpec.FRAMEWORK_NONE.equals(framework) && !TemplateLayout.isFrameworkName(framework)) {
+            return JkTemplateToml.file(template) + ": sits under " + lang + "/" + framework
+                    + "/, but a framework cannot be named after a language; the catalogue skips it";
+        }
+        Path parent = template.getParent();
+        if (parent != null && TemplateSpec.FRAMEWORK_NONE.equals(TemplateLayout.name(parent))) {
+            return JkTemplateToml.file(template) + ": a template with no framework sits at "
+                    + TemplateLayout.relativeDir(lang, framework, name) + ", not under "
+                    + lang + "/none/";
+        }
         if (JkTemplateToml.matching(meta, lang, framework, name).isPresent()) return null;
-        return JkTemplateToml.file(template) + ": declares " + meta.language() + "/" + meta.framework() + "/"
-                + meta.name() + " but sits at " + lang + "/" + framework + "/" + name
+        return JkTemplateToml.file(template) + ": declares "
+                + TemplateSpec.idOf(meta.language(), meta.framework(), meta.name())
+                + " but sits at " + TemplateSpec.idOf(lang, framework, name)
                 + "; the catalogue skips it until they match";
     }
 

@@ -39,8 +39,8 @@ class NewFormE2eTest {
     void help_reads_a_relative_template_from_the_dir_option(@TempDir Path dir) throws Exception {
         Path template = template(dir);
         for (String[] argv : new String[][] {
-            {"-C", dir.toString(), "new", "-t", "templates/java/none/asking.g8", "--help"},
-            {"new", "--dir", dir.toString(), "-t", "./templates/java/none/asking.g8", "--help"},
+            {"-C", dir.toString(), "new", "-t", "templates/java/asking.g8", "--help"},
+            {"new", "--dir", dir.toString(), "-t", "./templates/java/asking.g8", "--help"},
         }) {
             String[] out = new String[1];
             int[] code = new int[1];
@@ -79,11 +79,10 @@ class NewFormE2eTest {
 
     /** A template asking a required choice and a defaulted bool. */
     private static Path template(Path dir) throws IOException {
-        Path g8 = dir.resolve("templates/java/none/asking.g8");
+        Path g8 = dir.resolve("templates/java/asking.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "asking"
                 layouts = ["traditional"]
 

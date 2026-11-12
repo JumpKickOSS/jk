@@ -12,11 +12,11 @@ trap 'rm -rf "$WORK"' EXIT
 # The script finds templates/ beside itself, so the fixture is a tree with a copy of it.
 TREE="$WORK/jk"
 CAT="$WORK/catalog"
-mkdir -p "$TREE/scripts" "$TREE/templates/java/none/cli.g8/src/main/g8" "$CAT"
+mkdir -p "$TREE/scripts" "$TREE/templates/java/cli.g8/src/main/g8" "$CAT"
 cp "$ROOT/scripts/templates-sync.sh" "$TREE/scripts/"
-printf 'language = "java"\nframework = "none"\nname = "cli"\n' >"$TREE/templates/java/none/cli.g8/.jk-template.toml"
-printf 'name=demo\n' >"$TREE/templates/java/none/cli.g8/default.properties"
-printf 'class Main {}\n' >"$TREE/templates/java/none/cli.g8/src/main/g8/Main.java"
+printf 'language = "java"\nname = "cli"\n' >"$TREE/templates/java/cli.g8/.jk-template.toml"
+printf 'name=demo\n' >"$TREE/templates/java/cli.g8/default.properties"
+printf 'class Main {}\n' >"$TREE/templates/java/cli.g8/src/main/g8/Main.java"
 cp -R "$TREE/templates/." "$CAT/"
 printf '# catalog\n\n| Name |\n|------|\n| \140cli\140 | none |\n' >"$CAT/README.md"
 printf 'license\n' >"$CAT/LICENSE"
@@ -40,13 +40,13 @@ resync() { sync "$CAT" || { echo "test-templates-sync: sync failed:" >&2; cat "$
 
 passes_check "a matching catalog"
 
-printf 'class Main { int x; }\n' >"$TREE/templates/java/none/cli.g8/src/main/g8/Main.java"
-refuses_naming "a changed file" "changed  java/none/cli.g8/src/main/g8/Main.java"
+printf 'class Main { int x; }\n' >"$TREE/templates/java/cli.g8/src/main/g8/Main.java"
+refuses_naming "a changed file" "changed  java/cli.g8/src/main/g8/Main.java"
 resync
 passes_check "a synced change"
 
-printf 'more\n' >"$TREE/templates/java/none/cli.g8/src/main/g8/Extra.java"
-refuses_naming "a missing file" "missing  java/none/cli.g8/src/main/g8/Extra.java"
+printf 'more\n' >"$TREE/templates/java/cli.g8/src/main/g8/Extra.java"
+refuses_naming "a missing file" "missing  java/cli.g8/src/main/g8/Extra.java"
 resync
 
 mkdir -p "$CAT/optimize/train" && printf 'x\n' >"$CAT/optimize/train/T.java"
@@ -70,8 +70,8 @@ resync
 after="$(cd "$CAT" && find . -type f -exec cksum {} + | LC_ALL=C sort)"
 [ "$before" = "$after" ] || { echo "test-templates-sync: a second sync changed the catalog" >&2; exit 1; }
 
-mkdir -p "$TREE/templates/java/none/lib.g8"
-printf 'language = "java"\nframework = "none"\nname = "lib"\n' >"$TREE/templates/java/none/lib.g8/.jk-template.toml"
+mkdir -p "$TREE/templates/java/lib.g8"
+printf 'language = "java"\nname = "lib"\n' >"$TREE/templates/java/lib.g8/.jk-template.toml"
 resync
 refuses_naming "a template with no README row" "no README row for template \`lib\`"
 printf '| \140lib\140 | none |\n| \140gone\140 | none |\n' >>"$CAT/README.md"

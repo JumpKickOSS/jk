@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Unified template picker and resolver. Scans {@code <lang>/<framework>/<name>.g8} trees that
- * carry {@code .jk-template.toml}. Disk wins on id collision, then plugin jars, then the templates
+ * Unified template picker and resolver. Scans template trees that carry {@code .jk-template.toml},
+ * laid out as {@link TemplateLayout} says. Disk wins on id collision, then plugin jars, then the templates
  * jk ships ({@link ShippedTemplates}).
  */
 public final class Giter8TemplateIndex {
@@ -52,8 +52,8 @@ public final class Giter8TemplateIndex {
      * Disk always wins on id collision — {@code putIfAbsent} in root order ($JK_TEMPLATES,
      * {@link JkDirs#templates()}, dogfood), plugin-bundled rows next, jk's shipped rows last. One
      * uniform local-wins rule: a user's copy of {@code java/spring-boot/hello} overrides the
-     * plugin's bundled one, and a catalogue clone's {@code java/none/app} the shipped one.
-     * The returned list is sorted by id (language/framework/name) so every surface — CLI picker,
+     * plugin's bundled one, and a catalogue clone's {@code java/app} the shipped one.
+     * The returned list is sorted by id ({@link TemplateSpec#idOf}) so every surface — CLI picker,
      * HTTP, MCP, web — lists templates in the same order on every filesystem.
      */
     public static List<TemplateSpec> picker(List<Path> roots) {
@@ -86,8 +86,10 @@ public final class Giter8TemplateIndex {
      *
      * <ul>
      *   <li>{@code lang/framework/name} — exact
+     *   <li>{@code lang/name} — the template of that language with no framework, else its one
+     *       framework template of that name
      *   <li>{@code framework/name} — requested lang first, then java → kotlin → groovy → scala
-     *   <li>bare {@code name} — framework {@code none} first, then any framework; requested lang only
+     *   <li>bare {@code name} — the template with no framework first, then any framework; requested lang only
      *       when set, else the first of java → kotlin → groovy → scala that has it
      * </ul>
      *
@@ -106,16 +108,25 @@ public final class Giter8TemplateIndex {
             return Optional.ofNullable(byId.get(TemplateSpec.idOf(parts[0], parts[1], parts[2])));
         }
         if (parts.length == 2) {
-            String framework = parts[0].toLowerCase(Locale.ROOT);
+            String first = parts[0].toLowerCase(Locale.ROOT);
             String name = parts[1].toLowerCase(Locale.ROOT);
-            if (!JkTemplateToml.isKebab(framework) || !JkTemplateToml.isKebab(name)) return Optional.empty();
-            Optional<TemplateSpec> hit = walkLangs(byId, lang, framework, name);
-            if (hit.isPresent()) return hit;
-            return Optional.empty();
+            if (!JkTemplateToml.isKebab(first) || !JkTemplateToml.isKebab(name)) return Optional.empty();
+            // A framework is never named after a language, so a language here is lang/name.
+            if (JkTemplateToml.isLang(first)) return byName(all, byId, first, name);
+            return walkLangs(byId, lang, first, name);
         }
         if (parts.length != 1) return Optional.empty();
         String name = parts[0].toLowerCase(Locale.ROOT);
         if (!JkTemplateToml.isKebab(name)) return Optional.empty();
+        return byName(all, byId, lang, name);
+    }
+
+    /**
+     * A bare template name, in {@code lang} when set: the one with no framework first, else the one
+     * framework template of that name.
+     */
+    private static Optional<TemplateSpec> byName(
+            List<TemplateSpec> all, Map<String, TemplateSpec> byId, @Nullable String lang, String name) {
         Optional<TemplateSpec> none = lang == null || lang.isBlank()
                 ? walkLangs(byId, null, TemplateSpec.FRAMEWORK_NONE, name)
                 : Optional.ofNullable(byId.get(TemplateSpec.idOf(lang, TemplateSpec.FRAMEWORK_NONE, name)));
@@ -222,42 +233,21 @@ public final class Giter8TemplateIndex {
         }
     }
 
-    /** @return true when {@code dir} itself is a {@code <lang>/<framework>/} catalog root */
+    /** @return true when {@code dir} itself is a catalog root ({@link TemplateLayout}) */
     static boolean scanCatalogLayout(Path dir, Map<String, TemplateSpec> byId, String source) {
-        boolean any = false;
-        for (String lang : LANGS) {
-            Path langDir = dir.resolve(lang);
-            if (!Files.isDirectory(langDir)) continue;
-            try (DirectoryStream<Path> frameworks = Files.newDirectoryStream(langDir)) {
-                for (Path frameworkDir : frameworks) {
-                    if (!Files.isDirectory(frameworkDir)) continue;
-                    String framework = frameworkDir.getFileName().toString();
-                    if (framework.startsWith(".") || framework.endsWith(".g8")) continue;
-                    if (!JkTemplateToml.isKebab(framework)) continue;
-                    any |= scanFrameworkDir(lang, framework, frameworkDir, byId, source);
-                }
-            } catch (IOException ignored) {
-                // best-effort
-            }
-        }
-        return any;
-    }
-
-    private static boolean scanFrameworkDir(
-            String lang, String framework, Path frameworkDir, Map<String, TemplateSpec> byId, String source) {
-        boolean any = false;
-        try (DirectoryStream<Path> tmpls = Files.newDirectoryStream(frameworkDir)) {
-            for (Path tmpl : tmpls) {
+        boolean[] any = {false};
+        try {
+            TemplateLayout.scan(dir, (lang, framework, tmpl) -> {
                 TemplateSpec spec = specFromDisk(lang, framework, tmpl, source);
                 if (spec != null) {
                     byId.putIfAbsent(spec.id(), spec);
-                    any = true;
+                    any[0] = true;
                 }
-            }
+            });
         } catch (IOException ignored) {
             // best-effort
         }
-        return any;
+        return any[0];
     }
 
     static @Nullable TemplateSpec specFromDisk(String lang, String framework, Path tmpl, String source) {

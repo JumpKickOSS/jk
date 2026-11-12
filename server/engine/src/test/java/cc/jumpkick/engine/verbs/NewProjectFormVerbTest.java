@@ -24,7 +24,7 @@ class NewProjectFormVerbTest {
         Form form = Form.fromJson(ack.form());
         assertThat(form.fields()).extracting(Field::key).containsExactly("lang", "template", "name", "group", "dir");
         assertThat(ack.template()).isEmpty();
-        assertThat(ack.templates()).containsKeys("java/none/app", "kotlin/none/library");
+        assertThat(ack.templates()).containsKeys("java/app", "kotlin/library");
     }
 
     @Test
@@ -32,7 +32,7 @@ class NewProjectFormVerbTest {
         NewProjectFormAck sent = NewProjectFormVerb.answer(new NewProjectFormRequest("app", "kotlin", repo.toString()));
         NewProjectFormAck ack = NewProjectFormAck.decode(sent.encode());
         assertThat(ack.error()).isNull();
-        assertThat(ack.template()).isEqualTo("kotlin/none/app");
+        assertThat(ack.template()).isEqualTo("kotlin/app");
         Form form = Form.fromJson(ack.form());
         assertThat(form.field("native")).isNotNull();
         assertThat(form.field("layout")).isNotNull();

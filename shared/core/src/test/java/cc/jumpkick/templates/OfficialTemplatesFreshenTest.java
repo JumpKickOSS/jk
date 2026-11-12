@@ -58,6 +58,20 @@ class OfficialTemplatesFreshenTest {
                 Files.readAllLines(seen));
     }
 
+    /**
+     * A catalogue whose language directories hold templates with no framework ({@code java/app.g8})
+     * is catalogue-shaped, so a freshen fetches it in place instead of wiping and re-cloning it.
+     */
+    @Test
+    void templates_with_no_framework_are_a_catalogue() throws IOException {
+        Files.createDirectories(tmp.resolve("flat/java/app.g8"));
+        assertTrue(OfficialTemplatesFreshen.looksLikeTemplateMonorepo(tmp.resolve("flat")));
+        Files.createDirectories(tmp.resolve("framed/templates/kotlin/spring-boot/webapp.g8"));
+        assertTrue(OfficialTemplatesFreshen.looksLikeTemplateMonorepo(tmp.resolve("framed")));
+        Files.createDirectories(tmp.resolve("bare/java/notes"));
+        assertTrue(!OfficialTemplatesFreshen.looksLikeTemplateMonorepo(tmp.resolve("bare")));
+    }
+
     /** A git before 2.31 reads no {@code GIT_CONFIG_*}: it is refused a proxy by version, never run. */
     @Test
     @DisabledOnOs(OS.WINDOWS)

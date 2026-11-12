@@ -7,7 +7,6 @@ import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.scaffold.NewProjectStep;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileSystem;
@@ -61,24 +60,10 @@ public final class PluginTemplates {
         try (FileSystem fs = zipfs(jar)) {
             Path templates = fs.getPath("templates");
             if (!Files.isDirectory(templates)) return List.of();
-            for (String lang : NewProjectStep.LANGS) {
-                Path langDir = templates.resolve(lang);
-                if (!Files.isDirectory(langDir)) continue;
-                try (var frameworks = Files.list(langDir)) {
-                    for (Path frameworkDir : frameworks.toList()) {
-                        if (!Files.isDirectory(frameworkDir)) continue;
-                        String framework = frameworkDir.getFileName().toString();
-                        if (framework.startsWith(".") || !JkTemplateToml.isKebab(framework)) continue;
-                        try (var tmpls = Files.list(frameworkDir)) {
-                            for (Path tmpl : tmpls.toList()) {
-                                TemplateSpec spec =
-                                        specFromRoot(TemplateSpec.SOURCE_PLUGIN, pluginId, lang, framework, tmpl);
-                                if (spec != null) out.add(spec);
-                            }
-                        }
-                    }
-                }
-            }
+            TemplateLayout.scan(templates, (lang, framework, tmpl) -> {
+                TemplateSpec spec = specFromRoot(TemplateSpec.SOURCE_PLUGIN, pluginId, lang, framework, tmpl);
+                if (spec != null) out.add(spec);
+            });
         } catch (IOException e) {
             return List.of();
         }
@@ -108,7 +93,8 @@ public final class PluginTemplates {
     }
 
     /**
-     * Extract {@code templates/<lang>/<framework>/<name>.g8} to a temp dir. Caller owns cleanup.
+     * Extract the jar's {@code templates/} tree for one template ({@link TemplateLayout}) to a temp
+     * dir. Caller owns cleanup.
      */
     public static Path materialize(String pluginId, String lang, String framework, String name) throws IOException {
         Path jar = jarOf(pluginId);
@@ -118,7 +104,7 @@ public final class PluginTemplates {
         String l = lang.strip().toLowerCase(Locale.ROOT);
         String fw = framework.strip().toLowerCase(Locale.ROOT);
         String n = name.strip().toLowerCase(Locale.ROOT);
-        String prefix = "templates/" + l + "/" + fw + "/" + n + ".g8";
+        String prefix = "templates/" + TemplateLayout.relativeDir(l, fw, n);
         try (FileSystem fs = zipfs(jar)) {
             Path src = fs.getPath(prefix);
             if (!Files.isDirectory(src)) {

@@ -1,5 +1,0 @@
-language = "java"
-framework = "none"
-name = "cli"
-description = "Simple executable (Mill SIMPLE layout)"
-layouts = ["traditional", "simple"]

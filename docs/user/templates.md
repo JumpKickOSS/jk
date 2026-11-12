@@ -29,7 +29,7 @@ its field up front (`--lang`, `-t`, the name or `--name`, `--group`, `--dir`, `-
 which makes the same project without asking:
 
 ```text
-Equivalent command  jk new my-app -t kotlin/none/app -L simple -p native=true
+Equivalent command  jk new my-app -t kotlin/app -L simple -p native=true
 ```
 
 **Without a terminal** (stdin redirected from a file or a pipe, `< /dev/null` or `< NUL`, even
@@ -66,7 +66,7 @@ The flags of the former blank-project scaffolder:
 line each, generated from its form:
 
 ```text
-Template java/none/app (-L for layout, -p key=value for the rest):
+Template java/app (-L for layout, -p key=value for the rest):
   layout: traditional|simple = traditional  # Layout
   deps: [guava,commons-lang,commons-io] = []  # Libraries
   assembly: true|false = false  # Runnable fat jar
@@ -112,20 +112,23 @@ The **engine** applies Giter8 (StringTemplate 4). The native CLI does not ship S
 
 ## Resolution (`-t <ref>`)
 
-Catalog layout: `<lang>/<framework>/<name>.g8`. `none` is the framework bucket for
-templates that are not a framework (`cli`, `ktor-3`, …).
+Catalog layout: `<lang>/<name>.g8` for a template with no framework (`cli`, `ktor-3`, …),
+`<lang>/<framework>/<name>.g8` for one that belongs to a framework. A template's id is the same
+path without `.g8`: `java/app`, `java/spring-boot/webapp`. A framework cannot be named after a
+language, so `java/app` always means language and name.
 
 | Invocation | Resolves to |
 |------------|-------------|
-| `jk new -t hello` | `java/none/hello` |
-| `jk new -t hello -l kotlin` | `kotlin/none/hello` |
+| `jk new -t hello` | `java/hello` |
+| `jk new -t hello -l kotlin` | `kotlin/hello` |
+| `jk new -t java/cli` | `java/cli` |
 | `jk new -t spring-boot/hello` | `java/spring-boot/hello` when java exists |
 | `jk new -t grails/hello` | miss java/kotlin, hit `groovy/grails/hello` |
-| `jk new -t webapp` | `java/spring-boot/webapp` (no `none/webapp`; java before kotlin) |
+| `jk new -t webapp` | `java/spring-boot/webapp` (no `java/webapp`; java before kotlin) |
 | `jk new -t webapp -l kotlin` | `kotlin/spring-boot/webapp` |
 | `jk new -t java/spring-boot/hello` | exact id |
 
-A bare `name` tries framework `none` first, then any framework. Without `-l` it takes the
+A bare `name` tries the template with no framework first, then any framework. Without `-l` it takes the
 first of java → kotlin → groovy that has the name; two frameworks in that one language
 with the same name is ambiguous and the error lists both ids. `-t spring-boot` is a
 **framework**, not a template: the engine lists templates under that framework.
@@ -139,7 +142,7 @@ means the catalogue's `app` beside an `app/` that is not a template.
 Official catalog: [JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)
 (overridable). Plugin jars may overlay the same `(language, framework, name)`.
 
-JumpKick ships `app` and `library` (framework `none`, every language that has them) in its own
+JumpKick ships `app` and `library` (no framework, every language that has them) in its own
 distribution, so `jk new` works on a fresh home with no catalogue clone and no network. A
 catalogue copy of the same id wins; JumpKick's copy serves only an id the catalogue lacks, and the
 template list names it with source `shipped`.
@@ -161,18 +164,18 @@ Override the store root with `JK_STORE_DIR`. For a one-off template that isn't
 in a configured catalog, pass its git/HTTPS URL (or a local path) directly to
 `-t`.
 
-Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
+Third-party monorepos use the same layout: `<lang>/<name>.g8`, or `<lang>/<framework>/<name>.g8`.
 
 ## First-party templates
 
 | Name | Framework | Languages | Intent | Rule pack |
 |------|-----------|-----------|--------|-----------|
-| `cli` | none | java, kotlin | Simple executable | `library` (java), house rules (kotlin) |
-| `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
-| `app` | none | java, kotlin, groovy, scala | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
-| `library` | none | java, kotlin, scala | Published library: sources and javadoc jars (Dokka's for Kotlin, scaladoc's for Scala), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
-| `plugin` | none | java | Build plugin (`jk new -P`): the `jk-plugin.toml` manifest, its service file, a `@NullMarked` `Plugin` class and its test, compiled against the SDK of the JumpKick that scaffolds it | `library` |
-| `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
+| `cli` | — | java, kotlin | Simple executable | `library` (java), house rules (kotlin) |
+| `cli-native` | — | java | Interactive Java CLI with JLine | house rules |
+| `app` | — | java, kotlin, groovy, scala | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
+| `library` | — | java, kotlin, scala | Published library: sources and javadoc jars (Dokka's for Kotlin, scaladoc's for Scala), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
+| `plugin` | — | java | Build plugin (`jk new -P`): the `jk-plugin.toml` manifest, its service file, a `@NullMarked` `Plugin` class and its test, compiled against the SDK of the JumpKick that scaffolds it | `library` |
+| `ktor-3` | — | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
 | `webmvc-security-actuator-jpa-h2` | spring-boot | java, kotlin | WebMVC + JPA/H2 + Actuator | `spring` |
@@ -192,7 +195,7 @@ as below; the default stays the offline Vite/React one.
 ## Template questions (`.jk-template.toml`)
 
 Every template root holds a `.jk-template.toml`: its identity, which must match its
-`<lang>/<framework>/<name>.g8` path, and the questions it asks beyond the ones every project shares.
+path, and the questions it asks beyond the ones every project shares.
 
 ```toml
 language = "java"
@@ -265,14 +268,14 @@ message naming the property; a refused template is left out of the catalogue and
   scaffold.
 
 **`jk template lint [<dir>…]`** runs the same lint before a template ships: on a template directory,
-or on every `.jk-template.toml` under a tree (default `.`). A template at
-`<lang>/<framework>/<name>.g8` must also declare that language, framework and name, or the
-catalogue leaves it out. Each failure prints as one line naming the file and the property, and the
+or on every `.jk-template.toml` under a tree (default `.`). A template must declare the language,
+framework and name its path gives it (no `framework` key at `<lang>/<name>.g8`), or the catalogue
+leaves it out. Each failure prints as one line naming the file and the property, and the
 command exits non-zero on any failure, so a template repository's CI can run it on every change:
 
 ```bash
 jk template lint .                      # every template under the working directory
-jk template lint java/none/app.g8       # one template
+jk template lint java/app.g8       # one template
 ```
 
 Reserved properties are JumpKick's own: the keys of its step (`lang`, `template`, `name`, `group`,

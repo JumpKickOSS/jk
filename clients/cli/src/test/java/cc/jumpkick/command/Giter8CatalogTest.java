@@ -23,7 +23,7 @@ class Giter8CatalogTest {
     @Test
     void resolves_filesystem_template_under_templates_dir(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("checkout");
-        Path g8 = root.resolve("templates/java/none/cli.g8");
+        Path g8 = root.resolve("templates/java/cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=x\n");
         Path cwd = root.resolve("examples/demo");

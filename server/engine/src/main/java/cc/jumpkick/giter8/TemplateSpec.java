@@ -8,8 +8,9 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One Giter8 template: identity {@code language/framework/name}. Catalog, local, and plugin
- * trees share this shape so HTTP, MCP, and CLI resolve through one index.
+ * One Giter8 template: identity {@code language/name}, or {@code language/framework/name} when it
+ * belongs to a framework. Catalog, local, and plugin trees share this shape so HTTP, MCP, and CLI
+ * resolve through one index, and every surface shows the same id.
  */
 public record TemplateSpec(
         String id,
@@ -22,7 +23,9 @@ public record TemplateSpec(
         @Nullable String pluginId,
         @Nullable Path root) {
 
+    /** The framework of a template that has none; never part of its id or its path. */
     public static final String FRAMEWORK_NONE = "none";
+
     public static final String SOURCE_PLUGIN = "plugin";
     public static final String SOURCE_CATALOG = "catalog";
     public static final String SOURCE_LOCAL = "local";
@@ -41,12 +44,12 @@ public record TemplateSpec(
         id = idOf(language, framework, name);
     }
 
+    /** {@code language/name}, or {@code language/framework/name} when there is a framework. */
     public static String idOf(String language, String framework, String name) {
-        return language.strip().toLowerCase(Locale.ROOT)
-                + "/"
-                + framework.strip().toLowerCase(Locale.ROOT)
-                + "/"
-                + name.strip().toLowerCase(Locale.ROOT);
+        String l = language.strip().toLowerCase(Locale.ROOT);
+        String f = framework.strip().toLowerCase(Locale.ROOT);
+        String n = name.strip().toLowerCase(Locale.ROOT);
+        return f.isEmpty() || FRAMEWORK_NONE.equals(f) ? l + "/" + n : l + "/" + f + "/" + n;
     }
 
     public boolean supportsLayout(String layout) {

@@ -33,7 +33,8 @@ import org.tomlj.TomlTable;
 
 /**
  * {@code .jk-template.toml} at a Giter8 template root: picker metadata and the template's own
- * questions. Path {@code <lang>/<framework>/<name>.g8} is source of truth; the file must match.
+ * questions. Its path ({@link TemplateLayout}) is source of truth; the file must match. {@code
+ * framework} is left out by a template that has none.
  *
  * <p>Each {@code [[ask]]} is one field of the template's form step, in order. {@code internal}
  * names the {@code default.properties} entries that are not questions. {@link #load} also runs the
@@ -191,7 +192,13 @@ public final class JkTemplateToml {
             throw new IllegalArgumentException(
                     displayPath + ": language must be one of " + String.join(", ", NewProjectStep.LANGS));
         }
-        String framework = requireIdent(stringOf(r, "framework", displayPath), "framework", displayPath);
+        String rawFramework = stringOf(r, "framework", displayPath);
+        String framework = rawFramework == null
+                ? TemplateSpec.FRAMEWORK_NONE
+                : requireIdent(rawFramework, "framework", displayPath);
+        if (isLang(framework)) {
+            throw new IllegalArgumentException(displayPath + ": framework cannot be named after a language");
+        }
         String name = requireIdent(stringOf(r, "name", displayPath), "name", displayPath);
         String description = stringOf(r, "description", displayPath);
         if (description == null) description = "";

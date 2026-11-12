@@ -1,0 +1,113 @@
+# The new-project corpus of java/cli: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+README.md
+guard-fixtures/no-soft-reference/Bad.java
+guard-fixtures/no-soft-reference/Ok.java
+jk-guards.toml
+jk.toml
+src/com/acme/Main.java
+src/com/acme/package-info.java
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[application]
+main = "com.acme.Main"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=traditional
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+README.md
+guard-fixtures/no-soft-reference/Bad.java
+guard-fixtures/no-soft-reference/Ok.java
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[application]
+main = "com.acme.Main"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

@@ -47,8 +47,8 @@ class NewFormTest {
     static {
         // Sorts ahead of app, which the search preselects all the same.
         CATALOGUE.put("kotlin/micronaut/hello", "Micronaut hello app");
-        CATALOGUE.put("java/none/app", "Blank Java application");
-        CATALOGUE.put("kotlin/none/app", "Blank Kotlin application");
+        CATALOGUE.put("java/app", "Blank Java application");
+        CATALOGUE.put("kotlin/app", "Blank Kotlin application");
         CATALOGUE.put("kotlin/spring-boot/hello", "Boot hello app");
     }
 
@@ -103,7 +103,7 @@ class NewFormTest {
         public NewProjectFormAck fetch(@Nullable String template, @Nullable String lang) {
             fetched.add(template + "@" + lang);
             if (template == null) return ack(Form.of("new-project", "New project", project("java", false)), "");
-            String id = (lang == null ? "java" : lang) + "/none/" + template;
+            String id = (lang == null ? "java" : lang) + "/" + template;
             String language = id.split("/")[0];
             return ack(Form.of("new-project", "New project", project(language, true), TEMPLATE), id);
         }
@@ -152,7 +152,7 @@ class NewFormTest {
         NewForm.Answered a = walk(mode, keys, "", engine, nothing(), screens).orElseThrow();
 
         assertThat(engine.fetched).containsExactly("null@null", "app@kotlin");
-        assertThat(a.template()).isEqualTo("kotlin/none/app");
+        assertThat(a.template()).isEqualTo("kotlin/app");
         assertThat(a.name()).isEqualTo("demo");
         assertThat(a.text("lang")).isEqualTo("kotlin");
         assertThat(a.text("group")).isEqualTo("com.acme");
@@ -165,11 +165,11 @@ class NewFormTest {
                         Map.entry("libs", "guava"),
                         Map.entry("flavour", "plain"));
         assertThat(a.command())
-                .isEqualTo("jk new demo -t kotlin/none/app -L simple -p motto=hi -p native=true "
+                .isEqualTo("jk new demo -t kotlin/app -L simple -p motto=hi -p native=true "
                         + "-p database=postgres -p libs=guava");
         assertThat(screens.getFirst())
                 .contains("Template options")
-                .contains("Equivalent command  jk new demo -t kotlin/none/app")
+                .contains("Equivalent command  jk new demo -t kotlin/app")
                 .doesNotContain("Flavour");
     }
 
@@ -192,11 +192,11 @@ class NewFormTest {
                 walk(Mode.PLAIN, "", lines, engine, nothing(), transcripts).orElseThrow();
 
         assertThat(a.params()).containsEntry("motto", "hi").containsEntry("native", "false");
-        assertThat(a.command()).isEqualTo("jk new demo -t kotlin/none/app -p motto=hi");
+        assertThat(a.command()).isEqualTo("jk new demo -t kotlin/app -p motto=hi");
         assertThat(transcripts.getFirst())
                 .contains("jk: = New project > Project\n")
                 .contains("jk: = New project > Template options\n")
-                .contains("Equivalent command: jk new demo -t kotlin/none/app -p motto=hi\n")
+                .contains("Equivalent command: jk new demo -t kotlin/app -p motto=hi\n")
                 .doesNotContain("\u001b");
     }
 
@@ -217,7 +217,7 @@ class NewFormTest {
                 .orElseThrow();
 
         assertThat(engine.fetched).containsExactly("app@null");
-        assertThat(a.template()).isEqualTo("java/none/app");
+        assertThat(a.template()).isEqualTo("java/app");
         assertThat(a.params())
                 .containsEntry("libs", "guava,jackson")
                 .containsEntry("native", "true")
@@ -225,7 +225,7 @@ class NewFormTest {
                 .containsEntry("x", "1");
         String transcript = transcripts.getFirst();
         assertThat(transcript)
-                .contains("Template\n-> java/none/app\n")
+                .contains("Template\n-> java/app\n")
                 .contains("Language\n-> Java\n")
                 .contains("Motto\n-> hi\n")
                 .doesNotContain("Motto (")
@@ -241,7 +241,7 @@ class NewFormTest {
         NewForm.Answered a = NewForm.settle(engine, given, DERIVED, "jk new", FLAGS);
 
         assertThat(engine.fetched).containsExactly("null@null", "app@java");
-        assertThat(a.template()).isEqualTo("java/none/app");
+        assertThat(a.template()).isEqualTo("java/app");
         assertThat(a.text("lang")).isEqualTo("java");
         assertThat(a.text("group")).isEqualTo("com.acme");
         assertThat(a.text("dir")).isEqualTo("/work");
@@ -253,7 +253,7 @@ class NewFormTest {
                         Map.entry("database", "none"),
                         Map.entry("libs", ""),
                         Map.entry("flavour", "plain"));
-        assertThat(a.command()).isEqualTo("jk new demo -t java/none/app -p motto=hi");
+        assertThat(a.command()).isEqualTo("jk new demo -t java/app -p motto=hi");
     }
 
     @Test
@@ -265,11 +265,11 @@ class NewFormTest {
         NewForm.Answered a = NewForm.settle(engine, given, DERIVED, "jk new", FLAGS);
 
         assertThat(engine.fetched).containsExactly("app@kotlin");
-        assertThat(a.template()).isEqualTo("kotlin/none/app");
+        assertThat(a.template()).isEqualTo("kotlin/app");
         assertThat(a.params()).containsEntry("native", "true").containsEntry("database", "none");
         assertThat(a.command())
                 .as("the template's own language is the default, so --lang drops out")
-                .isEqualTo("jk new demo -t kotlin/none/app --group org.x --dir /elsewhere -L simple"
+                .isEqualTo("jk new demo -t kotlin/app --group org.x --dir /elsewhere -L simple"
                         + " -p motto=hi -p native=true");
     }
 
@@ -296,10 +296,10 @@ class NewFormTest {
         NewForm.Answered settled = NewForm.settle(new Engine(), given, DERIVED, "jk new", FLAGS);
         assertThat(walked.values()).isEqualTo(settled.values());
         assertThat(walked.params()).isEqualTo(settled.params());
-        assertThat(walked.command()).isEqualTo("jk new demo -t java/none/app -p motto=hi");
+        assertThat(walked.command()).isEqualTo("jk new demo -t java/app -p motto=hi");
         assertThat(transcripts.getFirst())
                 .contains("Group (Maven groupId and package) [com.acme]: \n-> com.acme\n")
-                .contains("Equivalent command: jk new demo -t java/none/app -p motto=hi\n");
+                .contains("Equivalent command: jk new demo -t java/app -p motto=hi\n");
     }
 
     @Test
@@ -354,8 +354,8 @@ class NewFormTest {
     @Test
     void help_lists_each_field_the_template_adds() {
         Form form = Form.of("new-project", "New project", project("java", true), TEMPLATE);
-        assertThat(NewForm.help(form, "java/none/app")).isEqualTo("""
-                        Template java/none/app (-L for layout, -p key=value for the rest):
+        assertThat(NewForm.help(form, "java/app")).isEqualTo("""
+                        Template java/app (-L for layout, -p key=value for the rest):
                           layout: traditional|simple = traditional  # Layout
                           motto: text /[a-z]+/ (required)  # Motto
                           native: true|false = false  # Native binary
@@ -363,8 +363,8 @@ class NewFormTest {
                           libs: [guava,jackson] = []  # Libraries
                           flavour: plain|sweet = plain (advanced)  # Flavour
                         """);
-        assertThat(NewForm.help(Form.of("new-project", "New project", project("java", false)), "java/none/x"))
-                .isEqualTo("Template java/none/x asks nothing beyond jk's own flags.\n");
+        assertThat(NewForm.help(Form.of("new-project", "New project", project("java", false)), "java/x"))
+                .isEqualTo("Template java/x asks nothing beyond jk's own flags.\n");
     }
 
     @Test

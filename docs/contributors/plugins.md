@@ -22,6 +22,7 @@ One jar containing:
 ```
 jk-plugin.toml                      # declarative layer (required)
 templates/<lang>/<framework>/<name>.g8/  # optional Giter8 trees for jk new -t <framework>/<name>
+                                         # (<lang>/<name>.g8/ for one with no framework)
 <your classes>                      # optional code layer (forked process only)
 ```
 
@@ -410,7 +411,8 @@ Static data consulted by `jk run` / `install` / `image` without forking your cod
 
 ### Templates and import
 
-Bundle Giter8 trees at `src/main/resources/templates/<lang>/<framework>/<name>.g8/` (see
+Bundle Giter8 trees at `src/main/resources/templates/<lang>/<framework>/<name>.g8/`, or
+`templates/<lang>/<name>.g8/` for one with no framework (see
 [templates](../user/templates.md)). `jk new -t <framework>/<name>` applies
 that tree (`jk new -t spring-boot/hello`).
 

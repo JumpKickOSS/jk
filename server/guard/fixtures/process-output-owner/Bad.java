@@ -7,7 +7,8 @@ import java.util.concurrent.TimeUnit;
 
 class Bad {
     String version(String tool) throws IOException, InterruptedException {
-        Process p = new ProcessBuilder(tool, "--version").redirectErrorStream(true).start();
+        Process p =
+                new ProcessBuilder(tool, "--version").redirectErrorStream(true).start();
         String out;
         try (InputStream in = p.getInputStream()) {
             out = new String(in.readAllBytes(), StandardCharsets.UTF_8);

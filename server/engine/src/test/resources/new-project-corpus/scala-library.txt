@@ -1,0 +1,195 @@
+# The new-project corpus of scala/library: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+deps = []
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Greeter.scala
+src/test/scala/com/acme/GreeterTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[dependencies]
+# `jk add <library>` adds another at its newest stable release.
+
+# `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
+[build-info]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[commons-lang,commons-io]
+deps = [commons-lang,commons-io]
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Greeter.scala
+src/test/scala/com/acme/GreeterTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[dependencies]
+commons-lang3 = "…"
+commons-io = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
+[build-info]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[guava,commons-io]
+deps = [guava,commons-io]
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Greeter.scala
+src/test/scala/com/acme/GreeterTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[dependencies]
+guava = "…"
+commons-io = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
+[build-info]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[guava,commons-lang]
+deps = [guava,commons-lang]
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Greeter.scala
+src/test/scala/com/acme/GreeterTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[dependencies]
+guava = "…"
+commons-lang3 = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
+[build-info]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

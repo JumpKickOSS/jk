@@ -1,0 +1,16 @@
+language = "kotlin"
+name = "library"
+description = "Published Kotlin library: sources and Dokka javadoc jars, the library rule pack, a unit test"
+layouts = ["traditional"]
+
+[[ask]]
+key = "deps"
+label = "Libraries"
+help = "Common libraries to start with, each pinned at today's stable release"
+kind = "multi"
+options = [
+  { id = "guava", label = "Guava" },
+  { id = "commons-lang", label = "Apache Commons Lang" },
+  { id = "commons-io", label = "Apache Commons IO" },
+]
+default = []

@@ -113,7 +113,6 @@ class TemplateAnswersTest {
     void a_required_ask_left_unanswered_is_refused() {
         JkTemplateToml.Meta meta = JkTemplateToml.parse("""
                 language = "java"
-                framework = "none"
                 name = "x"
 
                 [[ask]]
@@ -132,7 +131,6 @@ class TemplateAnswersTest {
     void a_hidden_ask_with_no_default_is_unset_and_its_guard_is_false(@TempDir Path temp) throws Exception {
         JkTemplateToml.Meta meta = JkTemplateToml.parse("""
                 language = "java"
-                framework = "none"
                 name = "x"
 
                 [[ask]]

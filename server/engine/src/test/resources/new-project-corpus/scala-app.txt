@@ -1,0 +1,455 @@
+# The new-project corpus of scala/app: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+deps = []
+assembly = false
+native = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Main.scala
+src/test/scala/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+[dependencies]
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[guava,commons-lang,commons-io] assembly=true native=true
+layout = traditional
+deps = [guava,commons-lang,commons-io]
+assembly = true
+native = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Main.scala
+src/test/scala/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+assembly = true
+
+# `jk native`: a GraalVM native executable. No [image]: the binary runs on its own, and a container
+# image would wrap it in a runtime it does not need.
+[native]
+
+[dependencies]
+guava = "…"
+commons-lang3 = "…"
+commons-io = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple deps=[commons-lang] assembly=true
+layout = simple
+deps = [commons-lang]
+assembly = true
+native = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/com/acme/Main.scala
+test/src/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+assembly = true
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+[dependencies]
+commons-lang3 = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple deps=[guava,commons-io] native=true
+layout = simple
+deps = [guava,commons-io]
+assembly = false
+native = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/com/acme/Main.scala
+test/src/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+
+# `jk native`: a GraalVM native executable. No [image]: the binary runs on its own, and a container
+# image would wrap it in a runtime it does not need.
+[native]
+
+[dependencies]
+guava = "…"
+commons-io = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[commons-io] assembly=true
+layout = traditional
+deps = [commons-io]
+assembly = true
+native = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Main.scala
+src/test/scala/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+assembly = true
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+[dependencies]
+commons-io = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[guava]
+layout = traditional
+deps = [guava]
+assembly = false
+native = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Main.scala
+src/test/scala/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+[dependencies]
+guava = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== native=true
+layout = traditional
+deps = []
+assembly = false
+native = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Main.scala
+src/test/scala/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+
+# `jk native`: a GraalVM native executable. No [image]: the binary runs on its own, and a container
+# image would wrap it in a runtime it does not need.
+[native]
+
+[dependencies]
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== deps=[commons-lang]
+layout = traditional
+deps = [commons-lang]
+assembly = false
+native = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/scala/com/acme/Main.scala
+src/test/scala/com/acme/MainTest.scala
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+scala = "…"
+
+[application]
+main = "com.acme.Main"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+[dependencies]
+commons-lang3 = "…"
+# `jk add <library>` adds another at its newest stable release.
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

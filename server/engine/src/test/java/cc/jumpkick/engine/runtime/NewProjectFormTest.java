@@ -39,7 +39,7 @@ class NewProjectFormTest {
 
     @Test
     void a_template_adds_its_layouts_and_its_asks_and_lends_the_form_its_language() throws Exception {
-        Path app = RepoRoot.find(NewProjectFormTest.class).resolve("templates/kotlin/none/app.g8");
+        Path app = RepoRoot.find(NewProjectFormTest.class).resolve("templates/kotlin/app.g8");
         NewProjectOps.TemplateForm template =
                 NewProjectOps.templateForm(app.toString(), null, requireNonNull(app.getParent()));
         Form form = NewProjectForm.of(template);
@@ -63,11 +63,10 @@ class NewProjectFormTest {
 
     @Test
     void a_single_layout_template_asks_no_layout(@TempDir Path temp) throws Exception {
-        Path g8 = temp.resolve("templates/java/none/one.g8");
+        Path g8 = temp.resolve("templates/java/one.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "one"
                 layouts = ["traditional"]
                 """);

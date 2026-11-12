@@ -47,7 +47,7 @@ code imports no `org.jline` type (`SelfHostingTomlTest` asserts the merged main 
 not contain `org.jline:jline-terminal-ffm`). `jk-lock.toml` still records `org.jline` through
 Zinc (`org.scala-sbt.jline`). The catalog aliases `jline` and `jline-terminal-ffm` stay in
 `shared/core/src/main/resources/cc/jumpkick/library/libraries.toml`, and the adopter template
-`templates/java/none/cli-native.g8` pins `jline`.
+`templates/java/cli-native.g8` pins `jline`.
 
 **`org.jline` types `:cli` production code does not import** (the leaf owns this surface):
 
@@ -1524,7 +1524,7 @@ depends on `jk-host`. Both are in the root `jk.toml` `[workspace] modules`. Ther
 Gradle catalog. `SelfHostingTomlTest` asserts the merged main graph does not contain
 `org.jline:jline-terminal-ffm`. `jk-lock.toml` still has `org.jline` rows through Zinc
 (`org.scala-sbt.jline`). The catalog aliases stay in `libraries.toml`; the adopter template
-`templates/java/none/cli-native.g8` pins `jline`.
+`templates/java/cli-native.g8` pins `jline`.
 
 ---
 
@@ -1740,7 +1740,7 @@ rg HostPlatform clients/cli-terminal            # empty
 
 ### Keep
 
-- `templates/java/none/cli-native.g8` JLine LineReader example + `jline = "latest"`
+- `templates/java/cli-native.g8` JLine LineReader example + `jline = "latest"`
 - Catalog `jline` / `jline-terminal-ffm` for **users**
 - Zinc/sbt `org.scala-sbt.jline` (unrelated)
 - Product behavior in `tui.md` (reword implementation sentences)
@@ -1796,7 +1796,7 @@ None remaining.
 - `clients/cli/src/main/java/cc/jumpkick/cli/tui/Table.java` (FQCN italic L129)
 - `clients/cli/src/main/java/cc/jumpkick/cli/tui/RichText.java` (`strike` / `crossedOut`)
 - `clients/cli/jk.toml`
-- `templates/java/none/cli-native.g8` — user LineReader template (stays)
+- `templates/java/cli-native.g8` — user LineReader template (stays)
 - `shared/host/` — leaf-module `jk.toml` template
 
 ---

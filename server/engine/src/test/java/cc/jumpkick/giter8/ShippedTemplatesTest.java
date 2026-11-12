@@ -38,15 +38,15 @@ class ShippedTemplatesTest {
         try (Stream<Path> langs = Files.list(templates)) {
             for (Path lang : langs.filter(Files::isDirectory).toList()) {
                 for (String name : SHIPPED) {
-                    Path tree = lang.resolve(TemplateSpec.FRAMEWORK_NONE).resolve(name + ".g8");
+                    Path tree = lang.resolve(name + ".g8");
                     if (Files.isDirectory(tree)) expected.putAll(files(templates, tree));
                 }
             }
         }
         // Fake-green floor: java's two are always there.
         assertThat(expected.keySet())
-                .anyMatch(k -> k.startsWith("java/none/app.g8/"))
-                .anyMatch(k -> k.startsWith("java/none/library.g8/"));
+                .anyMatch(k -> k.startsWith("java/app.g8/"))
+                .anyMatch(k -> k.startsWith("java/library.g8/"));
 
         Path shipped = Objects.requireNonNull(ShippedTemplates.root(), "the shipped tree on the engine classpath");
         Map<String, byte[]> actual = files(shipped, shipped);
@@ -66,7 +66,7 @@ class ShippedTemplatesTest {
     void every_shipped_template_is_a_picker_row_jk_ships() {
         assertThat(ShippedTemplates.list())
                 .extracting(TemplateSpec::id)
-                .contains("java/none/app", "java/none/library", "kotlin/none/app", "groovy/none/app");
+                .contains("java/app", "java/library", "kotlin/app", "groovy/app");
         assertThat(ShippedTemplates.list())
                 .allSatisfy(s -> assertThat(s.source()).isEqualTo(TemplateSpec.SOURCE_SHIPPED));
     }
@@ -76,19 +76,18 @@ class ShippedTemplatesTest {
         var hit = Giter8TemplateIndex.resolve("app", null, List.of(empty));
 
         assertThat(hit).hasValueSatisfying(s -> {
-            assertThat(s.id()).isEqualTo("java/none/app");
+            assertThat(s.id()).isEqualTo("java/app");
             assertThat(s.source()).isEqualTo(TemplateSpec.SOURCE_SHIPPED);
         });
         assertThat(Giter8TemplateIndex.resolve("library", "kotlin", List.of(empty)))
-                .hasValueSatisfying(s -> assertThat(s.id()).isEqualTo("kotlin/none/library"));
+                .hasValueSatisfying(s -> assertThat(s.id()).isEqualTo("kotlin/library"));
     }
 
     @Test
     void a_catalogue_copy_wins_over_the_shipped_one(@TempDir Path catalogue) throws IOException {
-        Path app = Files.createDirectories(catalogue.resolve("java/none/app.g8"));
+        Path app = Files.createDirectories(catalogue.resolve("java/app.g8"));
         Files.writeString(app.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "app"
                 description = "The catalogue's app"
                 """);
@@ -108,12 +107,12 @@ class ShippedTemplatesTest {
     @Test
     void materialize_extracts_the_whole_tree() throws IOException {
         TemplateSpec app = ShippedTemplates.list().stream()
-                .filter(s -> s.id().equals("java/none/app"))
+                .filter(s -> s.id().equals("java/app"))
                 .findFirst()
                 .orElseThrow();
         Path dir = ShippedTemplates.materialize(app);
         try {
-            Path src = Objects.requireNonNull(ShippedTemplates.root()).resolve("java/none/app.g8");
+            Path src = Objects.requireNonNull(ShippedTemplates.root()).resolve("java/app.g8");
             assertThat(files(dir, dir).keySet())
                     .containsExactlyElementsOf(files(src, src).keySet());
             assertThat(dir.resolve(JkTemplateToml.FILE_NAME)).isRegularFile();

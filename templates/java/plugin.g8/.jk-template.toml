@@ -1,0 +1,4 @@
+language = "java"
+name = "plugin"
+description = "Build plugin: the jk-plugin.toml manifest, its service file, a @NullMarked Plugin class and its test, against this jk's SDK"
+layouts = ["traditional"]

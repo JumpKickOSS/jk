@@ -38,11 +38,10 @@ class HttpNewProjectApiTest extends HttpEngineServerHarness {
 
     @BeforeEach
     void template() throws IOException {
-        template = stateDir.resolve("templates/java/none/asking.g8");
+        template = stateDir.resolve("templates/java/asking.g8");
         Files.createDirectories(template.resolve("src/main/g8/src"));
         Files.writeString(template.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "asking"
                 layouts = ["traditional"]
 

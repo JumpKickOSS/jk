@@ -233,11 +233,10 @@ class NewProjectOpsTest {
     @Test
     void layout_simple_refused_when_template_metadata_omits_it(@TempDir Path temp) throws Exception {
         Path templates = temp.resolve("templates");
-        Path g8 = templates.resolve("java").resolve("none").resolve("acme-trad-only.g8");
+        Path g8 = templates.resolve("java").resolve("acme-trad-only.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "acme-trad-only"
                 description = "demo"
                 layouts = ["traditional"]
@@ -258,11 +257,10 @@ class NewProjectOpsTest {
     void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
         // Unique short name so the official cache cannot steal the hit.
         Path templates = temp.resolve("templates");
-        Path g8 = templates.resolve("java").resolve("none").resolve("acme-demo.g8");
+        Path g8 = templates.resolve("java").resolve("acme-demo.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "acme-demo"
                 description = "demo"
                 layouts = ["traditional"]
@@ -309,7 +307,7 @@ class NewProjectOpsTest {
         assertThat(NewProjectOps.templateForm("app", null, work).id())
                 .isEqualTo(work.resolve("app").toString());
         // A directory without a template in it leaves the name to the catalogue.
-        assertThat(NewProjectOps.templateForm("library", null, work).id()).isEqualTo("java/none/library");
+        assertThat(NewProjectOps.templateForm("library", null, work).id()).isEqualTo("java/library");
     }
 
     @Test
@@ -396,7 +394,7 @@ class NewProjectOpsTest {
     @Test
     void the_shipped_cli_template_scaffolds_its_simple_layout_with_no_layout_given(@TempDir Path temp)
             throws Exception {
-        Path cli = RepoRoot.find(NewProjectOpsTest.class).resolve("templates/java/none/cli.g8");
+        Path cli = RepoRoot.find(NewProjectOpsTest.class).resolve("templates/java/cli.g8");
         assertThat(cli.resolve("default.properties")).content().contains("jk_layout=simple");
         Path parent = Files.createDirectories(temp.resolve("apps"));
 
@@ -484,11 +482,10 @@ class NewProjectOpsTest {
 
     /** A catalogue-shaped template with two asks whose jk.toml shows the bindings it got. */
     private static Path askingTemplate(Path temp, String defaultProperties) throws IOException {
-        Path g8 = temp.resolve("templates/java/none/asking.g8");
+        Path g8 = temp.resolve("templates/java/asking.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "asking"
                 layouts = ["traditional"]
 

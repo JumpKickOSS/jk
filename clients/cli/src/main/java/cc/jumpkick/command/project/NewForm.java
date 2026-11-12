@@ -268,8 +268,8 @@ final class NewForm {
 
     /**
      * The template search: the catalogue entries in the language the endpoint names, each as the
-     * shortest ref that resolves to it in that language ({@code name} under framework {@code none},
-     * else {@code framework/name}), those starting with the query first.
+     * shortest ref that resolves to it in that language ({@code name} for an id {@code lang/name},
+     * {@code framework/name} for {@code lang/framework/name}), those starting with the query first.
      */
     static FormSources.Search search(Map<String, String> catalogue) {
         return (field, endpoint, query) -> {
@@ -279,8 +279,9 @@ final class NewForm {
             List<Option> rest = new ArrayList<>();
             for (var e : catalogue.entrySet()) {
                 String[] id = e.getKey().split("/");
-                if (id.length != 3 || (lang != null && !lang.isEmpty() && !id[0].equals(lang))) continue;
-                String ref = id[1].equals("none") ? id[2] : id[1] + "/" + id[2];
+                if (id.length < 2 || id.length > 3) continue;
+                if (lang != null && !lang.isEmpty() && !id[0].equals(lang)) continue;
+                String ref = id.length == 2 ? id[1] : id[1] + "/" + id[2];
                 String description = e.getValue();
                 Option option = new Option(ref, null, description.isBlank() ? null : description);
                 if (ref.startsWith(q)) first.add(option);
@@ -301,7 +302,7 @@ final class NewForm {
         if (id.isEmpty()) return out;
         out.put("template", id);
         String[] parts = id.split("/");
-        if (parts.length == 3 && NewProjectStep.LANGS.contains(parts[0])) out.put("lang", parts[0]);
+        if (parts.length >= 2 && NewProjectStep.LANGS.contains(parts[0])) out.put("lang", parts[0]);
         return out;
     }
 

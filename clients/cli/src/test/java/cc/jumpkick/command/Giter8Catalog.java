@@ -155,8 +155,9 @@ public final class Giter8Catalog {
     private static Optional<Path> langKindOrFlat(Path root, String ref, String dirName) {
         if (root == null || !Files.isDirectory(root)) return Optional.empty();
         for (String lang : List.of("java", "kotlin", "groovy")) {
-            Path none = root.resolve(lang).resolve("none").resolve(dirName);
-            if (isTemplateRoot(none)) return Optional.of(none.toAbsolutePath().normalize());
+            Path direct = root.resolve(lang).resolve(dirName);
+            if (isTemplateRoot(direct))
+                return Optional.of(direct.toAbsolutePath().normalize());
             Path langDir = root.resolve(lang);
             if (!Files.isDirectory(langDir)) continue;
             try (var fws = Files.list(langDir)) {

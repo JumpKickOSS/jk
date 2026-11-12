@@ -68,11 +68,10 @@ class McpNewFormTest {
 
     @BeforeEach
     void template() throws IOException {
-        template = temp.resolve("templates/java/none/asking.g8");
+        template = temp.resolve("templates/java/asking.g8");
         Files.createDirectories(template.resolve("src/main/g8"));
         Files.writeString(template.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "asking"
                 layouts = ["traditional"]
 
@@ -516,7 +515,7 @@ class McpNewFormTest {
         String session = initialize("2025-11-25", "{}");
         String form = mcp.handle(rpc(Map.of("action", "form", "parentDir", parent.toString())), session)
                 .body();
-        assertThat(form).contains("java/none/app").contains("assembly: true|false = false");
+        assertThat(form).contains("java/app").contains("assembly: true|false = false");
 
         String created = mcp.handle(rpc(Map.of("name", "plain", "parentDir", parent.toString())), session)
                 .body();

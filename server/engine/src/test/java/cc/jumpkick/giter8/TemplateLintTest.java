@@ -15,20 +15,41 @@ class TemplateLintTest {
     @Test
     void a_tree_lints_every_template_under_it_naming_each_failing_file_and_property(@TempDir Path temp)
             throws Exception {
-        template(temp, "java/none/good.g8", "java", "none", "good", "name=x\n");
-        template(temp, "java/none/bad.g8", "java", "none", "bad", "name=x\nflavour=y\n");
-        template(temp, "kotlin/none/moved.g8", "kotlin", "none", "elsewhere", "name=x\n");
+        template(temp, "java/good.g8", "java", "none", "good", "name=x\n");
+        template(temp, "java/bad.g8", "java", "none", "bad", "name=x\nflavour=y\n");
+        template(temp, "kotlin/moved.g8", "kotlin", "none", "elsewhere", "name=x\n");
 
         TemplateLint.Result result = TemplateLint.run(temp, List.of("."));
 
         assertThat(result.checked()).isEqualTo(3);
         assertThat(result.failures()).hasSize(2);
         assertThat(result.failures().get(0))
-                .startsWith(Path.of("java/none/bad.g8", ".jk-template.toml") + ": ")
+                .startsWith(Path.of("java/bad.g8", ".jk-template.toml") + ": ")
                 .contains("default.properties sets 'flavour'");
         assertThat(result.failures().get(1))
-                .startsWith(Path.of("kotlin/none/moved.g8", ".jk-template.toml") + ": ")
-                .contains("declares kotlin/none/elsewhere but sits at kotlin/none/moved");
+                .startsWith(Path.of("kotlin/moved.g8", ".jk-template.toml") + ": ")
+                .contains("declares kotlin/elsewhere but sits at kotlin/moved");
+    }
+
+    /**
+     * A template under {@code <lang>/none/} is asked to move up to {@code <lang>/<name>.g8}, and a
+     * framework named after a language is refused.
+     */
+    @Test
+    void the_old_none_directory_and_a_framework_named_after_a_language_fail(@TempDir Path temp) throws Exception {
+        template(temp, "java/none/old.g8", "java", "none", "old", "name=x\n");
+        template(temp, "java/kotlin/trap.g8", "java", "kotlin", "trap", "name=x\n");
+
+        TemplateLint.Result result = TemplateLint.run(temp, List.of("."));
+
+        assertThat(result.checked()).isEqualTo(2);
+        assertThat(result.failures())
+                .anySatisfy(f -> assertThat(f)
+                        .startsWith(Path.of("java/none/old.g8", ".jk-template.toml") + ": ")
+                        .contains("sits at java/old.g8, not under java/none/"))
+                .anySatisfy(f -> assertThat(f)
+                        .startsWith(Path.of("java/kotlin/trap.g8", ".jk-template.toml") + ": ")
+                        .contains("named after a language"));
     }
 
     @Test

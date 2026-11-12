@@ -16,7 +16,7 @@ class Giter8CatalogResolveTest {
     @Test
     void find_named_template_in_monorepo_layout(@TempDir Path tmp) throws Exception {
         Path mono = tmp.resolve("mono");
-        Path g8 = mono.resolve("java").resolve("none").resolve("cli.g8");
+        Path g8 = mono.resolve("java").resolve("cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=hello\n");
         assertThat(Giter8Git.findNamedTemplate(mono, "cli")).isPresent();
@@ -28,7 +28,7 @@ class Giter8CatalogResolveTest {
     @Test
     void find_named_under_templates_subdir(@TempDir Path tmp) throws Exception {
         Path mono = tmp.resolve("mono");
-        Path g8 = mono.resolve("templates").resolve("kotlin").resolve("none").resolve("cli.g8");
+        Path g8 = mono.resolve("templates").resolve("kotlin").resolve("cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=kt\n");
         assertThat(Giter8Git.findNamedTemplate(mono, "cli"))
@@ -38,7 +38,7 @@ class Giter8CatalogResolveTest {
     @Test
     void resolve_short_name_from_walk_up_before_git(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("checkout");
-        Path g8 = root.resolve("templates/java/none/cli.g8");
+        Path g8 = root.resolve("templates/java/cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=q\n");
         Path cwd = root.resolve("examples/demo");

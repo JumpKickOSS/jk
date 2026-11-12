@@ -126,7 +126,7 @@ class NewProjectConformanceTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        template = asking(temp.resolve("templates/java/none/asking.g8"));
+        template = asking(temp.resolve("templates/java/asking.g8"));
         JdkInventory inventory = new JdkInventory(temp.resolve("jdks"), temp.resolve("jk-jdks.toml"));
         inventory.setDefault(new InstalledJdk("temurin-25.0.1", temp.resolve("jdks/temurin-25.0.1")));
         NewProjectJava.inventory(() -> inventory);
@@ -533,7 +533,6 @@ class NewProjectConformanceTest {
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "asking"
                 layouts = ["traditional", "simple"]
 

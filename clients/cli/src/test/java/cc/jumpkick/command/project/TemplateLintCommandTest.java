@@ -17,7 +17,7 @@ class TemplateLintCommandTest {
 
     @Test
     void a_clean_template_exits_zero(@TempDir Path temp) throws Exception {
-        Path good = template(temp, "java/none/good.g8", "good", "name=x\n");
+        Path good = template(temp, "java/good.g8", "good", "name=x\n");
         Run run = jk("template", "lint", good.toString());
         assertThat(run.exit()).as(run.output()).isZero();
         assertThat(run.output()).contains("1 template pass lint");
@@ -25,12 +25,12 @@ class TemplateLintCommandTest {
 
     @Test
     void a_template_with_an_undeclared_property_exits_non_zero_naming_it(@TempDir Path temp) throws Exception {
-        template(temp, "java/none/good.g8", "good", "name=x\n");
-        template(temp, "java/none/bad.g8", "bad", "name=x\nflavour=y\n");
+        template(temp, "java/good.g8", "good", "name=x\n");
+        template(temp, "java/bad.g8", "bad", "name=x\nflavour=y\n");
         Run run = jk("-C", temp.toString(), "template", "lint", ".");
         assertThat(run.exit()).as(run.output()).isNotZero();
         assertThat(run.output())
-                .contains("java/none/bad.g8/.jk-template.toml")
+                .contains("java/bad.g8/.jk-template.toml")
                 .contains("default.properties sets 'flavour'")
                 .contains("1 failure in 2 templates")
                 .doesNotContain("good.g8/.jk-template.toml");
@@ -39,9 +39,7 @@ class TemplateLintCommandTest {
     private static Path template(Path root, String rel, String name, String props) throws Exception {
         Path dir = root.resolve(rel);
         Files.createDirectories(dir);
-        Files.writeString(
-                dir.resolve(".jk-template.toml"),
-                "language = \"java\"\nframework = \"none\"\nname = \"" + name + "\"\n");
+        Files.writeString(dir.resolve(".jk-template.toml"), "language = \"java\"\nname = \"" + name + "\"\n");
         Files.writeString(dir.resolve("default.properties"), props);
         return dir;
     }

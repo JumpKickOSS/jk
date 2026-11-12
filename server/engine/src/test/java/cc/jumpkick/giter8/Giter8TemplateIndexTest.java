@@ -21,16 +21,16 @@ class Giter8TemplateIndexTest {
 
         var list = Giter8TemplateIndex.picker(List.of(temp));
         assertThat(list.stream().map(TemplateSpec::id))
-                .contains("java/none/hello", "kotlin/none/hello", "java/spring-boot/hello", "groovy/grails/hello");
+                .contains("java/hello", "kotlin/hello", "java/spring-boot/hello", "groovy/grails/hello");
 
         assertThat(Giter8TemplateIndex.resolve("hello", "java", List.of(temp)))
                 .get()
                 .extracting(TemplateSpec::id)
-                .isEqualTo("java/none/hello");
+                .isEqualTo("java/hello");
         assertThat(Giter8TemplateIndex.resolve("hello", "kotlin", List.of(temp)))
                 .get()
                 .extracting(TemplateSpec::id)
-                .isEqualTo("kotlin/none/hello");
+                .isEqualTo("kotlin/hello");
         assertThat(Giter8TemplateIndex.resolve("spring-boot/hello", "java", List.of(temp)))
                 .get()
                 .extracting(TemplateSpec::id)
@@ -55,7 +55,7 @@ class Giter8TemplateIndexTest {
         assertThat(Giter8TemplateIndex.resolve("corp-starter", "java", List.of(temp)))
                 .get()
                 .extracting(TemplateSpec::id)
-                .isEqualTo("java/none/corp-starter");
+                .isEqualTo("java/corp-starter");
     }
 
     @Test
@@ -70,7 +70,7 @@ class Giter8TemplateIndexTest {
         assertThat(ids)
                 .as("deterministic id order on every filesystem")
                 .isSorted()
-                .contains("java/none/midway", "java/spring-boot/alpha", "kotlin/none/zeta");
+                .contains("java/midway", "java/spring-boot/alpha", "kotlin/zeta");
     }
 
     @Test
@@ -83,7 +83,7 @@ class Giter8TemplateIndexTest {
         assertThat(Giter8TemplateIndex.resolve("ktor-3", null, List.of(temp)))
                 .get()
                 .extracting(TemplateSpec::id)
-                .isEqualTo("kotlin/none/ktor-3");
+                .isEqualTo("kotlin/ktor-3");
         // Bare name under one framework, restricted by lang → unambiguous.
         assertThat(Giter8TemplateIndex.resolve("webmvc", "java", List.of(temp)))
                 .get()
@@ -131,46 +131,93 @@ class Giter8TemplateIndexTest {
 
     @Test
     void metadata_mismatch_is_skipped(@TempDir Path temp) throws Exception {
-        Path g8 = temp.resolve("java/none/hello.g8");
+        Path g8 = temp.resolve("java/hello.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "kotlin"
-                framework = "none"
                 name = "hello"
                 description = "wrong lang"
                 """);
         Files.writeString(g8.resolve("default.properties"), "name=x\n");
         var list = Giter8TemplateIndex.picker(List.of(temp));
-        assertThat(list.stream().map(TemplateSpec::id)).doesNotContain("java/none/hello");
+        assertThat(list.stream().map(TemplateSpec::id)).doesNotContain("java/hello");
     }
 
     @Test
     void a_template_that_fails_lint_is_left_out_of_the_catalogue(@TempDir Path temp) throws Exception {
         writeTemplate(temp, "java", "none", "linted-ok", "fine", "\"traditional\"");
         writeTemplate(temp, "java", "none", "linted-bad", "undeclared property", "\"traditional\"");
-        Path bad = temp.resolve("java/none/linted-bad.g8");
+        Path bad = temp.resolve("java/linted-bad.g8");
         Files.writeString(bad.resolve("default.properties"), "name=x\nflavour=sweet\n");
 
         assertThat(JkTemplateToml.loadOrRefuse(bad)).isEmpty();
         Giter8TemplateIndex.invalidate();
         assertThat(Giter8TemplateIndex.picker(List.of(temp)).stream().map(TemplateSpec::id))
-                .contains("java/none/linted-ok")
-                .doesNotContain("java/none/linted-bad");
+                .contains("java/linted-ok")
+                .doesNotContain("java/linted-bad");
     }
 
+    /** A template with no framework sits at {@code <lang>/<name>.g8}, and its id has no framework. */
     @Test
-    void ignores_legacy_lang_name_g8(@TempDir Path temp) throws Exception {
-        Path g8 = temp.resolve("java/cli.g8");
+    void a_template_with_no_framework_sits_beside_the_framework_directories(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "java", "none", "cli", "plain", "\"traditional\"");
+        writeTemplate(temp, "java", "spring-boot", "webapp", "boot", "\"traditional\"");
+        assertThat(Files.isDirectory(temp.resolve("java/cli.g8"))).isTrue();
+        Giter8TemplateIndex.invalidate();
+
+        assertThat(Giter8TemplateIndex.picker(List.of(temp)).stream()
+                        .filter(s -> TemplateSpec.SOURCE_CATALOG.equals(s.source()))
+                        .map(TemplateSpec::id))
+                .containsExactly("java/cli", "java/spring-boot/webapp");
+        assertThat(Giter8TemplateIndex.resolve("java/cli", null, List.of(temp)))
+                .hasValueSatisfying(s -> assertThat(s.framework()).isEqualTo(TemplateSpec.FRAMEWORK_NONE));
+        assertThat(Giter8TemplateIndex.resolve("cli", "java", List.of(temp)).map(TemplateSpec::id))
+                .contains("java/cli");
+        assertThat(Giter8TemplateIndex.resolve("java/none/cli", null, List.of(temp))
+                        .map(TemplateSpec::id))
+                .contains("java/cli");
+    }
+
+    /**
+     * {@code lang/name} names a language first, never a framework: a framework is not named after a
+     * language, and {@code lang/name} finds that language's one framework template of the name when
+     * it has none without a framework.
+     */
+    @Test
+    void lang_slash_name_is_language_and_name(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "java", "spring-boot", "webapp", "boot", "\"traditional\"");
+        writeTemplate(temp, "kotlin", "none", "webapp", "plain kotlin", "\"traditional\"");
+        writeTemplate(temp, "java", "kotlin", "trap", "a framework named after a language", "\"traditional\"");
+        Giter8TemplateIndex.invalidate();
+
+        assertThat(Giter8TemplateIndex.resolve("java/webapp", null, List.of(temp))
+                        .map(TemplateSpec::id))
+                .contains("java/spring-boot/webapp");
+        assertThat(Giter8TemplateIndex.resolve("kotlin/webapp", null, List.of(temp))
+                        .map(TemplateSpec::id))
+                .contains("kotlin/webapp");
+        assertThat(Giter8TemplateIndex.resolve("spring-boot/webapp", "kotlin", List.of(temp))
+                        .map(TemplateSpec::id))
+                .contains("java/spring-boot/webapp");
+        assertThat(Giter8TemplateIndex.picker(List.of(temp)).stream().map(TemplateSpec::id))
+                .noneMatch(id -> id.contains("trap"));
+    }
+
+    /** The layout before frameworks became optional, {@code <lang>/none/<name>.g8}, still reads. */
+    @Test
+    void a_none_directory_still_reads_as_no_framework(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("java/none/cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=cli\n");
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
                 framework = "none"
                 name = "cli"
-                description = "legacy path"
+                description = "old spot"
                 """);
-        assertThat(Giter8TemplateIndex.picker(List.of(temp)))
-                .noneMatch(s -> TemplateSpec.SOURCE_CATALOG.equals(s.source()));
+        Giter8TemplateIndex.invalidate();
+        assertThat(Giter8TemplateIndex.resolve("java/cli", null, List.of(temp)))
+                .hasValueSatisfying(s -> assertThat(s.description()).isEqualTo("old spot"));
     }
 
     @Test
@@ -186,7 +233,7 @@ class Giter8TemplateIndexTest {
 
     private static void writeTemplate(Path root, String lang, String fw, String name, String desc, String layouts)
             throws Exception {
-        Path g8 = root.resolve(lang).resolve(fw).resolve(name + ".g8");
+        Path g8 = root.resolve(TemplateLayout.relativeDir(lang, fw, name));
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "%s"

@@ -222,11 +222,10 @@ class NewCommandTest {
     @Test
     void a_required_template_question_without_a_flag_or_default_is_an_error_in_the_prd_s_wording(@TempDir Path tempDir)
             throws IOException {
-        Path g8 = tempDir.resolve("templates/java/none/asking.g8");
+        Path g8 = tempDir.resolve("templates/java/asking.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve(".jk-template.toml"), """
                 language = "java"
-                framework = "none"
                 name = "asking"
                 layouts = ["traditional"]
 
