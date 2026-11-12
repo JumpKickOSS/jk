@@ -51,7 +51,7 @@ final class MovedCoordinates {
         }
     }
 
-    private static final List<Rename> RENAMES = load();
+    private static final List<Rename> RENAMES = List.copyOf(load());
 
     /**
      * The {@code group:artifact} {@code module} moved to, or null. {@code available} is every

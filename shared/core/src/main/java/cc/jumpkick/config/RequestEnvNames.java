@@ -132,7 +132,7 @@ public final class RequestEnvNames {
             "CODEX_");
 
     private static final Set<String> NAMES_SET = Set.copyOf(NAMES);
-    private static final Set<String> NAMES_UPPER = upper(NAMES.stream());
+    private static final Set<String> NAMES_UPPER = Set.copyOf(upper(NAMES.stream()));
     private static final List<String> PREFIXES_UPPER =
             PREFIXES.stream().map(p -> p.toUpperCase(Locale.ROOT)).toList();
 

@@ -21,7 +21,6 @@ package cc.jumpkick.version;
 import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -313,7 +312,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
      */
     private static class StringItem implements Item {
         private static final List<String> QUALIFIERS =
-                Arrays.asList("alpha", "beta", "milestone", "rc", "snapshot", "", "sp");
+                List.of("alpha", "beta", "milestone", "rc", "snapshot", "", "sp");
 
         private static final Properties ALIASES = new Properties();
 

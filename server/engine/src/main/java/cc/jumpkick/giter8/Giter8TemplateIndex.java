@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Giter8TemplateIndex {
 
-    private static final List<String> LANGS = NewProjectStep.LANGS;
+    private static final List<String> LANGS = List.copyOf(NewProjectStep.LANGS);
 
     private Giter8TemplateIndex() {}
 

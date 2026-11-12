@@ -64,8 +64,9 @@ public final class OwnerOnlyFiles {
         }
     }
 
-    private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rw-------");
-    private static final Set<PosixFilePermission> OWNER_ONLY_DIR = PosixFilePermissions.fromString("rwx------");
+    private static final Set<PosixFilePermission> OWNER_ONLY = Set.copyOf(PosixFilePermissions.fromString("rw-------"));
+    private static final Set<PosixFilePermission> OWNER_ONLY_DIR =
+            Set.copyOf(PosixFilePermissions.fromString("rwx------"));
 
     /**
      * Create {@code dir} (and any missing parents) {@code rwx------}, or tighten a pre-existing one

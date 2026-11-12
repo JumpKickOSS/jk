@@ -44,7 +44,7 @@ public final class FormatStyles {
     static final List<String> KOTLIN_STYLES = List.of("kotlinlang", "google", "meta");
 
     /** Cross-language presets: alias → (java, kotlin). Booleans are resolved separately. */
-    private static final Map<String, StylePair> ALIASES = buildAliases();
+    private static final Map<String, StylePair> ALIASES = Map.copyOf(buildAliases());
 
     private static Map<String, StylePair> buildAliases() {
         var m = new LinkedHashMap<String, StylePair>();

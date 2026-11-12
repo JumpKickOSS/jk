@@ -478,18 +478,17 @@ public final class GradleImporter {
 
     // --- catch-all tier 3 warnings ------------------------------------------
 
-    private static final String[] TIER3_KEYWORDS = {
-        "subprojects",
-        "allprojects",
-        "afterEvaluate",
-        "beforeEvaluate",
-        "configurations",
-        "tasks.register",
-        "task ",
-        "withType",
-        "ext {",
-        "buildscript",
-    };
+    private static final List<String> TIER3_KEYWORDS = List.of(
+            "subprojects",
+            "allprojects",
+            "afterEvaluate",
+            "beforeEvaluate",
+            "configurations",
+            "tasks.register",
+            "task ",
+            "withType",
+            "ext {",
+            "buildscript");
 
     private static void warnUnsupportedSections(String text, ImportReport.Builder report) {
         for (String kw : TIER3_KEYWORDS) {

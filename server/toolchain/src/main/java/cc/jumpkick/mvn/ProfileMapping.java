@@ -46,9 +46,8 @@ final class ProfileMapping {
     /** A {@code [profiles.<id>]} in the making: the javac and JVM arguments one Maven profile carried. */
     record CompilerProfile(String id, List<String> javac, List<String> jvmArgs) {}
 
-    private static final String[] COMPILER_LEVEL_PROPERTIES = {
-        "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
-    };
+    private static final List<String> COMPILER_LEVEL_PROPERTIES =
+            List.of("maven.compiler.release", "maven.compiler.target", "maven.compiler.source");
 
     /**
      * The managed table of a BOM a profile imports, by its coordinate: what a profile's {@code

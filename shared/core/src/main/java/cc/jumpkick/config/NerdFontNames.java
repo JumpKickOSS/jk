@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
@@ -29,7 +30,7 @@ public final class NerdFontNames {
     private NerdFontNames() {}
 
     /** Nerd Font family suffixes: bare, Mono, and Propo. Checked longest-first so {@code NFM} wins. */
-    private static final String[] NERD_TOKENS = {"NFM", "NFP", "NF"};
+    private static final List<String> NERD_TOKENS = List.of("NFM", "NFP", "NF");
 
     /**
      * Caps implied by a font setting, which may be a comma-separated stack. Returns the <em>union</em>

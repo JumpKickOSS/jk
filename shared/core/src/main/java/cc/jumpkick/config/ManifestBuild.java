@@ -57,7 +57,7 @@ public final class ManifestBuild {
     private ManifestBuild() {}
 
     /** Core top-level tables; anything else must be owned by an installed plugin. */
-    static final Set<String> CORE_TABLES = coreTables();
+    static final Set<String> CORE_TABLES = Set.copyOf(coreTables());
 
     static Set<String> coreTables() {
         Set<String> out = new HashSet<>(Set.of(

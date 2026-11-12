@@ -25,7 +25,7 @@ public final class NewProjectForm {
     public static final String ID = "new-project";
 
     /** The step-1 keys; every other key of the form is a template property. */
-    public static final Set<String> PROJECT_KEYS = NewProjectStep.KEYS;
+    public static final Set<String> PROJECT_KEYS = Set.copyOf(NewProjectStep.KEYS);
 
     private static final String TITLE = "New project";
 

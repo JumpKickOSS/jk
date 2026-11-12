@@ -247,10 +247,11 @@ public final class AtomicWrites {
      * it means "the default a new file gets here", not "world-writable" — under the usual
      * {@code 022} it lands as {@code rw-r--r--}, byte for byte what {@link Files#write} produces.
      */
-    private static final Set<PosixFilePermission> CREATE_MODE = PosixFilePermissions.fromString("rw-rw-rw-");
+    private static final Set<PosixFilePermission> CREATE_MODE =
+            Set.copyOf(PosixFilePermissions.fromString("rw-rw-rw-"));
 
     /** The staging mode under the state root ({@link OwnerOnlyFiles#inState}), whatever the target had. */
-    private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rw-------");
+    private static final Set<PosixFilePermission> OWNER_ONLY = Set.copyOf(PosixFilePermissions.fromString("rw-------"));
 
     /**
      * Move a fully-written temp file over {@code target} atomically ({@code REPLACE_EXISTING}

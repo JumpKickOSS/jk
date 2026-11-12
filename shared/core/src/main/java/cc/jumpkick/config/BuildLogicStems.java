@@ -23,7 +23,7 @@ public final class BuildLogicStems {
     public static final List<String> ROOT = List.of("after-build", "guard");
 
     /** Every recognized base stem, module scope first. */
-    public static final List<String> ALL = concat(MODULE, ROOT);
+    public static final List<String> ALL = List.copyOf(concat(MODULE, ROOT));
 
     private BuildLogicStems() {}
 

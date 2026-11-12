@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.host.SearchPath;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -34,15 +35,14 @@ public final class PassthroughEnv {
      *       the tool those call sites are about to run.
      * </ul>
      */
-    private static final String[] STRIPPED = {
-        "JAVA_TOOL_OPTIONS",
-        "_JAVA_OPTIONS",
-        "JDK_JAVA_OPTIONS",
-        "JDK_HOME",
-        "KOTLIN_HOME",
-        "MAVEN_OPTS",
-        "GRADLE_OPTS",
-    };
+    private static final List<String> STRIPPED = List.of(
+            "JAVA_TOOL_OPTIONS",
+            "_JAVA_OPTIONS",
+            "JDK_JAVA_OPTIONS",
+            "JDK_HOME",
+            "KOTLIN_HOME",
+            "MAVEN_OPTS",
+            "GRADLE_OPTS");
 
     private PassthroughEnv() {}
 

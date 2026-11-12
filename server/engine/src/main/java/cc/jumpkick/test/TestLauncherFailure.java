@@ -69,10 +69,9 @@ public final class TestLauncherFailure extends RuntimeException {
             "Native memory allocation");
 
     /** Signal names by number, for an exit of {@code 128 + signal}; the rest read {@code signal N}. */
-    private static final String[] SIGNALS = {
-        "", "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGKILL", "SIGUSR1",
-        "SIGSEGV", "SIGUSR2", "SIGPIPE", "SIGALRM", "SIGTERM"
-    };
+    private static final List<String> SIGNALS = List.of(
+            "", "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGKILL", "SIGUSR1",
+            "SIGSEGV", "SIGUSR2", "SIGPIPE", "SIGALRM", "SIGTERM");
 
     private static final Pattern ENGINE_ID = Pattern.compile("TestEngine with ID '([^']+)'");
     private static final Pattern CLASS_NAME = Pattern.compile("^([A-Za-z_$][\\w$]*\\.)+[A-Z][\\w$]*$");
@@ -405,7 +404,7 @@ public final class TestLauncherFailure extends RuntimeException {
     private static @Nullable String signalName(int exit) {
         if (exit <= 128 || exit > 128 + 64) return null;
         int number = exit - 128;
-        return number < SIGNALS.length ? SIGNALS[number] : "signal " + number;
+        return number < SIGNALS.size() ? SIGNALS.get(number) : "signal " + number;
     }
 
     /** {@code t} when it is a bare {@code <class>: <message>} or {@code <class>} exception line. */

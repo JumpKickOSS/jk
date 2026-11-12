@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -137,7 +138,7 @@ public final class EventCatalog {
             new Omitted("a single command's progress, not a build's: the dashboard shows the job's request-start and"
                     + " request-finish for it");
 
-    private static final Map<String, Row> ROWS = rows(List.of(
+    private static final Map<String, Row> ROWS = Collections.unmodifiableMap(rows(List.of(
             // ---- the job's lifecycle ----------------------------------------------------------------
             new Row(
                     EngineProtocol.JOB_QUEUED,
@@ -381,14 +382,14 @@ public final class EventCatalog {
                     EngineProtocol.SLOWEST_TESTS,
                     new Omitted("written by the CLI from the run's test results"),
                     Carried.as(EngineProtocol.SLOWEST_TESTS, "once, after the tests"),
-                    new Omitted("the dashboard reads test timings from the run's history"))));
+                    new Omitted("the dashboard reads test timings from the run's history")))));
 
     /**
      * Every {@link EngineProtocol} token that is not an event: requests, replies and the rows of a
      * reply, error codes, field names and rows the CLI prints on its own. A new token belongs here
      * or in a row.
      */
-    public static final Map<String, String> MESSAGES = messages();
+    public static final Map<String, String> MESSAGES = Collections.unmodifiableMap(messages());
 
     private static Map<String, Row> rows(List<Row> rows) {
         Map<String, Row> out = new LinkedHashMap<>();

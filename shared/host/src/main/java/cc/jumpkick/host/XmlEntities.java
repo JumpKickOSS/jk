@@ -65,7 +65,7 @@ public final class XmlEntities {
             hearts 2665  diams 2666
             """;
 
-    private static final Map<String, String> BY_NAME = parse(TABLE);
+    private static final Map<String, String> BY_NAME = Map.copyOf(parse(TABLE));
 
     /** The longest entity name in the table, bounding how far past an {@code &} a name is read. */
     private static final int LONGEST_NAME = 8;

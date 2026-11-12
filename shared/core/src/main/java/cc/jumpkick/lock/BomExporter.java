@@ -6,6 +6,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -25,10 +26,10 @@ public final class BomExporter {
 
     /** Scopes included when {@code scope=main} (default). */
     public static final Set<Scope> MAIN_SCOPES =
-            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.DEV);
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.DEV));
 
     /** Scopes included when {@code scope=test}. */
-    public static final Set<Scope> TEST_SCOPES = EnumSet.of(Scope.TEST, Scope.TEST_DEV);
+    public static final Set<Scope> TEST_SCOPES = Collections.unmodifiableSet(EnumSet.of(Scope.TEST, Scope.TEST_DEV));
 
     public static Set<Scope> scopesFor(String scopeName) {
         if (scopeName == null || scopeName.isBlank() || "main".equalsIgnoreCase(scopeName)) {

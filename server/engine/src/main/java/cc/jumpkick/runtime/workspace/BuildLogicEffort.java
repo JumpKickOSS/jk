@@ -12,6 +12,7 @@ import cc.jumpkick.runtime.base.BuildMetrics;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -59,7 +60,7 @@ public final class BuildLogicEffort {
 
     /** Anchors reached only when the module really compiles. */
     private static final Set<BuildLogicAnchor> COMPILE_ANCHORS =
-            EnumSet.of(BuildLogicAnchor.BEFORE_COMPILE, BuildLogicAnchor.AFTER_COMPILE);
+            Collections.unmodifiableSet(EnumSet.of(BuildLogicAnchor.BEFORE_COMPILE, BuildLogicAnchor.AFTER_COMPILE));
 
     private static final Set<String> COMPILE_STEPS =
             Set.of(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY);

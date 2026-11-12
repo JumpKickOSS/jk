@@ -21,10 +21,10 @@ import org.tomlj.TomlTable;
 public final class ExtractorVocabulary {
 
     /** Extractor name → its arguments, as {@code explain --schema} prints them. */
-    public static final Map<String, String> EXTRACTORS = extractors();
+    public static final Map<String, String> EXTRACTORS = Map.copyOf(extractors());
 
     /** Template name → what it renders. */
-    public static final Map<String, String> TEMPLATES = templates();
+    public static final Map<String, String> TEMPLATES = Map.copyOf(templates());
 
     private ExtractorVocabulary() {}
 

@@ -104,11 +104,11 @@ final class PluginFacts {
 
     private static final String COMPILER = "maven-compiler-plugin";
     private static final String JAR = "maven-jar-plugin";
-    private static final String[] COMPILER_PROPERTIES = {
-        "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
-    };
-    private static final String[] COMPILER_CONFIG = {"release", "target", "source"};
-    private static final String[] MAIN_CLASS_PROPERTIES = {"start-class", "exec.mainClass", "main.class", "mainClass"};
+    private static final List<String> COMPILER_PROPERTIES =
+            List.of("maven.compiler.release", "maven.compiler.target", "maven.compiler.source");
+    private static final List<String> COMPILER_CONFIG = List.of("release", "target", "source");
+    private static final List<String> MAIN_CLASS_PROPERTIES =
+            List.of("start-class", "exec.mainClass", "main.class", "mainClass");
     /** Compiler plugin switches and the javac flag each one means. */
     private static final List<Map.Entry<String, String>> COMPILER_SWITCHES = List.of(
             Map.entry("parameters", "-parameters"),

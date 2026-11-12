@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -56,11 +57,12 @@ public final class ClasspathResolver {
      * them as it is on Maven's test classpath: the container or framework API a test reaches for is
      * there at test time and still absent from {@link #RUNTIME}, which is what ships.
      */
-    public static final Set<Scope> TEST =
-            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
+    public static final Set<Scope> TEST = Collections.unmodifiableSet(
+            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV));
 
     /** Scopes bundled into a runnable app (assembly jar / installed {@code <home>/lib/<bin>/}). */
-    public static final Set<Scope> RUNTIME = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+    public static final Set<Scope> RUNTIME =
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME));
 
     /**
      * The {@code jk run}/{@code jk dev} exec classpath: production runtime plus the dev-loop
@@ -68,14 +70,16 @@ public final class ClasspathResolver {
      * Compose support, and friends ride local runs but never artifacts ({@link #RUNTIME} is what
      * packagers consume).
      */
-    public static final Set<Scope> RUN = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.DEV, Scope.TEST_DEV);
+    public static final Set<Scope> RUN =
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.DEV, Scope.TEST_DEV));
 
     /** Scopes visible while compiling main sources. */
-    public static final Set<Scope> COMPILE_MAIN = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED);
+    public static final Set<Scope> COMPILE_MAIN =
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED));
 
     /** Scopes visible while compiling test sources. */
-    public static final Set<Scope> COMPILE_TEST =
-            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
+    public static final Set<Scope> COMPILE_TEST = Collections.unmodifiableSet(
+            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV));
 
     private final Path storeRoot;
     private final ArtifactLocator locator;
@@ -491,7 +495,8 @@ public final class ClasspathResolver {
     }
 
     /** The processor-path scopes: a filter of these alone prefers the processor graph's rows. */
-    public static final Set<Scope> PROCESSOR_PATH = EnumSet.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR);
+    public static final Set<Scope> PROCESSOR_PATH =
+            Collections.unmodifiableSet(EnumSet.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR));
 
     /** One jar per module when dual-scoped; prefer processor, then test dual, else main/runtime. */
     static List<Lockfile.Artifact> selectPerModule(List<Lockfile.Artifact> matched, Set<Scope> scopes) {
