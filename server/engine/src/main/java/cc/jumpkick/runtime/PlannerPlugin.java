@@ -141,7 +141,7 @@ public final class PlannerPlugin {
     /**
      * The latest stage a plugin task may claim. {@code run-tests} (TEST) requires every
      * test-classpath contributor, and {@code package-jar} (PACKAGE) requires every
-     * {@link TaskDecl#packageTime()} task ({@link #packageRequires}) — either
+     * {@link TaskDecl#packageTime()} task ({@code PackageSteps.packageJar}'s requires) — either
      * consumer rejects a plan where the task claims a later stage than it.
      */
     static BuildStage pluginCeiling(TaskDecl step) {

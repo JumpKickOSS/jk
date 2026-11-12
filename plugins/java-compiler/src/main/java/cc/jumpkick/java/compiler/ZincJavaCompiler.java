@@ -174,7 +174,12 @@ public final class ZincJavaCompiler {
      * workdir}.
      */
     public static Result compileJava(JavaCompileJob job) {
-        return compile(job, null);
+        return compileJava(job, ProducerAnalysisCache.sizedToHeap());
+    }
+
+    /** As {@link #compileJava(JavaCompileJob)}, reading producer analyses through {@code producers}. */
+    static Result compileJava(JavaCompileJob job, ProducerAnalysisCache producers) {
+        return compile(job, null, producers);
     }
 
     /**
@@ -182,19 +187,26 @@ public final class ZincJavaCompiler {
      * under {@code workdir} plus current source/library stamps.
      */
     public static Plan planJava(JavaCompileJob job) {
+        return planJava(job, ProducerAnalysisCache.sizedToHeap());
+    }
+
+    /** As {@link #planJava(JavaCompileJob)}, reading producer analyses through {@code producers}. */
+    static Plan planJava(JavaCompileJob job, ProducerAnalysisCache producers) {
         Path workdir = job.workdir();
-        if (workdir == null) return plan(job);
+        if (workdir == null) return plan(job, producers);
         synchronized (workdirLock(workdir)) {
-            return plan(job);
+            return plan(job, producers);
         }
     }
 
     /**
      * Joint Java+Scala incremental compile with a real Scala 3 compiler + published sbt bridge.
-     * {@code compilerClasspath} is the worker compiler closure (not the project compile CP).
+     * {@code compilerClasspath} is the worker compiler closure (not the project compile CP), and
+     * producer analyses are read through {@code producers}.
      */
-    public static Result compileMixed(
+    static Result compileMixed(
             JavaCompileJob job,
+            ProducerAnalysisCache producers,
             String scalaVersion,
             List<Path> compilerClasspath,
             @Nullable Path bridgeJar,
@@ -206,7 +218,8 @@ public final class ZincJavaCompiler {
         if (compilerClasspath == null || compilerClasspath.isEmpty()) {
             throw new IllegalArgumentException("compileMixed requires a Scala compiler classpath");
         }
-        return compile(job, new MixedScala(scalaVersion, compilerClasspath, bridgeJar, libraryJar, compilerJar));
+        return compile(
+                job, new MixedScala(scalaVersion, compilerClasspath, bridgeJar, libraryJar, compilerJar), producers);
     }
 
     /**
@@ -324,14 +337,15 @@ public final class ZincJavaCompiler {
      * a processor that sets it and never puts it back would otherwise reach the next compile run on
      * this thread.
      */
-    private static Result compile(JavaCompileJob job, @Nullable MixedScala mixed) {
+    private static Result compile(
+            JavaCompileJob job, @Nullable MixedScala mixed, ProducerAnalysisCache producerAnalyses) {
         Path workdir = job.workdir();
         Object lock = workdir == null ? new Object() : workdirLock(workdir);
         Thread thread = Thread.currentThread();
         ClassLoader contextLoader = thread.getContextClassLoader();
         synchronized (lock) {
             try {
-                return compileHeld(job, mixed);
+                return compileHeld(job, mixed, producerAnalyses);
             } finally {
                 thread.setContextClassLoader(contextLoader);
             }
@@ -343,7 +357,8 @@ public final class ZincJavaCompiler {
         return WORKDIR_LOCKS.computeIfAbsent(workdir.toAbsolutePath().normalize(), k -> new Object());
     }
 
-    private static Result compileHeld(JavaCompileJob job, @Nullable MixedScala mixed) {
+    private static Result compileHeld(
+            JavaCompileJob job, @Nullable MixedScala mixed, ProducerAnalysisCache producerAnalyses) {
         List<Path> sources = job.sources();
         List<Path> classpath = job.classpath();
         Path classOutput = job.classOutput();
@@ -399,7 +414,7 @@ public final class ZincJavaCompiler {
             // (mtime-cached) hash of a jar or the two could disagree mid-compile.
             ReadStamps stamper = sharedStamper;
             // The same stamper judges a producer's analysis against its classes on disk.
-            ClasspathAnalyses producers = ClasspathAnalyses.of(job.classpathAnalyses(), stamper);
+            ClasspathAnalyses producers = ClasspathAnalyses.of(job.classpathAnalyses(), stamper, producerAnalyses);
             Setup setup = Setup.of(
                     new ClasspathLookup(producers, converter),
                     false,
@@ -553,7 +568,7 @@ public final class ZincJavaCompiler {
         }
     }
 
-    private static Plan plan(JavaCompileJob job) {
+    private static Plan plan(JavaCompileJob job, ProducerAnalysisCache producerAnalyses) {
         List<Path> sources = job.sources();
         List<Path> classpath = job.classpath();
         Path classOutput = job.classOutput();
@@ -605,7 +620,11 @@ public final class ZincJavaCompiler {
         LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
         forecastSources(analysis, sources, converter, invalid);
         forecastLibraries(analysis, classpath, classOutput, converter, invalid);
-        forecastExternals(analysis, ClasspathAnalyses.of(job.classpathAnalyses(), sharedStamper), converter, invalid);
+        forecastExternals(
+                analysis,
+                ClasspathAnalyses.of(job.classpathAnalyses(), sharedStamper, producerAnalyses),
+                converter,
+                invalid);
 
         if (invalid.isEmpty()) {
             return new Plan(false, "zinc analysis current", List.of());

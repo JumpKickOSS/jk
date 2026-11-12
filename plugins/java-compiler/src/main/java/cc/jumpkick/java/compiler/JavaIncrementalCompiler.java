@@ -50,18 +50,22 @@ public final class JavaIncrementalCompiler implements Plugin {
         return compileSpec(Path.of(spec), out);
     }
 
-    /** One compile or plan of the resident worker, its frames sent through {@code emit}. */
-    static int runSpec(boolean plan, Path spec, Consumer<String> emit) throws Exception {
-        return plan ? planSpec(spec, emit) : compileSpec(spec, emit);
+    /**
+     * One compile or plan of the resident worker, its frames sent through {@code emit}, reading
+     * producer analyses through the worker's {@code producers}.
+     */
+    static int runSpec(boolean plan, Path spec, ProducerAnalysisCache producers, Consumer<String> emit)
+            throws Exception {
+        return plan ? planSpec(spec, producers, emit) : compileSpec(spec, producers, emit);
     }
 
-    /** As {@link #compileSpec(Path, Consumer)}, emitting through {@code out}. */
+    /** As {@link #compileSpec(Path, ProducerAnalysisCache, Consumer)} for a compile on its own. */
     static int compileSpec(Path specFile, ProtocolWriter out) throws Exception {
-        return compileSpec(specFile, out::emit);
+        return compileSpec(specFile, ProducerAnalysisCache.sizedToHeap(), out::emit);
     }
 
     /** Run a compile from {@code specFile}, emitting JSONL to {@code out}; returns the exit code. */
-    static int compileSpec(Path specFile, Consumer<String> out) throws Exception {
+    static int compileSpec(Path specFile, ProducerAnalysisCache producers, Consumer<String> out) throws Exception {
         CompileCancel.checkpoint();
         PluginSpec spec = PluginSpec.read(specFile);
         Path specWorkdir = spec.workdir();
@@ -75,12 +79,13 @@ public final class JavaIncrementalCompiler implements Plugin {
                     (scalaVersion != null && !spec.compilerClasspath().isEmpty())
                             ? ZincJavaCompiler.compileMixed(
                                     job,
+                                    producers,
                                     scalaVersion,
                                     spec.compilerClasspath(),
                                     spec.extra("scala-bridge").orElse(null),
                                     spec.extra("scala-library").orElse(null),
                                     spec.extra("scala-compiler").orElse(null))
-                            : ZincJavaCompiler.compileJava(job);
+                            : ZincJavaCompiler.compileJava(job, producers);
             for (ZincJavaCompiler.Diag d : r.diagnostics()) {
                 out.accept(PluginReply.diagnostic(
                         d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message(), d.key()));
@@ -124,12 +129,12 @@ public final class JavaIncrementalCompiler implements Plugin {
                 spec.classpathAnalyses());
     }
 
-    static int planSpec(Path specFile, Consumer<String> out) throws Exception {
+    static int planSpec(Path specFile, ProducerAnalysisCache producers, Consumer<String> out) throws Exception {
         CompileCancel.checkpoint();
         PluginSpec spec = PluginSpec.read(specFile);
         Path workdir = spec.workdir();
         int release = (int) spec.config().intValue("release", 0);
-        ZincJavaCompiler.Plan plan = ZincJavaCompiler.planJava(job(spec, workdir, release));
+        ZincJavaCompiler.Plan plan = ZincJavaCompiler.planJava(job(spec, workdir, release), producers);
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("status", "OK");
         fields.put("outcome", plan.full() ? "full" : "incremental");

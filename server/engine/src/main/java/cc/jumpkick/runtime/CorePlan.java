@@ -73,8 +73,8 @@ final class CorePlan {
         // The declared tails plan from the manifest this plan was built from.
         if (parsedBuild != null) b.fact(JkBuild.class, parsedBuild);
         if (nodeKind != NodeShape.Kind.NONE || testNode) b.addTask(PlannerNodeSetup.ensureNodeStep());
-        if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, cx);
-        if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx);
+        if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, s);
+        if (shape.coordinatorOnly()) return workspaceRootPlan(b, cx, s);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
         if (nodeKind == NodeShape.Kind.SIDE_BY_SIDE) nodeArm().planSideBySide(b);
@@ -226,6 +226,7 @@ final class CorePlan {
             Task parseBuild,
             Task syncDeps,
             Task ensureJdk,
+            Task ksp,
             Task compileJava,
             Task compileKotlin,
             Task compileGroovy,
@@ -243,16 +244,20 @@ final class CorePlan {
             Task writeStamp,
             Task writeStampKotlin,
             Task writeStampGroovy,
-            Task assembleClasses) {}
+            Task assembleClasses,
+            GuardSteps guards) {}
 
     private Steps steps(BuildPlanner.Ctx cx) {
         SetupSteps setup = new SetupSteps(cx);
         Task parseBuild = setup.parseBuild();
         Task syncDeps = setup.syncDeps();
         Task ensureJdk = setup.ensureJdk();
-        Task compileJava = PlannerCompile.compileJavaStep(cx, pluginDecls);
-        Task compileKotlin = PlannerCompile.compileKotlinStep(cx, pluginDecls);
-        Task compileGroovy = PlannerCompile.compileGroovyStep(cx, pluginDecls);
+        KspArm kspArm = new KspArm(cx, pluginDecls);
+        Task ksp = kspArm.ksp();
+        Task compileJava = new CompileSteps(cx, pluginDecls).compileJava();
+        LangCompileSteps langCompiles = new LangCompileSteps(cx, pluginDecls);
+        Task compileKotlin = langCompiles.compileKotlin();
+        Task compileGroovy = langCompiles.compileGroovy();
         Task copyResources = PlannerResources.copyResourcesStep(cx, pluginDecls);
         Task buildInfo =
                 parsedBuild != null && parsedBuild.build().buildInfo() != null ? PlannerBuildInfo.step(cx) : null;
@@ -262,7 +267,7 @@ final class CorePlan {
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), shape.compact());
         Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact());
-        Task compileTest = PlannerTest.compileTestStep(cx, hasFixtures, pluginDecls);
+        Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls, kspArm).compileTest();
         // In testOnly plans no package path exists to anchor the freshness stamps, so
         // run-tests carries them in its requires — otherwise the target-closure prune drops
         // them and the edit→test loop re-runs the main compile every invocation.
@@ -279,7 +284,7 @@ final class CorePlan {
             if (shape.kotlin()) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
             if (shape.groovy()) testStampRequires.add(TaskNames.WRITE_STAMP_GROOVY);
         }
-        Task runTests = PlannerTest.runTestsStep(cx, pluginDecls, testStampRequires);
+        Task runTests = new TestSteps(cx, pluginDecls).runTests(testStampRequires);
         List<Task> pluginSteps = new ArrayList<>();
         TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
         if (plugins != null) {
@@ -287,28 +292,29 @@ final class CorePlan {
                 pluginSteps.add(PlannerPlugin.pluginTask(cx, plugins.ownerOf(step), step, transform));
             }
         }
-        Task packageJar = PlannerPackage.packageJarStep(
-                cx,
+        PackageSteps packaging = new PackageSteps(cx);
+        Task packageJar = packaging.packageJar(
                 plugins == null ? null : plugins.packager(),
                 pluginDecls,
                 variantSecrets,
                 PlannerVersions.declared(parsedBuild),
                 nodeKind == NodeShape.Kind.SIDE_BY_SIDE && !in.testOnly());
-        Task writeStamp = PlannerPackage.writeStampStep(cx);
+        Task writeStamp = packaging.writeStamp();
         // Kotlin's freshness companion (cf. write-stamp for Java). Mirrors the
         // input set compile-kotlin checked: Kotlin sources, plus Java sources in
         // a mixed module. No action-cache key exists yet — the direct kotlinc
         // path leaves it empty until incremental Kotlin lands.
-        Task writeStampKotlin = PlannerPackage.writeStampKotlinStep(cx);
+        Task writeStampKotlin = packaging.writeStampKotlin();
         // Groovy's freshness companion, mirroring write-stamp-kotlin.
-        Task writeStampGroovy = PlannerPackage.writeStampGroovyStep(cx);
+        Task writeStampGroovy = packaging.writeStampGroovy();
         // Merge the per-language output dirs into the shared classes dir that
         // packaging, tests, and the run/native tails all read (mixed modules only).
-        Task assembleClasses = PlannerPackage.assembleClassesStep(cx);
+        Task assembleClasses = packaging.assembleClasses();
         return new Steps(
                 parseBuild,
                 syncDeps,
                 ensureJdk,
+                ksp,
                 compileJava,
                 compileKotlin,
                 compileGroovy,
@@ -326,7 +332,8 @@ final class CorePlan {
                 writeStamp,
                 writeStampKotlin,
                 writeStampGroovy,
-                assembleClasses);
+                assembleClasses,
+                new GuardSteps(cx));
     }
 
     // ---- graph ---------------------------------------------------------------------------
@@ -340,9 +347,9 @@ final class CorePlan {
      * A dedicated node module: its node steps, joined with the root guard lanes when it is the
      * invocation root.
      */
-    private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
+    private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, Steps s) {
         List<String> leaves = new ArrayList<>(nodeArm().plan(b));
-        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
+        String guardTerminal = s.guards().appendRootLanes(b, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) leaves.add(guardTerminal);
         if (leaves.size() == 1) return b.terminal(leaves.get(0));
         b.addTask(Task.builder(BuildPlanner.DELIVER_JOIN)
@@ -365,8 +372,8 @@ final class CorePlan {
         return new NodeArm(in, project, nodeDir, actionCache, !in.compileOnly() && !PlannerResources.skipJUnit(in));
     }
 
-    private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
-        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
+    private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
+        String guardTerminal = s.guards().appendRootLanes(b, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) {
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
@@ -388,7 +395,7 @@ final class CorePlan {
         // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (cx.ksp()) {
-            b.addTask(PlannerKsp.kspStep(cx, pluginDecls));
+            b.addTask(s.ksp());
         }
         // Resources before any compile, as Maven's process-resources: a processor reads them from
         // the class output, and what it writes at a resource's path is what the jar keeps.
@@ -425,8 +432,8 @@ final class CorePlan {
             boolean afterTests = PlannerGuards.indexesTestClasses(in);
             if (afterTests) after.add(TaskNames.COMPILE_TEST);
             BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;
-            b.addTask(PlannerGuards.moduleStep(cx, guardStage, afterTests, after.toArray(String[]::new)));
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, !in.testOnly(), guardStage);
+            b.addTask(s.guards().module(guardStage, afterTests, after.toArray(String[]::new)));
+            s.guards().appendRootLanes(b, TaskNames.GUARD, !in.testOnly(), guardStage);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
             b.alsoKeep(
                     TaskNames.GUARD,
@@ -437,7 +444,7 @@ final class CorePlan {
                     TaskNames.GUARD_OUTPUT);
         } else if (cx.guards().enabled()) {
             // on-build = false: the module lanes wait for the gate; the model lane still runs.
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly(), BuildStage.COMPILE);
+            s.guards().appendRootLanes(b, TaskNames.RESOLVE_DEPS, !in.testOnly(), BuildStage.COMPILE);
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
                     TaskNames.GUARD_WORKSPACE,

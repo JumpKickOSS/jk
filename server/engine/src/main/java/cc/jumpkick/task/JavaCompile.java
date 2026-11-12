@@ -15,10 +15,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -259,8 +261,12 @@ public final class JavaCompile {
                     List.of(),
                     wr.waitMillis());
         }
-        if (outputs.isEmpty() && !request.sources().isEmpty()) {
-            // Nothing is recorded, and the ledger no longer matches the analysis the worker wrote.
+        if (outputs.isEmpty() && !compiledEverySource(request, wr.compiledSources())) {
+            // A compiler convinced nothing changed (stale incremental state) can report success
+            // over an empty tree: nothing is recorded, and the ledger no longer matches the
+            // analysis the worker wrote. A compile of every source that wrote no class file (a
+            // package-info.java of javadoc alone) is recorded below like any other: no output is
+            // its whole result, and its key must hit for the build and the forecast alike.
             Files.deleteIfExists(stateDir.resolve(CompileWarnings.LEDGER));
             return new Result(
                     true,
@@ -576,6 +582,14 @@ public final class JavaCompile {
     /** Drop the compile state — the analysis and every marker — so the next compile is a full one. */
     static void forgetState(Path stateDir) throws IOException {
         if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+    }
+
+    /** True when the worker compiled every source of {@code request}: a full compile, not a stale incremental one. */
+    private static boolean compiledEverySource(CompileRequest request, List<Path> compiled) {
+        Set<Path> done = new HashSet<>();
+        for (Path p : compiled) done.add(p.toAbsolutePath().normalize());
+        for (Path p : request.sources()) if (!done.contains(p.toAbsolutePath().normalize())) return false;
+        return true;
     }
 
     private static boolean hasClasses(Path dir) throws IOException {

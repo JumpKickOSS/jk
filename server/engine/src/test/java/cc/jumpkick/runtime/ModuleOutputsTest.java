@@ -16,6 +16,7 @@ import cc.jumpkick.task.IoLedger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -35,8 +36,39 @@ class ModuleOutputsTest {
         Path classes = dir.resolve("classes/main");
         Path deep = Files.createDirectories(classes.resolve("cc/jumpkick/jsonl/inner"));
         Files.writeString(deep.resolve("Deep.class"), "x");
-        assertThat(ModuleOutputs.classesDirHasContent(classes))
+        assertThat(ModuleOutputs.holdsClassFiles(classes))
                 .as("cc/jumpkick/jsonl/inner/Deep.class is content, whatever its depth")
+                .isTrue();
+    }
+
+    @Test
+    void a_main_tree_with_no_output_is_present_only_when_its_compiles_recorded_none(@TempDir Path dir)
+            throws Exception {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, dir.resolve("actions"));
+        String sha = cas.hashFromPath(cas.put("bytes".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        ac.storeVerdict("compile-main@x", "classless", Map.of());
+        ac.storeWithOutputs("compile-main@y", "classes", Map.of(), Map.of("p/A.class", sha));
+        Path classes = Files.createDirectories(dir.resolve("classes/main"));
+
+        assertThat(ModuleOutputs.classesTreePresent(ac, classes, Arrays.asList("classless", null)))
+                .as("a compile that wrote no class file leaves its whole tree empty")
+                .isTrue();
+        assertThat(ModuleOutputs.classesTreePresent(ac, classes, List.of("classes")))
+                .as("an empty tree whose record owns a class")
+                .isFalse();
+        assertThat(ModuleOutputs.classesTreePresent(ac, classes, List.of("no-such-key")))
+                .isFalse();
+        assertThat(ModuleOutputs.classesTreePresent(ac, classes, Arrays.asList(null, null)))
+                .as("no record vouches for an empty tree")
+                .isFalse();
+        assertThat(ModuleOutputs.classesTreePresent(ac, dir.resolve("absent"), List.of("classless")))
+                .as("a wiped tree")
+                .isFalse();
+        Files.writeString(classes.resolve("manifest.toml"), "copied");
+        assertThat(ModuleOutputs.classesTreePresent(null, classes, List.of()))
+                .as("a copied resource is an output")
                 .isTrue();
     }
 
@@ -205,11 +237,11 @@ class ModuleOutputsTest {
     @Test
     void empty_or_classless_trees_are_not_content(@TempDir Path dir) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("classes/main"));
-        assertThat(ModuleOutputs.classesDirHasContent(classes)).isFalse();
+        assertThat(ModuleOutputs.holdsClassFiles(classes)).isFalse();
         Files.createDirectories(classes.resolve("cc/jumpkick/only/dirs"));
         Files.writeString(classes.resolve("cc/jumpkick/only/dirs/notes.txt"), "not a class");
-        assertThat(ModuleOutputs.classesDirHasContent(classes)).isFalse();
-        assertThat(ModuleOutputs.classesDirHasContent(dir.resolve("absent"))).isFalse();
+        assertThat(ModuleOutputs.holdsClassFiles(classes)).isFalse();
+        assertThat(ModuleOutputs.holdsClassFiles(dir.resolve("absent"))).isFalse();
     }
 
     /**

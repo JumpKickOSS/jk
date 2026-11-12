@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The KSP round, on a plain JVM project. {@code PlannerKsp.kspStep} is not Android-specific — it
+ * The KSP round, on a plain JVM project. {@code KspArm.ksp} is not Android-specific — it
  * needs only {@code kotlin} plus a non-empty {@code [processor-dependencies]} whose jar registers
  * the {@code SymbolProcessorProvider} SPI — but its only coverage was the two Android/Hilt tests,
  * which need the SDK, its licences and Google Maven. This is the same round with none of that.

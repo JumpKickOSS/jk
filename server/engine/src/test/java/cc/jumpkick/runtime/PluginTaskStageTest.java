@@ -157,7 +157,7 @@ class PluginTaskStageTest {
     @Test
     void declared_stage_after_package_is_rejected_for_a_package_time_task() {
         // package-jar (PACKAGE) requires every packageTime() task unconditionally
-        // (PlannerPackage#packageRequires) — mirrors the run-tests/TEST case above for PACKAGE.
+        // (PackageSteps#packageRequires) — mirrors the run-tests/TEST case above for PACKAGE.
         TaskDecl bad = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "native");
         assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)

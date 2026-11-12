@@ -656,7 +656,7 @@ contributes = "sources"                                      # sources | resourc
   rest is the failure message's tail.
 - **Test sources**: `contributes = "test-sources"` declares `TaskSpec.contributesTestSources`; the
   step still runs in the generate stage, compile-test requires it and folds the output into the
-  selected suites' sources (`PlannerTest.TestSources.collect`), and compile-main never sees it.
+  selected suites' sources (`TestSources.collect`), and compile-main never sees it.
 - **Unpack**: `unpack = "g:a:v"` is a second per-entry `[[contribute.step-dependency]]`
   (`${entry.name}-unpack`, the jar alone) the body extracts under the step's scratch before the
   fork; `${unpacked}` names the directory. An entry without the key declares no such tool: a

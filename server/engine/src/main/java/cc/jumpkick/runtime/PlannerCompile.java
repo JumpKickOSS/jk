@@ -5,73 +5,35 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerKsp.kspGeneratedSources;
 import static cc.jumpkick.runtime.PlannerKsp.pluginContributedSources;
 import static cc.jumpkick.runtime.PlannerKsp.sourceGenStepSteps;
-import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
-import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
-import static cc.jumpkick.runtime.PlannerNative.groovySources;
-import static cc.jumpkick.runtime.PlannerNative.javaSources;
-import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
-import static cc.jumpkick.runtime.base.ResourceMirror.mergeLanguageOutput;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathProcessors;
-import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.CompileResult;
-import cc.jumpkick.compile.CompilerJdk;
-import cc.jumpkick.compile.GroovycRequest;
-import cc.jumpkick.engine.plugin.HeapNotes;
-import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
-import cc.jumpkick.run.BuildStage;
-import cc.jumpkick.run.StepForecast;
-import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
-import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
-import cc.jumpkick.runtime.base.Perf;
-import cc.jumpkick.runtime.base.ProcessedResources;
-import cc.jumpkick.runtime.base.ResourceMirror;
-import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.ClassAbi;
-import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
-import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.KeyOwner;
-import cc.jumpkick.task.LangCompile;
-import cc.jumpkick.task.MainAbi;
-import cc.jumpkick.task.SourceApiIndex;
-import cc.jumpkick.test.AbiIndex;
-import cc.jumpkick.test.AffectedChangedPublish;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Main-language compile steps (Java / Kotlin / Groovy) and their require edges.
+ * What the main compiles read and send, derived once for the build's compile steps ({@link
+ * CompileSteps}, {@link LangCompileSteps}) and their forecasts: the source unions and the javac
+ * requests.
  */
 public final class PlannerCompile {
 
@@ -441,172 +403,6 @@ public final class PlannerCompile {
         return req;
     }
 
-    static Task compileJavaStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        return Task.builder(TaskNames.COMPILE_JAVA)
-                .forecast(StepForecast.priced(PlannerCompileForecast::java))
-                .stage(BuildStage.COMPILE)
-                .label("Compiling")
-                .kind(TaskKind.CPU)
-                .requires(javaCompileRequires(cx.mixed(), cx.mixedGroovy(), pluginDecls, cx.ksp()))
-                // Ticks count sources (granularity); weight is the bar share. javac
-                // is opaque — one progress(sources.size) on completion — so ease the
-                // slice forward over time while it runs instead of sitting flat.
-                .weight(() -> plan.get().compileJava())
-                .interpolated()
-                .ticks(() -> {
-                    // Populate the cache if not yet done (may have been filled by
-                    // parse-build execute or by EffortWeights.predict via collectJavaSources).
-                    List<Path> srcs = javaMainSrcRef.get();
-                    if (srcs == null) {
-                        try {
-                            srcs = CompileSupport.collectJavaSources(javaMainSrcDir);
-                        } catch (Exception ignored) {
-                            srcs = List.of();
-                        }
-                        javaMainSrcRef.compareAndSet(null, srcs);
-                        List<Path> published = javaMainSrcRef.get();
-                        if (published != null) srcs = published;
-                    }
-                    return srcs.size();
-                })
-                .execute(ctx -> runCompileJava(ctx, cx, pluginDecls))
-                .build();
-    }
-
-    /** The compile-java body: the source union, the freshness stamp, javac in the worker, the ABI index. */
-    private static void runCompileJava(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
-            throws Exception {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        Path classes = ctx.require(MAIN_CLASSES);
-        // javac always writes to the canonical classes dir (java/main/).
-        // The Kotlin incremental compiler gets its own dir (kotlin/main/)
-        // so it cannot prune Java's output; the assembler merges both.
-        Path javaOut = classes;
-        // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root .scala)
-        // that parse-build published: the Scala toolchain is decided from it.
-        List<Path> declared = javaSources(ctx);
-        List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls, cx.ksp());
-        if (sources != declared) {
-            // Re-publish the union: the steps after the compile read the set javac compiled.
-            ctx.put(JAVA_SOURCES, sources);
-        }
-        if (sources.isEmpty()) {
-            ctx.label("no Java sources");
-            StepWarnings.clear(ctx, TaskNames.COMPILE_JAVA);
-            if (dropOutputOfRemovedSources(javaOut)) ResourceMirror.relay(javaOut, incremental(ctx));
-            Files.createDirectories(javaOut);
-            ctx.put(JAVA_COMPILE, CompileStamp.noSources());
-            return;
-        }
-        boolean rerun = in.session().config().rebuildOr(false);
-        // Resolved before the stamp check, the Scala toolchain over the merged source set
-        // included: a scala-version bump or a variant-overlay .scala must move the request the
-        // stamp is derived from.
-        CompileInputs.Module module = compileInputs(ctx, cx, pluginDecls);
-        CompileRequest request =
-                mainCompileRequest(CompileInputs.java(module, sources, CompileInputs.groovyJar(module)));
-        // The stamp gates on the option-bearing inputs too — [build] lint/debug, [javac] args and
-        // plugins, --profile args, the JDK — through the digest of the very request the action
-        // key hashes, and on the classpath through the token lines that key hashes (the ABI of
-        // each compile-classpath entry, the content of each processor). write-stamp records the
-        // same digest and lines, so an option edit with untouched sources reads stale here instead
-        // of packaging the old classes, and a sibling's body-only rewrite reads fresh.
-        String optionsDigest = ActionKey.javacOptionsDigest(request);
-        List<String> stampTokens = ActionKey.javacClasspathTokens(request);
-        if (Perf.enabled()) {
-            Perf.note(
-                    "live-compile-main " + javaOut,
-                    "optionsDigest",
-                    optionsDigest,
-                    "cp",
-                    request.classpath().size(),
-                    "pp",
-                    request.processorPath().size(),
-                    "src",
-                    sources.size(),
-                    "release",
-                    ctx.require(RELEASE),
-                    "javaHome",
-                    request.javaHome(),
-                    "pp-list",
-                    request.processorPath());
-        }
-        // A fresh stamp vouches for the inputs, not for the tree: one that lost an output its
-        // compile record owns falls through to the action cache, whose hit restores the record's
-        // whole tree, instead of packaging the subset it has; nor for warnings without their file.
-        Optional<List<CompileResult.Diagnostic>> kept = StepWarnings.read(ctx, TaskNames.COMPILE_JAVA, sources, rerun);
-        if (kept.isPresent()
-                && CompileInputs.javaStamp(module, request, stampTokens).isPresent()
-                && CompileInputs.outputsOnDisk(cx.actionCache(), module, null)) {
-            ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
-            JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, List.of(), kept.get());
-            ctx.label("up to date");
-            ctx.cached();
-            ctx.put(JAVA_COMPILE, CompileStamp.upToDate());
-            ctx.progress(sources.size());
-            return;
-        }
-        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
-        Path javaStateDir = ActionKey.stateDir(
-                ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),
-                TaskNames.COMPILE_MAIN,
-                javaOut);
-        // The stamp's instant: before the first source is hashed, so an edit landing while the
-        // compile runs is stale on the next build instead of vouched for by a later stamp.
-        long clock = FreshnessStamp.clockNow(javaOut);
-        if (!rerun) reweightForActionCache(ctx, cx.actionCache(), taskId, request, sources.size());
-        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
-        Files.createDirectories(genDir);
-        Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
-        ctx.label("compiling " + sources.size() + " sources");
-        Path abiFile = AbiIndex.path(ctx.require(LAYOUT).buildDir());
-        Map<String, ClassAbi.Fingerprint> preAbi = AbiIndex.load(abiFile);
-        JavaCompile.Result r = JavaCompile.run(
-                taskId,
-                compileLabel(ctx, TaskNames.COMPILE_MAIN),
-                request,
-                BuildIdentity.cacheKeyVersion(),
-                !rerun,
-                !in.ephemeralActions(), // verify-scratch: no persistent residue
-                cx.actionCache().cas(),
-                cx.actionCache(),
-                javaStateDir,
-                workerJar,
-                genDir,
-                WorkerEnv.forModule(
-                        ctx.require(PROJECT).build().env(),
-                        in.dir(),
-                        ctx.require(LAYOUT).moduleTargetDir()));
-        HeapNotes.flush(ctx);
-        ctx.waited(Duration.ofMillis(r.waitMillis()));
-        reportJavacResult(ctx, request, r);
-        afterJavac(ctx, cx, request, r);
-        ctx.put(JAVA_COMPILE, new CompileStamp(r.outcome(), sources, optionsDigest, stampTokens, clock, r.actionKey()));
-        ctx.put(MAIN_ABI, new MainAbi(preAbi, r.compiledSources()));
-        advanceAbiIndex(ctx, in, r, abiFile, preAbi);
-        advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);
-        ctx.progress(sources.size());
-    }
-
-    /**
-     * After a compile-main that succeeded: the sources edited while it ran, and which resource
-     * copies its processors rewrote — the resource copy leaves those next time.
-     */
-    private static void afterJavac(TaskContext ctx, BuildPlanner.Ctx cx, CompileRequest request, JavaCompile.Result r)
-            throws IOException {
-        warnMovedSources(ctx, r.movedSources());
-        ProcessedResources.afterCompile(
-                Objects.requireNonNull(request.outputDir(), "compile-main writes a classes tree"),
-                incremental(ctx),
-                request.resourcesDigest() != null,
-                cx.actionCache(),
-                r.cacheHit() ? r.actionKey() : null);
-    }
-
     /** What a compiler-worker failure names: the module's coordinates when the plan carries them, and the {@code step}. */
     static String compileLabel(TaskContext ctx, String step) {
         return ctx.get(PROJECT)
@@ -652,97 +448,7 @@ public final class PlannerCompile {
         return ctx.require(LAYOUT).buildDir().resolve("incremental");
     }
 
-    /**
-     * Reweight the bar slice now that the real request is known: a CAS action-cache hit means a
-     * cheap hard-link restore (3), not a full javac (ceil(sources × 0.1)). Uses the exact key
-     * JavaCompile will look up, so the estimate matches what actually happens — no plan-start
-     * reconstruction divergence.
-     */
-    private static void reweightForActionCache(
-            TaskContext ctx, ActionCache actionCache, String taskId, CompileRequest request, int sources) {
-        try {
-            boolean restores = actionCache
-                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion()))
-                    .isPresent();
-            ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources));
-        } catch (Exception e) {
-            /* keep the up-front estimate */
-            Log.debug("reweightForActionCache: keep the up-front estimate", e);
-        }
-    }
-
-    /**
-     * Forward every javac diagnostic to the terminal, by severity: errors fail the build,
-     * warnings/notes (e.g. deprecation) are surfaced but don't. Strip the leading severity word —
-     * the console renderer adds its own ✗/⚠ marker.
-     */
-    private static void reportJavacResult(TaskContext ctx, CompileRequest request, JavaCompile.Result r) {
-        boolean errored = JavacDiagnostics.report(
-                ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, r.diagnostics(), r.replayed());
-        if (!r.success()) {
-            // Never fail silently: if no ERROR diagnostic surfaced (crash,
-            // swallowed output), say so explicitly.
-            if (!errored) {
-                ctx.error("javac", "compile failed without compiler diagnostics (outcome: " + r.outcome() + ")");
-            }
-            throw new RuntimeException("javac reported errors");
-        }
-        StepWarnings.keep(ctx, TaskNames.COMPILE_JAVA, JavacDiagnostics.TOOL, r.warnings());
-        if (r.cacheHit()) {
-            ctx.label("cache hit " + r.actionKey().substring(0, 8));
-            ctx.cached();
-        } else {
-            // What the compile did, as its record's detail: the ETA prices an incremental compile
-            // from incremental history, not from an average that full compiles dominate.
-            ctx.label(TaskNames.compiledLabel(
-                    r.compiledSources().size(), request.sources().size()));
-        }
-    }
-
-    /**
-     * The abi idx advances by exactly what this compile did: a cache hit or no-op leaves it alone
-     * (the restored classes were indexed when first compiled), an incremental compile re-hashes
-     * only its compiled sources' classes, and only a missing/empty idx pays the full tree scan.
-     * Then the cross-module --affected publish: this module's changed types while the pre-compile
-     * baseline is still in memory; dependents rank against them.
-     */
-    private static void advanceAbiIndex(
-            TaskContext ctx,
-            BuildPlanner.Inputs in,
-            JavaCompile.Result r,
-            Path abiFile,
-            Map<String, ClassAbi.Fingerprint> preAbi)
-            throws Exception {
-        Path mainClasses = ctx.require(MAIN_CLASSES);
-        Map<String, ClassAbi.Fingerprint> currentAbi;
-        if (!preAbi.isEmpty() && r.compiledSources().isEmpty()) {
-            currentAbi = preAbi;
-        } else if (!preAbi.isEmpty()) {
-            currentAbi = AbiIndex.updated(preAbi, in.dir(), r.compiledSources(), mainClasses);
-            AbiIndex.write(abiFile, currentAbi);
-        } else {
-            currentAbi = AbiIndex.scanClasses(mainClasses);
-            if (!currentAbi.isEmpty()) AbiIndex.write(abiFile, currentAbi);
-        }
-        AffectedChangedPublish.publish(in.session(), in.dir(), preAbi, currentAbi);
-    }
-
-    /**
-     * The declaration baseline {@code jk explain} hints from ({@link SourceApiIndex}): advanced by
-     * what this compile did, like the ABI index, and never allowed to fail a build — a missing
-     * baseline only costs the hint.
-     */
-    private static void advanceSourceApiIndex(Path moduleDir, Path buildDir, JavaCompile.Result r, List<Path> sources) {
-        try {
-            Path file = SourceApiIndex.path(buildDir);
-            Map<String, SourceApiIndex.Row> pre = SourceApiIndex.load(file);
-            Map<String, SourceApiIndex.Row> cur = SourceApiIndex.updated(pre, moduleDir, r.compiledSources(), sources);
-            if (!cur.equals(pre)) SourceApiIndex.write(file, cur);
-        } catch (IOException | RuntimeException e) {
-            Log.debug("advanceSourceApiIndex: the hint baseline was not advanced", e);
-        }
-    }
-
+    /** The steps each main compile waits on: setup, the resource copy, KSP and the source generators. */
     static String[] kotlinCompileRequires(@Nullable PluginDeclarations decls, boolean ksp) {
         List<String> requires = new ArrayList<>(List.of(
                 TaskNames.PARSE_BUILD,
@@ -751,22 +457,6 @@ public final class PlannerCompile {
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
                 // The resources are in the class output before any compile reads it.
                 TaskNames.COPY_RESOURCES));
-        if (ksp) requires.add(TaskNames.KSP);
-        requires.addAll(sourceGenStepSteps(decls));
-        return requires.toArray(new String[0]);
-    }
-
-    static String[] javaCompileRequires(
-            boolean mixed, boolean mixedGroovy, @Nullable PluginDeclarations decls, boolean ksp) {
-        List<String> requires = new ArrayList<>(List.of(
-                TaskNames.PARSE_BUILD,
-                TaskNames.RESOLVE_DEPS,
-                TaskNames.ENSURE_JDK,
-                TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
-                // The resources are in the class output before any compile reads it.
-                TaskNames.COPY_RESOURCES));
-        if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
-        if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         if (ksp) requires.add(TaskNames.KSP);
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
@@ -786,291 +476,19 @@ public final class PlannerCompile {
         return requires.toArray(new String[0]);
     }
 
-    static Task compileKotlinStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
-        BuildPlanner.Inputs in = cx.in();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        boolean compact = cx.compact();
-        return Task.builder(TaskNames.COMPILE_KOTLIN)
-                .forecast(StepForecast.priced(PlannerCompileForecast::kotlin))
-                .stage(BuildStage.COMPILE)
-                .label("Kotlin")
-                .kind(TaskKind.CPU)
-                // Kotlin compiles first (reads Java declarations from source), so it
-                // only needs the base steps — javac runs after it in a mixed module
-                // plus any source-generating plugin steps.
-                .requires(kotlinCompileRequires(pluginDecls, cx.ksp()))
-                // Ticks count Kotlin sources (granularity); weight is the bar share
-                // (see compile-java). kotlinc is opaque too, so ease it over time.
-                .weight(() -> plan.get().compileKotlin())
-                .interpolated()
-                .ticks(() -> {
-                    List<Path> srcs = kotlinMainSrcRef.get();
-                    if (srcs == null) {
-                        try {
-                            // Tick-count pre-walk only; parse-build re-derives the real
-                            // list via mainKotlinSources and overwrites the ref.
-                            srcs = CompileSupport.collectKotlinSources(in.dir(), compact);
-                        } catch (Exception ignored) {
-                            srcs = List.of();
-                        }
-                        kotlinMainSrcRef.compareAndSet(null, srcs);
-                        List<Path> published = kotlinMainSrcRef.get();
-                        if (published != null) srcs = published;
-                    }
-                    return srcs.size();
-                })
-                .execute(ctx -> runCompileKotlin(ctx, cx, pluginDecls))
-                .build();
-    }
-
-    /** The compile-kotlin body: the source union, the freshness stamp, kotlinc in the worker. */
-    private static void runCompileKotlin(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
-            throws Exception {
-        BuildPlanner.Inputs in = cx.in();
-        ActionCache actionCache = cx.actionCache();
-        Path classes = ctx.require(MAIN_CLASSES);
-        Files.createDirectories(classes); // compile-java may be skipped
-        List<Path> declaredKt = kotlinSources(ctx);
-        // Plugin-contributed generated Kotlin (a KSP round, a codegen step) joins the source list
-        // exactly like the Java side: the freshness stamp and the plugin see generated files as
-        // ordinary sources.
-        List<Path> ktSources = mainKotlinSourcesWithGenerated(declaredKt, ctx.require(LAYOUT), pluginDecls, cx.ksp());
-        if (ktSources != declaredKt) ctx.put(KOTLIN_SOURCES, ktSources);
-        if (ktSources.isEmpty()) {
-            ctx.label("no Kotlin sources");
-            StepWarnings.clear(ctx, TaskNames.COMPILE_KOTLIN);
-            ctx.put(KOTLIN_COMPILE, CompileStamp.noSources());
-            return;
-        }
-        // The stamp covers the Kotlin sources plus, in a module javac runs in, the Java sources
-        // kotlinc reads declarations from: a Java edit can make our classes stale. It is the cheap
-        // check in front of the content-hash action cache, so it errs conservative. The kotlinc
-        // config is resolved ahead of it, without fetching: its digest is a stamp input, so a
-        // kotlinc arg, a [[kotlin-plugins]] entry or a JDK switch is stale here with no source moved.
-        CompileInputs.Module module = compileInputs(ctx, cx, pluginDecls);
-        CompileInputs.Kotlin inputs = CompileInputs.kotlin(module, ktSources, mainJavaSources(ctx, cx, pluginDecls));
-        List<Path> freshInputs = inputs.stampInputs();
-        // A shrunken Kotlin source set (a variant switch dropping an extra-src root) must not leave
-        // the dropped classes in the merged output: kotlinc's IC prunes its own dir, but the
-        // assemble merge into classes/ is additive. Start the merged tree clean; both stamps die
-        // with it, so javac re-runs too (rare: only on source removals).
-        if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.KOTLIN, freshInputs)) {
-            PathUtil.deleteRecursively(classes);
-            Files.createDirectories(classes);
-            ResourceMirror.relay(classes, incremental(ctx));
-        }
-        boolean rerun = in.session().config().rebuildOr(false);
-        // Kotlin compiles into its own dir and merges into the shared classes dir: the incremental
-        // compiler owns its output dir and prunes files it did not produce.
-        PlannerLang.KotlinWorker worker = CompileInputs.kotlinWorker(module, inputs);
-        // The stamp spells the classpath by ABI token, like the action key: a sibling rewritten
-        // with the same ABI is fresh here once its token is known, and one whose ABI moved is stale
-        // before any source mtime is read. A token not yet memoized is what makes the worker
-        // resolve (and fork) ahead of the compile.
-        String optionsDigest = inputs.config().digest();
-        List<String> stampTokens = PlannerLang.kotlinStampTokens(inputs.classpath(), worker.snapshotter());
-        // A fresh stamp vouches for the inputs, not for the tree: the merged classes must still
-        // hold every output the stamped compile's record owns.
-        Optional<List<CompileResult.Diagnostic>> ktKept =
-                StepWarnings.read(ctx, TaskNames.COMPILE_KOTLIN, ktSources, rerun);
-        if (ktKept.isPresent()
-                && CompileInputs.kotlinStampFresh(module, inputs, stampTokens)
-                && CompileInputs.outputsOnDisk(actionCache, module, BuildStamps.KOTLIN)) {
-            ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
-            JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.KOTLINC, List.of(), ktKept.get());
-            ctx.label("up to date");
-            ctx.cached();
-            ctx.put(KOTLIN_COMPILE, CompileStamp.upToDate());
-            ctx.progress(ktSources.size());
-            return;
-        }
-        ctx.label("compiling " + ktSources.size() + " Kotlin sources");
-        long clock = FreshnessStamp.clockNow(classes);
-        LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, CompileInputs.kotlinTaskId(module), worker);
-        if (!kr.success()) {
-            StepDiagnostics.forwardWorkerDiagnostics(
-                    ctx,
-                    "kotlinc",
-                    PackageProviders.enrich(ctx, inputs.classpath(), ClasspathResolver.COMPILE_MAIN, kr.diagnostics()),
-                    "kotlinc failed without diagnostics");
-            throw new RuntimeException("kotlinc reported errors");
-        }
-        StepWarnings.sayAndKeep(ctx, TaskNames.COMPILE_KOTLIN, JavacDiagnostics.KOTLINC, kr);
-        if (kr.cacheHit()) {
-            ctx.label("cache hit " + kr.actionKey().substring(0, 8));
-            ctx.cached();
-        }
-        warnMovedSources(ctx, kr.movedSources());
-        // Kotlin-only: publish straight into the classes dir. Mixed: leave it in the Kotlin dir
-        // for assemble-classes to merge after javac.
-        if (!cx.mixedWithJava()) {
-            mergeLanguageOutput(
-                    module.layout().kotlinClassesDir(), classes, module.layout().buildDir(), "kotlin");
-        }
-        ctx.put(
-                KOTLIN_COMPILE,
-                new CompileStamp("compiled", freshInputs, optionsDigest, stampTokens, clock, kr.actionKey()));
-        ctx.progress(ktSources.size());
-    }
-
-    static Task compileGroovyStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
-        BuildPlanner.Inputs in = cx.in();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
-        boolean compact = cx.compact();
-        return Task.builder(TaskNames.COMPILE_GROOVY)
-                .forecast(StepForecast.priced(PlannerCompileForecast::groovy))
-                .stage(BuildStage.COMPILE)
-                .label("Groovy")
-                .kind(TaskKind.CPU)
-                // Groovy compiles first (joint mode reads Java *declarations* by sweeping the
-                // .java roots; javac runs after it in a mixed module), so it only needs the
-                // base steps plus any source-generating plugin steps.
-                .requires(groovyCompileRequires(pluginDecls, cx.kotlinModule()))
-                .weight(() -> plan.get().compileGroovy())
-                .interpolated()
-                .ticks(() -> {
-                    List<Path> srcs = groovyMainSrcRef.get();
-                    if (srcs == null) {
-                        try {
-                            // Tick-count pre-walk only; parse-build re-derives the real
-                            // list via mainGroovySources and overwrites the ref.
-                            srcs = CompileSupport.collectGroovySources(in.dir(), compact);
-                        } catch (Exception ignored) {
-                            srcs = List.of();
-                        }
-                        groovyMainSrcRef.compareAndSet(null, srcs);
-                        List<Path> published = groovyMainSrcRef.get();
-                        if (published != null) srcs = published;
-                    }
-                    return srcs.size();
-                })
-                .execute(ctx -> runCompileGroovy(ctx, cx, pluginDecls))
-                .build();
-    }
-
-    /** The compile-groovy body: the source union, the freshness stamp, groovyc in the worker. */
-    private static void runCompileGroovy(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
-            throws Exception {
-        BuildPlanner.Inputs in = cx.in();
-        ActionCache actionCache = cx.actionCache();
-        Path classes = ctx.require(MAIN_CLASSES);
-        Files.createDirectories(classes); // compile-java may be skipped
-        List<Path> declaredGv = groovySources(ctx);
-        // Plugin-contributed generated Groovy joins the source list exactly like the Kotlin side.
-        List<Path> gvSources = mainGroovySourcesWithGenerated(declaredGv, ctx.require(LAYOUT), pluginDecls);
-        if (gvSources != declaredGv) ctx.put(GROOVY_SOURCES, gvSources);
-        if (gvSources.isEmpty()) {
-            ctx.label("no Groovy sources");
-            StepWarnings.clear(ctx, TaskNames.COMPILE_GROOVY);
-            ctx.put(GROOVY_COMPILE, CompileStamp.noSources());
-            return;
-        }
-        // The stamp covers the Groovy sources plus, in joint mode, the Java sources it resolves
-        // against: the same conservative posture as compile-kotlin, the action cache behind it
-        // decides precisely.
-        CompileInputs.Module module = compileInputs(ctx, cx, pluginDecls);
-        CompileInputs.Groovy inputs = CompileInputs.groovy(
-                module,
-                gvSources,
-                mainJavaSources(ctx, cx, pluginDecls),
-                mainKotlinSourcesWithGenerated(kotlinSources(ctx), module.layout(), pluginDecls, cx.ksp()));
-        List<Path> freshInputs = inputs.stampInputs();
-        // A shrunken Groovy source set must not leave dropped classes in the merged output (the
-        // assemble merge into classes/ is additive).
-        if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.GROOVY, freshInputs)) {
-            PathUtil.deleteRecursively(classes);
-            Files.createDirectories(classes);
-            ResourceMirror.relay(classes, incremental(ctx));
-            // Kotlin published here earlier in this run; its own dir still holds it.
-            if (cx.kotlinModule() && !cx.mixedWithJava()) {
-                mergeLanguageOutput(
-                        module.layout().kotlinClassesDir(),
-                        classes,
-                        module.layout().buildDir(),
-                        "kotlin");
-            }
-        }
-        boolean rerun = in.session().config().rebuildOr(false);
-        // Groovy compiles into its own dir and merges into the shared classes dir: the worker's
-        // action cache snapshots its whole output dir, so it never shares one with javac. In joint
-        // mode it sweeps the Java roots for resolution only and retains stubs for javac.
-        Path gvOut = module.layout().groovyClassesDir();
-        Files.createDirectories(gvOut);
-        if (inputs.stubsOut() != null) Files.createDirectories(inputs.stubsOut());
-        GroovycRequest request = CompileInputs.groovyRequest(module, inputs);
-        // The groovyc args and toolchain are stamp inputs too, and the classpath enters as the
-        // token lines the action key hashes: a sibling's body-only rewrite reads fresh.
-        String optionsDigest = CompileInputs.groovyDigest(module);
-        List<String> stampTokens = ActionKey.groovycClasspathTokens(request);
-        // As compile-kotlin: the stamp vouches for the inputs, the record for the tree.
-        Optional<List<CompileResult.Diagnostic>> gvKept =
-                StepWarnings.read(ctx, TaskNames.COMPILE_GROOVY, gvSources, rerun);
-        if (gvKept.isPresent()
-                && CompileInputs.groovyStampFresh(module, inputs, stampTokens)
-                && CompileInputs.outputsOnDisk(actionCache, module, BuildStamps.GROOVY)) {
-            ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
-            JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.GROOVYC, List.of(), gvKept.get());
-            ctx.label("up to date");
-            ctx.cached();
-            ctx.put(GROOVY_COMPILE, CompileStamp.upToDate());
-            ctx.progress(gvSources.size());
-            return;
-        }
-        ctx.label("compiling " + gvSources.size() + " Groovy sources");
-        long clock = FreshnessStamp.clockNow(classes);
-        LangCompile.Result gr = compileGroovySources(ctx, in, actionCache, request, CompileInputs.groovyTaskId(module));
-        if (!gr.success()) {
-            StepDiagnostics.forwardWorkerDiagnostics(
-                    ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
-            throw new RuntimeException("groovyc reported errors");
-        }
-        StepWarnings.sayAndKeep(ctx, TaskNames.COMPILE_GROOVY, JavacDiagnostics.GROOVYC, gr);
-        if (gr.cacheHit()) {
-            ctx.label("cache hit " + gr.actionKey().substring(0, 8));
-            ctx.cached();
-        }
-        warnMovedSources(ctx, gr.movedSources());
-        // Groovy-only: publish straight into the classes dir. Mixed: leave it in the Groovy dir
-        // for assemble-classes to merge after javac.
-        if (!cx.mixedGroovy())
-            mergeLanguageOutput(gvOut, classes, module.layout().buildDir(), "groovy");
-        ctx.put(
-                GROOVY_COMPILE,
-                new CompileStamp("compiled", freshInputs, optionsDigest, stampTokens, clock, gr.actionKey()));
-        ctx.progress(gvSources.size());
-    }
-
-    /**
-     * The facts every main compile of this module reads, from the plan's state: what {@link
-     * CompileInputs} derives each compiler's inputs from, as the forecast derives them from its
-     * prepared module.
-     */
-    static CompileInputs.Module compileInputs(
-            TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
-        BuildPlanner.Inputs in = cx.in();
-        JkBuild project = ctx.require(PROJECT);
-        return new CompileInputs.Module(
-                project,
-                in.dir(),
-                in.cache(),
-                cx.cas(),
-                ctx.require(LOCKFILE),
-                ctx.require(LAYOUT),
-                cx.shape(),
-                cx.ksp(),
-                ctx.require(CLASSPATHS),
-                pluginDecls,
-                ctx.require(RELEASE),
-                ctx.require(JAVA_HOME),
-                ctx.require(JAVAC_ARGS),
-                CompilerJdk.pinned(project, in.session()));
-    }
-
-    /** The Java union compile-java compiles, as a step that runs before it reads it. */
-    private static List<Path> mainJavaSources(
-            TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) throws IOException {
-        return mainJavaSources(javaSources(ctx), ctx.require(LAYOUT), pluginDecls, cx.ksp());
+    static String[] javaCompileRequires(
+            boolean mixed, boolean mixedGroovy, @Nullable PluginDeclarations decls, boolean ksp) {
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                // The resources are in the class output before any compile reads it.
+                TaskNames.COPY_RESOURCES));
+        if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
+        if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
+        if (ksp) requires.add(TaskNames.KSP);
+        requires.addAll(sourceGenStepSteps(decls));
+        return requires.toArray(new String[0]);
     }
 }

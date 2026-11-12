@@ -5,6 +5,7 @@ import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.time.Clock;
 import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 
 /** This engine process's own worker budget and JVM cap, before the other engines of the host are counted. */
 final class EngineLimits {
@@ -29,20 +30,29 @@ final class EngineLimits {
         return host;
     }
 
-    /** The engine ledger's capacity: {@link WorkerContainment#budgetBytes()}, cached for two seconds. */
+    /**
+     * The engine ledger's capacity: {@link WorkerContainment#budgetBytes()}, cached for two seconds
+     * and read again at once when the containment {@link WorkerContainment#install} or a test armed
+     * is no longer the one the cached number came from.
+     */
     static final class Budget implements LongSupplier {
-        private volatile long bytes;
-        private volatile long atNanos;
+        private volatile @Nullable Sample last;
 
         @Override
         public long getAsLong() {
             long now = Clock.SYSTEM.nanos();
-            long cached = bytes;
-            if (cached > 0 && now - atNanos < 2_000_000_000L) return cached;
+            Object containment = WorkerContainment.stateIdentity();
+            Sample cached = last;
+            if (cached != null
+                    && cached.containment == containment
+                    && cached.bytes > 0
+                    && now - cached.atNanos < 2_000_000_000L) return cached.bytes;
             long measured = WorkerContainment.budgetBytes();
-            bytes = measured;
-            atNanos = now;
+            last = new Sample(measured, now, containment);
             return measured;
         }
+
+        private record Sample(
+                long bytes, long atNanos, @Nullable Object containment) {}
     }
 }

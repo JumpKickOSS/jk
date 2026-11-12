@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -19,7 +20,6 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -120,18 +120,20 @@ final class PathSourceMaterializer {
     /**
      * A stable content fingerprint of the target's source tree: SHA-256 over each source file's
      * {@code (relative-path, size, content-hash)}, sorted for order-independence, with build-output
-     * and tool-metadata directories excluded so a rebuild doesn't invalidate the cache.
+     * and tool-metadata directories excluded so a rebuild doesn't invalidate the cache, and a
+     * checkout nested below the target ({@link WalkSkip#nestedCheckout}) left out: its files are
+     * another branch's, which the target's build does not read.
      */
     private static String fingerprint(Path projectDir) throws IOException {
         List<String> lines = new ArrayList<>();
-        try (Stream<Path> walk = Files.walk(projectDir)) {
-            for (Path p : (Iterable<Path>) walk::iterator) {
-                if (!Files.isRegularFile(p)) continue;
-                Path rel = projectDir.relativize(p);
-                if (isIgnored(projectDir, rel)) continue;
-                lines.add(rel.toString().replace('\\', '/') + "\0" + Files.size(p) + "\0" + Hashing.sha256Hex(p));
-            }
-        }
+        // Judged with the directory in hand, not the bare segment: Gradle's build/ is known by the
+        // script beside it, and a package named build is a package.
+        PathUtil.forEachRegularFile(
+                projectDir, dir -> WalkSkip.pathSource(dir) || WalkSkip.nestedCheckout(dir), (p, attrs) -> {
+                    if (WalkSkip.pathSource(p)) return;
+                    String rel = projectDir.relativize(p).toString().replace('\\', '/');
+                    lines.add(rel + "\0" + attrs.size() + "\0" + Hashing.sha256Hex(p));
+                });
         lines.sort(null);
         MessageDigest md = Hashing.newSha256();
         for (String line : lines) {
@@ -139,17 +141,6 @@ final class PathSourceMaterializer {
             md.update((byte) '\n');
         }
         return Hashing.hex(md.digest()).substring(0, 24);
-    }
-
-    private static boolean isIgnored(Path projectDir, Path relativePath) {
-        // Judged with the directory in hand, not the bare segment: Gradle's build/ is known by the
-        // script beside it, and a package named build is a package.
-        Path dir = projectDir;
-        for (Path segment : relativePath) {
-            dir = dir.resolve(segment);
-            if (WalkSkip.pathSource(dir)) return true;
-        }
-        return false;
     }
 
     private static String shortHash(String value) {

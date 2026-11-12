@@ -76,6 +76,13 @@ class PathSourceMaterializerTest {
         var first = materializer.materialize(new PathSource("./lib"));
         var second = materializer.materialize(new PathSource("./lib"));
         assertThat(second.repoUrl()).isEqualTo(first.repoUrl()); // same fingerprint → same repo dir
+
+        // A worktree checked out below the target is another branch's tree, not the target's source.
+        Path worktree = Files.createDirectories(tmp.resolve("lib/.claude/worktrees/one"));
+        Files.writeString(worktree.resolve(".git"), "gitdir: elsewhere\n");
+        writeLibrary(worktree, "elsewhere");
+        var third = materializer.materialize(new PathSource("./lib"));
+        assertThat(third.repoUrl()).isEqualTo(first.repoUrl());
     }
 
     @Test

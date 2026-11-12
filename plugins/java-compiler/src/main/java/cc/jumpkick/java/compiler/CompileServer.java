@@ -27,10 +27,10 @@ import org.jspecify.annotations.Nullable;
  * fixed pool, with the engine's commands read and its answers written on the command channel.
  *
  * <p>One JVM for every module of a build is the point. Each compile shares the JIT that every earlier
- * compile warmed, the jar indexes javac's file manager keeps, Zinc's stamps and the processor class
- * loaders, where a JVM per module paid for all of them again. javac runs one compile on one thread,
- * so the pool has one thread per core the JVM sees — {@link Runtime#availableProcessors()}, which
- * honours a cgroup quota — unless the engine's {@code hello} names a count. Its threads are platform
+ * compile warmed, the jar indexes javac's file manager keeps, Zinc's stamps, the decoded producer
+ * analyses and the processor class loaders, where a JVM per module paid for all of them again.
+ * javac runs one compile on one thread, so the pool has one thread per core the JVM sees — {@link
+ * Runtime#availableProcessors()}, which honours a cgroup quota — unless the engine's {@code hello} names a count. Its threads are platform
  * threads with {@link #STACK_BYTES} of stack: javac recurses as deep as the source nests.
  *
  * <p>Every frame about a compile carries that compile's id, so the engine attributes diagnostics,
@@ -48,10 +48,13 @@ final class CompileServer {
     /** How often a {@link PluginProtocol#HEAP} reading goes out while the worker is up. */
     static final long HEAP_EVERY_MILLIS = 1_000L;
 
-    /** Runs one compile or plan from a spec file, sending its frames; returns its exit code. */
+    /**
+     * Runs one compile or plan from a spec file, reading producer analyses through the worker's
+     * cache and sending its frames; returns its exit code.
+     */
     @FunctionalInterface
     interface Compiler {
-        int run(boolean plan, Path spec, Consumer<String> emit) throws Exception;
+        int run(boolean plan, Path spec, ProducerAnalysisCache producers, Consumer<String> emit) throws Exception;
     }
 
     private final BufferedReader in;
@@ -61,6 +64,10 @@ final class CompileServer {
     private final AtomicInteger inflight = new AtomicInteger();
     private final AtomicInteger worst = new AtomicInteger();
     private final HeapGauge gauge = new HeapGauge(Clock.SYSTEM);
+
+    /** Every compile's and plan's decoded producer analyses, emptied by the idle trim. */
+    private final ProducerAnalysisCache producers = ProducerAnalysisCache.sizedToHeap();
+
     private @Nullable ExecutorService pool;
 
     /** Cancels that arrived before their compile, oldest first; a few thousand at most. */
@@ -171,7 +178,7 @@ final class CompileServer {
         Consumer<String> emit = json -> send.accept(withId(json, id));
         CompileCancel.bind(cancelled);
         try {
-            int code = compiler.run(plan, spec, emit);
+            int code = compiler.run(plan, spec, producers, emit);
             worst.accumulateAndGet(code, Math::max);
         } catch (Throwable t) {
             if (cancelled.get() || causedByCancel(t)) {
@@ -242,6 +249,7 @@ final class CompileServer {
         trimmer.execute(() -> {
             if (inflight.get() > 0) return;
             ZincJavaCompiler.forgetStamps();
+            producers.clear();
             System.gc();
             send.accept(JsonFields.object()
                     .string(PluginProtocol.T, PluginProtocol.TRIMMED)

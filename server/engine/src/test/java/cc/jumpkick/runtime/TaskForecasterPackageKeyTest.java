@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Which <em>facts</em> the two sides hash is not asserted here and must not be — the tests that
  * tried asserted two hand-typed {@code List.of(...)} literals in this file against each other,
- * never reading a token out of {@code PlannerPackage}, {@code PlannerTails} or
+ * never reading a token out of {@code PackageSteps}, {@code PlannerTails} or
  * {@link TaskForecaster}, and stayed green through six live drifts. That is the
  * {@code forecast-key-*} guard tests' in {@code server/engine/src/guard}, which hold every key to
  * the one {@code @KeyOwner} body both sides call.
