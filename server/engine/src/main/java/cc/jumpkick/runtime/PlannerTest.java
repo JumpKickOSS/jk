@@ -255,7 +255,7 @@ public final class PlannerTest {
                 ctx.require(PROJECT),
                 ctx.require(LAYOUT),
                 ctx.require(CLASSPATHS).testCompile(),
-                PlannerCompile.testGroovyJar(
+                ModuleClasspaths.groovyJar(
                         ctx.require(PROJECT),
                         ctx.require(LOCKFILE),
                         cas,

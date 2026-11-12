@@ -28,7 +28,6 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
@@ -218,15 +217,6 @@ public final class PlannerCompile {
                 groovy,
                 pluginContributedSources(layout, decls, ".groovy"),
                 BuildLogicSupport.generatedSources(layout, ".groovy"));
-    }
-
-    /**
-     * The Groovy jar the test compilers read beside a module's classes, for the build and the
-     * forecast alike: a module with Groovy main or test sources ({@code groovy}) needs it, every
-     * Groovy class implementing {@code groovy.lang.GroovyObject}; null for one without.
-     */
-    static @Nullable Path testGroovyJar(JkBuild project, Lockfile lock, Cas cas, boolean groovy) throws IOException {
-        return groovy ? CompileInputs.groovyCompileJar(project, lock, cas) : null;
     }
 
     /** compile-main's request — the build's javac invocation and the forecast's key, from one body. */

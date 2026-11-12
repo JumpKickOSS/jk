@@ -71,7 +71,7 @@ final class PlannerTestForecast {
                     s.project,
                     layout,
                     prepared.classpaths().testCompile(),
-                    PlannerCompile.testGroovyJar(
+                    ModuleClasspaths.groovyJar(
                             s.project,
                             prepared.parsed().lock(),
                             s.cas,

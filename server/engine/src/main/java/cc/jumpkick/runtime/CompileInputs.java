@@ -11,10 +11,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileToolchain;
-import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
@@ -149,25 +146,10 @@ final class CompileInputs {
                 : ModuleOutputs.compileOutputsOnDisk(actionCache, classes, stamp);
     }
 
-    /** The Groovy jar compile-java reads in a mixed Groovy module; null in any other. */
+    /** The Groovy jar compile-java reads in a mixed Groovy module ({@link ModuleClasspaths#groovyJar}); null in any other. */
     static @Nullable Path groovyJar(Module m) throws IOException {
-        return m.shape().mixedGroovy() ? groovyCompileJar(m.project(), m.lock(), m.cas()) : null;
-    }
-
-    /**
-     * The version-matched {@code groovy} jar for javac's classpath in a mixed module: every Groovy
-     * class implements {@code groovy.lang.GroovyObject}, so Java code referencing a Groovy type
-     * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
-     */
-    static Path groovyCompileJar(JkBuild project, Lockfile lock, Cas cas) throws IOException {
-        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
-        try {
-            RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
-            return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted resolving the Groovy compile jar", e);
-        }
+        return ModuleClasspaths.groovyJar(
+                m.project(), m.lock(), m.cas(), m.shape().mixedGroovy());
     }
 
     /**

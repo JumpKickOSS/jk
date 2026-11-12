@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileToolchain;
+import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Every classpath a module's compiles and tests read, derived once from its manifest, shape, lock
@@ -25,6 +30,9 @@ import java.util.Set;
  * so {@code jk explain} reproduces the build's keys after a clean. The derivation is pure: waiting
  * for or requiring a sibling, failing on an unresolved processor and fetching a plugin's jars are
  * the caller's ({@link Contributions}).
+ *
+ * <p>The version-matched Groovy jar compile-java and compile-test read beside a Groovy module's
+ * classes is resolved here too ({@link #groovyJar}), for the build and the forecast alike.
  *
  * @param main compile-main's classpath: the module's lock rows and those its siblings pass on, the
  *     siblings' classes trees, then the plugin-provided compile jars
@@ -216,5 +224,27 @@ record ModuleClasspaths(
             if (!cp.contains(classes)) cp.add(classes);
         }
         return cp;
+    }
+
+    /**
+     * The version-matched {@code groovy} jar the compilers read beside a Groovy module's classes,
+     * for the build and the forecast alike: every Groovy class implements {@code
+     * groovy.lang.GroovyObject}, so javac compiling Java against a Groovy type, and the test
+     * compilers of a module with Groovy main or test sources, resolve the supertype from it. Null
+     * when {@code groovy} is false: compile-java passes {@link ModuleShape#mixedGroovy}, compile-test
+     * whether the module has Groovy main or selected test sources. Warm after compile-groovy's setup
+     * (CAS-memoized).
+     */
+    @KeyOwner(step = {TaskNames.COMPILE_JAVA, TaskNames.COMPILE_TEST})
+    static @Nullable Path groovyJar(JkBuild project, Lockfile lock, Cas cas, boolean groovy) throws IOException {
+        if (!groovy) return null;
+        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
+        try {
+            RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
+            return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted resolving the Groovy compile jar", e);
+        }
     }
 }
