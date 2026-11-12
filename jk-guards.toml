@@ -1389,7 +1389,7 @@ reason = "one thread per HTTP exchange; each handler binds the request's session
 
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobEnvelope.java"
-reason = "the job body binds its own session inside the verb; the detached join reads none"
+reason = "the runner binds the job's request itself and the body its session inside the verb; the admit and detached-join threads read neither"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobWatchdog.java"

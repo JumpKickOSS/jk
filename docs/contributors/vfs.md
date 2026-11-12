@@ -103,7 +103,8 @@ NIO view.
 
 ## Lifetime
 
-Born with the job’s `IoLedger`. Unreachable after `IoLedger.close()`. No
+Born with the job’s `IoLedger`, which the job’s `Request` carries. Released
+when the job ends (`InputTrees.finishJob`, then `RequestScope.release`). No
 process-lifetime filesystem cache: the engine has **no idle timeout**, and a
 cross-job tree is how `target/` and editor saves go stale.
 
@@ -113,7 +114,7 @@ After the job, an explicit `System.gc()` on SerialGC is allowed so a tens-of-MiB
 tree does not sit until the next allocation spike. The contract is still
 reachability, not the GC call.
 
-Copy last-job VFS counters **before** `IoLedger.close()` (after close,
+Copy last-job VFS counters **before** the job’s request is unbound (outside it,
 `RequestScope.current()` is `UNSCOPED`).
 
 ## Bound: heap vs retain are different knobs
@@ -205,7 +206,7 @@ pool for the engine's lifetime.
 It never allocates a tree. It does not wait for a tree to free, and it does
 not start retaining mid-job (a half-built tree plus streamed walks is more
 code than it is worth). Jobs that already hold nodes keep them until they
-finish; their `IoLedger.close()` returns the bytes to the pool.
+finish; their `finishJob` returns the bytes to the pool.
 
 **Do not reject the job.** Exclusive-fingerprint “already running” is the only
 admission refusal. Stream-only is slower on Windows, still correct, and the
