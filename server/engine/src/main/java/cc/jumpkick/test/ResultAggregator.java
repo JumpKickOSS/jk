@@ -219,7 +219,10 @@ final class ResultAggregator {
             }
         } else {
             // Class (or suite) container wall — free duration_ms from the runner; no method walk.
-            if (!cls.isEmpty() && duration > 0 && "SUCCESSFUL".equals(status)) {
+            // Only the class's own container: a @ParameterizedTest or @TestFactory is a container
+            // inside it that names its method, and its wall is already in the class's. Added on
+            // top, LearnedHeapRetryTest's 40 s read 60 s.
+            if (!cls.isEmpty() && duration > 0 && "SUCCESSFUL".equals(status) && namesNoMethod(json)) {
                 classWallMs.merge(cls, duration, Long::sum);
             }
             if ("FAILED".equals(status)) {
@@ -395,6 +398,12 @@ final class ResultAggregator {
     }
 
     /** Class walls collected this worker (for parallel merge). */
+    /** Whether a container event is a class's own, not a method's (a template or factory) inside it. */
+    private static boolean namesNoMethod(String json) {
+        return methodOf(json).isEmpty()
+                && JUnitUniqueIds.methodOf(identityKey(json)).isEmpty();
+    }
+
     synchronized Map<String, Long> classWallMs() {
         return Map.copyOf(classWallMs);
     }
