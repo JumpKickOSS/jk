@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.plugin.MemoryHolds;
+import cc.jumpkick.runtime.StepEffort;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepLedger;
 import java.nio.file.Path;
@@ -41,6 +42,17 @@ final class RunStepLedger {
                 RunShapes.curvesOf(finished.requestId()),
                 RunShapes.workersOf(finished.requestId()),
                 samples);
+        StepEffort.learn(StepEffort.defaultFile(), effortSamples(samples));
+    }
+
+    /** The run's finished node steps and plugin goals, each with its measure in its module ({@link StepEffort}). */
+    static List<StepEffort.Sample> effortSamples(List<StepLedger.Sample> samples) {
+        List<StepEffort.Sample> out = new ArrayList<>();
+        for (StepLedger.Sample s : samples) {
+            if (!"SUCCESS".equals(s.status()) || !StepEffort.prices(s.step())) continue;
+            out.add(new StepEffort.Sample(s.step(), StepEffort.measure(s.step(), Path.of(s.dir())), s.ms()));
+        }
+        return out;
     }
 
     /**

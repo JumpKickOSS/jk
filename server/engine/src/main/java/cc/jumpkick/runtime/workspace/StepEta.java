@@ -7,6 +7,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.StepEffort;
 import cc.jumpkick.runtime.TestEffort;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
@@ -107,6 +108,7 @@ public final class StepEta {
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
         Calibration calibration = Calibration.load();
+        StepEffort effort = StepEffort.load();
         List<String> projectDirs =
                 plan.modules().stream().map(m -> m.dir().toString()).toList();
         for (TaskForecast.Module m : pricedModules(plan, distrust)) {
@@ -126,7 +128,8 @@ public final class StepEta {
                         timings,
                         projectDirs,
                         m,
-                        calibration);
+                        calibration,
+                        effort);
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
                 // A cold suite is priced for one JVM and re-priced at its dispatch share below.
@@ -322,7 +325,8 @@ public final class StepEta {
             StepTimings timings,
             List<String> projectDirs,
             TaskForecast.Module m,
-            Calibration calibration) {
+            Calibration calibration,
+            StepEffort effort) {
         String name = t.name();
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
@@ -343,6 +347,14 @@ public final class StepEta {
             return new Priced(ms, range[0], range[1], false, StepCost.Rung.REPLAY);
         }
         if (!runs) return Priced.exact(0, StepCost.Rung.TOKEN);
+        // A node step or plugin goal this module has no walls of: its kind on this host at its
+        // measure (StepEffort), or the cold set's price for it. Priced as a touch before, a 6 s
+        // node install and a 3.5 s AOT run each at 150 ms.
+        if (StepEffort.prices(name)) {
+            StepEffort.Price p = effort.price(name, StepEffort.measure(name, dir), calibration.effortScale());
+            if (p != null)
+                return Priced.spread(p.ms(), 0.5, 2.0, p.learned() ? StepCost.Rung.HOST : StepCost.Rung.CALIBRATION);
+        }
         if (name.startsWith("compile-") && t.status() != TaskForecast.Status.CACHED) {
             OptionalLong cold =
                     ledger.coldCompile(dir.toString(), name, status, shape, t.status() == TaskForecast.Status.PARTIAL);

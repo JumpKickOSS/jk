@@ -492,6 +492,11 @@ public final class Calibration {
         return hostScale(ratio(javacMs, REF_JAVAC_MS), ratio(hashCpuMs, REF_HASH_CPU_MS));
     }
 
+    /** The host's CPU scale for a reference price measured on the reference host ({@link StepEffort}). */
+    public double effortScale() {
+        return clampScale(cpuScale());
+    }
+
     /** Fork / suite-startup host scale (JVM spawn + JUnit Platform open). */
     double forkScale() {
         return hostScale(ratio(jvmForkMs, REF_JVM_FORK_MS), ratio(junitPlatformMs, REF_JUNIT_PLATFORM_MS));
