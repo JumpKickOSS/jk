@@ -358,7 +358,7 @@ class ForecastRunParityMatrixTest {
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas()));
         ForecastScope.Prepared prepared = s.prepared();
         ForecastScope.Parsed parsed = prepared.parsed();
-        CompileInputs.Module module = PlannerCompileForecast.compileInputs(s, prepared);
+        CompileInputs.Module module = CompileSteps.forecastInputs(s, prepared);
         BuildLayout layout = parsed.layout();
         String version = BuildIdentity.cacheKeyVersion();
         List<String> compiled = new ArrayList<>();

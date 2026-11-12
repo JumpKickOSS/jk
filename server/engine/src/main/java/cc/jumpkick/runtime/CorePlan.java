@@ -250,9 +250,10 @@ final class CorePlan {
         Task parseBuild = setup.parseBuild();
         Task syncDeps = setup.syncDeps();
         Task ensureJdk = setup.ensureJdk();
-        Task compileJava = PlannerCompile.compileJavaStep(cx, pluginDecls);
-        Task compileKotlin = PlannerCompile.compileKotlinStep(cx, pluginDecls);
-        Task compileGroovy = PlannerCompile.compileGroovyStep(cx, pluginDecls);
+        Task compileJava = new CompileSteps(cx, pluginDecls).compileJava();
+        LangCompileSteps langCompiles = new LangCompileSteps(cx, pluginDecls);
+        Task compileKotlin = langCompiles.compileKotlin();
+        Task compileGroovy = langCompiles.compileGroovy();
         Task copyResources = PlannerResources.copyResourcesStep(cx, pluginDecls);
         Task buildInfo =
                 parsedBuild != null && parsedBuild.build().buildInfo() != null ? PlannerBuildInfo.step(cx) : null;

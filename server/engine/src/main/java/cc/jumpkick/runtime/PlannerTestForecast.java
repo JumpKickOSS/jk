@@ -207,7 +207,7 @@ final class PlannerTestForecast {
         TestOutputs outs = TestOutputs.of(src, layout, testClasses);
         boolean javaTests = !src.javaTest().isEmpty();
         ForecastLangArms arms = s.arms();
-        CompileInputs.Module module = PlannerCompileForecast.compileInputs(s, prepared);
+        CompileInputs.Module module = CompileSteps.forecastInputs(s, prepared);
         if (!src.ktTest().isEmpty()) {
             String key = arms.kotlinTestKey(
                     module,

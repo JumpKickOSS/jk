@@ -2187,17 +2187,27 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 280, edges = 1022 }
+"server/engine" = { classes = 283, edges = 1043 }
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.CompileSteps"
+value  = 17
+reason = "PlannerCompile's compile steps become per-plan CompileSteps (compile-java) and LangCompileSteps (compile-kotlin, compile-groovy), each body beside its predictor, which takes PlannerCompile from 19 to under the cap and removes its three mutual pairs; the two step classes read the compile owners PlannerCompile and PlannerCompileForecast read between them, and CorePlan builds both"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
-value  = 24
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 25
+reason = "PlannerCompile's compile steps become per-plan CompileSteps (compile-java) and LangCompileSteps (compile-kotlin, compile-groovy), each body beside its predictor, which takes PlannerCompile from 19 to under the cap and removes its three mutual pairs; the two step classes read the compile owners PlannerCompile and PlannerCompileForecast read between them, and CorePlan builds both"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope"
 value  = 20
 reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LangCompileSteps"
+value  = 17
+reason = "PlannerCompile's compile steps become per-plan CompileSteps (compile-java) and LangCompileSteps (compile-kotlin, compile-groovy), each body beside its predictor, which takes PlannerCompile from 19 to under the cap and removes its three mutual pairs; the two step classes read the compile owners PlannerCompile and PlannerCompileForecast read between them, and CorePlan builds both"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.LockPipeline"
@@ -2212,11 +2222,6 @@ reason = "PlannerPackage becomes the per-plan PackageSteps and reaches the same 
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys"
 value  = 17
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-efferent-coupling.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
-value  = 19
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2266,7 +2271,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 279, edges = 1020 }
+"server/engine" = { classes = 283, edges = 1043 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2316,11 +2321,6 @@ reason = "the runtime packages as the coupling guard first measured them"
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.NativeEffort"
 value  = 2
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.PlannerCompile"
-value  = 6
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2449,16 +2449,6 @@ value  = 11
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.PlannerCompileForecast"
-value  = 4
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.StepWarnings"
-value  = 5
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp~cc.jumpkick.runtime.TestSources"
 value  = 3
 reason = "the runtime packages as the coupling guard first measured them"
@@ -2515,7 +2505,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 282, edges = 1029 }
+"server/engine" = { classes = 283, edges = 1043 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -2524,13 +2514,13 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 44
-reason = "the sibling waits leave the setup steps for SiblingWaits, which reads the plan's inputs and project key from BuildPlanner as PlannerSetup did, so BuildPlanner keeps the reader it had before the node steps folded into NodeArm"
+value  = 46
+reason = "the main compiles split into CompileSteps and LangCompileSteps, and both read the plan keys, the effort plan and the source walks that PlannerCompile read alone"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"
-value  = 30
-reason = "frozen higher on 2026-11-12: the step-priced estimate's StepEta, ExplainReport and resource phase read the module cost record it holds (EffortWeights.ModuleCost)"
+value  = 31
+reason = "the main compiles split into CompileSteps and LangCompileSteps, and both read the plan keys, the effort plan and the source walks that PlannerCompile read alone"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
@@ -2549,12 +2539,12 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.base.CompileSupport"
-value  = 27
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 29
+reason = "the main compiles split into CompileSteps and LangCompileSteps, and both read the plan keys, the effort plan and the source walks that PlannerCompile read alone"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.base.Perf"
-value  = 22
+value  = 21
 reason = "the runtime packages as the coupling guard first measured them"
 
 [schema-compared-to-its-constant]
