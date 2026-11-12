@@ -29,7 +29,6 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ResourceMirror;
-import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
@@ -42,37 +41,46 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * package-jar, freshness stamps, and mixed-module class assembly.
+ * One plan's packaging steps: {@code package-jar} with its predictor, the freshness stamps each
+ * compile leaves, and the class assembly of a mixed-language module. Built once per plan from what
+ * its {@link BuildPlanner.Ctx} holds.
  */
-public final class PlannerPackage {
+final class PackageSteps {
 
-    private PlannerPackage() {}
+    private final BuildPlanner.Inputs in;
+    private final Cas cas;
+    private final Supplier<EffortWeights.Plan> plan;
+    private final PluginBuild.StepTools tools;
+    private final boolean kotlinModule;
+    private final boolean groovyModule;
+    private final boolean mixedWithJava;
+    private final boolean mixed;
+    private final boolean mixedGroovy;
+    private final String mainCompile;
 
-    static Task packageJarStep(
-            BuildPlanner.Ctx cx,
+    PackageSteps(BuildPlanner.Ctx cx) {
+        this.in = cx.in();
+        this.cas = cx.cas();
+        this.plan = cx.plan();
+        this.tools = cx.tools();
+        this.kotlinModule = cx.kotlinModule();
+        this.groovyModule = cx.groovyModule();
+        this.mixedWithJava = cx.mixedWithJava();
+        this.mixed = cx.mixed();
+        this.mixedGroovy = cx.mixedGroovy();
+        this.mainCompile = cx.mainCompile();
+    }
+
+    Task packageJar(
             @Nullable ActivePlugin pluginActive,
             @Nullable PluginDeclarations pluginDecls,
             Map<String, String> variantSecrets,
             boolean multiRelease,
             boolean nodeStage) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean groovyModule = cx.groovyModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
         boolean javaStamp =
                 mixedWithJava || TaskNames.COMPILE_JAVA.equals(mainCompile) || (!kotlinModule && !groovyModule);
         return Task.builder(TaskNames.PACKAGE_JAR)
@@ -102,7 +110,7 @@ public final class PlannerPackage {
                                 ctx,
                                 in,
                                 cas,
-                                cx.tools(),
+                                tools,
                                 project,
                                 classes,
                                 jarPath,
@@ -209,7 +217,7 @@ public final class PlannerPackage {
      * package-jar's requires: BEFORE_PACKAGE build-logic (which itself waits on resources), every
      * before-PACKAGE plugin step, and the module's own node output when it has one.
      */
-    static String[] packageRequires(
+    private static String[] packageRequires(
             BuildPlanner.Inputs in,
             @Nullable PluginDeclarations decls,
             boolean useJava,
@@ -238,45 +246,42 @@ public final class PlannerPackage {
      * resolve-window work that does not consume classes (e.g. android-manifest feeds aapt2).
      */
     @KeyOwner(step = TaskNames.WRITE_STAMP, unpaired = "the stamp rides its compile; the forecast reads what it writes")
-    static Task writeStampStep(BuildPlanner.Ctx cx) {
-        Supplier<EffortWeights.Plan> plan = cx.plan();
+    Task writeStamp() {
         return Task.builder(TaskNames.WRITE_STAMP)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_JAVA)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
-                .execute(ctx -> writeStamp(ctx, JAVA_COMPILE, BuildStamps.JAVA, TaskNames.COMPILE_MAIN))
+                .execute(ctx -> stamp(ctx, JAVA_COMPILE, BuildStamps.JAVA, TaskNames.COMPILE_MAIN))
                 .build();
     }
 
     @KeyOwner(
             step = TaskNames.WRITE_STAMP_KOTLIN,
             unpaired = "the stamp rides its compile; the forecast reads what it writes")
-    static Task writeStampKotlinStep(BuildPlanner.Ctx cx) {
-        Supplier<EffortWeights.Plan> plan = cx.plan();
+    Task writeStampKotlin() {
         return Task.builder(TaskNames.WRITE_STAMP_KOTLIN)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_KOTLIN)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
-                .execute(ctx -> writeStamp(ctx, KOTLIN_COMPILE, BuildStamps.KOTLIN, TaskNames.COMPILE_KOTLIN))
+                .execute(ctx -> stamp(ctx, KOTLIN_COMPILE, BuildStamps.KOTLIN, TaskNames.COMPILE_KOTLIN))
                 .build();
     }
 
     @KeyOwner(
             step = TaskNames.WRITE_STAMP_GROOVY,
             unpaired = "the stamp rides its compile; the forecast reads what it writes")
-    static Task writeStampGroovyStep(BuildPlanner.Ctx cx) {
-        Supplier<EffortWeights.Plan> plan = cx.plan();
+    Task writeStampGroovy() {
         return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_GROOVY)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
-                .execute(ctx -> writeStamp(ctx, GROOVY_COMPILE, BuildStamps.GROOVY, TaskNames.COMPILE_GROOVY))
+                .execute(ctx -> stamp(ctx, GROOVY_COMPILE, BuildStamps.GROOVY, TaskNames.COMPILE_GROOVY))
                 .build();
     }
 
@@ -285,8 +290,8 @@ public final class PlannerPackage {
      * inputs, token lines, option digest and clock) and the action key its tree is held against,
      * unless it compiled nothing.
      */
-    private static void writeStamp(
-            TaskContext ctx, BuildPlanKey<CompileStamp> compiled, String stampName, String taskId) throws IOException {
+    private static void stamp(TaskContext ctx, BuildPlanKey<CompileStamp> compiled, String stampName, String taskId)
+            throws IOException {
         CompileStamp stamp = ctx.require(compiled);
         if (stamp.settled()) {
             ctx.label("stamp unchanged");
@@ -308,20 +313,7 @@ public final class PlannerPackage {
         ctx.progress(1);
     }
 
-    static Task assembleClassesStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
-        boolean mixedGroovy = cx.mixedGroovy();
+    Task assembleClasses() {
         List<String> requires = new ArrayList<>();
         requires.add(TaskNames.COMPILE_JAVA);
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
@@ -364,7 +356,7 @@ public final class PlannerPackage {
     }
 
     /** Whether the compile that publishes {@code compiled} left the classes tree as it was; false when it did not run. */
-    static boolean settled(TaskContext ctx, BuildPlanKey<CompileStamp> compiled) {
+    private static boolean settled(TaskContext ctx, BuildPlanKey<CompileStamp> compiled) {
         return ctx.get(compiled).map(CompileStamp::settled).orElse(false);
     }
 
@@ -376,7 +368,7 @@ public final class PlannerPackage {
      * record and the resource roots (the same merge the live build produces), so a wiped module
      * still hits the packaging cache. A plugin that owns packaging is priced by its packager's key.
      */
-    static TaskForecast.@Nullable Task forecastJar(ForecastScope s) throws Exception {
+    private TaskForecast.@Nullable Task forecastJar(ForecastScope s) throws Exception {
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
         BuildLayout layout = prepared.parsed().layout();

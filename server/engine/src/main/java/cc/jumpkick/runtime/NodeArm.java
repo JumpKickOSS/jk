@@ -446,7 +446,7 @@ final class NodeArm {
                             List.of(jar),
                             !in.ephemeralActions(),
                             List.of());
-                    PlannerPackage.writeSidecarPom(project, layout, jar);
+                    PackageSteps.writeSidecarPom(project, layout, jar);
                     ctx.put(BUILD_OUTCOME, "built");
                     ctx.progress(1);
                 })

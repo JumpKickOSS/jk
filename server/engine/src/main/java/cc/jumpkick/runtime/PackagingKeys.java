@@ -585,7 +585,7 @@ public final class PackagingKeys {
 
     /**
      * Whether a plugin packs this module's main artifact instead of jk's {@code JarPackager}.
-     * This is {@code PlannerPackage.packageJarStep}'s own dispatch, spelled once so the forecast
+     * This is {@code PackageSteps.packageJar}'s own dispatch, spelled once so the forecast
      * asks exactly the question the build answers.
      */
     static boolean ownsPackaging(ActivePlugins.@Nullable Declared plugins) {

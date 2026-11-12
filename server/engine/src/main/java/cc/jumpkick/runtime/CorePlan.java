@@ -287,24 +287,24 @@ final class CorePlan {
                 pluginSteps.add(PlannerPlugin.pluginTask(cx, plugins.ownerOf(step), step, transform));
             }
         }
-        Task packageJar = PlannerPackage.packageJarStep(
-                cx,
+        PackageSteps packaging = new PackageSteps(cx);
+        Task packageJar = packaging.packageJar(
                 plugins == null ? null : plugins.packager(),
                 pluginDecls,
                 variantSecrets,
                 PlannerVersions.declared(parsedBuild),
                 nodeKind == NodeShape.Kind.SIDE_BY_SIDE && !in.testOnly());
-        Task writeStamp = PlannerPackage.writeStampStep(cx);
+        Task writeStamp = packaging.writeStamp();
         // Kotlin's freshness companion (cf. write-stamp for Java). Mirrors the
         // input set compile-kotlin checked: Kotlin sources, plus Java sources in
         // a mixed module. No action-cache key exists yet — the direct kotlinc
         // path leaves it empty until incremental Kotlin lands.
-        Task writeStampKotlin = PlannerPackage.writeStampKotlinStep(cx);
+        Task writeStampKotlin = packaging.writeStampKotlin();
         // Groovy's freshness companion, mirroring write-stamp-kotlin.
-        Task writeStampGroovy = PlannerPackage.writeStampGroovyStep(cx);
+        Task writeStampGroovy = packaging.writeStampGroovy();
         // Merge the per-language output dirs into the shared classes dir that
         // packaging, tests, and the run/native tails all read (mixed modules only).
-        Task assembleClasses = PlannerPackage.assembleClassesStep(cx);
+        Task assembleClasses = packaging.assembleClasses();
         return new Steps(
                 parseBuild,
                 syncDeps,
