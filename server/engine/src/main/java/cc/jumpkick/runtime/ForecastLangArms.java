@@ -174,7 +174,7 @@ final class ForecastLangArms {
     }
 
     /**
-     * The key compile-test's kotlinc pass runs under: the request {@code PlannerTest}'s Kotlin pass
+     * The key compile-test's kotlinc pass runs under: the request {@code TestCompileSteps}' Kotlin pass
      * builds, from the same facts. Null when the toolchain cannot be resolved read-only.
      */
     @Nullable
@@ -218,7 +218,7 @@ final class ForecastLangArms {
     }
 
     /**
-     * The key compile-test's groovyc pass runs under: the request {@code PlannerTest}'s Groovy pass
+     * The key compile-test's groovyc pass runs under: the request {@code TestCompileSteps}' Groovy pass
      * builds, from the same facts. Null when the toolchain cannot be resolved read-only.
      */
     @Nullable

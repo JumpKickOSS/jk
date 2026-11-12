@@ -263,7 +263,7 @@ final class CorePlan {
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), shape.compact());
         Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact());
-        Task compileTest = PlannerTest.compileTestStep(cx, hasFixtures, pluginDecls);
+        Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls).compileTest();
         // In testOnly plans no package path exists to anchor the freshness stamps, so
         // run-tests carries them in its requires — otherwise the target-closure prune drops
         // them and the edit→test loop re-runs the main compile every invocation.
@@ -280,7 +280,7 @@ final class CorePlan {
             if (shape.kotlin()) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
             if (shape.groovy()) testStampRequires.add(TaskNames.WRITE_STAMP_GROOVY);
         }
-        Task runTests = PlannerTest.runTestsStep(cx, pluginDecls, testStampRequires);
+        Task runTests = new TestSteps(cx, pluginDecls).runTests(testStampRequires);
         List<Task> pluginSteps = new ArrayList<>();
         TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
         if (plugins != null) {

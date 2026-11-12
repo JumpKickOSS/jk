@@ -8,9 +8,8 @@ import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The rules that decide a module's suite runs before any key is looked at, asked by the run
- * ({@code PlannerTest}) and its forecast ({@code PlannerTestForecast}) alike, so the two cannot
- * disagree on them.
+ * The rules that decide a module's suite runs before any key is looked at, asked by the run and
+ * its forecast ({@link TestSteps}) alike, so the two cannot disagree on them.
  */
 final class SuiteRunRules {
 

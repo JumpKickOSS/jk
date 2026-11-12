@@ -63,7 +63,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * How run-tests launches a module's suite: the JVM args and environment the fork gets, its runtime
  * classpath and worker count, the launch itself and its coverage report, and the markers a run
- * reads before it forks and leaves behind it. {@link PlannerTest} owns the step and the gate.
+ * reads before it forks and leaves behind it. {@link TestSteps} owns the step and {@link
+ * PlannerTest} the gate.
  */
 final class TestLaunch {
 
@@ -323,7 +324,13 @@ final class TestLaunch {
      * missed a Kotlin/Groovy-only named suite and the forked JVM lacked the runtime.
      */
     static List<Path> testRuntimeCpWithLanguageRuntimes(
-            TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, List<Path> testRtCp, List<Path> testSrcs) throws Exception {
+            TaskContext ctx,
+            boolean kotlinModule,
+            boolean groovyModule,
+            Cas cas,
+            List<Path> testRtCp,
+            List<Path> testSrcs)
+            throws Exception {
         int feature = JavaHomes.featureVersion(ctx.require(JAVA_HOME));
         List<Path> runtimeCp = new ArrayList<>(PlannerVersions.launchClasspath(
                 ctx.require(PROJECT),
@@ -334,10 +341,10 @@ final class TestLaunch {
         boolean ktTestSources = testSrcs.stream()
                 .anyMatch(p -> p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));
         boolean gvTestSources = testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
-        if (cx.kotlinModule() || ktTestSources) {
+        if (kotlinModule || ktTestSources) {
             runtimeCp.add(kotlinStdlib(ctx.require(PROJECT), ctx.require(LOCKFILE), cas));
         }
-        if (cx.groovyModule() || gvTestSources) {
+        if (groovyModule || gvTestSources) {
             for (Path jar : groovyRuntime(ctx.require(PROJECT), ctx.require(LOCKFILE), cas)) {
                 if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
             }
