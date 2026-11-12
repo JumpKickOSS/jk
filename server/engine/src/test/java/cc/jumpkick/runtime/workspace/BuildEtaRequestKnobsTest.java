@@ -11,6 +11,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.SettledHostCalibration;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
  * that plan is the one the request's goal and knobs make: the estimate prices what {@link
  * ModulePipeline} plans, not a default build of the same module.
  */
+@ExtendWith(SettledHostCalibration.class)
 class BuildEtaRequestKnobsTest {
 
     @TempDir

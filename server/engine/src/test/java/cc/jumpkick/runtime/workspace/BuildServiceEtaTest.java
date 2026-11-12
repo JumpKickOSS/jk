@@ -7,6 +7,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.SettledHostCalibration;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Path;
@@ -15,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The whole-build history prior: a sanity anchor for the seeded ETA, one-sided by design. */
 class BuildServiceEtaTest {
@@ -310,9 +313,12 @@ class BuildServiceEtaTest {
      * The step texts the forecaster writes for a consumer whose only dirtiness is a dependency's:
      * a compile hint and the steps that run only if that compile does. Each is the dependency's
      * consequence, so the module prices as a cascade recheck, not as its own edit with a suite.
+     * Priced against a private state dir and cache, so no other suite's history or calibration
+     * in the shared sandbox moves the weights.
      */
     @Test
-    void a_hinted_dependency_only_module_prices_as_a_cascade() throws Exception {
+    @ExtendWith(SettledHostCalibration.class)
+    void a_hinted_dependency_only_module_prices_as_a_cascade(@TempDir Path cache) throws Exception {
         Path core = Path.of("/ws/core");
         Path app = Path.of("/ws/app");
         var producer = new TaskForecast.Module(
@@ -360,8 +366,7 @@ class BuildServiceEtaTest {
                     List.of(producer, consumer), Map.of(core, Set.of(), app, Set.of(core)), 2, List.of());
             List<EffortWeights.ModuleCost> costs = SessionContext.where(
                     Session.defaults(),
-                    () -> BuildService.etaCostsFromExplainPlan(
-                            plan, Path.of("/tmp/jk-eta-hinted-cascade-test-cache"), 1, null, null, false, false, 0));
+                    () -> BuildService.etaCostsFromExplainPlan(plan, cache, 1, null, null, false, false, 0));
             EffortWeights.ModuleCost appCost =
                     costs.stream().filter(c -> c.dir().equals(app)).findFirst().orElseThrow();
             assertThat(appCost.testWeight()).as(compileText).isZero();
@@ -398,8 +403,7 @@ class BuildServiceEtaTest {
     }
 
     @Test
-    void cancelled_invocation_stats_do_not_seed_eta_priors(@org.junit.jupiter.api.io.TempDir Path dir)
-            throws Exception {
+    void cancelled_invocation_stats_do_not_seed_eta_priors(@TempDir Path dir) throws Exception {
         // Full success then a short cancelled (Ctrl-C) wall — okAcrossShapes / applyHistoryPrior
         // must keep the full-build average, not blend the truncated cancel.
         Path metrics = dir.resolve("metrics.json");
