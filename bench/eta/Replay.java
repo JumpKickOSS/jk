@@ -19,6 +19,7 @@
 // goes into the engine. Each is a pure function of the recorded seed and events.
 
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkSchedule;
@@ -55,6 +56,18 @@ public class Replay {
         final Map<Path, Double> frac = new HashMap<>();
         final Map<Path, Long> started = new HashMap<>();
         final Set<Path> done = new LinkedHashSet<>();
+        /** Per module, per step: {ticks the step declared, ticks it has reported}. */
+        final Map<Path, Map<String, long[]>> steps = new HashMap<>();
+        /** Per module: the plan's total ticks, as the last progress event stated it. */
+        final Map<Path, Long> den = new HashMap<>();
+        /** Per module: steps started and finished (any step but the suite and the tails). */
+        final Map<Path, Set<String>> preStarted = new HashMap<>();
+        final Map<Path, Set<String>> preFinished = new HashMap<>();
+        /** Per module: the suite's tick total, read when it first reports (the plan's ticks not yet spent). */
+        final Map<Path, Long> suiteTicks = new HashMap<>();
+        final Map<Path, Long> tailTicks = new HashMap<>();
+        final Map<Path, ModuleWorkCost> costOf = new HashMap<>();
+        final Map<Path, Long> reported = new HashMap<>();
 
         void seed(List<ModuleWorkCost> c, long r0, int conc, boolean serial, boolean pt, long at) {
             this.costs = c;
@@ -64,6 +77,7 @@ public class Replay {
             this.parallelTests = pt;
             this.seededAt = at;
             this.ideal0 = WorkSchedule.schedule(c, conc, serial, pt);
+            for (ModuleWorkCost m : c) costOf.put(m.dir(), m);
             this.weightToMs = ideal0 > 0 ? (double) r0 / ideal0 : MS_PER_WEIGHT;
         }
     }
@@ -186,6 +200,123 @@ public class Replay {
         }
     }
 
+    /**
+     * Ticks are spread evenly over a module's steps, which take very different times (a 6 s
+     * compile can carry 42% of a module's ticks ahead of its 80 s suite). This model reads each
+     * step's progress inside its own share of the module's price: the suite's ticks move the test
+     * weight, a packaging tail's the tail weight, every other step's the rest. A step not yet
+     * started counts as none done; the pre-suite part's tick total is the plan's, less the suite's
+     * and the tail's once they declare theirs.
+     */
+    static class V4 extends Residual {
+        final boolean globalScale;
+        final boolean timeAware;
+
+        V4(boolean globalScale, boolean timeAware) {
+            this.globalScale = globalScale;
+            this.timeAware = timeAware;
+        }
+
+        public String name() {
+            return (timeAware ? "V4" + (globalScale ? "c" : "d") : "V4" + (globalScale ? "a" : "b"))
+                    + " step-weighted" + (timeAware ? ", time floor" : "") + (globalScale ? ", global scale" : ", no global scale");
+        }
+
+        double scaleMs(State s) {
+            return globalScale ? s.weightToMs : MS_PER_WEIGHT;
+        }
+
+        double left(State s, ModuleWorkCost c, long now, double scale) {
+            int weight = c.weight();
+            if (weight <= 0) return 1.0 - s.frac.getOrDefault(c.dir(), 0.0);
+            Map<String, long[]> steps = s.steps.getOrDefault(c.dir(), Map.of());
+            long testTotal = 0, testDone = 0, tailTotal = 0, tailDone = 0, preDone = 0;
+            for (var e : steps.entrySet()) {
+                long[] t = e.getValue();
+                if (TaskNames.isRunTests(e.getKey())) {
+                    testTotal += t[0];
+                    testDone += t[1];
+                } else if (TaskNames.PACKAGING_TAILS.contains(e.getKey())) {
+                    tailTotal = Math.max(tailTotal, t[0]);
+                    tailDone = Math.max(tailDone, t[1]);
+                } else preDone += t[1];
+            }
+            long den = s.den.getOrDefault(c.dir(), 0L);
+            long preTotal = Math.max(preDone, den - testTotal - tailTotal);
+            int test = c.testWeight();
+            int tail = c.tailWeight();
+            int pre = Math.max(0, weight - test - tail);
+            double preLeft = preTotal <= 0 ? 1 : 1.0 - Math.min(1.0, preDone / (double) preTotal);
+            double testLeft = testTotal <= 0 ? 1 : 1.0 - Math.min(1.0, testDone / (double) testTotal);
+            double tailLeft = tailTotal <= 0 ? 1 : 1.0 - Math.min(1.0, tailDone / (double) tailTotal);
+            double leftW = pre * preLeft + test * testLeft + tail * tailLeft;
+            double share = leftW / weight;
+            if (!timeAware) return share;
+            Long start = s.started.get(c.dir());
+            if (start == null) return share;
+            double estMs = weight * scale;
+            double elapsed = Math.max(0, now - start);
+            double overrun = OVERRUN_SHARE * elapsed / estMs;
+            return Math.max(share, Math.min(overrun, 1.0 - Math.min(1.0, (preDone + testDone + tailDone) / (double) Math.max(1, den))));
+        }
+    }
+
+    static boolean pre(String task) {
+        return !TaskNames.isRunTests(task) && !TaskNames.PACKAGING_TAILS.contains(task);
+    }
+
+    /**
+     * V4 without the plan's tick budgets, which do not match what the steps report (parse-build
+     * declares 391 ticks and resolve-deps reports them; the suite declares methods and reports
+     * classes): the pre-suite part by the share of its started steps that finished, the suite by its
+     * reported ticks over the plan's ticks still unspent when it first reported, a tail by its own.
+     */
+    static final class V5 extends Residual {
+        final boolean globalScale;
+
+        V5(boolean globalScale) {
+            this.globalScale = globalScale;
+        }
+
+        public String name() {
+            return globalScale ? "V5a step-finished + suite ticks, global scale" : "V5b step-finished + suite ticks, no global scale";
+        }
+
+        double scaleMs(State s) {
+            return globalScale ? s.weightToMs : MS_PER_WEIGHT;
+        }
+
+        double left(State s, ModuleWorkCost c, long now, double scale) {
+            int weight = c.weight();
+            if (weight <= 0) return 1.0 - s.frac.getOrDefault(c.dir(), 0.0);
+            int test = c.testWeight();
+            int tail = c.tailWeight();
+            int pre = Math.max(0, weight - test - tail);
+            int started = s.preStarted.getOrDefault(c.dir(), Set.of()).size();
+            int finished = s.preFinished.getOrDefault(c.dir(), Set.of()).size();
+            // Steps not yet started are unknown: the share is held below 1 until the suite or a tail starts.
+            Map<String, long[]> steps = s.steps.getOrDefault(c.dir(), Map.of());
+            long testDone = 0, tailTotal = 0, tailDone = 0;
+            boolean suiteStarted = false;
+            for (var e : steps.entrySet()) {
+                if (TaskNames.isRunTests(e.getKey())) {
+                    testDone += e.getValue()[1];
+                    suiteStarted = true;
+                } else if (TaskNames.PACKAGING_TAILS.contains(e.getKey())) {
+                    tailTotal = Math.max(tailTotal, e.getValue()[0]);
+                    tailDone = Math.max(tailDone, e.getValue()[1]);
+                }
+            }
+            double preFrac = started == 0 ? 0 : (double) finished / started;
+            if (!suiteStarted && test > 0) preFrac = Math.min(preFrac, 0.9);
+            long suite = s.suiteTicks.getOrDefault(c.dir(), 0L);
+            double testLeft = suite <= 0 ? 1 : 1.0 - Math.min(1.0, testDone / (double) suite);
+            long tailT = s.tailTicks.getOrDefault(c.dir(), 0L);
+            double tailLeft = tailT <= 0 ? 1 : 1.0 - Math.min(1.0, tailDone / (double) tailT);
+            return (pre * (1 - preFrac) + test * testLeft + tail * tailLeft) / weight;
+        }
+    }
+
     static ModuleWorkCost scaleCost(ModuleWorkCost c, double left) {
         left = Math.max(0, left);
         return new ModuleWorkCost(
@@ -270,7 +401,18 @@ public class Replay {
         long wall = end - t0;
 
         V0 v0 = new V0();
-        List<Model> models = new ArrayList<>(List.of(v0, new V1(), new V2(true), new V2(false), new V3()));
+        List<Model> models = new ArrayList<>(List.of(
+                v0,
+                new V1(),
+                new V2(true),
+                new V2(false),
+                new V3(),
+                new V4(true, false),
+                new V4(false, false),
+                new V4(true, true),
+                new V4(false, true),
+                new V5(true),
+                new V5(false)));
         if (wanted != null) models.removeIf(m -> !wanted.contains(m.name().split(" ")[0]));
 
         State st = new State();
@@ -302,6 +444,21 @@ public class Replay {
                     if (dir != null && coord != null) dirOfCoord.put(coord.toString(), dir.toString());
                     if (dir != null) st.started.putIfAbsent(Path.of(dir.toString()), ts);
                 }
+                case "task-start" -> {
+                    String dir = dirOf(e, dirOfCoord);
+                    Object task = e.get("task");
+                    if (dir == null || task == null) break;
+                    long ticks = Math.max(0, num(e, "ticks"));
+                    st.steps.computeIfAbsent(Path.of(dir), k -> new LinkedHashMap<>())
+                            .computeIfAbsent(task.toString(), k -> new long[2])[0] = ticks;
+                    if (pre(task.toString())) st.preStarted.computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>()).add(task.toString());
+                }
+                case "task-finish" -> {
+                    String dir = dirOf(e, dirOfCoord);
+                    Object task = e.get("task");
+                    if (dir == null || task == null) break;
+                    if (pre(task.toString())) st.preFinished.computeIfAbsent(Path.of(dir), k -> new LinkedHashSet<>()).add(task.toString());
+                }
                 case "progress", "buildplan-start" -> {
                     String dir = dirOf(e, dirOfCoord);
                     long den = num(e, "denominator");
@@ -310,6 +467,32 @@ public class Replay {
                     Path p = Path.of(dir);
                     if (v0.rw != null) v0.rw.moduleProgress(p, f);
                     st.frac.put(p, f);
+                    st.den.put(p, den);
+                    Object task = e.get("task");
+                    long delta = num(e, "delta");
+                    if (task != null) {
+                        boolean suite = TaskNames.isRunTests(task.toString());
+                        boolean tail = TaskNames.PACKAGING_TAILS.contains(task.toString());
+                        Map<Path, Long> mine = suite ? st.suiteTicks : tail ? st.tailTicks : null;
+                        Map<Path, Long> other = suite ? st.tailTicks : st.suiteTicks;
+                        if (mine != null && !mine.containsKey(p)) {
+                            long unspent = Math.max(1, den - st.reported.getOrDefault(p, 0L) - other.getOrDefault(p, 0L));
+                            ModuleWorkCost c = st.costOf.get(p);
+                            // A suite and a tail run beside each other: until the other reports, it
+                            // keeps its weight's share of the unspent ticks.
+                            if (c != null && !other.containsKey(p)) {
+                                int self = suite ? c.testWeight() : c.tailWeight();
+                                int rest = suite ? c.tailWeight() : c.testWeight();
+                                if (self + rest > 0 && rest > 0) unspent = Math.max(1, unspent * self / (self + rest));
+                            }
+                            mine.put(p, unspent);
+                        }
+                    }
+                    if (delta > 0) st.reported.merge(p, delta, Long::sum);
+                    if (task != null && delta > 0) {
+                        st.steps.computeIfAbsent(p, k -> new LinkedHashMap<>())
+                                .computeIfAbsent(task.toString(), k -> new long[2])[1] += delta;
+                    }
                     st.started.putIfAbsent(p, ts);
                 }
                 case "module-finish" -> {
