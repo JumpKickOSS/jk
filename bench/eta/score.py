@@ -419,15 +419,15 @@ RUNG_MIN_STEPS = 5
 
 
 def step_kind(step: str) -> str:
-    """The kind of work a step is, which a rung's rates are kept per (JK-PMF9X)."""
+    """The kind of work a step is, as RungBias.kindOf keeps a rung's bias per."""
+    if step.startswith("compile-guard") or step.startswith("guard"):
+        return "guard"
     if step.startswith("compile-"):
         return "compile"
     if step.startswith("run-tests"):
         return "suite"
     if step.startswith("package-") or step in ("native-image", "write-image"):
         return "package"
-    if step.startswith("guard") or step == "compile-guard":
-        return "guard"
     return "other"
 
 

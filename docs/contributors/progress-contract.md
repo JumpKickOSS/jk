@@ -327,6 +327,12 @@ and the layer that set it (`StepCost.Rung`), narrowest first:
 | `CALIBRATION` | the host's calibration, for work never measured |
 | `TOKEN` | a touch: a cache restore or an order check |
 
+A price from a prior (`PROJECT`, `HOST`, `CALIBRATION`) is corrected by that rung's bias for the
+step's kind on this host (`RungBias`, `~/.jk/state/builds/rung-bias.txt`). Each finished run
+teaches it: per rung and kind, the median of `ln(wall / price)` over the run's priced steps of a
+second or more, moved 40% of the way into the bias (a key's first run sets it outright), the factor
+clamped to ¼–4×. So cold priors improve with every project the host builds.
+
 ## Measurement
 
 `bench/eta` holds the instrument: `score.py` scores a home's runs against their walls (seed error,

@@ -4,7 +4,10 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.runtime.base.RunShapes;
+import cc.jumpkick.runtime.base.RungBias;
 import cc.jumpkick.runtime.base.StepLedger;
+import cc.jumpkick.wire.runtime.StepCost;
+import cc.jumpkick.wire.runtime.WorkModel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +44,22 @@ final class RunStepLedger {
                 RunShapes.curvesOf(finished.requestId()),
                 RunShapes.workersOf(finished.requestId()),
                 samples);
+        RungBias.learn(RungBias.defaultFile(), pricedPairs(finished.requestId(), samples));
+    }
+
+    /**
+     * The run's steps that ran and that its seed priced: the rung that priced each, its price and its
+     * wall, which teach the host how far each prior layer misses ({@link RungBias}).
+     */
+    static List<RungBias.Pair> pricedPairs(long requestId, List<StepLedger.Sample> samples) {
+        List<RungBias.Pair> pairs = new ArrayList<>();
+        for (StepLedger.Sample s : samples) {
+            if (!"SUCCESS".equals(s.status())) continue;
+            StepCost c = EtaModels.priced(requestId, s.dir(), s.step());
+            if (c == null) continue;
+            pairs.add(new RungBias.Pair(c.rung(), s.step(), (long) c.weight() * WorkModel.MS_PER_WEIGHT, s.ms()));
+        }
+        return pairs;
     }
 
     /**

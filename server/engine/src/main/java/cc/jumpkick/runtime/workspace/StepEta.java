@@ -11,6 +11,7 @@ import cc.jumpkick.runtime.TestEffort;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunShapes;
+import cc.jumpkick.runtime.base.RungBias;
 import cc.jumpkick.runtime.base.StepLedger;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.SuiteSelection;
@@ -107,6 +108,7 @@ public final class StepEta {
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
         Calibration calibration = Calibration.load();
+        RungBias bias = RungBias.load();
         List<String> projectDirs =
                 plan.modules().stream().map(m -> m.dir().toString()).toList();
         for (TaskForecast.Module m : pricedModules(plan, distrust)) {
@@ -127,6 +129,7 @@ public final class StepEta {
                         projectDirs,
                         m,
                         calibration);
+                priced = priced.corrected(bias.factor(priced.rung(), t.name()));
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
                 // A cold suite is priced for one JVM and re-priced at its dispatch share below.
@@ -281,6 +284,15 @@ public final class StepEta {
 
         static Priced spread(long ms, double down, double up, StepCost.Rung rung) {
             return new Priced(ms, Math.round(ms * down), Math.round(ms * up), false, rung);
+        }
+
+        /**
+         * This price corrected by its rung's bias on this host ({@link RungBias}): how far that layer
+         * has missed for this kind of step in the runs since it was first used here.
+         */
+        Priced corrected(double factor) {
+            if (factor == 1) return this;
+            return new Priced(Math.round(ms * factor), Math.round(low * factor), Math.round(high * factor), cold, rung);
         }
 
         /** A first build's price from the host's calibration: half to twice, a suite for one JVM. */
