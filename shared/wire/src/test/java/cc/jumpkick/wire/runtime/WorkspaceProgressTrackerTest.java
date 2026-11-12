@@ -13,6 +13,8 @@ class WorkspaceProgressTrackerTest {
     @Test
     void without_r0_percent_is_weighted() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        // Long enough in that the pre-estimate pace (1% a second) no longer holds the weights back.
+        t.elapsedEpochNanos = System.nanoTime() - 200_000_000_000L;
         t.calibrate(100, 2);
         assertThat(t.progressStrategyId()).isEqualTo("weighted");
         t.moduleProgress("a", 40, 10, 40); // +10 of 100 execute
@@ -90,6 +92,7 @@ class WorkspaceProgressTrackerTest {
     @Test
     void preflight_advances_before_calibrate() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.elapsedEpochNanos = System.nanoTime() - 10_000_000_000L; // 10 s of preflight
         t.preflight("lock", 1, 1);
         assertThat(t.snapshot().phase()).isEqualTo("preflight");
         assertThat(t.snapshot().numerator()).isGreaterThan(0);

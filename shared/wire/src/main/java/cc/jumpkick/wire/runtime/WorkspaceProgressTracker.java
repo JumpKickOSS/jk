@@ -384,15 +384,28 @@ public final class WorkspaceProgressTracker {
     /** How long into execute the bar waits for the estimate before it follows the weights after all. */
     static final long PRE_ESTIMATE_HOLD_MS = 5_000;
 
+    /**
+     * Until the estimate arrives the bar moves at most this share of itself per ms elapsed: 1% a
+     * second, as if the build took 100 s. Preflight's band is a tenth of the bar and execute's first
+     * weights add to it, yet preflight is a second of a minute's build: a 58 s test run read 17% at
+     * 1.4 s, when its estimate came, and the peak hold kept the bar there for 9.5 s while the clock
+     * caught up (16% of the wall; 40 s of an integration run's 243 s). A cold first build whose
+     * preflight resolves for two minutes still climbs its band.
+     */
+    static final double PRE_ESTIMATE_SHARE_PER_MS = 0.01 / 1_000;
+
     private Snapshot storeWeightAndStrategy(long weightNum, long weightDen, String phase) {
-        if (!settled
+        boolean awaitingEstimate = !settled
                 && annotatedR0ms <= 0
-                && executeStartElapsedMs >= 0
-                && elapsedClockMs - executeStartElapsedMs < PRE_ESTIMATE_HOLD_MS
-                && weightDen > PREFLIGHT_UNITS) {
+                && (executeStartElapsedMs < 0 || elapsedClockMs - executeStartElapsedMs < PRE_ESTIMATE_HOLD_MS);
+        if (awaitingEstimate && executeStartElapsedMs >= 0 && weightDen > PREFLIGHT_UNITS) {
             // Execute's share only: the preflight already done stays on the bar.
             long executeCap = Math.round((weightDen - PREFLIGHT_UNITS) * PRE_ESTIMATE_SHARE);
             weightNum = Math.min(weightNum, preflightNum + executeCap);
+        }
+        if (awaitingEstimate && weightDen > 0) {
+            double share = Math.min(1.0, elapsedClockMs * PRE_ESTIMATE_SHARE_PER_MS);
+            weightNum = Math.min(weightNum, Math.round(weightDen * share));
         }
         HeaderProgressStrategy strat = mode.select(clock, weighted, annotatedR0ms, annotatedRemainingMs);
         // residualRemainingMs: private bar estimate (RemainingWork); -1 until first noteRemaining.

@@ -50,6 +50,20 @@ class WorkspaceProgressTrackerPreEstimateTest {
     }
 
     @Test
+    void the_bar_waiting_for_its_estimate_moves_no_faster_than_a_hundred_second_build_would() {
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker(ProgressBarMode.AUTO, ticker);
+        t.preflight("sync", 0, 1);
+        nanos.addAndGet(900 * 1_000_000L);
+        assertThat(t.preflightComplete().percent())
+                .as("a second's preflight of a minute's build is not a tenth of it")
+                .isLessThanOrEqualTo(1.0);
+        nanos.addAndGet(60_000 * 1_000_000L);
+        assertThat(t.preflightComplete().percent())
+                .as("a cold first build's long preflight still fills its band")
+                .isGreaterThan(9.0);
+    }
+
+    @Test
     void an_estimate_that_never_comes_lets_the_weights_through_after_a_moment() {
         WorkspaceProgressTracker t = tracker();
         t.moduleProgress("a", 400, 400, 400);
