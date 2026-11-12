@@ -197,9 +197,16 @@ public final class StepLedger {
 
     /**
      * {@code step}'s wall in {@code dir} under {@code status}, for a run of {@code shape} whose
-     * frontier is {@code frontier}: the median of the latest same-frontier samples, else of the
-     * latest samples under the same shape; empty when the ledger has none. A filtered suite has no
-     * price here: its selected classes' walls are its price.
+     * frontier is {@code frontier}: the median of the latest samples from runs of the same shape
+     * (profile, forced, filtered) and frontier, else of the same shape, else of runs that differ
+     * only where the step does not care (a suite keeps to its profile and is never priced from a
+     * filtered run; a compile or native image keeps to forced or not), each rung same frontier
+     * first. Empty when the ledger has none. A filtered suite has no price here: its selected
+     * classes' walls are its price.
+     *
+     * <p>The whole shape comes first because it carries the run's load as well as its work: a
+     * guard in a forced build ran beside every compile at once and took four times its wall in a
+     * filtered test run, and a forced integration run's guard is neither.
      */
     public OptionalLong price(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
         boolean suite = TaskNames.isRunTests(step);
@@ -207,19 +214,32 @@ public final class StepLedger {
         List<Indexed> rows = index.getOrDefault(key(dir, step, status), List.of());
         if (rows.isEmpty()) return OptionalLong.empty();
         boolean forcedMatters = step.startsWith("compile-") || TaskNames.NATIVE_IMAGE.equals(step);
+        List<Long> sameShapeFrontier = new ArrayList<>();
+        List<Long> sameShape = new ArrayList<>();
         List<Long> same = new ArrayList<>();
         List<Long> any = new ArrayList<>();
         for (int i = rows.size() - 1; i >= 0; i--) {
             Indexed r = rows.get(i);
             RunShapes.Shape s = r.run().shape();
+            boolean frontierMatches = r.run().frontier().equals(frontier);
+            if (sameShape(s, shape)) {
+                if (sameShapeFrontier.size() < SAME_FRONTIER && frontierMatches) sameShapeFrontier.add(r.ms());
+                if (sameShape.size() < ANY_FRONTIER) sameShape.add(r.ms());
+            }
             if (suite && (s.filtered() || !s.profile().equals(shape.profile()))) continue;
             if (forcedMatters && s.forced() != shape.forced()) continue;
-            if (same.size() < SAME_FRONTIER && r.run().frontier().equals(frontier)) same.add(r.ms());
+            if (same.size() < SAME_FRONTIER && frontierMatches) same.add(r.ms());
             if (any.size() < ANY_FRONTIER) any.add(r.ms());
         }
-        if (!same.isEmpty()) return OptionalLong.of(median(same));
-        if (!any.isEmpty()) return OptionalLong.of(median(any));
+        for (List<Long> rung : List.of(sameShapeFrontier, sameShape, same, any)) {
+            if (!rung.isEmpty()) return OptionalLong.of(median(rung));
+        }
         return OptionalLong.empty();
+    }
+
+    /** Two runs of one shape: the same profile, forced or not, filtered or not. */
+    private static boolean sameShape(RunShapes.Shape a, RunShapes.Shape b) {
+        return a.profile().equals(b.profile()) && a.forced() == b.forced() && a.filtered() == b.filtered();
     }
 
     private static long median(List<Long> values) {

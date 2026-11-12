@@ -73,6 +73,25 @@ class StepLedgerTest {
     }
 
     @Test
+    void any_step_is_priced_from_runs_of_its_own_shape_first(@TempDir Path home) {
+        RunShapes.Shape forcedBuild = new RunShapes.Shape("", true, false);
+        RunShapes.Shape forcedIntegration = new RunShapes.Shape("integration", true, false);
+        RunShapes.Shape filteredTest = new RunShapes.Shape("", false, true);
+        StepLedger.append(home, forcedBuild, List.of(new StepLedger.Sample("/ws/g", "guard", "SUCCESS", 69_000)));
+        StepLedger.append(home, forcedIntegration, List.of(new StepLedger.Sample("/ws/g", "guard", "SUCCESS", 40_000)));
+        StepLedger.append(home, filteredTest, List.of(new StepLedger.Sample("/ws/g", "guard", "SUCCESS", 15_000)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.price("/ws/g", "guard", "SUCCESS", forcedBuild, Set.of()))
+                .hasValue(69_000);
+        assertThat(ledger.price("/ws/g", "guard", "SUCCESS", filteredTest, Set.of()))
+                .hasValue(15_000);
+        assertThat(ledger.price("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of()))
+                .as("no run of the default shape: the latest runs of any")
+                .hasValue(40_000);
+    }
+
+    @Test
     void a_forced_compile_is_not_an_incremental_one(@TempDir Path home) {
         RunShapes.Shape forced = new RunShapes.Shape("", true, false);
         StepLedger.append(home, forced, List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 20_000)));
