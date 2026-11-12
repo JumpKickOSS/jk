@@ -26,6 +26,7 @@ population = { files = 2203 }
 [async-names-its-executor]
 [async-names-its-executor.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
+"server/io" = { classes = 78, sites = 4704 }
 
 [atomic-move-owner]
 [atomic-move-owner.populations]
@@ -730,7 +731,7 @@ population = { examined = 4 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1730, sites = 123327 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 59, sites = 3494 }
+"server/io" = { classes = 78, sites = 4704 }
 "server/resolver" = { classes = 123, sites = 7334 }
 "server/toolchain" = { classes = 205, sites = 15281 }
 "shared/client-io" = { classes = 106, sites = 5913 }
@@ -1121,14 +1122,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/guard"
 at     = "cc.jumpkick.guard.explain.SarifWriter#document(Ljava/nio/file/Path;Lcc/jumpkick/guard/rules/RuleSet;Lcc/jumpkick/guard/baseline/Baseline;Ljava/util/List;Ljava/util/List;)Ljava/util/Map; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.EffectivePomBuilder#awaitShared(Ljava/lang/String;Ljava/lang/String;Lcc/jumpkick/repo/EffectivePomBuilder$Flight;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.EffectivePomBuilder#build(Lcc/jumpkick/model/Coordinate;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/io"
@@ -2053,6 +2046,7 @@ reason = "engine-reachable static holders that predate this rule; the memo sweep
 [executors-through-jkthreads]
 [executors-through-jkthreads.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
+"server/io" = { classes = 78, sites = 4704 }
 
 [file-size]
 population = { units = 4145 }
@@ -2402,10 +2396,12 @@ population = { files = 4452 }
 [no-inheritable-thread-local]
 [no-inheritable-thread-local.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
+"server/io" = { classes = 78, sites = 4704 }
 
 [no-parallel-streams]
 [no-parallel-streams.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
+"server/io" = { classes = 78, sites = 4704 }
 
 [no-retired-code-markers]
 population = { files = 2306 }
@@ -2691,6 +2687,8 @@ population = { examined = 78 }
 
 [request-thread-carries-session]
 population = { files = 572 }
+[request-thread-carries-session.populations]
+"server/io" = { classes = 78, sites = 4704 }
 
 [retired-wire-keys]
 population = { files = 2335 }
@@ -2817,6 +2815,7 @@ population = { files = 1920 }
 [thread-local-owner]
 [thread-local-owner.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
+"server/io" = { classes = 78, sites = 4704 }
 
 [tree-copy-owner]
 population = { files = 2203 }
