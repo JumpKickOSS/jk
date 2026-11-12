@@ -699,11 +699,10 @@ final class JkManagerView {
         boolean indeterminate;
         synchronized (m.lock) {
             den = m.header.denominator();
-            sl = m.header.solveLabel();
+            // Before the estimate: the orb breathes beside the phase and the clock, and no bar is
+            // drawn, since none would be honest yet. The stage itself is the tree row below.
+            sl = m.header.headerLabel();
             indeterminate = m.header.indeterminate();
-            // Before the estimate: the orb breathes beside the stage and the clock, and no bar is
-            // drawn, since none would be honest yet.
-            if (indeterminate) sl = m.header.stageLabel();
         }
         boolean hasBar = !indeterminate && (barDen > 0 || den > 0);
         boolean phase1 = !hasBar && (indeterminate || !sl.isEmpty());
