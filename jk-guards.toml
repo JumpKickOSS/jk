@@ -801,6 +801,47 @@ matching = "cc.jumpkick.(**)"
 baseline = true
 why      = "a cyclic component has no edge anyone can name to cut, so the count is what the build defends"
 
+# G137. Two runtime classes may not reach into each other's members. A size cap met by peeling
+# statics into a sibling lowers line counts and leaves the coupling where it was, now across a file
+# boundary; the pairs of today are a baseline band that may only shrink, and a new pair is red.
+# Nested and lambda classes fold into their outer class; constants javac inlines leave no edge.
+[guards.runtime-mutual-classes]
+kind       = "coupling"
+measure    = "mutual"
+packages   = ["cc.jumpkick.runtime", "cc.jumpkick.runtime.base", "cc.jumpkick.runtime.workspace"]
+scope      = "server/engine"
+source-set = "main"
+baseline   = true
+fixture    = "server/guard/fixtures/runtime-mutual-classes"
+instead    = "merge the pair, or move what both need into a third class one of them owns, so the edge runs one way"
+why        = "two classes that call each other are one class split by line count, and neither can change alone"
+
+# G138. A runtime class may reach at most fifteen other runtime classes; today's wider ones are a
+# baseline band that may only shrink.
+[guards.runtime-efferent-coupling]
+kind       = "coupling"
+measure    = "efferent"
+packages   = ["cc.jumpkick.runtime", "cc.jumpkick.runtime.base", "cc.jumpkick.runtime.workspace"]
+cap        = 15
+scope      = "server/engine"
+source-set = "main"
+baseline   = true
+instead    = "hand the class the values it reads instead of the classes that compute them, or split it by the callers it serves"
+why        = "a class that reaches everything is rebuilt by every change and understood by no one"
+
+# G139. A static-only runtime holder may be reached by at most fifteen runtime classes; today's wider
+# ones are a baseline band that may only shrink.
+[guards.runtime-static-holder-fan-in]
+kind       = "coupling"
+measure    = "static-fan-in"
+packages   = ["cc.jumpkick.runtime", "cc.jumpkick.runtime.base", "cc.jumpkick.runtime.workspace"]
+cap        = 15
+scope      = "server/engine"
+source-set = "main"
+baseline   = true
+instead    = "move the functions to the type whose data they read, so callers depend on that type rather than a namespace"
+why        = "a static holder everything leans on is a namespace for functions that belong with their data"
+
 # G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway
 # enforces nullness only where the package says so, and a package that forgets the marker is a
 # package where every finding is silently off. The scope is every module NullMarking.enforcedRoots

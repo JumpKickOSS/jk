@@ -999,6 +999,9 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G134 | a parallel stream, `.parallel()`, `ForkJoinPool.commonPool()`, a `RecursiveAction`/`RecursiveTask`/`CountedCompleter` or an `Arrays.parallel*` in engine-reachable main code: the work runs on the common pool, where no carried value reaches; `ParallelMap` fans out on `JkThreads.cpu()` instead | ban; the tree delete's fork-join walk on its filesystem-sized pool is an allow entry | `no-parallel-streams` (forbid) |
 | G135 | a `CompletableFuture` async stage (`supplyAsync`, `runAsync`, `then*Async`, `handleAsync`, `whenCompleteAsync`) without an executor in engine-reachable main code | ban, no allowlist | `async-names-its-executor` (forbid) |
 | G136 | an `Executors.new*`, `new ForkJoinPool` or `new ThreadPoolExecutor` outside `JkThreads` in engine-reachable main code: a private pool carries nothing of a request unless every task is wrapped by hand | forbid, owner `JkThreads` probed every run; the engine-lifetime timers, the per-connection executors, the member solves (which wrap each task) and the delete pool are allow entries | `executors-through-jkthreads` (forbid) |
+| G137 | two top-level classes of server/engine's runtime packages (`cc.jumpkick.runtime`, `.base`, `.workspace`) that each reference the other's members: the size cap met by peeling statics into a sibling lowers line counts and leaves the coupling where it was. Nested and lambda classes fold into their outer class; a constant javac inlines leaves no edge | ratchet, metric per pair (the two weights summed), baselined; a new pair is red | `runtime-mutual-classes` (coupling) |
+| G138 | a runtime class reaching more than fifteen other runtime classes | ratchet, metric per class, baselined | `runtime-efferent-coupling` (coupling) |
+| G139 | a static-only runtime holder (no instance field, every method static, constructors private) reached by more than fifteen runtime classes | ratchet, metric per holder, baselined | `runtime-static-holder-fan-in` (coupling) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1093,6 +1096,9 @@ by id, kind and why. This block is a `generated` guard's rendering
 | request-thread-carries-session | forbid | a bare thread reads the default session, not the request's |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |
+| runtime-efferent-coupling | coupling | a class that reaches everything is rebuilt by every change and understood by no one |
+| runtime-mutual-classes | coupling | two classes that call each other are one class split by line count, and neither can change alone |
+| runtime-static-holder-fan-in | coupling | a static holder everything leans on is a namespace for functions that belong with their data |
 | schema-compared-to-its-constant | text | G85 pins the constant and nothing pinned the comparisons against it |
 | schema-freeze | text | a bump before 1.0 mints a dual reader with no users |
 | scoped-value-carried | text | a scoped value nobody carries reads as unbound on the first pool thread the work reaches |

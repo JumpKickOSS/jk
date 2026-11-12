@@ -2195,6 +2195,473 @@ population = { files = 2335 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 "shared/wire" = { classes = 246, sites = 12211 }
 
+[runtime-efferent-coupling]
+[runtime-efferent-coupling.populations]
+"server/engine" = { classes = 272, edges = 1020 }
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
+value  = 26
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope"
+value  = 22
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockPipeline"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys"
+value  = 19
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
+value  = 21
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompileForecast"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp"
+value  = 17
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerNative"
+value  = 17
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPackage"
+value  = 17
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSetup"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport"
+value  = 21
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTails"
+value  = 23
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTest"
+value  = 38
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTestForecast"
+value  = 17
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PluginBuild"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.TestLaunch"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspaceFinalPhase"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-efferent-coupling.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspaceRunPhase"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+
+[runtime-mutual-classes]
+[runtime-mutual-classes.populations]
+"server/engine" = { classes = 272, edges = 1020 }
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildGraph~cc.jumpkick.runtime.PreflightMemo"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildLogicInputTokens~cc.jumpkick.runtime.BuildLogicSupport"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.CorePlan"
+value  = 18
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.PlannerTails"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.TestSupport"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.Calibration~cc.jumpkick.runtime.HostMetricsFile"
+value  = 54
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.Calibration~cc.jumpkick.runtime.NativeEffort"
+value  = 7
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.DirtyMemoVariants~cc.jumpkick.runtime.PreflightMemo"
+value  = 8
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.NativeEffort"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.PlannerCompile"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.StepWalls"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.TestEffort"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights~cc.jumpkick.runtime.TestSupport"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastLanes~cc.jumpkick.runtime.TaskForecaster"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastLangArms~cc.jumpkick.runtime.ForecastScope"
+value  = 15
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastPackagingTails~cc.jumpkick.runtime.InstallPlans"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.ForecastSteps"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.KspForecast"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerCompile"
+value  = 7
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerFixtures"
+value  = 21
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerKsp"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.PlannerNode"
+value  = 8
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.TaskForecaster"
+value  = 18
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ForecastSteps~cc.jumpkick.runtime.TaskForecaster"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.GraphMemoEdges~cc.jumpkick.runtime.PreflightMemo"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.GuardFixtures~cc.jumpkick.runtime.GuardKeys"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.GuardKeys~cc.jumpkick.runtime.PlannerGuards"
+value  = 26
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.KspForecast~cc.jumpkick.runtime.PlannerKsp"
+value  = 10
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockClosures~cc.jumpkick.runtime.LockPipeline"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockClosures~cc.jumpkick.runtime.PlannerPlugin"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockClosures~cc.jumpkick.runtime.PluginBuild"
+value  = 14
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockPipeline~cc.jumpkick.runtime.LockPlans"
+value  = 16
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.LockPipeline~cc.jumpkick.runtime.ToolPins"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.MemoInputs~cc.jumpkick.runtime.PreflightMemo"
+value  = 9
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleFingerprints~cc.jumpkick.runtime.PreflightMemo"
+value  = 7
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PackagingKeys"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PlannerCompile"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.ModuleOutputs~cc.jumpkick.runtime.PlannerFixtures"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.NodeTestStamp~cc.jumpkick.runtime.PlannerSupport"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys~cc.jumpkick.runtime.PlannerPlugin"
+value  = 15
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PackagingKeys~cc.jumpkick.runtime.PlannerTails"
+value  = 11
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.PlannerCompileForecast"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.PlannerKsp"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile~cc.jumpkick.runtime.StepWarnings"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp~cc.jumpkick.runtime.PlannerSupport"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerKsp~cc.jumpkick.runtime.TestSources"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerNode~cc.jumpkick.runtime.PlannerNodeSteps"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPackage~cc.jumpkick.runtime.PlannerPlugin"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin~cc.jumpkick.runtime.PluginBuild"
+value  = 22
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerPlugin~cc.jumpkick.runtime.StepDiagnostics"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport~cc.jumpkick.runtime.PlannerTest"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport~cc.jumpkick.runtime.PlannerVersions"
+value  = 3
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport~cc.jumpkick.runtime.PluginBuild"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerTest~cc.jumpkick.runtime.TestLaunch"
+value  = 24
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PluginBuild~cc.jumpkick.runtime.ToolClosures"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.RestoredOutputs~cc.jumpkick.runtime.TaskForecaster"
+value  = 2
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.BuildEta~cc.jumpkick.runtime.workspace.BuildService"
+value  = 31
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.BuildService~cc.jumpkick.runtime.workspace.WorkspaceLock"
+value  = 6
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.GuardPackPins~cc.jumpkick.runtime.workspace.ManifestUpdates"
+value  = 5
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.ImagePlans~cc.jumpkick.runtime.workspace.ImageWrite"
+value  = 4
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-mutual-classes.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.workspace.ImagePlans~cc.jumpkick.runtime.workspace.NodeImagePlans"
+value  = 9
+reason = "the runtime packages as the coupling guard first measured them"
+
+[runtime-static-holder-fan-in]
+[runtime-static-holder-fan-in.populations]
+"server/engine" = { classes = 272, edges = 1020 }
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
+value  = 23
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
+value  = 46
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"
+value  = 27
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerCompile"
+value  = 20
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PlannerSupport"
+value  = 25
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.PluginBuild"
+value  = 25
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.RepoGroupBuilder"
+value  = 27
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.base.CompileSupport"
+value  = 28
+reason = "the runtime packages as the coupling guard first measured them"
+[[runtime-static-holder-fan-in.entries]]
+in     = "server/engine"
+unit   = "server/engine:cc.jumpkick.runtime.base.Perf"
+value  = 22
+reason = "the runtime packages as the coupling guard first measured them"
+
 [schema-compared-to-its-constant]
 population = { files = 4230 }
 
