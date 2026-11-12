@@ -633,6 +633,14 @@ public class Replay {
             return new double[] {total, finished};
         }
 
+        /** Whether the module's suite has any class recorded in the other runs (leave-one-out). */
+        boolean hasClassHistory(State s, Path dirPath) {
+            String step = shapeKey(TaskNames.RUN_TESTS, PROFILE.getOrDefault(run, ""), false);
+            Map<String, List<long[]>> hist =
+                    CLASS_HISTORY.getOrDefault(dirPath.toString(), Map.of()).getOrDefault(step, Map.of());
+            return hist.values().stream().flatMap(List::stream).anyMatch(r -> r[0] != runId);
+        }
+
         /** The module's running suite's share of class walls done, as {@link #suiteLeft} reads it. */
         double classShare(State s, Path dir) {
             double[] tf = classTotals(s, dir);
@@ -917,7 +925,9 @@ public class Replay {
                                 .put(cls.toString(), Math.max(0, num(e, "millis")));
                         // The engine's suite share reads the session's class walls; the replay's
                         // closest stand-in is the other runs' (leave-one-out) through V8's reading.
-                        if (v0.rw != null && v0.rw.steps(Path.of(dir))) {
+                        // A suite with no recorded class has no measure (SuiteClassProgress.UNKNOWN):
+                        // the engine leaves it on the clock rather than reading it as done.
+                        if (v0.rw != null && v0.rw.steps(Path.of(dir)) && v8.hasClassHistory(st, Path.of(dir))) {
                             v0.rw.suiteProgress(Path.of(dir), v8.classShare(st, Path.of(dir)));
                         }
                     }

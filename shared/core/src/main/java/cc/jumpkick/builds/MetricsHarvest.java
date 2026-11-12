@@ -24,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -377,10 +378,12 @@ public final class MetricsHarvest {
     /**
      * Rows a project ledger holds at most, per family: per-class test walls across every module's
      * table, and the scalar rows. Past the cap the best-sampled rows stay (most runs sampled, then
-     * key order), so a ledger is bounded by the project's shape, not by how many checkouts have
-     * built it.
+     * key order; class walls a whole suite at a time), so a ledger is bounded by the project's
+     * shape, not by how many checkouts have built it. The class cap holds every tier of a project
+     * the size of jk's own (about 2,100 classes across its default and integration tiers) with room
+     * to spare: a tier dropped for want of room is a suite the live countdown cannot follow.
      */
-    public static final int MAX_TEST_CLASS_ROWS = 2_000;
+    public static final int MAX_TEST_CLASS_ROWS = 10_000;
 
     public static final int MAX_OTHER_ROWS = 4_000;
 
@@ -459,8 +462,32 @@ public final class MetricsHarvest {
      * module order and class order: the best-sampled classes stay when there are too many.
      */
     static List<String> keptClassRows(Map<String, Long> sampled) {
-        List<String> kept =
-                new ArrayList<>(cap(new ArrayList<>(new TreeSet<>(sampled.keySet())), sampled, MAX_TEST_CLASS_ROWS));
+        if (sampled.size() <= MAX_TEST_CLASS_ROWS) {
+            List<String> all = new ArrayList<>(sampled.keySet());
+            all.sort(Comparator.naturalOrder());
+            return all;
+        }
+        // Whole suites or none: the live countdown reads a suite's progress as the share of its
+        // class walls done, and a suite cut down to its best-sampled classes reads as nearly done
+        // when its first unrecorded classes finish. A suite left out has no measure at all and its
+        // countdown runs on the clock, which is honest.
+        Map<String, List<String>> bySuite = new TreeMap<>();
+        Map<String, Long> best = new HashMap<>();
+        for (var e : sampled.entrySet()) {
+            String key = e.getKey();
+            int at = key.indexOf(CLASS_KEY_SEPARATOR);
+            String suite = at < 0 ? key : key.substring(0, at);
+            bySuite.computeIfAbsent(suite, k -> new ArrayList<>()).add(key);
+            best.merge(suite, e.getValue() == null ? 0L : e.getValue(), Math::max);
+        }
+        List<Map.Entry<String, List<String>>> suites = new ArrayList<>(bySuite.entrySet());
+        suites.sort(Comparator.<Map.Entry<String, List<String>>>comparingLong(e -> -best.getOrDefault(e.getKey(), 0L))
+                .thenComparing(Map.Entry::getKey));
+        List<String> kept = new ArrayList<>();
+        for (var suite : suites) {
+            List<String> rows = suite.getValue();
+            if (kept.size() + rows.size() <= MAX_TEST_CLASS_ROWS) kept.addAll(rows);
+        }
         kept.sort(Comparator.naturalOrder());
         return kept;
     }

@@ -459,7 +459,7 @@ public final class EffortWeights {
      * harvested walls come from the session's class-wall index, built once per aggregate window
      * over the same project-preferring aggregates every other learned weight reads.
      */
-    static Map<String, Long> loadClassWalls(String moduleDir, String step) {
+    public static Map<String, Long> loadClassWalls(String moduleDir, String step) {
         Map<String, Long> live = TestClassWalls.get(moduleDir, step);
         if (!live.isEmpty()) return live;
         if (moduleDir == null || moduleDir.isBlank()) return Map.of();

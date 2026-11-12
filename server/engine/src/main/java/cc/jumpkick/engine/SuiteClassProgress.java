@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,6 +14,9 @@ import java.util.Map;
  */
 final class SuiteClassProgress {
 
+    /** No measure of the suite's progress: its classes have no recorded walls. */
+    static final double UNKNOWN = -1;
+
     private final Map<String, Long> expected;
     private double total;
     private double done;
@@ -23,12 +27,21 @@ final class SuiteClassProgress {
         for (long ms : expected.values()) total += Math.max(0, ms);
     }
 
-    static SuiteClassProgress of(String moduleDir, String step) {
-        return new SuiteClassProgress(BuildMetrics.classWallsForSession().forModule(moduleDir, step));
+    /**
+     * The progress of {@code moduleDir}'s suite kept under {@code suiteStep}, the run's selection
+     * ({@code run-tests@all_integration}): its class walls are that tier's, not the default tier's.
+     */
+    static SuiteClassProgress of(String moduleDir, String suiteStep) {
+        return new SuiteClassProgress(EffortWeights.loadClassWalls(moduleDir, suiteStep));
     }
 
-    /** {@code className} finished in {@code millis}; the suite's share done (0..1). */
+    /**
+     * {@code className} finished in {@code millis}; the suite's share done (0..1), or {@link #UNKNOWN}
+     * when the suite has no recorded class to measure against: a share of classes nobody has timed
+     * says nothing about the rest, and read as a share the first class would finish the suite.
+     */
     synchronized double finished(String className, long millis) {
+        if (expected.isEmpty()) return UNKNOWN;
         if (finished.put(className, Boolean.TRUE) != null) return share();
         Long known = expected.get(className);
         if (known != null && known > 0) done += known;

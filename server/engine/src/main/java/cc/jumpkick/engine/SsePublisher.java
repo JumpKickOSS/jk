@@ -18,6 +18,8 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ErrorLineEvent;
@@ -261,9 +263,12 @@ public final class SsePublisher implements SseEvents {
         Path p = Path.of(dir);
         synchronized (rw) {
             if (!rw.steps(p)) return;
+            String suite =
+                    TaskNames.RUN_TESTS.equals(step) ? RunShapes.of(requestId).suite() : step;
             double f = suiteProgress
-                    .computeIfAbsent(requestId + "\n" + dir, k -> SuiteClassProgress.of(dir, step))
+                    .computeIfAbsent(requestId + "\n" + dir, k -> SuiteClassProgress.of(dir, suite))
                     .finished(className, millis);
+            if (f == SuiteClassProgress.UNKNOWN) return;
             rw.suiteProgress(p, f);
             tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
         }

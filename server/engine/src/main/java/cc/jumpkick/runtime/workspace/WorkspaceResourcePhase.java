@@ -11,6 +11,7 @@ import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.runtime.base.SuiteSelection;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
@@ -98,7 +99,8 @@ final class WorkspaceResourcePhase {
         var session = SessionContext.current();
         boolean forced = session.config().forceOr(false) || session.config().rebuildOr(false);
         boolean filtered = !session.testSelection().classes().isEmpty();
-        return new RunShapes.Shape(request.profile() == null ? "" : request.profile(), forced, filtered);
+        return new RunShapes.Shape(
+                request.profile() == null ? "" : request.profile(), forced, filtered, SuiteSelection.current());
     }
 
     /**

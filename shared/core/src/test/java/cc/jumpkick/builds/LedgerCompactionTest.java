@@ -85,15 +85,32 @@ class LedgerCompactionTest {
     }
 
     @Test
-    void class_wall_rows_are_capped_keeping_the_best_sampled_classes() {
+    void class_wall_rows_are_capped_a_whole_suite_at_a_time_keeping_the_best_sampled_suites() {
         Map<String, Long> counts = new LinkedHashMap<>();
-        for (int i = 0; i < MetricsHarvest.MAX_TEST_CLASS_ROWS + 50; i++) {
-            counts.put("m\u0000com.example.C" + String.format(Locale.ROOT, "%05d", i) + "Test", i < 50 ? 1L : 9L);
+        int big = MetricsHarvest.MAX_TEST_CLASS_ROWS - 10;
+        for (int i = 0; i < big; i++) {
+            counts.put("unit\u0000com.example.C" + String.format(Locale.ROOT, "%05d", i) + "Test", 9L);
         }
+        // A second suite that does not fit whole beside the first, and is never cut in part.
+        for (int i = 0; i < 40; i++) {
+            counts.put("it@integration\u0000com.example.I" + String.format(Locale.ROOT, "%05d", i) + "IT", 1L);
+        }
+        // A small one that fits in what is left.
+        for (int i = 0; i < 5; i++) counts.put("small\u0000com.example.S" + i + "Test", 2L);
+
         List<String> kept = MetricsHarvest.keptClassRows(counts);
-        assertThat(kept).hasSize(MetricsHarvest.MAX_TEST_CLASS_ROWS);
-        assertThat(kept).doesNotContain("m\u0000com.example.C00000Test");
-        assertThat(kept).contains("m\u0000com.example.C00050Test");
+
+        assertThat(kept).hasSize(big + 5);
+        assertThat(kept).noneMatch(k -> k.startsWith("it@integration"));
+        assertThat(kept).contains("small\u0000com.example.S4Test", "unit\u0000com.example.C00000Test");
+    }
+
+    @Test
+    void every_class_wall_is_kept_under_the_cap() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("b\u0000x.BTest", 1L);
+        counts.put("a\u0000x.ATest", 7L);
+        assertThat(MetricsHarvest.keptClassRows(counts)).containsExactly("a\u0000x.ATest", "b\u0000x.BTest");
     }
 
     @Test

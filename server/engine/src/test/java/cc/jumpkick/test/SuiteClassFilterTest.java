@@ -21,6 +21,23 @@ class SuiteClassFilterTest {
             Map.of("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase")));
 
     @Test
+    void class_patterns_select_by_the_runners_grammar() {
+        var bare = SuiteClassFilter.selects(List.of("TestEffortTest"));
+        assertThat(bare.test("cc.jumpkick.runtime.TestEffortTest")).isTrue();
+        assertThat(bare.test("cc.jumpkick.runtime.OtherTestEffortTest")).isFalse();
+
+        var qualified = SuiteClassFilter.selects(List.of("cc.jumpkick.runtime.TestEffortTest#weight"));
+        assertThat(qualified.test("cc.jumpkick.runtime.TestEffortTest")).isTrue();
+        assertThat(qualified.test("cc.jumpkick.other.TestEffortTest")).isFalse();
+
+        var wild = SuiteClassFilter.selects(List.of("Step*Test"));
+        assertThat(wild.test("cc.jumpkick.runtime.StepLedgerTest")).isTrue();
+        assertThat(wild.test("cc.jumpkick.runtime.LedgerTest")).isFalse();
+
+        assertThat(SuiteClassFilter.selects(List.of()).test("a.ATest")).isFalse();
+    }
+
+    @Test
     void the_default_suite_leaves_every_pattern_suite_class_out(@TempDir Path module) {
         SuiteClassFilter suites = SuiteClassFilter.of(module, false, List.of("test"), FAILSAFE);
         Pattern runs = runs(suites);

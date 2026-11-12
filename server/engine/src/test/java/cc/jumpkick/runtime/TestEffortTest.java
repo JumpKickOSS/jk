@@ -188,4 +188,15 @@ class TestEffortTest {
         // Median(2.0, 4.0) = 3.0 × MS_PER_WEIGHT — not the 999 host absolute.
         assertThat(ms).isEqualTo(3.0 * EffortWeights.MS_PER_WEIGHT);
     }
+
+    @Test
+    void a_class_filtered_suite_costs_its_jvm_and_the_classes_it_selects_and_nothing_where_it_selects_none() {
+        Map<String, Long> walls = Map.of("a.FastTest", 100L, "a.SlowTest", 9_000L, "b.FastTest", 300L);
+
+        long fast = TestEffort.selectedClassesMillis(walls, n -> n.endsWith(".FastTest"));
+        long none = TestEffort.selectedClassesMillis(walls, n -> n.endsWith(".MissingTest"));
+
+        assertThat(fast).isEqualTo(TestEffort.suiteStartupMs() + 400);
+        assertThat(none).as("the module skips without a test JVM").isZero();
+    }
 }

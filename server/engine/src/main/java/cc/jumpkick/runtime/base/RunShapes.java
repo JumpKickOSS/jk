@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.run.TaskNames;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -17,12 +18,22 @@ public final class RunShapes {
 
     private RunShapes() {}
 
-    /** One request's shape; the frontier is read from the finished run itself. */
-    public record Shape(String profile, boolean forced, boolean filtered) {
+    /**
+     * One request's shape; the frontier is read from the finished run itself. {@code suite} is the
+     * metrics name its {@code run-tests} is kept under ({@link SuiteSelection#step}): the live
+     * countdown reads the suite's class walls under it, since the integration tier's classes are
+     * not the default tier's.
+     */
+    public record Shape(String profile, boolean forced, boolean filtered, String suite) {
         public static final Shape DEFAULT = new Shape("", false, false);
 
         public Shape {
             profile = profile == null ? "" : profile;
+            suite = suite == null || suite.isBlank() ? TaskNames.RUN_TESTS : suite;
+        }
+
+        public Shape(String profile, boolean forced, boolean filtered) {
+            this(profile, forced, filtered, TaskNames.RUN_TESTS);
         }
     }
 

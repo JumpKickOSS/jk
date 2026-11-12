@@ -165,6 +165,18 @@ public final class SuiteClassFilter {
         return String.join("|", out);
     }
 
+    /**
+     * Whether a fully qualified class name is one {@code --class} {@code patterns} select, by the
+     * runner's own grammar (a dotted name is qualified, a bare one any package's, {@code *} any run
+     * of characters, a {@code #method} suffix its class); nothing when no pattern names a class.
+     */
+    public static Predicate<String> selects(List<String> patterns) {
+        String re = JUnitClassFilter.patternRegex(patterns);
+        if ("^()$".equals(re)) return name -> false;
+        Pattern pattern = Pattern.compile(re);
+        return name -> pattern.matcher(name).matches();
+    }
+
     /** Whether this run's suites run a class, by {@link #body}; always true when it keeps every class. */
     public Predicate<String> acceptor() {
         String body = body();

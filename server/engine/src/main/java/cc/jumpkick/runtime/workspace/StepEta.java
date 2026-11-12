@@ -8,12 +8,14 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.TestEffort;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepLedger;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.SuiteSelection;
+import cc.jumpkick.test.SuiteClassFilter;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.StepCost;
@@ -25,6 +27,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
@@ -156,6 +159,10 @@ final class StepEta {
             return EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT;
         }
         boolean runs = distrust || !t.cached();
+        if (runs && shape.filtered() && TaskNames.isRunTests(name)) {
+            OptionalLong narrowed = filteredSuiteMs(dir);
+            if (narrowed.isPresent()) return narrowed.getAsLong();
+        }
         String status = runs ? "SUCCESS" : "SKIPPED";
         var own = ledger.price(dir.toString(), name, status, shape, frontier);
         if (own.isPresent()) return own.getAsLong();
@@ -170,5 +177,21 @@ final class StepEta {
         EffortWeights.ModuleCost alone = EffortWeights.costFromRunningSteps(
                 dir, prereqs, List.of(metricsName), metrics, timings, projectDirs, counts);
         return (long) alone.weight() * EffortWeights.MS_PER_WEIGHT;
+    }
+
+    /**
+     * A {@code --class} run's suite in {@code dir}: its test JVM and the recorded walls of the
+     * classes the patterns select, or a touch when they select none of its classes (the module skips
+     * without a JVM). Empty when the module has no class walls to judge by. The suite's own wall is
+     * no price here: it is every class, and the run is a handful.
+     */
+    private static OptionalLong filteredSuiteMs(Path dir) {
+        Map<String, Long> walls = EffortWeights.loadClassWalls(dir.toString(), SuiteSelection.current());
+        if (walls.isEmpty()) return OptionalLong.empty();
+        long ms = TestEffort.selectedClassesMillis(
+                walls,
+                SuiteClassFilter.selects(
+                        SessionContext.current().testSelection().classes()));
+        return OptionalLong.of(ms > 0 ? ms : EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT);
     }
 }

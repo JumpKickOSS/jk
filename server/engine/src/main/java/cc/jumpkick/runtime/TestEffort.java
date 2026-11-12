@@ -9,6 +9,7 @@ import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.util.Collection;
 import java.util.Map;
 import java.util.OptionalDouble;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -205,6 +206,23 @@ public final class TestEffort {
 
     static long suiteStartupMs() {
         return suiteStartupMs(loadedCalibration());
+    }
+
+    /**
+     * The wall of a suite narrowed to the classes {@code selected} names ({@code --class}): its
+     * test JVM's startup and the recorded wall of each class it selects. Zero when no recorded class
+     * is selected: the module skips without a test JVM. What a full suite's history says is beside
+     * the point, the run measures only those classes.
+     */
+    public static long selectedClassesMillis(Map<String, Long> classWallsMs, Predicate<String> selected) {
+        long sum = 0;
+        boolean any = false;
+        for (var e : classWallsMs.entrySet()) {
+            if (!selected.test(e.getKey())) continue;
+            any = true;
+            sum += Math.max(0, e.getValue());
+        }
+        return any ? suiteStartupMs() + sum : 0;
     }
 
     /** {@link #suiteStartupMs} against a supplied calibration; {@code null} means the baseline. */
