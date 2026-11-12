@@ -157,6 +157,27 @@ class ForbidEvaluatorTest {
     }
 
     @Test
+    void a_method_allow_exempts_that_method_and_its_lambdas_only(@TempDir Path dir) throws Exception {
+        Evaluation digest = run(
+                dir,
+                "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\nallow = [{ in = \"cc.jumpkick.guard.extract.fixture.Sample#digest\", reason = \"the one digest\" }]\n");
+        assertThat(digest.outcome()).isEqualTo(Outcome.CLEAN);
+        Evaluation lambda = run(
+                dir,
+                "signatures = [\"java.lang.System#out\"]\nallow = [{ in = \"cc.jumpkick.guard.extract.fixture.Sample#lambda\", reason = \"its lambda prints\" }]\n");
+        assertThat(lambda.outcome())
+                .as("the print sits in a lambda javac compiled out of lambda()")
+                .isEqualTo(Outcome.CLEAN);
+        Evaluation other = run(
+                dir,
+                "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\nallow = [{ in = \"cc.jumpkick.guard.extract.fixture.Sample#get\", reason = \"not the site\" }]\n");
+        assertThat(other.outcome())
+                .as("another method of the class neither exempts the site nor earns its keep")
+                .isEqualTo(Outcome.STALE_ALLOW);
+        assertThat(other.observations()).hasSize(1);
+    }
+
+    @Test
     void a_typo_is_red_and_bundled_sets_resolve(@TempDir Path dir) throws Exception {
         // A type this module cannot see is nothing this module can reference: clean here, with no
         // bite evidence and the reason in the note — the tree lane reports the typo once no module bit.

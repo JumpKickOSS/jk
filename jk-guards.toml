@@ -1726,3 +1726,242 @@ reason = "live registry: the POM walks running now"
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.repo.EffectivePomBuilder#WAITING_ON"
 reason = "live registry: the threads parked on a running walk"
+
+# G130. A request's values reach other threads only as ScopedValues the propagator carries. An
+# InheritableThreadLocal copies whichever request happened to create a pool's thread into every task
+# that thread runs later, for the engine's life; there is no reason left to hold one.
+[guards.no-inheritable-thread-local]
+kind       = "forbid"
+signatures = ["java.lang.InheritableThreadLocal"]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/no-inheritable-thread-local"
+instead    = "a ScopedValue registered with ContextPropagator.carry, or a Request.Slot for a type above core"
+why        = "an inheritable thread-local hands a pool thread's first request to every task it runs after"
+
+# G131. A plain ThreadLocal in the resident engine outlives the request that set it on a pool thread
+# and is invisible to the next hop. The few that hold genuinely per-thread state are allow entries.
+[guards.thread-local-owner]
+kind       = "forbid"
+signatures = ["java.lang.ThreadLocal#<init>(**)", "java.lang.ThreadLocal#withInitial(**)"]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/thread-local-owner"
+instead    = "pass the state, bind a ScopedValue for the operation, or carry it with ContextPropagator.carry"
+why        = "a thread-local is left on a pool thread by one request and missing on the next thread the work hops to"
+
+[[guards.thread-local-owner.allow]]
+in     = "cc.jumpkick.mvn.ReactorModelResolver"
+reason = "the cycle check's stack of POMs being built on this thread: a recursion on one thread, empty again when it unwinds"
+
+[[guards.thread-local-owner.allow]]
+in     = "cc.jumpkick.guard.api.runtime.GuardExtension"
+reason = "the id of the guard method running on this test thread, set and cleared around it by asGuard"
+
+# G132. Every carried value is registered by the class that owns it, once, in its static
+# initializer. A registration anywhere else is a value carried by someone who does not own its
+# lifetime, and the snapshot every pool task takes grows by one more binding.
+[guards.carried-value-owners]
+kind       = "text"
+files      = ["server/*/src/main/java/**/*.java", "shared/*/src/main/java/**/*.java", "plugins/graph/src/main/java/**/*.java"]
+pattern    = 'ContextPropagator\.carry\('
+hit        = 'static { ContextPropagator.carry(LABEL); }'
+miss       = 'String label = ContextPropagator.get(LABEL);'
+fixture    = "server/guard/fixtures/carried-value-owners"
+instead    = "register the value in its owner's static initializer and add the owner's file here with what it carries"
+why        = "a carried value registered by a class that does not own it outlives the reason it was carried"
+
+[[guards.carried-value-owners.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/SessionContext.java"
+reason = "the bound session and request, pinned from the invocation's fallback on the submitting thread"
+
+[[guards.carried-value-owners.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/ManifestOverlay.java"
+reason = "the manifest texts an IDE or agent overlays on the files for one request"
+
+[[guards.carried-value-owners.allow]]
+in     = "shared/jk-api/src/main/java/cc/jumpkick/run/StepScope.java"
+reason = "the step a task reports to, and its locals"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/HeapScope.java"
+reason = "the heap key a forked worker learns its peak under"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java"
+reason = "the forecast's over-reserve flag for test tails"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java"
+reason = "the preflight's progress listener, told by every lane"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/NodeRun.java"
+reason = "the client's Node.js download bar for the run being planned"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/JavaCompile.java"
+reason = "the compile workers a forecast plans on"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/ClasspathFingerprint.java"
+reason = "a reader's classpath-entry memo, shared by its lanes"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/ProjectedFiles.java"
+reason = "the output trees a forecast projects instead of reading"
+
+# G133. A ScopedValue that work reads after a pool hop must be carried, or the hop reads it unbound.
+# Every one is registered with ContextPropagator.carry in its own file, or is an allow entry saying
+# why it never needs to leave the thread that bound it: one operation's binding, or a test seam.
+[guards.scoped-value-carried]
+kind     = "text"
+files    = ["server/*/src/main/java/**/*.java", "shared/*/src/main/java/**/*.java", "plugins/graph/src/main/java/**/*.java"]
+pattern  = '\b(\w+)=ScopedValue\.(?:<[^()]*>)?newInstance\(\)(?![\s\S]*ContextPropagator\.carry\(\1[,)])'
+hit      = 'private static final ScopedValue<String> LABEL = ScopedValue.newInstance();'
+miss     = 'private static final ScopedValue<String> LABEL = ScopedValue.newInstance(); static { ContextPropagator.carry(LABEL); }'
+fixture  = "server/guard/fixtures/scoped-value-carried"
+instead  = "ContextPropagator.carry(VALUE) in the owner's static initializer, read through ContextPropagator.get; a binding that never leaves its thread is an allow entry"
+why      = "a scoped value nobody carries reads as unbound on the first pool thread the work reaches"
+
+[[guards.scoped-value-carried.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/SessionContext.java"
+reason = "INVOCATION is the CLI invocation's own thread; what a pool task needs of it, the session, rides the carried binding pinned on the submitter"
+
+[[guards.scoped-value-carried.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/changes/ChangeJournal.java"
+reason = "test seam: the journal directory a test's writes on its own thread go to"
+
+[[guards.scoped-value-carried.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WorkerEnv.java"
+reason = "test seam: the environment a test's fork on its own thread filters instead of the engine's"
+
+[[guards.scoped-value-carried.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/git/JGitProxyRoute.java"
+reason = "one JGit operation's proxy route, read by the connection factory on the thread running that operation"
+
+# G134. A parallel stream, the common pool or a fork-join task of jk's own runs its work on threads
+# no request's carried values reach, and competes with the engine's pools for the cores. Work fans
+# out through JkThreads, ParallelMap included, which carries the submitter's values to every helper.
+[guards.no-parallel-streams]
+kind       = "forbid"
+signatures = [
+  "java.util.Collection#parallelStream(**)",
+  "java.util.stream.BaseStream#parallel(**)",
+  "java.util.concurrent.ForkJoinPool#commonPool(**)",
+  "java.util.concurrent.RecursiveAction",
+  "java.util.concurrent.RecursiveTask",
+  "java.util.concurrent.CountedCompleter",
+  "java.util.Arrays#parallelSort(**)",
+  "java.util.Arrays#parallelSetAll(**)",
+  "java.util.Arrays#parallelPrefix(**)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/no-parallel-streams"
+instead    = "cc.jumpkick.run.ParallelMap.map / forEach, or a task on a JkThreads pool"
+why        = "a parallel stream's helpers run on the common pool, where none of the request's carried values reach"
+
+[[guards.no-parallel-streams.allow]]
+in     = "cc.jumpkick.host.PathUtil$Wipe*"
+reason = "a tree delete forks a task per directory on DeleteParallelism's pool, sized to the filesystem; the tasks unlink files and read no carried value"
+
+# G135. An async stage without an executor runs on the common pool: off every JkThreads pool, with
+# none of the request's carried values, and sized by the core count whatever it waits on.
+[guards.async-names-its-executor]
+kind       = "forbid"
+signatures = [
+  "java.util.concurrent.CompletableFuture#supplyAsync(java.util.function.Supplier)",
+  "java.util.concurrent.CompletableFuture#runAsync(java.lang.Runnable)",
+  "java.util.concurrent.CompletableFuture#thenApplyAsync(java.util.function.Function)",
+  "java.util.concurrent.CompletableFuture#thenAcceptAsync(java.util.function.Consumer)",
+  "java.util.concurrent.CompletableFuture#thenRunAsync(java.lang.Runnable)",
+  "java.util.concurrent.CompletableFuture#thenComposeAsync(java.util.function.Function)",
+  "java.util.concurrent.CompletableFuture#handleAsync(java.util.function.BiFunction)",
+  "java.util.concurrent.CompletableFuture#whenCompleteAsync(java.util.function.BiConsumer)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/async-names-its-executor"
+instead    = "the overload that takes an executor: JkThreads.cpu() to compute, io() to wait on the network, platform() for a body that waits on other work"
+why        = "an async stage without an executor runs on the common pool, where none of the request's carried values reach"
+
+# G136. Threads come from JkThreads, whose pools carry every registered value onto each task. A pool
+# of one's own carries nothing unless every task is wrapped by hand; each one here is an allow entry
+# saying why its tasks need nothing of a request.
+[guards.executors-through-jkthreads]
+kind       = "forbid"
+signatures = [
+  "java.util.concurrent.Executors#newFixedThreadPool(**)",
+  "java.util.concurrent.Executors#newCachedThreadPool(**)",
+  "java.util.concurrent.Executors#newSingleThreadExecutor(**)",
+  "java.util.concurrent.Executors#newScheduledThreadPool(**)",
+  "java.util.concurrent.Executors#newSingleThreadScheduledExecutor(**)",
+  "java.util.concurrent.Executors#newWorkStealingPool(**)",
+  "java.util.concurrent.Executors#newThreadPerTaskExecutor(**)",
+  "java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor(**)",
+  "java.util.concurrent.ForkJoinPool#<init>(**)",
+  "java.util.concurrent.ThreadPoolExecutor#<init>(**)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+owner      = "cc.jumpkick.run.JkThreads"
+fixture    = "server/guard/fixtures/executors-through-jkthreads"
+instead    = "JkThreads.cpu() / io() / platform(); a pool that must stay private wraps each task with ContextPropagator.wrapCallable and is an allow entry"
+why        = "a pool of one's own carries no request onto its tasks unless each is wrapped by hand"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.resolver.MemberSolves"
+reason = "the member solves of one lock, bounded by the heap each needs; every task is wrapped by ContextPropagator on the submitting thread"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.host.DeleteParallelism"
+reason = "the tree-delete pool, sized to the filesystem rather than the cores; its tasks unlink files and read no carried value"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.EngineServer"
+reason = "one thread per client connection; each verb binds its request itself"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.http.HttpEngineServer"
+reason = "one thread per HTTP exchange; each handler binds its request itself"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.api.CoalescingBuildPlanListener"
+reason = "the shared progress timer and its flushers only hand coalesced events to the delegate"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.api.CoalescingLockPackages"
+reason = "the shared lock-progress timer only hands coalesced counts to the delegate"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.EngineMaintenance"
+reason = "the engine-lifetime maintenance ticks read config files, never a request"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.activity.ChangeNotices"
+reason = "the engine-lifetime poll of the change journal's file, never a request"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.http.LiveVitals"
+reason = "the engine-lifetime vitals publisher"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.engine.http.WriteDeadline"
+reason = "one watchdog thread for every response; it only interrupts a stuck write"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.http.StalledBodyGuard"
+reason = "one watchdog thread for every download body; it only closes a stalled stream"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.jsonl.BoundedLineReader"
+reason = "one watchdog thread for every protocol stream; it only closes an idle one"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.run.BuildPlan"
+reason = "the progress interpolation timer eases step bars forward and reads no request"
+
+[[guards.executors-through-jkthreads.allow]]
+in     = "cc.jumpkick.winhost.WindowsHostCheck"
+reason = "the host probes read the machine, never a request; the pool is shut down with the call so a hung probe is interrupted"

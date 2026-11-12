@@ -214,7 +214,7 @@ final class ForbidEvaluator implements Evaluator {
                 return;
             }
             if (Descriptors.outermost(s.owner()).equals(self)) return; // a class is never outside itself
-            if (exempt || allowed(c)) return;
+            if (exempt || allowed(c, m)) return;
             String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + s.target();
             sites.add(Observation.site(
                     fp,
@@ -232,7 +232,7 @@ final class ForbidEvaluator implements Evaluator {
                 return;
             }
             if (Descriptors.outermost(r.owner()).equals(self)) return;
-            if (exempt || allowed(c)) return;
+            if (exempt || allowed(c, m)) return;
             String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + r.target();
             sites.add(Observation.site(
                     fp,
@@ -249,7 +249,7 @@ final class ForbidEvaluator implements Evaluator {
                 ownerHasSite = true;
                 return;
             }
-            if (Descriptors.outermost(ref).equals(self) || classExempt || allowed(c)) return;
+            if (Descriptors.outermost(ref).equals(self) || classExempt || allowed(c, null)) return;
             sites.add(Observation.site(
                     c.binaryName() + " -> " + Descriptors.binaryName(ref),
                     source(ctx, c),
@@ -257,9 +257,9 @@ final class ForbidEvaluator implements Evaluator {
                     Descriptors.binaryName(ref) + " referenced from " + c.binaryName()));
         }
 
-        /** An allow entry covering {@code c} is marked used and the site is not recorded. */
-        private boolean allowed(ClassFacts c) {
-            Allow a = allowing(rule.allow(), c, ctx.module());
+        /** An allow entry covering {@code c}, or its method {@code m}, is marked used and the site is not recorded. */
+        private boolean allowed(ClassFacts c, @Nullable MethodFacts m) {
+            Allow a = allowing(rule.allow(), c, m, ctx.module());
             if (a == null) return false;
             allowUsed.put(a, true);
             return true;
@@ -479,6 +479,12 @@ final class ForbidEvaluator implements Evaluator {
      */
     static boolean appliesHere(Allow a, FactsIndex facts, EvalContext ctx) {
         String in = a.in();
+        int hash = in.indexOf('#');
+        if (hash >= 0) {
+            String owner = in.substring(0, hash);
+            for (ClassFacts c : facts.classList()) if (c.binaryName().equals(owner)) return true;
+            return false;
+        }
         String module = ctx.module();
         if (in.equals(module) || Rule.globMatches(in, module)) return true;
         boolean here = false;
@@ -509,6 +515,34 @@ final class ForbidEvaluator implements Evaluator {
             if (namesClass(in, binary, pkg)) return true;
         }
         return false;
+    }
+
+    /**
+     * The allow entry covering a site in {@code c}'s method {@code m}: one naming the method as {@code
+     * pkg.Class#method}, which covers the lambdas written in its body too, else one covering the class.
+     */
+    static @Nullable Allow allowing(List<Allow> allow, ClassFacts c, @Nullable MethodFacts m, String module) {
+        if (m != null) for (Allow a : allow) if (namesMethod(a.in(), c, m)) return a;
+        return allowing(allow, c, module);
+    }
+
+    /**
+     * Whether {@code in} is {@code pkg.Class#method} naming {@code m} of {@code c}, or a lambda javac
+     * compiled out of its body ({@code lambda$method$N}; a constructor's are {@code lambda$new$N}, a
+     * static initializer's {@code lambda$static$N}).
+     */
+    static boolean namesMethod(String in, ClassFacts c, MethodFacts m) {
+        int hash = in.indexOf('#');
+        if (hash < 0 || !in.substring(0, hash).equals(c.binaryName())) return false;
+        String method = in.substring(hash + 1);
+        if (m.name().equals(method)) return true;
+        String body =
+                switch (method) {
+                    case "<init>" -> "new";
+                    case "<clinit>" -> "static";
+                    default -> method;
+                };
+        return m.name().startsWith("lambda$" + body + "$");
     }
 
     /** The allow entry covering {@code c}: by module, class glob, or {@code pkg.*} / {@code pkg.**}. */
