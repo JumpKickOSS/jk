@@ -3,7 +3,6 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -70,7 +69,7 @@ public final class WorkspaceResolve {
             } catch (JkBuildParseException e) {
                 if (module.project().inheritsFromWorkspace()
                         || module.project().requiresWorkspaceRoot()
-                        || hasWorkspaceDeps(module)) {
+                        || WorkspaceMerge.hasWorkspaceDeps(module)) {
                     throw e;
                 }
                 return module;
@@ -84,17 +83,11 @@ public final class WorkspaceResolve {
             // Conditioned plugin contributions (kotlin-project, …) were folded pre-inheritance;
             // re-evaluate them now that the project is concrete (idempotent).
             module = JkBuildParser.reapplyPlatformContributions(moduleDir, module);
-            Collection<JkBuild> siblings;
-            try {
-                siblings = WorkspaceLoader.loadModules(rootDir.get(), root).values();
-            } catch (UserConfigParseException unparsed) {
-                throw unparsed; // config.toml's own error, with its position — never this site's fallback
-            } catch (JkBuildParseException e) {
-                // Identity is already resolved from the root above; only workspace:<name>
-                // placeholders still need the sibling list.
-                if (hasWorkspaceDeps(module)) throw e;
-                return module;
-            }
+            // Only workspace:<name> placeholders need the sibling list, and only a member naming one
+            // is entitled to fail for a sibling's error; a member naming none is done.
+            if (!WorkspaceMerge.hasWorkspaceDeps(module)) return module;
+            Collection<JkBuild> siblings =
+                    WorkspaceLoader.loadModules(rootDir.get(), root).values();
             // resolveSiblingCoordinates, NOT applyToModule: the latter is the lock-orchestration
             // fold, which strips sibling edges entirely. A published POM has to keep them.
             return WorkspaceMerge.resolveSiblingCoordinates(root, module, siblings);
@@ -166,15 +159,5 @@ public final class WorkspaceResolve {
         String name = module.project().name();
         out.put(module.project().group() + ":" + name, module);
         out.putIfAbsent(name, module);
-    }
-
-    /** True when any declared dependency is a {@code workspace:<name>} sibling placeholder. */
-    private static boolean hasWorkspaceDeps(JkBuild module) {
-        for (Scope scope : Scope.values()) {
-            for (var dep : module.dependencies().of(scope)) {
-                if (dep.isWorkspace()) return true;
-            }
-        }
-        return false;
     }
 }

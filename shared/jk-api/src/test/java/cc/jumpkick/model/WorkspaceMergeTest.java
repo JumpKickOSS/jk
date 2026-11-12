@@ -6,7 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.net.URI;
+import java.util.AbstractCollection;
+import java.util.Collection;
 import java.util.EnumMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -239,6 +242,26 @@ class WorkspaceMergeTest {
         assertThat(rewritten.dependencies().of(Scope.MAIN))
                 .filteredOn(d -> d.module().equals("cc.jumpkick:lib"))
                 .allMatch(d -> d.kind() == DependencyKind.MAIN);
+    }
+
+    @Test
+    void resolve_sibling_coordinates_reads_no_sibling_for_a_module_naming_none() {
+        JkBuild root = workspaceRoot("jk", List.of("lib", "app"));
+        JkBuild app = newProject("app", Map.of(Scope.MAIN, List.of(dep("a", "com.foo:a", "1.0"))));
+        Collection<JkBuild> unreadable = new AbstractCollection<>() {
+            @Override
+            public Iterator<JkBuild> iterator() {
+                throw new AssertionError("the sibling list was indexed");
+            }
+
+            @Override
+            public int size() {
+                throw new AssertionError("the sibling list was indexed");
+            }
+        };
+
+        assertThat(WorkspaceMerge.resolveSiblingCoordinates(root, app, unreadable))
+                .isSameAs(app);
     }
 
     @Test

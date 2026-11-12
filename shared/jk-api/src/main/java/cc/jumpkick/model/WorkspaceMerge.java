@@ -156,6 +156,8 @@ public final class WorkspaceMerge {
      * rendering, and a partial answer beats an exception at that point.
      */
     public static JkBuild resolveSiblingCoordinates(JkBuild root, JkBuild module, Collection<JkBuild> allModules) {
+        // Most members name no sibling: indexing every unit of a wide workspace for them is waste.
+        if (!hasWorkspaceDeps(module)) return module;
         Map<String, JkBuild> siblingByArtifact = siblingIndex(root, allModules);
         Map<String, Workspace.WorkspaceDependency> wsDeps =
                 root.workspace() != null ? root.workspace().dependencies() : Map.of();
@@ -183,6 +185,16 @@ public final class WorkspaceMerge {
         if (!rewroteAny) return module;
 
         return module.withDependencyScopes(byScope);
+    }
+
+    /** True when any declared dependency of {@code module} is a {@code workspace:<name>} sibling placeholder. */
+    public static boolean hasWorkspaceDeps(JkBuild module) {
+        for (Scope scope : Scope.values()) {
+            for (Dependency d : module.dependencies().of(scope)) {
+                if (d.isWorkspace()) return true;
+            }
+        }
+        return false;
     }
 
     /**

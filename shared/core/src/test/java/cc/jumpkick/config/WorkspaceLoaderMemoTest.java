@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -78,7 +79,22 @@ class WorkspaceLoaderMemoTest {
 
         long before = WorkspaceLoader.loads();
         manifests.forEach(WorkspaceLoaderMemoTest::parse);
-        assertThat(WorkspaceLoader.loads() - before).isEqualTo(3);
+        assertThat(WorkspaceLoader.loads() - before)
+                .as("every member that names a sibling loads the list again; the first names none")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void a_member_naming_no_sibling_loads_no_module_list(@TempDir Path tmp) throws IOException {
+        Path root = workspace(tmp, 3);
+        Path first = memberManifests(root, 3).getFirst();
+
+        long before = WorkspaceLoader.loads();
+        JkBuild parsed = JkBuildParser.parse(first);
+        assertThat(parsed.project().group()).as("still inherits from the root").isEqualTo("com.example");
+        assertThat(WorkspaceLoader.loads() - before)
+                .as("only workspace:<name> placeholders need the sibling list")
+                .isZero();
     }
 
     private static void parse(Path manifest) {
