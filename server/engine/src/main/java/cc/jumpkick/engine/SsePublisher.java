@@ -316,6 +316,32 @@ public final class SsePublisher implements SseEvents {
         emitWorkspaceProgress(requestId, writer, true);
     }
 
+    /**
+     * Re-price {@code requestId}'s running steps once a second while it lives: a step-priced model's
+     * remainder moves with the clock between events (a running step counts down, a suite past its
+     * class rate grows its remainder), and a long suite's last classes can go seconds without one,
+     * which left the countdown decaying to zero with work still running.
+     */
+    public void tickSteps(long requestId) {
+        if (requestId > 0) stepTicker.watch(requestId);
+    }
+
+    private final EtaStepTicker stepTicker = new EtaStepTicker(this::repriceSteps);
+
+    /** One tick for {@code rid}: false once its session is gone, so the ticker forgets it. */
+    private boolean repriceSteps(long rid) {
+        JobSession s = get(rid);
+        if (s == null || s.retired()) return false;
+        RemainingWork rw = s.remaining();
+        WorkspaceProgressTracker tracker = s.existingTracker();
+        if (rw == null || tracker == null) return true;
+        synchronized (rw) {
+            tracker.noteRemaining(rw.remaining(), rw.R0());
+        }
+        emitWorkspaceProgress(rid, s.writer(), false);
+        return true;
+    }
+
     /** Per request and module, its running suite's class progress. */
     private final ConcurrentHashMap<String, SuiteClassProgress> suiteProgress = new ConcurrentHashMap<>();
 

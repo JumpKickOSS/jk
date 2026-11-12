@@ -130,6 +130,7 @@ public final class EngineListeners {
                     tracker.noteRemaining(rw.remaining(), model.R0());
                 }
                 sse.emitWorkspaceProgress(rid, writer, true);
+                if (!model.steps().isEmpty()) sse.tickSteps(rid);
             }
 
             @Override
