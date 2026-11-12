@@ -58,9 +58,9 @@ import org.junit.jupiter.api.io.TempDir;
  * a shape whose run differs from the plain one: a Kotlin module with processors, a Kotlin or Groovy
  * module a plugin generates Java for, a Groovy module tested in Java, a plugin that hands the test
  * JVM flags and classpath, a plugin's provided jars on the test JVM's classpath, a Java module whose
- * compile classpath, processor path and test processor path each carry their own entries, and a
+ * compile classpath, processor path and test processor path each carry their own entries, a
  * Kotlin module whose multi-release root compiles against the provided jars with no Java main
- * sources. The request's knobs vary too: a {@code --variant}, {@code jk compile} and {@code
+ * sources, and a module whose sources compile to no class file beside its resources. The request's knobs vary too: a {@code --variant}, {@code jk compile} and {@code
  * --skip-tests} build, each forecast under the knobs it was built with.
  */
 @Tag("integration")
@@ -214,6 +214,15 @@ class ForecastRunParityMatrixTest {
                 }
                 """);
         assertParity(ws, "src/com/example/Lib.kt");
+    }
+
+    @Test
+    void a_classless_module_with_resources() throws Exception {
+        // Its one source is a package-info.java of javadoc alone: javac writes no class file, so the
+        // classes tree holds the copied resource and nothing else.
+        Path ws = workspace(JAVA_MODULE, Lib.CLASSLESS);
+        write(ws.resolve("a/resources/manifest.toml"), "id = \"classless\"\n");
+        assertParity(ws, "src/com/example/package-info.java", true);
     }
 
     @Test
@@ -572,6 +581,24 @@ class ForecastRunParityMatrixTest {
                         assertEquals("hi", Lib.greet());
                         assertEquals("on", System.getProperty("stub.contributions"));
                         assertNotNull(LibTest.class.getResource("/stub-contributions.properties"));
+                    }
+                }
+                """);
+
+        static final Lib CLASSLESS = new Lib("package-info.java", """
+                /** A package of resources: no type is declared, so javac writes no class file. */
+                package com.example;
+                """, "ResourceTest.java", """
+                package com.example;
+
+                import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+                import org.junit.jupiter.api.Test;
+
+                class ResourceTest {
+                    @Test
+                    void the_resource_is_on_the_classpath() {
+                        assertNotNull(ResourceTest.class.getResource("/manifest.toml"));
                     }
                 }
                 """);

@@ -713,9 +713,9 @@ public final class ForecastScope implements StepForecast.Scope {
         // a test run that packages nothing (a sibling reads none of its jar) never brings them back.
         boolean packages = knobs.target().packages() || verdicts.containsKey(TaskNames.PACKAGE_JAR);
         if (!p.parsed().noSources()) {
-            incomplete = TaskForecaster.classesDirHasContent(layout.classesDir())
-                    && !compileOutputsOnDisk(layout.classesDir());
-            outputsAbsent = !TaskForecaster.classesDirHasContent(layout.classesDir())
+            boolean present = classesTreePresent(layout);
+            incomplete = present && !compileOutputsOnDisk(layout.classesDir());
+            outputsAbsent = !present
                     || incomplete
                     || (packages
                             && (!Files.isRegularFile(layout.mainJar())
@@ -780,12 +780,21 @@ public final class ForecastScope implements StepForecast.Scope {
      * repackage of the tree it happens to have.
      */
     boolean classesTreeWhole(BuildLayout layout) throws IOException {
-        return TaskForecaster.classesDirHasContent(layout.classesDir()) && compileOutputsOnDisk(layout.classesDir());
+        return classesTreePresent(layout) && compileOutputsOnDisk(layout.classesDir());
+    }
+
+    /** The main classes tree is there, as the build's preflight reads it ({@link ModuleOutputs#classesTreePresent}). */
+    private boolean classesTreePresent(BuildLayout layout) {
+        return ModuleOutputs.classesTreePresent(actionCache, layout.classesDir(), compileKeys());
     }
 
     /** The tree holds every output of every compile merged into it: javac's, Kotlin's and Groovy's. */
     private boolean compileOutputsOnDisk(Path classesDir) {
-        return ModuleOutputs.compileOutputsOnDisk(
-                actionCache, Arrays.asList(compileMainKey, compileKotlinKey, compileGroovyKey), classesDir);
+        return ModuleOutputs.compileOutputsOnDisk(actionCache, compileKeys(), classesDir);
+    }
+
+    /** The keys of every compile merged into the main classes tree: javac's, Kotlin's and Groovy's. */
+    private List<@Nullable String> compileKeys() {
+        return Arrays.asList(compileMainKey, compileKotlinKey, compileGroovyKey);
     }
 }

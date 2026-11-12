@@ -65,7 +65,7 @@ public final class ModuleOutputs {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         if (hasMainSources(moduleDir, build)) {
             if (!Files.isRegularFile(layout.mainJar())) return true;
-            if (!classesDirHasContent(layout.classesDir())) return true;
+            if (!classesTreePresent(actionCache, layout.classesDir(), stampedKeys(layout.classesDir()))) return true;
             if (actionCache != null && !compileOutputsOnDisk(actionCache, layout.classesDir())) return true;
         } else if (resourcesOnlyOutputsMissing(moduleDir, build, layout)) {
             return true;
@@ -134,10 +134,10 @@ public final class ModuleOutputs {
      *     asked only when the test classes tree is empty, because answering may walk the sources
      */
     public static boolean testViewMissing(BuildLayout layout, JkBuild build, Path moduleDir, BooleanSupplier hasTests) {
-        if (!classesDirHasContent(layout.testClassesDir()) && hasTests.getAsBoolean()) return true;
+        if (!holdsClassFiles(layout.testClassesDir()) && hasTests.getAsBoolean()) return true;
         return PlannerFixtures.declared(build)
                 && !PlannerFixtures.forecastSources(build, moduleDir).isEmpty()
-                && !classesDirHasContent(layout.testFixturesClassesDir());
+                && !holdsClassFiles(layout.testFixturesClassesDir());
     }
 
     /**
@@ -173,10 +173,40 @@ public final class ModuleOutputs {
      * it. A stamp that is absent, or names no key, holds the tree against nothing.
      */
     public static boolean compileOutputsOnDisk(ActionCache actionCache, Path classesDir) {
+        return compileOutputsOnDisk(actionCache, stampedKeys(classesDir), classesDir);
+    }
+
+    /** The keys of the compiles the tree's own freshness stamps name, a null for each stamp absent. */
+    private static List<@Nullable String> stampedKeys(Path classesDir) {
         List<@Nullable String> keys = new ArrayList<>();
         for (String stamp : TREE_STAMPS)
             keys.add(FreshnessStamp.stampedKey(classesDir, stamp).orElse(null));
-        return compileOutputsOnDisk(actionCache, keys, classesDir);
+        return keys;
+    }
+
+    /**
+     * True when a sourced module's main classes tree is there, as the build's preflight and the
+     * forecast's restore gate both ask it: it holds an output (a class file, a copied resource or
+     * manifest), or it stands and every compile {@code keys} names recorded no output at all, the
+     * tree of a module whose sources declare no type (a package-info.java of javadoc alone).
+     * Whether it is <em>whole</em> is {@link #compileOutputsOnDisk}'s question. Without an action
+     * cache only an output counts.
+     */
+    static boolean classesTreePresent(@Nullable ActionCache actionCache, Path classesDir, List<@Nullable String> keys) {
+        try {
+            if (TaskForecaster.classesDirHasContent(classesDir)) return true;
+            if (actionCache == null || !Files.isDirectory(classesDir)) return false;
+            boolean named = false;
+            for (String key : keys) {
+                if (key == null || key.isBlank()) continue;
+                Optional<ActionCache.ActionRecord> record = actionCache.lookup(key);
+                if (record.isEmpty() || !record.get().outputs().isEmpty()) return false;
+                named = true;
+            }
+            return named;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** As {@link #compileOutputsOnDisk(ActionCache, String, Path)}, against the record the stamp named {@code stamp} points at. */
@@ -302,8 +332,12 @@ public final class ModuleOutputs {
         }
     }
 
-    static boolean classesDirHasContent(Path classesDir) {
-        if (classesDir == null || !Files.isDirectory(classesDir)) return false;
+    /**
+     * Whether a test or fixtures classes tree holds a class file. A main tree is asked {@link
+     * #classesTreePresent} instead: its outputs need not be classes.
+     */
+    static boolean holdsClassFiles(Path classesDir) {
+        if (!Files.isDirectory(classesDir)) return false;
         // Unbounded walk (findFirst short-circuits at the first class file): a depth cap of 3
         // missed every package deeper than three segments — cc/jumpkick/... classes sit at
         // depth 4+, so every self-host module would read as "outputs missing" and the restore
