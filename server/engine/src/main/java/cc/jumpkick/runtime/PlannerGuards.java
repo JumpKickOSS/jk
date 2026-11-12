@@ -328,10 +328,6 @@ final class PlannerGuards {
                             : null;
                     // Before this lane waits on anyone: a workspace suite elsewhere may be waiting on it.
                     cx.in().siblings().indexed();
-                    List<String> tokens = GuardKeys.moduleTokens(module, main.bodyDigest(), moduleDir);
-                    if (test != null) tokens.add("test-facts:" + test.bodyDigest());
-                    // Without compiled tests the lane runs fewer rules; its verdict is not the build's.
-                    if (!indexTests) tokens.add(GuardKeys.TESTS_NOT_COMPILED);
                     EvalContext ectx = new EvalContext(
                             Lane.MODULE,
                             g.root(),
@@ -345,6 +341,7 @@ final class PlannerGuards {
                     Path guardClasses = ctx.require(LAYOUT).guardClassesDir();
                     List<Rule> suiteRules = List.of();
                     Evaluation withSuite = null;
+                    List<String> suiteTokens = List.of();
                     if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(moduleDir, compact(moduleDir))) {
                         FactsIndexing.Ensured suite =
                                 FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
@@ -355,7 +352,7 @@ final class PlannerGuards {
                         // A workspace guard judges every module's index: each must describe what this
                         // build compiled before the key is taken or the suite reads it.
                         if (workspace) awaitIndexed(ctx, cx.in(), g.root(), workspaceModules);
-                        tokens.addAll(GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules));
+                        suiteTokens = GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules);
                         List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
                         if (!loadErrors.isEmpty()) {
                             for (String e : loadErrors)
@@ -418,6 +415,10 @@ final class PlannerGuards {
                             }
                         };
                     }
+                    String facts = main.bodyDigest();
+                    String testFacts = test == null ? null : test.bodyDigest();
+                    List<String> tokens =
+                            GuardKeys.moduleLaneTokens(module, facts, moduleDir, indexTests, testFacts, suiteTokens);
                     // A module that compiled nothing (a resources-only module) has no site for any
                     // bytecode rule: that is not blindness, it is an empty population. Record the
                     // clean verdict so the forecast stops entering the module for its lane.
