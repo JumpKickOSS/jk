@@ -389,6 +389,8 @@ final class EngineEventDecoder {
             }
             case EngineProtocol.TASK_FINISH -> {
                 TaskFinishEvent e = TaskFinishEvent.decode(line);
+                if (e.predictedMs() > 0 && !e.rung().isEmpty())
+                    listener.stepPriced(e.task(), e.predictedMs(), e.rung());
                 listener.stepFinish(
                         e.task(),
                         wireGroup(e.stage()),

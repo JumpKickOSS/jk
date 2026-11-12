@@ -106,10 +106,27 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
         line(JsonlShape.classFinish(step, result));
     }
 
+    /** What the estimate priced each step at, until its finish line carries it. */
+    private final Map<String, Object[]> priced = new ConcurrentHashMap<>();
+
+    @Override
+    public void stepPriced(String step, long predictedMs, String rung) {
+        priced.put(step, new Object[] {predictedMs, rung});
+    }
+
     @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus s, Duration d, Duration waited) {
         String said = labels.remove(step);
-        line(JsonlShape.stepFinish(step, wire(group), s, d, waited, said == null ? "" : said));
+        Object[] p = priced.remove(step);
+        line(JsonlShape.stepFinish(
+                step,
+                wire(group),
+                s,
+                d,
+                waited,
+                said == null ? "" : said,
+                p == null ? 0 : (Long) p[0],
+                p == null ? "" : (String) p[1]));
     }
 
     @Override

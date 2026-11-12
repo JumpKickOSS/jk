@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
+import cc.jumpkick.cli.run.JsonlListener;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.run.BuildPlanListener;
@@ -24,8 +26,11 @@ import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -460,6 +465,24 @@ class EngineEventDecoderStreamTest {
             assertThat(f.line()).isEqualTo(4);
             assertThat(f.snippet()).hasSize(2);
         });
+    }
+
+    @Test
+    void a_priced_task_finish_reaches_the_run_s_transcript_with_its_price_and_rung() {
+        // JK-626GS: the engine sent predictedMs and rung, and the client's transcript (the run's
+        // details.jsonl) dropped both: it rebuilds each line from the listener's calls.
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        BuildPlanListener transcript = CompositeBuildPlanListener.of(
+                new BuildPlanListener() {}, new JsonlListener(new PrintStream(buf, true, StandardCharsets.UTF_8)));
+        String finish = ProtoEvents.stepFinish(
+                "/p", "compile-java", "compile", TaskStatus.SUCCESS.name(), 2_500, 0, 3_000, "CALIBRATION");
+        EngineEventDecoder.dispatch(
+                Jsonl.requiredStr(finish, "type"), finish, transcript, d -> {}, w -> {}, new FailureTextRefs());
+
+        assertThat(buf.toString(StandardCharsets.UTF_8))
+                .contains("\"type\":\"task-finish\"")
+                .contains("\"predictedMs\":3000")
+                .contains("\"rung\":\"CALIBRATION\"");
     }
 
     /** Records what a workspace build actually told its front-end, per module. */

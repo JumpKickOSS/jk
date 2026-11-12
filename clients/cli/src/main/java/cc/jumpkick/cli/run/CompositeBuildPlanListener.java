@@ -113,6 +113,12 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void stepPriced(String step, long predictedMs, String rung) {
+        a.stepPriced(step, predictedMs, rung);
+        b.stepPriced(step, predictedMs, rung);
+    }
+
+    @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         a.stepFinish(step, group, status, duration, waited);
         b.stepFinish(step, group, status, duration, waited);

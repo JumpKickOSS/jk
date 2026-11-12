@@ -382,6 +382,19 @@ public final class JsonlShape {
     /** As above, with the step's last word on what it did. */
     static String stepFinish(
             String step, String group, TaskStatus status, Duration duration, Duration waited, String label) {
+        return stepFinish(step, group, status, duration, waited, label, 0, "");
+    }
+
+    /** As above, with what the run's estimate priced the step at and the layer that priced it. */
+    static String stepFinish(
+            String step,
+            String group,
+            TaskStatus status,
+            Duration duration,
+            Duration waited,
+            String label,
+            long predictedMs,
+            String rung) {
         return step(new TaskFinishEvent(
                         "",
                         step,
@@ -389,7 +402,9 @@ public final class JsonlShape {
                         status.name(),
                         duration.toMillis(),
                         waited == null ? 0 : waited.toMillis(),
-                        label)
+                        label,
+                        predictedMs,
+                        rung)
                 .encode());
     }
 
