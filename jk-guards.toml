@@ -1318,133 +1318,246 @@ baseline = true
 why      = "a coverage number nobody tightens stops meaning anything"
 
 # G103. A bare thread start carries no ScopedValue, so code on it reads the process-default
-# session: a worker JVM forked from such a thread is sized and flagged without the request's
-# --jvm-arg / JK_JVM_ARGS and runs without its cancel token — a per-request defect invisible until
-# two terminals disagree. Request-path threads start through SessionContext.startVirtual; every
-# engine-lifetime or housekeeping start below is an allow entry stating what it does not read.
+# session and no request: a worker JVM forked from such a thread is sized and flagged without the
+# request's --jvm-arg / JK_JVM_ARGS and runs without its cancel token. Request-path threads start
+# through SessionContext.startVirtual / startPlatform or a JkThreads pool; every engine-lifetime,
+# housekeeping or byte-pump start is an allow entry naming its method and what it does not read.
 [guards.request-thread-carries-session]
-kind     = "text"
-files    = ["server/engine/src/main/java/**/*.java"]
-patterns = ['Thread\.ofVirtual\(\)', 'Thread\.ofPlatform\(\)', 'new Thread\(', 'Thread\.startVirtualThread\(']
-hit      = 'Thread pump = Thread.ofVirtual().name("jk-worker-pump").start(() -> pump());'
-miss     = 'Thread pump = SessionContext.startVirtual("jk-worker-pump", () -> pump());'
-instead  = "SessionContext.startVirtual(name, body); engine-lifetime starts are allow entries"
-why      = "a bare thread reads the default session, not the request's"
+kind       = "forbid"
+signatures = [
+  "java.lang.Thread#ofVirtual()",
+  "java.lang.Thread#ofPlatform()",
+  "java.lang.Thread#<init>(**)",
+  "java.lang.Thread#startVirtualThread(**)",
+]
+scope      = ["plugins/graph", "server/*", "shared/*"]
+source-set = "main"
+fixture    = "server/guard/fixtures/request-thread-carries-session"
+instead    = "SessionContext.startVirtual(name, body) / startPlatform, or a JkThreads pool; an engine-lifetime start is an allow entry naming its method"
+why        = "a bare thread reads the default session, not the request's"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/OwnerWatchdog.java"
+in     = "cc.jumpkick.config.SessionContext#startVirtual"
+reason = "the door itself: starts the thread with every carried value of the caller"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.config.SessionContext#startPlatform"
+reason = "the door itself: starts the thread with every carried value of the caller"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.JkThreads#io"
+reason = "the shared virtual-thread pool's factory; every task is wrapped with the submitter's carried values"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.JkThreads#platform"
+reason = "the shared platform pool's factory; every task is wrapped with the submitter's carried values"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.JkThreads#registerShutdownHook"
+reason = "the shutdown hook that stops the shared pools"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.run.BuildPlan#startInterpolationTimer"
+reason = "the progress interpolation timer eases step bars forward and reads no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.resolver.MemberSolves#runAll"
+reason = "the member-solve pool's factory; every task is wrapped by ContextPropagator on the submitting thread"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.builds.MetricsHarvest#request"
+reason = "the engine-lifetime harvest of finished runs' metrics reads journal files, never a request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.util.AccessLedger#<clinit>"
+reason = "the shutdown hook that flushes the access ledgers"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers#drain"
+reason = "byte pump for a credential helper's output; the request is read on the calling thread"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.m2.MvnencPasswords#askAgent"
+reason = "watchdog that stops a gpg agent query that hangs; reads no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.http.StalledBodyGuard#watchdog"
+reason = "one watchdog thread for every download body; it only closes a stalled stream"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.jsonl.BoundedLineReader#watchdog"
+reason = "one watchdog thread for every protocol stream; it only closes an idle one"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.host.Processes$Drain#<init>"
+reason = "byte pump for a child's output"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.host.AotTraining#runUntilSettled"
+reason = "reads a training child's output to see it settle"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.tool.NativeImageDriver#forwardStdout"
+reason = "forwards native-image's output to the explicit TaskContext it was handed"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.tool.NativeImageDriver#forwardStream"
+reason = "forwards native-image's output to the explicit TaskContext it was handed"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.OwnerWatchdog#watch"
 reason = "engine-lifetime poll of the owner pid"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineMaintenance.java"
+in     = "cc.jumpkick.engine.EngineMaintenance#<init>"
 reason = "engine-lifetime scheduler whose ticks read config files, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/activity/ChangeNotices.java"
+in     = "cc.jumpkick.engine.activity.ChangeNotices#start"
 reason = "engine-lifetime poll of the change journal's file, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/DiskWatch.java"
+in     = "cc.jumpkick.engine.DiskWatch#startThreads"
 reason = "engine-lifetime disk guard and cache collector: statfs and the cache's own files, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WorkerAotCache.java"
+in     = "cc.jumpkick.engine.plugin.WorkerAotCache#trainAsync"
 reason = "a startup-cache trainer belongs to the cache, not to the request that missed it; a cancel must not kill it"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/WriteDeadline.java"
+in     = "cc.jumpkick.engine.http.WriteDeadline#watchdog"
 reason = "engine-lifetime watchdog that only interrupts a stuck response write, never a session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/IdleHousekeeping.java"
+in     = "cc.jumpkick.engine.IdleHousekeeping#scheduleResolveClassWarmup"
+reason = "idle-time resolver class warmup runs while no build is live"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.IdleHousekeeping#kickPendingWarmup"
 reason = "idle-time warmup and class preload run while no build is live"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineAotTrainer.java"
+in     = "cc.jumpkick.engine.EngineAotTrainer#maybeTrain"
 reason = "records the engine's startup cache from an idle engine by driving a scratch trainer engine; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/SelfUpdateScheduler.java"
-reason = "engine-lifetime update ticker and the jk self update runs it starts; serves no request"
+in     = "cc.jumpkick.engine.SelfUpdateScheduler#start"
+reason = "engine-lifetime update ticker; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineHttpFront.java"
+in     = "cc.jumpkick.engine.SelfUpdateScheduler#kick"
+reason = "a jk self update run the ticker starts; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.SelfUpdateScheduler#installNow"
+reason = "a jk self update install the ticker starts; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.EngineHttpFront#start"
 reason = "retries a busy HTTP port beside startup so the first build never waits on the dashboard; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/DrainReporter.java"
+in     = "cc.jumpkick.engine.DrainReporter#start"
 reason = "engine-lifetime drain report to the successor"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java"
-reason = "one thread per connection; each verb binds the request's session itself"
+in     = "cc.jumpkick.engine.EngineServer#run"
+reason = "the connection executor, one thread per connection whose verbs bind their own request, and startup's sweep of parked installs and adoption of sessions"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/DisplacementWatchdog.java"
+in     = "cc.jumpkick.engine.EngineServer#lastWordsOnSignal"
+reason = "the shutdown hook that logs a signalled exit"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.EngineServer#enterDrain"
+reason = "supervises the engine's drain; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.DisplacementWatchdog#start"
 reason = "engine-lifetime election watch"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/LiveVitals.java"
+in     = "cc.jumpkick.engine.http.LiveVitals#<init>"
 reason = "engine-lifetime vitals publisher"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java"
+in     = "cc.jumpkick.engine.http.HttpEngineServer#start"
 reason = "one thread per HTTP exchange; each handler binds the request's session itself"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobEnvelope.java"
-reason = "the runner binds the job's request itself and the body its session inside the verb; the admit and detached-join threads read neither"
+in     = "cc.jumpkick.engine.jobs.JobEnvelope#submit"
+reason = "the admit thread reads neither the job's request nor its session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobWatchdog.java"
+in     = "cc.jumpkick.engine.jobs.JobEnvelope#proceed"
+reason = "the runner binds the job's request itself and the body its session inside the verb; the detached join reads neither"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.jobs.JobWatchdog#start"
 reason = "holds the job's cancel token explicitly"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/LiveJobRegistry.java"
-reason = "cancel and settle run after the request thread may be gone; token and request id are explicit"
+in     = "cc.jumpkick.engine.jobs.LiveJobRegistry#beginCancel"
+reason = "cancel runs after the request thread may be gone; token and request id are explicit"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingBuildPlanListener.java"
+in     = "cc.jumpkick.engine.api.CoalescingBuildPlanListener#<clinit>"
 reason = "shared progress timer and its flushers only hand coalesced events to the delegate"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/api/WireWriter.java"
-reason = "one writer thread per client stream; a queued line carries no session"
-
-[[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingLockPackages.java"
+in     = "cc.jumpkick.engine.api.CoalescingLockPackages#<clinit>"
 reason = "shared lock-progress timer"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/git/GitCliExtension.java"
+in     = "cc.jumpkick.engine.api.WireWriter$Stream#startDrainer"
+reason = "one writer thread per client stream; a queued line carries no session"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.git.GitCliExtension#drain"
 reason = "byte pump for the git child's output"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerKsp.java"
+in     = "cc.jumpkick.runtime.PlannerKsp#runKspProcess"
 reason = "byte pump for KSP's output"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/base/KtsSession.java"
-reason = "the .kts host outlives any one build: its reader, reaper and shutdown hook carry no request"
+in     = "cc.jumpkick.runtime.base.KtsSession#<init>"
+reason = "the .kts host outlives any one build: its reader carries no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/compile/CompilerWorker.java"
-reason = "a resident compiler worker's threads start with no inherited context on purpose: they belong to the pool, not to the request that first needed it; each item brings its own session"
+in     = "cc.jumpkick.runtime.base.KtsSession#startBound"
+reason = "the .kts host outlives any one build: its reaper carries no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/compile/CompilerPool.java"
-reason = "resident compiler workers outlive any one build: their linger reaper, retire and shutdown hook carry no request; each item brings its own session"
+in     = "cc.jumpkick.runtime.base.KtsSession#registerShutdownHook"
+reason = "the shutdown hook that stops the .kts host"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WarmWorkers.java"
-reason = "warm plugin workers outlive any one request: their reader, reaper and shutdown hook carry no request; each run brings its own"
+in     = "cc.jumpkick.compile.CompilerWorker#detached"
+reason = "a resident compiler worker's threads belong to the pool, not to the request that first needed it; each item brings its own session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/HostPressure.java"
+in     = "cc.jumpkick.compile.CompilerPool#registerHooks"
+reason = "the shutdown hook that retires resident compiler workers"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers#registerShutdownHook"
+reason = "the shutdown hook that stops warm plugin workers"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers$Worker#<init>"
+reason = "a warm worker's reader outlives any one request; each run brings its own"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.WarmWorkers$Worker#armReaper"
+reason = "a warm worker's reaper outlives any one request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.plugin.HostPressure#watch"
 reason = "the memory-pressure watcher outlives any one request and ends only idle warm workers"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
+in     = "cc.jumpkick.task.CasPrewriter$Watcher#open"
 reason = "one engine-lifetime thread drains output-tree file events for every compile and hashes settled files"
 
 # G108. A module's manifest is named through ManifestPaths.manifestIn, which answers the shadow of a
