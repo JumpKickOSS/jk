@@ -55,8 +55,17 @@ public final class BuildEta {
      *
      * <p><b>Hard invariant:</b> this is the <em>only</em> ETA seed used by both {@code jk explain}
      * and {@code jk build}'s countdown. Same forecast plan, same {@code workers}/{@code
-     * maxModuleConcurrency}/{@code parallelTests}, same {@link #seedEta} — the numbers must match
-     * bit-for-bit for a given workspace and session. See {@code docs/perf/progress-contract.md}.
+     * maxModuleConcurrency}/{@code parallelTests}, same {@link #seedEta} — one plan prices
+     * bit-for-bit for a given workspace and session, whichever forecast produced it.
+     *
+     * <p>The plans agree except where the two forecasts ask different compiler workers for Zinc's
+     * plan of a compile ({@link cc.jumpkick.task.JavaCompile.PlanWorkers}), and the rule is who else
+     * is on the workers: {@code jk explain} plans on any (its answer is the plan), as does a build's
+     * preflight walk, which runs before any compile; the walk a build prices beside its running
+     * compiles ({@code BackgroundEta}: a memo hit's scheduled modules, a selection, {@code
+     * --rebuild}/{@code --force}) plans on none and predicts each compile that has an analysis from
+     * its prior record. Only there can a compile's verdict, and so the seed, differ from explain's.
+     * See {@code docs/contributors/progress-contract.md}.
      *
      * @param workers within-module test JVMs; {@code 0} = auto (identical to bare {@code jk build})
      * @param maxModuleConcurrency module-concurrency cap from {@code -j} / jobs (same as workspace

@@ -18,7 +18,10 @@ When the lock is missing or stale, `jk explain` refreshes it first (same as `jk 
 the plan and ETA match the live countdown. Automatic refreshes keep pins — pinned versions
 stay put.
 
-The ETA seed matches bare `jk build` bit-for-bit (same `-w` auto, `-j`, flags).
+The ETA seed matches bare `jk build` bit-for-bit (same `-w` auto, `-j`, flags) when the build
+checks its cache itself. A build that takes its dirty set from a previous build's memo, a `-m`
+selection or `-r`/`-F` prices beside its own compiles and does not ask the compiler worker for
+plans, so a compile there is predicted from its last record and its ETA may differ slightly.
 
 ## Module graph (no engine)
 

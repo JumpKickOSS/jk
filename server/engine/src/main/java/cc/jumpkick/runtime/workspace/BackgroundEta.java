@@ -23,7 +23,9 @@ import org.jspecify.annotations.Nullable;
  * <p>The walk asks no compiler worker for a plan ({@link JavaCompile.PlanWorkers#NONE}) and prices
  * each compile from its prior record: the build's own compiles run on those workers, and a cold
  * build of a 223-module workspace queued one plan per module ahead of them, adding a third to the
- * time spent compiling, for a progress bar.
+ * time spent compiling, for a progress bar. {@code jk explain} asks any worker, so where this walk
+ * meets a compile with an analysis and no cache hit its verdict, and the seed priced from it, can
+ * differ from explain's; the pricing of one plan never does ({@link BuildService#estimateEtaMillis}).
  *
  * <p>{@link #close()} ends it before the build reports completion: an estimate still being priced
  * is cancelled and never published, so the listener never hears of a work model after the build

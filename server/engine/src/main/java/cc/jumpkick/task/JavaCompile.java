@@ -74,7 +74,11 @@ public final class JavaCompile {
         }
     }
 
-    /** Which compiler workers a forecast may ask for Zinc's plan of a compile. */
+    /**
+     * Which compiler workers a forecast may ask for Zinc's plan of a compile, chosen by who else is
+     * on them: a plan queues behind the compiles a worker is running. The rule shapes the forecast's
+     * compile verdicts and never how the ETA prices them.
+     */
     public enum PlanWorkers {
         /** Any, starting one if none runs: {@code jk explain}, whose answer is the plan. */
         ANY,
