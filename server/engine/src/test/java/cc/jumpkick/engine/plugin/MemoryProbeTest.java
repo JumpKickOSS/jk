@@ -89,4 +89,22 @@ class MemoryProbeTest {
         MemoryProbe.Memory m = MemoryProbe.probe();
         assertThat(m.availableBytes()).isGreaterThan(m.totalBytes() / 20);
     }
+
+    @Test
+    void a_reading_answers_for_its_ttl_and_the_host_is_read_again_after_it() {
+        MemoryProbe.Memory stale = new MemoryProbe.Memory(1, 1);
+        long at = 1_000_000_000L;
+        try {
+            MemoryProbe.readAtForTests(stale, at);
+            assertThat(MemoryProbe.probeAt(at + 1))
+                    .as("one planning pass, one reading")
+                    .isEqualTo(stale);
+
+            assertThat(MemoryProbe.probeAt(at + MemoryProbe.TTL_NANOS))
+                    .as("the next build reads the host, not the engine-start reading")
+                    .isNotEqualTo(stale);
+        } finally {
+            MemoryProbe.forTests(null);
+        }
+    }
 }
