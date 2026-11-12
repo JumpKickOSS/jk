@@ -76,13 +76,58 @@ public final class WorkSchedule {
      * ({@code TestWorkers.liveShare}). A module missing from the map never dispatched.
      */
     public static Map<Path, Integer> inFlightAtDispatch(List<ModuleWorkCost> mods, int concurrency) {
-        Map<Path, Integer> inFlight = new HashMap<>();
-        if (mods != null && !mods.isEmpty()) listSchedule(mods, Math.max(1, concurrency), inFlight);
-        return inFlight;
+        Trace trace = new Trace();
+        if (mods != null && !mods.isEmpty()) listSchedule(mods, Math.max(1, concurrency), trace);
+        return trace.inFlight;
     }
 
-    private static long listSchedule(
-            List<ModuleWorkCost> mods, int concurrency, @Nullable Map<Path, Integer> inFlightAtDispatch) {
+    /**
+     * The schedule's critical path, first module first: from the module that finishes last, back
+     * through the prerequisite whose classes admitted each one, to a module admitted at the start or
+     * one that waited for a free slot rather than a prerequisite. Empty when {@code mods} is.
+     */
+    public static List<Path> criticalPath(List<ModuleWorkCost> mods, int concurrency) {
+        if (mods == null || mods.isEmpty()) return List.of();
+        Trace trace = new Trace();
+        if (concurrency <= 1) {
+            // Serial: every module runs alone, one after another; the path is the whole build.
+            List<Path> all = new ArrayList<>();
+            for (ModuleWorkCost m : mods) if (m != null && m.dir() != null && !all.contains(m.dir())) all.add(m.dir());
+            return all;
+        }
+        listSchedule(mods, concurrency, trace);
+        int at = -1;
+        for (int i = 0; i < trace.finish.length; i++) {
+            if (at < 0 || trace.finish[i] > trace.finish[at]) at = i;
+        }
+        List<Path> path = new ArrayList<>();
+        while (at >= 0) {
+            path.addFirst(trace.cost[at].dir());
+            int gate = -1;
+            Set<Path> reads = trace.cost[at].prereqs();
+            for (Path p : reads == null ? Set.<Path>of() : reads) {
+                Integer j = trace.index.get(p);
+                if (j == null) continue;
+                if (trace.artifact[j] == trace.admitted[at] && (gate < 0 || trace.finish[j] > trace.finish[gate])) {
+                    gate = j;
+                }
+            }
+            at = gate;
+        }
+        return path;
+    }
+
+    /** What one schedule did, module by module, for the questions asked of it after. */
+    private static final class Trace {
+        final Map<Path, Integer> inFlight = new HashMap<>();
+        Map<Path, Integer> index = Map.of();
+        ModuleWorkCost[] cost = new ModuleWorkCost[0];
+        long[] admitted = new long[0];
+        long[] artifact = new long[0];
+        long[] finish = new long[0];
+    }
+
+    private static long listSchedule(List<ModuleWorkCost> mods, int concurrency, @Nullable Trace trace) {
         if (mods == null || mods.isEmpty()) return 0;
         int slots = Math.max(1, concurrency);
         // Caller order, first occurrence — same as live WorkspaceScheduler's unit list; a dir
@@ -112,6 +157,13 @@ public final class WorkSchedule {
                 unready[i]++;
                 waiters.get(j).add(i);
             }
+        }
+        if (trace != null) {
+            trace.index = index;
+            trace.cost = cost;
+            trace.admitted = new long[n];
+            trace.artifact = new long[n];
+            trace.finish = new long[n];
         }
         BitSet ready = new BitSet(n);
         for (int i = 0; i < n; i++) if (unready[i] == 0) ready.set(i);
@@ -161,6 +213,10 @@ public final class WorkSchedule {
                 // Dependents compile against the classes tree, which lands at the gate — before
                 // test compile, packaging and either branch.
                 long art = t + m.artifactPoint();
+                if (trace != null) {
+                    trace.admitted[next] = t;
+                    trace.artifact[next] = art;
+                }
                 if (art <= t) land(next, waiters, unready, ready);
                 else landing.add(new long[] {art, next});
                 // Always an event, even when the gate and the dispatch coincide: the dependents it
@@ -184,8 +240,11 @@ public final class WorkSchedule {
                 case ARTIFACT -> {}
                 case DISPATCH -> {
                     ModuleWorkCost m = cost[e.module()];
-                    if (inFlightAtDispatch != null) inFlightAtDispatch.put(m.dir(), flying);
                     long fin = t + Math.max(m.suiteAt(shareAt(slots, flying, m)), m.tailWeight());
+                    if (trace != null) {
+                        trace.inFlight.put(m.dir(), flying);
+                        trace.finish[e.module()] = fin;
+                    }
                     events.add(new Event(fin, e.module(), Kind.FINISH));
                     end = Math.max(end, fin);
                 }

@@ -26,6 +26,20 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
+    void the_critical_path_reads_as_module_names_and_a_long_one_keeps_its_ends() {
+        List<TaskForecast.Module> modules = List.of(
+                new TaskForecast.Module(Path.of("/ws/core"), "g:jk-core", List.of(), 1, 0, true, false),
+                new TaskForecast.Module(Path.of("/ws/engine"), "g:jk-engine", List.of(), 1, 0, true, false));
+        assertThat(ExplainCommand.criticalPathValue(List.of("/ws/core", "/ws/engine"), modules))
+                .isEqualTo("jk-core → jk-engine");
+        assertThat(ExplainCommand.criticalPathValue(List.of("/ws/core"), modules))
+                .isEmpty();
+        assertThat(ExplainCommand.criticalPathValue(
+                        List.of("/ws/a", "/ws/b", "/ws/c", "/ws/d", "/ws/e", "/ws/f", "/ws/g"), modules))
+                .isEqualTo("a → b → c → … → f → g");
+    }
+
+    @Test
     void sub_second_eta_formats_as_under_one_second() {
         assertThat(ExplainCommand.buildTimeEstimateValue(400, false)).isEqualTo("<1s");
     }

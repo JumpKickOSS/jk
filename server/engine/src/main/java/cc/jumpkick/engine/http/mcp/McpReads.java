@@ -69,6 +69,7 @@ public final class McpReads {
             }
             List<Map<String, Object>> mods = new ArrayList<>();
             int dirty = 0;
+            long provisionalSteps = 0;
             for (TaskForecast.Module mod : report.plan().modules()) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("dir", mod.dir().toString());
@@ -80,10 +81,18 @@ public final class McpReads {
                         mod.steps().stream().filter(TaskForecast.Task::cached).count();
                 row.put("cachedSteps", cached);
                 row.put("steps", mod.steps().size());
+                // Verdicts that wait on a sibling the build has yet to compile: a guess the build
+                // settles and re-prices once the sibling has compiled (JK-0PDBN).
+                long provisional = mod.steps().stream()
+                        .filter(TaskForecast.Task::provisional)
+                        .count();
+                if (provisional > 0) row.put("provisionalSteps", provisional);
+                provisionalSteps += provisional;
                 mods.add(row);
             }
             m.put("modules", mods);
             m.put("dirtyCount", dirty);
+            m.put("provisionalSteps", provisionalSteps);
             m.put("maxReadyWidth", report.plan().maxReadyWidth());
             m.put("etaMillis", report.etaMillis());
             m.put("fullMillis", report.fullMillis());
@@ -91,6 +100,12 @@ public final class McpReads {
             m.put("etaLowMillis", report.lowMillis());
             m.put("etaHighMillis", report.highMillis());
             m.put("etaCoverage", 0.8);
+            // The chain of modules the estimate's length rides on, first first (JK-47ZGV).
+            if (!report.criticalPath().isEmpty()) {
+                m.put(
+                        "criticalPath",
+                        report.criticalPath().stream().map(Path::toString).toList());
+            }
             List<Map<String, Object>> edges = new ArrayList<>();
             for (var e : report.plan().edges().entrySet()) {
                 for (Path dep : e.getValue()) {

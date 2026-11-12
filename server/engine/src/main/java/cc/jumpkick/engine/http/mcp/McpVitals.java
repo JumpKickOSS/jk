@@ -3,7 +3,9 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -26,11 +28,36 @@ public final class McpVitals {
         StatusSnapshot s = ctx.status().get();
         Map<String, Object> fields = new LinkedHashMap<>(s.vitals());
         if (bound != null) fields.put("boundDir", bound);
-        var held = McpHolds.statusRows(ctx.liveRuns().get());
+        List<HttpLive.Run> runs = ctx.liveRuns().get();
+        var estimates = estimateRows(runs);
+        if (!estimates.isEmpty()) fields.put("estimates", estimates);
+        var held = McpHolds.statusRows(runs);
         if (!held.isEmpty()) fields.put("onHold", held);
         Map<String, Object> last = McpHistoryViews.jobSummary(McpDiagnostics.findNewest(ctx.history(), bound));
         if (last != null) fields.put("lastRun", last);
         return McpEnvelope.of("status", fields);
+    }
+
+    /**
+     * {@code status}'s estimate for each job in flight, beside its {@code jobs} row: the bar's
+     * percent and the remaining time it shows, {@code remainingMs}, with its likely range
+     * {@code etaLowMs} to {@code etaHighMs} (about four runs in five finish inside it; JK-4TEZ7),
+     * each left out while unknown.
+     */
+    static List<Map<String, Object>> estimateRows(List<HttpLive.Run> live) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (HttpLive.Run r : live) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("jid", r.requestId());
+            if (!Double.isNaN(r.progress())) row.put("progress", Math.round(r.progress() * 10) / 10.0);
+            if (r.remainingMs() >= 0) row.put("remainingMs", r.remainingMs());
+            if (r.lowMs() >= 0 && r.highMs() >= 0) {
+                row.put("etaLowMs", r.lowMs());
+                row.put("etaHighMs", r.highMs());
+            }
+            rows.add(row);
+        }
+        return rows;
     }
 
     /** One-line summary for dumb clients that only read {@code content[0].text}. */

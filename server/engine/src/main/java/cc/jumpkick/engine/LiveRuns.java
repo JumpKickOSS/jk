@@ -45,10 +45,16 @@ public final class LiveRuns {
             long r0Ms = -1L;
             long num = 0L;
             long den = 0L;
+            long lowMs = -1L;
+            long highMs = -1L;
             var tracker = sessions.trackerOrNull(h.requestId());
             if (tracker != null) {
                 var snap = tracker.snapshot();
                 remainingMs = snap.remainingMs();
+                if (snap.hasRange()) {
+                    lowMs = snap.lowMs();
+                    highMs = snap.highMs();
+                }
                 r0Ms = snap.R0ms();
                 num = snap.numerator();
                 den = snap.denominator();
@@ -74,7 +80,9 @@ public final class LiveRuns {
                     num,
                     den,
                     mid.modules(),
-                    mid.tasks()));
+                    mid.tasks(),
+                    lowMs,
+                    highMs));
         }
         return out;
     }

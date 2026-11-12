@@ -399,6 +399,17 @@ public final class EngineClient {
         return EngineExplainDecoder.explain(paths, req, etaOut, onPreflightLabel);
     }
 
+    /** As above; {@code criticalOut} takes the estimate's critical path, module dirs first first. */
+    public static ExplainPlan explain(
+            EnginePaths.Paths paths,
+            EngineRequests.ExplainRequest req,
+            long @Nullable [] etaOut,
+            @Nullable Consumer<String> onPreflightLabel,
+            List<String> criticalOut)
+            throws IOException {
+        return EngineExplainDecoder.explain(paths, req, etaOut, onPreflightLabel, criticalOut);
+    }
+
     /**
      * Run {@code jk lock}'s workspace cascade against the engine — see {@link
      * EngineResolveAdapter#runLock} for the exact contract. {@code handler} is the command's

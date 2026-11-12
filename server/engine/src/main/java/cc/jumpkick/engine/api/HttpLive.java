@@ -34,11 +34,55 @@ public final class HttpLive {
             long numerator,
             long denominator,
             List<Module> modules,
-            List<Task> tasks) {
+            List<Task> tasks,
+            /** The likely range of {@code remainingMs}, {@code -1} each when there is none (JK-4TEZ7). */
+            long lowMs,
+            long highMs) {
 
         public Run {
             modules = modules == null ? List.of() : List.copyOf(modules);
             tasks = tasks == null ? List.of() : List.copyOf(tasks);
+        }
+
+        /** A run with no likely range. */
+        public Run(
+                long requestId,
+                long buildNumber,
+                String kind,
+                String dir,
+                @Nullable String coord,
+                @Nullable String trigger,
+                @Nullable String session,
+                long startedAt,
+                long lastEventAt,
+                double progress,
+                @Nullable String journalId,
+                long remainingMs,
+                long r0Ms,
+                long numerator,
+                long denominator,
+                List<Module> modules,
+                List<Task> tasks) {
+            this(
+                    requestId,
+                    buildNumber,
+                    kind,
+                    dir,
+                    coord,
+                    trigger,
+                    session,
+                    startedAt,
+                    lastEventAt,
+                    progress,
+                    journalId,
+                    remainingMs,
+                    r0Ms,
+                    numerator,
+                    denominator,
+                    modules,
+                    tasks,
+                    -1L,
+                    -1L);
         }
 
         /** Compact constructor for tests that only need identity + progress rebind. */

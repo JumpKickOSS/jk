@@ -28,6 +28,22 @@ class WorkScheduleTest {
     }
 
     @Test
+    void the_critical_path_runs_back_from_the_last_finish_through_the_classes_that_admitted_it() {
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        Path c = Path.of("/c");
+        List<ModuleWorkCost> mods = List.of(
+                new ModuleWorkCost(a, Set.of(), 10, 0),
+                new ModuleWorkCost(c, Set.of(), 5, 0),
+                new ModuleWorkCost(b, Set.of(a), 20, 0));
+        assertThat(WorkSchedule.criticalPath(mods, 4)).containsExactly(a, b);
+        assertThat(WorkSchedule.criticalPath(mods, 1))
+                .as("serial: every module")
+                .containsExactly(a, c, b);
+        assertThat(WorkSchedule.criticalPath(List.of(), 4)).isEmpty();
+    }
+
+    @Test
     void serial_is_sum() {
         Path a = Path.of("/a");
         Path b = Path.of("/b");

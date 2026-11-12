@@ -57,6 +57,17 @@ final class EngineExplainDecoder {
             long @Nullable [] etaOut,
             @Nullable Consumer<String> onPreflightLabel)
             throws IOException {
+        return explain(paths, req, etaOut, onPreflightLabel, null);
+    }
+
+    /** As above; {@code criticalOut} (may be {@code null}) takes the estimate's critical path, module dirs first first. */
+    static ExplainPlan explain(
+            EnginePaths.Paths paths,
+            EngineRequests.ExplainRequest req,
+            long @Nullable [] etaOut,
+            @Nullable Consumer<String> onPreflightLabel,
+            @Nullable List<String> criticalOut)
+            throws IOException {
         String request = new ExplainRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
@@ -163,9 +174,9 @@ final class EngineExplainDecoder {
                                     reasonByDir.get(dir)));
                         }
                         // An absent width is one lane here, where the record reads 0.
-                        int width = Jsonl.has(line, "maxReadyWidth")
-                                ? ExplainDoneEvent.decode(line).maxReadyWidth()
-                                : 1;
+                        ExplainDoneEvent done = ExplainDoneEvent.decode(line);
+                        int width = Jsonl.has(line, "maxReadyWidth") ? done.maxReadyWidth() : 1;
+                        if (criticalOut != null) criticalOut.addAll(done.criticalPath());
                         return new ExplainPlan(modules, edges, width, errors);
                     }
                     default -> {

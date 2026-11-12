@@ -154,7 +154,11 @@ public final class ExplainVerb implements HostedVerb {
                 host.sendQuiet(
                         writer,
                         ProtoReads.explainDone(
-                                plan.maxReadyWidth(), plan.modules().size()));
+                                plan.maxReadyWidth(),
+                                plan.modules().size(),
+                                report.criticalPath().stream()
+                                        .map(Path::toString)
+                                        .toList()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 host.sendQuiet(writer, ProtoReads.explainDone(0, 0));

@@ -43,6 +43,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -184,6 +185,7 @@ public final class ExplainCommand implements CliCommand {
         // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator); [2], [3] = the
         // current ETA's likely range (-1 when the engine sent none).
         long[] etaOut = {0, 0, -1, -1};
+        List<String> criticalPath = new ArrayList<>();
         // Same starting lock as `jk build` so the dirty plan and ETA match the countdown. It runs
         // ahead of the prep wedge, in its own region, so a first lock's downloads are drawn.
         if (needsLock) {
@@ -211,7 +213,8 @@ public final class ExplainCommand implements CliCommand {
                             flags.jobs(),
                             selectors),
                     etaOut,
-                    prep == null ? null : prep::update);
+                    prep == null ? null : prep::update,
+                    criticalPath);
         }
         etaMillis = etaOut[0];
         fullEtaMillis = etaOut[1];
@@ -229,6 +232,7 @@ public final class ExplainCommand implements CliCommand {
                 fullEtaMillis,
                 etaOut[2],
                 etaOut[3],
+                criticalPath,
                 scopeLabel(modulesSpec, affectedSince, affectedWip));
         return 0;
     }
@@ -287,6 +291,7 @@ public final class ExplainCommand implements CliCommand {
             long fullEtaMillis,
             long etaLowMillis,
             long etaHighMillis,
+            List<String> criticalPath,
             @Nullable String scope) {
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
@@ -300,7 +305,16 @@ public final class ExplainCommand implements CliCommand {
 
         CliOutput.out("");
         for (String line : renderSummaryTable(
-                modules, etaMillis, fullEtaMillis, etaLowMillis, etaHighMillis, fullyCached, scope, t, ansi)) {
+                modules,
+                etaMillis,
+                fullEtaMillis,
+                etaLowMillis,
+                etaHighMillis,
+                criticalPath,
+                fullyCached,
+                scope,
+                t,
+                ansi)) {
             CliOutput.out(line);
         }
     }
@@ -566,6 +580,22 @@ public final class ExplainCommand implements CliCommand {
             @Nullable String scope,
             Theme t,
             boolean ansi) {
+        return renderSummaryTable(
+                modules, etaMillis, fullEtaMillis, etaLowMillis, etaHighMillis, List.of(), fullyCached, scope, t, ansi);
+    }
+
+    /** As above with the estimate's critical path, module dirs first first (empty when none). */
+    static List<String> renderSummaryTable(
+            List<TaskForecast.Module> modules,
+            long etaMillis,
+            long fullEtaMillis,
+            long etaLowMillis,
+            long etaHighMillis,
+            List<String> criticalPath,
+            boolean fullyCached,
+            @Nullable String scope,
+            Theme t,
+            boolean ansi) {
         int totalModules = modules.size();
         int totalSources =
                 modules.stream().mapToInt(TaskForecast.Module::sourceCount).sum();
@@ -650,8 +680,37 @@ public final class ExplainCommand implements CliCommand {
                         RichText.ansi(Theme.paint(
                                 buildTimeEstimateValue(etaMillis, etaLowMillis, etaHighMillis, fullyCached),
                                 t.warning())));
+        String critical = fullyCached ? "" : criticalPathValue(criticalPath, modules);
+        if (!critical.isEmpty()) footer.row(RichText.plain("Critical path"), RichText.plain(critical));
         table.append(footer, Table.Append.SECTION);
         return table.render(RenderContext.current().withAnsi(ansi));
+    }
+
+    /**
+     * The estimate's critical path as module names, {@code core → engine → cli}: the chain whose
+     * last module finishes last, each admitted by the classes of the one before. A long chain keeps
+     * its first three and last two. Empty for a path of fewer than two modules.
+     */
+    static String criticalPathValue(List<String> criticalPath, List<TaskForecast.Module> modules) {
+        if (criticalPath.size() < 2) return "";
+        Map<String, String> nameOf = new HashMap<>();
+        for (TaskForecast.Module m : modules) {
+            String coord = m.coord() == null ? "" : m.coord();
+            String name = coord.contains(":") ? coord.substring(coord.lastIndexOf(':') + 1) : coord;
+            nameOf.put(
+                    m.dir().toString(), name.isEmpty() ? String.valueOf(m.dir().getFileName()) : name);
+        }
+        List<String> names = new ArrayList<>();
+        for (String dir : criticalPath) {
+            names.add(nameOf.getOrDefault(dir, String.valueOf(Path.of(dir).getFileName())));
+        }
+        if (names.size() > 6) {
+            List<String> kept = new ArrayList<>(names.subList(0, 3));
+            kept.add("…");
+            kept.addAll(names.subList(names.size() - 2, names.size()));
+            names = kept;
+        }
+        return String.join(" → ", names);
     }
 
     /** A dirty module that is not merely restored: the build compiles, tests or packages something of it. */

@@ -5,8 +5,13 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -16,10 +21,24 @@ import org.jspecify.annotations.Nullable;
  * plan's module/step/edge burst; MCP encodes a budgeted summary. Both compute here. {@code
  * lowMillis} and {@code highMillis} bound the incremental estimate: its likely range (JK-4TEZ7).
  */
-public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis, long lowMillis, long highMillis) {
+public record ExplainReport(
+        ExplainPlan plan,
+        long etaMillis,
+        long fullMillis,
+        long lowMillis,
+        long highMillis,
+        /**
+         * The estimate's critical path, first module first: the chain of modules, each admitted by
+         * the classes of the one before, that ends with the module finishing last (JK-47ZGV).
+         */
+        List<Path> criticalPath) {
+
+    public ExplainReport {
+        criticalPath = criticalPath == null ? List.of() : List.copyOf(criticalPath);
+    }
 
     public ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
-        this(plan, etaMillis, fullMillis, etaMillis, etaMillis);
+        this(plan, etaMillis, fullMillis, etaMillis, etaMillis, List.of());
     }
 
     /**
@@ -98,6 +117,9 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis, l
                             session.parallelTests(),
                             k.maxModuleConcurrency()));
         }
-        return new ExplainReport(plan, eta, full, range[0], range[1]);
+        List<ModuleWorkCost> work = new ArrayList<>();
+        for (EffortWeights.ModuleCost c : model.costs()) work.add(c.toWorkCost());
+        List<Path> critical = eta > 0 ? WorkSchedule.criticalPath(work, model.concurrency()) : List.of();
+        return new ExplainReport(plan, eta, full, range[0], range[1], critical);
     }
 }
