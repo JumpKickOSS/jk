@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Before the engine's estimate exists, a build's header draws no bar: the orb breathes beside the
- * preflight stage and the clock, and the taskbar is told the work is indeterminate.
+ * preflight phase and the clock, and the taskbar is told the work is indeterminate. The stage
+ * itself is the tree row below, so the header names the phase instead of repeating the row.
  */
 class JkManagerIndeterminateTest {
 
@@ -32,7 +33,7 @@ class JkManagerIndeterminateTest {
 
         assertThat(cm.indeterminate()).isTrue();
         String waiting = TestAnsi.strip(cm.renderBuildPlanLines(120, 300).get(0));
-        assertThat(waiting).contains("Checking cache…");
+        assertThat(waiting).contains(HeaderProgress.PREFLIGHT_LABEL);
         assertThat(drawsBar(waiting))
                 .as("no bar before the estimate: " + waiting)
                 .isFalse();
@@ -43,6 +44,40 @@ class JkManagerIndeterminateTest {
         assertThat(drawsBar(estimated))
                 .as("the bar once the estimate is in: " + estimated)
                 .isTrue();
+    }
+
+    @Test
+    void the_header_names_the_phase_and_leaves_the_stage_to_its_row() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.estimating(true);
+        cm.preflight("checking", 45, 61, "Checking cache (45/61)");
+
+        var lines =
+                cm.renderBuildPlanLines(120, 300).stream().map(TestAnsi::strip).toList();
+        assertThat(lines.get(0)).contains(HeaderProgress.PREFLIGHT_LABEL).doesNotContain("Checking cache");
+        assertThat(String.join("\n", lines.subList(1, lines.size()))).contains("Checking cache (45/61)");
+    }
+
+    @Test
+    void a_preflight_outside_the_estimate_window_still_names_the_phase() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Sync", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.preflight("sync", 0, 0, "Syncing dependencies…");
+
+        var lines =
+                cm.renderBuildPlanLines(120, 300).stream().map(TestAnsi::strip).toList();
+        assertThat(lines.get(0)).contains(HeaderProgress.PREFLIGHT_LABEL).doesNotContain("Syncing dependencies");
+        assertThat(String.join("\n", lines)).contains("Syncing dependencies…");
+    }
+
+    @Test
+    void an_explicit_solve_label_still_paints_in_the_header() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Lock", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.solveLabel("Resolving dependencies…");
+
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 300).get(0))).contains("Resolving dependencies…");
     }
 
     @Test

@@ -61,8 +61,15 @@ final class HeaderProgress {
      */
     private boolean estimating;
 
-    /** The latest preflight stage's text ("Checking cache…"), shown while there is no bar. */
-    private String stageLabel = "";
+    /**
+     * What the header says while the engine prepares the build. The preflight stage itself
+     * ("Checking cache (45/61)") is the work tree's row beneath the header, so the header names the
+     * phase rather than repeating the row.
+     */
+    static final String PREFLIGHT_LABEL = "Initializing…";
+
+    /** The solve label came from a preflight stage, so the header paints {@link #PREFLIGHT_LABEL}. */
+    private boolean preflightSolveLabel;
 
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
@@ -112,9 +119,15 @@ final class HeaderProgress {
         return estimating && !countdown.seeded();
     }
 
-    /** The preflight stage's text, for the header while {@link #indeterminate}. Must hold {@code lock}. */
-    String stageLabel() {
-        return stageLabel;
+    /**
+     * The text the header paints in place of a bar: {@link #PREFLIGHT_LABEL} through the preflight,
+     * whose stage the tree row already shows, else the solve label ({@code jk lock}'s "Resolving
+     * dependencies…"). Must hold {@code lock}.
+     */
+    String headerLabel() {
+        if (indeterminate()) return PREFLIGHT_LABEL;
+        if (preflightSolveLabel && !solveLabel.isEmpty()) return PREFLIGHT_LABEL;
+        return solveLabel;
     }
 
     int modulesComplete() {
@@ -137,12 +150,11 @@ final class HeaderProgress {
 
     /** The label shown while the bar has no denominator; the preflight pill writes it. Must hold {@code lock}. */
     void preflightLabel(String pill, int done, int total, String label) {
-        if (label != null && !label.isEmpty()) this.stageLabel = label;
-        else if (pill != null && !pill.isEmpty()) this.stageLabel = pill + "…";
         if (denominator > 0) return;
         if (label != null && !label.isEmpty()) this.solveLabel = label;
         else if (total > 0) this.solveLabel = pill + " " + done + "/" + total;
         else this.solveLabel = pill + "…";
+        this.preflightSolveLabel = true;
     }
 
     /**
@@ -262,6 +274,7 @@ final class HeaderProgress {
         // render threads otherwise raced on plain JMM visibility.
         synchronized (lock) {
             this.solveLabel = label == null ? "" : label;
+            this.preflightSolveLabel = false;
         }
     }
 
