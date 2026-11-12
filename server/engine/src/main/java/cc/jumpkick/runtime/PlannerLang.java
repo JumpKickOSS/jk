@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
@@ -111,7 +110,7 @@ public final class PlannerLang {
         if (!ModuleShape.of(project, moduleDir, null).kotlin()) return List.of();
         List<Coordinate> out = new ArrayList<>();
         for (var use : PluginContributions.kotlinPlugins(
-                project, moduleDir, kotlinPluginVersion(lock, project), lockModules(lock))) {
+                project, moduleDir, kotlinPluginVersion(lock, project), lock.classpathModules())) {
             out.add(Coordinate.of(use.group(), use.artifact(), use.version()));
         }
         return out;
@@ -371,7 +370,7 @@ public final class PlannerLang {
     /** The groovyc free args: the installed plugins' contributions (grails' {@code --parameters}), deduped. */
     static List<String> groovyArgs(JkBuild project, Lockfile lock, Path moduleDir) {
         List<String> args = new ArrayList<>();
-        for (String arg : PluginContributions.groovyArgs(project, moduleDir, lockModules(lock))) {
+        for (String arg : PluginContributions.groovyArgs(project, moduleDir, lock.classpathModules())) {
             if (!args.contains(arg)) args.add(arg);
         }
         return args;
@@ -421,7 +420,7 @@ public final class PlannerLang {
         // A plugin without a version of its own resolves to the compiler's: the only version
         // that can load into this kotlinc anyway. Same null-defaulting as KotlinPluginSetup.
         String pluginVersion = kotlinPluginVersion(lock, project);
-        Set<String> lockModules = lockModules(lock);
+        Set<String> lockModules = lock.classpathModules();
         List<KotlinPluginUse> plugins = new ArrayList<>();
         // The installed plugins' [[contribute.kotlin-plugin]] entries (e.g. spring-boot's
         // all-open, and no-arg gated on jakarta.persistence via classpath-has) — evaluated

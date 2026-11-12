@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.FreshnessStamp;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,14 +30,14 @@ class LanguageOutputMergeTest {
         // javac's own output shares the tree and is nobody else's to remove.
         write(classes.resolve("com/x/Baz.class"), "baz");
 
-        PlannerSupport.mergeLanguageOutput(ktOut, classes, buildDir, "kotlin");
+        ResourceMirror.mergeLanguageOutput(ktOut, classes, buildDir, "kotlin");
         assertThat(classes.resolve("com/x/Foo.class")).exists();
         assertThat(classes.resolve("com/x/FooKt.class")).exists();
 
         // Foo.kt now declares Bar: kotlinc's incremental compiler prunes Foo.class from its dir.
         Files.delete(ktOut.resolve("com/x/Foo.class"));
         write(ktOut.resolve("com/x/Bar.class"), "bar");
-        PlannerSupport.mergeLanguageOutput(ktOut, classes, buildDir, "kotlin");
+        ResourceMirror.mergeLanguageOutput(ktOut, classes, buildDir, "kotlin");
 
         assertThat(classes.resolve("com/x/Bar.class")).exists();
         assertThat(classes.resolve("com/x/FooKt.class")).exists();
@@ -57,11 +58,11 @@ class LanguageOutputMergeTest {
         write(ktOut.resolve("K.class"), "k");
         write(gvOut.resolve("G.class"), "g");
 
-        PlannerSupport.mergeLanguageOutput(ktOut, classes, buildDir, "kotlin");
-        PlannerSupport.mergeLanguageOutput(gvOut, classes, buildDir, "groovy");
+        ResourceMirror.mergeLanguageOutput(ktOut, classes, buildDir, "kotlin");
+        ResourceMirror.mergeLanguageOutput(gvOut, classes, buildDir, "groovy");
         // A Groovy merge with an emptied Groovy tree removes G, and only G.
         Files.delete(gvOut.resolve("G.class"));
-        PlannerSupport.mergeLanguageOutput(gvOut, classes, buildDir, "groovy");
+        ResourceMirror.mergeLanguageOutput(gvOut, classes, buildDir, "groovy");
 
         assertThat(classes.resolve("G.class")).doesNotExist();
         assertThat(classes.resolve("K.class")).exists();

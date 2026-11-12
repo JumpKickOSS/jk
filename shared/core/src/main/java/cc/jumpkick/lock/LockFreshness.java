@@ -17,12 +17,10 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -188,7 +186,7 @@ public final class LockFreshness {
             if (!Languages.resolve(build.project(), dir).kotlin()) continue;
             Lockfile view = memberView(owner, dir, lock);
             for (PluginContributions.KotlinPluginUse use :
-                    PluginContributions.kotlinPlugins(build, dir, COMPILER_VERSION, classpathModules(view))) {
+                    PluginContributions.kotlinPlugins(build, dir, COMPILER_VERSION, view.classpathModules())) {
                 if (!pinsCompilerPlugin(lock, use.group() + ":" + use.artifact(), null)) return true;
             }
         }
@@ -203,16 +201,6 @@ public final class LockFreshness {
                 .anyMatch(row -> row.coordinate().equals(ga)
                         && row.sha256Hex() != null
                         && (version == null || row.version().equals(version)));
-    }
-
-    /** Every {@code group:artifact} (and package key) {@code lock} resolves: what {@code classpath-has} reads. */
-    private static Set<String> classpathModules(Lockfile lock) {
-        Set<String> out = new HashSet<>();
-        for (Lockfile.Artifact a : lock.artifacts()) {
-            out.add(a.name());
-            out.add(a.moduleGroup() + ":" + a.moduleArtifact());
-        }
-        return out;
     }
 
     /** {@code lock} as the module at {@code dir} reads it: a member's partition rows, the root's own. */
@@ -255,7 +243,7 @@ public final class LockFreshness {
             List<PluginContributions.StepDep> closures =
                     new ArrayList<>(PluginContributions.closureTools(module.getValue(), dir, view.platformPins()));
             closures.addAll(PluginContributions.processorClosures(
-                    module.getValue(), dir, view.platformPins(), classpathModules(view)));
+                    module.getValue(), dir, view.platformPins(), view.classpathModules()));
             for (PluginContributions.StepDep closure : closures) {
                 String root = Objects.requireNonNull(closure.coordinateSpec());
                 if (ToolEntry.closureIn(lock.tools(), root, closure.with(), closure.managedBySpec()) == null)

@@ -110,8 +110,8 @@ public final class PackagingKeys {
     /** The dirs package-jar merges over the classes: plugin contributions, then worker codec classes. */
     public static List<Path> packagedContributions(
             @Nullable PluginDeclarations decls, BuildLayout layout, Path moduleDir, JkBuild project) {
-        List<Path> contributed = new ArrayList<>(PlannerSupport.packagedDirs(decls, layout, project));
-        contributed.addAll(PlannerSupport.workerCodecClassDirs(moduleDir, project));
+        List<Path> contributed = new ArrayList<>(PackagedClasses.packagedDirs(decls, layout, project));
+        contributed.addAll(PackagedClasses.workerCodecClassDirs(moduleDir, project));
         return contributed;
     }
 
@@ -190,7 +190,7 @@ public final class PackagingKeys {
 
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the key the live step will
-     * compute. Dep jars must come from {@link PlannerSupport#assemblyDependencyJars} — never the
+     * compute. Dep jars must come from {@link PackagedClasses#assemblyDependencyJars} — never the
      * whole workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm
      * assembly. Sibling jars missing after clean are fingerprinted via CAS shas recovered from
      * each sibling's package record.
@@ -221,10 +221,10 @@ public final class PackagingKeys {
                         knownResourceDrift);
         // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath), the wiped sibling
         // jars the walk pinned included.
-        List<Path> depJars = PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);
+        List<Path> depJars = PackagedClasses.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);
         PluginDeclarations pkgDecls;
         try {
-            pkgDecls = PlannerSupport.pluginDeclarationsFor(project, layout, cache);
+            pkgDecls = PackagedClasses.pluginDeclarationsFor(project, layout, cache);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -234,7 +234,7 @@ public final class PackagingKeys {
                 dir,
                 project,
                 classesTok,
-                PlannerSupport.contributionsToken(PlannerSupport.packagedDirs(pkgDecls, layout, project)),
+                PackagedClasses.contributionsToken(PackagedClasses.packagedDirs(pkgDecls, layout, project)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas),
                 assemblySbom(project, lockFile));
         boolean hit = ForecastSteps.present(actionCache, keyed.key());
@@ -378,7 +378,7 @@ public final class PackagingKeys {
 
         List<Path> classpath = new ArrayList<>();
         classpath.add(layout.mainJar());
-        for (Path jar : PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas)) {
+        for (Path jar : PackagedClasses.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas)) {
             if (!classpath.contains(jar)) classpath.add(jar);
         }
         List<Path> metadataDirs = List.of();

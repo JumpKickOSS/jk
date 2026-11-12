@@ -10,7 +10,7 @@ import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
 import static cc.jumpkick.runtime.PlannerNative.groovySources;
 import static cc.jumpkick.runtime.PlannerNative.javaSources;
 import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
-import static cc.jumpkick.runtime.PlannerSupport.mergeLanguageOutput;
+import static cc.jumpkick.runtime.base.ResourceMirror.mergeLanguageOutput;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathProcessors;
@@ -899,7 +899,7 @@ public final class PlannerCompile {
         long clock = FreshnessStamp.clockNow(classes);
         LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, CompileInputs.kotlinTaskId(module), worker);
         if (!kr.success()) {
-            PlannerSupport.forwardWorkerDiagnostics(
+            StepDiagnostics.forwardWorkerDiagnostics(
                     ctx,
                     "kotlinc",
                     PackageProviders.enrich(ctx, inputs.classpath(), ClasspathResolver.COMPILE_MAIN, kr.diagnostics()),
@@ -1032,7 +1032,7 @@ public final class PlannerCompile {
         long clock = FreshnessStamp.clockNow(classes);
         LangCompile.Result gr = compileGroovySources(ctx, in, actionCache, request, CompileInputs.groovyTaskId(module));
         if (!gr.success()) {
-            PlannerSupport.forwardWorkerDiagnostics(
+            StepDiagnostics.forwardWorkerDiagnostics(
                     ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
             throw new RuntimeException("groovyc reported errors");
         }

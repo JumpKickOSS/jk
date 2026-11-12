@@ -80,7 +80,7 @@ class ProcessorClasspathTest {
                 """);
         JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
 
-        assertThat(PlannerSupport.unresolvedProcessorDeps(build, Lockfile.empty("test")))
+        assertThat(ProcessorPaths.unresolved(build, Lockfile.empty("test")))
                 .containsExactly("[processor-dependencies] com.example:nope");
     }
 
@@ -91,7 +91,7 @@ class ProcessorClasspathTest {
         // parse() rewrites workspace:proc → com.example:proc; WorkspaceClasspath still owns it.
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
 
-        assertThat(PlannerSupport.unresolvedProcessorDeps(build, Lockfile.empty("test"), siblings))
+        assertThat(ProcessorPaths.unresolved(build, Lockfile.empty("test"), siblings))
                 .isEmpty();
     }
 
@@ -187,7 +187,7 @@ class ProcessorClasspathTest {
                 """);
         JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
 
-        assertThat(PlannerSupport.unresolvedProcessorDeps(build, Lockfile.empty("test")))
+        assertThat(ProcessorPaths.unresolved(build, Lockfile.empty("test")))
                 .containsExactly(
                         "[processor-dependencies] com.example:nope",
                         "[test-processor-dependencies] com.example:test-nope");

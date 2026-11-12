@@ -2,12 +2,12 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PackagedClasses.contributionsToken;
+import static cc.jumpkick.runtime.PackagedClasses.packagedClasses;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
-import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
-import static cc.jumpkick.runtime.PlannerSupport.packagedClasses;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
@@ -28,6 +28,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
@@ -350,11 +351,11 @@ public final class PlannerPackage {
                     // classes overwrite any stub-compiled duplicates.
                     Path buildDir = ctx.require(LAYOUT).buildDir();
                     if (mixed) {
-                        PlannerSupport.mergeLanguageOutput(
+                        ResourceMirror.mergeLanguageOutput(
                                 ctx.require(LAYOUT).kotlinClassesDir(), classes, buildDir, "kotlin");
                     }
                     if (mixedGroovy) {
-                        PlannerSupport.mergeLanguageOutput(
+                        ResourceMirror.mergeLanguageOutput(
                                 ctx.require(LAYOUT).groovyClassesDir(), classes, buildDir, "groovy");
                     }
                     ctx.progress(1);
@@ -440,7 +441,7 @@ public final class PlannerPackage {
         }
         // A worker's vendored sibling class dirs are the declared set the build lists, each read
         // as the tree the build restores.
-        String contribTok = PlannerSupport.contributionsToken(
+        String contribTok = PackagedClasses.contributionsToken(
                 PackagingKeys.packagedContributions(prepared.parsed().pkgDecls(), layout, s.dir, s.project),
                 s.restored.identity());
         String pkgKey = PackagingKeys.packageJar(jar, s.dir, s.project, classesTok, contribTok, sbom)

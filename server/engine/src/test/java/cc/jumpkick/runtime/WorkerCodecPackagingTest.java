@@ -43,7 +43,7 @@ class WorkerCodecPackagingTest {
         JkBuild project = JkBuildParser.parse(worker.resolve("jk.toml"));
         assertThat(project.dependencies().of(Scope.MAIN)).anyMatch(d -> "cc.jumpkick:jk-plugin-sdk".equals(d.module()));
 
-        List<Path> codec = PlannerSupport.workerCodecClassDirs(worker, project).stream()
+        List<Path> codec = PackagedClasses.workerCodecClassDirs(worker, project).stream()
                 .map(p -> p.toAbsolutePath().normalize())
                 .toList();
         assertThat(codec)
@@ -69,7 +69,7 @@ class WorkerCodecPackagingTest {
                 BuildLayout.of(sdk, JkBuildParser.parse(sdk.resolve("jk.toml"))).classesDir();
         JkBuild project = JkBuildParser.parse(worker.resolve("jk.toml"));
 
-        List<Path> beforeCompile = PlannerSupport.workerCodecClassDirs(worker, project);
+        List<Path> beforeCompile = PackagedClasses.workerCodecClassDirs(worker, project);
         assertThat(beforeCompile)
                 .extracting(p -> p.toAbsolutePath().normalize())
                 .containsExactly(
@@ -79,13 +79,13 @@ class WorkerCodecPackagingTest {
         // Only one sibling has compiled: the list does not change with it.
         Files.createDirectories(sdkClasses);
         Files.writeString(sdkClasses.resolve("Sdk.class"), "sdk");
-        assertThat(PlannerSupport.workerCodecClassDirs(worker, project)).isEqualTo(beforeCompile);
+        assertThat(PackagedClasses.workerCodecClassDirs(worker, project)).isEqualTo(beforeCompile);
 
         // With the same bytes on disk, the token is one value however the list was taken.
         Files.createDirectories(hostClasses);
         Files.writeString(hostClasses.resolve("Jsonl.class"), "jsonl");
-        String token = PlannerSupport.contributionsToken(PlannerSupport.workerCodecClassDirs(worker, project));
-        assertThat(PlannerSupport.contributionsToken(beforeCompile)).isEqualTo(token);
+        String token = PackagedClasses.contributionsToken(PackagedClasses.workerCodecClassDirs(worker, project));
+        assertThat(PackagedClasses.contributionsToken(beforeCompile)).isEqualTo(token);
     }
 
     @Test

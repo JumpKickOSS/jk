@@ -75,8 +75,8 @@ final class ToolPins {
             }
             List<PluginContributions.StepDep> closureTools =
                     new ArrayList<>(PluginContributions.closureTools(build, dir, view.platformPins()));
-            closureTools.addAll(PluginContributions.processorClosures(
-                    build, dir, view.platformPins(), PlannerSupport.lockModules(view)));
+            closureTools.addAll(
+                    PluginContributions.processorClosures(build, dir, view.platformPins(), view.classpathModules()));
             for (PluginContributions.StepDep tool : closureTools) {
                 if (repos == null) repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
                 ToolEntry row = closureRow(tool, previous, repos, progress);

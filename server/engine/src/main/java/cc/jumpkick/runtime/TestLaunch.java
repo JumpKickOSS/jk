@@ -2,10 +2,10 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.groovyRuntime;
-import static cc.jumpkick.runtime.PlannerSupport.kotlinStdlib;
-import static cc.jumpkick.runtime.PlannerSupport.needsNestedEngineIsolation;
-import static cc.jumpkick.runtime.PlannerSupport.nestedEngineTestEnv;
+import static cc.jumpkick.runtime.LangRuntimes.groovyRuntime;
+import static cc.jumpkick.runtime.LangRuntimes.kotlinStdlib;
+import static cc.jumpkick.runtime.SelfHostEngine.needsNestedEngineIsolation;
+import static cc.jumpkick.runtime.SelfHostEngine.nestedEngineTestEnv;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
@@ -163,7 +163,7 @@ final class TestLaunch {
         if (needsNestedEngineIsolation(projectUnderTest)) {
             testEnv = testEnv.with(nestedEngineTestEnv(in.dir()));
         }
-        PlannerSupport.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv.extras());
+        SiblingJars.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv.extras());
         NodeHome node = ctx.get(BuildPlanner.NODE_HOME).orElse(null);
         if (node != null) {
             // A module that declares node runs its tests with the locked Node.js first on PATH.
@@ -335,10 +335,10 @@ final class TestLaunch {
                 .anyMatch(p -> p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));
         boolean gvTestSources = testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
         if (cx.kotlinModule() || ktTestSources) {
-            runtimeCp.add(kotlinStdlib(ctx, cas));
+            runtimeCp.add(kotlinStdlib(ctx.require(PROJECT), ctx.require(LOCKFILE), cas));
         }
         if (cx.groovyModule() || gvTestSources) {
-            for (Path jar : groovyRuntime(ctx, cas)) {
+            for (Path jar : groovyRuntime(ctx.require(PROJECT), ctx.require(LOCKFILE), cas)) {
                 if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
             }
         }

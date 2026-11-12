@@ -279,7 +279,7 @@ public final class PluginBuild {
         Lockfile lock = lockOrNull(lockFile);
         if (lock != null) {
             lanes.addAll(PluginContributions.processorClosures(
-                    project, moduleDir, pins, PlannerSupport.lockModules(memberLock(lockFile, moduleDir))));
+                    project, moduleDir, pins, memberLock(lockFile, moduleDir).classpathModules()));
         }
         List<String> out = new ArrayList<>(
                 // Downloaded and verified, not unpacked: the archive is unpacked by the build that reads it.

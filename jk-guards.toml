@@ -889,10 +889,10 @@ reason = "the IDE model lists a module's source roots; it keys nothing"
 # composer is a stamp that can drift from the one the green run was stored under.
 [guards.test-stamp-extras-owner]
 kind       = "forbid"
-signatures = ["cc.jumpkick.runtime.PlannerSupport#testStampExtras(**)", "cc.jumpkick.runtime.NodeTestStamp#testStampExtras(**)"]
+signatures = ["cc.jumpkick.runtime.TestStampInputs#testStampExtras(**)"]
 scope      = ["server/engine"]
 source-set = "main"
-owner      = ["cc.jumpkick.runtime.TestStampInputs", "cc.jumpkick.runtime.NodeTestStamp"]
+owner      = ["cc.jumpkick.runtime.TestStampInputs"]
 instead    = "TestStampInputs.of(facts, identity).extras(), or its key(...)"
 why        = "stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up"
 

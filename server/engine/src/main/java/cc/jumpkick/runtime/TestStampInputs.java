@@ -1,26 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Profile;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -34,7 +48,7 @@ import org.jspecify.annotations.Nullable;
  * @param runtimeClasspath the resolved test runtime classpath with the module's fixtures and own
  *     versions, the plugin steps' contributed entries, then the provided jars last
  */
-record TestStampInputs(
+public record TestStampInputs(
         Facts facts,
         ClasspathFingerprint.EntryIdentity identity,
         TestSelection selection,
@@ -47,7 +61,7 @@ record TestStampInputs(
      * resolving the lock); deriving the stamp from them is this record's.
      *
      * @param sessionSelection the request's selection, before the workspace's tags are resolved
-     * @param workerJars the test worker jars by role, as {@link PlannerSupport#testStampWorkerJars} lists them
+     * @param workerJars the test worker jars by role, as {@link #testStampWorkerJars} lists them
      * @param resolvedRuntime the test runtime classpath the classpath step publishes ({@link ModuleClasspaths#testRuntime})
      * @param providedRuntime the provided jars the test JVM also gets last ({@link ModuleClasspaths#providedRuntime})
      * @param compileTestKeys the test compiles' action keys
@@ -84,7 +98,7 @@ record TestStampInputs(
                     profileName,
                     SessionContext.current().testSelection(),
                     pluginDecls,
-                    PlannerSupport.testStampWorkerJars(dir, project),
+                    testStampWorkerJars(dir, project),
                     classpaths.testRuntime(),
                     classpaths.providedRuntime(),
                     compileTestKeys);
@@ -99,7 +113,7 @@ record TestStampInputs(
                     null,
                     SessionContext.current().testSelection(),
                     null,
-                    PlannerSupport.testStampWorkerJars(dir, project),
+                    testStampWorkerJars(dir, project),
                     List.of(),
                     List.of(),
                     TestStamp.CompileTestKeys.NONE);
@@ -109,11 +123,10 @@ record TestStampInputs(
     /** The stamp inputs of {@code facts}, with the worker jars read through {@code identity}. */
     @KeyOwner(step = TaskNames.RUN_TESTS)
     static TestStampInputs of(Facts facts, ClasspathFingerprint.EntryIdentity identity) throws IOException {
-        TestSelection selection =
-                PlannerSupport.effectiveSelection(facts.sessionSelection(), facts.dir(), facts.profileName());
+        TestSelection selection = effectiveSelection(facts.sessionSelection(), facts.dir(), facts.profileName());
         TestTier tier = TestTier.of(selection, facts.profileName(), fastMethodBudget(facts.project(), facts.dir()));
         List<String> jvmArgs = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(facts.layout(), facts.pluginDecls()));
-        jvmArgs.addAll(PlannerSupport.testJvmArgs(facts.project(), facts.profileName()));
+        jvmArgs.addAll(testJvmArgs(facts.project(), facts.profileName()));
         List<Path> runtime = PlannerVersions.withOwnVersions(
                 facts.project(),
                 facts.layout(),
@@ -150,8 +163,10 @@ record TestStampInputs(
      * those reads on its next stamp.
      */
     List<String> extras() throws IOException {
-        List<String> extras = new ArrayList<>(NodeTestStamp.testStampExtras(
-                facts.workerJars(), selection, facts.project(), jvmArgs, facts.dir(), identity));
+        List<String> extras = new ArrayList<>(testStampExtras(
+                facts.workerJars(), selection, facts.project().build(), jvmArgs, facts.dir(), identity));
+        String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
+        if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
     }
@@ -234,5 +249,149 @@ record TestStampInputs(
         Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
         if (root == null || root.normalize().equals(moduleDir.normalize())) return 0;
         return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
+    }
+
+    /**
+     * The selection the runner actually executes: the session's, or, when it carries no resolved
+     * tags (jk build, BSP, an MCP run naming none), the tags and every-suite switch {@link TierTags}
+     * gives this module under the active profile: the workspace root's, so an MCP {@code
+     * run(only=member)} runs what {@code jk test -m member} runs. {@code jk test} resolves through
+     * the same {@link TierTags} CLI-side and its selection already carries them.
+     */
+    public static TestSelection effectiveSelection(TestSelection sel, Path moduleDir, @Nullable String profileName) {
+        // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
+        // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
+        if (sel.tagsResolved()) return sel;
+        if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
+        TierTags tiers = TierTags.of(moduleDir, CompileSupport.activeProfileName(profileName));
+        boolean allSuites =
+                sel.allSuites() || (tiers.allSuites() && sel.suites().isEmpty() && !sel.guard());
+        if (!tiers.spoke() && allSuites == sel.allSuites()) return sel;
+        return TestSelection.of(
+                        sel.suites(),
+                        allSuites,
+                        tiers.includeTags(),
+                        tiers.excludeTags(),
+                        false,
+                        sel.guard(),
+                        sel.scriptsOnly(),
+                        sel.noScripts(),
+                        sel.classes())
+                .withOnlyModules(sel.onlyModules());
+    }
+
+    /**
+     * Worker / engine jar props that feed both the forked test JVM and the {@link
+     * TestStamp} extras. Includes declared {@code [build] test-plugin-jars} and,
+     * for nested-engine CLI modules, every first-party {@link PluginJar} plus the engine assembly
+     * forecast and live run-tests must hash the same set).
+     */
+    static Map<String, String> testStampWorkerJars(Path dir, JkBuild project) throws IOException {
+        Map<String, String> props = new LinkedHashMap<>(
+                SiblingJars.workerJarProps(dir, project.build().testPluginJars()));
+        if (SelfHostEngine.needsNestedEngineIsolation(project)) {
+            SelfHostEngine.enrichCliTestProps(dir, props);
+        }
+        return props;
+    }
+
+    /**
+     * Every flag the module's forked test JVMs get beyond jk's own tuning: {@code [test] jvm-args},
+     * one {@code -D} per {@code [test] system-properties} entry, then the active profile's {@code
+     * jvm-args}, so the profile wins where they disagree. Empty when the module declares none and no
+     * profile applies.
+     */
+    static List<String> testJvmArgs(JkBuild project, @Nullable String profileName) {
+        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
+        List<String> declared = project.build().testJvm().flags();
+        if (profile == null || profile.jvmArgs().isEmpty()) return declared;
+        if (declared.isEmpty()) return profile.jvmArgs();
+        List<String> all = new ArrayList<>(declared);
+        all.addAll(profile.jvmArgs());
+        return List.copyOf(all);
+    }
+
+    /**
+     * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}. There is
+     * deliberately no lookup-free overload: it would silently skip both expansion and hashing and
+     * produce a key that disagrees with this one.
+     */
+    private static List<String> testStampExtras(
+            Map<String, String> workerJars,
+            TestSelection selection,
+            BuildBlock build,
+            List<String> jvmArgs,
+            Path moduleDir,
+            ClasspathFingerprint.EntryIdentity identity) {
+        EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
+        List<String> extras = new ArrayList<>(testStampExtras(
+                workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, moduleDir, identity));
+        extras.addAll(SuiteEnvKeys.tokens(build, moduleDir, selection == null ? TestSelection.DEFAULT : selection));
+        return extras;
+    }
+
+    /**
+     * Stamp extras. Declared {@code [env] vars} and {@code [test] env} values only (sandbox defaults
+     * stay out — they are absolute paths that would defeat cache sharing).
+     */
+    private static List<String> testStampExtras(
+            Map<String, String> workerJars,
+            TestSelection selection,
+            BuildBlock build,
+            List<String> jvmArgs,
+            SecretRedactor redactor,
+            EnvLookup lookup,
+            Path moduleDir,
+            ClasspathFingerprint.EntryIdentity identity) {
+        List<String> extras = new ArrayList<>();
+        extras.add("jk:" + BuildIdentity.cacheKeyVersion());
+        // Suite + tag filters are part of the outcome.
+        if (selection != null) extras.add("sel:" + selection.identityToken());
+        // Whether the suite JVM ran with -ea decides what an `assert` did.
+        extras.add("assertions:" + build.testAssertions());
+        // Excluded classes are classes the suite does not run.
+        if (!build.testExcludeClasses().isEmpty()) {
+            extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
+        }
+        // A class-pattern suite decides which compiled classes the default suite runs.
+        build.testClassSuites()
+                .forEach((suite, spec) -> extras.add("suite-classes:" + suite + "=" + String.join(",", spec.classes())
+                        + (spec.excludeClasses().isEmpty() ? "" : "!" + String.join(",", spec.excludeClasses()))));
+        // The test JVM's flags change what the suite sees (-D properties, heap), so they retest:
+        // the module's, then the request's own, which the suite fork appends from the same source.
+        if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
+        List<String> userArgs = JvmOptions.suiteUserArgs();
+        if (!userArgs.isEmpty()) extras.add("jvm-user-args:" + String.join(" ", userArgs));
+        // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
+        // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,
+        // a .env-sourced value is hashed, and an unset ${VAR} fails here exactly as it fails at
+        // launch — a manifest jk cannot fork must never forecast as "tests cached".
+        // The launch-side directories are not passed: the mode, not the caller, decides what the
+        // two path tokens mean, and this mode keeps them literal.
+        var mode = new TestEnvValues.Mode.CacheKey(lookup, redactor);
+        var resolved =
+                new LinkedHashMap<>(TestEnvValues.resolve("[env]", build.env().decls(), null, null, mode));
+        resolved.putAll(TestEnvValues.resolve("[test].env", build.testEnv(), null, null, mode));
+        for (Map.Entry<String, String> e : resolved.entrySet()) {
+            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
+        }
+        // [test] tools by identity — where the name resolves on the PATH the test JVM gets and what
+        // it says to --version — so a node or git upgrade retests the suites that shell out to it.
+        String path = BuildEnv.machine().get("PATH");
+        for (String tool : build.testTools()) {
+            extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path, moduleDir));
+        }
+        // Plugin jars by content — a plugin change retests the module that forks it. A wiped
+        // plugin jar the forecast knows the build restores reads as the bytes that come back.
+        for (Map.Entry<String, String> e : workerJars.entrySet()) {
+            String fp;
+            try {
+                fp = identity.of(Path.of(e.getValue()));
+            } catch (IOException ex) {
+                fp = "err";
+            }
+            extras.add("worker:" + e.getKey() + "=" + fp);
+        }
+        return extras;
     }
 }

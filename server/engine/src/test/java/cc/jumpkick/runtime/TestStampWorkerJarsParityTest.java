@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,18 +62,10 @@ class TestStampWorkerJarsParityTest {
         writeMinimalJar(engineJar);
 
         JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
-        assertThat(PlannerSupport.needsNestedEngineIsolation(project)).isTrue();
+        assertThat(SelfHostEngine.needsNestedEngineIsolation(project)).isTrue();
 
-        // Confine host fallback to the empty tmp tree so a warm dev checkout cannot mask a
-        // broken sibling-discovery path.
-        BuildPlanner.hostEngineSearchOverride = tmp;
-        Map<String, String> workers;
-        try {
-            workers = PlannerSupport.testStampWorkerJars(cli, project);
-        } finally {
-            BuildPlanner.hostEngineSearchOverride = null;
-        }
-        // Workspace sibling path wins when present; cold CI has no host install/dist.
+        Map<String, String> workers = TestStampInputs.testStampWorkerJars(cli, project);
+        // The workspace sibling's jar, never a host or installed engine a warm checkout offers.
         assertThat(workers).containsKey("jk.engine.jar");
         assertThat(Path.of(workers.get("jk.engine.jar")))
                 .as("the workspace sibling jar must win")
@@ -91,7 +82,7 @@ class TestStampWorkerJarsParityTest {
         // Nested engine env must not point JK_CACHE_DIR / JK_STORE_DIR at the host trees.
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
-        Map<String, String> env = PlannerSupport.nestedEngineTestEnv(cli);
+        Map<String, String> env = SelfHostEngine.nestedEngineTestEnv(cli);
         assertThat(env).containsKey("JK_HOME");
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
@@ -128,8 +119,8 @@ class TestStampWorkerJarsParityTest {
                 java = 25
                 """);
         JkBuild project = JkBuildParser.parse(lib.resolve("jk.toml"));
-        assertThat(PlannerSupport.needsNestedEngineIsolation(project)).isFalse();
-        assertThat(PlannerSupport.testStampWorkerJars(lib, project)).isEmpty();
+        assertThat(SelfHostEngine.needsNestedEngineIsolation(project)).isFalse();
+        assertThat(TestStampInputs.testStampWorkerJars(lib, project)).isEmpty();
         var extras = TestStampInputs.of(TestStampInputs.Facts.of(lib, project), ClasspathFingerprint.ON_DISK)
                 .extras();
         assertThat(extras).noneMatch(s -> s.startsWith("worker:"));
@@ -173,24 +164,14 @@ class TestStampWorkerJarsParityTest {
                 modules = ["clients/cli", "server/engine"]
                 """);
 
-        // A host jar is on offer, and must not be taken: it is not the checkout's engine.
-        String ver = JkVersion.VERSION;
-        Path seed = tmp.resolve("target/dist/lib/jk-engine-" + ver + ".jar");
-        Files.createDirectories(seed.getParent());
-        writeMinimalJar(seed);
-        BuildPlanner.hostEngineSearchOverride = tmp;
-        try {
-            JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
-            Map<String, String> workers = PlannerSupport.testStampWorkerJars(cli, project);
-            assertThat(Path.of(workers.get("jk.engine.jar")))
-                    .as("the suite runs the workspace engine's assembly, never a host or installed engine")
-                    .isEqualTo(engine.resolve("target/jk-engine-0.0.1-all.jar").normalize());
-        } finally {
-            BuildPlanner.hostEngineSearchOverride = null;
-        }
+        JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
+        Map<String, String> workers = TestStampInputs.testStampWorkerJars(cli, project);
+        assertThat(Path.of(workers.get("jk.engine.jar")))
+                .as("the suite runs the workspace engine's assembly, never a host or installed engine")
+                .isEqualTo(engine.resolve("target/jk-engine-0.0.1-all.jar").normalize());
     }
 
-    /** Minimal zip so path existence / monorepo product discovery has a real file. */
+    /** Minimal zip so the sibling's jar is a real file. */
     private static void writeMinimalJar(Path jar) throws Exception {
         try (var zos = new ZipOutputStream(Files.newOutputStream(jar))) {
             zos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
@@ -208,7 +189,7 @@ class TestStampWorkerJarsParityTest {
                 java = 25
                 """);
         JkBuild project = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        assertThat(PlannerSupport.needsNestedEngineIsolation(project))
+        assertThat(SelfHostEngine.needsNestedEngineIsolation(project))
                 .as("its tests get no redirected JK_HOME, CI=false or disabled HTTP")
                 .isFalse();
     }

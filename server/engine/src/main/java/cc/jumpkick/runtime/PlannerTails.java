@@ -2,15 +2,15 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
+import static cc.jumpkick.runtime.PackagedClasses.assemblyDependencyJars;
+import static cc.jumpkick.runtime.PackagedClasses.contributionsToken;
+import static cc.jumpkick.runtime.PackagedClasses.packagedClasses;
+import static cc.jumpkick.runtime.PackagedClasses.packagedDirs;
+import static cc.jumpkick.runtime.PackagedClasses.pluginDeclarationsFor;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 import static cc.jumpkick.runtime.PlannerNative.nativeStep;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
-import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
-import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
-import static cc.jumpkick.runtime.PlannerSupport.packagedClasses;
-import static cc.jumpkick.runtime.PlannerSupport.packagedDirs;
-import static cc.jumpkick.runtime.PlannerSupport.pluginDeclarationsFor;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.SourcesJar;

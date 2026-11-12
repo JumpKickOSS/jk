@@ -143,7 +143,7 @@ public final class NativeEffort {
             Path cache = JkDirs.cache();
             if (Files.isRegularFile(lock)) {
                 try {
-                    List<Path> jars = PlannerSupport.assemblyDependencyJars(moduleDir, project, lock, cache);
+                    List<Path> jars = PackagedClasses.assemblyDependencyJars(moduleDir, project, lock, cache);
                     deps = sumExistingBytes(jars);
                 } catch (IOException | RuntimeException e) {
                     Log.debug("splitInputs: IOException|RuntimeException ignored", e);

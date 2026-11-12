@@ -153,7 +153,7 @@ class NativeForecastReplayTest {
 
         Map<Path, String> pinned = new HashMap<>();
         List<Path> classpath = new ArrayList<>(List.of(jar));
-        classpath.addAll(PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, pinned));
+        classpath.addAll(PackagedClasses.assemblyDependencyJars(dir, project, lockFile, cache, pinned));
         List<String> liveArgs = List.of(
                 "-H:+UnlockExperimentalVMOptions",
                 "-H:ConfigurationFileDirectories=" + widgets.toAbsolutePath(),

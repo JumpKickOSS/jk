@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Path;
@@ -49,5 +50,25 @@ final class StepDiagnostics {
     /** Say again what {@code hit}'s run said, as that run said it. */
     void replay(ActionCache.ActionRecord hit) {
         for (String line : hit.said()) PlannerPlugin.forwardStepDiagnostic(ctx, moduleDir, module, step, line);
+    }
+
+    /**
+     * Mirror the javac diagnostic loop for worker compilers: one {@code ctx.error}/{@code warn}
+     * per diagnostic so each keeps its own {@code path:line[:col]:} header for journal locus
+     * parsing and CLI snippets, instead of one joined blob whose first header wins.
+     */
+    static void forwardWorkerDiagnostics(
+            TaskContext ctx, String code, List<CompileResult.Diagnostic> diagnostics, String emptyFallback) {
+        boolean errored = false;
+        for (CompileResult.Diagnostic d : diagnostics) {
+            if (d.severity() == CompileResult.Severity.ERROR) {
+                ctx.error(code, d.describe());
+                errored = true;
+            } else {
+                ctx.warn(code, d.describe());
+            }
+        }
+        // Never fail silently: a crash that produced no ERROR diagnostic still explains itself.
+        if (!errored) ctx.error(code, emptyFallback);
     }
 }

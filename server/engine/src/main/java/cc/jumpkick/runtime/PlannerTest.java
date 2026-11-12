@@ -4,8 +4,8 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
 import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
-import static cc.jumpkick.runtime.PlannerSupport.effectiveSelection;
-import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
+import static cc.jumpkick.runtime.TestStampInputs.effectiveSelection;
+import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -323,7 +323,7 @@ public final class PlannerTest {
                 PlannerLang.groovyRequest(ctx, in, cas, src.gvTest(), baseCp, gvTestOut, gvJavaRoots, null),
                 gvTaskId);
         if (!gr.success()) {
-            PlannerSupport.forwardWorkerDiagnostics(
+            StepDiagnostics.forwardWorkerDiagnostics(
                     ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
             throw new RuntimeException("test groovyc reported errors");
         }
@@ -369,7 +369,7 @@ public final class PlannerTest {
                 PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots));
         LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, ktTaskId, worker);
         if (!kr.success()) {
-            PlannerSupport.forwardWorkerDiagnostics(
+            StepDiagnostics.forwardWorkerDiagnostics(
                     ctx,
                     "kotlinc",
                     PackageProviders.enrich(ctx, baseCp, ClasspathResolver.COMPILE_TEST, kr.diagnostics()),
@@ -445,11 +445,11 @@ public final class PlannerTest {
         Path testClasses = outs.testClasses();
         if (outs.mixedKotlin() && !src.ktTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            PlannerSupport.mergeLanguageOutput(outs.kotlinOut(), testClasses, buildDir, "kotlin-test");
+            ResourceMirror.mergeLanguageOutput(outs.kotlinOut(), testClasses, buildDir, "kotlin-test");
         }
         if (outs.mixedGroovy() && !src.gvTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            PlannerSupport.mergeLanguageOutput(outs.groovyOut(), testClasses, buildDir, "groovy-test");
+            ResourceMirror.mergeLanguageOutput(outs.groovyOut(), testClasses, buildDir, "groovy-test");
         }
     }
 

@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerNative.javaSources;
 import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.beforeCompile;
-import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
@@ -834,7 +833,8 @@ public final class PlannerKsp {
      * ksp-options} (Room's schemaLocation), so the project overrides.
      */
     static List<String> kspOptions(JkBuild project, Path moduleDir, Lockfile lock) {
-        List<String> options = new ArrayList<>(PluginContributions.kspOptions(project, moduleDir, lockModules(lock)));
+        List<String> options =
+                new ArrayList<>(PluginContributions.kspOptions(project, moduleDir, lock.classpathModules()));
         options.addAll(project.build().kspOptions());
         return options;
     }

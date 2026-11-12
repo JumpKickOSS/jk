@@ -2,8 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.lockModules;
-import static cc.jumpkick.runtime.PlannerSupport.unresolvedProcessorDeps;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -239,7 +237,7 @@ public final class PlannerSetup {
         return JavacDefaults.effectiveArgs(
                 project.build().lint(),
                 project.build().debug(),
-                PluginContributions.javacArgs(project, dir, lockModules(lock)),
+                PluginContributions.javacArgs(project, dir, lock.classpathModules()),
                 profile == null ? List.of() : profile.javacArgs());
     }
 
@@ -316,7 +314,7 @@ public final class PlannerSetup {
                 ctx,
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)),
                 "processor module not compiled: ");
-        List<String> unresolvedProcessors = unresolvedProcessorDeps(
+        List<String> unresolvedProcessors = ProcessorPaths.unresolved(
                 project, lock, WorkspaceClasspath.resolve(dir, project, ClasspathResolver.PROCESSOR_PATH));
         if (!unresolvedProcessors.isEmpty()) {
             for (String unresolved : unresolvedProcessors)

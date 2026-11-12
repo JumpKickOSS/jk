@@ -443,9 +443,6 @@ public final class BuildPlanner {
     static final String SBOM_JAR_ENTRY = PlannerPlugin.SBOM_JAR_ENTRY;
     static final String NATIVE_IMAGE_ARGS = PlannerNative.NATIVE_IMAGE_ARGS;
 
-    /** Test hook: restrict host-engine-jar discovery to this monorepo root. */
-    static volatile @Nullable Path hostEngineSearchOverride;
-
     /** Apply CLI {@code --fat}/{@code --minified} over the parsed manifest for this invocation. */
     static JkBuild applyAssemblyOverride(JkBuild build, Session session) {
         String raw = session != null ? session.assemblyOverride() : "";

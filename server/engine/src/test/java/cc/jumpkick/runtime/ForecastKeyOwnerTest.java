@@ -413,7 +413,7 @@ class ForecastKeyOwnerTest {
         byte[] sbom = PackagingKeys.assemblySbom(project, module.resolve("jk-lock.toml"));
         List<String> expectedTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
-                "contrib:" + PlannerSupport.contributionsToken(List.of()),
+                "contrib:" + PackagedClasses.contributionsToken(List.of()),
                 "deps:" + ClasspathFingerprint.of(List.of()),
                 "main:t.Main",
                 "sbom:" + Hashing.sha256Hex(Objects.requireNonNull(sbom)),
@@ -429,7 +429,7 @@ class ForecastKeyOwnerTest {
                 module,
                 project,
                 ClasspathFingerprint.entry(classes),
-                PlannerSupport.contributionsToken(List.of()),
+                PackagedClasses.contributionsToken(List.of()),
                 ClasspathFingerprint.of(List.of()),
                 sbom);
         assertThat(keyed.tokens()).isEqualTo(expectedTokens);
