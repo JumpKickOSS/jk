@@ -72,6 +72,15 @@ public final class Versions {
     }
 
     /**
+     * True for a non-unique snapshot, a version that ends in {@code -SNAPSHOT}: a name for whatever
+     * its source holds now, which a {@code mvn install} or a repository's next deploy replaces in
+     * place. Its bytes are never immutable. A timestamped snapshot names one build and is.
+     */
+    public static boolean isNonUniqueSnapshot(String version) {
+        return version.endsWith("-SNAPSHOT");
+    }
+
+    /**
      * True for a stable release: sorts ≥ its numeric core under {@link MavenVersion}, has no
      * pre-release qualifier, and is not a timestamped snapshot. No numeric core → unstable.
      * Release synonyms ({@code Final}, {@code RELEASE}, {@code GA}) remain stable.

@@ -5,8 +5,8 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.HostRateLimiter;
@@ -20,11 +20,9 @@ import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -672,7 +670,7 @@ public final class MavenRepo {
      * The versions this repository itself lists for {@code coord}'s {@code group:artifact}: its
      * {@code maven-metadata.xml}, or — for a {@linkplain #local local} repository that has none, such
      * as a Maven local repository or a jk store tree — its version directories ({@link
-     * #versionDirectories}).
+     * VersionDirectories}).
      */
     private List<String> listedVersions(Coordinate coord) throws IOException, InterruptedException {
         refuseIfUnreachable();
@@ -683,53 +681,11 @@ public final class MavenRepo {
                     ? cachedMetadata(uri)
                     : Files.readAllBytes(fetchMetadata(coord).cachePath());
         } catch (ArtifactNotFoundException notFound) {
-            return local() ? versionDirectories(coord) : List.of();
+            return local() ? VersionDirectories.of(fetchBase, coord) : List.of();
         } catch (IOException transport) {
             throw unreachableOr(transport);
         }
         return CatalogVersions.of(xml, coord, name, uri, metadataCache);
-    }
-
-    /**
-     * The version directories under this local repository's {@code group/artifact/} that hold the
-     * POM a fetch of that version reads ({@code <artifact>-<version>.pom}), oldest first. A directory
-     * without one — a jar copied in alone, a half-written install, a snapshot holding only
-     * timestamped files — is no version a resolve could fetch, so it is not listed. A {@code
-     * -SNAPSHOT} directory is listed like any other, and the release/snapshot policy filters it as
-     * it does a catalog's entry.
-     */
-    private List<String> versionDirectories(Coordinate coord) {
-        Path root;
-        try {
-            root = Path.of(fetchBase);
-        } catch (IllegalArgumentException | FileSystemNotFoundException notAPath) {
-            return List.of();
-        }
-        Path dir = root.resolve(MavenLayout.metadataPath(coord)).getParent();
-        if (dir == null) return List.of();
-        List<String> versions = new ArrayList<>();
-        try {
-            PathUtil.forEachChild(dir, (child, attrs) -> {
-                String version = child.getFileName().toString();
-                if (holdsPom(root, coord, version)) versions.add(version);
-                return true;
-            });
-        } catch (IOException | RuntimeException unreadable) {
-            Log.debug("versionDirectories: " + dir + " could not be listed", unreadable);
-            return List.of();
-        }
-        versions.sort(Versions::compare);
-        return List.copyOf(versions);
-    }
-
-    /** Whether the repository at {@code root} holds the POM a fetch of {@code version} reads. */
-    private static boolean holdsPom(Path root, Coordinate coord, String version) {
-        try {
-            Coordinate at = Coordinate.of(coord.group(), coord.artifact(), version);
-            return Files.isRegularFile(root.resolve(MavenLayout.pomPath(at)));
-        } catch (RuntimeException notAVersion) {
-            return false;
-        }
     }
 
     /** {@code uri} through the metadata cache, sent once more with a fresh credential after a refusal. */
@@ -779,36 +735,40 @@ public final class MavenRepo {
             BooleanSupplier abort,
             @Nullable String expectedSha256)
             throws IOException, InterruptedException {
-        if (offlineRemote()) {
-            return fetchOffline(coord, relativePath, expectedSha256);
-        }
-        // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
-        // --force always revalidates from the network (checksums re-checked).
-        boolean force = SessionContext.current().config().forceOr(false);
-        // A copy this look finds and declines (unconfirmed, disowned, evicted) goes to the network;
-        // only a miss lets the flight take a copy that appears meanwhile.
-        boolean missed = false;
-        if (mirror && !force) {
-            missed = repoStore.locate(relativePath).isEmpty();
-            if (!missed) {
-                Optional<Fetched> local = mirrored(coord, relativePath, leg, expectedSha256, abort);
-                if (local.isPresent()) return local.get();
+        // A non-unique snapshot's stored file is looked at and replaced under one lock (MovingSnapshots).
+        try (KeyedLocks.Held held =
+                mirror ? MovingSnapshots.hold(coord, repoStore.root(), relativePath) : MovingSnapshots.NONE) {
+            if (offlineRemote()) {
+                return fetchOffline(coord, relativePath, expectedSha256);
             }
-        }
-        URI uri = fetchBase.resolve(relativePath);
-        refuseIfUnreachable();
-        storeMissed.run();
-        // The same file into the same store under the same pin and credential: one download,
-        // whoever asks. Two repositories at one URL with different credentials never share one.
-        List<Object> flight = Arrays.asList(repoStore.root(), uri, mirror, leg, expectedSha256, force, credential);
-        boolean lookAgain = missed;
-        return FLIGHTS.run(flight, () -> {
-            if (lookAgain) {
-                Optional<Fetched> placed = placedSinceMiss(relativePath, expectedSha256);
-                if (placed.isPresent()) return placed.get();
+            // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
+            // --force always revalidates from the network (checksums re-checked).
+            boolean force = SessionContext.current().config().forceOr(false);
+            // A copy this look finds and declines (unconfirmed, disowned, evicted) goes to the network;
+            // only a miss lets the flight take a copy that appears meanwhile.
+            boolean missed = false;
+            if (mirror && !force) {
+                missed = repoStore.locate(relativePath).isEmpty();
+                if (!missed) {
+                    Optional<Fetched> local = mirrored(coord, relativePath, leg, expectedSha256, abort);
+                    if (local.isPresent()) return local.get();
+                }
             }
-            return fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force);
-        });
+            URI uri = fetchBase.resolve(relativePath);
+            refuseIfUnreachable();
+            storeMissed.run();
+            // The same file into the same store under the same pin and credential: one download,
+            // whoever asks. Two repositories at one URL with different credentials never share one.
+            List<Object> flight = Arrays.asList(repoStore.root(), uri, mirror, leg, expectedSha256, force, credential);
+            boolean lookAgain = missed;
+            return FLIGHTS.run(flight, () -> {
+                if (lookAgain) {
+                    Optional<Fetched> placed = placedSinceMiss(relativePath, expectedSha256);
+                    if (placed.isPresent()) return placed.get();
+                }
+                return fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force);
+            });
+        }
     }
 
     /**
@@ -888,7 +848,8 @@ public final class MavenRepo {
             }
             return new Fetched(uri, placed, stored.sha256(), stored.size());
         } catch (ArtifactNotFoundException missing) {
-            misses.record(uri);
+            // A non-unique snapshot missing now is there after the next install or deploy.
+            if (misses == RepoMisses.CATALOGS || !MovingSnapshots.moving(coord)) misses.record(uri);
             throw missing;
         } catch (FetchAbortedException aborted) {
             throw aborted;
@@ -1109,24 +1070,53 @@ public final class MavenRepo {
      * #tryLocalMirror}); an unpinned artifact is then confirmed by the checksum the repository
      * publishes ({@link #confirmed}), and so is a POM in the Maven local repository that jk never
      * verified. A POM or metadata file jk wrote is served as stored.
+     *
+     * <p>A non-unique snapshot's unpinned copy, POM or artifact, answers only while its source still
+     * holds those bytes: a file repository's file is compared with it ({@link #sourceHolds}), a
+     * remote's published checksum must agree with it, and a remote that publishes none is asked
+     * for the file again. Its first copy is never the answer for good, since a {@code mvn install}
+     * or the repository's next deploy replaces it in place. Under a pin the pin decides, as for
+     * any file: a lock is law until the next lock.
      */
     private Optional<Fetched> mirrored(
             Coordinate coord, String relativePath, Leg leg, @Nullable String expectedSha256, BooleanSupplier abort)
             throws IOException, InterruptedException {
-        // A file in the Maven local repository that jk has never verified is only a candidate: the
-        // repository's published checksum is the authority, and none published means no vouching.
-        boolean unvouched = repoStore.m2Backed()
-                && expectedSha256 == null
-                && repoStore.readSha256Sidecar(relativePath).isEmpty();
-        // An unvouched copy gets no memo until it is confirmed: a memo is what makes it vouched.
-        Optional<Fetched> local = unvouched ? candidate(relativePath) : tryLocalMirror(relativePath, expectedSha256);
-        if (local.isEmpty() || expectedSha256 != null || (leg != Leg.ARTIFACT && !unvouched)) return local;
-        if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
-        Optional<Fetched> answer = confirmed(coord, relativePath, local.get(), leg, abort, unvouched);
-        if (unvouched && answer.isPresent() && answer.get().sha256().equalsIgnoreCase(verified.get(relativePath))) {
-            repoStore.verify(relativePath, answer.get().sha256());
+        try (KeyedLocks.Held held = MovingSnapshots.hold(coord, repoStore.root(), relativePath)) {
+            // A file in the Maven local repository that jk has never verified is only a candidate: the
+            // repository's published checksum is the authority, and none published means no vouching.
+            boolean unvouched = repoStore.m2Backed()
+                    && expectedSha256 == null
+                    && repoStore.readSha256Sidecar(relativePath).isEmpty();
+            // An unvouched copy gets no memo until it is confirmed: a memo is what makes it vouched.
+            Optional<Fetched> local =
+                    unvouched ? candidate(relativePath) : tryLocalMirror(relativePath, expectedSha256);
+            boolean moving = expectedSha256 == null && MovingSnapshots.moving(coord);
+            if (local.isEmpty() || expectedSha256 != null || (leg != Leg.ARTIFACT && !unvouched && !moving))
+                return local;
+            if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
+            if (moving && local()) return sourceHolds(relativePath, local.get());
+            Optional<Fetched> answer = confirmed(coord, relativePath, local.get(), leg, abort, unvouched || moving);
+            if (unvouched && answer.isPresent() && answer.get().sha256().equalsIgnoreCase(verified.get(relativePath))) {
+                repoStore.verify(relativePath, answer.get().sha256());
+            }
+            return answer;
         }
-        return answer;
+    }
+
+    /**
+     * {@code stored} while the file this repository's directory holds at {@code relativePath} has
+     * its bytes; else the copy is evicted and empty, so the fetch reads the file again. The file's
+     * digest is remembered under its stat identity, so an unchanged file costs one stat.
+     */
+    private Optional<Fetched> sourceHolds(String relativePath, Fetched stored) {
+        if (MovingSnapshots.sourceDigest(fetchBase.resolve(relativePath))
+                .filter(stored.sha256()::equalsIgnoreCase)
+                .isPresent()) {
+            verified.put(relativePath, stored.sha256());
+            return Optional.of(stored);
+        }
+        repoStore.evict(relativePath);
+        return Optional.empty();
     }
 
     /** The store's copy of {@code relativePath} with its digest, read and hashed but not recorded. */

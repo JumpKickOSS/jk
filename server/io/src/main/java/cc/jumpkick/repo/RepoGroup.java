@@ -361,10 +361,11 @@ public final class RepoGroup {
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
         String key = repoIdentity + "|" + coord.toGav();
-        RepoFetched hit = liveHit(POM_HIT_CACHE, key);
+        boolean memo = memoizes(coord);
+        RepoFetched hit = memo ? liveHit(POM_HIT_CACHE, key) : null;
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
-        if (found.isPresent()) {
+        if (found.isPresent() && memo) {
             admit(POM_HIT_CACHE, HIT_CACHE_MAX);
             POM_HIT_CACHE.putIfAbsent(key, found.get());
         }
@@ -403,7 +404,8 @@ public final class RepoGroup {
                 + (coord.type() == null ? "" : coord.type())
                 + "\0"
                 + (coord.classifier() == null ? "" : coord.classifier());
-        RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
+        boolean memo = memoizes(coord);
+        RepoFetched hit = memo ? liveHit(ARTIFACT_HIT_CACHE, key) : null;
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(
                 coord,
@@ -412,7 +414,7 @@ public final class RepoGroup {
                 abort,
                 pomHolder(coord),
                 false);
-        if (found.isPresent()) {
+        if (found.isPresent() && memo) {
             admit(ARTIFACT_HIT_CACHE, HIT_CACHE_MAX);
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
         }
@@ -464,12 +466,20 @@ public final class RepoGroup {
                 NO_ABORT,
                 pomHolder(coord),
                 false);
-        if (found.isPresent()) {
+        if (found.isPresent() && memoizes(coord)) {
             admit(ARTIFACT_HIT_CACHE, HIT_CACHE_MAX);
             // put, not putIfAbsent: a pinned fetch is the authority on what is on disk now.
             ARTIFACT_HIT_CACHE.put(key, found.get());
         }
         return found;
+    }
+
+    /**
+     * Whether a hit for {@code coord} may be kept in a process memo: not a non-unique snapshot's,
+     * whose bytes a re-install or a deploy replaces, so every fetch asks its repository again.
+     */
+    private static boolean memoizes(Coordinate coord) {
+        return !Versions.isNonUniqueSnapshot(coord.version());
     }
 
     /**
