@@ -33,7 +33,7 @@ class CompileServerTest {
         CountDownLatch bothRunning = new CountDownLatch(2);
         AtomicInteger peak = new AtomicInteger();
         AtomicInteger running = new AtomicInteger();
-        try (Harness h = new Harness((plan, spec, emit) -> {
+        try (Harness h = new Harness((plan, spec, producers, emit) -> {
             peak.accumulateAndGet(running.incrementAndGet(), Math::max);
             bothRunning.countDown();
             bothRunning.await(10, TimeUnit.SECONDS);
@@ -69,7 +69,7 @@ class CompileServerTest {
     void a_cancel_ends_one_compile_and_its_neighbour_finishes() throws Exception {
         CountDownLatch started = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
-        try (Harness h = new Harness((plan, spec, emit) -> {
+        try (Harness h = new Harness((plan, spec, producers, emit) -> {
             started.countDown();
             if (spec.toString().contains("slow")) {
                 // Stands in for javac's task events, each of which looks at the flag.
@@ -99,7 +99,7 @@ class CompileServerTest {
     @Test
     void a_cancel_that_overtakes_its_compile_still_wins() throws Exception {
         AtomicInteger ran = new AtomicInteger();
-        try (Harness h = new Harness((plan, spec, emit) -> {
+        try (Harness h = new Harness((plan, spec, producers, emit) -> {
             // Where the real compile looks first, before it reads its spec.
             CompileCancel.checkpoint();
             ran.incrementAndGet();
@@ -123,7 +123,7 @@ class CompileServerTest {
 
     @Test
     void a_compile_that_throws_answers_an_error_and_the_worker_goes_on() throws Exception {
-        try (Harness h = new Harness((plan, spec, emit) -> {
+        try (Harness h = new Harness((plan, spec, producers, emit) -> {
             if (spec.toString().contains("bad")) throw new IllegalStateException("spec is unreadable");
             emit.accept(PluginReply.result(Map.of("status", "OK", "outcome", plan ? "full" : "")));
             return 0;
@@ -141,7 +141,7 @@ class CompileServerTest {
 
     @Test
     void heap_readings_and_a_trim_go_out() throws Exception {
-        try (Harness h = new Harness((plan, spec, emit) -> 0)) {
+        try (Harness h = new Harness((plan, spec, producers, emit) -> 0)) {
             h.send("{\"op\":\"hello\"}");
             String hello = h.await(PluginProtocol.HELLO);
             assertThat(Jsonl.intValue(hello, "threads", 0))

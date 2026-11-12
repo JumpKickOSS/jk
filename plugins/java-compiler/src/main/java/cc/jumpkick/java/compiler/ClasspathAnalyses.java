@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,12 +11,10 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.APIs;
 import sbt.internal.inc.Analysis;
-import sbt.internal.inc.FileAnalysisStore;
 import sbt.internal.inc.Stamps;
 import scala.Option;
 import xsbti.VirtualFileRef;
 import xsbti.api.AnalyzedClass;
-import xsbti.compile.AnalysisContents;
 import xsbti.compile.analysis.ReadStamps;
 
 /**
@@ -37,31 +34,36 @@ import xsbti.compile.analysis.ReadStamps;
  * producer's file, and the producer's own compile is what repairs it.
  *
  * <p>Entries are read on first use and once per instance: an instance lives for one compile or
- * forecast, and Zinc asks for the whole classpath's analyses in one pass.
+ * forecast, and Zinc asks for the whole classpath's analyses in one pass. The decode itself comes
+ * from the worker's {@link ProducerAnalysisCache}, shared by every compile; the check against the
+ * classes on disk is this instance's own.
  */
 final class ClasspathAnalyses {
 
     private final Map<Path, Path> files;
     private final ReadStamps current;
+    private final ProducerAnalysisCache cache;
     private final Map<Path, Optional<Analysis>> loaded = new HashMap<>();
     private @Nullable List<Analysis> all;
 
-    private ClasspathAnalyses(Map<Path, Path> files, ReadStamps current) {
+    private ClasspathAnalyses(Map<Path, Path> files, ReadStamps current, ProducerAnalysisCache cache) {
         this.files = files;
         this.current = current;
+        this.cache = cache;
     }
 
     /**
      * @param files each classpath entry with its producer's analysis file
      * @param current the stamper the compile itself uses, so a product is judged by the same
      *     (mtime-cached) hash the compile would read for it
+     * @param cache the worker's decoded analyses, which this instance reads through
      */
-    static ClasspathAnalyses of(Map<Path, Path> files, ReadStamps current) {
+    static ClasspathAnalyses of(Map<Path, Path> files, ReadStamps current, ProducerAnalysisCache cache) {
         Map<Path, Path> normalized = new LinkedHashMap<>();
         for (Map.Entry<Path, Path> e : files.entrySet()) {
             normalized.put(e.getKey().toAbsolutePath().normalize(), e.getValue());
         }
-        return new ClasspathAnalyses(normalized, current);
+        return new ClasspathAnalyses(normalized, current, cache);
     }
 
     boolean isEmpty() {
@@ -73,7 +75,7 @@ final class ClasspathAnalyses {
         Path key = entry.toAbsolutePath().normalize();
         Path file = files.get(key);
         if (file == null) return Optional.empty();
-        return loaded.computeIfAbsent(key, k -> read(file, current));
+        return loaded.computeIfAbsent(key, k -> read(file, cache, current));
     }
 
     /**
@@ -130,22 +132,11 @@ final class ClasspathAnalyses {
     }
 
     /**
-     * Read one producer analysis, tolerating anything wrong with it. The gzip header is checked
-     * first for the reason {@link ZincWorkdir#readAnalysis} checks it: Zinc's store leaks the
-     * stream when the magic is bad.
+     * One producer analysis, decoded or taken from the worker's cache, and trusted only when it
+     * describes the classes on disk now: the cache keys the file's bytes, not the classes.
      */
-    private static Optional<Analysis> read(Path file, ReadStamps current) {
-        if (!Files.isRegularFile(file) || !ZincWorkdir.gzipHeaderReadable(file)) return Optional.empty();
-        Optional<AnalysisContents> contents;
-        try {
-            contents = FileAnalysisStore.binary(file.toFile()).get();
-        } catch (RuntimeException e) {
-            return Optional.empty();
-        }
-        if (contents.isEmpty() || !(contents.get().getAnalysis() instanceof Analysis analysis)) {
-            return Optional.empty();
-        }
-        return describesDisk(analysis, current) ? Optional.of(apiOnlyForJava(analysis)) : Optional.empty();
+    private static Optional<Analysis> read(Path file, ProducerAnalysisCache cache, ReadStamps current) {
+        return cache.load(file).filter(analysis -> describesDisk(analysis, current));
     }
 
     /**

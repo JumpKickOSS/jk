@@ -213,6 +213,7 @@ class ZincJavaCompilerMixedTest {
             }
             return ZincJavaCompiler.compileMixed(
                     new JavaCompileJob(sources, compileClasspath, classes, workdir, null, 25, List.of(), List.of()),
+                    ProducerAnalysisCache.sizedToHeap(),
                     "3.8.4",
                     compilerClasspath,
                     null,
