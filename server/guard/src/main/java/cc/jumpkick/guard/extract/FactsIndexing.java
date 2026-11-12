@@ -5,6 +5,7 @@ import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ParallelMap;
 import java.io.IOException;
@@ -17,8 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Keeps one source set's facts index current against its classes directory.
@@ -44,10 +43,9 @@ public final class FactsIndexing {
     public static final String TEST_INDEX = "test-guard.idx";
 
     /**
-     * One lock per index file for the engine's lifetime; the set of index files an engine touches is
-     * bounded by its source sets, so the map never needs sweeping.
+     * One writer per index file at a time; the lock exists only while someone holds or waits for it.
      */
-    private static final ConcurrentHashMap<Path, ReentrantLock> WRITERS = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Path> WRITERS = new KeyedLocks<>();
 
     /** The header stamp naming the extractor; never a class file path. */
     static final String EXTRACTOR_STAMP = "@extractor";
@@ -102,13 +100,8 @@ public final class FactsIndexing {
         if (!Files.isDirectory(classesDir)) {
             return new Ensured(indexFile, "", 0, Ensured.Tier.ABSENT);
         }
-        ReentrantLock writer =
-                WRITERS.computeIfAbsent(indexFile.toAbsolutePath().normalize(), k -> new ReentrantLock());
-        writer.lock();
-        try {
+        try (KeyedLocks.Held writer = WRITERS.hold(indexFile.toAbsolutePath().normalize())) {
             return ensureLocked(classesDir, indexFile, extractor);
-        } finally {
-            writer.unlock();
         }
     }
 

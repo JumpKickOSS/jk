@@ -28,6 +28,7 @@ import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
@@ -66,7 +67,6 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -83,7 +83,7 @@ public final class GraphRunner {
     /** The marker the graph worker writes its protocol lines under. */
     static final String PREFIX = "##JKGRAPH:";
 
-    private static final Map<Path, ReentrantLock> LOCKS = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Path> LOCKS = new KeyedLocks<>();
 
     /** The workspace a directory belongs to: its workspace root, else the directory. */
     public static Path rootOf(Path dir) {
@@ -135,9 +135,7 @@ public final class GraphRunner {
     private static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress, boolean compile)
             throws IOException, InterruptedException {
         Path root = rootOf(Path.of(req.dir()));
-        ReentrantLock lock = LOCKS.computeIfAbsent(root, k -> new ReentrantLock());
-        lock.lock();
-        try {
+        try (KeyedLocks.Held held = LOCKS.hold(root)) {
             List<String> prefixes;
             try {
                 prefixes = modulePrefixes(root, req.modules());
@@ -163,8 +161,6 @@ public final class GraphRunner {
             // of the modules that can reach the method.
             String uncompiled = compiled.uncompiledLine(ack.uncompiled());
             return uncompiled == null ? ack : withLine(ack, uncompiled);
-        } finally {
-            lock.unlock();
         }
     }
 

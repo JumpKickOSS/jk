@@ -6,6 +6,7 @@ import cc.jumpkick.guard.eval.GuardModelSnapshot;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.test.JUnitLauncher;
@@ -22,8 +23,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -94,7 +93,7 @@ final class GuardSuiteRunner {
      * file while the first is read leaves both short. Threads of this engine queue on the lock;
      * another engine on the same tree queues on the file lock beside the report.
      */
-    private static final ConcurrentHashMap<Path, ReentrantLock> RUNS = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Path> RUNS = new KeyedLocks<>();
 
     /** The file the cross-process lock is taken on, beside the report. */
     static final String LOCK_FILE = "run.lock";
@@ -119,15 +118,13 @@ final class GuardSuiteRunner {
     static <T> T takingTurn(Path report, Turn<T> body) throws IOException, InterruptedException {
         Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
-        ReentrantLock turn = RUNS.computeIfAbsent(guardDir.normalize(), k -> new ReentrantLock());
-        if (turn.isHeldByCurrentThread()) return body.run();
-        turn.lockInterruptibly();
-        try (FileChannel channel = FileChannel.open(
+        Path key = guardDir.normalize();
+        if (RUNS.heldByCurrentThread(key)) return body.run();
+        try (KeyedLocks.Held turn = RUNS.holdInterruptibly(key);
+                FileChannel channel = FileChannel.open(
                         guardDir.resolve(LOCK_FILE), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 FileLock held = channel.lock()) {
             return body.run();
-        } finally {
-            turn.unlock();
         }
     }
 

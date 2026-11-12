@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.builds.MetricsFile;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import java.io.IOException;
@@ -96,7 +97,7 @@ public final class RecentClassWalls {
         if (stamp == null) return scan(home, root);
         Cached cached = CACHE.get(key);
         if (cached != null && cached.stamp == stamp) return cached.byModule;
-        synchronized (SCANNING.computeIfAbsent(key, k -> new Object())) {
+        try (KeyedLocks.Held held = SCANNING.hold(key)) {
             cached = CACHE.get(key);
             if (cached != null && cached.stamp == stamp) return cached.byModule;
             Map<String, Map<String, Long>> walls = scan(home, root);
@@ -106,7 +107,7 @@ public final class RecentClassWalls {
     }
 
     /** One lock per key: the single flight of {@link #merged}. */
-    private static final ConcurrentHashMap<Key, Object> SCANNING = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Key> SCANNING = new KeyedLocks<>();
 
     /**
      * Each run's parsed walls by its metrics file, kept while the file's size and mtime hold: a run's

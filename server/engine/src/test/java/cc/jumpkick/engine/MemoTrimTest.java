@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Settled;
@@ -46,13 +47,14 @@ class MemoTrimTest {
         assertThat(line)
                 .matches("memos dropped: manifests 2, toml files [1-9]\\d*, versions 2, strings [1-9]\\d*,"
                         + " file hashes \\d+, abi tokens \\d+, effective poms \\d+, repository hits \\d+,"
-                        + " version lists \\d+, module metadata \\d+");
+                        + " version lists \\d+, module metadata \\d+, stamped entries \\d+");
 
         assertThat(MemoTrim.drop(null))
                 .as("a second trim on an untouched engine finds nothing")
                 .isEqualTo(
                         "memos dropped: manifests 0, toml files 0, versions 0, strings 0, file hashes 0, abi tokens 0,"
-                                + " effective poms 0, repository hits 0, version lists 0, module metadata 0");
+                                + " effective poms 0, repository hits 0, version lists 0, module metadata 0,"
+                                + " stamped entries 0");
     }
 
     /**
@@ -80,6 +82,22 @@ class MemoTrimTest {
                 .as("with no root to keep, the kept entries go too")
                 .matches("memos dropped: manifests 2, toml files [1-9]\\d*,.*")
                 .doesNotContain("kept for");
+    }
+
+    /** A memo nobody listed is trimmed too: it joined the registry when it was made. */
+    @Test
+    void every_stamped_memo_is_trimmed_to_the_last_built_workspace(@TempDir Path dir) {
+        StampedMemo<Path, String, String> memo = StampedMemo.bounded(8);
+        Path kept = dir.resolve("kept");
+        memo.get(kept.resolve("a"), "s", () -> "kept");
+        memo.get(dir.resolve("gone/a"), "s", () -> "gone");
+
+        MemoTrim.drop(kept);
+        assertThat(memo.size()).isEqualTo(1);
+        assertThat(memo.get(kept.resolve("a"), "s", () -> "recomputed")).isEqualTo("kept");
+
+        MemoTrim.drop(null);
+        assertThat(memo.size()).isZero();
     }
 
     private static Path manifest(Path module, String name) throws Exception {

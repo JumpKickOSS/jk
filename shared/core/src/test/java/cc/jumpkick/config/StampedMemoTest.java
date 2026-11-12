@@ -4,12 +4,15 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Settled;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -211,5 +214,89 @@ class StampedMemoTest {
         assertThat(memos()).hasSize(5);
         assertThat(memos().stream().filter(m -> m.stamp() == Stamp.FILE)).hasSize(3);
         assertThat(memos().stream().filter(m -> m.stamp() == Stamp.BODY)).hasSize(2);
+    }
+
+    @Test
+    void a_memo_keeping_only_found_values_asks_again_after_an_absence() {
+        StampedMemo<String, String, Optional<String>> memo =
+                StampedMemo.<String, String, Optional<String>>bounded(4).keeping(Optional::isPresent);
+        AtomicInteger asks = new AtomicInteger();
+
+        assertThat(memo.get("git", "s", () -> {
+                    asks.incrementAndGet();
+                    return Optional.empty();
+                }))
+                .isEmpty();
+        assertThat(memo.get("git", "s", () -> {
+                    asks.incrementAndGet();
+                    return Optional.of("2.47");
+                }))
+                .contains("2.47");
+        assertThat(memo.get("git", "s", () -> Optional.of("never asked"))).contains("2.47");
+        assertThat(asks.get()).isEqualTo(2);
+    }
+
+    @Test
+    void an_expiring_memo_recomputes_an_entry_older_than_its_ttl() throws Exception {
+        StampedMemo<String, String, Integer> memo =
+                StampedMemo.<String, String, Integer>bounded(4).expiring(Duration.ofMillis(50));
+        AtomicInteger computes = new AtomicInteger();
+
+        memo.get("k", "s", computes::incrementAndGet);
+        memo.get("k", "s", computes::incrementAndGet);
+        assertThat(computes.get()).isEqualTo(1);
+        Thread.sleep(80);
+        memo.get("k", "s", computes::incrementAndGet);
+        assertThat(computes.get()).isEqualTo(2);
+    }
+
+    @Test
+    void a_discovered_stamp_is_read_off_the_value_and_checked_again_on_every_hit(@TempDir Path dir) throws Exception {
+        Path a = Files.writeString(dir.resolve("a"), "1");
+        Files.setLastModifiedTime(a, FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        StampedMemo<String, List<String>, List<Path>> memo = StampedMemo.bounded(4);
+        AtomicInteger listings = new AtomicInteger();
+
+        List<Path> first = memo.getDiscovered("dir", StampedMemoTest::names, () -> list(dir, listings));
+        assertThat(memo.getDiscovered("dir", StampedMemoTest::names, () -> list(dir, listings)))
+                .isEqualTo(first);
+        assertThat(listings.get()).isEqualTo(1);
+
+        Files.writeString(dir.resolve("b"), "2");
+        assertThat(memo.getDiscovered("dir", StampedMemoTest::names, () -> list(dir, listings)))
+                .as("a new file moves the stamp read off the listing")
+                .hasSize(2);
+        assertThat(listings.get()).isEqualTo(2);
+    }
+
+    /** The stamp of a listing: the names the directory holds now. */
+    private static List<String> names(List<Path> listed) {
+        Path dir = Objects.requireNonNull(listed.get(0).getParent());
+        try (var files = Files.list(dir)) {
+            return files.map(f -> f.getFileName().toString()).sorted().toList();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    private static List<Path> list(Path dir, AtomicInteger listings) {
+        listings.incrementAndGet();
+        try (var files = Files.list(dir)) {
+            return files.sorted().toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    void every_memo_joins_the_trim_registry_when_it_is_made() {
+        StampedMemo<Path, String, String> memo = StampedMemo.create();
+        assertThat(TrimRegistry.joined(memo)).isTrue();
+        memo.get(Path.of("/w/kept/a"), "s", () -> "x");
+        memo.get(Path.of("/w/gone/a"), "s", () -> "y");
+
+        assertThat(memo.trimOutside(Path.of("/w/kept"))).isEqualTo(1);
+        assertThat(memo.size()).isEqualTo(1);
+        assertThat(memo.trimOutside(null)).isEqualTo(1);
     }
 }

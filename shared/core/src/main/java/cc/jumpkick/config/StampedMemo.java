@@ -3,9 +3,12 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +40,15 @@ import org.jspecify.annotations.Nullable;
  * compile-output freshness question {@code BuildStamps} / {@code FreshnessStamp} answer either:
  * those are sentinel files on disk that outlive the process, this is a map that does not.
  *
+ * <p><strong>Three refinements</strong>, each a factory or a method rather than a hand-rolled map:
+ * {@link #keeping} records only the values worth keeping (a found tool, never "not found"), so an
+ * absence is asked again; {@link #expiring} recomputes an entry once it is older than a duration,
+ * whatever its stamp; and {@link #getDiscovered} takes the stamp from the value, for an answer whose
+ * inputs are only known once it is computed (a glob's members).
+ *
+ * <p>Every memo joins the {@link TrimRegistry} when it is made, so the engine's idle trim gives
+ * back its entries — those not under the workspace built last — without a hand-kept list.
+ *
  * <p>Thread-safe. A concurrent miss on the same key may compute twice; the last write wins and both
  * results are equal by construction, so no reader can observe the difference.
  *
@@ -44,12 +56,12 @@ import org.jspecify.annotations.Nullable;
  * @param <S> staleness stamp, compared by {@link Object#equals}
  * @param <V> memoized value; {@code null} is a value, so "this file says nothing" is memoized too
  */
-public final class StampedMemo<K, S, V extends @Nullable Object> {
+public final class StampedMemo<K, S, V extends @Nullable Object> implements TrimRegistry.Trimmable {
 
     private final ConcurrentHashMap<K, Entry<S, V>> entries = new ConcurrentHashMap<>();
 
     /** {@code ConcurrentHashMap} rejects null values, so the entry wrapper carries the nullable one. */
-    private record Entry<S, V extends @Nullable Object>(S stamp, V value) {}
+    private record Entry<S, V extends @Nullable Object>(S stamp, V value, long atNanos) {}
 
     /**
      * Entries kept before the map is cleared, or {@link Integer#MAX_VALUE} for no bound.
@@ -62,13 +74,22 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
      */
     private final int maxEntries;
 
-    private StampedMemo(int maxEntries) {
+    /** Which computed values are recorded; the rest are returned and computed again next time. */
+    private final Predicate<? super V> worthKeeping;
+
+    /** How long an entry answers, in nanoseconds, whatever its stamp; {@code Long.MAX_VALUE} for ever. */
+    private final long ttlNanos;
+
+    private StampedMemo(int maxEntries, Predicate<? super V> worthKeeping, long ttlNanos) {
         this.maxEntries = maxEntries;
+        this.worthKeeping = worthKeeping;
+        this.ttlNanos = ttlNanos;
+        TrimRegistry.join(this);
     }
 
     /** A fresh, empty memo with no entry bound. */
     public static <K, S, V extends @Nullable Object> StampedMemo<K, S, V> create() {
-        return new StampedMemo<>(Integer.MAX_VALUE);
+        return new StampedMemo<>(Integer.MAX_VALUE, v -> true, Long.MAX_VALUE);
     }
 
     /**
@@ -81,7 +102,22 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
      */
     public static <K, S, V extends @Nullable Object> StampedMemo<K, S, V> bounded(int maxEntries) {
         if (maxEntries < 1) throw new IllegalArgumentException("maxEntries must be positive");
-        return new StampedMemo<>(maxEntries);
+        return new StampedMemo<>(maxEntries, v -> true, Long.MAX_VALUE);
+    }
+
+    /**
+     * This memo's bound and lifetime, recording only the values {@code worth} accepts: an answer
+     * that says "absent", "failed" or "timed out" is returned to its caller and asked again next
+     * time rather than remembered until the stamp moves.
+     */
+    public StampedMemo<K, S, V> keeping(Predicate<? super V> worth) {
+        return new StampedMemo<>(maxEntries, worth, ttlNanos);
+    }
+
+    /** This memo's bound and filter, each entry answering for at most {@code ttl} whatever its stamp. */
+    public StampedMemo<K, S, V> expiring(Duration ttl) {
+        if (ttl.isNegative() || ttl.isZero()) throw new IllegalArgumentException("ttl must be positive");
+        return new StampedMemo<>(maxEntries, worthKeeping, ttl.toNanos());
     }
 
     /**
@@ -92,12 +128,47 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
      */
     public V get(K key, S stamp, Supplier<V> compute) {
         if (stamp instanceof Settling settling && !settling.settled()) return compute.get();
-        Entry<S, V> hit = entries.get(key);
+        Entry<S, V> hit = live(key);
         if (hit != null && hit.stamp().equals(stamp)) return hit.value();
         V fresh = compute.get();
-        if (entries.size() >= maxEntries) entries.clear();
-        entries.put(key, new Entry<>(stamp, fresh));
+        record(key, stamp, fresh);
         return fresh;
+    }
+
+    /**
+     * The value for {@code key}, where the stamp is read off the value: {@code stampOf} says what the
+     * inputs a value was computed from look like now. A stored entry is served while {@code stampOf}
+     * of it still equals the stamp recorded with it; otherwise {@code compute} runs and is recorded
+     * under {@code stampOf} of its result. For an answer whose inputs are only known once computed —
+     * the members a glob expanded to. An input written between the compute and its stamp is younger
+     * than {@link Settled#WINDOW_MS}, so a {@link Settling} stamp keeps such a value out of the memo.
+     */
+    public V getDiscovered(K key, Function<? super V, ? extends S> stampOf, Supplier<V> compute) {
+        Entry<S, V> hit = live(key);
+        if (hit != null && hit.stamp().equals(stampOf.apply(hit.value()))) return hit.value();
+        V fresh = compute.get();
+        S stamp = stampOf.apply(fresh);
+        if (stamp instanceof Settling settling && !settling.settled()) {
+            entries.remove(key);
+            return fresh;
+        }
+        record(key, stamp, fresh);
+        return fresh;
+    }
+
+    private @Nullable Entry<S, V> live(K key) {
+        Entry<S, V> hit = entries.get(key);
+        if (hit == null || ttlNanos == Long.MAX_VALUE) return hit;
+        return Clock.SYSTEM.nanos() - hit.atNanos() < ttlNanos ? hit : null;
+    }
+
+    private void record(K key, S stamp, V value) {
+        if (!worthKeeping.test(value)) {
+            entries.remove(key);
+            return;
+        }
+        if (entries.size() >= maxEntries) entries.clear();
+        entries.put(key, new Entry<>(stamp, value, ttlNanos == Long.MAX_VALUE ? 0 : Clock.SYSTEM.nanos()));
     }
 
     /** Drop {@code key}'s entry, so the next {@link #get} recomputes whatever its stamp says. */
@@ -130,6 +201,16 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
     /** How many keys are memoized. */
     public int size() {
         return entries.size();
+    }
+
+    /**
+     * The idle trim: keep the entries whose key is a path under {@code keep}, drop the rest; drop
+     * everything when {@code keep} is null.
+     */
+    @Override
+    public int trimOutside(@Nullable Path keep) {
+        if (keep == null) return clear();
+        return retain(k -> k instanceof Path p && p.startsWith(keep));
     }
 
     /**

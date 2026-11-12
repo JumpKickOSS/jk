@@ -1644,6 +1644,10 @@ instead        = "StampedMemo.bounded(n) or a Request slot, or an allow entry na
 why            = "a static memo in the resident engine outlives every build that filled it and goes stale or grows for days"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.config.TrimRegistry#MEMOS"
+reason = "live registry: every memo that can trim itself, held weakly"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.host.Interned#TABLE"
 reason = "content-keyed: an interned string is its own key; the idle trim empties the table"
 
