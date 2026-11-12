@@ -3,9 +3,10 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.layout.BuildLayout;
@@ -40,16 +41,9 @@ final class SiblingJars {
      */
     static Map<String, Path> siblingMainJars(Path moduleDir) throws IOException {
         Map<String, Path> out = new LinkedHashMap<>();
-        var rootOpt = WorkspaceLocator.findRoot(moduleDir);
-        if (rootOpt.isEmpty()) return out;
-        Path root = rootOpt.get();
-        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-        if (!rootManifest.isWorkspaceRoot()) return out;
-        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
-            Path manifest = ManifestPaths.manifestIn(dir);
-            if (!Files.exists(manifest)) continue;
-            JkBuild sib = siblingOrNull(manifest);
-            if (sib == null) continue;
+        for (Map.Entry<Path, JkBuild> member : members(moduleDir).entrySet()) {
+            Path dir = member.getKey();
+            JkBuild sib = member.getValue();
             BuildLayout layout = BuildLayout.of(dir, sib);
             // An assembly plugin runs from its -all.jar — that's the artifact
             // that bundles plugin-api/PluginMain and the plugin's deps; a
@@ -109,15 +103,15 @@ final class SiblingJars {
     static void stageSiblingRulePacks(Path moduleDir, JkBuild project, Map<String, String> testEnv) throws IOException {
         List<String> entries = project.build().testPluginJars();
         if (entries.isEmpty() || !testEnv.containsKey(TestEnv.JK_HOME)) return;
-        Map<String, JkBuild> siblings = siblingManifests(moduleDir);
+        Map<String, Sibling> siblings = siblingsByName(moduleDir);
         if (siblings.isEmpty()) return;
         Path store = JkDirs.of(testEnv::get, System.getProperty("user.home")).storeDir();
         for (String entry : entries) {
             if (workerFor(entry).isPresent()) continue;
-            JkBuild sibling = siblings.get(entry);
+            Sibling sibling = siblings.get(entry);
             if (sibling == null) continue;
-            var proj = sibling.project();
-            Path jar = BuildLayout.of(siblingDir(moduleDir, sibling), sibling).mainJar();
+            var proj = sibling.manifest().project();
+            Path jar = BuildLayout.of(sibling.dir(), sibling.manifest()).mainJar();
             if (!Files.isRegularFile(jar)) continue;
             Path shelf = store.resolve("repos")
                     .resolve(RepoArtifactResolver.JK_LOCAL)
@@ -155,40 +149,42 @@ final class SiblingJars {
         return wj.isPresent() ? wj : PluginJar.byArtifactId("jk-" + entry);
     }
 
-    /** Workspace siblings' manifests, keyed by project name and by {@code group:name}. */
-    private static Map<String, JkBuild> siblingManifests(Path moduleDir) throws IOException {
-        Map<String, JkBuild> out = new LinkedHashMap<>();
-        var rootOpt = WorkspaceLocator.findRoot(moduleDir);
-        if (rootOpt.isEmpty()) return out;
-        Path root = rootOpt.get();
-        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-        if (!rootManifest.isWorkspaceRoot()) return out;
-        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
-            Path manifest = ManifestPaths.manifestIn(dir);
-            if (!Files.exists(manifest)) continue;
-            JkBuild sib = siblingOrNull(manifest);
-            if (sib == null) continue;
-            out.put(sib.project().name(), sib);
-            out.put(sib.project().group() + ":" + sib.project().name(), sib);
+    /** A workspace member: the directory it was loaded from and its manifest. */
+    private record Sibling(Path dir, JkBuild manifest) {}
+
+    /** Workspace siblings, keyed by project name and by {@code group:name}. */
+    private static Map<String, Sibling> siblingsByName(Path moduleDir) throws IOException {
+        Map<String, Sibling> out = new LinkedHashMap<>();
+        for (Map.Entry<Path, JkBuild> member : members(moduleDir).entrySet()) {
+            Sibling sib = new Sibling(member.getKey(), member.getValue());
+            var proj = sib.manifest().project();
+            out.put(proj.name(), sib);
+            out.put(proj.group() + ":" + proj.name(), sib);
         }
         return out;
     }
 
-    /** The directory a sibling manifest was parsed from, found again by its declared module path. */
-    private static Path siblingDir(Path moduleDir, JkBuild sibling) throws IOException {
-        Path root = WorkspaceLocator.findRoot(moduleDir).orElseThrow();
-        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
-            Path manifest = ManifestPaths.manifestIn(dir);
-            if (!Files.exists(manifest)) continue;
-            // an unparsable sibling cannot be the one already parsed
-            JkBuild sib = siblingOrNull(manifest);
-            if (sib != null
-                    && sib.project().group().equals(sibling.project().group())
-                    && sib.project().name().equals(sibling.project().name())) return dir;
-        }
-        throw new IOException("workspace module for " + sibling.project().group() + ":"
-                + sibling.project().name() + " is no longer listed at " + root);
+    /**
+     * The members of the workspace {@code moduleDir} belongs to, by directory, as the build loads
+     * them: one module list per request ({@link WorkspaceLoader#loadModules}) rather than a full
+     * parse of every member per call. Empty when the module is not in a workspace.
+     *
+     * <p>Each member carries the version it builds at: the loader's members are as declared, and
+     * under {@code jk snapshot} a sibling's jar and its staged coordinate are {@code -SNAPSHOT}.
+     */
+    private static Map<Path, JkBuild> members(Path moduleDir) throws IOException {
+        var root = WorkspaceLocator.findRoot(moduleDir);
+        if (root.isEmpty()) return Map.of();
+        // parseLocal for the root, as the loader's own callers read it: its members carry the root's inherits.
+        JkBuild rootManifest = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root.get()));
+        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root.get(), rootManifest);
+        if (!SnapshotQualifier.active()) return members;
+        Map<Path, JkBuild> built = new LinkedHashMap<>();
+        members.forEach((dir, m) -> built.put(
+                dir,
+                m.withProject(m.project()
+                        .withVersion(SnapshotQualifier.version(m.project().version())))));
+        return built;
     }
 
     /** A sibling's manifest, or null when it does not parse; a config.toml that does not parse is thrown. */
