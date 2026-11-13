@@ -137,7 +137,7 @@ public final class Calibration {
     static final long REF_JVM_FORK_MS = 40;
     static final long REF_JAVAC_MS = 300; // HardwareProbe.JAVAC_SOURCES micro sources
     static final long REF_DISK_IO_MS = 15;
-    static final long REF_HASH_CPU_MS = 8;
+    static final long REF_HASH_CPU_MS = 64;
     static final long REF_JUNIT_PLATFORM_MS = 250;
 
     /** Never assume this host is more than ~35% faster than the baseline product costs. */
@@ -1011,7 +1011,7 @@ public final class Calibration {
         if (jvmForkMs > 0) sb.append(String.format("  jvm-fork            %d ms%n", jvmForkMs));
         if (javacMs > 0) sb.append(String.format("  javac (micro)       %d ms%n", javacMs));
         if (diskIoMs > 0) sb.append(String.format("  disk io (4 MiB)     %d ms%n", diskIoMs));
-        if (hashCpuMs > 0) sb.append(String.format("  sha-256 (8 MiB)     %d ms%n", hashCpuMs));
+        if (hashCpuMs > 0) sb.append(String.format("  sha-256 (64 MiB)    %d ms%n", hashCpuMs));
         if (junitForkMs > 0) sb.append(String.format("  test-worker fork    %d ms%n", junitForkMs));
         if (junitRunMs > 0) sb.append(String.format("  test-worker body    %d ms%n", junitRunMs));
         if (junitPlatformUsed && junitPlatformMs > 0) {

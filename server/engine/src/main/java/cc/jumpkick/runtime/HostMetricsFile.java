@@ -86,7 +86,7 @@ final class HostMetricsFile {
                     .jvmForkMs(longOr(cal, "jvm-fork-ms", 0))
                     .javacMs(longOr(cal, "javac-ms", 0))
                     .diskIoMs(longOr(cal, "disk-io-ms", 0))
-                    .hashCpuMs(longOr(cal, "hash-cpu-ms", 0))
+                    .hashCpuMs(longOr(cal, "sha256-64mib-ms", 0))
                     .junitForkMs(longOr(cal, "junit-fork-ms", 0))
                     .junitRunMs(longOr(cal, "junit-run-ms", 0))
                     .junitPlatformMs(longOr(cal, "junit-platform-ms", 0))
@@ -169,7 +169,7 @@ final class HostMetricsFile {
                 jvm-fork-ms          = %d
                 javac-ms             = %d
                 disk-io-ms           = %d
-                hash-cpu-ms          = %d
+                sha256-64mib-ms      = %d
                 junit-fork-ms        = %d
                 junit-run-ms         = %d
                 junit-platform-ms    = %d

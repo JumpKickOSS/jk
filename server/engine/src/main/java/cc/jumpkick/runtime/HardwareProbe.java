@@ -58,7 +58,12 @@ final class HardwareProbe {
     static final int PLATFORM_METHODS = 8;
 
     static final int DISK_BYTES = 4 * 1024 * 1024;
-    static final int HASH_BYTES = 8 * 1024 * 1024;
+    /**
+     * The bytes the hash probe digests: enough that a millisecond is noise. At 8 MiB it took 3 to 5
+     * ms, counted in whole milliseconds and read at its slowest sample, and that one number moved
+     * every cold price of jk's first build by 30% from one fresh home to the next (JK-7R038).
+     */
+    static final int HASH_BYTES = 64 * 1024 * 1024;
 
     /** Known small Central artifact for the optional resolve probe (~5 KB). */
     static final String RESOLVE_PROBE_PATH = "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar";
@@ -247,6 +252,18 @@ final class HardwareProbe {
             if (ms >= 0) all.add(ms);
         }
         return all;
+    }
+
+    /**
+     * The fastest warm sample: a CPU or disk micro-probe's own cost, which interference (a GC, a
+     * neighbour's burst) only ever adds to. {@code -1} when there is none.
+     */
+    static long minWarm(List<Long> samples) {
+        if (samples == null || samples.isEmpty()) return -1;
+        List<Long> warm = samples.size() == 1 ? samples : samples.subList(1, samples.size());
+        long min = Long.MAX_VALUE;
+        for (long s : warm) if (s >= 0 && s < min) min = s;
+        return min == Long.MAX_VALUE ? -1 : min;
     }
 
     static long maxWarm(List<Long> samples) {
@@ -633,9 +650,9 @@ final class HardwareProbe {
                     ByteBuffer buf = ByteBuffer.allocate(64 * 1024);
                     while (ch.read(buf) > 0) buf.clear();
                 }
-                samples.add((System.nanoTime() - t0) / 1_000_000);
+                samples.add(System.nanoTime() - t0);
             }
-            return maxWarm(samples);
+            return Math.round(minWarm(samples) / 1e6);
         } finally {
             PathUtil.deleteRecursively(dir);
         }
@@ -651,9 +668,9 @@ final class HardwareProbe {
                 MessageDigest md = Hashing.newSha256();
                 md.update(data);
                 md.digest();
-                samples.add((System.nanoTime() - t0) / 1_000_000);
+                samples.add(System.nanoTime() - t0);
             }
-            return maxWarm(samples);
+            return Math.round(minWarm(samples) / 1e6);
         } catch (Exception e) {
             return -1;
         }
