@@ -286,8 +286,8 @@ final class LockClosures {
         }
         if (!missing.isEmpty()) {
             var board = SessionContext.current().io().transfers();
-            for (Map.Entry<Coordinate, Path> fetched :
-                    ArtifactFanOut.all(missing, hit -> board.landed(hit.getKey().toString()))) {
+            for (Map.Entry<Coordinate, Path> fetched : ArtifactFanOut.all(
+                    missing, hit -> board.claimLanding(hit.getKey().toString()))) {
                 out.put(fetched.getKey(), fetched.getValue());
             }
         }

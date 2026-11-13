@@ -674,7 +674,7 @@ public final class PomRuntimeClasspath {
         Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
         if (art.isEmpty()) return new Fetched(art, null, null, false);
         // Whether this jar came down the wire this run, or the store already held it.
-        boolean downloaded = SessionContext.current().io().transfers().landed(coord.toString());
+        boolean downloaded = SessionContext.current().io().transfers().claimLanding(coord.toString());
         try {
             return new Fetched(art, builder.build(coord), null, downloaded);
         } catch (MavenRepo.ArtifactNotFoundException e) {

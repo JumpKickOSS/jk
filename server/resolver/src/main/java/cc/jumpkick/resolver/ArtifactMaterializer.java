@@ -148,7 +148,7 @@ final class ArtifactMaterializer {
             arts[d.index] = Objects.requireNonNull(d.artifact);
             progress.materialized(Objects.requireNonNull(d.module), Objects.requireNonNull(d.version));
             // A row whose jar this pass downloaded, not one the store already held.
-            plan.settled(SessionContext.current().io().transfers().landed(d.artifact.displayCoord()));
+            plan.settled(SessionContext.current().io().transfers().claimLanding(d.artifact.displayCoord()));
             received++;
         }
         return List.of(arts);

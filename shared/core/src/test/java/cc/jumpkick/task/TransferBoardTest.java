@@ -162,6 +162,26 @@ class TransferBoardTest {
 
     /** A run says how many artifacts it downloaded: their POMs and metadata land too, and do not count. */
     @Test
+    void a_file_two_sets_fetch_is_one_download() {
+        try (var first = board.plan(2);
+                var second = board.plan(2)) {
+            try (var jar = board.openArtifact("g:a:1")) {
+                jar.started(10);
+                jar.advanced(10);
+                jar.finished();
+            }
+            first.settled(board.claimLanding("g:a:1"));
+            second.settled(board.claimLanding("g:a:1"));
+            assertThat(board.claimLanding("g:a:1")).isFalse();
+            assertThat(board.snapshot().settled())
+                    .as("the second set found the jar on disk")
+                    .isEqualTo(1);
+        }
+        assertThat(board.snapshot().settled()).isEqualTo(1);
+        assertThat(board.snapshot().planned()).isEqualTo(1);
+    }
+
+    @Test
     void artifacts_are_counted_apart_from_every_other_file() {
         try (var jar = board.openArtifact("g:a:1")) {
             jar.started(10);

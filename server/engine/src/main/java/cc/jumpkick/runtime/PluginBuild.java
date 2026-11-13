@@ -482,7 +482,7 @@ public final class PluginBuild {
             fetches.add(() -> {
                 try {
                     fetchPinned(repos, coord, lock);
-                    return board.landed(coord.toString());
+                    return board.claimLanding(coord.toString());
                 } catch (IOException | RuntimeException e) {
                     return false;
                 }

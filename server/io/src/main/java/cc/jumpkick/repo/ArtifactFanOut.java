@@ -53,7 +53,8 @@ public final class ArtifactFanOut {
         for (Coordinate c : coords) fetches.add(() -> new Hit(c, repos.tryFetchArtifact(c)));
         List<Optional<RepoGroup.RepoFetched>> out = new ArrayList<>(coords.size());
         for (Hit h : all(
-                fetches, h -> h.fetched().isPresent() && board.landed(h.coord().toString()))) {
+                fetches,
+                h -> h.fetched().isPresent() && board.claimLanding(h.coord().toString()))) {
             out.add(h.fetched());
         }
         return out;
