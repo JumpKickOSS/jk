@@ -235,10 +235,14 @@ public final class PlannerFixtures {
                             TaskNames.COMPILE_TEST_FIXTURES,
                             out);
                     boolean rerun = in.session().config().rebuildOr(false);
+                    // Read once: every classpath entry is fingerprinted, and the reweigh and the compile key on the
+                    // same lines.
+                    List<String> classpathTokens = ActionKey.javacClasspathTokens(request);
                     if (!rerun) {
                         try {
                             boolean restores = actionCache
-                                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion()))
+                                    .lookup(JavaCompile.key(
+                                            taskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
@@ -257,6 +261,7 @@ public final class PlannerFixtures {
                             request,
                             BuildIdentity.cacheKeyVersion(),
                             !rerun,
+                            true,
                             actionCache.cas(),
                             actionCache,
                             stateDir,
@@ -265,7 +270,8 @@ public final class PlannerFixtures {
                             WorkerEnv.forModule(
                                     ctx.require(PROJECT).build().env(),
                                     in.dir(),
-                                    ctx.require(LAYOUT).moduleTargetDir()));
+                                    ctx.require(LAYOUT).moduleTargetDir()),
+                            classpathTokens);
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = JavacDiagnostics.report(
                             ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics(), r.replayed());
