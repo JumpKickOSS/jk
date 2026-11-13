@@ -36,7 +36,7 @@ class CasPrewriterTest {
         for (String content : contents) {
             String hex = Hashing.sha256Hex(content.getBytes());
             Await.until(
-                    Duration.ofSeconds(30),
+                    Duration.ofSeconds(15),
                     () -> Files.exists(cas.pathFor(hex)),
                     () -> "the prewriter never ingested " + content + " (sha " + hex + ")");
         }
@@ -156,8 +156,10 @@ class CasPrewriterTest {
     }
 
     /**
-     * Same size + same mtime as a poll-stable file must still re-content-hash on finish — coarse
-     * mtime filesystems can rewrite bytes without advancing mtime within one tick.
+     * Same size + same mtime as a settled file must still re-content-hash on finish — coarse
+     * mtime filesystems can rewrite bytes without advancing mtime within one tick. The event and
+     * the ticks are driven by hand: a polling watch service (macOS) never reports a rewrite that
+     * keeps its mtime.
      */
     @Test
     void finish_rehashes_when_content_changes_without_size_mtime_change(@TempDir Path tempDir) throws Exception {
@@ -169,18 +171,16 @@ class CasPrewriterTest {
         Files.writeString(file, "AAAAAA");
         var mtime = Files.getLastModifiedTime(file);
 
-        CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
-        try {
-            // A rewrite the watch settles; a file untouched since watching began is finish's alone.
-            Files.writeString(file, "AAAAAA");
-            Files.setLastModifiedTime(file, mtime);
-            awaitPreprocessed(cas, "AAAAAA");
+        try (CasPrewriter prewriter = CasPrewriter.watching(cas, classes)) {
+            prewriter.observeForTest(file);
+            prewriter.settleForTest();
+            prewriter.settleForTest();
+            assertThat(cas.pathFor(Hashing.sha256Hex("AAAAAA".getBytes()))).exists();
             Files.writeString(file, "BBBBBB");
             Files.setLastModifiedTime(file, mtime);
-        } finally {
+
             Map<String, String> outputs = prewriter.finish();
             assertThat(outputs).containsEntry("Same.class", Hashing.sha256Hex("BBBBBB".getBytes()));
-            assertThat(outputs.get("Same.class")).isNotEqualTo(Hashing.sha256Hex("AAAAAA".getBytes()));
         }
     }
 
