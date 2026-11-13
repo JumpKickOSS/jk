@@ -140,10 +140,13 @@ public final class StepEta {
                 priced = priced.corrected(bias.factor(priced.rung(), t.name()));
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
-                // A cold suite is priced for one JVM and re-priced at its dispatch share below.
-                int suiteWorkers = kind != StepCost.Kind.TEST || shape.filtered()
+                // A cold suite's price names no JVM count: its constants were fit to walls on the
+                // JVMs those suites got, so neither the dispatch share nor the live model re-scales
+                // it. Tagged one JVM, the live model divided it by the two the engine's first-build
+                // suite started on and counted down from 61 s for 102 (JK-9BSXK).
+                int suiteWorkers = kind != StepCost.Kind.TEST || shape.filtered() || priced.cold()
                         ? 0
-                        : priced.cold() ? 1 : ledger.workers(dir.toString(), t.name(), "SUCCESS", shape, frontier);
+                        : ledger.workers(dir.toString(), t.name(), "SUCCESS", shape, frontier);
                 own.add(new StepCost(
                         t.name(),
                         weightOf(priced.ms()),
