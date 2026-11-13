@@ -129,12 +129,29 @@ def script_tool(script: str):
     return of
 
 
+TEST_METHOD = re.compile(r"@(Test|ParameterizedTest|RepeatedTest|TestFactory|Property)\b")
+
+
+def main_sources(m: Path) -> int:
+    return sum(1 for p in files(m / "src" / "main") if p.suffix in (".java", ".kt", ".groovy")) if (m / "src" / "main").is_dir() else 0
+
+
+def test_methods(m: Path) -> int | None:
+    root = m / "src" / "test"
+    if not root.is_dir():
+        return None
+    return sum(len(TEST_METHOD.findall(p.read_text(encoding="utf-8", errors="replace")))
+               for p in files(root) if p.suffix in (".java", ".kt", ".groovy"))
+
+
 # step kind -> candidate features, each (name, feature of the module dir); every one is judged
 KINDS = {
     "node-install": [("lock packages", lock_packages)],
     "node-build": [("web sources", web_sources), ("lock packages", lock_packages), ("tool", script_tool("build"))],
     "node-test": [("web tests", web_tests), ("lock packages", lock_packages), ("tool", script_tool("test"))],
     "plugin-generate-jooq": [("tables+columns", schema_objects)],
+    "compile-java": [("main sources", main_sources)],
+    "run-tests": [("test methods", test_methods)],
     "plugin-spring-aot": [("sources+jvm packages", lambda m: java_sources(m) + project_lock_packages(m))],
 }
 
@@ -144,7 +161,9 @@ def samples(manifest: Path) -> list[dict]:
     for line in manifest.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
-        run, project, _, rc, _, copy = (line.split("\t") + [""] * 6)[:6]
+        run, project, iteration, rc, _, copy = (line.split("\t") + [""] * 6)[:6]
+        if iteration not in ("", "1"):
+            continue  # a cold set judges first builds only
         run_dir = Path(run)
         if rc != "0" or not (run_dir / "details.jsonl").is_file():
             continue
@@ -194,13 +213,13 @@ def fit(points: list[tuple[float, float]]) -> tuple[float, float]:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--manifest", type=Path, required=True)
+    ap.add_argument("--manifest", type=Path, required=True, nargs="+", help="one or more manifests, judged together")
     ap.add_argument("--csv", type=Path)
     ap.add_argument("--center", choices=("mean", "median"), default="median",
                     help="how flat and per-group prices summarize the other projects' walls")
     a = ap.parse_args(argv)
     center = statistics.median if a.center == "median" else statistics.fmean
-    rows = samples(a.manifest.expanduser())
+    rows = [r for m in a.manifest for r in samples(m.expanduser())]
     if a.csv:
         with a.csv.open("w", encoding="utf-8") as f:
             f.write("project,module,kind,feature,x,wall,today\n")

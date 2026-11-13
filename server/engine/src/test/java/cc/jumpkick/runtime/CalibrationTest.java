@@ -222,6 +222,6 @@ class CalibrationTest {
         assertThat(fast.coldCompileMs(0))
                 .as("a compile costs its fixed part and one source")
                 .isEqualTo(2_275 + 23);
-        assertThat(fast.coldSuiteMs(4_444)).isEqualTo(5_200 + 26 * 4_444);
+        assertThat(fast.coldSuiteMs(4_444)).isEqualTo(2_145 + 20 * 4_444);
     }
 }

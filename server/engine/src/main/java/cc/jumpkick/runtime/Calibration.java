@@ -101,12 +101,15 @@ public final class Calibration {
 
     /**
      * A first build's suite on one test JVM, on the reference host: its JVM, discovery and the
-     * classes' setup, then a cost per test method. Fitted to the same first build's 52 suites; the
-     * 280 ms startup baseline left every small suite at a fifth of its wall.
+     * classes' setup, then a cost per test method. First fitted to jk's own first build's 52 suites
+     * at 8 s and 40 ms; the 280 ms startup baseline before that left every small suite at a fifth of
+     * its wall. Refitted with fourteen unrelated projects' first builds (bench/eta/coldset.sh): their
+     * suites of one to six methods ran 0.6 to 4.1 s against 5.4 s priced, and jk's ran 413 s against
+     * 668 s, so both read about twice their wall; the per-rung bias had learned 0.44 for them.
      */
-    static final long BASELINE_COLD_SUITE_FIXED_MS = 8_000;
+    static final long BASELINE_COLD_SUITE_FIXED_MS = 3_300;
 
-    static final long BASELINE_COLD_METHOD_MS = 40;
+    static final long BASELINE_COLD_METHOD_MS = 30;
 
     /**
      * Reference-host cold Graal wall for a typical ~1–1.5 MiB-effective app when size is unknown.
