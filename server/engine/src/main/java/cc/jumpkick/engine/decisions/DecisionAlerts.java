@@ -5,6 +5,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.desktop.PowerShell;
+import cc.jumpkick.desktop.WslWindowsDesktop;
+import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.Processes;
@@ -86,20 +88,61 @@ public final class DecisionAlerts implements AutoCloseable {
     private final String os;
     private final Function<String, @Nullable String> env;
     private final DesktopIdentity identity;
+    /** On a WSL guest with interop, the Windows profile its toasts register in; null elsewhere. */
+    private final @Nullable WslWindowsDesktop wsl;
+
     private final Map<String, Waiting> waiting = new ConcurrentHashMap<>();
     private final Set<String> toasts = ConcurrentHashMap.newKeySet();
     private volatile @Nullable Boolean actions;
 
     public DecisionAlerts() {
-        this(new RealLauncher(), Os.name(), ProcessEnv::get, DesktopIdentity.current());
+        this(new RealLauncher(), Os.name(), ProcessEnv::get, DesktopIdentity.current(), wslDesktop(Guest.detect()));
     }
 
     public DecisionAlerts(
             Launcher launcher, String os, Function<String, @Nullable String> env, DesktopIdentity identity) {
+        this(launcher, os, env, identity, null);
+    }
+
+    /** With {@code wsl}, a WSL guest's decisions toast on Windows through {@code powershell.exe}. */
+    public DecisionAlerts(
+            Launcher launcher,
+            String os,
+            Function<String, @Nullable String> env,
+            DesktopIdentity identity,
+            @Nullable WslWindowsDesktop wsl) {
         this.launcher = launcher;
         this.os = os;
         this.env = env;
         this.identity = identity;
+        this.wsl = wsl;
+    }
+
+    /** The Windows profile a WSL guest with interop registers in; null for any other host. */
+    static @Nullable WslWindowsDesktop wslDesktop(Guest guest) {
+        if (guest.kind() != Guest.Kind.WSL || !guest.interop()) return null;
+        return new WslWindowsDesktop(new WslWindowsDesktop.Shell() {
+            @Override
+            public @Nullable String output(List<String> argv) {
+                return captured(argv, true);
+            }
+
+            @Override
+            public boolean run(List<String> argv) {
+                return captured(argv, false) != null;
+            }
+        });
+    }
+
+    /** {@code argv}'s output when it exits 0 within a minute; null otherwise. */
+    private static @Nullable String captured(List<String> argv, boolean output) {
+        try {
+            Processes.Captured c = Processes.capture(argv, Duration.ofMinutes(1));
+            if (c.timedOut() || c.exit() != 0) return null;
+            return output ? c.output() : "";
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     /** Does what {@code mode} says for {@code d}, whose dashboard link is {@code link}; answers what happened. */
@@ -113,7 +156,10 @@ public final class DecisionAlerts implements AutoCloseable {
 
     /** Takes back the notification {@link #raise} showed for decision {@code id}, if it still shows. */
     public void withdraw(String id) {
-        if (toasts.remove(id)) run(toastRemoveCommand(id));
+        if (toasts.remove(id)) {
+            WslWindowsDesktop guest = wsl;
+            run(guest == null ? toastRemoveCommand(id) : guest.command(toastRemoveCommand(id)));
+        }
         Waiting w = waiting.remove(id);
         if (w == null) return;
         String shown = w.id;
@@ -140,12 +186,16 @@ public final class DecisionAlerts implements AutoCloseable {
     private boolean notify(Decision d, String link) {
         String body = body(d);
         if (Os.isDarwin(os)) return run(appleCommand(TITLE, body, link));
-        identity.ensure();
-        if (Os.isWindows(os)) {
-            if (!run(toastCommand(d.id(), TITLE, body, link))) return false;
+        WslWindowsDesktop guest = wsl;
+        if (Os.isWindows(os) || guest != null) {
+            if (guest != null) guest.ensure(dashboard(link));
+            else identity.ensure();
+            List<String> toast = toastCommand(d.id(), TITLE, body, link);
+            if (!run(guest == null ? toast : guest.command(toast))) return false;
             toasts.add(d.id());
             return true;
         }
+        identity.ensure();
         Path icon = identity.png();
         if (!notifySendActions()) return run(notifySendCommand(TITLE, body, link, icon));
         Waiting w = new Waiting();
@@ -166,6 +216,12 @@ public final class DecisionAlerts implements AutoCloseable {
         // Withdrawn or ended before the handle was stored: stop it here instead.
         if (waiting.get(d.id()) != w) watch.stop();
         return true;
+    }
+
+    /** The dashboard's base URL: {@code link} without its fragment. */
+    static String dashboard(String link) {
+        int hash = link.indexOf('#');
+        return hash < 0 ? link : link.substring(0, hash);
     }
 
     private boolean run(List<String> argv) {

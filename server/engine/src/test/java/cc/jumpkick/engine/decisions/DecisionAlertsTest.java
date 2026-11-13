@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
+import cc.jumpkick.desktop.WslWindowsDesktop;
 import cc.jumpkick.form.Form;
+import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -239,6 +241,44 @@ class DecisionAlertsTest {
                     .contains(LINK)
                     .endsWith("with title \"" + DecisionAlerts.TITLE + "\"");
         });
+    }
+
+    @Test
+    void a_wsl_guest_with_interop_toasts_on_windows_instead_of_notify_send() {
+        WslWindowsDesktop wsl = new WslWindowsDesktop(new WslWindowsDesktop.Shell() {
+            @Override
+            public @Nullable String output(List<String> argv) {
+                return null;
+            }
+
+            @Override
+            public boolean run(List<String> argv) {
+                return true;
+            }
+        });
+        DecisionAlerts alerts = new DecisionAlerts(launcher, "Linux", name -> null, identity("Linux"), wsl);
+
+        assertThat(alerts.raise(UiAsk.NOTIFY, decision(), LINK)).isEqualTo("sent a desktop notification");
+        assertThat(launcher.launched).singleElement().satisfies(argv -> assertThat(argv.getFirst())
+                .isEqualTo("powershell.exe"));
+        assertThat(launcher.asked).as("notify-send is never asked").isEmpty();
+        assertThat(registered).as("no Linux desktop entry").isEmpty();
+
+        alerts.withdraw("abc");
+        assertThat(launcher.launched).hasSize(2);
+        assertThat(script(launcher.launched.getLast())).contains("History.Remove(");
+        assertThat(DecisionAlerts.dashboard(LINK)).isEqualTo("http://127.0.0.1:8910/");
+    }
+
+    @Test
+    void only_a_wsl_guest_with_interop_registers_in_the_windows_profile() {
+        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.WSL, "Ubuntu", true)))
+                .isNotNull();
+        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.WSL, "Ubuntu", false)))
+                .isNull();
+        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.CONTAINER, "docker", false)))
+                .isNull();
+        assertThat(DecisionAlerts.wslDesktop(Guest.NONE)).isNull();
     }
 
     @Test

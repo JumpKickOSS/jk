@@ -213,13 +213,21 @@ public final class DesktopIdentity {
      * through {@code IPropertyStore}, which no scriptable COM object exposes.
      */
     String shortcutScript(Path entry) {
+        return shortcutScript(entry.toString(), client().toString(), "web", userHome.toString(), ico().toString());
+    }
+
+    /**
+     * The shortcut script over Windows paths: {@code entry} starts {@code target} with {@code args} in
+     * {@code workdir}, under {@code ico}. A WSL guest registers through it too ({@link WslWindowsDesktop}).
+     */
+    static String shortcutScript(String entry, String target, String args, String workdir, String ico) {
         return PowerShell.PRELUDE
                 + "Add-Type -TypeDefinition " + PowerShell.literal(SHORTCUT_CS) + "\n"
-                + "[JumpKickDesktop.Shortcut]::Save(" + PowerShell.literal(entry.toString())
-                + ", " + PowerShell.literal(client().toString())
-                + ", " + PowerShell.literal("web")
-                + ", " + PowerShell.literal(userHome.toString())
-                + ", " + PowerShell.literal(ico().toString())
+                + "[JumpKickDesktop.Shortcut]::Save(" + PowerShell.literal(entry)
+                + ", " + PowerShell.literal(target)
+                + ", " + PowerShell.literal(args)
+                + ", " + PowerShell.literal(workdir)
+                + ", " + PowerShell.literal(ico)
                 + ", " + PowerShell.literal(COMMENT)
                 + ", " + PowerShell.literal(AUMID) + ")\n";
     }
