@@ -95,8 +95,20 @@ open(path, "w", encoding="utf-8").write(s[:i] + member + s[i:])
 PY
 }
 
+# S12's added test classes: copies of a mid-weight engine test class, one per run, removed at the end.
+ADDED_TESTS=()
+TEST_SOURCE="$WT/server/engine/src/test/java/cc/jumpkick/engine/jobs/JobEnvelopeTest.java"
+add_test() {
+  N=$((N + 1))
+  local name="EtaCorpusAdded$(date +%s)${N}Test"
+  local file="$(dirname "$TEST_SOURCE")/$name.java"
+  sed "s/\bJobEnvelopeTest\b/$name/g" "$TEST_SOURCE" > "$file"
+  ADDED_TESTS+=("$file")
+}
+
 revert() {
   git -C "$WT" checkout -- "$LEAF" "$MID" "$CORE"
+  for f in "${ADDED_TESTS[@]}"; do rm -f "$f"; done
 }
 trap revert EXIT
 
@@ -148,6 +160,8 @@ for i in $(seq 1 "$ITER"); do
   want S7 && { edit "$MID" private; scored S7-engine-body-test "$i" test; }
   want S9 && { edit "$MID" private; scored S9-integration-engine-only "$i" test -p integration -m jk-engine; }
   want S10 && { edit "$MID" private; scored S10-class-filter "$i" test --class=TestEffortTest; }
+  # A test class added to the engine's suite: its replayed wall did not run it (JK-4N8PA).
+  want S12 && { add_test; scored S12-engine-test-added "$i" test -m jk-engine; }
 done
 # The long ones last, so a short-scenario regression shows up early in progress.txt.
 for i in $(seq 1 "$ITER"); do
