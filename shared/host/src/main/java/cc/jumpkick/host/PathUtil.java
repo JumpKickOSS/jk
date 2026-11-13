@@ -8,6 +8,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -907,7 +908,9 @@ public final class PathUtil {
             // undeletable. Clear the bit and retry once; on POSIX (no DOS view) the denial stands.
             return clearReadOnlyAndRetry(p, attrs, tally, denied);
         } catch (IOException e) {
-            return e;
+            return Os.isWindows() && e.getClass() == FileSystemException.class
+                    ? retrySharingViolation(p, attrs, tally, e)
+                    : e;
         }
     }
 
@@ -920,11 +923,18 @@ public final class PathUtil {
         } catch (IOException notTheProblem) {
             denied.addSuppressed(notTheProblem);
         }
-        // The other Windows denial is a sharing violation: some process still has the file open.
-        // A handle usually goes moments after its owner is told to exit, and callers stop what
-        // they know about before deleting (the engines) — so a short retry turns
-        // "the process cannot access the file" into a completed wipe rather than a failed one.
-        // Bounded tightly: a file nobody is releasing must still fail fast, per file.
+        return retrySharingViolation(p, attrs, tally, denied);
+    }
+
+    /**
+     * Delete {@code p} again after a Windows sharing violation, which OpenJDK reports as a bare
+     * {@link FileSystemException}: some process still has the file, or the directory, open. A handle
+     * usually goes moments after its owner exits, and callers stop what they know about before
+     * deleting (the engines), so a short retry completes the wipe. Bounded tightly: a file nobody is
+     * releasing must still fail fast, per file.
+     */
+    private static @Nullable IOException retrySharingViolation(
+            Path p, @Nullable BasicFileAttributes attrs, @Nullable Removed tally, IOException denied) {
         for (int attempt = 0; ; attempt++) {
             try {
                 boolean gone = Files.deleteIfExists(p);
@@ -948,10 +958,10 @@ public final class PathUtil {
         }
     }
 
-    /** Retries for a Windows sharing violation; small on purpose — see {@link #clearReadOnlyAndRetry}. */
-    private static final int SHARING_VIOLATION_RETRIES = 3;
+    /** Retries for a Windows sharing violation, about a second in all: an exited process's handles go within it. */
+    private static final int SHARING_VIOLATION_RETRIES = 10;
 
-    private static final long SHARING_VIOLATION_BACKOFF_MILLIS = 60;
+    private static final long SHARING_VIOLATION_BACKOFF_MILLIS = 100;
 
     /**
      * Running tally for {@link #deleteTrees}: regular files and their bytes; directories and links
