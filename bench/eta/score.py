@@ -9,6 +9,8 @@ the user was shown against the truth:
 - bar: the percentage shown at those points minus the elapsed share
 - plateau: the longest stretch the bar moved less than one point, as a share of the wall
 - tail: the time spent at 99% or more before the run finished, as a share of the wall
+- calibration: checkpoints bucketed by the confidence shown (the predicted chance that the truth
+  lands within 10% of the ETA, JK-R0N5S) against the share that did
 
 The state at a checkpoint is the last event at or before it: what the screen showed then.
 Runs are grouped by scenario (a corpus manifest) or by argv, and each group is held to the
@@ -54,6 +56,8 @@ class Point:
     eta_err: float | None
     # Whether the truth fell inside the likely range shown (JK-4TEZ7); None when none was shown.
     in_range: bool | None = None
+    # The confidence shown (JK-R0N5S): the predicted chance that the truth lands within 10% of the ETA.
+    confidence: float | None = None
 
 
 @dataclass
@@ -215,7 +219,10 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
         rem = shown.get("remainingMs")
         eta = None
         in_range = None
+        conf = None
         if isinstance(rem, (int, float)) and rem >= 0 and shown.get("phase") != "preflight":
+            c = shown.get("confidence")
+            conf = float(c) if isinstance(c, (int, float)) and c >= 0 else None
             # What the countdown showed: the last re-anchor, decayed by the wall since it.
             eta = max(0, int(rem - (at - shown["ts"])))
             low, high = shown.get("etaLowMs"), shown.get("etaHighMs")
@@ -231,6 +238,7 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
                 true,
                 None if eta is None or true <= 0 else (eta - true) / true,
                 in_range,
+                conf,
             )
         )
 
@@ -406,7 +414,10 @@ def main(argv: list[str]) -> int:
         return 2
 
     if not a.quiet:
-        hdr = "run    wall   R0err  ETA@10  @25    @50    @75    @90   bar@25 @50  @75 plat  tail  scenario"
+        hdr = (
+            "run    wall   R0err  ETA@10  @25    @50    @75    @90   bar@25 @50  @75 plat  tail"
+            "  conf@10 @25 @50 @75 @90  scenario"
+        )
         print(hdr)
         for s in scores:
             p = {pt.at: pt for pt in s.points}
@@ -415,7 +426,9 @@ def main(argv: list[str]) -> int:
                 + " ".join(pct(p[f].eta_err) for f in CHECKPOINTS)
                 + "  "
                 + " ".join(pts(p[f].bar_err) for f in SCORED)
-                + f" {s.plateau * 100:4.0f}% {s.tail * 100:4.0f}%  {s.scenario[:48]}{'' if s.warm else ' (cold)'}"
+                + f" {s.plateau * 100:4.0f}% {s.tail * 100:4.0f}%     "
+                + " ".join(conf_cell(p[f].confidence) for f in CHECKPOINTS)
+                + f"  {s.scenario[:48]}{'' if s.warm else ' (cold)'}"
             )
         print()
 
@@ -459,9 +472,67 @@ def main(argv: list[str]) -> int:
             print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} warm checkpoints (target 70-90%){'' if ok else ' !'}")
         else:
             print(f"range coverage: {100 * cov:.0f}% of {len(ranged)} cold checkpoints")
+    failed |= not calibration(scores)
     failed |= not attribution(scores)
     failed |= not rung_attribution(scores)
     return 1 if failed else 0
+
+
+# Confidence buckets (JK-R0N5S): the share of a bucket's checkpoints that landed within 10% of the
+# ETA shown must track the bucket's mean confidence within CALIBRATION_LIMIT, over at least
+# CALIBRATION_MIN checkpoints; a thinner bucket is reported, not judged.
+CALIBRATION_BUCKETS = (0.0, 0.2, 0.4, 0.6, 0.8, 0.9, 1.0001)
+CALIBRATION_LIMIT = 0.10
+CALIBRATION_MIN = 5
+CALIBRATION_BAND = 0.10
+
+
+def hit(p: Point) -> bool:
+    """Whether the truth landed within 10% of the ETA shown: what the confidence predicts."""
+    return p.eta_ms is not None and abs(p.true_ms - p.eta_ms) <= CALIBRATION_BAND * p.eta_ms
+
+
+def calibration(scores: list[RunScore]) -> bool:
+    """Every checkpoint that showed a confidence, bucketed by it, warm and cold and both together.
+
+    Per bucket: its checkpoints, the mean confidence shown, and the share whose truth landed within
+    10% of the ETA. A bucket of CALIBRATION_MIN or more checkpoints whose share misses its mean
+    confidence by more than CALIBRATION_LIMIT is miscalibrated and fails the score.
+    """
+    groups = {
+        "warm": [p for s in scores if s.warm for p in s.points if p.confidence is not None and p.true_ms > 0],
+        "cold": [p for s in scores if not s.warm for p in s.points if p.confidence is not None and p.true_ms > 0],
+    }
+    groups["all"] = groups["warm"] + groups["cold"]
+    if not groups["all"]:
+        print("calibration: no checkpoint showed a confidence")
+        return True
+    bad = 0
+    print("calibration (confidence shown vs share within 10% of the ETA, every checkpoint):")
+    print("   group  bucket       n   shown  landed")
+    for name in ("warm", "cold", "all"):
+        for lo, hi in zip(CALIBRATION_BUCKETS, CALIBRATION_BUCKETS[1:]):
+            b = [p for p in groups[name] if lo <= p.confidence < hi]
+            if not b:
+                continue
+            shown = sum(p.confidence for p in b) / len(b)
+            landed = sum(1 for p in b if hit(p)) / len(b)
+            judged = len(b) >= CALIBRATION_MIN
+            off = judged and abs(landed - shown) > CALIBRATION_LIMIT
+            bad += off
+            print(
+                f"   {name:5s}  {lo:.1f}-{min(hi, 1.0):.1f}  {len(b):5d}  {shown:5.0%}  {landed:6.0%}"
+                f"{'' if judged else '  (thin)'}{'  !' if off else ''}"
+            )
+    print(
+        f"   {bad} buckets ({CALIBRATION_MIN}+ checkpoints) off by more than {CALIBRATION_LIMIT * 100:.0f} points"
+        f"{' !' if bad else ''}"
+    )
+    return bad == 0
+
+
+def conf_cell(c: float | None) -> str:
+    return "  -" if c is None else f"{c:.2f}"[1:] if c < 1 else "1.0"
 
 
 # A rung judged for systematic error: this many priced steps of a kind that ran for a second or more.

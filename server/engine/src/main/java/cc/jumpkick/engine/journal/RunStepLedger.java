@@ -66,7 +66,8 @@ final class RunStepLedger {
 
     /**
      * The run's steps that ran and that its seed priced: the rung that priced each, its price and its
-     * wall, which teach the host how far each prior layer misses ({@link RungBias}).
+     * wall and the spread it was priced with, which teach the host how far each layer misses and how
+     * its misses go together ({@link RungBias}).
      */
     static List<RungBias.Pair> pricedPairs(long requestId, List<StepLedger.Sample> samples) {
         List<RungBias.Pair> pairs = new ArrayList<>();
@@ -74,7 +75,8 @@ final class RunStepLedger {
             if (!"SUCCESS".equals(s.status())) continue;
             StepCost c = EtaModels.priced(requestId, s.dir(), s.step());
             if (c == null) continue;
-            pairs.add(new RungBias.Pair(c.rung(), s.step(), (long) c.weight() * WorkModel.MS_PER_WEIGHT, s.ms()));
+            pairs.add(new RungBias.Pair(
+                    c.rung(), s.step(), (long) c.weight() * WorkModel.MS_PER_WEIGHT, s.ms(), c.spread()));
         }
         return pairs;
     }

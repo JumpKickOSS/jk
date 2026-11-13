@@ -123,8 +123,8 @@ public final class EtaModels {
                             c.step(),
                             c.weight(),
                             c.kind().name(),
-                            c.low(),
-                            c.high(),
+                            Math.round(c.spread() * 1000) / 1000.0,
+                            c.workers(),
                             c.rung().name()));
                 steps.put(String.valueOf(e.getKey()), rows);
             }

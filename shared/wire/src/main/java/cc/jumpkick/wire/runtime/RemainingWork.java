@@ -165,6 +165,17 @@ public final class RemainingWork {
         return rw;
     }
 
+    /**
+     * How strongly the steps' errors go the same way on this host ({@link EtaSpread#build}): the
+     * engine hands in what the host learned; {@link EtaSpread#CORRELATION} until then.
+     */
+    public synchronized RemainingWork withCorrelation(double rho) {
+        if (rho >= 0 && rho <= 1) this.correlation = rho;
+        return this;
+    }
+
+    private double correlation = EtaSpread.CORRELATION;
+
     /** Test seam: the clock running steps count down against. */
     public synchronized RemainingWork withClock(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -322,47 +333,86 @@ public final class RemainingWork {
 
     /** Current remaining wall ms {@code R(t)}. */
     public synchronized long remaining() {
-        return remaining(StepCost.Bound.PRICE);
+        return residual().remainingMs();
     }
 
     /**
-     * The likely range of what remains, {@code {low, high}} in ms: the schedule of what is left
-     * with each step not yet finished at the low, then the high end of its own range (JK-4TEZ7). It
-     * narrows as steps finish, since a finished step leaves no range behind. A module priced by
-     * weight has none: both ends are its remainder.
+     * What remains and how sure the estimate is of it (JK-R0N5S): {@code remainingMs} is the
+     * schedule of what is left; {@code spread} the build's relative spread, one sigma of {@code
+     * ln(truth / remainingMs)}, from each unfinished step's spread over what it has left ({@link
+     * EtaSpread#build}). It narrows as steps finish, since a finished step leaves no spread behind.
      */
-    public synchronized long[] remainingRange() {
-        return new long[] {remaining(StepCost.Bound.LOW), remaining(StepCost.Bound.HIGH)};
+    public record Residual(long remainingMs, double spread) {
+
+        /** The likely range, {@code {low, high}} ms: the 10th and 90th percentiles of the truth. */
+        public long[] range() {
+            return new long[] {EtaSpread.low(remainingMs, spread), EtaSpread.high(remainingMs, spread)};
+        }
+
+        /** The probability that the truth lands within ±10% of {@code remainingMs}. */
+        public double confidence() {
+            return EtaSpread.confidence(spread);
+        }
     }
 
-    private long remaining(StepCost.Bound bound) {
-        if (R0 <= 0) return 0;
-        if (pending.isEmpty()) return 0;
+    /** {@link #remaining()} with its spread. */
+    public synchronized Residual residual() {
+        if (R0 <= 0 || pending.isEmpty()) return new Residual(0, 0);
         List<ModuleWorkCost> residual = new ArrayList<>(pending.size());
         long now = steps.isEmpty() ? 0 : heldSince >= 0 ? heldSince : clock.millis();
+        double[] acc = new double[3];
         for (Map.Entry<Path, ModuleWorkCost> e : pending.entrySet()) {
             List<StepCost> own = steps.get(e.getKey());
-            ModuleWorkCost r = own != null
-                    ? stepResidual(e.getValue(), own, now, bound)
-                    : e.getValue().residual(doneFrac.getOrDefault(e.getKey(), 0.0));
+            ModuleWorkCost r;
+            if (own != null) {
+                r = stepResidual(e.getValue(), own, now, acc);
+            } else {
+                r = e.getValue().residual(doneFrac.getOrDefault(e.getKey(), 0.0));
+                accumulate(acc, r.weight(), EtaSpread.UNPRICED);
+            }
             if (r.weight() > 0 || r.testWeight() > 0) residual.add(r);
         }
-        if (residual.isEmpty()) return 0;
+        if (residual.isEmpty()) return new Residual(0, 0);
         long idealWeights = WorkSchedule.schedule(residual, concurrency, serial, parallelTests);
-        return Math.max(0, Math.round(idealWeights * weightToMs));
+        long ms = Math.max(0, Math.round(idealWeights * weightToMs));
+        return new Residual(ms, EtaSpread.build(acc[0], acc[1], acc[2], idealWeights, correlation));
     }
 
-    /** The module's cost still to run, step by step (see the class comment), at {@code bound}. */
-    private ModuleWorkCost stepResidual(ModuleWorkCost c, List<StepCost> own, long now, StepCost.Bound bound) {
+    /**
+     * The likely range of what remains, {@code {low, high}} in ms: the 10th and 90th percentiles
+     * of the build's spread around {@link #remaining()} ({@link Residual#range}).
+     */
+    public synchronized long[] remainingRange() {
+        return residual().range();
+    }
+
+    /** One unfinished step's {@code left} (weight units) at spread {@code sigma}, into {@code acc}. */
+    private static void accumulate(double[] acc, double left, double sigma) {
+        if (left <= 0) return;
+        double a = left * sigma;
+        acc[0] += a;
+        acc[1] += a * a;
+        acc[2] += left;
+    }
+
+    /**
+     * The module's cost still to run, step by step (see the class comment), each unfinished step's
+     * remainder and spread added to {@code acc} ({@link #accumulate}).
+     */
+    private ModuleWorkCost stepResidual(ModuleWorkCost c, List<StepCost> own, long now, double[] acc) {
         Path dir = c.dir();
         Set<String> done = finished.getOrDefault(dir, Set.of());
         Map<String, Long> starts = started.getOrDefault(dir, Map.of());
         double pre = 0, test = 0, tail = 0, lane = 0, prePriced = 0, testPriced = 0;
         long[] running = suiteWorkers.get(dir);
         for (StepCost s : own) {
-            double w = s.at(bound);
+            double w = s.weight();
+            double sigma = s.spread();
             if (s.kind() == StepCost.Kind.TEST && running != null) {
-                w *= StepCost.scale(s.workers(), (int) running[0], running[1], running[2]);
+                double f = StepCost.scale(s.workers(), (int) running[0], running[1], running[2]);
+                w *= f;
+                // A suite re-priced at another count of JVMs reads its walls through the model.
+                if (f != 1) sigma = EtaSpread.widen(sigma, EtaSpread.WORKERS_CHANGED);
             }
             if (s.kind() == StepCost.Kind.PRE) prePriced += w;
             if (s.kind() == StepCost.Kind.TEST) testPriced += w;
@@ -385,19 +435,17 @@ public final class RemainingWork {
                     double reported = Math.max(0, at - began) / (double) WorkModel.MS_PER_WEIGHT;
                     double ran = Math.max(0, wall - began) / (double) WorkModel.MS_PER_WEIGHT;
                     left = reported / f - ran;
-                    // The rate's remainder spreads as the suite's own walls do: its range is the
-                    // projection at the step's low and high over its price, not a point.
-                    if (s.weight() > 0) left *= s.at(bound) / (double) s.weight();
                     left = Math.max(f >= 1.0 ? 0 : OVERRUN_FLOOR * w, left);
                 } else if (f != null && f > 0) {
-                    left = Math.max(overrun(s, bound, w, elapsed), w * (1 - f));
+                    left = Math.max(overrun(s, w, elapsed), w * (1 - f));
                 } else {
-                    left = Math.max(overrun(s, bound, w, elapsed), w - elapsed);
+                    left = Math.max(overrun(s, w, elapsed), w - elapsed);
                 }
                 if (s.kind() == StepCost.Kind.TEST) {
                     left = Math.max(left, classFloor(dir, clock.millis()) / (double) WorkModel.MS_PER_WEIGHT);
                 }
             }
+            accumulate(acc, left, sigma);
             switch (s.kind()) {
                 case PRE -> pre += left;
                 case TEST -> test += left;
@@ -430,9 +478,9 @@ public final class RemainingWork {
      * integration suite priced at 110 s from its default profile's wall ran 249 s, and held at a
      * twentieth of its price it read 4 s left for its last three minutes.
      */
-    private static double overrun(StepCost s, StepCost.Bound bound, double w, double elapsed) {
-        double scale = s.at(bound) > 0 ? w / s.at(bound) : 1;
-        double high = s.at(StepCost.Bound.HIGH) * scale;
+    private static double overrun(StepCost s, double w, double elapsed) {
+        double scale = s.weight() > 0 ? w / s.weight() : 1;
+        double high = s.high() * scale;
         double grown = Math.min(OVERRUN_SHARE * elapsed, Math.max(0, high - elapsed));
         return Math.max(OVERRUN_FLOOR * w, grown);
     }

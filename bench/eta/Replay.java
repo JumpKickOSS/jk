@@ -24,6 +24,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.SuiteCurve;
 import cc.jumpkick.runtime.workspace.StepEta;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.StepCost;
@@ -1082,13 +1083,7 @@ public class Replay {
                         dir,
                         own.stream()
                                 .map(c -> c.kind() == StepCost.Kind.TEST
-                                        ? new StepCost(
-                                                c.step(),
-                                                c.weight(),
-                                                c.kind(),
-                                                c.low(),
-                                                c.high(),
-                                                pricedWorkers(run, dir.toString()))
+                                        ? c.repriced(c.weight(), c.spread(), pricedWorkers(run, dir.toString()))
                                         : c)
                                 .toList()));
                 v0.rw = seedSteps.isEmpty()
@@ -1428,16 +1423,28 @@ public class Replay {
             if (e.getValue() instanceof List<?> l) {
                 for (Object o : l) {
                     if (o instanceof List<?> r && r.size() >= 3 && r.get(1) instanceof Number n) {
-                        int low = r.size() >= 5 && r.get(3) instanceof Number lo ? lo.intValue() : n.intValue();
-                        int high = r.size() >= 5 && r.get(4) instanceof Number hi ? hi.intValue() : n.intValue();
+                        // [step, weight, kind, spread, workers, rung] (EtaModels).
+                        double spread = r.size() >= 4 && r.get(3) instanceof Number sp
+                                ? sp.doubleValue()
+                                : EtaSpread.defaultFor(StepCost.Rung.REPLAY);
+                        int workers = r.size() >= 5 && r.get(4) instanceof Number w ? w.intValue() : 0;
+                        StepCost.Rung rung = StepCost.Rung.REPLAY;
+                        if (r.size() >= 6) {
+                            try {
+                                rung = StepCost.Rung.valueOf(String.valueOf(r.get(5)));
+                            } catch (IllegalArgumentException other) {
+                                // a rung this jar does not know: read as a replay
+                            }
+                        }
                         rows.add(new StepCost(
                                 String.valueOf(r.get(0)),
                                 n.intValue(),
                                 // Classified as the engine classifies today, so a journal priced
                                 // before a kind existed replays under the current shape.
                                 StepEta.kindOf(String.valueOf(r.get(0))),
-                                low,
-                                high));
+                                spread,
+                                workers,
+                                rung));
                     }
                 }
             }

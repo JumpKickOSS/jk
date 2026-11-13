@@ -41,8 +41,9 @@ public final class McpVitals {
     /**
      * {@code status}'s estimate for each job in flight, beside its {@code jobs} row: the bar's
      * percent and the remaining time it shows, {@code remainingMs}, with its likely range
-     * {@code etaLowMs} to {@code etaHighMs} (about four runs in five finish inside it; JK-4TEZ7),
-     * each left out while unknown.
+     * {@code etaLowMs} to {@code etaHighMs} (the 10th to 90th percentile of where it lands;
+     * JK-4TEZ7) and its {@code confidence}, the probability that the truth lands within 10% of
+     * {@code remainingMs} (JK-R0N5S), each left out while unknown.
      */
     static List<Map<String, Object>> estimateRows(List<HttpLive.Run> live) {
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -55,6 +56,7 @@ public final class McpVitals {
                 row.put("etaLowMs", r.lowMs());
                 row.put("etaHighMs", r.highMs());
             }
+            if (r.confidence() >= 0) row.put("confidence", Math.round(r.confidence() * 100) / 100.0);
             rows.add(row);
         }
         return rows;

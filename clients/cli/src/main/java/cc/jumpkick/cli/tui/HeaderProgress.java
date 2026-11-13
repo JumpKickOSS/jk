@@ -213,12 +213,21 @@ final class HeaderProgress {
     /** A range is shown in place of the point once it spans more than this share of what remains. */
     static final double WIDE_RANGE = 0.4;
 
+    /**
+     * Past this much either side of what remains, on average, a range says nothing a rough figure
+     * does not: {@code ~12m (rough)}.
+     */
+    static final double ROUGH_RANGE = 0.5;
+
     /** Nor for less than this much left: a few seconds either way is a countdown, not a range. */
     static final long WIDE_RANGE_MIN_MS = 10_000;
 
     /**
-     * The countdown's text for {@code remainingMs}: {@code ~1m 32s}, or {@code 1m 20s–1m 50s} when
-     * the likely range is wide, since a point would claim a precision the estimate does not have.
+     * The countdown's text for {@code remainingMs} (JK-R0N5S): the plain countdown {@code 1m 32s}
+     * when the likely range is narrow (within about ±20%) or little is left; {@code ~1m 20s–1m
+     * 50s} when it is wide, since a point would claim a precision the estimate does not have; and
+     * {@code ~12m (rough)} past about ±50%, where the range's ends say no more than that. With no
+     * range known, {@code ~1m 32s}.
      */
     String etaText(long remainingMs, String dash) {
         long below;
@@ -227,12 +236,14 @@ final class HeaderProgress {
             below = rangeBelowMs;
             above = rangeAboveMs;
         }
-        if (below >= 0 && remainingMs >= WIDE_RANGE_MIN_MS && below + above > WIDE_RANGE * remainingMs) {
-            return DurationText.clockMillis(Math.max(0, remainingMs - below))
-                    + dash
-                    + DurationText.clockMillis(remainingMs + above);
-        }
-        return "~" + DurationText.clockMillis(remainingMs);
+        String point = DurationText.clockMillis(remainingMs);
+        if (below < 0) return "~" + point;
+        if (remainingMs < WIDE_RANGE_MIN_MS || below + above <= WIDE_RANGE * remainingMs) return point;
+        if (below + above > 2 * ROUGH_RANGE * remainingMs) return "~" + point + " (rough)";
+        return "~"
+                + DurationText.clockMillis(Math.max(0, remainingMs - below))
+                + dash
+                + DurationText.clockMillis(remainingMs + above);
     }
 
     /**

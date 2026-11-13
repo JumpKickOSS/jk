@@ -106,18 +106,10 @@ final class CompilerWarmUp {
     private StepCost carried(StepCost c, int n, boolean add) {
         if (n == 0) {
             int delta = add ? firstExtra : -firstExtra;
-            return c.repriced(
-                    Math.max(1, c.weight() + delta),
-                    Math.max(1, c.low() + delta),
-                    Math.max(1, c.high() + delta),
-                    c.workers());
+            return c.repriced(Math.max(1, c.weight() + delta), c.spread(), c.workers());
         }
         double f = n <= EARLY ? EARLY_FACTOR : TAIL;
         double by = add ? f : 1 / f;
-        return c.repriced(
-                (int) Math.max(1, Math.round(c.weight() * by)),
-                (int) Math.max(1, Math.round(c.low() * by)),
-                (int) Math.max(1, Math.round(c.high() * by)),
-                c.workers());
+        return c.repriced((int) Math.max(1, Math.round(c.weight() * by)), c.spread(), c.workers());
     }
 }

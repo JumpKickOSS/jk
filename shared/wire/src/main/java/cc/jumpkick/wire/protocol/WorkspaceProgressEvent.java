@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 
 /**
@@ -11,7 +12,8 @@ import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
  * -1 when it is not: a held event carries {@code "state": "on-hold"} and the held time, and its
  * remaining time is the countdown frozen where the hold found it. {@code etaLowMs} and {@code
  * etaHighMs} bound {@code remainingMs}, the estimate's likely range at the same anchor (JK-4TEZ7);
- * -1 when it has none.
+ * -1 when it has none. {@code confidence} is the probability that the truth lands within ±10% of
+ * {@code remainingMs} (JK-R0N5S); -1 when there is none.
  */
 public record WorkspaceProgressEvent(
         String dir,
@@ -25,7 +27,8 @@ public record WorkspaceProgressEvent(
         long r0Ms,
         long heldMs,
         long etaLowMs,
-        long etaHighMs) {
+        long etaHighMs,
+        double confidence) {
 
     /** The state a held event carries. */
     public static final String ON_HOLD = "on-hold";
@@ -66,6 +69,7 @@ public record WorkspaceProgressEvent(
                 r0Ms,
                 heldMs,
                 -1,
+                -1,
                 -1);
     }
 
@@ -89,6 +93,7 @@ public record WorkspaceProgressEvent(
                 .optionalNumber("heldMs", heldMs, -1)
                 .optionalNumber("etaLowMs", etaLowMs, -1)
                 .optionalNumber("etaHighMs", etaHighMs, -1)
+                .optionalToken("confidence", EtaSpread.token(confidence))
                 .finish();
     }
 
@@ -105,6 +110,7 @@ public record WorkspaceProgressEvent(
                 Jsonl.longValue(json, "R0", 0),
                 ON_HOLD.equals(Jsonl.str(json, "state")) ? Math.max(0, Jsonl.longValue(json, "heldMs", 0)) : -1,
                 Jsonl.longValue(json, "etaLowMs", -1),
-                Jsonl.longValue(json, "etaHighMs", -1));
+                Jsonl.longValue(json, "etaHighMs", -1),
+                Jsonl.doubleValue(json, "confidence", -1));
     }
 }

@@ -18,6 +18,7 @@ import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.SuiteSelection;
 import cc.jumpkick.test.SuiteClassFilter;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.StepCost;
@@ -151,8 +152,7 @@ public final class StepEta {
                         t.name(),
                         weightOf(priced.ms()),
                         kind,
-                        weightOf(priced.low()),
-                        weightOf(priced.high()),
+                        priced.spread(bias.spread(priced.rung(), t.name())),
                         suiteWorkers,
                         priced.rung()));
             }
@@ -288,10 +288,10 @@ public final class StepEta {
                     continue;
                 }
                 double f = StepCost.scale(c.workers(), share, walls[0], walls[1]);
+                // Read at another count of JVMs than its walls ran on, through the model's exponent.
                 repriced.add(c.repriced(
                         (int) Math.max(1, Math.round(c.weight() * f)),
-                        (int) Math.round(c.low() * f),
-                        (int) Math.round(c.high() * f),
+                        EtaSpread.widen(c.spread(), EtaSpread.WORKERS_CHANGED),
                         share));
                 moved = true;
             }
@@ -302,22 +302,14 @@ public final class StepEta {
     }
 
     /**
-     * One forecast step's price in ms: its own recent wall under the status the forecast expects (a
-     * cache hit is a restore, not a run) and this run's shape, else the module-weight price of that
-     * step alone; a forecast-only verdict (an order or dependency check) is a touch.
+     * One forecast step's price in ms, and what its uncertainty carries beyond its layer's
+     * (JK-R0N5S): {@code own}, the step's own run-to-run spread, and {@code context}, how far the
+     * samples it was read from are from this run ({@link StepLedger.Spread}). A price from a prior
+     * carries neither: its layer's learned spread is all there is to it.
      */
-    /**
-     * A step's price in ms and its likely range: the ledger's own spread for a step with history;
-     * a third either side for a filtered suite priced from its classes' walls; half to twice for a
-     * step priced from the module weights with no history of its own, which is a guess.
-     */
-    record Priced(long ms, long low, long high, boolean cold, StepCost.Rung rung) {
-        static Priced exact(long ms, StepCost.Rung rung) {
-            return new Priced(ms, ms, ms, false, rung);
-        }
-
-        static Priced spread(long ms, double down, double up, StepCost.Rung rung) {
-            return new Priced(ms, Math.round(ms * down), Math.round(ms * up), false, rung);
+    record Priced(long ms, boolean cold, StepCost.Rung rung, double own, double context) {
+        static Priced of(long ms, StepCost.Rung rung) {
+            return new Priced(ms, false, rung, 0, 0);
         }
 
         /**
@@ -326,12 +318,21 @@ public final class StepEta {
          */
         Priced corrected(double factor) {
             if (factor == 1) return this;
-            return new Priced(Math.round(ms * factor), Math.round(low * factor), Math.round(high * factor), cold, rung);
+            return new Priced(Math.round(ms * factor), cold, rung, own, context);
         }
 
-        /** A first build's price from the host's calibration: half to twice, a suite for one JVM. */
+        /**
+         * The price's spread: its layer's on this host ({@code layer}, {@link RungBias#spread}) or
+         * the step's own run-to-run spread, the wider, widened by how far its samples are from
+         * this run.
+         */
+        double spread(double layer) {
+            return EtaSpread.widen(Math.max(layer, own), context);
+        }
+
+        /** A first build's price from the host's calibration, a suite for one JVM. */
         static Priced cold(long ms) {
-            return new Priced(ms, Math.round(ms * 0.5), Math.round(ms * 2.0), true, StepCost.Rung.CALIBRATION);
+            return new Priced(ms, true, StepCost.Rung.CALIBRATION, 0, 0);
         }
     }
 
@@ -375,12 +376,12 @@ public final class StepEta {
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
                 || TaskNames.RESTORE_OUTPUTS.equals(name)) {
-            return Priced.exact(EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT, StepCost.Rung.TOKEN);
+            return Priced.of(EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT, StepCost.Rung.TOKEN);
         }
         boolean runs = distrust || !t.cached();
         if (runs && shape.filtered() && TaskNames.isRunTests(name)) {
             OptionalLong narrowed = filteredSuiteMs(dir);
-            if (narrowed.isPresent()) return Priced.spread(narrowed.getAsLong(), 0.7, 1.3, StepCost.Rung.MODULE);
+            if (narrowed.isPresent()) return Priced.of(narrowed.getAsLong(), StepCost.Rung.MODULE);
         }
         String status = runs ? "SUCCESS" : "SKIPPED";
         // A node step or plugin goal measured only in the project's first build replays a download
@@ -390,19 +391,17 @@ public final class StepEta {
                 ? OptionalLong.empty()
                 : ledger.price(dir.toString(), name, status, shape, frontier, freshCompiler);
         if (own.isPresent()) {
-            long ms = own.getAsLong();
-            long[] range = ledger.range(dir.toString(), name, status, shape, frontier, freshCompiler)
-                    .orElse(new long[] {ms, ms});
-            return new Priced(ms, range[0], range[1], false, StepCost.Rung.REPLAY);
+            StepLedger.Spread spread = ledger.spread(dir.toString(), name, status, shape, frontier, freshCompiler)
+                    .orElse(new StepLedger.Spread(0, 0));
+            return new Priced(own.getAsLong(), false, StepCost.Rung.REPLAY, spread.own(), spread.context());
         }
-        if (!runs) return Priced.exact(0, StepCost.Rung.TOKEN);
+        if (!runs) return Priced.of(0, StepCost.Rung.TOKEN);
         // A node step or plugin goal this module has no walls of: its kind on this host at its
         // measure (StepEffort), or the cold set's price for it. Priced as a touch before, a 6 s
         // node install and a 3.5 s AOT run each at 150 ms.
         if (StepEffort.prices(name)) {
             StepEffort.Price p = effort.price(name, StepEffort.measure(name, dir), calibration.effortScale());
-            if (p != null)
-                return Priced.spread(p.ms(), 0.5, 2.0, p.learned() ? StepCost.Rung.HOST : StepCost.Rung.CALIBRATION);
+            if (p != null) return Priced.of(p.ms(), p.learned() ? StepCost.Rung.HOST : StepCost.Rung.CALIBRATION);
         }
         if (name.startsWith("compile-") && t.status() != TaskForecast.Status.CACHED) {
             OptionalLong cold =
@@ -411,8 +410,7 @@ public final class StepEta {
             // project's other modules' (StepLedger.coldCompile).
             boolean partial = t.status() == TaskForecast.Status.PARTIAL;
             if (cold.isPresent())
-                return Priced.spread(
-                        cold.getAsLong(), 0.5, 2.0, partial ? StepCost.Rung.PROJECT : StepCost.Rung.MODULE);
+                return Priced.of(cold.getAsLong(), partial ? StepCost.Rung.PROJECT : StepCost.Rung.MODULE);
             // Nothing of the step in the ledger: a first build's compile, from the host's calibration.
             // The test compiles' sources are not counted; a test class holds about five methods.
             int sources =
@@ -436,7 +434,7 @@ public final class StepEta {
         String metricsName = TaskNames.RUN_TESTS.equals(name) ? SuiteSelection.current() : name;
         EffortWeights.ModuleCost alone = EffortWeights.costFromRunningSteps(
                 dir, prereqs, List.of(metricsName), metrics, timings, projectDirs, counts);
-        return Priced.spread((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, 0.5, 2.0, StepCost.Rung.HOST);
+        return Priced.of((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, StepCost.Rung.HOST);
     }
 
     /**

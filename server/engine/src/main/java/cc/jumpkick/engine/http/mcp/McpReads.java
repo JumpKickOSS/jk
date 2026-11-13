@@ -96,10 +96,12 @@ public final class McpReads {
             m.put("maxReadyWidth", report.plan().maxReadyWidth());
             m.put("etaMillis", report.etaMillis());
             m.put("fullMillis", report.fullMillis());
-            // The estimate's likely range: the truth falls inside it about four runs in five.
+            // The estimate's likely range: the 10th to 90th percentile of where the truth lands, and
+            // the probability that it lands within 10% of the estimate (JK-R0N5S).
             m.put("etaLowMillis", report.lowMillis());
             m.put("etaHighMillis", report.highMillis());
             m.put("etaCoverage", 0.8);
+            m.put("etaConfidence", Math.round(report.confidence() * 100) / 100.0);
             // The chain of modules the estimate's length rides on, first first (JK-47ZGV).
             if (!report.criticalPath().isEmpty()) {
                 m.put(

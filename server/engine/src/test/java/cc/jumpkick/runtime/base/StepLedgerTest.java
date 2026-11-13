@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.builds.ProjectStore;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.StepCost;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -96,8 +97,7 @@ class StepLedgerTest {
     }
 
     @Test
-    void a_steps_range_is_the_spread_of_the_walls_it_is_priced_from_and_never_narrower_than_a_wobble(
-            @TempDir Path home) {
+    void a_steps_own_spread_is_read_from_the_walls_it_is_priced_from(@TempDir Path home) {
         for (long ms : new long[] {10_000, 12_000, 20_000, 11_000, 30_000}) {
             StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/a", "run-tests", "SUCCESS", ms)));
         }
@@ -106,14 +106,17 @@ class StepLedgerTest {
 
         assertThat(ledger.price("/ws/a", "run-tests", "SUCCESS", DEFAULT, Set.of()))
                 .hasValue(12_000);
-        assertThat(ledger.range("/ws/a", "run-tests", "SUCCESS", DEFAULT, Set.of()))
-                .as("the 80th percentile of 10, 11, 12, 20, 30 s above; below, the 20th (10.8 s) is"
-                        + " closer than the least spread under the 12 s median")
-                .hasValueSatisfying(r -> assertThat(r).containsExactly(10_200, 22_000));
-        assertThat(ledger.range("/ws/b", "guard", "SUCCESS", DEFAULT, Set.of()))
-                .as("one sample: the least spread either side")
-                .hasValueSatisfying(r -> assertThat(r).containsExactly(3_400, 4_600));
-        assertThat(ledger.range("/ws/c", "guard", "SUCCESS", DEFAULT, Set.of())).isEmpty();
+        assertThat(ledger.spread("/ws/a", "run-tests", "SUCCESS", DEFAULT, Set.of()))
+                .as("ln(p80 / p20) of 10, 11, 12, 20, 30 s (22 s over 10.8 s) over 2·z80; runs of this shape")
+                .hasValueSatisfying(r -> {
+                    assertThat(r.own()).isCloseTo(Math.log(22.0 / 10.8) / (2 * 0.8416212335729143), within(1e-3));
+                    assertThat(r.context()).isZero();
+                });
+        assertThat(ledger.spread("/ws/b", "guard", "SUCCESS", DEFAULT, Set.of()))
+                .as("one sample: no spread of its own; its layer's is all it has")
+                .hasValue(new StepLedger.Spread(0, 0));
+        assertThat(ledger.spread("/ws/c", "guard", "SUCCESS", DEFAULT, Set.of()))
+                .isEmpty();
     }
 
     @Test
@@ -180,9 +183,9 @@ class StepLedgerTest {
         assertThat(ledger.price("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of("/ws/m0")))
                 .as("no step has run under both loads: the default ratio")
                 .hasValue(Math.round(60_000 * StepLedger.DEFAULT_LIGHT_OVER_HEAVY));
-        assertThat(ledger.range("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of("/ws/m0")))
+        assertThat(ledger.spread("/ws/g", "guard", "SUCCESS", DEFAULT, Set.of("/ws/m0")))
                 .as("a price read across loads is a wide one")
-                .hasValueSatisfying(r -> assertThat(r[1] - r[0]).isGreaterThanOrEqualTo(2 * 12_000));
+                .hasValueSatisfying(r -> assertThat(r.context()).isEqualTo(EtaSpread.LOAD_BORROWED));
     }
 
     @Test
@@ -215,8 +218,8 @@ class StepLedgerTest {
         StepLedger ledger = StepLedger.load(home);
         assertThat(ledger.price("/ws/core", "run-tests", "SUCCESS", integration, Set.of()))
                 .hasValue(8_000);
-        assertThat(ledger.range("/ws/core", "run-tests", "SUCCESS", integration, Set.of()))
-                .hasValueSatisfying(r -> assertThat(r[1]).isEqualTo(24_000));
+        assertThat(ledger.spread("/ws/core", "run-tests", "SUCCESS", integration, Set.of()))
+                .hasValueSatisfying(r -> assertThat(r.context()).isEqualTo(EtaSpread.PROFILE_BORROWED));
     }
 
     @Test
@@ -383,9 +386,9 @@ class StepLedgerTest {
         assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, Set.of("/ws/engine")))
                 .as("its wall on its 2 JVMs, which StepEta re-prices at the light run's share; never at 0.3")
                 .hasValue(101_755);
-        assertThat(ledger.range("/ws/engine", "run-tests", "SUCCESS", DEFAULT, Set.of("/ws/engine")))
-                .as("still a wide range: read across loads")
-                .hasValueSatisfying(r -> assertThat(r[1] - r[0]).isGreaterThanOrEqualTo(2 * 40_000));
+        assertThat(ledger.spread("/ws/engine", "run-tests", "SUCCESS", DEFAULT, Set.of("/ws/engine")))
+                .as("still a wide spread: read across loads")
+                .hasValueSatisfying(r -> assertThat(r.context()).isEqualTo(EtaSpread.LOAD_BORROWED));
     }
 
     @Test

@@ -64,9 +64,9 @@ class RemainingWorkStepsTest {
                                                 "run-tests",
                                                 90_000 / MS,
                                                 StepCost.Kind.TEST,
-                                                90_000 / MS,
-                                                90_000 / MS,
-                                                2))),
+                                                0.05,
+                                                2,
+                                                StepCost.Rung.REPLAY))),
                         4,
                         false,
                         false)
@@ -166,8 +166,14 @@ class RemainingWorkStepsTest {
                         List.of(cost),
                         Map.of(
                                 A,
+                                // Its high bound at three times its price: two sigma of ln 3 / 2.
                                 List.of(new StepCost(
-                                        "run-tests", 110_000 / MS, StepCost.Kind.TEST, 80_000 / MS, 330_000 / MS, 0))),
+                                        "run-tests",
+                                        110_000 / MS,
+                                        StepCost.Kind.TEST,
+                                        Math.log(3) / 2,
+                                        0,
+                                        StepCost.Rung.HOST))),
                         4,
                         false,
                         false)
@@ -182,7 +188,7 @@ class RemainingWorkStepsTest {
         now.addAndGet(100_000);
         assertThat(rw.remaining()).as("200 s in: a quarter of it").isCloseTo(50_000, within((long) MS));
         now.addAndGet(120_000);
-        assertThat(rw.remaining()).as("320 s in: what the high bound leaves").isCloseTo(10_000, within((long) MS));
+        assertThat(rw.remaining()).as("320 s in: what the high bound leaves").isCloseTo(9_850, within((long) MS));
     }
 
     @Test
@@ -286,59 +292,97 @@ class RemainingWorkStepsTest {
                 .isCloseTo(4_500, within((long) MS));
     }
 
-    /**
-     * A suite on its own rate kept no range: low and high were one point, and every checkpoint past
-     * it fell outside the range shown (run 6 of jk's 2026-11-12 corpus, 52% of warm checkpoints
-     * inside). The projection spreads as the suite's walls do.
-     */
-    @Test
-    void a_suite_on_its_rate_projects_its_range_at_its_low_and_high_over_its_price() {
-        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 90_000 / MS, 90_000 / MS, 0, 0);
-        RemainingWork rw = RemainingWork.seedSteps(
-                        List.of(cost),
-                        Map.of(
-                                A,
-                                List.of(new StepCost(
-                                        "run-tests", 90_000 / MS, StepCost.Kind.TEST, 60_000 / MS, 120_000 / MS))),
-                        4,
-                        false,
-                        false)
-                .withClock(clock);
-        rw.stepStart(A, "run-tests");
-        now.addAndGet(40_000);
-        rw.suiteProgress(A, 0.80);
-        assertThat(rw.remaining()).as("40 s for 80%").isCloseTo(10_000, within((long) MS));
-        long[] range = rw.remainingRange();
-        assertThat(range[0]).as("at two thirds of its price").isCloseTo(6_667, within((long) MS));
-        assertThat(range[1]).as("at four thirds of its price").isCloseTo(13_333, within((long) MS));
-    }
-
-    @Test
-    void the_likely_range_is_the_schedule_at_each_steps_low_and_high_and_narrows_as_steps_finish() {
+    /** A module of a 6 s compile at spread {@code compile} and a 90 s suite at {@code suite}. */
+    private RemainingWork spreadModel(double compile, double suite) {
         ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 96_000 / MS, 90_000 / MS, 0, 6_000 / MS);
-        RemainingWork rw = RemainingWork.seedSteps(
+        return RemainingWork.seedSteps(
                         List.of(cost),
                         Map.of(
                                 A,
                                 List.of(
                                         new StepCost(
-                                                "compile-java", 6_000 / MS, StepCost.Kind.PRE, 3_000 / MS, 12_000 / MS),
+                                                "compile-java",
+                                                6_000 / MS,
+                                                StepCost.Kind.PRE,
+                                                compile,
+                                                0,
+                                                StepCost.Rung.CALIBRATION),
                                         new StepCost(
                                                 "run-tests",
                                                 90_000 / MS,
                                                 StepCost.Kind.TEST,
-                                                60_000 / MS,
-                                                120_000 / MS))),
+                                                suite,
+                                                0,
+                                                StepCost.Rung.REPLAY))),
                         4,
                         false,
                         false)
                 .withClock(clock);
+    }
 
-        assertThat(rw.remainingRange()).containsExactly(63_000, 132_000);
+    /**
+     * The build's spread is its unfinished steps' spreads over what each has left, half of it as one
+     * error and half as independent ones (JK-R0N5S); the likely range is the 10th to 90th
+     * percentile around the remainder, and it narrows as steps finish: a finished step leaves no
+     * spread behind.
+     */
+    @Test
+    void the_likely_range_is_propagated_from_each_steps_spread_and_narrows_as_steps_finish() {
+        RemainingWork rw = spreadModel(0.3, 0.1);
+        double a1 = 40 * 0.3, a2 = 600 * 0.1, left = 640;
+        double expected = Math.sqrt(0.5 * (a1 * a1 + a2 * a2) / (left * left) + 0.5 * Math.pow((a1 + a2) / left, 2));
+        RemainingWork.Residual r = rw.residual();
+        assertThat(r.remainingMs()).isEqualTo(96_000);
+        assertThat(r.spread()).isCloseTo(expected, within(1e-9));
+        assertThat(r.range()[0]).isCloseTo(Math.round(96_000 * Math.exp(-EtaSpread.Z90 * expected)), within(1L));
+        assertThat(r.range()[1]).isCloseTo(Math.round(96_000 * Math.exp(EtaSpread.Z90 * expected)), within(1L));
 
         rw.stepStart(A, "compile-java");
         now.addAndGet(6_000);
         rw.stepFinish(A, "compile-java");
-        assertThat(rw.remainingRange()).as("a finished step leaves no range").containsExactly(60_000, 120_000);
+        assertThat(rw.residual().spread()).as("the suite alone: its own spread").isCloseTo(0.1, within(1e-9));
+        assertThat(rw.remainingRange())
+                .containsExactly(
+                        Math.round(90_000 * Math.exp(-EtaSpread.Z90 * 0.1)),
+                        Math.round(90_000 * Math.exp(EtaSpread.Z90 * 0.1)));
+    }
+
+    /** Replayed steps leave a confident estimate; a calibration-priced one does not. */
+    @Test
+    void confidence_follows_the_spread() {
+        assertThat(spreadModel(0.05, 0.05).residual().confidence()).isGreaterThan(0.9);
+        assertThat(spreadModel(0.45, 0.45).residual().confidence()).isLessThan(0.25);
+    }
+
+    /**
+     * Independent errors cancel within a lane, not across lanes that run side by side: the build
+     * ends with its slowest lane, so two parallel modules are as uncertain as one of them.
+     */
+    @Test
+    void parallel_lanes_do_not_cancel_each_others_errors() {
+        Path b = Path.of("/ws/b");
+        Map<Path, List<StepCost>> steps = Map.of(
+                A,
+                List.of(new StepCost("compile-java", 100, StepCost.Kind.PRE, 0.2, 0, StepCost.Rung.HOST)),
+                b,
+                List.of(new StepCost("compile-java", 100, StepCost.Kind.PRE, 0.2, 0, StepCost.Rung.HOST)));
+        RemainingWork parallel = RemainingWork.seedSteps(
+                List.of(
+                        new ModuleWorkCost(A, Set.of(), 100, 0, 0, 100),
+                        new ModuleWorkCost(b, Set.of(), 100, 0, 0, 100)),
+                steps,
+                4,
+                false,
+                false);
+        RemainingWork serial = RemainingWork.seedSteps(
+                List.of(
+                        new ModuleWorkCost(A, Set.of(), 100, 0, 0, 100),
+                        new ModuleWorkCost(b, Set.of(A), 100, 0, 0, 100)),
+                steps,
+                4,
+                false,
+                false);
+        assertThat(parallel.residual().spread()).isCloseTo(0.2, within(1e-9));
+        assertThat(serial.residual().spread()).isCloseTo(Math.sqrt(0.03), within(1e-9));
     }
 }

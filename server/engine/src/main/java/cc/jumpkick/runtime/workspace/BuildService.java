@@ -10,6 +10,7 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.wire.runtime.BuildKnobs;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
@@ -241,16 +242,21 @@ public final class BuildService {
         }
 
         /**
-         * The estimate's likely range, {@code {low, high}} ms: its steps scheduled at the low, then
-         * the high end of each one's own range (JK-4TEZ7). An estimate with no steps has no range:
-         * both ends are the estimate.
+         * The estimate with its spread (JK-R0N5S): its steps' spreads propagated through its
+         * schedule ({@link RemainingWork#residual}), anchored at {@link #etaMs}. An estimate with no
+         * steps carries the spread of a module priced by weight alone. {@code correlation} is how
+         * strongly the host's step errors go the same way ({@code RungBias#correlation}).
          */
-        public long[] range(boolean parallelTests) {
-            if (steps.isEmpty() || costs.isEmpty()) return new long[] {etaMs, etaMs};
+        public RemainingWork.Residual residual(boolean parallelTests, double correlation) {
+            if (etaMs <= 0) return new RemainingWork.Residual(0, 0);
+            if (steps.isEmpty() || costs.isEmpty()) return new RemainingWork.Residual(etaMs, EtaSpread.UNPRICED);
             List<ModuleWorkCost> work = new ArrayList<>();
             for (EffortWeights.ModuleCost c : costs) work.add(c.toWorkCost());
-            return RemainingWork.seedSteps(work, steps, concurrency, serial, parallelTests)
-                    .remainingRange();
+            double spread = RemainingWork.seedSteps(work, steps, concurrency, serial, parallelTests)
+                    .withCorrelation(correlation)
+                    .residual()
+                    .spread();
+            return new RemainingWork.Residual(etaMs, spread);
         }
     }
 

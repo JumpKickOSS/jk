@@ -47,6 +47,7 @@ public final class LiveRuns {
             long den = 0L;
             long lowMs = -1L;
             long highMs = -1L;
+            double confidence = -1;
             var tracker = sessions.trackerOrNull(h.requestId());
             if (tracker != null) {
                 var snap = tracker.snapshot();
@@ -55,6 +56,7 @@ public final class LiveRuns {
                     lowMs = snap.lowMs();
                     highMs = snap.highMs();
                 }
+                if (snap.hasConfidence()) confidence = snap.confidence();
                 r0Ms = snap.R0ms();
                 num = snap.numerator();
                 den = snap.denominator();
@@ -82,7 +84,8 @@ public final class LiveRuns {
                     mid.modules(),
                     mid.tasks(),
                     lowMs,
-                    highMs));
+                    highMs,
+                    confidence));
         }
         return out;
     }

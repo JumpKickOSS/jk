@@ -37,7 +37,9 @@ public final class HttpLive {
             List<Task> tasks,
             /** The likely range of {@code remainingMs}, {@code -1} each when there is none (JK-4TEZ7). */
             long lowMs,
-            long highMs) {
+            long highMs,
+            /** The probability that the truth lands within 10% of {@code remainingMs}, {@code -1} when none (JK-R0N5S). */
+            double confidence) {
 
         public Run {
             modules = modules == null ? List.of() : List.copyOf(modules);
@@ -82,7 +84,8 @@ public final class HttpLive {
                     modules,
                     tasks,
                     -1L,
-                    -1L);
+                    -1L,
+                    -1);
         }
 
         /** Compact constructor for tests that only need identity + progress rebind. */

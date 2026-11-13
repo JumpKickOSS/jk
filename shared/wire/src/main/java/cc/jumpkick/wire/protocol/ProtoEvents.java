@@ -57,9 +57,9 @@ public final class ProtoEvents {
         return new EtaEvent(remainingMs, fullMillis).encode();
     }
 
-    /** As above with the estimate's likely range {@code [lowMs, highMs]}. */
-    public static String eta(long remainingMs, long fullMillis, long lowMs, long highMs) {
-        return new EtaEvent(remainingMs, fullMillis, lowMs, highMs).encode();
+    /** As above with the estimate's likely range {@code [lowMs, highMs]} and its confidence. */
+    public static String eta(long remainingMs, long fullMillis, long lowMs, long highMs, double confidence) {
+        return new EtaEvent(remainingMs, fullMillis, lowMs, highMs, confidence).encode();
     }
 
     public static String workspaceProgress(
@@ -127,10 +127,14 @@ public final class ProtoEvents {
                 progressPercent,
                 heldMs,
                 -1,
+                -1,
                 -1);
     }
 
-    /** As above, with the estimate's likely range {@code [lowMs, highMs]} (-1 when it has none). */
+    /**
+     * As above, with the estimate's likely range {@code [lowMs, highMs]} (-1 when it has none) and
+     * its confidence (-1 when it has none).
+     */
     public static String workspaceProgress(
             String dir,
             long numerator,
@@ -143,7 +147,8 @@ public final class ProtoEvents {
             double progressPercent,
             long heldMs,
             long lowMs,
-            long highMs) {
+            long highMs,
+            double confidence) {
         double percent = Double.isNaN(progressPercent)
                 ? WorkspaceProgressTracker.percentOf(numerator, denominator)
                 : progressPercent;
@@ -159,7 +164,8 @@ public final class ProtoEvents {
                         R0ms,
                         heldMs,
                         lowMs,
-                        highMs)
+                        highMs,
+                        confidence)
                 .encode();
     }
 

@@ -23,6 +23,7 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.base.RungBias;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.TestRun;
@@ -121,7 +122,9 @@ public final class EngineListeners {
             public void workModel(WorkModel model) {
                 if (rid <= 0) return;
                 EtaModels.put(rid, model);
-                RemainingWork rw = model.toRemainingWork();
+                // The build's spread weighs its steps' errors as this host has seen them go together.
+                RemainingWork rw =
+                        model.toRemainingWork().withCorrelation(RungBias.load().correlation());
                 // A model that arrives while the build is on hold stands still with it.
                 if (MemoryHolds.onHold(rid)) rw.hold();
                 sessions.remaining(rid, rw);

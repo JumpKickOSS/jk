@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class CompilerWarmUpTest {
 
     private static StepCost compile(String step, int weight) {
-        return new StepCost(step, weight, StepCost.Kind.PRE, weight, weight, 0, StepCost.Rung.REPLAY);
+        return new StepCost(step, weight, StepCost.Kind.PRE, 0.05, 0, StepCost.Rung.REPLAY);
     }
 
     @Test

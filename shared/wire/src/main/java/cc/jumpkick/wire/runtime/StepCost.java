@@ -8,14 +8,14 @@ import java.util.Objects;
  * WorkModel#MS_PER_WEIGHT}): its own price, so a live remainder is the sum of the steps still to
  * finish rather than a share of plan ticks, which are spread evenly over steps of very different
  * length. {@link Kind} places it in the module's shape: the compile prefix, the suite, or a
- * packaging tail that runs beside the suite. {@code low} and {@code high} bound the price the way
- * the step's own recorded walls spread (the estimate's likely range, JK-4TEZ7); a step with no
- * spread has both at its price. {@code workers} is, for a suite, the test JVMs its price assumes
- * ({@code 0} when unknown): the build picks the count when the suite starts, from what else is
- * running then, and a suite that gets other than it was priced at is re-priced ({@link #scale(int,
- * int, long, long)}).
+ * packaging tail that runs beside the suite. {@code spread} is the price's relative uncertainty, one
+ * sigma of {@code ln(wall / price)} ({@link EtaSpread}): the layer that priced it, the step's own
+ * run-to-run spread and how far this run is from its samples (JK-R0N5S). {@code workers} is, for a
+ * suite, the test JVMs its price assumes ({@code 0} when unknown): the build picks the count when
+ * the suite starts, from what else is running then, and a suite that gets other than it was priced
+ * at is re-priced ({@link #scale(int, int, long, long)}).
  */
-public record StepCost(String step, int weight, Kind kind, int low, int high, int workers, Rung rung) {
+public record StepCost(String step, int weight, Kind kind, double spread, int workers, Rung rung) {
 
     /**
      * Which layer of what the estimate knows priced the step, narrowest first (JK-9BSXK): the step's
@@ -57,31 +57,31 @@ public record StepCost(String step, int weight, Kind kind, int low, int high, in
         Objects.requireNonNull(step, "step");
         Objects.requireNonNull(kind, "kind");
         weight = Math.max(0, weight);
-        low = Math.max(0, Math.min(low, weight));
-        high = Math.max(weight, high);
+        spread = EtaSpread.clamp(spread);
         workers = Math.max(0, workers);
         Objects.requireNonNull(rung, "rung");
     }
 
-    /** A step priced from its own walls with its range and worker count. */
-    public StepCost(String step, int weight, Kind kind, int low, int high, int workers) {
-        this(step, weight, kind, low, high, workers, Rung.REPLAY);
-    }
-
-    /** A step priced with its range and no worker count. */
-    public StepCost(String step, int weight, Kind kind, int low, int high) {
-        this(step, weight, kind, low, high, 0);
-    }
-
-    /** This step at another price and worker count, from the same rung. */
-    public StepCost repriced(int weight, int low, int high, int workers) {
-        return new StepCost(step, weight, kind, low, high, workers, rung);
-    }
-
-    /** A step priced with no spread: its range is its price. */
+    /** A step priced from its own walls at the replay's default spread, with no worker count. */
     public StepCost(String step, int weight, Kind kind) {
-        this(step, weight, kind, weight, weight);
+        this(step, weight, kind, EtaSpread.defaultFor(Rung.REPLAY), 0, Rung.REPLAY);
     }
+
+    /** This step at another price, spread and worker count, from the same rung. */
+    public StepCost repriced(int weight, double spread, int workers) {
+        return new StepCost(step, weight, kind, spread, workers, rung);
+    }
+
+    /**
+     * The most this step plausibly runs, in weight units: its price at two sigma, never under
+     * {@link #MIN_HIGH} of it. A running step past its price counts down toward it.
+     */
+    public double high() {
+        return weight * Math.max(MIN_HIGH, Math.exp(2 * spread));
+    }
+
+    /** The least {@link #high} reaches above the price. */
+    public static final double MIN_HIGH = 1.15;
 
     /**
      * How a suite's wall goes with its test JVMs: as its parallel bound to this power. The engine's
@@ -105,21 +105,5 @@ public record StepCost(String step, int weight, Kind kind, int low, int high, in
         double then = Math.max(longest, (double) classWallsMs / from);
         double now = Math.max(longest, (double) classWallsMs / to);
         return then <= 0 ? 1 : Math.pow(now / then, WORKER_EXPONENT);
-    }
-
-    /** The bound {@code which} picks: the price, the low or the high end of its range. */
-    public int at(Bound which) {
-        return switch (which) {
-            case PRICE -> weight;
-            case LOW -> low;
-            case HIGH -> high;
-        };
-    }
-
-    /** Which of a step's three figures a schedule is priced at. */
-    public enum Bound {
-        PRICE,
-        LOW,
-        HIGH
     }
 }

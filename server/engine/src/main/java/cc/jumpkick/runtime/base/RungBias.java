@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.StepCost;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * How far each prior layer of the estimate misses on this host, per step kind: the factor its next
@@ -26,8 +28,17 @@ import java.util.TreeMap;
  * run is smoothed; a key's first run sets it outright. The factor is clamped to {@link #MIN_FACTOR}
  * to {@link #MAX_FACTOR}.
  *
- * <p>One small file per host ({@link #defaultFile}), one line per rung and kind: read whole when an
- * estimate is priced, rewritten once per finished run.
+ * <p>Beside the bias, every rung but a touch keeps its spread per kind (JK-R0N5S): the mean square
+ * of its steps' {@code ln(wall / price)}, each step weighed by its price, moved {@link
+ * #ALPHA_SPREAD} of the way toward each run's, so a step's price carries how far that layer has
+ * missed for that kind of step on this host, the bias it was corrected by included ({@link
+ * #spread}). A rung and kind with none learned yet takes {@link EtaSpread#defaultFor its default}.
+ * And the host keeps how strongly its steps' errors go the same way ({@link #correlation}): a run's
+ * price-weighted mean residual against what it would be were the errors independent, or one.
+ *
+ * <p>One small file per host ({@link #defaultFile}), one line per rung and kind ({@code rung kind
+ * log meanSquare runs}) and one {@code correlation meanSquare independent correlated runs}: read
+ * whole when an estimate is priced, rewritten once per finished run.
  */
 public final class RungBias {
 
@@ -45,16 +56,57 @@ public final class RungBias {
 
     private static final double MAX_LOG = Math.log(MAX_FACTOR);
 
-    /** One rung and kind's bias: the log of the factor, and the runs it was learned from. */
-    record Entry(double log, int runs) {}
+    /**
+     * How far each run's mean square moves the spread: slower than the bias, since a spread is read
+     * from the squares of a handful of steps.
+     */
+    static final double ALPHA_SPREAD = 0.3;
 
-    /** One priced step of a finished run: the rung that priced it, its kind, its price and its wall. */
-    public record Pair(StepCost.Rung rung, String step, long pricedMs, long wallMs) {}
+    /** A run teaches a spread fully from this many steps of the kind; fewer move it less. */
+    static final int SPREAD_STEPS = 3;
+
+    /** A run teaches the correlation from this many priced steps at least. */
+    static final int CORRELATION_STEPS = 3;
+
+    /** The correlation is kept within this much of 0 and 1: neither is ever quite true. */
+    static final double CORRELATION_MARGIN = 0.05;
+
+    /** The line that carries the correlation, in the same section as the rungs. */
+    static final String CORRELATION = "correlation";
+
+    /**
+     * One rung and kind: the log of its bias factor (prior rungs only), the mean square of its log
+     * residuals, and the runs it was learned from.
+     */
+    record Entry(double log, double meanSquare, int runs) {}
+
+    /**
+     * The host's correlation, as three running means over its runs: the square of a run's
+     * price-weighted mean residual, and what it would be with every step's error independent and
+     * with every one the same ({@link #correlation}).
+     */
+    record Correlation(double meanSquare, double independent, double correlated, int runs) {
+        static final Correlation NONE = new Correlation(0, 0, 0, 0);
+    }
+
+    /**
+     * One priced step of a finished run: the rung that priced it, its kind, its price, its wall and
+     * the spread it was priced with.
+     */
+    public record Pair(StepCost.Rung rung, String step, long pricedMs, long wallMs, double spread) {
+
+        /** A pair priced at its rung's default spread. */
+        public Pair(StepCost.Rung rung, String step, long pricedMs, long wallMs) {
+            this(rung, step, pricedMs, wallMs, EtaSpread.defaultFor(rung));
+        }
+    }
 
     private final Map<String, Entry> entries;
+    private final Correlation correlation;
 
-    private RungBias(Map<String, Entry> entries) {
+    private RungBias(Map<String, Entry> entries, Correlation correlation) {
         this.entries = entries;
+        this.correlation = correlation;
     }
 
     /** The host's store, whose {@link HostStore#BIAS} section the biases are. */
@@ -69,7 +121,8 @@ public final class RungBias {
 
     /** The biases in {@code file}; none when it is missing or unreadable. */
     public static RungBias load(Path file) {
-        return new RungBias(read(file));
+        List<String> lines = HostStore.section(file, HostStore.BIAS);
+        return new RungBias(parse(lines), parseCorrelation(lines));
     }
 
     /**
@@ -81,6 +134,30 @@ public final class RungBias {
         Entry e = entries.get(key(rung, kindOf(step)));
         if (e == null) return 1;
         return Math.exp(Math.max(-MAX_LOG, Math.min(MAX_LOG, e.log())));
+    }
+
+    /**
+     * How far a {@code rung} price for {@code step} misses on this host, one sigma of {@code
+     * ln(wall / price)}: the root of the learned mean square, or the rung's {@link
+     * EtaSpread#defaultFor default} while none is learned.
+     */
+    public double spread(StepCost.Rung rung, String step) {
+        Entry e = rung == StepCost.Rung.TOKEN ? null : entries.get(key(rung, kindOf(step)));
+        if (e == null || e.runs() <= 0) return EtaSpread.defaultFor(rung);
+        return EtaSpread.clamp(Math.sqrt(e.meanSquare()));
+    }
+
+    /**
+     * How strongly this host's step errors go the same way, {@code 0} (independent) to {@code 1}
+     * (one error): where the runs' mean squared residual lies between what independent and what
+     * identical errors would give ({@code (m − i) / (c − i)}), kept off both ends by {@link
+     * #CORRELATION_MARGIN}; {@link EtaSpread#CORRELATION} until a run teaches it.
+     */
+    public double correlation() {
+        Correlation c = correlation;
+        if (c.runs() <= 0 || c.correlated() - c.independent() <= 1e-9) return EtaSpread.CORRELATION;
+        double rho = (c.meanSquare() - c.independent()) / (c.correlated() - c.independent());
+        return Math.max(CORRELATION_MARGIN, Math.min(1 - CORRELATION_MARGIN, rho));
     }
 
     /**
@@ -100,59 +177,136 @@ public final class RungBias {
      * Teach {@code file} a finished run's priced steps: per prior rung and kind, the median of the
      * steps' {@code ln(wall / price)}, moved into the bias by {@link #ALPHA}. The price already
      * carries the bias it was corrected by, so the median is the residual the bias still misses by.
+     * Per rung (a touch aside) and kind, the price-weighted mean of the residuals' squares, moved
+     * into the spread by {@link #ALPHA_SPREAD}, less for a run with fewer than {@link #SPREAD_STEPS}
+     * of the kind. Over all of them, the run's correlation terms ({@link #correlation}).
      */
     public static void learn(Path file, List<Pair> pairs) {
-        Map<String, List<Double>> residuals = new HashMap<>();
+        Map<String, List<double[]>> residuals = new HashMap<>();
+        double weights = 0, mean = 0, independent = 0, correlated = 0;
+        int steps = 0;
         for (Pair p : pairs) {
-            if (!p.rung().prior() || p.pricedMs() <= 0 || p.wallMs() < MIN_WALL_MS) continue;
-            double r = Math.log((double) p.wallMs() / p.pricedMs());
+            if (p.rung() == StepCost.Rung.TOKEN || p.pricedMs() <= 0 || p.wallMs() < MIN_WALL_MS) continue;
+            double r = Math.max(-MAX_LOG, Math.min(MAX_LOG, Math.log((double) p.wallMs() / p.pricedMs())));
+            double w = p.pricedMs();
             residuals
                     .computeIfAbsent(key(p.rung(), kindOf(p.step())), k -> new ArrayList<>())
-                    .add(Math.max(-MAX_LOG, Math.min(MAX_LOG, r)));
+                    .add(new double[] {r, w});
+            weights += w;
+            mean += w * r;
+            independent += Math.pow(w * p.spread(), 2);
+            correlated += w * p.spread();
+            steps++;
         }
         if (residuals.isEmpty()) return;
+        Correlation observed = steps < CORRELATION_STEPS
+                ? null
+                : new Correlation(
+                        Math.pow(mean / weights, 2),
+                        independent / (weights * weights),
+                        Math.pow(correlated / weights, 2),
+                        1);
         HostStore.update(file, HostStore.BIAS, lines -> {
             Map<String, Entry> entries = new TreeMap<>(parse(lines));
-            for (Map.Entry<String, List<Double>> e : residuals.entrySet()) {
-                double residual = median(e.getValue());
-                Entry was = entries.get(e.getKey());
-                double log = was == null ? residual : was.log() + ALPHA * residual;
-                log = Math.max(-MAX_LOG, Math.min(MAX_LOG, log));
-                entries.put(e.getKey(), new Entry(log, was == null ? 1 : was.runs() + 1));
+            for (Map.Entry<String, List<double[]>> e : residuals.entrySet()) {
+                entries.put(e.getKey(), learned(e.getKey(), entries.get(e.getKey()), e.getValue()));
             }
+            Correlation was = parseCorrelation(lines);
+            Correlation now = observed == null ? was : moved(was, observed);
             List<String> out = new ArrayList<>();
             for (Map.Entry<String, Entry> e : entries.entrySet()) {
                 out.add(e.getKey()
                         + ' '
                         + String.format(Locale.ROOT, "%.4f", e.getValue().log())
                         + ' '
+                        + String.format(Locale.ROOT, "%.5f", e.getValue().meanSquare())
+                        + ' '
                         + e.getValue().runs());
+            }
+            if (now.runs() > 0) {
+                out.add(String.format(
+                        Locale.ROOT,
+                        "%s %.6f %.6f %.6f %d",
+                        CORRELATION,
+                        now.meanSquare(),
+                        now.independent(),
+                        now.correlated(),
+                        now.runs()));
             }
             return out;
         });
+    }
+
+    /** {@code was} (null on a key's first run) moved by one run's residuals {@code {residual, weight}}. */
+    private static Entry learned(String key, @Nullable Entry was, List<double[]> v) {
+        boolean prior =
+                StepCost.Rung.valueOf(key.substring(0, key.indexOf(' '))).prior();
+        double log = was == null ? 0 : was.log();
+        if (prior) {
+            List<Double> rs = new ArrayList<>(v.size());
+            for (double[] r : v) rs.add(r[0]);
+            double residual = median(rs);
+            log = was == null ? residual : log + ALPHA * residual;
+            log = Math.max(-MAX_LOG, Math.min(MAX_LOG, log));
+        }
+        double square = 0, weights = 0;
+        for (double[] r : v) {
+            double c = Math.min(EtaSpread.MAX, Math.abs(r[0]));
+            square += r[1] * c * c;
+            weights += r[1];
+        }
+        square /= weights;
+        double alpha = ALPHA_SPREAD * Math.min(1, (double) v.size() / SPREAD_STEPS);
+        double meanSquare = was == null ? square : was.meanSquare() + alpha * (square - was.meanSquare());
+        return new Entry(log, meanSquare, was == null ? 1 : was.runs() + 1);
+    }
+
+    /** {@code was} moved {@link #ALPHA_SPREAD} toward one run's terms; a first run sets them. */
+    private static Correlation moved(Correlation was, Correlation run) {
+        if (was.runs() <= 0) return run;
+        return new Correlation(
+                was.meanSquare() + ALPHA_SPREAD * (run.meanSquare() - was.meanSquare()),
+                was.independent() + ALPHA_SPREAD * (run.independent() - was.independent()),
+                was.correlated() + ALPHA_SPREAD * (run.correlated() - was.correlated()),
+                was.runs() + 1);
     }
 
     private static String key(StepCost.Rung rung, String kind) {
         return rung.name() + " " + kind;
     }
 
-    private static Map<String, Entry> read(Path file) {
-        return parse(HostStore.section(file, HostStore.BIAS));
-    }
-
     private static Map<String, Entry> parse(List<String> lines) {
         Map<String, Entry> out = new HashMap<>();
         for (String line : lines) {
             String[] f = line.trim().split("\\s+");
-            if (f.length != 4) continue;
+            if (f.length != 5) continue;
             try {
                 StepCost.Rung.valueOf(f[0]);
-                out.put(f[0] + " " + f[1], new Entry(Double.parseDouble(f[2]), Integer.parseInt(f[3])));
+                out.put(
+                        f[0] + " " + f[1],
+                        new Entry(Double.parseDouble(f[2]), Double.parseDouble(f[3]), Integer.parseInt(f[4])));
             } catch (IllegalArgumentException malformed) {
-                // a line of another rung or a torn number: skipped, the rest still read
+                // a line of another rung, the correlation, or a torn number: skipped, the rest still read
             }
         }
         return out;
+    }
+
+    private static Correlation parseCorrelation(List<String> lines) {
+        for (String line : lines) {
+            String[] f = line.trim().split("\\s+");
+            if (f.length != 5 || !f[0].equals(CORRELATION)) continue;
+            try {
+                return new Correlation(
+                        Double.parseDouble(f[1]),
+                        Double.parseDouble(f[2]),
+                        Double.parseDouble(f[3]),
+                        Integer.parseInt(f[4]));
+            } catch (NumberFormatException torn) {
+                return Correlation.NONE;
+            }
+        }
+        return Correlation.NONE;
     }
 
     private static double median(List<Double> v) {

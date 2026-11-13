@@ -155,7 +155,11 @@ public final class ExplainVerb implements HostedVerb {
                 host.sendQuiet(
                         writer,
                         ProtoEvents.eta(
-                                report.etaMillis(), report.fullMillis(), report.lowMillis(), report.highMillis()));
+                                report.etaMillis(),
+                                report.fullMillis(),
+                                report.lowMillis(),
+                                report.highMillis(),
+                                report.confidence()));
                 host.sendQuiet(
                         writer,
                         ProtoReads.explainDone(

@@ -445,7 +445,8 @@ public final class JsonlShape {
                         snap.R0ms(),
                         heldMs,
                         snap.lowMs(),
-                        snap.highMs())
+                        snap.highMs(),
+                        snap.confidence())
                 .encode());
     }
 

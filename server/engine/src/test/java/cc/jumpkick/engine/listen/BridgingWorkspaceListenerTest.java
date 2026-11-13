@@ -51,7 +51,7 @@ class BridgingWorkspaceListenerTest {
         // JK-626GS: the corpus's first run carried no rung on any of its 920 task-finish events; the
         // workspace's hooks did not pass the lookup through.
         RecordingEventSink sink = new RecordingEventSink();
-        StepCost compile = new StepCost("compile-java", 20, StepCost.Kind.PRE, 10, 40, 0, StepCost.Rung.CALIBRATION);
+        StepCost compile = new StepCost("compile-java", 20, StepCost.Kind.PRE, 0.45, 0, StepCost.Rung.CALIBRATION);
         BridgingWorkspaceListener listener =
                 new BridgingWorkspaceListener("ws", sink, new BridgingWorkspaceListener.Hooks() {
                     @Override

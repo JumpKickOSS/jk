@@ -7,6 +7,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.StepCost;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -413,17 +414,20 @@ public final class StepLedger {
     }
 
     /**
-     * The likely range of {@code step}'s wall, {@code {low, high}}: the 20th and 80th percentiles
-     * of the samples {@link #price} takes its median from, widened to at least the rung's least
-     * spread either side of the median ({@link #MIN_SPREAD}, more when the samples were borrowed
-     * from another load or profile). Empty when {@link #price} is.
+     * How uncertain {@link #price} is beyond its layer's own error (JK-R0N5S): {@code own} is the
+     * samples' run-to-run spread, one sigma on a log scale read from their 20th and 80th
+     * percentiles (none under {@link #MIN_SPREAD_SAMPLES} samples); {@code context} how far the
+     * samples are from this run: none for runs of this shape and frontier, more for another
+     * frontier, another shape, another load, another profile ({@link EtaSpread}). Empty when
+     * {@link #price} is.
      */
-    public Optional<long[]> range(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
-        return range(dir, step, status, shape, frontier, null);
+    public Optional<Spread> spread(
+            String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        return spread(dir, step, status, shape, frontier, null);
     }
 
-    /** {@link #range(String, String, String, RunShapes.Shape, Set)} under {@code freshCompiler} ({@link #price}). */
-    public Optional<long[]> range(
+    /** {@link #spread(String, String, String, RunShapes.Shape, Set)} under {@code freshCompiler} ({@link #price}). */
+    public Optional<Spread> spread(
             String dir,
             String step,
             String status,
@@ -432,15 +436,25 @@ public final class StepLedger {
             @Nullable Boolean freshCompiler) {
         Rung rung = rung(dir, step, status, shape, frontier, freshCompiler);
         if (rung.samples().isEmpty()) return Optional.empty();
-        List<Long> sorted = new ArrayList<>(rung.samples());
-        sorted.sort(Long::compare);
-        long median = rung.at(median(rung.samples()));
-        long low = Math.min(rung.at(percentile(sorted, 0.2)), Math.round(median * (1 - rung.spreadBelow())));
-        long high = Math.max(rung.at(percentile(sorted, 0.8)), Math.round(median * (1 + rung.spreadAbove())));
-        return Optional.of(new long[] {Math.max(0, low), high});
+        double own = 0;
+        if (rung.samples().size() >= MIN_SPREAD_SAMPLES) {
+            List<Long> sorted = new ArrayList<>(rung.samples());
+            sorted.sort(Long::compare);
+            long p20 = Math.max(1, percentile(sorted, 0.2));
+            long p80 = Math.max(1, percentile(sorted, 0.8));
+            own = Math.log((double) p80 / p20) / (2 * Z80);
+        }
+        return Optional.of(new Spread(own, rung.context()));
     }
 
-    static final double MIN_SPREAD = 0.15;
+    /** A price's spread beyond its layer's: the samples' own and their distance from this run. */
+    public record Spread(double own, double context) {}
+
+    /** The samples a price's own spread is read from, at least. */
+    static final int MIN_SPREAD_SAMPLES = 3;
+
+    /** The standard normal's 80th percentile: {@code ln(p80 / p20) = 2·Z80·σ}. */
+    private static final double Z80 = 0.8416212335729143;
 
     /**
      * A compile's wall when {@link #price} has none of its own under this run's load, which it never
@@ -481,16 +495,6 @@ public final class StepLedger {
     /** Modules whose compiles under a load must be known before a partial compile is read from them. */
     static final int MIN_COLD_COMPILE_MODULES = 3;
 
-    /** The least spread of a price read across loads: the load ratio is one number for every step. */
-    static final double LOAD_SPREAD = 0.4;
-
-    /**
-     * A suite's wall under a profile it has never run in, borrowed from its default profile: the
-     * profile adds its own tests to the default ones, so the borrowed wall is a floor and the range
-     * reaches well above it.
-     */
-    static final double PROFILE_SPREAD_ABOVE = 2.0;
-
     /**
      * The test JVMs {@link #price} assumes for the suite of {@code dir}: the count its newest sample
      * ran on, the count the build is likeliest to pick again; {@code 0} when not recorded or not a
@@ -518,21 +522,14 @@ public final class StepLedger {
     }
 
     /**
-     * The samples {@link #price} reads, newest first, the factor it reads them at, the least spread
-     * around them, and for a suite the test JVMs they were read at.
+     * The samples {@link #price} reads, newest first, the factor it reads them at, how far they are
+     * from this run ({@link Spread#context}), and for a suite the test JVMs they were read at.
      */
-    private record Rung(
-            List<Long> samples,
-            double scale,
-            double spreadBelow,
-            double spreadAbove,
-            int workers,
-            long[] classWalls,
-            boolean own) {
-        static final Rung NONE = new Rung(List.of(), 1, MIN_SPREAD, MIN_SPREAD, 0, new long[2], false);
+    private record Rung(List<Long> samples, double scale, double context, int workers, long[] classWalls, boolean own) {
+        static final Rung NONE = new Rung(List.of(), 1, 0, 0, new long[2], false);
 
-        Rung borrowed() {
-            return new Rung(samples, scale, spreadBelow, spreadAbove, workers, classWalls, false);
+        Rung borrowed(double context) {
+            return new Rung(samples, scale, context, workers, classWalls, false);
         }
 
         long at(long ms) {
@@ -603,19 +600,18 @@ public final class StepLedger {
             if (sameLoadFrontier.size() < SAME_FRONTIER && frontierMatches) sameLoadFrontier.add(r);
             if (sameLoad.size() < ANY_FRONTIER) sameLoad.add(r);
         }
-        if (!sameShapeFrontier.isEmpty()) return read(sameShapeFrontier, dir, suite, 1, MIN_SPREAD, MIN_SPREAD);
-        for (List<Indexed> rung : List.of(sameShape, sameLoadFrontier, sameLoad)) {
-            if (!rung.isEmpty())
-                return read(rung, dir, suite, 1, MIN_SPREAD, MIN_SPREAD).borrowed();
+        if (!sameShapeFrontier.isEmpty()) return read(sameShapeFrontier, dir, suite, 1);
+        if (!sameShape.isEmpty()) return read(sameShape, dir, suite, 1).borrowed(EtaSpread.FRONTIER_BORROWED);
+        for (List<Indexed> rung : List.of(sameLoadFrontier, sameLoad)) {
+            if (!rung.isEmpty()) return read(rung, dir, suite, 1).borrowed(EtaSpread.SHAPE_BORROWED);
         }
         if (!otherLoad.isEmpty()) {
             double ratio = suite ? suiteLightOverHeavy() : lightOverHeavy();
-            return read(otherLoad, dir, suite, shape.forced() ? 1 / ratio : ratio, LOAD_SPREAD, LOAD_SPREAD)
-                    .borrowed();
+            return read(otherLoad, dir, suite, shape.forced() ? 1 / ratio : ratio)
+                    .borrowed(EtaSpread.LOAD_BORROWED);
         }
         if (!defaultProfile.isEmpty())
-            return read(defaultProfile, dir, suite, 1, MIN_SPREAD, PROFILE_SPREAD_ABOVE)
-                    .borrowed();
+            return read(defaultProfile, dir, suite, 1).borrowed(EtaSpread.PROFILE_BORROWED);
         return Rung.NONE;
     }
 
@@ -703,7 +699,7 @@ public final class StepLedger {
      * suite took 73 s on 2 in a first build and 37 s on 8 in each forced build after it, and the
      * median of the two priced the next forced build at the first.
      */
-    private static Rung read(List<Indexed> rows, String dir, boolean suite, double scale, double below, double above) {
+    private static Rung read(List<Indexed> rows, String dir, boolean suite, double scale) {
         int workers = 0;
         long[] walls = new long[2];
         if (suite) {
@@ -719,7 +715,7 @@ public final class StepLedger {
             double at = workers > 0 ? StepCost.scale(r.run().workersOf(dir), workers, walls[0], walls[1]) : 1;
             samples.add(Math.round(r.ms() * at));
         }
-        return new Rung(samples, scale, below, above, workers, walls, true);
+        return new Rung(samples, scale, 0, workers, walls, true);
     }
 
     /** Whether a full rebuild changes the step's work, not only the load it runs beside. */

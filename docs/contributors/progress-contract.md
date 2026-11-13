@@ -1,4 +1,4 @@
-# Progress contract — step-priced ETA, residual countdown, likely range, holds
+# Progress contract — step-priced ETA, residual countdown, likely range and confidence, holds
 
 Status: **normative** for TUI / wire progress. Implementations live under
 `shared/wire` (`WorkSchedule`, `RemainingWork`, `StepCost`, `WorkspaceProgressTracker`) and
@@ -11,8 +11,9 @@ Status: **normative** for TUI / wire progress. Implementations live under
    its own recent wall (`jk explain` ≡ `jk build`). No learned scale sits on top of it.
 3. **A countdown that follows the work** — what remains is the schedule of the steps still to
    finish; a running step counts down by its clock, a running suite by its classes.
-4. **An honest precision** — every estimate carries a likely range that the truth falls inside
-   about four runs in five; a wide range is shown as the range.
+4. **An honest precision** — every estimate carries a likely range, the 10th to 90th percentile
+   of where the truth lands, and a confidence, the chance that it lands within 10% of the
+   estimate; a wide range is shown as the range, a very wide one as a rough figure.
 5. **Pauses are not work** — a build waiting for memory is on hold: shown as such, its countdown
    stands still, and the hold teaches no timing.
 6. **The bar never goes backwards** and never runs ahead of the estimate.
@@ -37,7 +38,10 @@ R(t)          = WorkSchedule of what remains:
                                         projected at the last class (t_f / f) less elapsed, ≥ 5% of price,
                                         both on the wall clock; never less than a running class's
                                         recorded wall less the time it has run
-range         = R(t) scheduled at each unfinished step's low, then high bound
+σ(t)          = sqrt((1 − ρ)·Σ(leftᵢσᵢ)² / (Σleftᵢ · R(t)) + ρ·(Σleftᵢσᵢ / Σleftᵢ)²)
+                over the unfinished steps, leftᵢ what each has left and σᵢ its spread
+range         = R(t)·e^(±1.2816·σ(t))            # the 10th and 90th percentiles
+confidence    = Φ(ln 1.1 / σ(t)) − Φ(ln 0.9 / σ(t))  # P(truth within ±10% of R(t))
 countdown     = R_anchor − Δwork-time   # re-anchored on every engine sample, at least once a second
 bar           = min(99%, work-elapsed / (work-elapsed + R(t)))
 ```
@@ -60,7 +64,7 @@ JVMs those runs give them). A suite is read across loads at its own **suite rati
 median, over the suites that ran under both, of their light wall over their full-rebuild wall read at
 the light run's JVMs (1 until two suites have), since a suite runs the same classes either way and its
 JVMs are priced on their own. A suite under a profile it never ran in borrows its default profile's
-wall as a floor, with a range up to three times it. A compile is never read across loads: with no
+wall as a floor, at a wide spread. A compile is never read across loads: with no
 wall of its own under this load, a full compile reads its full rebuild's at the load ratio and a
 partial one the median of the project's compiles under this load, never above its own full compile.
 
@@ -134,20 +138,43 @@ than 1% a second: preflight's band is a tenth of the bar, yet it is about a seco
 build, and a test run's bar read 17% when its estimate came at 1.4 s, then held there for 9.5 s
 while the clock caught up.
 
-**Likely range.** Each step's range is the 20th–80th percentile of the samples its price comes from,
-never narrower than 15% either side; a filtered suite's is ±30%; a step priced with no history of
-its own is half to twice its price. The range narrows as steps finish; a suite on its own rate
-projects its remainder at its low and high over its price, so the range does not shrink to a point
-as the last suite runs (it had, and half of warm checkpoints fell outside it). Warm runs' coverage
-is judged against the target; a cold run misses by more than any range it could honestly show.
-Surfaces show `~1m 32s` when the range is narrow and `1m 20s–1m 50s` once it spans more than 40% of
-what remains (and at least 10 s).
+**Spread, range and confidence** (JK-R0N5S). Every step's price carries a relative spread σ, one
+sigma of `ln(wall / price)` (`StepCost.spread`, `EtaSpread`):
+
+- **Its layer's**, learned on this host per rung and step kind (`RungBias`, the host store's `bias`
+  section): the price-weighted mean square of `ln(wall / price)` over each finished run's priced
+  steps of a second or more, moved 30% of the way toward each run's (less for a run with fewer than
+  three steps of the kind; a key's first run sets it). Until a rung and kind has one, its default:
+  `REPLAY` 0.05, `MODULE` 0.12, `PROJECT` 0.22, `HOST` 0.32, `CALIBRATION` 0.45, `TOKEN` 0.5.
+- **The step's own run-to-run spread** where wider: `ln(p80 / p20) / 1.683` of the samples a
+  replayed price comes from (three samples at least).
+- **Widened**, in quadrature, by how far its samples are from this run: another work set 0.05,
+  another shape under the same load 0.10, another load 0.30, a suite's default profile 0.45; and by
+  0.10 for a suite read at another count of test JVMs than its walls ran on, at the dispatch share
+  or once it starts on its own count.
+
+The build's spread σ(t) propagates the unfinished steps' spreads over what each has left: a share ρ
+of the errors adds as one, the rest as independent errors, which cancel within a lane but not across
+lanes that run side by side (the build ends with its slowest). ρ is learned per host from finished
+runs: where a run's price-weighted mean residual squared lies between what independent and what
+identical errors would give, as running means; 0.5 until a run teaches it. The likely range is the
+10th to 90th percentile of the truth around `R(t)`, and the confidence the probability that it lands
+within ±10% of `R(t)`; both narrow as steps finish, since a finished step leaves no spread behind.
+`score.py` checks the confidence is calibrated: checkpoints bucketed by the confidence shown must
+land within 10% of their ETA as often as the bucket says, within 10 points, warm and cold alike.
+
+Surfaces show the plain countdown `1m 32s` when the range is narrow (it spans at most 40% of what
+remains, or less than 10 s remains), `~1m 20s–1m 50s` when it is wide, and `~12m (rough)` once it
+reaches more than 50% either side on average; `~1m 32s` while no range is known. The web UI keeps
+its own rendering of the range.
 `jk explain` prints `~1m 11s (likely 59s – 1m 30s)` and the critical path the estimate rides on,
 `jk-core → jk-engine → jk-cli`: back from the module that finishes last, each admitted by the
 classes of the one before (`WorkSchedule.criticalPath`; MCP's explain carries it as `criticalPath`,
-and counts each module's `provisionalSteps`, the verdicts a revision will settle). jsonl and the wire carry the range beside
-`remainingMs`: `lowMs` and `highMs` on `eta`, `etaLowMs` and `etaHighMs` on `workspace-progress`; MCP's `status` gives each job in
-flight its `progress`, `remainingMs`, `etaLowMs` and `etaHighMs` under `estimates`.
+and counts each module's `provisionalSteps`, the verdicts a revision will settle, and the estimate's
+`etaConfidence`). jsonl and the wire carry the range and the confidence beside `remainingMs`:
+`lowMs`, `highMs` and `confidence` on `eta`, `etaLowMs`, `etaHighMs` and `confidence` on
+`workspace-progress`; MCP's `status` gives each job in flight its `progress`, `remainingMs`,
+`etaLowMs`, `etaHighMs` and `confidence` under `estimates`.
 
 **On hold.** A fork that has waited half a second for a worker lease (`WorkerLeases`) puts its build
 on hold until the build's last waiting fork leaves the queue (`MemoryHolds`). While held, the
@@ -219,14 +246,15 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers; prices and ranges |
+| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers; prices and their own spreads |
 | `StepEta` | Prices every step the forecast runs; the step-priced `R0` |
-| `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its range, step by step |
+| `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its spread, step by step |
+| `EtaSpread` / `RungBias` | Spread arithmetic (range, confidence); each layer's learned bias and spread, and the host's correlation |
 | `SuiteClassProgress` | A running suite's share of its class walls done, under the run's own tier, and its curve when it finishes |
 | `SuiteCurve` | A suite's class share read as the share of its wall: the median of the curves its recent runs measured |
-| `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range's gaps |
+| `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range and confidence at the residual |
 | `MemoryHolds` | Which builds are on hold for memory, and for how long |
-| Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `state`, `heldMs` |
+| Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `confidence`, `state`, `heldMs` |
 
 ### Guards-off invariant (measured)
 
@@ -277,8 +305,8 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 
 | Event | Fields |
 |-------|--------|
-| `eta` | `millis` (= remaining), `remainingMs`, `fullMillis` (explain), `lowMs`, `highMs` |
-| `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`; on hold also `state: on-hold`, `heldMs` |
+| `eta` | `millis` (= remaining), `remainingMs`, `fullMillis` (explain), `lowMs`, `highMs`, `confidence` |
+| `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `confidence` (0–1, two decimals); on hold also `state: on-hold`, `heldMs` |
 | `hold-start` / `hold-end` | `needBytes`, `freeBytes` / `heldMs` |
 
 ## Learning layout
@@ -321,7 +349,9 @@ it. A row no run has refreshed in 200 runs is dropped, and past 4,000 means or 1
 least recently seen go first. A module step is read by its mean; another measure by its last sample
 unless that is a cache-restore blip beside a long mean.
 
-The host store holds the calibration probe, the continuous rates, the rung biases, the effort
+The host store holds the calibration probe, the continuous rates, the rung biases and spreads
+(`rung kind log-factor mean-square runs`, and one `correlation mean-square independent correlated
+runs`), the effort
 reference walls, the fetch and lock timings, and `means`: `key mean last count` for the step kinds
 and whole invocations of one kind every project's runs measured, folded the same way. A synthetic
 optimize or calibrate run teaches its project but not the host.
@@ -351,6 +381,8 @@ and the layer that set it (`StepCost.Rung`), narrowest first:
 | `CALIBRATION` | the host's calibration, for work never measured |
 | `TOKEN` | a touch: a cache restore or an order check |
 
+Each step's row in `eta-model.jsonl` is `[step, weight, kind, spread, workers, rung]`.
+
 A price from a prior (`PROJECT`, `HOST`, `CALIBRATION`) is corrected by that rung's bias for the
 step's kind on this host (`RungBias`, the host store's `bias` section). Each finished run
 teaches it: per rung and kind, the median of `ln(wall / price)` over the run's priced steps of a
@@ -374,7 +406,8 @@ only the other kind's walls it is carried by the measured warm-up (`CompilerWarm
 ## Measurement
 
 `bench/eta` holds the instrument: `score.py` scores a home's runs against their walls (seed error,
-ETA error and bar error at 10–90% of the wall, plateau, tail, range coverage), `Replay.java`
+ETA error and bar error at 10–90% of the wall, plateau, tail, range coverage, confidence
+calibration), `Replay.java`
 replays a run's journal under candidate models, and `corpus.sh` runs a fixed set of scenarios on
 JumpKick's own tree into a private home. A change to the ETA lands with corpus numbers.
 

@@ -6,9 +6,11 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.base.RungBias;
 import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,7 +20,8 @@ import java.util.List;
  * One {@code jk explain} answer for every surface: the forecast plan plus both ETAs — the
  * incremental estimate and the same graph priced as a full rebuild. The wire verb streams the
  * plan's module/step/edge burst; MCP encodes a budgeted summary. Both compute here. {@code
- * lowMillis} and {@code highMillis} bound the incremental estimate: its likely range (JK-4TEZ7).
+ * lowMillis} and {@code highMillis} bound the incremental estimate: its likely range (JK-4TEZ7);
+ * {@code confidence} is the probability that the truth lands within ±10% of it (JK-R0N5S).
  */
 public record ExplainReport(
         ExplainPlan plan,
@@ -26,6 +29,7 @@ public record ExplainReport(
         long fullMillis,
         long lowMillis,
         long highMillis,
+        double confidence,
         /**
          * The estimate's critical path, first module first: the chain of modules, each admitted by
          * the classes of the one before, that ends with the module finishing last (JK-47ZGV).
@@ -37,7 +41,7 @@ public record ExplainReport(
     }
 
     public ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
-        this(plan, etaMillis, fullMillis, etaMillis, etaMillis, List.of());
+        this(plan, etaMillis, fullMillis, etaMillis, etaMillis, 1, List.of());
     }
 
     /** The bare {@code jk explain}: {@code jk build}'s knobs under {@code session}, no module budget. */
@@ -73,7 +77,9 @@ public record ExplainReport(
                         session.parallelTests(),
                         maxModuleConcurrency));
         long eta = model.etaMs();
-        long[] range = model.range(session.parallelTests());
+        RemainingWork.Residual residual =
+                model.residual(session.parallelTests(), RungBias.load().correlation());
+        long[] range = residual.range();
         JkConfig config = session.config();
         boolean alreadyFull = config.rebuildOr(false) || config.forceOr(false);
         long full;
@@ -98,6 +104,6 @@ public record ExplainReport(
         List<ModuleWorkCost> work = new ArrayList<>();
         for (EffortWeights.ModuleCost c : model.costs()) work.add(c.toWorkCost());
         List<Path> critical = eta > 0 ? WorkSchedule.criticalPath(work, model.concurrency()) : List.of();
-        return new ExplainReport(plan, eta, full, range[0], range[1], critical);
+        return new ExplainReport(plan, eta, full, range[0], range[1], residual.confidence(), critical);
     }
 }

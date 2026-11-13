@@ -85,7 +85,9 @@ public final class WorkspaceProgressTracker {
 
     /**
      * What the bar shows now. {@code lowMs} and {@code highMs} bound {@code remainingMs}: the
-     * estimate's likely range at the same anchor, {@code -1} when there is none (JK-4TEZ7).
+     * estimate's likely range at the same anchor, {@code -1} when there is none (JK-4TEZ7); {@code
+     * confidence} is the probability that the truth lands within ±10% of {@code remainingMs},
+     * {@code -1} when there is none (JK-R0N5S).
      */
     public record Snapshot(
             long numerator,
@@ -97,7 +99,8 @@ public final class WorkspaceProgressTracker {
             long remainingMs,
             long R0ms,
             long lowMs,
-            long highMs) {
+            long highMs,
+            double confidence) {
 
         public Snapshot(
                 long numerator,
@@ -108,7 +111,12 @@ public final class WorkspaceProgressTracker {
                 int modulesTotal,
                 long remainingMs,
                 long R0ms) {
-            this(numerator, denominator, percent, phase, modulesComplete, modulesTotal, remainingMs, R0ms, -1, -1);
+            this(numerator, denominator, percent, phase, modulesComplete, modulesTotal, remainingMs, R0ms, -1, -1, -1);
+        }
+
+        /** Whether the estimate carries a confidence. */
+        public boolean hasConfidence() {
+            return remainingMs >= 0 && confidence >= 0;
         }
 
         static Snapshot unknown() {
@@ -217,20 +225,16 @@ public final class WorkspaceProgressTracker {
     }
 
     /**
-     * The estimate's likely range as it stands beside the residual {@code remainingMs} it was
-     * computed with: kept as the gaps below and above it, so it rides the residual's anchor and
-     * decays with the countdown between events.
+     * The estimate's relative spread as it stands, one sigma of {@code ln(truth / remaining)}
+     * (JK-R0N5S): the snapshot's likely range and confidence are read from it at the residual it
+     * publishes, so the range rides the residual's anchor.
      */
-    public synchronized void noteRange(long remainingMs, long lowMs, long highMs) {
-        if (remainingMs < 0 || lowMs < 0 || highMs < 0) return;
-        rangeBelowMs = Math.max(0, remainingMs - lowMs);
-        rangeAboveMs = Math.max(0, highMs - remainingMs);
+    public synchronized void noteSpread(double sigma) {
+        if (sigma >= 0 && Double.isFinite(sigma)) spread = sigma;
     }
 
-    /** How far the likely range reaches below and above the residual; -1 until {@link #noteRange}. */
-    private long rangeBelowMs = -1;
-
-    private long rangeAboveMs = -1;
+    /** The estimate's relative spread; -1 until {@link #noteSpread}. */
+    private double spread = -1;
 
     public synchronized void modulesTotal(int modulesTotal) {
         this.modulesTotal = Math.max(0, modulesTotal);
@@ -437,9 +441,11 @@ public final class WorkspaceProgressTracker {
         if (settled) percent = 100.0;
         long low = -1;
         long high = -1;
-        if (annotatedRemainingMs >= 0 && rangeBelowMs >= 0 && !settled) {
-            low = Math.max(0, annotatedRemainingMs - rangeBelowMs);
-            high = annotatedRemainingMs + rangeAboveMs;
+        double confidence = -1;
+        if (annotatedRemainingMs >= 0 && spread >= 0 && !settled) {
+            low = EtaSpread.low(annotatedRemainingMs, spread);
+            high = EtaSpread.high(annotatedRemainingMs, spread);
+            confidence = EtaSpread.confidence(spread);
         }
         last = new Snapshot(
                 num,
@@ -451,7 +457,8 @@ public final class WorkspaceProgressTracker {
                 annotatedRemainingMs,
                 annotatedR0ms,
                 low,
-                high);
+                high,
+                confidence);
         return last;
     }
 

@@ -49,20 +49,22 @@ class WorkspaceProgressTrackerHoldTest {
     }
 
     @Test
-    void the_likely_range_rides_the_residual_as_gaps_below_and_above_it() {
+    void the_likely_range_and_the_confidence_ride_the_residual_at_its_spread() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker(null, ticker);
         t.seedWall(100_000, 3);
         t.noteRemaining(80_000, 100_000);
-        t.noteRange(80_000, 60_000, 110_000);
+        assertThat(t.snapshot().hasRange()).as("no spread noted yet").isFalse();
+        t.noteSpread(0.2);
 
         var snap = t.snapshot();
         assertThat(snap.hasRange()).isTrue();
-        assertThat(snap.lowMs()).isEqualTo(60_000);
-        assertThat(snap.highMs()).isEqualTo(110_000);
+        assertThat(snap.lowMs()).isEqualTo(EtaSpread.low(80_000, 0.2));
+        assertThat(snap.highMs()).isEqualTo(EtaSpread.high(80_000, 0.2));
+        assertThat(snap.confidence()).isEqualTo(EtaSpread.confidence(0.2));
 
         t.noteRemaining(50_000, 100_000);
         var later = t.snapshot();
-        assertThat(later.lowMs()).isEqualTo(30_000);
-        assertThat(later.highMs()).isEqualTo(80_000);
+        assertThat(later.lowMs()).isEqualTo(EtaSpread.low(50_000, 0.2));
+        assertThat(later.highMs()).isEqualTo(EtaSpread.high(50_000, 0.2));
     }
 }

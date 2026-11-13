@@ -30,7 +30,7 @@ public final class HostStore {
     /** The continuous rates learned from every run: {@code key = value}. */
     public static final String RATES = "rates";
 
-    /** The prior rungs' biases: {@code RUNG kind log-factor runs}. */
+    /** Each rung's bias and spread per step kind: {@code RUNG kind log-factor mean-square runs}. */
     public static final String BIAS = "bias";
 
     /** The effort-priced step kinds' walls: {@code kind measure units wall-ms}, tab separated. */

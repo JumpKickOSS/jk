@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.StepCost.Rung;
 import java.nio.file.Files;
@@ -83,10 +84,61 @@ class RungBiasTest {
     @Test
     void a_torn_line_is_skipped_and_the_rest_still_read() throws Exception {
         Files.writeString(
-                file(), "# header\n[bias]\nCALIBRATION compile 0.6931 2\nCALIBRATION suite x 1\nNOPE compile 1 1\n");
+                file(),
+                "# header\n[bias]\nCALIBRATION compile 0.6931 0.04 2\nCALIBRATION suite x 0.1 1\nNOPE compile 1 1 1\n");
         RungBias bias = RungBias.load(file());
         assertThat(bias.factor(Rung.CALIBRATION, "compile-java")).isCloseTo(2.0, within(1e-3));
         assertThat(bias.factor(Rung.CALIBRATION, "run-tests")).isEqualTo(1.0);
+        assertThat(bias.spread(Rung.CALIBRATION, "compile-java")).isCloseTo(0.2, within(1e-9));
+    }
+
+    @Test
+    void every_layer_learns_its_spread_from_the_squares_of_its_misses() {
+        assertThat(RungBias.load(file()).spread(Rung.HOST, "compile-java"))
+                .as("nothing learned: the rung's default")
+                .isEqualTo(EtaSpread.defaultFor(Rung.HOST));
+        // Replayed walls 10% and 20% off either way: their mean square, outright on a key's first run.
+        RungBias.learn(
+                file(),
+                List.of(
+                        new RungBias.Pair(Rung.REPLAY, "compile-java", 10_000, 11_000),
+                        new RungBias.Pair(Rung.REPLAY, "compile-test", 10_000, 9_000),
+                        new RungBias.Pair(Rung.REPLAY, "compile-java", 10_000, 12_000)));
+        double first = (Math.pow(Math.log(1.1), 2) + Math.pow(Math.log(0.9), 2) + Math.pow(Math.log(1.2), 2)) / 3;
+        RungBias bias = RungBias.load(file());
+        assertThat(bias.spread(Rung.REPLAY, "compile-kotlin")).isCloseTo(Math.sqrt(first), within(1e-4));
+        assertThat(bias.factor(Rung.REPLAY, "compile-java"))
+                .as("a replay is no prior: no bias")
+                .isEqualTo(1.0);
+        assertThat(bias.spread(Rung.TOKEN, "compile-java")).isEqualTo(EtaSpread.defaultFor(Rung.TOKEN));
+
+        // A run of one exact step moves it a third of ALPHA_SPREAD toward nothing.
+        RungBias.learn(file(), List.of(new RungBias.Pair(Rung.REPLAY, "compile-java", 10_000, 10_000)));
+        double second = first - RungBias.ALPHA_SPREAD / RungBias.SPREAD_STEPS * first;
+        assertThat(RungBias.load(file()).spread(Rung.REPLAY, "compile-java"))
+                .isCloseTo(Math.sqrt(second), within(1e-4));
+    }
+
+    @Test
+    void the_correlation_is_where_the_runs_mean_miss_lies_between_independent_and_identical_errors() {
+        assertThat(RungBias.load(file()).correlation()).isEqualTo(EtaSpread.CORRELATION);
+        // Four equal steps at spread 0.2, each 30% over: one error, the most the margin allows.
+        List<RungBias.Pair> same = new ArrayList<>();
+        for (String step : List.of("compile-java", "compile-test", "run-tests", "guard"))
+            same.add(new RungBias.Pair(Rung.REPLAY, step, 10_000, 13_000, 0.2));
+        RungBias.learn(file(), same);
+        assertThat(RungBias.load(file()).correlation()).isEqualTo(1 - RungBias.CORRELATION_MARGIN);
+
+        // Misses that cancel: two over, two under by as much.
+        Path other = tmp.resolve("other").resolve(RungBias.FILE);
+        RungBias.learn(
+                other,
+                List.of(
+                        new RungBias.Pair(Rung.REPLAY, "compile-java", 10_000, 12_000, 0.2),
+                        new RungBias.Pair(Rung.REPLAY, "compile-test", 12_000, 10_000, 0.2),
+                        new RungBias.Pair(Rung.REPLAY, "run-tests", 10_000, 12_000, 0.2),
+                        new RungBias.Pair(Rung.REPLAY, "guard", 12_000, 10_000, 0.2)));
+        assertThat(RungBias.load(other).correlation()).isLessThan(0.2);
     }
 
     @Test

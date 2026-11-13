@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 
 class McpVitalsEstimateTest {
 
-    private static HttpLive.Run run(long jid, double progress, long remainingMs, long lowMs, long highMs) {
+    private static HttpLive.Run run(
+            long jid, double progress, long remainingMs, long lowMs, long highMs, double confidence) {
         return new HttpLive.Run(
                 jid,
                 1,
@@ -29,22 +30,24 @@ class McpVitalsEstimateTest {
                 List.of(),
                 List.of(),
                 lowMs,
-                highMs);
+                highMs,
+                confidence);
     }
 
     @Test
-    void a_job_in_flight_carries_the_estimate_and_its_likely_range() {
-        var rows = McpVitals.estimateRows(List.of(run(7, 41.26, 32_000, 26_000, 41_000)));
+    void a_job_in_flight_carries_the_estimate_its_likely_range_and_its_confidence() {
+        var rows = McpVitals.estimateRows(List.of(run(7, 41.26, 32_000, 26_000, 41_000, 0.4162)));
         assertThat(rows).singleElement().satisfies(row -> {
             assertThat(row).containsEntry("jid", 7L).containsEntry("progress", 41.3);
             assertThat(row).containsEntry("remainingMs", 32_000L);
             assertThat(row).containsEntry("etaLowMs", 26_000L).containsEntry("etaHighMs", 41_000L);
+            assertThat(row).containsEntry("confidence", 0.42);
         });
     }
 
     @Test
     void what_is_not_known_yet_is_left_out() {
-        var rows = McpVitals.estimateRows(List.of(run(8, Double.NaN, -1, -1, -1)));
+        var rows = McpVitals.estimateRows(List.of(run(8, Double.NaN, -1, -1, -1, -1)));
         assertThat(rows).singleElement().satisfies(row -> assertThat(row.keySet())
                 .containsExactly("jid"));
     }

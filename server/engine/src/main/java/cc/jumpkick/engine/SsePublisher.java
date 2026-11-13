@@ -394,15 +394,14 @@ public final class SsePublisher implements SseEvents {
     }
 
     /**
-     * The estimate's likely range beside its residual, from the request's step-priced model
-     * ({@link RemainingWork#remainingRange}): the tracker keeps it as gaps around the residual.
+     * The estimate's spread beside its residual, from the request's step-priced model ({@link
+     * RemainingWork#residual}): the tracker reads the likely range and the confidence from it.
      */
-    private void noteRange(long requestId, WorkspaceProgressTracker tracker) {
+    private void noteSpread(long requestId, WorkspaceProgressTracker tracker) {
         RemainingWork rw = remaining(requestId);
         if (rw == null) return;
         synchronized (rw) {
-            long[] range = rw.remainingRange();
-            tracker.noteRange(rw.remaining(), range[0], range[1]);
+            tracker.noteSpread(rw.residual().spread());
         }
     }
 
@@ -448,7 +447,7 @@ public final class SsePublisher implements SseEvents {
         synchronized (lock) {
             WorkspaceProgressTracker tracker = trackerOrNull(requestId);
             if (tracker == null) return;
-            noteRange(requestId, tracker);
+            noteSpread(requestId, tracker);
             var snap = tracker.snapshot();
             double heldPct = Double.NaN;
             if (snap.hasPercent()) {
@@ -487,7 +486,8 @@ public final class SsePublisher implements SseEvents {
                     pct,
                     heldMs,
                     snap.lowMs(),
-                    snap.highMs());
+                    snap.highMs(),
+                    snap.confidence());
             if (writer != null) WireWriter.sendQuiet(writer, line);
             if (eventsWanted()) {
                 publishEvent(
