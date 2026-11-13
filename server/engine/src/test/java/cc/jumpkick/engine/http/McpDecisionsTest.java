@@ -61,9 +61,9 @@ class McpDecisionsTest {
 
     /** A desktop identity of a home other than the default one, which never registers itself. */
     private static DesktopIdentity scratchIdentity() {
-        Map<String, String> env = Map.of("JK_HOME", "/nonexistent/jk-home");
-        return new DesktopIdentity(
-                "Linux", JkDirs.of(env::get, "/nonexistent"), Path.of("/nonexistent"), env::get, argv -> false);
+        Path nowhere = Path.of("/nonexistent").toAbsolutePath();
+        Map<String, String> env = Map.of("JK_HOME", nowhere.resolve("jk-home").toString());
+        return new DesktopIdentity("Linux", JkDirs.of(env::get, nowhere.toString()), nowhere, env::get, argv -> false);
     }
 
     private final McpHandler mcp = handler();

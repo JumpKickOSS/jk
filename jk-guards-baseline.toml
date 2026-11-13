@@ -727,7 +727,7 @@ population = { examined = 4 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 817, sites = 52816 }
+"clients/cli" = { classes = 827, sites = 53306 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 20, sites = 1681 }
@@ -776,10 +776,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.engine.EngineSpawn#awaitStartup(Lcc/jumpkick/wire/EnginePaths$Paths;Ljava/lang/String;Ljava/time/Duration;Ljava/lang/Process;)Lcc/jumpkick/cli/engine/EngineSpawn$StartResult; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.WindowsCommandLines#snapshot()Ljava/util/Map; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"

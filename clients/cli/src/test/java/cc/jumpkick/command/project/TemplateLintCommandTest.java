@@ -30,7 +30,7 @@ class TemplateLintCommandTest {
         Run run = jk("-C", temp.toString(), "template", "lint", ".");
         assertThat(run.exit()).as(run.output()).isNotZero();
         assertThat(run.output())
-                .contains("java/bad.g8/.jk-template.toml")
+                .contains(Path.of("java/bad.g8/.jk-template.toml").toString())
                 .contains("default.properties sets 'flavour'")
                 .contains("1 failure in 2 templates")
                 .doesNotContain("good.g8/.jk-template.toml");

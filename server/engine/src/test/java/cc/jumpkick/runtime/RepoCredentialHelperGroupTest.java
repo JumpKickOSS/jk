@@ -10,6 +10,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
@@ -106,6 +107,18 @@ class RepoCredentialHelperGroupTest {
 
     /** A helper that prints {@code token-<n>} on its n-th run, counting runs in {@code dir/count}. */
     private static Path helper(Path dir) throws IOException {
+        if (Os.isWindows()) {
+            Path script = dir.resolve("helper.cmd");
+            Files.writeString(script, """
+                    @echo off\r
+                    set n=0\r
+                    if exist "%1$s\\count" set /p n=<"%1$s\\count"\r
+                    set /a n=n+1\r
+                    >"%1$s\\count" echo %%n%%\r
+                    echo token-%%n%%\r
+                    """.formatted(dir));
+            return script;
+        }
         Path script = dir.resolve("helper.sh");
         Files.writeString(script, """
                 #!/bin/sh
@@ -131,7 +144,7 @@ class RepoCredentialHelperGroupTest {
                 [repositories.gar]
                 url = "http://127.0.0.1:%d/maven/"
                 groups = ["com.acme"]
-                token = "${cmd:%s}"
+                token = '${cmd:%s}'
                 """.formatted(server.getAddress().getPort(), helper));
         System.setProperty("jk.env.JK_HOME", home.toString());
     }
@@ -171,7 +184,7 @@ class RepoCredentialHelperGroupTest {
                 [repositories.corp]
                 url = "http://127.0.0.1:%d/maven/"
                 mirror-of = ["central"]
-                token = "${cmd:%s}"
+                token = '${cmd:%s}'
                 """.formatted(server.getAddress().getPort(), helper));
         System.setProperty("jk.env.JK_HOME", home.toString());
         Cas cas = new Cas(tmp.resolve("cas"));

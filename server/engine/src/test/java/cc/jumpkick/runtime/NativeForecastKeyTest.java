@@ -186,7 +186,9 @@ class NativeForecastKeyTest {
         Path nativeImage = bin.resolve("native-image");
         if (!Files.exists(nativeImage)) {
             Files.writeString(nativeImage, "#!/bin/sh\n");
-            Files.setPosixFilePermissions(nativeImage, PosixFilePermissions.fromString("rwxr-xr-x"));
+            if (nativeImage.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+                Files.setPosixFilePermissions(nativeImage, PosixFilePermissions.fromString("rwxr-xr-x"));
+            }
         }
         return new Fixture(dir, project, layout, graal);
     }

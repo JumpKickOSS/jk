@@ -7,12 +7,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.engine.IsolatedHome;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.RecordingProxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.Tag;
@@ -70,11 +70,10 @@ class RepoLoginKeychainRefusedTest {
         Path records = JkDirs.creds().resolve("repo");
         Files.createDirectories(records);
         Path record = records.resolve("private");
-        Files.writeString(
+        OwnerOnlyFiles.writeString(
                 record,
                 "bearer " + http.base().getScheme() + "://" + http.base().getAuthority() + " keychain\n" + POINTER
                         + "\n");
-        Files.setPosixFilePermissions(record, PosixFilePermissions.fromString("rw-------"));
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.example"
                 name = "keychain"

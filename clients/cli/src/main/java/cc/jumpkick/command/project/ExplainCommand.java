@@ -693,16 +693,16 @@ public final class ExplainCommand implements CliCommand {
      */
     static String criticalPathValue(List<String> criticalPath, List<TaskForecast.Module> modules) {
         if (criticalPath.size() < 2) return "";
-        Map<String, String> nameOf = new HashMap<>();
+        Map<Path, String> nameOf = new HashMap<>();
         for (TaskForecast.Module m : modules) {
             String coord = m.coord() == null ? "" : m.coord();
             String name = coord.contains(":") ? coord.substring(coord.lastIndexOf(':') + 1) : coord;
-            nameOf.put(
-                    m.dir().toString(), name.isEmpty() ? String.valueOf(m.dir().getFileName()) : name);
+            nameOf.put(m.dir(), name.isEmpty() ? String.valueOf(m.dir().getFileName()) : name);
         }
         List<String> names = new ArrayList<>();
         for (String dir : criticalPath) {
-            names.add(nameOf.getOrDefault(dir, String.valueOf(Path.of(dir).getFileName())));
+            Path path = Path.of(dir);
+            names.add(nameOf.getOrDefault(path, String.valueOf(path.getFileName())));
         }
         if (names.size() > 6) {
             List<String> kept = new ArrayList<>(names.subList(0, 3));

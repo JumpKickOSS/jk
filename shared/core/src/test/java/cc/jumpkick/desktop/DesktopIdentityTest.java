@@ -54,7 +54,7 @@ class DesktopIdentityTest {
                 .startsWith("[Desktop Entry]\n")
                 .contains(
                         "Name=JumpKick\n",
-                        "Exec=\"" + userHome.resolve(".jk/bin/jk") + "\" web\n",
+                        "Exec=\"" + userHome.resolve(".jk/bin/jk").toString().replace("\\", "\\\\") + "\" web\n",
                         "Icon=" + png + "\n",
                         "NoDisplay=true\n");
         assertThat(ran).isEmpty();

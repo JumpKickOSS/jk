@@ -396,7 +396,9 @@ class JavaApIncrementalCompileTest {
             Files.createDirectories(copy.getParent());
             Files.copy(resource, copy, StandardCopyOption.REPLACE_EXISTING);
             Path incremental = Files.createDirectories(out.resolveSibling("incremental"));
-            Files.writeString(incremental.resolve(MirroredOutputs.MAIN_SOURCES), rel + "\t" + resource + "\n");
+            Files.writeString(
+                    incremental.resolve(MirroredOutputs.MAIN_SOURCES),
+                    MirroredOutputs.escape(rel) + "\t" + MirroredOutputs.escape(resource.toString()) + "\n");
         }
 
         Path classFile(String rel) {

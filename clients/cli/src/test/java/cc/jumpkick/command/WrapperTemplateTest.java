@@ -305,6 +305,7 @@ class WrapperTemplateTest {
 
     /** A wrapper in a module directory reads the workspace lock above it, as {@code ./jk} does. */
     @Test
+    @Tag("integration") // two wrapper runs that each wait out an unreachable release host: near 15s on Windows
     void windows_wrapper_reads_the_floor_from_the_nearest_lock_above_it(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         Path module = materializeBat(tmp.resolve("ws/module"));
@@ -328,6 +329,7 @@ class WrapperTemplateTest {
      * with a copy of it in a PATH directory. Running that answer never reaches the download.
      */
     @Test
+    @Tag("integration") // two wrapper runs that each wait out an unreachable release host: near 15s on Windows
     void windows_wrapper_never_runs_itself_when_jk_on_path_is_the_wrapper(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         Path repo = materializeBat(tmp.resolve("repo"));
@@ -371,6 +373,7 @@ class WrapperTemplateTest {
      * wrapper moves on to a fresh client instead of stopping, and the value never runs as a command.
      */
     @Test
+    @Tag("integration") // two wrapper runs that each wait out an unreachable release host: near 15s on Windows
     void windows_wrapper_moves_past_an_installed_version_file_that_is_not_a_version(@TempDir Path tmp)
             throws Exception {
         if (!Os.isWindows()) return;

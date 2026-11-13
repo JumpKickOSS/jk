@@ -50,7 +50,7 @@ class DiskWatchTest {
         critical.set(true);
         assertThat(w.check()).isTrue();
         assertThat(calls).containsExactly("store", "prune");
-        assertThat(log).anySatisfy(l -> assertThat(l).contains("disk nearly full at /store"));
+        assertThat(log).anySatisfy(l -> assertThat(l).contains("disk nearly full at " + Path.of("/store")));
         assertThat(log).anySatisfy(l -> assertThat(l).contains("emergency reclaim ran"));
 
         now.addAndGet(DiskWatch.COOLDOWN.toMillis() - 1);

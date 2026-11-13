@@ -3,8 +3,10 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -20,8 +22,8 @@ import org.jspecify.annotations.Nullable;
  * Windows unless the answer comes from somewhere else, and {@code jk engine status} could not see a
  * stray engine that no pid file named.
  *
- * <p>The answer here is one {@code Win32_Process} query over CIM, taken at most once per process
- * run. It is best-effort by construction — a machine that blocks PowerShell, or is slow enough to
+ * <p>The answer here is one {@code Win32_Process} query over CIM, shared by the lookups of one
+ * command and taken again for a process newer than it. It is best-effort by construction — a machine that blocks PowerShell, or is slow enough to
  * hit the timeout, yields an empty snapshot rather than an error, and callers fall back to what the
  * JDK does give them. That is affordable because the only callers are user-invoked diagnostics
  * ({@code jk engine status}, {@code jk engine stop}, the nukes), never a build path.
@@ -29,15 +31,19 @@ import org.jspecify.annotations.Nullable;
 final class WindowsCommandLines {
 
     /** One query serves a whole command: {@code jk engine status} enumerates the fleet three times. */
-    private static volatile @Nullable Map<Long, String> snapshot;
+    private static volatile @Nullable Snapshot snapshot;
 
-    private static volatile long takenAtNanos;
+    /**
+     * The command lines of every process the query saw. {@code takenAt} is read before the query
+     * runs, so a process that started during it still counts as newer; the TTL runs from
+     * {@code answeredNanos}, so a slow query does not hand back a snapshot already expired.
+     */
+    private record Snapshot(Map<Long, String> rows, long answeredNanos, Instant takenAt) {}
 
     /**
      * How long a snapshot stands. Every caller today is a short-lived CLI command, so this only
-     * ever coalesces one command's repeated enumerations — but a process table is a live thing, and
-     * a JVM that outlives its snapshot (a test runner, or a future long-lived caller) must not be
-     * told that a process started a minute ago does not exist.
+     * ever coalesces one command's repeated enumerations; a process that started after the snapshot
+     * re-queries regardless, so a long-lived caller never misses a new process.
      */
     private static final long SNAPSHOT_TTL_NANOS = 5_000_000_000L;
 
@@ -60,34 +66,60 @@ final class WindowsCommandLines {
 
     private WindowsCommandLines() {}
 
-    /** This process's command line, or {@code ""} — off Windows, unknown, or the query failed. */
+    /**
+     * This process's command line, or {@code ""} — off Windows, unknown, or the query failed. A pid
+     * that started after the snapshot is looked up again.
+     */
     static String of(long pid) {
-        if (!Os.isWindows()) return "";
-        return snapshot().getOrDefault(pid, "");
-    }
-
-    private static Map<Long, String> snapshot() {
-        Map<Long, String> local = snapshot;
-        if (local != null && System.nanoTime() - takenAtNanos < SNAPSHOT_TTL_NANOS) {
-            return local;
-        }
-        synchronized (WindowsCommandLines.class) {
-            if (snapshot == null || System.nanoTime() - takenAtNanos >= SNAPSHOT_TTL_NANOS) {
-                snapshot = query();
-                takenAtNanos = System.nanoTime();
-            }
-            return snapshot;
-        }
+        return new Scan().of(pid);
     }
 
     /**
-     * Forget the snapshot so the next lookup re-queries. For a test that spawns a process and then
-     * asks about it inside the TTL — the process table moved, and only the test knows that.
+     * Lookups over the whole process table: the first process newer than the snapshot re-queries
+     * and later ones read that answer, so a busy machine's new processes cannot chain query after
+     * query.
      */
-    static void resetForTests() {
-        synchronized (WindowsCommandLines.class) {
-            snapshot = null;
+    static class Scan {
+        private boolean requeried;
+
+        /** As {@link WindowsCommandLines#of}, re-querying at most once for this scan. */
+        String of(long pid) {
+            if (!Os.isWindows()) return "";
+            Snapshot current = current();
+            String cmd = current.rows().get(pid);
+            if (cmd != null) return cmd;
+            if (requeried || !startedAfter(pid, current.takenAt())) return "";
+            requeried = true;
+            return refresh(current).rows().getOrDefault(pid, "");
         }
+    }
+
+    private static Snapshot current() {
+        Snapshot local = snapshot;
+        if (local != null && Clock.SYSTEM.nanos() - local.answeredNanos() < SNAPSHOT_TTL_NANOS) return local;
+        return refresh(local);
+    }
+
+    /** Re-query unless another thread already replaced {@code stale}. */
+    private static Snapshot refresh(@Nullable Snapshot stale) {
+        synchronized (WindowsCommandLines.class) {
+            Snapshot local = snapshot;
+            if (local == null || local == stale) {
+                Instant at = Clock.SYSTEM.instant();
+                Map<Long, String> rows = query();
+                local = new Snapshot(rows, Clock.SYSTEM.nanos(), at);
+                snapshot = local;
+            }
+            return local;
+        }
+    }
+
+    /** Whether {@code pid} is a live process that started after {@code instant}. */
+    private static boolean startedAfter(long pid, Instant instant) {
+        return ProcessHandle.of(pid)
+                .flatMap(h -> h.info().startInstant())
+                .map(started -> !started.isBefore(instant))
+                .orElse(false);
     }
 
     private static Map<Long, String> query() {

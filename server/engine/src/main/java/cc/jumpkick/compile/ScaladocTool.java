@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Forks Scala 3's scaladoc over a module's compiled classes: scaladoc reads the TASTy files scalac
@@ -57,7 +58,10 @@ public final class ScaladocTool {
                                     MAIN,
                                     "@" + argfile.toAbsolutePath()),
                             javaHome)
-                    .directory(outDir.toFile())
+                    // Not the output: scaladoc deletes that first, and Windows refuses to delete a
+                    // process's working directory.
+                    .directory(Objects.requireNonNull(argfile.toAbsolutePath().getParent())
+                            .toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));

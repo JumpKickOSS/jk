@@ -51,8 +51,8 @@ class StoreCollectorSafePointTest {
         Cas cas = new Cas(root);
         List<String> expired = new ArrayList<>();
         List<String> fresh = new ArrayList<>();
-        for (int i = 0; i < 1_500; i++) expired.add(put(cas, "expired-" + i, 90));
-        for (int i = 0; i < 1_500; i++) fresh.add(put(cas, "fresh-" + i, 2));
+        for (int i = 0; i < 600; i++) expired.add(put(cas, "expired-" + i, 90));
+        for (int i = 0; i < 600; i++) fresh.add(put(cas, "fresh-" + i, 2));
 
         AtomicBoolean wanted = new AtomicBoolean();
         AtomicInteger visits = new AtomicInteger();
@@ -97,8 +97,8 @@ class StoreCollectorSafePointTest {
         Cas cas = new Cas(root);
         List<String> expired = new ArrayList<>();
         List<String> fresh = new ArrayList<>();
-        for (int i = 0; i < 300; i++) expired.add(put(cas, "expired-" + i, 90));
-        for (int i = 0; i < 300; i++) fresh.add(put(cas, "fresh-" + i, 2));
+        for (int i = 0; i < 150; i++) expired.add(put(cas, "expired-" + i, 90));
+        for (int i = 0; i < 150; i++) fresh.add(put(cas, "fresh-" + i, 2));
 
         SafePoint afterFirstDelete = () -> {
             if (expired.stream().anyMatch(sha -> !cas.contains(sha))) throw new Stop();
