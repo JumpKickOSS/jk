@@ -427,7 +427,8 @@ public final class StepEta {
                         case TaskNames.COMPILE_TEST -> m.testCount() / 5;
                         default -> 1;
                     };
-            return Priced.cold(calibration.coldCompileMs(sources));
+            // Beside the build's other modules: its frontier, which a re-pricing keeps from the seed.
+            return Priced.cold(calibration.coldCompileMs(sources, frontier.size()));
         }
         if (TaskNames.RUN_TESTS.equals(name) && m.testCount() > 0) {
             return Priced.cold(calibration.coldSuiteMs(m.testCount()));

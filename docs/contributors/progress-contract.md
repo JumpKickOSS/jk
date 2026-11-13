@@ -77,9 +77,11 @@ it; the schedule says how many modules are in flight at its dispatch, and the su
 share through its class walls (`StepCost.scale`) and priced for it.
 
 **A first build.** A step the ledger knows nothing of is priced from the host's calibration: a
-compile at a fixed cost plus a cost per source, a suite at its JVM's fixed cost plus a cost per
-method on one JVM, then read at its dispatch share (`Calibration.coldCompileMs`, `coldSuiteMs`,
-fitted to JumpKick's own first build).
+compile at a fixed cost plus a cost per source, the fixed cost growing with the square root of the
+modules the build works on (the compiles beside it share its cores and compiler worker: 3.5 s each
+among JumpKick's 61 modules, 0.46 s alone on the reference host), a suite at its JVM's fixed cost plus a cost
+per method on one JVM, then read at its dispatch share (`Calibration.coldCompileMs`, `coldSuiteMs`,
+fitted to JumpKick's own first build and fourteen unrelated projects' first builds).
 
 A module's steps run in three branches after its prefix (the compiles and the jar): the suite, the
 packaging tails, and the guard chain (`compile-guard`, `guard`), which nothing waits for. A forced

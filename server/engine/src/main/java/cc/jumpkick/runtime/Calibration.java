@@ -89,13 +89,17 @@ public final class Calibration {
     /**
      * A first build's compile on the reference host, priced when nothing of the step is known: a
      * fixed cost per compile (the compiler worker, the classpath, javac's own start, the compiles
-     * beside it) and a cost per source. Fitted to every module of jk's own first build (2026-11-12
-     * corpus, 59 compiles): the per-source baseline alone priced the 59 at 31 s for 195 s, a nine-
-     * source compile at 0.1 s for 2.4 s. Not the learned per-source rate: that folds an incremental
+     * beside it) and a cost per source. The fixed part grows with the square root of the modules the
+     * build works on ({@link #coldCompileMs}): the compiles beside one share its cores and its
+     * compiler worker. Fitted to jk's own first build (2026-11-12 corpus, 59 compiles beside each
+     * other: 3.5 s each; the per-source baseline alone priced the 59 at 31 s for 195 s) and to
+     * fourteen unrelated projects' first builds of one to five modules (2026-11-13 cold set, 27
+     * compiles: 0.45 s each on a host at 0.55 scale, priced at 2 s by a fixed 3.5 s, which read their
+     * first builds 2 to 6 times too long). Not the learned per-source rate: that folds an incremental
      * compile's fixed cost into its few sources, and would price an 800-source first compile at
      * minutes (JK-D3785).
      */
-    static final long BASELINE_COLD_COMPILE_FIXED_MS = 3_500;
+    static final long BASELINE_COLD_COMPILE_FIXED_MS = 460;
 
     static final long BASELINE_COLD_COMPILE_PER_SOURCE_MS = 35;
 
@@ -470,9 +474,12 @@ public final class Calibration {
         };
     }
 
-    /** A first build's compile of {@code sources} sources ({@link #BASELINE_COLD_COMPILE_FIXED_MS}). */
-    public long coldCompileMs(int sources) {
-        return scaleBaseline(BASELINE_COLD_COMPILE_FIXED_MS, cpuScale())
+    /**
+     * A first build's compile of {@code sources} sources in a build that works on {@code beside}
+     * modules ({@link #BASELINE_COLD_COMPILE_FIXED_MS}).
+     */
+    public long coldCompileMs(int sources, int beside) {
+        return Math.round(scaleBaseline(BASELINE_COLD_COMPILE_FIXED_MS, cpuScale()) * Math.sqrt(Math.max(1, beside)))
                 + scaleBaseline(BASELINE_COLD_COMPILE_PER_SOURCE_MS, cpuScale()) * Math.max(1, sources);
     }
 

@@ -216,13 +216,18 @@ class CalibrationTest {
 
     @Test
     void a_first_builds_compile_and_suite_carry_their_fixed_cost_and_a_cost_per_unit() {
-        // A fast host clamps to the least scale (0.65): the engine's 804-source compile and its
-        // 4,444-method suite on one JVM, as jk's own first build took them (17 s; 80 s on 2 JVMs).
+        // A fast host clamps to the least scale (0.65): the engine's 804-source compile beside jk's
+        // other 60 modules and its 4,444-method suite on one JVM, as jk's own first build took them
+        // (17 s; 80 s on 2 JVMs).
         Calibration fast = Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW);
-        assertThat(fast.coldCompileMs(804)).isEqualTo(2_275 + 23 * 804);
-        assertThat(fast.coldCompileMs(0))
-                .as("a compile costs its fixed part and one source")
-                .isEqualTo(2_275 + 23);
+        // 460 ms × 0.65 = 299 ms fixed, × √61 beside jk's other modules
+        assertThat(fast.coldCompileMs(804, 61)).isEqualTo(Math.round(299 * Math.sqrt(61)) + 23 * 804);
+        assertThat(fast.coldCompileMs(0, 1))
+                .as("a lone compile costs its fixed part and one source")
+                .isEqualTo(299 + 23);
+        assertThat(fast.coldCompileMs(12, 4))
+                .as("a small project's compile, beside its three other modules")
+                .isEqualTo(598 + 23 * 12);
         assertThat(fast.coldSuiteMs(4_444)).isEqualTo(2_145 + 20 * 4_444);
     }
 }
