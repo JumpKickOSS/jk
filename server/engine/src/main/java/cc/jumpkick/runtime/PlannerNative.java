@@ -614,8 +614,20 @@ public final class PlannerNative {
                 args = new ArrayList<>(args);
                 args.add("--parallelism=" + retry.parallelism());
             }
-            run = attempt(
-                    ctx, project, dir, javaHome, frameworkSources, args, classpath, mainClass, out, shared, key, false);
+            List<String> rerunArgs = args;
+            run = HeapScope.fullLeaseCall(() -> attempt(
+                    ctx,
+                    project,
+                    dir,
+                    javaHome,
+                    frameworkSources,
+                    rerunArgs,
+                    classpath,
+                    mainClass,
+                    out,
+                    shared,
+                    key,
+                    false));
         }
         Path niReport = layout.reportsDir().resolve("native-image.out");
         try {

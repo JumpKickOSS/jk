@@ -171,7 +171,8 @@ public final class FormatWorker {
                     : WorkerFate.classify(last.exit(), last.output());
             if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
-                last = HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key));
+                last = HeapScope.fullLease(
+                        () -> HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key)));
             } else if (cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
                 List<Long> ranOut = new ArrayList<>(List.of(heap));
                 while (true) {

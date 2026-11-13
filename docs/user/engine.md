@@ -378,10 +378,19 @@ The file costs each fork a few file-locked rewrites of a few hundred bytes, a fr
 millisecond each. A test JVM's in-process engine keeps its own ledger, and a nested engine
 under `jk test` has its own state directory, so neither shares the host's limits.
 
-A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
-resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
-the metaspace and code cache a compiler or test worker holds on top of that. A process
-that is not a JVM leases 64 MiB. A JVM that names no heap leases what it likely uses: its
+A JVM's `-Xmx` is its ceiling, and the ceiling's lease is the `-Xmx` plus overhead of
+`max(160 MiB, 12% of -Xmx)`. The 12% is the resident cost of GC and thread structures
+measured above a filled heap; 160 MiB covers the metaspace and code cache a compiler or test
+worker holds on top of that. A worker JumpKick planned (a test JVM, a Kotlin or Groovy compile,
+a native-image build, a plugin worker) is leased at what it is expected to hold instead, when
+that is less: the largest resident set its last ten runs reached, else the largest any
+module's worker of that kind reached lately on this host, else 512 MiB (3 GiB for native-image);
+times 1.25 (1.3 for native-image), rounded up to 64 MiB, at least 160 MiB (2 GiB for
+native-image). A worker that grows past that is charged its resident set, as below. Ceilings
+are not reserved, but they are bounded: the ceiling leases of the running forks and the next one
+stay at or under twice the budget, so a fork waits when the workers already running could
+together grow past that, however little they hold now. A process that is not a JVM leases
+64 MiB. A JVM that names no heap leases what it likely uses: its
 learned peak, else a quarter of the budget up to 2 GiB, never more than its `-XX:MaxRAMPercentage`
 (25% by default) of memory; it keeps its own ceiling, and the ledger charges its measured resident
 set when that is larger. `native-image` with no `-J-Xmx` gets a builder heap
@@ -404,9 +413,10 @@ it: `the pinned -Xmx64g needs 71.7 GiB with its overhead; the 13.5 GiB worker bu
 leases more than 27.0 GiB (twice the budget). Lower the heap, or raise JK_WORKER_BUDGET_MB.`
 
 A lease is an estimate of the heap and the memory around it. Every two seconds the engine
-reads each running worker's resident set (`VmRSS`, Linux) and charges it the larger of its
+reads each running worker's resident set and charges it the larger of its
 lease and that reading, so the leased total, the queue and overbooking all see what a worker
-really holds. A worker is far over its lease when its resident set passes the lease by more
+really holds. The resident set is `VmRSS` on Linux, the working set on Windows and the
+physical footprint (Activity Monitor's Memory column) on macOS. A worker is far over its lease when its resident set passes the lease by more
 than the larger of 1 GiB and a quarter of the lease — memory outside the heap: metaspace a
 test framework keeps per application restart, thread stacks, direct buffers. Such a worker
 is named once in the engine log, once on the step that forked it as a run warning
@@ -425,21 +435,34 @@ waits, the terminal dims its row and says why: `Waiting for a free slot…` or
 `retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
 A workspace names the module on both lines.
 When the budget is an override, the wait line names it:
-`waited 12s for memory (JK_WORKER_BUDGET_MB)`. A wait lasts at most ten minutes. A lease
-still queued then fails its step, naming what it needed and who held the memory:
+`waited 12s for memory (JK_WORKER_BUDGET_MB)`. A wait ends only when the line stands still:
+once no lease has been granted to anyone for ten minutes, a lease still queued fails its step,
+naming what it needed and who held the memory. A long wait in a line that keeps moving, such
+as two builds sharing the JVM slots, does not fail:
 `job #7 waited 600s for memory and gave up: needs 3.4 GiB (2.9 GiB free of the 13.5 GiB worker budget); held by job #3 6.1 GiB in 9 forks`.
 
-On Linux that same lease may start anyway, past the reservation, when the host still has
-room. It does not when this engine was started with `CI` set, or with `JK_OVERBOOK` set to
-`0` (`false`, `no` and `off` count too; anything else, including leaving it unset, leaves
-overbooking on). The free memory is host `MemAvailable`, which sees every engine's workers;
-in cgroup mode it is no more than the workers group's `memory.max` minus `memory.current`.
-Without a cgroup, `/proc/pressure/memory` has to be readable as well. That free memory has to cover the new lease's full worst case plus
-a headroom of the larger of 1 GiB and 10% of the budget. Forks already running count at the
-usage in that sample, not at the reservation they hold. Pressure has to be low:
+That same lease may start anyway, past the reservation, when the host still has
+room. It does not when this engine was started with `JK_OVERBOOK` set to `0` (`false`, `no`
+and `off` count too; anything else, including leaving it unset, leaves overbooking on). An
+engine started with `CI` set overbooks cautiously, since a kill on an unattended runner costs a
+retry or the job: the headroom is the larger of 2 GiB and 20% of the budget, the cap is one and
+a half times the budget, and on Linux a pressure reading is required. On Linux the free memory
+is host `MemAvailable`, which sees every engine's workers; inside a container it is no more
+than the container's own `memory.max` minus what it uses, and in cgroup mode no more than the
+workers group's. What a cgroup uses is its `memory.current` less its inactive file cache
+(`inactive_file` in `memory.stat`), which the kernel drops before it kills anything: the
+working set Kubernetes acts on. Without a cgroup, `/proc/pressure/memory` has to be readable
+as well. On
+Windows and macOS it is the host's available physical memory; macOS also needs its memory
+pressure level to be normal, and Windows, which has no pressure signal, goes by the free
+memory alone. That free memory has to cover the new lease's full worst case plus
+a headroom of the larger of 1 GiB and 10% of the budget (2 GiB and 20% under `CI`). Forks
+already running count at the
+usage in that sample, not at the reservation they hold. On Linux pressure has to be low:
 `some` `avg10` below 5 and `full` `avg10` below 1, on `/proc/pressure/memory` and on the
-workers group's `memory.pressure` when that file is present. The reserved total, including
-the new lease, stays at or under twice the budget across every engine of the host, so a run
+container's and the workers group's `memory.pressure` when those files are present. The
+reserved total, including the new lease, stays at or under twice the budget (one and a half
+times under `CI`) across every engine of the host, so a run
 of grants between samples cannot grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
 memory falls short, further leases wait in the same queue. A running fork is never killed to
 make room. The engine log records each grant that started past the budget, with the cap and
@@ -577,18 +600,21 @@ module coordinate, the task (`java-compile`, `java-test-compile`, `kotlin-compil
 format` keeps one row per project, not per module. The record is
 one file per project, `<state>/worker-heaps/<project-id>` (the same project id as the build
 history under `~/.jk/state`). It is not in the source tree. Delete that file to forget every
-peak and go back to the first heap.
+peak and go back to the first heap. Each row also keeps the worker's last ten resident-set
+peaks (a native-image build's include its builder JVM), which price its lease; each kind's
+peaks across every project are kept in `<state>/worker-heaps/host`, which prices a module's
+first run.
 
 A compile, test or format worker JumpKick has not seen before starts at a quarter of the worker budget, at
-most 2 GiB, and never below the compiler estimate or the memory plan's share. `-Xmx` is what
-the ledger admits against, not what the worker occupies: planned JVMs give unused heap back,
-so a generous first heap costs parallelism on the first run, not RAM. The build-script host
-and other plugin workers start from the plan's heap.
+most 2 GiB, and never below the compiler estimate or the memory plan's share. That is its
+ceiling, not its lease: it is leased at what its kind holds on this host, so a generous first
+heap costs neither RAM nor parallelism. The build-script host and other plugin workers start
+from the plan's heap.
 
 The next planned `-Xmx` is the largest of the last ten observed peaks times 1.3 (1.5 when
 `CI` is set, since a CI host sees the same suites grow run after run), rounded up to 64 MiB,
 at least 256 MiB, and never larger than the worker budget can lease. A spike ages out after
-ten runs. A smaller truthful reservation is a smaller lease, so more workers fit at once. A
+ten runs. A smaller ceiling lets more workers run at once under the twice-the-budget bound. A
 worker that ran out of one heap and then finished at a larger one keeps that larger heap as
 its floor from then on.
 
@@ -596,7 +622,9 @@ A jk-planned item that runs out of its own heap is run again at twice that `-Xmx
 three times (512 MiB, 1 GiB, 2 GiB after a 256 MiB start), each rung still inside the budget;
 the new lease waits in line like any other, and a rung the budget cannot grow ends the
 ladder. An item the kernel killed for memory — host or cgroup pressure, not its own heap — is
-run once more at the same heap once its lease can be taken again. An item killed at its own
+run once more at the same heap once its lease can be taken again; that run, and a native-image
+rerun, is leased at its whole `-Xmx` rather than at what it was expected to hold, and the
+resident peak the killed run reached prices the next one. An item killed at its own
 worker cap is not run again: its memory outside the heap outgrew three quarters of the
 budget, and neither the same heap nor a larger one changes that. The item is a compile, a
 format run, or a test class (pull mode) or the whole suite (one JVM); classes a pull pool left
@@ -720,7 +748,7 @@ requests have no shell, and those decisions fall back to the engine's environmen
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
 | `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |
 | `JK_ENGINE_SCOPE` | delegated scope when reachable | 0 keeps the engine in the caller's cgroup. Otherwise Linux starts it in a delegated systemd user scope when one is reachable. |
-| `JK_OVERBOOK` | on; off when CI is set | 0 disables leasing past the worker budget. Unset overbooks on Linux while pressure is low. CI disables it. |
+| `JK_OVERBOOK` | on; cautious when CI is set | 0 disables leasing past the worker budget. Unset overbooks while the host has room and pressure is low; CI keeps more headroom and a lower cap. |
 <!-- engine-process:end -->
 
 A resident engine keeps that environment for its whole life, so anything that must follow the

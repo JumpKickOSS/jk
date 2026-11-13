@@ -44,9 +44,9 @@ public final class MemoryProbe {
     static final long CGROUP_UNLIMITED = Long.MAX_VALUE / 2;
 
     private static final Path PROC_MEMINFO = Path.of("/proc/meminfo");
-    private static final Path PROC_SELF_STATUS = Path.of("/proc/self/status");
     private static final Path CGROUP2_MAX = Path.of("/sys/fs/cgroup/memory.max");
     private static final Path CGROUP2_CURRENT = Path.of("/sys/fs/cgroup/memory.current");
+    private static final Path CGROUP2_STAT = Path.of("/sys/fs/cgroup/memory.stat");
     private static final Path CGROUP1_LIMIT = Path.of("/sys/fs/cgroup/memory/memory.limit_in_bytes");
     private static final Path CGROUP1_USAGE = Path.of("/sys/fs/cgroup/memory/memory.usage_in_bytes");
 
@@ -105,31 +105,9 @@ public final class MemoryProbe {
         return measure();
     }
 
-    /**
-     * This process's resident set size — best-effort, uncached (callers want "now", not
-     * planning-time). Linux reads {@code VmRSS} from {@code /proc/self/status} (same format as
-     * {@code /proc/meminfo}); {@code -1} where the OS doesn't expose it (macOS, Windows).
-     */
+    /** This process's resident bytes, uncached; {@code -1} when the OS will not say. See {@link ProcessMemory}. */
     public static long ownRssBytes() {
-        return rssBytes(PROC_SELF_STATUS);
-    }
-
-    /**
-     * {@link #ownRssBytes()} for process {@code pid}: {@code VmRSS} from {@code /proc/<pid>/status}.
-     * {@code -1} when the process is gone or the OS does not expose it.
-     */
-    public static long rssBytes(long pid) {
-        if (pid <= 0 || !Os.isLinux()) return -1;
-        return rssBytes(Path.of("/proc", Long.toString(pid), "status"));
-    }
-
-    private static long rssBytes(Path status) {
-        try {
-            if (Files.isReadable(status)) return meminfoValueBytes(Files.readString(status), "VmRSS");
-        } catch (IOException | RuntimeException e) {
-            Log.debug("rssBytes " + status + ": best-effort", e);
-        }
-        return -1;
+        return ProcessMemory.self().residentBytes();
     }
 
     private static Memory measure() {
@@ -159,7 +137,7 @@ public final class MemoryProbe {
         if (cgLimit > 0 && cgLimit < CGROUP_UNLIMITED && (total <= 0 || cgLimit < total)) {
             total = cgLimit;
             if (cgUsage >= 0) {
-                long cgAvail = cgLimit - cgUsage;
+                long cgAvail = cgLimit - Math.max(0, cgUsage - inactiveFileBytes(readText(CGROUP2_STAT)));
                 available = available > 0 ? Math.min(available, cgAvail) : cgAvail;
             }
         }
@@ -283,6 +261,33 @@ public final class MemoryProbe {
             }
         }
         return -1;
+    }
+
+    /**
+     * {@code inactive_file} from a cgroup v2 {@code memory.stat} body, in bytes: file cache the kernel
+     * reclaims before it kills anything. {@code 0} when absent.
+     */
+    static long inactiveFileBytes(@Nullable String stat) {
+        if (stat == null) return 0;
+        for (String line : stat.split("\n")) {
+            if (!line.startsWith("inactive_file ")) continue;
+            try {
+                return Math.max(
+                        0,
+                        Long.parseLong(line.substring("inactive_file ".length()).trim()));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    private static @Nullable String readText(Path file) {
+        try {
+            return Files.isReadable(file) ? Files.readString(file) : null;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     /** Read a single-number cgroup file; {@code -1} for absent/"max"/unparseable. */

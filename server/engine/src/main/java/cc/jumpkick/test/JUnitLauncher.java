@@ -760,12 +760,7 @@ public final class JUnitLauncher {
             CaptureBuffer crash,
             TestProgressListener listener)
             throws IOException, InterruptedException {
-        HeapScope.Key key = SuiteRetry.key(
-                SuiteRetry.project(inferredModuleDir),
-                moduleLabel,
-                javaHome != null
-                        ? JvmOptions.hostFeature(javaHome)
-                        : Runtime.version().feature());
+        HeapScope.Key key = filledKey(javaHome);
         try {
             int exit = key == null
                     ? launch(javaHome, classpath, flags, args, aggregator, crash)
@@ -973,7 +968,8 @@ public final class JUnitLauncher {
     /**
      * One suite JVM for {@code classes} at {@code heap}; its non-protocol output lands in {@code
      * crash}. A fork that throws reported nothing that outlives it, and the record it displaced is
-     * put back before the throw.
+     * put back before the throw. A rung reruns classes after a memory failure, so its fork is leased
+     * at its whole heap ({@link HeapScope#fullLease}).
      */
     private Rung rung(
             Path javaHome,
@@ -998,7 +994,9 @@ public final class JUnitLauncher {
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
             try {
-                return new Rung(forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener), held);
+                HeapScope.Fork<TestSummary> fork =
+                        () -> forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
+                return new Rung(HeapScope.fullLease(fork), held);
             } catch (TestLauncherFailure | IOException | InterruptedException e) {
                 held.restore();
                 throw e;

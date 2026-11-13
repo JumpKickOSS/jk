@@ -49,10 +49,13 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap),
   still limited by the worker lease ledger (`WorkerLeases`: FIFO with a ten-minute deadline per
-  wait, which refuses at once a lease past twice the budget, which on Linux may grant past
-  that budget while free memory and PSI pressure stay low but never past twice it — host-wide,
+  wait, which refuses at once a lease past twice the budget, which may grant past that budget
+  while free memory covers it (and on Linux PSI, on macOS the pressure level, stays low) but
+  never past twice it — host-wide,
   as are the running-JVM cap and the
-  overbook free memory (host `MemAvailable`, capped by this engine's workers group): an engine
+  overbook free memory (host `MemAvailable`, capped by the container's and this engine's workers
+  group's `memory.max` less their working set, inactive file cache excluded; under `CI` a
+  cautious overbook: more headroom, a 1.5x cap, pressure required): an engine
   process joins `HostLeases`, one `<state>/engine/worker-leases` file under a file lock in which
   every engine of the state dir records its budget, JVM cap, charged bytes, running JVMs,
   queued leases and worker pids, each grant is decided against the sums, the first live line's
@@ -61,8 +64,12 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger
   joins nothing — and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
-  the head waits only on forks doing work; every two seconds it reads each live worker's
-  resident set and charges the larger of lease and RSS, names a worker far over its lease in
+  the head waits only on forks doing work; a planned worker is leased at its expected resident
+  set (`LearnedHeaps#price`, from the resident peaks `WorkerGc` records per module and per kind
+  on the host) with its `-Xmx` lease as its worst case, and the running forks' worst cases stay
+  inside twice the budget; every two seconds it reads each live worker's process-tree
+  resident set (`ProcessMemory`: `/proc`, `GetProcessMemoryInfo`, `proc_pid_rusage`; a root's
+  descendants looked up at most every 15 s, since that walk costs about 10 ms on Windows) and charges the larger of lease and RSS, names a worker far over its lease in
   the run warnings, status and log, and stops overbooking while one is; on Linux
   `WorkerContainment` puts each worker in its own cgroup capped at three quarters of the budget,
   and `WorkerFate` reads a kill there as `OVER_WORKER_CAP`, which no retry or heap ladder

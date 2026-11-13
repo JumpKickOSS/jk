@@ -42,10 +42,11 @@ import org.jspecify.annotations.Nullable;
  * budget still runs, alone: a heap jk planned is lowered so it fits, and a heap the user pinned
  * keeps its flags and leases the whole budget. A pin past {@link #OVERBOOK_CAP_FACTOR} times the
  * budget is refused at once with {@link LeaseRefused}. A lease that does not fit yet waits, first in
- * line first, for at most {@link #WAIT_AT_MOST}, then fails naming what it needed and who held it.
- * On Linux it may instead be granted past the budget while {@link OverbookSignals} say the host has
- * room, never past {@link #OVERBOOK_CAP_FACTOR} times the budget; {@code CI} and {@code
- * JK_OVERBOOK=0} turn that off. A running fork is never killed to make the room.
+ * line first, until the line stands still for {@link #WAIT_AT_MOST}, then fails naming what it
+ * needed and who held it.
+ * It may instead be granted past the budget while {@link OverbookSignals} say the host has room,
+ * never past {@link #OVERBOOK_CAP_FACTOR} times the budget (less under {@code CI}); {@code
+ * JK_OVERBOOK=0} turns that off. A running fork is never killed to make the room.
  *
  * <p>The lease is an estimate. Every {@link WorkerRss#SAMPLE_EVERY} the engine ledger reads each live
  * worker's resident set and charges the larger of the two, so a worker whose native memory
@@ -72,7 +73,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class WorkerLeases {
 
-    /** How long a lease that could fit waits before it fails. */
+    /** How long the line may stand still, no lease granted to anyone, before a waiting lease fails. */
     public static final Duration WAIT_AT_MOST = Duration.ofMinutes(10);
 
     /** One mebibyte. */
@@ -119,7 +120,7 @@ public final class WorkerLeases {
                     EngineLimits::forkCpuCap,
                     JobWorkers::ended,
                     OverbookSignals.live(),
-                    MemoryProbe::rssBytes)
+                    new ProcessMemory.Trees())
             .sampleEvery(WorkerRss.SAMPLE_EVERY);
 
     private static volatile @Nullable Ledger replaced;
@@ -178,15 +179,6 @@ public final class WorkerLeases {
         }
         if (ask > 0) fit = Math.min(ask, fit);
         return Math.max(MIB, fit);
-    }
-
-    /**
-     * Headroom that must remain after a new lease's worst case. The larger of 1 GiB and 10% of
-     * {@code budgetBytes}.
-     */
-    public static long headroomBytes(long budgetBytes) {
-        long tenth = budgetBytes > 0 ? budgetBytes / 10 : 0;
-        return Math.max(GIB, tenth);
     }
 
     /** {@code 512 MiB} or {@code 1.5 GiB}. */
@@ -251,6 +243,10 @@ public final class WorkerLeases {
         private final ConcurrentHashMap<Long, AtomicLong> waited = new ConcurrentHashMap<>();
         private final Set<TaskContext> warnedSteps = Collections.newSetFromMap(new WeakHashMap<>());
         private long leased;
+        /** Sum over held workers of what each may grow to; at most twice the budget. */
+        private long ceilings;
+        /** When this ledger last granted a lease: a waiter gives up only once the line stood still. */
+        private long lastGrant = Long.MIN_VALUE;
         /** Sum over held workers of the resident bytes above their lease. */
         private long excess;
         /** Held workers {@linkplain WorkerRss#farOverLease far over their lease}. */
@@ -541,8 +537,9 @@ public final class WorkerLeases {
                         grantQueued();
                         granted = waiter.granted;
                         if (!granted) {
-                            long left = deadlineNanos - (Clock.SYSTEM.nanos() - arrived);
-                            if (left <= 0) giveUp(waiter, deadlineNanos);
+                            long now = Clock.SYSTEM.nanos();
+                            long left = deadlineNanos - (now - Math.max(arrived, lastGrant));
+                            if (left <= 0) giveUp(waiter, now - arrived);
                             else {
                                 refuseIfItNeverFits(waiter);
                                 lock.wait(Math.max(1, Math.min(250, TimeUnit.NANOSECONDS.toMillis(left))));
@@ -598,7 +595,7 @@ public final class WorkerLeases {
          */
         private void refuseIfItNeverFits(Waiter waiter) {
             long cap = capacityBytes();
-            long most = overbookCeiling(cap);
+            long most = OverbookSignals.ceiling(cap);
             if (waiter.demand.worstBytes <= most) return;
             String what = waiter.demand.pin.isEmpty()
                     ? ownerOf(waiter) + " needs " + format(waiter.demand.worstBytes)
@@ -608,11 +605,11 @@ public final class WorkerLeases {
                     + " worker budget allows; lower the heap, or raise " + WorkerContainment.BUDGET_ENV);
         }
 
-        /** Under the lock: {@code waiter} reached its deadline. */
-        private void giveUp(Waiter waiter, long deadlineNanos) {
+        /** Under the lock: no lease was granted for {@link #WAIT_AT_MOST} while {@code waiter} waited. */
+        private void giveUp(Waiter waiter, long waitedNanos) {
             long budget = capacityBytes();
             boolean slot = waiter.demand.cpuSlot && hostJvms() >= cpuCap();
-            String phrase = MemoryNotes.waitedPhrase(deadlineNanos);
+            String phrase = MemoryNotes.waitedPhrase(waitedNanos);
             if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
             throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + waitLine(waiter, budget, true));
         }
@@ -741,7 +738,9 @@ public final class WorkerLeases {
         }
 
         /**
-         * Under the lock. A JVM still needs a free core. Memory fits the reservation, or — when this
+         * Under the lock. A JVM still needs a free core. What the held forks and this one may grow
+         * to, their {@code -Xmx} leases, stays inside {@link #OVERBOOK_CAP_FACTOR} times the budget.
+         * Memory fits the reservation, or — when this
          * ledger has signals — the host sample covers the new lease's worst case and the reserved
          * total stays inside {@link #OVERBOOK_CAP_FACTOR} times the budget. Existing forks are not
          * re-charged here: the sample's free bytes are their real usage.
@@ -767,6 +766,8 @@ public final class WorkerLeases {
             if (waiter.demand.cpuSlot && (long) jvmRunning + others.jvms() >= cpuCap())
                 return refused(waiter, WaitReason.SLOT);
             long cap = capacityBytes();
+            if (ceilings > OverbookSignals.ceiling(cap) - waiter.demand.worstBytes)
+                return refused(waiter, WaitReason.MEMORY);
             long charged = charged() + Math.max(0, others.bytes());
             if (charged < 0) charged = Long.MAX_VALUE;
             if (charged <= cap && waiter.demand.bytes <= cap - charged) {
@@ -784,12 +785,12 @@ public final class WorkerLeases {
         private boolean overbook(Waiter waiter, long cap, long charged) {
             if (cap <= 0) return false;
             long bytes = waiter.demand.bytes;
-            long ceiling = overbookCeiling(cap);
+            long ceiling = OverbookSignals.ceiling(cap);
             if (overLeaseCount > 0) return false;
             if (bytes > ceiling || charged > ceiling - bytes) return false;
             OverbookSignals.Reading reading = readSignals();
             if (!reading.enabled() || !reading.pressureLow()) return false;
-            if (!reading.covers(bytes, headroomBytes(cap))) return false;
+            if (!reading.covers(waiter.demand.worstBytes, OverbookSignals.headroom(cap))) return false;
             waiter.overbooked = true;
             waiter.sample = reading;
             return true;
@@ -807,6 +808,8 @@ public final class WorkerLeases {
         private void take(Waiter waiter) {
             held.add(waiter);
             leased += waiter.demand.bytes;
+            ceilings += waiter.demand.worstBytes;
+            lastGrant = Clock.SYSTEM.nanos();
             if (waiter.demand.cpuSlot) jvmRunning++;
             waiter.granted = true;
             if (waiter.overbooked) logOverbook(waiter);
@@ -822,8 +825,8 @@ public final class WorkerLeases {
             if (waiter.released) return;
             waiter.released = true;
             held.remove(waiter);
-            leased -= waiter.demand.bytes;
-            if (leased < 0) leased = 0;
+            leased = Math.max(0, leased - waiter.demand.bytes);
+            ceilings = Math.max(0, ceilings - waiter.demand.worstBytes);
             excess = Math.max(0, excess - waiter.excess());
             if (waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount - 1);
             if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
@@ -947,6 +950,7 @@ public final class WorkerLeases {
                 if (next == waiter.demand.bytes) return;
                 excess = Math.max(0, excess - waiter.excess());
                 leased = Math.max(0, leased + next - waiter.demand.bytes);
+                ceilings = Math.max(0, ceilings + next - waiter.demand.worstBytes);
                 waiter.demand = waiter.demand.withBytes(next);
                 excess += waiter.excess();
                 boolean over = WorkerRss.farOverLease(next, waiter.rss);
@@ -992,15 +996,17 @@ public final class WorkerLeases {
                         bytes, requested > 0 ? requested : 0, true, false, true, natural > cap, true, natural, pin);
             }
             long fitted = clampXmx(xmx, cap);
-            long bytes = Math.min(cap, jvmLease(fitted));
-            return new Demand(bytes, fitted, true, fitted < xmx || bytes < jvmLease(xmx), false, false);
+            long ceiling = Math.min(cap, jvmLease(fitted));
+            long bytes = choice.priceBytes() > 0 ? Math.min(ceiling, choice.priceBytes()) : ceiling;
+            return new Demand(
+                    bytes, fitted, true, fitted < xmx || ceiling < jvmLease(xmx), false, false, true, ceiling, "");
         }
     }
 
     /**
      * {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does
-     * not. {@code worstBytes} is what the process may use: {@code bytes}, or a pin's whole lease when
-     * {@code bytes} is the budget it was cut to. {@code pin} names that pin, {@code ""} otherwise.
+     * not. {@code worstBytes} is what the process may use: its {@code -Xmx} lease when {@code bytes} is
+     * the lower price it is expected to hold or the budget a pin was cut to, else {@code bytes}. {@code pin} names that pin, {@code ""} otherwise.
      */
     private record Demand(
             long bytes,
@@ -1024,12 +1030,6 @@ public final class WorkerLeases {
         Demand withBytes(long next) {
             return new Demand(next, xmxBytes, jvm, clamped, userPinned, overBudget, cpuSlot, next, pin);
         }
-    }
-
-    /** {@link #OVERBOOK_CAP_FACTOR} times {@code cap}, saturating. */
-    static long overbookCeiling(long cap) {
-        long budget = Math.max(0, cap);
-        return budget > Long.MAX_VALUE / OVERBOOK_CAP_FACTOR ? Long.MAX_VALUE : budget * OVERBOOK_CAP_FACTOR;
     }
 
     /** The holder {@link Snapshot#waiting()} names for leases of other engines of this host. */

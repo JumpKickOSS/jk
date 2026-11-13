@@ -166,9 +166,9 @@ public final class EngineControls {
             control(
                     "",
                     "JK_OVERBOOK",
-                    "on; off when CI is set",
+                    "on; cautious when CI is set",
                     ENGINE_START,
-                    "0 disables leasing past the worker budget. Unset overbooks on Linux while pressure is low. CI disables it."));
+                    "0 disables leasing past the worker budget. Unset overbooks while the host has room and pressure is low; CI keeps more headroom and a lower cap."));
 
     /** TomlScan keys: {@code engine.max-heap-mb}, … */
     public static String[] tomlScanKeys() {

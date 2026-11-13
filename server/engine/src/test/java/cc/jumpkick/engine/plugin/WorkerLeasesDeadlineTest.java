@@ -82,6 +82,32 @@ class WorkerLeasesDeadlineTest {
         }
     }
 
+    /** The deadline counts from the line's last grant: a long wait in a moving line is not a stall. */
+    @Test
+    void a_lease_in_a_line_that_keeps_moving_outlasts_the_deadline() throws Exception {
+        WorkerLeases.Ledger ledger =
+                ledger(() -> 4 * GIB, OverbookSignals.off()).waitAtMost(Duration.ofMillis(400));
+        WorkerLeases.Grant held = ledger.acquireBytes(3 * GIB, true, 3L);
+        CompletableFuture<WorkerLeases.Grant> first = acquireBytes(ledger, 3 * GIB, 4L);
+        awaitQueued(ledger, 1);
+        CompletableFuture<WorkerLeases.Grant> second = acquireBytes(ledger, 3 * GIB, 5L);
+        awaitQueued(ledger, 2);
+        long started = System.nanoTime();
+        CompletableFuture<WorkerLeases.Grant> last = acquireBytes(ledger, 3 * GIB, 7L);
+        awaitQueued(ledger, 3);
+        for (CompletableFuture<WorkerLeases.Grant> next : List.of(first, second)) {
+            Thread.sleep(250);
+            held.close();
+            held = next.get(5, TimeUnit.SECONDS);
+        }
+        Thread.sleep(250);
+        held.close();
+        try (WorkerLeases.Grant grant = last.get(5, TimeUnit.SECONDS)) {
+            assertThat(grant.bytes()).isEqualTo(3 * GIB);
+            assertThat(System.nanoTime() - started).isGreaterThan(TimeUnit.MILLISECONDS.toNanos(600));
+        }
+    }
+
     @Test
     void a_lease_granted_before_its_deadline_is_not_failed() throws Exception {
         WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE).waitAtMost(Duration.ofSeconds(30));

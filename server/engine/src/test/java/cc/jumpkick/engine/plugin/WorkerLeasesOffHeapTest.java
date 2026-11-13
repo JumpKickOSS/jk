@@ -29,7 +29,7 @@ import org.junit.jupiter.api.condition.OS;
  * reservation alone until it exits.
  */
 @Tag("integration")
-@EnabledOnOs(OS.LINUX)
+@EnabledOnOs({OS.LINUX, OS.WINDOWS, OS.MAC})
 class WorkerLeasesOffHeapTest {
 
     private static final long GIB = 1L << 30;
@@ -39,7 +39,8 @@ class WorkerLeasesOffHeapTest {
     void a_fork_far_over_its_lease_off_heap_is_charged_named_and_holds_back_the_next_grant() throws Exception {
         long budget = 4 * GIB;
         WorkerLeases.Ledger ledger = new WorkerLeases.Ledger(
-                () -> budget, () -> 8, id -> false, OverbookSignals.off(), MemoryProbe::rssBytes);
+                () -> budget, () -> 8, id -> false, OverbookSignals.off(), pid -> ProcessMemory.of(pid)
+                        .residentBytes());
         List<String> warnings = new CopyOnWriteArrayList<>();
         StepScope.call(recording(warnings), () -> {
             try {

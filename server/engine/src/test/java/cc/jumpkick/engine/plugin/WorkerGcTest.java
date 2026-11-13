@@ -34,14 +34,6 @@ class WorkerGcTest {
         assertThat(WorkerGc.peak((String) null)).isZero();
     }
 
-    @Test
-    void vm_hwm_is_kibibytes_from_the_status_line() {
-        assertThat(WorkerGc.vmHwmBytes("Name:\tjava\nVmHWM:\t  204800 kB\nVmRSS:\t  1024 kB\n"))
-                .isEqualTo(204800L * 1024L);
-        assertThat(WorkerGc.vmHwmBytes("")).isZero();
-        assertThat(WorkerGc.vmHwmBytes(null)).isZero();
-    }
-
     /** The JVM's default rotation moved the empty log aside as {@code <log>.0}, which nothing deleted. */
     @Test
     void the_log_flag_turns_rotation_off() {

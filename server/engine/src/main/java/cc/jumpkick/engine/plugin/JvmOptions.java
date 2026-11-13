@@ -504,14 +504,21 @@ public final class JvmOptions {
      *     {@code -XX:MaxRAM*})
      * @param xmxBytes the {@code -Xmx} in force, or {@code -1} when the command names none
      * @param label the pin, for the engine log; empty when {@code userPinned} is false
+     * @param priceBytes what the fork is expected to hold, which the ledger leases when it is below
+     *     the {@code -Xmx} lease; {@code 0} leases the {@code -Xmx}
      */
-    public record HeapChoice(boolean userPinned, long xmxBytes, String label) {
+    public record HeapChoice(boolean userPinned, long xmxBytes, String label, long priceBytes) {
 
         /** {@code command} as jk is about to run it, argfile shorten not yet applied. */
         public static HeapChoice inspect(List<String> command) {
             long xmx = HeapFlags.parseXmx(command);
-            if (!userPinnedHeap(command)) return new HeapChoice(false, xmx, "");
-            return new HeapChoice(true, xmx, userPinLabel(command));
+            if (!userPinnedHeap(command)) return new HeapChoice(false, xmx, "", 0);
+            return new HeapChoice(true, xmx, userPinLabel(command), 0);
+        }
+
+        /** This choice leased at {@code bytes}; a user pin keeps its whole lease. */
+        public HeapChoice priced(long bytes) {
+            return userPinned ? this : new HeapChoice(false, xmxBytes, label, Math.max(0, bytes));
         }
     }
 
