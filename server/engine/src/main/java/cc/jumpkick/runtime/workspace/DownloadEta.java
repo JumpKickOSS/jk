@@ -10,6 +10,9 @@ import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -121,29 +124,64 @@ final class DownloadEta {
         eta.accept(remainingMs);
     }
 
+    /** How far back the throughput is read: long enough to smooth a burst, short enough to follow a ramp. */
+    static final long RATE_WINDOW_NANOS = 4_000_000_000L;
+
+    /** The board's bytes at each sample within {@link #RATE_WINDOW_NANOS}, oldest first: {nanos, bytes}. */
+    private final ArrayDeque<long[]> window = new ArrayDeque<>();
+
     /**
      * The rest priced at the run's own throughput, or {@code -1} until {@link #MEASURED_AFTER}
      * artifacts have landed: what the bodies streaming now still owe, plus each file not started
-     * yet at the size the files of known size averaged, over the bytes a second the run has moved. A
-     * large jar in flight is priced at its declared length, so the slow tail of a sync is seen
-     * before the bar gets there.
+     * yet at a typical file's size, over the bytes a second moved in the last {@link
+     * #RATE_WINDOW_NANOS}. A large body in flight is priced at its declared length, so the slow tail
+     * of a sync is seen before the bar gets there.
+     *
+     * <p>The throughput is the recent one, not the average since the preflight began: that counted
+     * the lock's seconds before the first byte and the connections' ramp, and a fresh sync of jk's
+     * tree read 49 s left at 2.5 s of 12. A file not started is priced at the median of the files
+     * whose size is known (the landed ones at their mean, each body in flight at its declared
+     * length), not their mean, so the 645 MB IDE zip in flight does not price each of 200 small jars
+     * queued behind it as a twentieth of itself (JK-RYA7W).
      */
     private long measured(TransferBoard.Snapshot d, int remaining, long now) {
+        window.addLast(new long[] {now, d.bytes()});
+        while (window.size() > 2 && now - window.peekFirst()[0] > RATE_WINDOW_NANOS) window.removeFirst();
         if (board.artifactsLanded() - artifactsBefore < MEASURED_AFTER) return -1;
-        long elapsedMs = (now - planStartNanos) / 1_000_000L;
         long moved = d.bytes() - bytesAtStart;
         int finishedFiles = d.files() - filesAtStart;
-        if (elapsedMs <= 0 || moved <= 0 || finishedFiles <= 0) return -1;
+        if (moved <= 0 || finishedFiles <= 0) return -1;
+        long[] oldest = window.peekFirst();
+        long spanNanos = now - oldest[0];
+        long spanBytes = d.bytes() - oldest[1];
+        double bytesPerMs = spanNanos > 0 && spanBytes > 0
+                ? spanBytes / (spanNanos / 1_000_000.0)
+                : moved / Math.max(1.0, (now - planStartNanos) / 1_000_000.0);
         TransferBoard.InFlight flight = board.inFlight();
-        // A file not started yet is priced at the size of every file whose size is known: the ones
-        // that landed and the ones in flight that declared a length. Small files land first, so the
-        // landed ones alone would price the large jars still queued as small.
-        int declared = d.inflight() - flight.undeclared();
-        long known = moved + flight.owed();
-        long perFile = Math.max(1, known / Math.max(1, finishedFiles + declared));
+        long landedBytes = Math.max(0, moved - flight.read());
+        long perFile = typicalFile(landedBytes / finishedFiles, finishedFiles, d.rows());
         int notStarted = Math.max(0, remaining - d.inflight());
         long owed = flight.owed() + (long) flight.undeclared() * perFile + (long) notStarted * perFile;
-        double bytesPerMs = (double) moved / elapsedMs;
         return Math.round(owed / bytesPerMs);
+    }
+
+    /**
+     * The median size over {@code landed} files of {@code landedMean} bytes each and the declared
+     * lengths of the bodies in flight.
+     */
+    static long typicalFile(long landedMean, int landed, List<TransferBoard.Row> inFlight) {
+        List<Long> declared = new ArrayList<>();
+        for (TransferBoard.Row r : inFlight) if (r.total() > 0) declared.add(r.total());
+        declared.sort(null);
+        int n = landed + declared.size();
+        int mid = n / 2;
+        // The landed files sit together at landedMean; the declared lengths around them in order.
+        int below = 0;
+        while (below < declared.size() && declared.get(below) < landedMean) below++;
+        long at;
+        if (mid < below) at = declared.get(mid);
+        else if (mid < below + landed) at = landedMean;
+        else at = declared.get(mid - landed);
+        return Math.max(1, at);
     }
 }

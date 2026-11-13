@@ -140,6 +140,25 @@ final class ToolClosures {
         return used(cas, dir);
     }
 
+    /**
+     * The jars {@link #materialize} would fetch for {@code dep}: its lock row's closure, or none when
+     * its directory is already whole.
+     */
+    static List<Coordinate> missingJars(PluginContributions.StepDep dep, Cas cas, @Nullable Lockfile lock)
+            throws IOException {
+        String rootSpec = Objects.requireNonNull(dep.coordinateSpec(), "coordinate");
+        ToolEntry row =
+                lock == null ? null : ToolEntry.closureIn(lock.tools(), rootSpec, dep.with(), dep.managedBySpec());
+        if (row == null) return List.of();
+        Map<Coordinate, String> pinned = new LinkedHashMap<>();
+        for (String jar : row.closure()) {
+            Coordinate coord = Coordinate.parse(jar);
+            pinned.put(coord, PluginBuild.lockedSha256(coord, lock));
+        }
+        if (complete(root(cas).resolve(cacheKey(row.root(), pinned)))) return List.of();
+        return List.copyOf(pinned.keySet());
+    }
+
     /** One jar of a closure and where its bytes are. */
     private record Fetched(Coordinate coord, Path jar) {}
 

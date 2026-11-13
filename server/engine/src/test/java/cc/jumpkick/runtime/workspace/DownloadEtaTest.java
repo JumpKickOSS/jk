@@ -143,11 +143,26 @@ class DownloadEtaTest {
         for (int i = 0; i < 5; i++) plan.settled(true);
         eta.sample();
 
-        // 1 kB in 1 s. The big one owes 9.5 kB; the 6 files of known size average 1.75 kB (10.5 kB
-        // over 5 landed and 1 in flight), so the 4 not started owe 7 kB: not the 100 bytes each
-        // the small ones that landed first would say.
-        assertThat(sent).containsExactly(16_500L);
+        // 1 kB in 1 s. The big one owes 9.5 kB; a file not started is priced at the median of the
+        // known sizes (5 landed at 100 bytes, 1 in flight at 10 kB): 100 bytes, so the 4 not started
+        // owe 400 bytes, not a share of the big one each.
+        assertThat(sent).containsExactly(9_900L);
         big.close();
         plan.close();
+    }
+
+    @Test
+    void a_typical_file_is_the_median_of_the_landed_files_and_the_declared_bodies() {
+        List<TransferBoard.Row> zip = List.of(new TransferBoard.Row("ideaIC", 1, 645_000_000L));
+        assertThat(DownloadEta.typicalFile(100_000, 50, zip))
+                .as("one giant body among fifty landed jars")
+                .isEqualTo(100_000);
+        List<TransferBoard.Row> big = List.of(
+                new TransferBoard.Row("a", 1, 5_000_000L),
+                new TransferBoard.Row("b", 1, 6_000_000L),
+                new TransferBoard.Row("c", 1, 7_000_000L));
+        assertThat(DownloadEta.typicalFile(100_000, 1, big))
+                .as("mostly large bodies: one of theirs")
+                .isEqualTo(6_000_000L);
     }
 }

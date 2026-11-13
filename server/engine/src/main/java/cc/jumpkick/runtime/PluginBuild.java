@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ExplodedArchives;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -34,6 +35,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.repo.ArtifactFanOut;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PlatformBomVersions;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
@@ -41,6 +43,7 @@ import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.runtime.schema.SchemaFiles;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -49,6 +52,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -411,6 +415,14 @@ public final class PluginBuild {
         if (deps.isEmpty()) return out;
         Map<String, String> sdkPins = sdkPins(lock);
         RepoGroup repos = null;
+        if (deps.stream().anyMatch(d -> d.sdkComponent() == null && d.url() == null)) {
+            try {
+                repos = RepoGroupBuilder.buildFor(project, null, cas);
+                prefetch(deps, repos, cas, lock);
+            } catch (RuntimeException e) {
+                if (!lenient) throw e;
+            }
+        }
         for (PluginContributions.StepDep dep : deps) {
             try {
                 if (dep.sdkComponent() != null) {
@@ -440,6 +452,47 @@ public final class PluginBuild {
             }
         }
         return out;
+    }
+
+    /**
+     * Every pinned tool and every jar of a closure not yet materialized, fetched into the CAS at once
+     * as one declared set, before {@link #fetchTools} takes them one tool at a time from the store.
+     * One by one, jk's IntelliJ plugin fetched its 645 MB IDE zip alone, then its closure's 254 jars:
+     * the zip was no declared set, so the sync stage and its estimate saw one body streaming and
+     * nothing after it (JK-RYA7W). A fetch that fails here is left to the loop, which reports it as
+     * it always has.
+     */
+    private static void prefetch(
+            List<PluginContributions.StepDep> deps, RepoGroup repos, Cas cas, @Nullable Lockfile lock)
+            throws InterruptedException {
+        Set<Coordinate> coords = new LinkedHashSet<>();
+        for (PluginContributions.StepDep dep : deps) {
+            if (dep.sdkComponent() != null || dep.url() != null) continue;
+            try {
+                if (dep.transitive()) coords.addAll(ToolClosures.missingJars(dep, cas, lock));
+                else coords.add(lockedCoordinate(Objects.requireNonNull(dep.coordinateSpec()), lock));
+            } catch (IOException | RuntimeException drift) {
+                // lock drift: the loop refuses it with its own message
+            }
+        }
+        if (coords.size() < 2) return;
+        TransferBoard board = SessionContext.current().io().transfers();
+        List<ArtifactFanOut.Fetch<Boolean>> fetches = new ArrayList<>(coords.size());
+        for (Coordinate coord : coords) {
+            fetches.add(() -> {
+                try {
+                    fetchPinned(repos, coord, lock);
+                    return board.landed(coord.toString());
+                } catch (IOException | RuntimeException e) {
+                    return false;
+                }
+            });
+        }
+        try {
+            ArtifactFanOut.all(fetches, Boolean::booleanValue);
+        } catch (IOException e) {
+            Log.debug("plugin tools: prefetch failed, fetched one by one", e);
+        }
     }
 
     /** {@code coord}'s bytes as the lock's {@code [[tool]]} row pins them, fetched into the CAS. */

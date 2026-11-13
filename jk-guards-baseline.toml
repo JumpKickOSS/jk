@@ -2422,8 +2422,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PluginBuild~cc.jumpkick.runtime.ToolClosures"
-value  = 4
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 5
+reason = "PluginBuild's tool prefetch asks ToolClosures which closure jars are missing, so the closure's jars download in the same declared set as the plugin's other tools (JK-RYA7W)"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.RestoredOutputs~cc.jumpkick.runtime.TaskForecaster"
