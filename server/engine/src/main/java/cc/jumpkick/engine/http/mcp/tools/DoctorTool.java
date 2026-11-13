@@ -74,12 +74,14 @@ public final class DoctorTool implements McpTool {
             }
             return in.text("DECLINED machine setup: " + consent.settledBy() + "; the user changes it there\n");
         }
-        if (consent == SetupConsent.ASK && !check.memo().mayAsk() && in.str(McpDecisions.DECISION) == null) {
+        SetupPlan whole = WindowsSetup.plan(check, MachineSetupDecisions.served());
+        if (whole.isEmpty()) return in.text("this machine is set up: nothing to change\n");
+        // An agent asks only about rows the user never answered; jk doctor --fix shows them all.
+        SetupPlan plan = in.str(McpDecisions.DECISION) == null ? whole.unanswered(check.memo()) : whole;
+        if (consent == SetupConsent.ASK && plan.isEmpty()) {
             return in.text("ANSWERED machine setup was " + check.memo().answered() + "; it is not asked again\n"
                     + "the user changes the answer with `jk doctor --fix`\n");
         }
-        SetupPlan plan = WindowsSetup.plan(check, MachineSetupDecisions.served());
-        if (plan.isEmpty()) return in.text("this machine is set up: nothing to change\n");
         List<DecisionForms.Item> items = plan.changes().stream()
                 .map(c -> new DecisionForms.Item(c.id(), c.title(), c.why() + " " + c.effect()))
                 .toList();

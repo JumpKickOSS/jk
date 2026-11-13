@@ -29,24 +29,28 @@ class SetupConsentTest {
         assertThat(read("[windows]\nfix = \"sometimes\"\n")).isEqualTo(SetupConsent.ASK);
     }
 
+    private static final SetupChange ROW =
+            new SetupChange(SetupChange.LONG_PATHS, "Long paths", "why", "effect", SetupChange.Kind.LONG_PATHS, null);
+
     @Test
     void applyAndNeverSettleTheOfferWithoutAsking() {
-        SetupMemo unanswered = SetupMemo.NONE;
+        SetupPlan open = new SetupPlan(List.of(ROW));
 
-        assertThat(SetupOffer.of(SetupConsent.ASK, unanswered, false, false)).isEqualTo(SetupOffer.ASK);
-        assertThat(SetupOffer.of(SetupConsent.APPLY, unanswered, false, false)).isEqualTo(SetupOffer.APPLY);
-        assertThat(SetupOffer.of(SetupConsent.NEVER, unanswered, false, false)).isEqualTo(SetupOffer.DECLINE);
+        assertThat(SetupOffer.of(SetupConsent.ASK, open, false)).isEqualTo(SetupOffer.ASK);
+        assertThat(SetupOffer.of(SetupConsent.APPLY, open, false)).isEqualTo(SetupOffer.APPLY);
+        assertThat(SetupOffer.of(SetupConsent.NEVER, open, false)).isEqualTo(SetupOffer.DECLINE);
     }
 
     @Test
-    void offersOnlyOnAMachineThatNeverAnswered() {
-        SetupMemo declined =
-                new SetupMemo(SetupMemo.Answer.DECLINED, 1, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0);
+    void offersOnlyRowsNeverAnsweredAndNotWhileADecisionIsOut() {
+        SetupMemo answered = new SetupMemo(
+                SetupMemo.Answer.DECLINED, 1, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0, List.of(ROW.id()));
+        SetupPlan plan = new SetupPlan(List.of(ROW));
 
         for (SetupConsent consent : SetupConsent.values()) {
-            assertThat(SetupOffer.of(consent, declined, false, false)).isEqualTo(SetupOffer.NONE);
-            assertThat(SetupOffer.of(consent, SetupMemo.NONE, true, false)).isEqualTo(SetupOffer.NONE);
-            assertThat(SetupOffer.of(consent, SetupMemo.NONE, false, true)).isEqualTo(SetupOffer.NONE);
+            assertThat(SetupOffer.of(consent, plan.unanswered(answered), false)).isEqualTo(SetupOffer.NONE);
+            assertThat(SetupOffer.of(consent, plan, true)).isEqualTo(SetupOffer.NONE);
+            assertThat(SetupOffer.of(consent, new SetupPlan(List.of()), false)).isEqualTo(SetupOffer.NONE);
         }
     }
 }

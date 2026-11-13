@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,7 +68,14 @@ class MachineSetupTest {
             }
         };
         return new MachineSetup(
-                elevator, user, rules, SetupMemo.file(state), state.resolve("result.txt"), FIXED, folder -> 900L);
+                elevator,
+                user,
+                rules,
+                SetupMemo.file(state),
+                state.resolve("result.txt"),
+                FIXED,
+                folder -> 900L,
+                List.of(environment));
     }
 
     /** An elevator that "runs" the script by writing {@code lines} to its result file. */
@@ -81,6 +89,56 @@ class MachineSetupTest {
             }
             return new Elevator.Outcome.Ran(0);
         };
+    }
+
+    /** An environment row of a made-up kind: proposes two environments, installs by reporting steps. */
+    private final List<String> installed = new ArrayList<>();
+
+    private final SetupEnvironment environment = new SetupEnvironment() {
+        @Override
+        public List<SetupChange> rows(WindowsHostCheck check) {
+            return List.of(row("alpha"), row("beta"));
+        }
+
+        @Override
+        public boolean owns(SetupChange row) {
+            return row.id().startsWith("fake:");
+        }
+
+        @Override
+        public MachineSetup.Result install(SetupChange row, Consumer<String> progress) {
+            progress.accept("fetched");
+            progress.accept("unpacked");
+            installed.add(row.id());
+            return new MachineSetup.Result(row.id(), true, "installed into " + row.path());
+        }
+    };
+
+    private static SetupChange row(String name) {
+        return new SetupChange(
+                "fake:" + name, "JumpKick in " + name, "why", "effect", SetupChange.Kind.ENVIRONMENT, "fake:" + name);
+    }
+
+    @Test
+    void anEnvironmentRowRunsWithoutElevationReportsItsStepsAndEachRowIsRememberedOnItsOwn() throws Exception {
+        SetupPlan withEnvironments = new SetupPlan(List.of(GIT, row("alpha"), row("beta")));
+
+        MachineSetup.Applied applied =
+                setup(writing()).apply(withEnvironments, Set.of(SetupChange.GIT_LONG_PATHS, "fake:alpha"));
+
+        assertThat(scripts).as("no UAC prompt for per-user rows").isEmpty();
+        assertThat(installed).containsExactly("fake:alpha");
+        assertThat(applied.lines()).contains("installed into fake:alpha (fetched; unpacked)");
+        SetupMemo memo = SetupMemo.read(SetupMemo.file(state));
+        assertThat(memo.answeredRows())
+                .containsExactlyInAnyOrder(SetupChange.GIT_LONG_PATHS, "fake:alpha", "fake:beta");
+        assertThat(withEnvironments.unanswered(memo).isEmpty())
+                .as("beta was declined, not asked again")
+                .isTrue();
+
+        SetupPlan later = new SetupPlan(List.of(GIT, row("alpha"), row("beta"), row("gamma")));
+        assertThat(later.unanswered(memo).changes()).extracting(SetupChange::id).containsExactly("fake:gamma");
+        assertThat(WindowsSetup.items(later)).extracting(m -> m.get("id")).contains("fake:gamma");
     }
 
     @Test

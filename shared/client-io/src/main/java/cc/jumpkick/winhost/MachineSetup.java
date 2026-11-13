@@ -18,9 +18,10 @@ import java.util.Set;
 
 /**
  * Applies the changes a person chose from a {@link SetupPlan}: everything that needs elevation in
- * one elevated script behind one UAC prompt, then the per-user changes, and records the outcome in
- * the {@link SetupMemo}. Declining, at the decision or at the prompt, applies nothing and records the
- * decline.
+ * one elevated script behind one UAC prompt, then the per-user changes, then each environment install
+ * its {@link SetupEnvironment} runs, and records the outcome in the {@link SetupMemo}: every row of
+ * the plan is answered, the ones left out as declined. Declining, at the decision or at the prompt,
+ * applies nothing and records the decline.
  *
  * @param memoFile {@code <state>/windows-host.toml}
  * @param resultFile where the elevated script writes its outcome lines
@@ -32,7 +33,12 @@ public record MachineSetup(
         Path memoFile,
         Path resultFile,
         Clock clock,
-        ScanCost.Probe probe) {
+        ScanCost.Probe probe,
+        List<SetupEnvironment> environments) {
+
+    public MachineSetup {
+        environments = List.copyOf(environments);
+    }
 
     /** How long the prompt and the script may take together. */
     public static final Duration WAIT = Duration.ofMinutes(5);
@@ -64,7 +70,8 @@ public record MachineSetup(
                 SetupMemo.file(state),
                 state.resolve("windows-host-result.txt"),
                 Clock.SYSTEM,
-                ScanCost.LIVE);
+                ScanCost.LIVE,
+                WindowsSetup.ENVIRONMENTS);
     }
 
     /** Applies {@code chosen} from {@code plan}; the rest of the plan's roots are recorded as left out. */
@@ -145,6 +152,7 @@ public record MachineSetup(
                                     ? "set your PowerShell execution policy to RemoteSigned"
                                     : "could not set your PowerShell execution policy"));
                 }
+                case ENVIRONMENT -> lines.add(install(c));
                 default -> {}
             }
         }
@@ -160,7 +168,8 @@ public record MachineSetup(
                 List.copyOf(leftOut),
                 refused,
                 beforeMs,
-                afterMs);
+                afterMs,
+                answered(before, plan));
         memo.write(memoFile);
         noteApplied(lines);
         return new Applied(lines, memo, false);
@@ -198,9 +207,29 @@ public record MachineSetup(
                 List.copyOf(declined),
                 before.refused(),
                 before.beforeMs(),
-                before.afterMs());
+                before.afterMs(),
+                answered(before, plan));
         memo.write(memoFile);
         return new Applied(List.of(new Result("", true, line)), memo, true);
+    }
+
+    /** {@code before}'s answered rows and every row of {@code plan}, accepted or left out. */
+    private static List<String> answered(SetupMemo before, SetupPlan plan) {
+        Set<String> out = new LinkedHashSet<>(before.answeredRows());
+        for (SetupChange c : plan.changes()) out.add(c.id());
+        return List.copyOf(out);
+    }
+
+    /** Runs the environment install {@code row} names; its step lines go into the result's detail. */
+    private Result install(SetupChange row) {
+        for (SetupEnvironment environment : environments) {
+            if (!environment.owns(row)) continue;
+            List<String> steps = new ArrayList<>();
+            Result r = environment.install(row, steps::add);
+            if (steps.isEmpty()) return new Result(row.id(), r.ok(), r.line());
+            return new Result(row.id(), r.ok(), r.line() + " (" + String.join("; ", steps) + ")");
+        }
+        return new Result(row.id(), false, "nothing installs " + row.title() + " on this machine");
     }
 
     /** Reads the elevated script's outcome lines into {@code lines} and the memo's sets. */

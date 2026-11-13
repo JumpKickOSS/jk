@@ -10,7 +10,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * One host change JumpKick recommends: what it does ({@code title}), why, and its effect. {@code id}
  * is stable across runs for the same change, so an answer given to one proposal applies to the
- * next; a root's id is derived from its path. {@code path} is the folder an exclusion names.
+ * next; a root's id is derived from its path. {@code path} is the folder an exclusion names, or the
+ * environment an install names ({@code wsl:Ubuntu-26.10}).
  */
 public record SetupChange(
         String id,
@@ -29,7 +30,9 @@ public record SetupChange(
         /** git's {@code core.longpaths} for this user. */
         GIT_LONG_PATHS(false),
         /** CurrentUser's PowerShell execution policy. */
-        EXECUTION_POLICY(false);
+        EXECUTION_POLICY(false),
+        /** JumpKick installed into another environment, run by the {@link SetupEnvironment} that proposed it. */
+        ENVIRONMENT(false);
 
         private final boolean elevated;
 

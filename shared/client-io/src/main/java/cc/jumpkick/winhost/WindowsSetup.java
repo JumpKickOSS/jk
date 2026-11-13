@@ -27,6 +27,9 @@ public final class WindowsSetup {
 
     public static final String YES = "Apply the ticked changes (one Windows prompt)";
 
+    /** The sources of environment rows this build carries. */
+    static final List<SetupEnvironment> ENVIRONMENTS = List.of();
+
     private WindowsSetup() {}
 
     /** The check of this machine for {@code project}. */
@@ -37,7 +40,7 @@ public final class WindowsSetup {
 
     /** The plan for {@code check}'s machine; {@code known} are projects already known to be projects. */
     public static SetupPlan plan(WindowsHostCheck check, List<Path> known) {
-        return SetupPlan.of(check, discovery(check, known).propose(), ScanCost.LIVE);
+        return SetupPlan.of(check, discovery(check, known).propose(), ScanCost.LIVE, ENVIRONMENTS);
     }
 
     static RootDiscovery discovery(WindowsHostCheck check, List<Path> known) {

@@ -4,12 +4,10 @@ package cc.jumpkick.engine.decisions;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupConsent;
-import cc.jumpkick.winhost.SetupMemo;
 import cc.jumpkick.winhost.SetupOffer;
 import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
@@ -58,13 +56,12 @@ public final class MachineSetupDecisions {
     }
 
     /**
-     * A person's build offers the setup decision: raised as a notification, applied, or declined as
-     * {@code [windows] fix} says, and only on a machine that never answered it. Off the request path,
-     * since the plan reads the host. An accepted decision nobody applied is applied now.
+     * A person's build offers the setup decision for the rows never answered: raised as a
+     * notification, applied, or declined as {@code [windows] fix} says. Off the request path, since
+     * the plan reads the host. An accepted decision nobody applied is applied now.
      */
     public static void offer(DecisionQueue queue, @Nullable Path project) {
         if (!Os.isWindows()) return;
-        if (!SetupMemo.read(SetupMemo.file(JkDirs.state())).mayAsk()) return;
         SessionContext.startVirtual("machine-setup-offer", () -> {
             try {
                 offerNow(queue, project);
@@ -83,11 +80,11 @@ public final class MachineSetupDecisions {
         }
         boolean outstanding = queue.list().stream().anyMatch(d -> WindowsSetup.KIND.equals(d.kind()) && d.open());
         WindowsHostCheck check = WindowsSetup.check(project);
-        SetupPlan plan = WindowsSetup.plan(check, served());
+        SetupPlan plan = WindowsSetup.plan(check, served()).unanswered(check.memo());
         SetupConsent consent = WindowsSetup.consent();
-        switch (SetupOffer.of(consent, check.memo(), outstanding, plan.isEmpty())) {
+        switch (SetupOffer.of(consent, plan, outstanding)) {
             case NONE -> {}
-            case DECLINE -> decline(project, "declined by " + consent.settledBy());
+            case DECLINE -> declinePlan(check, plan, "declined by " + consent.settledBy());
             case APPLY -> apply(check, plan, WindowsSetup.all(plan));
             case ASK -> {
                 Decision d = queue.open(new DecisionQueue.Ask(
@@ -132,9 +129,12 @@ public final class MachineSetupDecisions {
     }
 
     private static void decline(@Nullable Path project, String line) {
+        WindowsHostCheck check = WindowsSetup.check(project);
+        declinePlan(check, WindowsSetup.plan(check, served()), line);
+    }
+
+    private static void declinePlan(WindowsHostCheck check, SetupPlan plan, String line) {
         try {
-            WindowsHostCheck check = WindowsSetup.check(project);
-            SetupPlan plan = WindowsSetup.plan(check, served());
             WindowsSetup.machine(check).decline(plan, line);
         } catch (IOException | RuntimeException e) {
             Log.warn("could not record the declined machine setup: " + Errors.text(e));

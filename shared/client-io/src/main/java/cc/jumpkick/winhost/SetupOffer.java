@@ -2,12 +2,13 @@
 package cc.jumpkick.winhost;
 
 /**
- * What a person's build does about the machine-setup decision: nothing once the machine answered or
- * while the decision is already out, else what {@code [windows] fix} says. Asked once; an unanswered
- * decision that expires is recorded as declined, so the next build does not ask again.
+ * What a person's build does about the machine-setup decision: nothing while the decision is already
+ * out or when every recommended row has an answer, else what {@code [windows] fix} says, for the rows
+ * never answered. Each row is asked once; an unanswered decision that expires is recorded as declined,
+ * so the next build does not ask again.
  */
 public enum SetupOffer {
-    /** Answered already, a decision is out, or there is nothing to change. */
+    /** Every row answered, a decision is out, or there is nothing to change. */
     NONE,
     /** Raise the decision as a notification; never a terminal prompt. */
     ASK,
@@ -16,9 +17,9 @@ public enum SetupOffer {
     /** Record a decline without asking. */
     DECLINE;
 
-    /** The offer for a machine whose memo is {@code memo}, with {@code outstanding} decisions out. */
-    public static SetupOffer of(SetupConsent consent, SetupMemo memo, boolean outstanding, boolean nothingToChange) {
-        if (!memo.mayAsk() || outstanding || nothingToChange) return NONE;
+    /** The offer for the rows {@code unanswered} holds, with {@code outstanding} decisions out. */
+    public static SetupOffer of(SetupConsent consent, SetupPlan unanswered, boolean outstanding) {
+        if (outstanding || unanswered.isEmpty()) return NONE;
         return switch (consent) {
             case ASK -> ASK;
             case APPLY -> APPLY;

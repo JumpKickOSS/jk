@@ -23,7 +23,8 @@ class SetupMemoTest {
                 List.of("C:\\Users\\ada\\source\\repos"),
                 Map.of("E:\\work", "refused by Group Policy"),
                 1900,
-                400);
+                400,
+                List.of());
         Path file = SetupMemo.file(state);
         memo.write(file);
         assertThat(SetupMemo.read(file)).isEqualTo(memo);
@@ -47,7 +48,8 @@ class SetupMemoTest {
                 List.of("C:\\Users\\ada\\repos"),
                 Map.of(),
                 0,
-                0);
+                0,
+                List.of());
         assertThat(memo.exclusion("c:/users/ada/src/app")).isEqualTo(SetupMemo.Exclusion.VERIFIED);
         assertThat(memo.exclusion("D:\\work\\x")).isEqualTo(SetupMemo.Exclusion.NOT_EXCLUDED);
         assertThat(memo.exclusion("C:\\Users\\ada\\repos")).isEqualTo(SetupMemo.Exclusion.NOT_EXCLUDED);

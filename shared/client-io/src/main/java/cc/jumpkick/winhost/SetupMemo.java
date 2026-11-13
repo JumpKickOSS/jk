@@ -19,7 +19,9 @@ import org.jspecify.annotations.Nullable;
  * What this machine answered about its setup, in {@code <state>/windows-host.toml}: the answer and
  * when, and from the last elevated check the folders Defender verified as excluded, the ones it
  * found not excluded, the ones the person left out, and the ones a policy refused, each with its
- * reason. Paths are joined with {@code |}, which no Windows path holds.
+ * reason; and every row the person has answered, accepted or left out, by its {@link SetupChange#id},
+ * so a later offer shows only rows never asked. Paths and ids are joined with {@code |}, which no
+ * Windows path holds.
  *
  * @param answeredAt epoch millis of the answer; 0 when never asked
  * @param checkedAt epoch millis of the last elevated check; 0 when never checked
@@ -35,7 +37,8 @@ public record SetupMemo(
         List<String> declined,
         Map<String, String> refused,
         long beforeMs,
-        long afterMs) {
+        long afterMs,
+        List<String> answeredRows) {
 
     /** How the person answered the setup decision. */
     public enum Answer {
@@ -59,13 +62,15 @@ public record SetupMemo(
 
     public static final String FILE = "windows-host.toml";
 
-    public static final SetupMemo NONE = new SetupMemo(null, 0, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0);
+    public static final SetupMemo NONE =
+            new SetupMemo(null, 0, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0, List.of());
 
     public SetupMemo {
         verified = List.copyOf(verified);
         notExcluded = List.copyOf(notExcluded);
         declined = List.copyOf(declined);
         refused = Map.copyOf(refused);
+        answeredRows = List.copyOf(answeredRows);
     }
 
     /** The memo file under {@code state}. */
@@ -92,7 +97,8 @@ public record SetupMemo(
                     list(m.get("declined")),
                     refused,
                     number(m.get("before-ms")),
-                    number(m.get("after-ms")));
+                    number(m.get("after-ms")),
+                    list(m.get("answered-rows")));
         } catch (IOException | RuntimeException unreadable) {
             return NONE;
         }
@@ -111,18 +117,10 @@ public record SetupMemo(
         m.put("refused", String.join("|", refusals));
         m.put("before-ms", Long.toString(beforeMs));
         m.put("after-ms", Long.toString(afterMs));
+        m.put("answered-rows", String.join("|", answeredRows));
         Path parent = file.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replace(file, MinimalToml.writeFlat(m));
-    }
-
-    /**
-     * Whether a surface that was not asked to may put the setup decision to the person: only on a
-     * machine that never answered it. {@code jk doctor --fix} asks regardless, which is how a person
-     * changes the answer.
-     */
-    public boolean mayAsk() {
-        return answer == null;
     }
 
     /** One line naming the remembered answer: {@code declined on 2026-11-09}. */

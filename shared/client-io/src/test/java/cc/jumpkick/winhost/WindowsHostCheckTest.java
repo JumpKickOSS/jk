@@ -102,19 +102,29 @@ class WindowsHostCheckTest {
                 List.of(),
                 Map.of(),
                 0,
-                0);
+                0,
+                List.of());
         HostRow row = check(memo).defender();
         assertThat(row.status()).isEqualTo(HostRow.Status.OK);
         assertThat(row.detail()).contains("JK_HOME and this project excluded (checked 2025-11-09)");
         SetupMemo measured = new SetupMemo(
-                memo.answer(), 1, memo.checkedAt(), memo.verified(), List.of(), List.of(), Map.of(), 1_900, 400);
+                memo.answer(),
+                1,
+                memo.checkedAt(),
+                memo.verified(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                1_900,
+                400,
+                List.of());
         assertThat(check(measured).defender().detail()).endsWith("; build files 1.9 s -> 400 ms per 1,000");
     }
 
     @Test
     void aDeclinedSetupIsOneQuietSlowerLine() {
-        SetupMemo memo =
-                new SetupMemo(SetupMemo.Answer.DECLINED, 1, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0);
+        SetupMemo memo = new SetupMemo(
+                SetupMemo.Answer.DECLINED, 1, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0, List.of());
         HostRow row = check(memo).defender();
         assertThat(row.status()).isEqualTo(HostRow.Status.WARN);
         assertThat(row.detail()).startsWith("slower: Defender scans C:\\Users\\ada\\.jk and C:\\Users\\ada\\src\\app");

@@ -2,6 +2,7 @@
 package cc.jumpkick.winhost;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -9,7 +10,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The host changes recommended for this machine now, in the order a person reads them: the Defender
- * exclusions first, then long paths, then the per-user settings. Each is one row with its own
+ * exclusions first, then long paths, then the per-user settings, then the environments JumpKick can
+ * be installed into. Each is one row with its own
  * checkbox, so a later kind of change joins the same list. A change already in place is left out,
  * so a set-up machine has an empty plan.
  *
@@ -35,6 +37,15 @@ public record SetupPlan(
      * measures the first exclusion's folder, so each exclusion shows what the scan costs here.
      */
     public static SetupPlan of(WindowsHostCheck check, List<RootDiscovery.Root> roots, ScanCost.Probe probe) {
+        return of(check, roots, probe, List.of());
+    }
+
+    /** As {@link #of(WindowsHostCheck, List, ScanCost.Probe)}, with the rows {@code environments} propose last. */
+    public static SetupPlan of(
+            WindowsHostCheck check,
+            List<RootDiscovery.Root> roots,
+            ScanCost.Probe probe,
+            List<SetupEnvironment> environments) {
         List<SetupChange> out = new ArrayList<>();
         long measured = -1;
         String measuredIn = null;
@@ -83,7 +94,20 @@ public record SetupPlan(
                     SetupChange.Kind.EXECUTION_POLICY,
                     null));
         }
+        for (SetupEnvironment environment : environments) out.addAll(environment.rows(check));
         return new SetupPlan(out, measured, measuredIn);
+    }
+
+    /**
+     * The rows {@code memo} has no answer for: what an offer the person did not ask for may show. {@code
+     * jk doctor --fix} shows the whole plan, which is how a person changes an answer.
+     */
+    public SetupPlan unanswered(SetupMemo memo) {
+        Set<String> answered = new HashSet<>(memo.answeredRows());
+        List<SetupChange> open =
+                changes.stream().filter(c -> !answered.contains(c.id())).toList();
+        String in = measuredIn != null && open.stream().anyMatch(c -> measuredIn.equals(c.path())) ? measuredIn : null;
+        return new SetupPlan(open, in == null ? -1 : measuredMs, in);
     }
 
     private static String effect(RootDiscovery.Root root, String path, String measuredIn, long measured) {

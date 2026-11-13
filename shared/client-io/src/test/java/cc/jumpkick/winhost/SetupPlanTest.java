@@ -52,7 +52,8 @@ class SetupPlanTest {
                 List.of(),
                 Map.of(),
                 0,
-                0);
+                0,
+                List.of());
         assertThat(plan(verified).isEmpty()).isTrue();
         assertThat(probed).isEmpty();
     }
@@ -77,11 +78,27 @@ class SetupPlanTest {
     }
 
     @Test
-    void onlyAMachineThatNeverAnsweredMayBeAskedUnprompted() {
-        assertThat(SetupMemo.NONE.mayAsk()).isTrue();
+    void anOfferShowsOnlyRowsNeverAnsweredWhileTheWholePlanStaysForDoctorFix() {
+        host.strings.clear();
+        SetupPlan whole = plan(SetupMemo.NONE);
         SetupMemo declined = new SetupMemo(
-                SetupMemo.Answer.DECLINED, 1_762_646_400_000L, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0);
-        assertThat(declined.mayAsk()).isFalse();
+                SetupMemo.Answer.DECLINED,
+                1_762_646_400_000L,
+                0,
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                0,
+                0,
+                List.of(SetupChange.EXECUTION_POLICY));
+
+        assertThat(whole.unanswered(SetupMemo.NONE).changes()).isEqualTo(whole.changes());
+        assertThat(whole.unanswered(declined).changes())
+                .extracting(SetupChange::id)
+                .doesNotContain(SetupChange.EXECUTION_POLICY)
+                .contains(SetupChange.excludeId(HOME.toString()));
+        assertThat(plan(declined).changes()).extracting(SetupChange::id).contains(SetupChange.EXECUTION_POLICY);
         assertThat(declined.answered()).isEqualTo("declined on 2025-11-09");
     }
 }
