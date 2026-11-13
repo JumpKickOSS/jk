@@ -42,6 +42,17 @@ public interface CliCommand extends Command {
     }
 
     /**
+     * True when a run of this command depends on the installed engine for its whole duration (a
+     * build, a test run, a guard pass), so the dispatcher holds the host-wide install lock shared
+     * around it: an install or engine stop in another session waits for the run to finish, and the
+     * run waits out an install already in progress, so its steps never span two builds of the engine.
+     * A long-lived command (a server, a watcher) answers false: it would hold off installs forever.
+     */
+    default boolean holdsInstall() {
+        return false;
+    }
+
+    /**
      * True when unrecognized options should be forwarded as positional arguments rather than treated
      * as errors — needed for passthrough commands like {@code jk mvn} / {@code jk gradle} that relay
      * unknown flags to a child process.

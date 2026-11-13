@@ -11,6 +11,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
@@ -487,35 +488,44 @@ public final class SelfCommand extends GroupCommand {
                 return 0;
             }
 
-            // One update at a time per home: the engine's own update and a prompt's answer run this too.
-            Optional<String> installed = FileLocks.withLock(install.engineHome().resolve(UPDATE_LOCK), () -> {
-                PreparedUpdate prepared = preparedFor(install, cas, version).orElse(null);
-                if (prepared == null) prepared = prepare(base, verifier, version, running, install, cas);
-                return download ? Optional.<String>empty() : Optional.of(apply(prepared, install, cas, downgrade));
-            });
-            if (installed.isEmpty()) {
-                CommandWedge.printOk("Self", version + " downloaded; `jk self update " + version + "` installs it");
-                return 0;
-            }
-            CommandWedge.printOk("Self", version + " installed (" + installed.get() + ")");
-            // The new engine's bell and the next terminal command each say so once.
-            SelfUpdateState.update(s -> s.withUpdated(running, version, Clock.SYSTEM.instant()));
-            if (downgrade) {
-                SelfUpdateState.update(s -> s.withHold(version, running));
-                CliOutput.out("auto-update is held at " + version + "; `jk self update` resumes it");
-            } else {
-                releaseHold();
-            }
+            // An install swaps the engine every session on this host shares: it waits for their runs
+            // and holds new ones off until the new engine is taking over. A download swaps nothing.
+            try (InstallLock.Hold hold =
+                    download ? InstallLock.none() : InstallLock.exclusive("jk self update " + version)) {
+                // One update at a time per home: the engine's own update and a prompt's answer run this too.
+                Optional<String> installed =
+                        FileLocks.withLock(install.engineHome().resolve(UPDATE_LOCK), () -> {
+                            PreparedUpdate prepared =
+                                    preparedFor(install, cas, version).orElse(null);
+                            if (prepared == null) prepared = prepare(base, verifier, version, running, install, cas);
+                            return download
+                                    ? Optional.<String>empty()
+                                    : Optional.of(apply(prepared, install, cas, downgrade));
+                        });
+                if (installed.isEmpty()) {
+                    CommandWedge.printOk("Self", version + " downloaded; `jk self update " + version + "` installs it");
+                    return 0;
+                }
+                CommandWedge.printOk("Self", version + " installed (" + installed.get() + ")");
+                // The new engine's bell and the next terminal command each say so once.
+                SelfUpdateState.update(s -> s.withUpdated(running, version, Clock.SYSTEM.instant()));
+                if (downgrade) {
+                    SelfUpdateState.update(s -> s.withHold(version, running));
+                    CliOutput.out("auto-update is held at " + version + "; `jk self update` resumes it");
+                } else {
+                    releaseHold();
+                }
 
-            // Hand the engine over: --now stops the old daemon (killing its jobs) first;
-            // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
-            var paths = EnginePaths.current();
-            if (in.isSet("now")) {
-                EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
+                // Hand the engine over: --now stops the old daemon (killing its jobs) first;
+                // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
+                var paths = EnginePaths.current();
+                if (in.isSet("now")) {
+                    EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
+                }
+                Path newJk = EngineInstall.pathClient(JkDirs.binDir());
+                if (!Files.isRegularFile(newJk)) return 0;
+                return handOver(newJk, version, in.isSet("now"));
             }
-            Path newJk = EngineInstall.pathClient(JkDirs.binDir());
-            if (!Files.isRegularFile(newJk)) return 0;
-            return handOver(newJk, version, in.isSet("now"));
         }
 
         /**

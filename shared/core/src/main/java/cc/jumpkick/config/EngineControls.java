@@ -132,6 +132,12 @@ public final class EngineControls {
                     "unset; 1 in fast-tier test JVMs",
                     ENGINE_START,
                     "1: a client in this process uses an engine already serving but never starts or takes one over."),
+            control(
+                    "",
+                    "JK_INSTALL_LOCK",
+                    "on",
+                    ENGINE_START,
+                    "off: a client in this process neither holds nor waits for the host install lock."),
             control("", "JK_ENGINE_HEARTBEAT_MS", "30000", ENGINE_START, "Heartbeat while async jobs run. 0 disables."),
             control(
                     "",

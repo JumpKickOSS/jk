@@ -51,6 +51,11 @@ public final class GuardCommand implements CliCommand {
     }
 
     @Override
+    public boolean holdsInstall() {
+        return true;
+    }
+
+    @Override
     public String description() {
         return "Run the house-rule guards; explain or freeze a rule";
     }

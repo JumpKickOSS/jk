@@ -58,6 +58,11 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     @Override
+    public boolean holdsInstall() {
+        return true;
+    }
+
+    @Override
     public String description() {
         return "Tag the declared version and move jk.toml to the next one";
     }

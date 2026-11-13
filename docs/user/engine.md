@@ -146,6 +146,42 @@ memory alive forever. At the deadline the engine cancels what is still running �
 with an error naming the drain deadline — kills those jobs' workers and exits. `0` waits without
 bound. `jk engine stop -n` stops a draining engine immediately.
 
+### Sessions sharing one install
+
+Every terminal, agent and worktree on a machine shares one installed JumpKick and the engine its
+state directory names, so JumpKick keeps an install from swapping the engine under a run in
+progress. `jk build`, `jk test`, `jk compile`, `jk guard`, `jk explain`, `jk install` and `jk
+snapshot` hold the **install lock** shared for their whole run. Swapping or stopping the engine
+holds it exclusively: an install that replaces JumpKick's own engine or client (`jk snapshot` /
+`jk install` of the JumpKick tree, from its copy step
+through the takeover), `jk self update` and `jk engine stop`. So an install waits for the runs in
+progress to finish, a run started during an install waits for it, and no run's steps span two
+builds of the engine. A wait prints one line naming who holds the lock:
+
+```
+jk: jk snapshot waits for the jk runs using the engine (install lock held by pid 41877 jk test (shared) in /home/me/jk-wt2 since …)
+```
+
+`jk engine status` shows the holders and waiters while there are any (`installLock` in `-O
+jsonl`: `pid`, `mode` = `shared` | `exclusive` | `waiting_shared` | `waiting_exclusive`,
+`purpose`, `cwd`, `since`):
+
+```
+ Install..: lock held by jk snapshot (exclusive), 1 waiting
+            pid 41902 jk snapshot (exclusive) /home/me/jk · since 10:12
+            pid 41877 jk test (waiting (shared)) /home/me/jk-wt2 · since 10:13
+```
+
+The lock is an OS lock on `<state>/engine/install.lock`, so a holder that dies releases it with its
+process; a record left by a dead process is pruned the next time anyone reads the list. `jk engine
+stop -n` does not wait for the lock. Long-lived commands (`jk dev`, `jk watch`, `jk run`, the MCP
+and BSP servers) do not hold it, since they would hold off every install for as long as they run.
+`JK_INSTALL_LOCK=off` turns the lock off for one process.
+
+The lock covers one command at a time. Between `jk snapshot` and a later `jk test` in the same
+script, another session's install can still land; `jk engine status`'s `Source` row names the
+checkout the running engine came from.
+
 ### Several engines
 
 One machine can run several engines: one per state directory and store pair under this home
@@ -672,6 +708,7 @@ requests have no shell, and those decisions fall back to the engine's environmen
 | `JK_ENGINE_OWNER_PID` | unset | Internal: the spawned engine stops once this pid exits. |
 | `JK_ENGINE_TRANSPORT` | unix; tcp on Windows | Force tcp or unix for the client-engine wire. |
 | `JK_ENGINE_NO_SPAWN` | unset; 1 in fast-tier test JVMs | 1: a client in this process uses an engine already serving but never starts or takes one over. |
+| `JK_INSTALL_LOCK` | on | off: a client in this process neither holds nor waits for the host install lock. |
 | `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while async jobs run. 0 disables. |
 | `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Wall deadline for a job a client owns over its socket, in ms. 0 = off. |
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |

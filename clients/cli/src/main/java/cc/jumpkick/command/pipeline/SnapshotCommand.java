@@ -35,6 +35,11 @@ public final class SnapshotCommand implements CliCommand {
     }
 
     @Override
+    public boolean holdsInstall() {
+        return true;
+    }
+
+    @Override
     public String description() {
         return "Install a -SNAPSHOT of this project (inner loop)";
     }

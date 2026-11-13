@@ -71,6 +71,11 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     @Override
+    public boolean holdsInstall() {
+        return true;
+    }
+
+    @Override
     public String description() {
         return "Install a tool, script, project, or git repo";
     }

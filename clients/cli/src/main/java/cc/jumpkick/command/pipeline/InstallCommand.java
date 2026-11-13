@@ -14,6 +14,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.AggregateContext;
@@ -363,7 +364,13 @@ public final class InstallCommand {
             return Exit.USAGE;
         }
         // A standalone project installs as a workspace of one: the same passes, the same shelf.
-        return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
+        try {
+            return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
+        } finally {
+            InstallLock.Hold held = installHold;
+            installHold = null;
+            if (held != null) held.close();
+        }
     }
 
     /**
@@ -380,6 +387,13 @@ public final class InstallCommand {
      * this one and names it.
      */
     private @Nullable Path installedClient;
+
+    /**
+     * The host install lock, held exclusively from the copy step that swaps jk's own engine or
+     * client through the takeover and the re-shelving pass, so no other session's run spans the swap;
+     * null until a pass installs a product. Released when the install returns.
+     */
+    private InstallLock.@Nullable Hold installHold;
 
     private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope) throws IOException {
         Optional<String> engineBefore = liveEngineSha();
@@ -632,6 +646,9 @@ public final class InstallCommand {
             Path launcher = null;
             boolean productLib = !info.productLib().isBlank();
             boolean productBin = !info.productBin().isBlank();
+            if ((productLib || productBin) && installHold == null) {
+                installHold = InstallLock.exclusive("jk " + verb + " (installing jk)");
+            }
             if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
                 launcher = applyInstallPlan(mod, pass.cacheDir(), info.productLib(), info.productBin());
             }

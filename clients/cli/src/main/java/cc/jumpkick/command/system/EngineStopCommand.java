@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
+import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.SilentPeer;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -17,6 +18,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -56,6 +58,18 @@ public final class EngineStopCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) {
+        // A graceful stop waits for the runs other sessions hold the install lock for, so it never
+        // stops an engine under a gate; --now is the operator's override and does not wait.
+        if (in.isSet("now")) return stopEngines(in);
+        try (InstallLock.Hold hold = InstallLock.exclusive("jk engine stop")) {
+            return stopEngines(in);
+        } catch (IOException interrupted) {
+            CommandWedge.printFail("Engine", "interrupted waiting for the install lock: " + interrupted.getMessage());
+            return Exit.FAILURE;
+        }
+    }
+
+    private int stopEngines(Invocation in) {
         if (in.isSet("all")) {
             EngineFleet.FleetStop stop = EngineFleet.stopAll(in.isSet("now"));
             return report(stop.results(), stop.otherHomes());

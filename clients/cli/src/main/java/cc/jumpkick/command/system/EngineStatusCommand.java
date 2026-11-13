@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
+import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.SilentPeer;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -72,7 +73,7 @@ public final class EngineStatusCommand implements CliCommand {
             long stray = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
             List<EngineFleet.Member> others = EngineFleet.list();
             if (global.outputIsJson()) {
-                CliOutput.out(notRunningJson(stray, others));
+                CliOutput.out(notRunningJson(stray, others, InstallLock.holders()));
             } else {
                 CommandWedge.envelopeStart();
                 String headline;
@@ -85,6 +86,7 @@ public final class EngineStatusCommand implements CliCommand {
                             + (others.size() == 1 ? " other is" : " others are") + " running)";
                 }
                 CliOutput.out(JkWedge.chipLine(Glyphs.STOP, "Engine", GlobalConfig.nerdFont(), headline));
+                installLockRows(InstallLock.holders());
                 heapDumpRow(paths);
                 printFleet(others);
             }
@@ -94,7 +96,8 @@ public final class EngineStatusCommand implements CliCommand {
         long now = System.currentTimeMillis();
         long uptimeSeconds = Math.max(0, (now - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
-            CliOutput.out(runningJson(s, uptimeSeconds, EngineFleet.list(), SelfUpdateStatus.describe()));
+            CliOutput.out(runningJson(
+                    s, uptimeSeconds, EngineFleet.list(), SelfUpdateStatus.describe(), InstallLock.holders()));
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
@@ -118,6 +121,7 @@ public final class EngineStatusCommand implements CliCommand {
             detail("Queued", s.queuedBuildPlans() + " (waiting for engine memory)");
             for (EngineProbe.Job job : s.jobs()) if (!job.live()) jobRow(job, now);
         }
+        installLockRows(InstallLock.holders());
         if (s.idleDropped() >= 0) {
             detail("Dropped", s.idleDropped() + (s.idleDropped() == 1 ? " idle connection" : " idle connections"));
         }
@@ -320,16 +324,31 @@ public final class EngineStatusCommand implements CliCommand {
 
     /** The `-O jsonl` line for a directory with no engine of its own; the fleet says what else is alive. */
     public static String notRunningJson(long unresponsivePid, List<EngineFleet.Member> fleet) {
-        return JsonFields.object()
-                .bool("running", false)
-                .optionalNumber("unresponsivePid", unresponsivePid, 0)
-                .token("engines", enginesJson(fleet))
-                .finish();
+        return notRunningJson(unresponsivePid, fleet, List.of());
+    }
+
+    /** The not-running line, with the install lock's holders and waiters when there are any. */
+    public static String notRunningJson(
+            long unresponsivePid, List<EngineFleet.Member> fleet, List<InstallLock.Holder> installLock) {
+        JsonFields json =
+                JsonFields.object().bool("running", false).optionalNumber("unresponsivePid", unresponsivePid, 0);
+        if (!installLock.isEmpty()) json.token("installLock", installLockJson(installLock));
+        return json.token("engines", enginesJson(fleet)).finish();
     }
 
     /** The `-O jsonl` line for a running engine. */
     public static String runningJson(
             EngineProbe.Status s, long uptimeSeconds, List<EngineFleet.Member> fleet, String selfUpdate) {
+        return runningJson(s, uptimeSeconds, fleet, selfUpdate, List.of());
+    }
+
+    /** The running line, with the install lock's holders and waiters when there are any. */
+    public static String runningJson(
+            EngineProbe.Status s,
+            long uptimeSeconds,
+            List<EngineFleet.Member> fleet,
+            String selfUpdate,
+            List<InstallLock.Holder> installLock) {
         JsonFields json = JsonFields.object()
                 .bool("running", true)
                 .number("pid", s.pid())
@@ -378,7 +397,55 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("mcpLoadedConnections", s.mcpLoadedConnections())
                 .number("mcpActiveConnections", s.mcpActiveConnections());
         if (s.vfsJson() != null) json.token("vfs", s.vfsJson());
+        if (!installLock.isEmpty()) json.token("installLock", installLockJson(installLock));
         return json.token("engines", enginesJson(fleet)).finish();
+    }
+
+    /**
+     * The host install lock's holders and waiters: an {@code Install} row counting them, then one
+     * row each. Nothing when no run holds it.
+     */
+    private static void installLockRows(List<InstallLock.Holder> holders) {
+        if (holders.isEmpty()) return;
+        detail("Install", installLockSummary(holders));
+        for (InstallLock.Holder h : holders) {
+            CliOutput.out(" ".repeat(VALUE_COL)
+                    + Theme.colorize(holderLine(h), Theme.active().settled()));
+        }
+    }
+
+    /** {@code lock held by 2 runs, 1 waiting}, or {@code lock held by jk snapshot (exclusive)}. */
+    public static String installLockSummary(List<InstallLock.Holder> holders) {
+        List<InstallLock.Holder> holding =
+                holders.stream().filter(h -> !h.mode().waiting()).toList();
+        long waiting = holders.size() - holding.size();
+        String held;
+        if (holding.isEmpty()) held = "lock free";
+        else if (holding.size() == 1)
+            held = "lock held by " + holding.get(0).purpose() + " ("
+                    + holding.get(0).mode().label() + ")";
+        else held = "lock held by " + holding.size() + " runs";
+        return waiting == 0 ? held : held + ", " + waiting + " waiting";
+    }
+
+    /** {@code pid 4242 jk test (shared) /home/me/jk · since 10:12}. */
+    static String holderLine(InstallLock.Holder h) {
+        return "pid " + h.pid() + " " + h.purpose() + " (" + h.mode().label() + ") " + h.cwd() + " · since "
+                + wallClock(h.since().toEpochMilli());
+    }
+
+    public static String installLockJson(List<InstallLock.Holder> holders) {
+        List<String> rows = new ArrayList<>();
+        for (InstallLock.Holder h : holders) {
+            rows.add(JsonFields.object()
+                    .number("pid", h.pid())
+                    .string("mode", h.mode().name().toLowerCase(Locale.ROOT))
+                    .string("purpose", h.purpose())
+                    .string("cwd", h.cwd())
+                    .number("since", h.since().toEpochMilli())
+                    .finish());
+        }
+        return "[" + String.join(",", rows) + "]";
     }
 
     /** The engine's job rows as one JSON array, the engine's own field names. */

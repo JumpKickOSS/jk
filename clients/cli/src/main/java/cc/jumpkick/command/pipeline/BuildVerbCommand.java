@@ -117,6 +117,11 @@ public final class BuildVerbCommand implements CliCommand {
     }
 
     @Override
+    public boolean holdsInstall() {
+        return true;
+    }
+
+    @Override
     public String description() {
         return shape.description();
     }

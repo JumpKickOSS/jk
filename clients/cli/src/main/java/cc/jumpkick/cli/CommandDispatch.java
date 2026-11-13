@@ -10,6 +10,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.JsonlDownloads;
 import cc.jumpkick.cli.run.TailBuffer;
@@ -523,7 +524,9 @@ public final class CommandDispatch {
             }
             // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
             Confirm.setAssumeYes(in.isSet("yes"));
-            try {
+            // A run that depends on the installed engine holds the host install lock shared, so
+            // another session's install or engine stop cannot swap the engine under it.
+            try (InstallLock.Hold hold = cmd.holdsInstall() ? InstallLock.shared(qualified) : InstallLock.none()) {
                 code = cmd.run(in);
             } finally {
                 Confirm.clearAssumeYes();

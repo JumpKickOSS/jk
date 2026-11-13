@@ -135,15 +135,7 @@ one run per cell, fail fast.
 
 Build with the installed jk (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** jk's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 
-**Several sessions on one host share one installed jk and one resident engine**, so they take one host lock around jk runs until jk coordinates this itself. Run `jk test`, `jk guard`, `jk build` and `jk explain` under a shared hold; run every `jk snapshot` (it installs and takes over the engine), every reinstall and every `jk engine stop` under an exclusive hold, with the install and the runs that depend on it in one hold:
-
-```sh
-L=/var/tmp/jk-engine-$(id -u).lock
-flock -s "$L" jk test -m server/engine
-flock -x "$L" -c 'echo "<who>: <why> $(date)" > "$L.status"; jk snapshot && jk test -p integration -m server/engine; echo idle > "$L.status"'
-```
-
-`$L.status` names the current exclusive holder. A session that runs jk outside the lock can swap the engine under another session's gate or stop an engine draining its job, and that session's results then describe a different build.
+**Several sessions on one host share one installed jk and one resident engine.** jk coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of jk itself (`jk snapshot`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk snapshot && jk test -p integration`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
 
 ## Reinstall from this checkout
 
