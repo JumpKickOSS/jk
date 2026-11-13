@@ -22,7 +22,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SlowestTests;
@@ -35,15 +35,17 @@ import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.test.ClassTags;
 import cc.jumpkick.test.FailureClip;
 import cc.jumpkick.test.JUnitLauncher;
-import cc.jumpkick.test.SuiteClassFilter;
+import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -110,6 +112,15 @@ public final class TestSupport {
      * the effort weights each ask, for an estimate, and read every test source in full each time
      * otherwise.
      */
+    /** The tags a test source declares, from its text; none when it cannot be read. */
+    private static @Nullable ClassTags sourceTags(Path file) {
+        try {
+            return ClassTags.ofSource(Files.readString(file));
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     static int countTests(Path file) {
         Path abs = file.toAbsolutePath().normalize();
         FileStamp stamp = FileStamp.of(abs);
@@ -149,40 +160,48 @@ public final class TestSupport {
     /**
      * Count test methods for the suites a SELECTION will actually run: sizing the bar/ETA with every
      * discovered suite makes a plain {@code jk test} under-fill and snap to 100 when an integration
-     * suite exists. A class-pattern suite's classes count only when the selection runs that suite.
+     * suite exists. A declared suite's tests count only when the selection runs that suite.
      */
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
-        Map<String, ClassSuite> classSuites = declaredClassSuites(moduleDir);
-        List<String> discovered = TestSuites.available(moduleDir, compact, classSuites);
+        Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
+        List<String> discovered = TestSuites.available(moduleDir, compact, declared);
         var resolved = selection.resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : discovered;
-        Predicate<String> runs =
-                SuiteClassFilter.of(moduleDir, compact, suites, classSuites).acceptor();
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        for (String suite : TestSuites.compiled(moduleDir, compact, suites, classSuites)) {
+        for (String suite : TestSuites.compiled(moduleDir, compact, suites, declared)) {
             roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.scalaRoots(moduleDir, compact, suite));
         }
-        int total = 0;
+        Map<String, Path> byClass = new LinkedHashMap<>();
         for (Path root : roots) {
             if (!Files.isDirectory(root)) continue;
             for (Path file : testSources(root)) {
                 String rel = root.relativize(file).toString().replace('\\', '/');
-                if (!runs.test(rel.substring(0, rel.lastIndexOf('.')).replace('/', '.'))) continue;
-                total += countTests(file);
+                byClass.putIfAbsent(rel.substring(0, rel.lastIndexOf('.')).replace('/', '.'), file);
             }
+        }
+        // A suite that claims tags places a source by the tags its text declares.
+        Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)
+                .withTags(name -> {
+                    Path file = byClass.get(name);
+                    return file == null ? null : sourceTags(file);
+                })
+                .acceptor();
+        int total = 0;
+        for (Map.Entry<String, Path> source : byClass.entrySet()) {
+            if (runs.test(source.getKey())) total += countTests(source.getValue());
         }
         return total;
     }
 
-    /** The module's {@code [test.suites]} class-pattern suites; none when its manifest does not parse. */
-    private static Map<String, ClassSuite> declaredClassSuites(Path moduleDir) {
+    /** The module's {@code [test.suites]} declared suites; none when its manifest does not parse. */
+    private static Map<String, DeclaredSuite> declaredSuites(Path moduleDir) {
         try {
             return JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
-                    .testClassSuites();
+                    .testSuites();
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
@@ -239,7 +258,7 @@ public final class TestSupport {
      */
     public static List<String> selectedSuites(
             Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
-        List<String> discovered = TestSuites.available(moduleDir, compact, build.testClassSuites());
+        List<String> discovered = TestSuites.available(moduleDir, compact, build.testSuites());
         if (selection != null) {
             var resolved = selection.resolve(discovered);
             if (resolved.ok()) return resolved.suites();
@@ -478,7 +497,7 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(TaskContext ctx, int workerCount, boolean verbose) {
-        return bridgeListener(ctx, workerCount, verbose, "", null, null, SuiteClassFilter.NONE, TestTier.UNKNOWN);
+        return bridgeListener(ctx, workerCount, verbose, "", null, null, SuiteFilter.NONE, TestTier.UNKNOWN);
     }
 
     /**
@@ -493,7 +512,7 @@ public final class TestSupport {
     /** As {@link #bridgeListener(TaskContext, int, boolean, String)} for a suite running as {@code tier}. */
     static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, TestTier tier) {
-        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null, null, SuiteClassFilter.NONE, tier);
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null, null, SuiteFilter.NONE, tier);
     }
 
     /**
@@ -509,7 +528,7 @@ public final class TestSupport {
             @Nullable String moduleLabel,
             @Nullable Path moduleDir,
             TestFailureSource.@Nullable Cache cache,
-            SuiteClassFilter suites,
+            SuiteFilter suites,
             TestTier tier) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;

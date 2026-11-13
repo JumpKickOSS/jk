@@ -132,20 +132,16 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** The classes the run's suites own ({@link SuiteClassFilter#body}), or null for every class. */
-    private @Nullable String suiteFilter;
-
     /**
-     * The run's suites over a test-classes tree shared with class-pattern suites: no JVM of the run
-     * discovers or executes a class another suite owns, whatever the other filters select.
+     * The run's suites over a test-classes tree shared with other suites: no JVM of the run
+     * discovers or executes a test another suite owns, whatever the other filters select.
      */
-    public JUnitLauncher withSuites(SuiteClassFilter suites) {
-        this.suiteFilter = suites.body();
+    public JUnitLauncher withSuites(SuiteFilter suites) {
         this.suites = suites;
         return this;
     }
 
-    private SuiteClassFilter suites = SuiteClassFilter.NONE;
+    private SuiteFilter suites = SuiteFilter.NONE;
 
     /** Where the {@code integration} suite's JUnit XML goes, as Failsafe's does; null keeps it with the rest. */
     private @Nullable Path integrationResultsDir;
@@ -519,24 +515,25 @@ public final class JUnitLauncher {
         }
     }
 
-    /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's tag filters. */
+    /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's filters. */
     List<String> pullWorkerArgs(int workerId, Path testClassesDir) {
         return withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir), List.of());
     }
 
     /**
-     * {@code base} plus the class filter and the tag filters. The class filter is {@code names}
-     * exactly when given, else the {@code --class} patterns, within the run's suites and less the
-     * excluded classes either way.
+     * {@code base} plus the class filter, the tag filters and the run's suites. The class filter is
+     * {@code names} exactly when given, else the {@code --class} patterns, within the run's suites
+     * and less the excluded classes either way.
      */
     private List<String> withTagArgs(List<String> base, List<String> names) {
         var out = new ArrayList<>(base);
         String include = names.isEmpty() ? classFilter : JUnitClassFilter.exactRegex(names);
-        String filter = JUnitClassFilter.filter(include, excludeFilter, suiteFilter);
+        String filter = JUnitClassFilter.filter(include, excludeFilter, suites.body());
         if (filter != null) out.add("--filter=" + filter);
         if (classNames.isEmpty()) out.addAll(methodArgs);
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
         if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
+        for (String member : suites.members()) out.add("--member=" + member);
         return out;
     }
 

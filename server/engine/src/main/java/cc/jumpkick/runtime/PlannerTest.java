@@ -6,19 +6,17 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TierTags;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.test.SuiteClassFilter;
+import cc.jumpkick.test.SuiteFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
@@ -68,7 +66,7 @@ public final class PlannerTest {
     static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
         var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
         return sel.resolve(
-                TestSuites.available(in.dir(), compact, project.build().testClassSuites()));
+                TestSuites.available(in.dir(), compact, project.build().testSuites()));
     }
 
     /** The plugin steps whose output compile-test reads: every test-source generator. */
@@ -115,12 +113,15 @@ public final class PlannerTest {
         return new TestClassMatch.Tier(tiers.includeTags(), tiers.excludeTags());
     }
 
-    /** Which compiled test classes the run's suites own, and which suite each runs in. */
-    static SuiteClassFilter suiteFilter(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
-        Map<String, ClassSuite> patternSuites = project.build().testClassSuites();
+    /**
+     * Which tests the run's suites own, and which suite each runs in, reading tags from the classes
+     * compiled under {@code testClasses}.
+     */
+    static SuiteFilter suiteFilter(BuildPlanner.Inputs in, boolean compact, JkBuild project, Path testClasses) {
         var resolved = resolveSuites(in, compact, project);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        return SuiteClassFilter.of(in.dir(), compact, suites, patternSuites);
+        return SuiteFilter.of(in.dir(), compact, suites, project.build().testSuites())
+                .withTags(SuiteFilter.classTagsIn(testClasses));
     }
 
     /**

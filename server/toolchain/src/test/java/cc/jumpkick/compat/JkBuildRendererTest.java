@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
@@ -78,6 +79,22 @@ class JkBuildRendererTest {
         assertThat(out).contains("[native]");
         assertThat(JkBuildParser.parse(out).applicationOpt().orElseThrow().relocate())
                 .containsEntry("com.google.common", "com.ex.shaded.guava");
+    }
+
+    @Test
+    void renders_and_round_trips_a_suite_that_claims_by_tag() {
+        DeclaredSuite integration =
+                new DeclaredSuite(List.of("*IT"), List.of("integration"), List.of(), List.of("slow"));
+        JkBuild model = JkBuild.builder(new Project("com.ex", "widget", "1.0.0", 25))
+                .build(BuildBlock.EMPTY.withTestSuites(Map.of("integration", integration)))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("\n[test.suites.integration]\nclasses = [\"*IT\"]\ntags = [\"integration\"]\n"
+                        + "exclude-tags = [\"slow\"]\n");
+        assertThat(JkBuildParser.parse(out).build().testSuites())
+                .containsExactly(Map.entry("integration", integration));
     }
 
     @Test

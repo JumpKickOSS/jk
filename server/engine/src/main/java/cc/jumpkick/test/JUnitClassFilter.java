@@ -69,7 +69,7 @@ final class JUnitClassFilter {
 
     /**
      * The runner's {@code --filter}: the anchored {@code include} regex (null for every class),
-     * within the classes {@code suiteBody} keeps ({@link SuiteClassFilter#body}, null for all), less
+     * within the classes {@code suiteBody} keeps ({@link SuiteFilter#body}, null for all), less
      * the classes {@code excludeBody} names; null when nothing narrows anything.
      */
     static @Nullable String filter(@Nullable String include, @Nullable String excludeBody, @Nullable String suiteBody) {

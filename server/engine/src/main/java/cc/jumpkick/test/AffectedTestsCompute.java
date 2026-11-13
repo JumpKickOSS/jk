@@ -13,7 +13,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.TestStampInputs;
 import cc.jumpkick.task.ClassAbi;
@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -216,23 +217,27 @@ public final class AffectedTestsCompute {
     /**
      * Compiled test classes (imports + tags) plus every test source in the selection, so ranking
      * still works when {@code target/test-classes} has not been built yet; only the classes the
-     * selected suites run, class-pattern suites included.
+     * selected suites run, by class and tag.
      */
     static List<TestClassIndex.Entry> testsFor(
             Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
             throws IOException {
         boolean compact = ModuleLayout.isCompact(moduleDir);
-        Map<String, ClassSuite> classSuites = build.build().testClassSuites();
-        TestSelection.Resolved resolved = (sel == null ? TestSelection.DEFAULT : sel)
-                .resolve(TestSuites.available(moduleDir, compact, classSuites));
+        Map<String, DeclaredSuite> declared = build.build().testSuites();
+        TestSelection.Resolved resolved =
+                (sel == null ? TestSelection.DEFAULT : sel).resolve(TestSuites.available(moduleDir, compact, declared));
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        Predicate<String> runs =
-                SuiteClassFilter.of(moduleDir, compact, suites, classSuites).acceptor();
+        List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production);
+        Map<String, ClassTags> tags = new HashMap<>();
+        for (TestClassIndex.Entry e : compiled) tags.put(e.className(), new ClassTags(e.classTags(), e.tags()));
+        Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)
+                .withTags(tags::get)
+                .acceptor();
         LinkedHashMap<String, TestClassIndex.Entry> byName = new LinkedHashMap<>();
-        for (TestClassIndex.Entry e : TestClassIndex.scan(testClassesDir, production)) {
+        for (TestClassIndex.Entry e : compiled) {
             if (runs.test(e.className())) byName.put(e.className(), e);
         }
-        List<String> roots = TestSuites.compiled(moduleDir, compact, suites, classSuites);
+        List<String> roots = TestSuites.compiled(moduleDir, compact, suites, declared);
         for (TestClassIndex.Entry e : scanTestSources(moduleDir, compact, roots)) {
             if (runs.test(e.className())) byName.putIfAbsent(e.className(), e);
         }
@@ -260,7 +265,8 @@ public final class AffectedTestsCompute {
                     if (fqc.isBlank() || fqc.contains("$")) return;
                     out.putIfAbsent(
                             fqc,
-                            new TestClassIndex.Entry(fqc, Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc)));
+                            new TestClassIndex.Entry(
+                                    fqc, Set.of(), Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc)));
                 });
             }
         }

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
@@ -43,9 +43,9 @@ class PomTestPluginImportTest {
                 .as("the file pattern becomes the class pattern Maven's runner skips")
                 .containsExactly("*Slow*");
         assertThat(messages).noneMatch(m -> m.startsWith("maven-surefire-plugin <excludes>"));
-        assertThat(build.build().testClassSuites())
+        assertThat(build.build().testSuites())
                 .as("failsafe's default patterns are the integration suite's classes")
-                .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
+                .containsExactly(Map.entry("integration", DeclaredSuite.ofClasses(List.of("IT*", "*IT", "*ITCase"))));
         assertThat(messages).noneMatch(m -> m.startsWith("maven-failsafe-plugin runs"));
         assertThat(messages).noneMatch(m -> m.contains("src/integration/java"));
         assertThat(messages)
@@ -70,7 +70,7 @@ class PomTestPluginImportTest {
         assertThat(reparsed.build().testExcludeTags()).containsExactly("slow");
         assertThat(reparsed.build().testExcludeClasses()).containsExactly("*Slow*");
         assertThat(reparsed.build().testJvm()).isEqualTo(build.build().testJvm());
-        assertThat(reparsed.build().testClassSuites()).isEqualTo(build.build().testClassSuites());
+        assertThat(reparsed.build().testSuites()).isEqualTo(build.build().testSuites());
         assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
                 .as("the engine's root-scoped reader sees the same filters")
                 .containsExactly("slow");
@@ -330,10 +330,10 @@ class PomTestPluginImportTest {
                 """);
         List<String> messages = TestImporters.messages(result);
 
-        assertThat(result.jkBuild().build().testClassSuites())
+        assertThat(result.jkBuild().build().testSuites())
                 .containsExactly(Map.entry(
                         "integration",
-                        new ClassSuite(
+                        DeclaredSuite.ofClasses(
                                 List.of("*IntegrationTest", "com.ex.smoke.*"), List.of("*SlowIntegrationTest"))));
         assertThat(messages)
                 .anyMatch(m -> m.startsWith("maven-failsafe-plugin <includes> %regex[.*Flow.*]: not imported"));
@@ -494,8 +494,8 @@ class PomTestPluginImportTest {
                 tests.resolve("GreetingResourceTest.java"), "package org.acme; class GreetingResourceTest {}\n");
         Files.writeString(tests.resolve("GreetingResourceIT.java"), "package org.acme; class GreetingResourceIT {}\n");
         PomImporter.Result result = TestImporters.importXml(tempDir, PROFILE_ONLY_FAILSAFE);
-        assertThat(result.jkBuild().build().testClassSuites())
-                .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
+        assertThat(result.jkBuild().build().testSuites())
+                .containsExactly(Map.entry("integration", DeclaredSuite.ofClasses(List.of("IT*", "*IT", "*ITCase"))));
         assertThat(TestImporters.messages(result))
                 .anyMatch(m -> m.startsWith("IT*, *IT and *ITCase classes:") && m.contains("jk test -s integration"));
     }
@@ -506,7 +506,7 @@ class PomTestPluginImportTest {
         Files.writeString(
                 tests.resolve("GreetingResourceTest.java"), "package org.acme; class GreetingResourceTest {}\n");
         PomImporter.Result result = TestImporters.importXml(tempDir, PROFILE_ONLY_FAILSAFE);
-        assertThat(result.jkBuild().build().testClassSuites()).isEmpty();
+        assertThat(result.jkBuild().build().testSuites()).isEmpty();
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.startsWith("IT*, *IT and *ITCase classes:"));
     }
 

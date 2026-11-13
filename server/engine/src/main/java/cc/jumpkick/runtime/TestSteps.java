@@ -39,7 +39,7 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
-import cc.jumpkick.test.SuiteClassFilter;
+import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestLauncherFailure;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -109,7 +109,7 @@ final class TestSteps {
         // jk build / BSP / MCP: when the session selection carries no tags, resolve the
         // workspace's here as the CLI does for `jk test`. It feeds BOTH the stamp and the runner.
         var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir(), in.profileName());
-        SuiteClassFilter suites = suiteFilter(in, shape.compact(), projectUnderTest);
+        SuiteFilter suites = suiteFilter(in, shape.compact(), projectUnderTest, testClasses);
         AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
         if (affected != null && affected.classNames().isEmpty()) return; // nothing affected — no stamp store
         // A --class selection that names no compiled class of this module is judged
@@ -261,7 +261,7 @@ final class TestSteps {
             int testWorkers,
             String moduleLabel,
             TestFailureSource.Cache snippets,
-            SuiteClassFilter suites,
+            SuiteFilter suites,
             TestTier tier,
             AffectedTestRun.@Nullable Outcome affected,
             TestSelection effectiveSel) {
@@ -276,7 +276,7 @@ final class TestSteps {
             TaskContext ctx,
             BuildPlanner.Inputs in,
             TestSelection sel,
-            SuiteClassFilter suites,
+            SuiteFilter suites,
             ActionCache actionCache,
             String testTaskId,
             boolean testSourcesExist,
@@ -373,7 +373,7 @@ final class TestSteps {
             BuildPlanner.Inputs in,
             TestSelection sel,
             boolean exactClassList,
-            SuiteClassFilter suites,
+            SuiteFilter suites,
             @Nullable String tagExcluded,
             TestSummary result,
             ActionCache actionCache,
@@ -464,7 +464,7 @@ final class TestSteps {
             BuildPlanner.Inputs in,
             TestSelection sel,
             boolean exactClassList,
-            SuiteClassFilter suites,
+            SuiteFilter suites,
             @Nullable String tagExcluded,
             TestSummary result)
             throws IOException {
@@ -501,8 +501,7 @@ final class TestSteps {
 
     /** The affected-test selection when the session asked for one; null otherwise. */
     private static AffectedTestRun.@Nullable Outcome affectedRun(
-            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteClassFilter suites)
-            throws Exception {
+            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteFilter suites) throws Exception {
         if (!in.session().affected()) return null;
         try {
             return AffectedTestRun.apply(ctx, in, effectiveSel, suites);

@@ -68,8 +68,7 @@ final class LauncherPath {
             Path scanClasspath,
             @Nullable String filter,
             List<MethodSelection> methods,
-            List<String> includeTags,
-            List<String> excludeTags,
+            TagFilters tags,
             int workerId,
             EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
@@ -79,7 +78,7 @@ final class LauncherPath {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
         applyMethodFilter(b, methods);
-        applyTagFilters(b, includeTags, excludeTags);
+        applyTagFilters(b, tags);
         DiscoveryFailures dropped = new DiscoveryFailures(scanClasspath, filter);
         b.listeners(dropped);
 
@@ -102,7 +101,7 @@ final class LauncherPath {
         if (dropped.report(System.err)) return Exit.SOFTWARE;
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
-        warnTagExcluded(() -> named(scanClasspath, filter, methods), includeTags, excludeTags, plan, adapter);
+        warnTagExcluded(() -> named(scanClasspath, filter, methods, tags), tags, plan, adapter);
         // Executed class by class on a launcher that fires the session and discovery listeners, as
         // the pull workers execute: a framework readies the JVM for the class about to run, not for
         // every class the root holds — Quarkus augments one application per test profile as the
@@ -117,7 +116,7 @@ final class LauncherPath {
                 if (filter != null && !filter.isBlank()) {
                     one.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
                 }
-                applyTagFilters(one, includeTags, excludeTags);
+                applyTagFilters(one, tags);
                 applyMethodFilter(one, methods);
                 launcher.execute(one.build(), adapter);
             }
@@ -175,8 +174,7 @@ final class LauncherPath {
             Path scanClasspath,
             @Nullable String filter,
             List<MethodSelection> methods,
-            List<String> includeTags,
-            List<String> excludeTags,
+            TagFilters tags,
             int workerId,
             EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
@@ -185,7 +183,7 @@ final class LauncherPath {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
         applyMethodFilter(b, methods);
-        applyTagFilters(b, includeTags, excludeTags);
+        applyTagFilters(b, tags);
         DiscoveryFailures dropped = new DiscoveryFailures(scanClasspath, filter);
         b.listeners(dropped);
         TestPlan plan;
@@ -200,20 +198,22 @@ final class LauncherPath {
         if (dropped.report(System.err)) return Exit.SOFTWARE;
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
-        warnTagExcluded(() -> named(scanClasspath, filter, methods), includeTags, excludeTags, plan, adapter);
+        warnTagExcluded(() -> named(scanClasspath, filter, methods, tags), tags, plan, adapter);
         return 0;
     }
 
     /**
-     * The classes and methods {@code --class} names under {@code scanClasspath}, before any tag
-     * filter: the selection the tag filter is judged against. Null when no class filter is in force.
+     * The classes and methods {@code --class} names under {@code scanClasspath} in the run's
+     * suites, before any tag expression: the selection the tag expressions are judged against. Null
+     * when no class filter is in force.
      */
     private static @Nullable LauncherDiscoveryRequestBuilder named(
-            Path scanClasspath, @Nullable String filter, List<MethodSelection> methods) {
+            Path scanClasspath, @Nullable String filter, List<MethodSelection> methods, TagFilters tags) {
         if (filter == null || filter.isBlank()) return null;
         LauncherDiscoveryRequestBuilder b = scan(scanClasspath)
                 .filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         applyMethodFilter(b, methods);
+        applyTagFilters(b, new TagFilters(List.of(), List.of(), tags.members()));
         return b;
     }
 
@@ -223,15 +223,14 @@ final class LauncherPath {
         if (filter != null) b.filters(filter);
     }
 
-    /** {@link #warnTagExcluded(Supplier, List, List, TestPlan, Adapter)} writing to {@code writer}. */
+    /** {@link #warnTagExcluded(Supplier, TagFilters, TestPlan, Adapter)} writing to {@code writer}. */
     static void warnTagExcluded(
             Supplier<@Nullable LauncherDiscoveryRequestBuilder> named,
-            List<String> includeTags,
-            List<String> excludeTags,
+            TagFilters tags,
             TestPlan filtered,
             EventWriter writer,
             int workerId) {
-        warnTagExcluded(named, includeTags, excludeTags, filtered, new Adapter(writer, workerId));
+        warnTagExcluded(named, tags, filtered, new Adapter(writer, workerId));
     }
 
     /**
@@ -244,12 +243,11 @@ final class LauncherPath {
      */
     private static void warnTagExcluded(
             Supplier<@Nullable LauncherDiscoveryRequestBuilder> named,
-            List<String> includeTags,
-            List<String> excludeTags,
+            TagFilters tags,
             TestPlan filtered,
             Adapter adapter) {
-        List<String> inc = expressions(includeTags);
-        List<String> exc = expressions(excludeTags);
+        List<String> inc = expressions(tags.include());
+        List<String> exc = expressions(tags.exclude());
         if (inc.isEmpty() && exc.isEmpty()) return;
         LauncherDiscoveryRequestBuilder selection = named.get();
         if (selection == null) return;
@@ -485,15 +483,14 @@ final class LauncherPath {
             Launcher launcher,
             String className,
             List<MethodSelection> methods,
-            List<String> includeTags,
-            List<String> excludeTags,
+            TagFilters tags,
             int workerId,
             EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
         LauncherDiscoveryRequestBuilder b =
                 LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(className));
         applyMethodFilter(b, methods);
-        applyTagFilters(b, includeTags, excludeTags);
+        applyTagFilters(b, tags);
         launcher.execute(b.build(), adapter);
         return adapter.hasFailures();
     }
@@ -511,12 +508,13 @@ final class LauncherPath {
      * <p>Discovery ({@code --list-only}) and execution (one-shot and pull) both come through here,
      * so a filter can never select one set of tests to list and a different set to run.
      */
-    private static void applyTagFilters(
-            LauncherDiscoveryRequestBuilder b, List<String> includeTags, List<String> excludeTags) {
-        List<String> inc = expressions(includeTags);
+    private static void applyTagFilters(LauncherDiscoveryRequestBuilder b, TagFilters tags) {
+        List<String> inc = expressions(tags.include());
         if (!inc.isEmpty()) b.filters(TagFilter.includeTags(inc));
-        List<String> exc = expressions(excludeTags);
+        List<String> exc = expressions(tags.exclude());
         if (!exc.isEmpty()) b.filters(TagFilter.excludeTags(exc));
+        PostDiscoveryFilter members = SuiteMembers.filter(tags.members());
+        if (members != null) b.filters(members);
     }
 
     private static List<String> expressions(List<String> raw) {

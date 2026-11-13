@@ -435,7 +435,7 @@ public final class PomImporter {
         if (!tests.excludeDependencies().isEmpty())
             build = build.withTestExcludeDependencies(tests.excludeDependencies());
         if (tests.integration() != null) {
-            build = build.withTestClassSuites(Map.of(TestSuites.INTEGRATION, tests.integration()));
+            build = build.withTestSuites(Map.of(TestSuites.INTEGRATION, tests.integration()));
         }
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
         if (!tests.env().isEmpty()) build = build.withTestEnv(tests.env());

@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.BuildBlock;
-import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -494,7 +494,7 @@ class JkBuildParserProjectTest {
 
     @Test
     void parses_class_pattern_suites_in_manifest_order() {
-        assertThat(JkBuildParser.parse(PROJECT).build().testClassSuites()).isEmpty();
+        assertThat(JkBuildParser.parse(PROJECT).build().testSuites()).isEmpty();
         var build = JkBuildParser.parse(PROJECT + """
 
                 [test]
@@ -508,15 +508,40 @@ class JkBuildParserProjectTest {
                 [test.suites.contract]
                 classes = ["com.acme.*ContractTest"]
                 """).build();
-        assertThat(build.testClassSuites())
+        assertThat(build.testSuites())
                 .containsExactly(
-                        Map.entry("integration", new ClassSuite(List.of("IT*", "*IT", "*ITCase"), List.of("*SlowIT"))),
-                        Map.entry("contract", ClassSuite.of(List.of("com.acme.*ContractTest"))));
+                        Map.entry(
+                                "integration",
+                                DeclaredSuite.ofClasses(List.of("IT*", "*IT", "*ITCase"), List.of("*SlowIT"))),
+                        Map.entry("contract", DeclaredSuite.ofClasses(List.of("com.acme.*ContractTest"))));
         assertThat(build.testExcludeClasses()).containsExactly("*PerformanceTest");
     }
 
     @Test
-    void refuses_a_class_pattern_suite_it_cannot_run() {
+    void parses_suites_that_claim_tests_by_tag() {
+        var build = JkBuildParser.parse(PROJECT + """
+
+                [test.suites.integration]
+                tags = ["integration", "integration"]
+                exclude-tags = ["slow"]
+
+                [test.suites.contract]
+                classes = ["*ContractTest"]
+                tags = ["contract"]
+                """).build();
+        assertThat(build.testSuites())
+                .containsExactly(
+                        Map.entry(
+                                "integration",
+                                new DeclaredSuite(List.of(), List.of("integration"), List.of(), List.of("slow"))),
+                        Map.entry(
+                                "contract",
+                                new DeclaredSuite(
+                                        List.of("*ContractTest"), List.of("contract"), List.of(), List.of())));
+    }
+
+    @Test
+    void refuses_a_suite_it_cannot_run() {
         for (String bad : List.of(
                 "[test.suites.test]\nclasses = [\"*IT\"]",
                 "[test.suites.guard]\nclasses = [\"*IT\"]",
@@ -527,6 +552,11 @@ class JkBuildParserProjectTest {
                 "[test.suites.integration]\nclasses = [\"*IT\"]\ndir = \"src/it/java\"",
                 "[test.suites.integration]\nclasses = [\"*IT\"]\nexclude-classes = \"*SlowIT\"",
                 "[test.suites.integration]\nclasses = [\"*IT\"]\nexclude-classes = [\"SlowIT#run\"]",
+                "[test.suites.integration]\nexclude-tags = [\"slow\"]",
+                "[test.suites.integration]\ntags = []",
+                "[test.suites.integration]\ntags = \"integration\"",
+                "[test.suites.integration]\ntags = [\"slow | bench\"]",
+                "[test.suites.integration]\ntags = [\"integration\"]\nexclude-tags = [\"!slow\"]",
                 "[test]\nsuites = [\"integration\"]")) {
             assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n" + bad + "\n"))
                     .as(bad)

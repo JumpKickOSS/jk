@@ -38,7 +38,12 @@ public final class TestClassIndex {
 
     private TestClassIndex() {}
 
-    public record Entry(String className, Set<String> imports, Set<String> tags, String nameMatchSimple) {}
+    /**
+     * One compiled test class: {@code tags} every JUnit tag on it, its fields and its methods, and
+     * {@code classTags} those on the class itself, which every test in it inherits.
+     */
+    public record Entry(
+            String className, Set<String> imports, Set<String> tags, Set<String> classTags, String nameMatchSimple) {}
 
     public static List<Entry> scan(Path testClassesDir, Set<String> productionFqcs) throws IOException {
         if (testClassesDir == null || !Files.isDirectory(testClassesDir)) return List.of();
@@ -75,12 +80,14 @@ public final class TestClassIndex {
                 String fqc = Descriptors.binaryName(ref);
                 if (productionFqcs.contains(fqc)) imports.add(fqc);
             }
-            Set<String> tags = new LinkedHashSet<>();
-            tagsOf(c.annotations(), tags);
+            Set<String> classTags = new LinkedHashSet<>();
+            tagsOf(c.annotations(), classTags);
+            Set<String> tags = new LinkedHashSet<>(classTags);
             for (FieldFacts f : c.fields()) tagsOf(f.annotations(), tags);
             for (MethodFacts m : c.methods()) tagsOf(m.annotations(), tags);
             String name = c.binaryName();
-            out.add(new Entry(name, Set.copyOf(imports), Set.copyOf(tags), nameMatchSimple(name)));
+            out.add(new Entry(
+                    name, Set.copyOf(imports), Set.copyOf(tags), Set.copyOf(classTags), nameMatchSimple(name)));
         }
         return List.copyOf(out);
     }
@@ -105,7 +112,12 @@ public final class TestClassIndex {
             for (String ref : c.refs) {
                 if (productionFqcs.contains(ref)) imports.add(ref);
             }
-            out.add(new Entry(c.className, Set.copyOf(imports), Set.copyOf(c.tags), nameMatchSimple(c.className)));
+            out.add(new Entry(
+                    c.className,
+                    Set.copyOf(imports),
+                    Set.copyOf(c.tags),
+                    Set.copyOf(c.classTags),
+                    nameMatchSimple(c.className)));
         });
         return List.copyOf(out);
     }
@@ -144,6 +156,8 @@ public final class TestClassIndex {
 
         final Set<String> refs = new LinkedHashSet<>();
         final Set<String> tags = new LinkedHashSet<>();
+        /** The tags on the class itself. */
+        final Set<String> classTags = new LinkedHashSet<>();
 
         Collector() {
             super(Opcodes.ASM9);
@@ -161,7 +175,7 @@ public final class TestClassIndex {
 
         @Override
         public @Nullable AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
-            return annotation(descriptor);
+            return annotation(descriptor, true);
         }
 
         @Override
@@ -170,7 +184,7 @@ public final class TestClassIndex {
             return new FieldVisitor(Opcodes.ASM9) {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean vis) {
-                    return annotation(desc);
+                    return annotation(desc, false);
                 }
             };
         }
@@ -182,7 +196,7 @@ public final class TestClassIndex {
             return new MethodVisitor(Opcodes.ASM9) {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean vis) {
-                    return annotation(desc);
+                    return annotation(desc, false);
                 }
 
                 @Override
@@ -204,13 +218,16 @@ public final class TestClassIndex {
             };
         }
 
-        private @Nullable AnnotationVisitor annotation(String descriptor) {
+        /** {@code classLevel}: the annotation sits on the class itself, so its tags are inherited by every test. */
+        private @Nullable AnnotationVisitor annotation(String descriptor, boolean classLevel) {
             addDesc(descriptor);
             if ("Lorg/junit/jupiter/api/Tag;".equals(descriptor)) {
                 return new AnnotationVisitor(Opcodes.ASM9) {
                     @Override
                     public void visit(String name, Object value) {
-                        if (value != null) tags.add(value.toString());
+                        if (value == null) return;
+                        tags.add(value.toString());
+                        if (classLevel) classTags.add(value.toString());
                     }
                 };
             }
@@ -223,7 +240,7 @@ public final class TestClassIndex {
 
                     @Override
                     public @Nullable AnnotationVisitor visitAnnotation(String name, String desc) {
-                        return annotation(desc);
+                        return annotation(desc, classLevel);
                     }
                 };
             }

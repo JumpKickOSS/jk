@@ -97,7 +97,7 @@ public final class JkBuildRenderer {
     /**
      * {@code [build] extra-src} and {@code module-services}; {@code [test]} extra source roots and source excludes, the baseline
      * tag filters, the excluded classes and dependencies, the test JVM's flags and system properties,
-     * and a {@code [test.suites.<name>]} table per class-pattern suite.
+     * and a {@code [test.suites.<name>]} table per declared suite.
      */
     private static void renderBuild(StringBuilder sb, BuildBlock build) {
         if (!build.extraSrc().isEmpty() || build.moduleServices()) sb.append("\n[build]\n");
@@ -105,16 +105,19 @@ public final class JkBuildRenderer {
             sb.append("extra-src = ").append(list(build.extraSrc())).append('\n');
         if (build.moduleServices()) sb.append("module-services = true\n");
         renderTest(sb, build);
-        build.testClassSuites().forEach((suite, spec) -> {
-            sb.append("\n[test.suites.")
-                    .append(suite)
-                    .append("]\nclasses = ")
-                    .append(list(spec.classes()))
-                    .append('\n');
+        build.testSuites().forEach((suite, spec) -> {
+            sb.append("\n[test.suites.").append(suite).append("]\n");
+            if (!spec.classes().isEmpty())
+                sb.append("classes = ").append(list(spec.classes())).append('\n');
+            if (!spec.tags().isEmpty())
+                sb.append("tags = ").append(list(spec.tags())).append('\n');
             if (!spec.excludeClasses().isEmpty()) {
                 sb.append("exclude-classes = ")
                         .append(list(spec.excludeClasses()))
                         .append('\n');
+            }
+            if (!spec.excludeTags().isEmpty()) {
+                sb.append("exclude-tags = ").append(list(spec.excludeTags())).append('\n');
             }
         });
     }

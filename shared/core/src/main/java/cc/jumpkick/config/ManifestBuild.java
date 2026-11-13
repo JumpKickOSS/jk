@@ -379,7 +379,7 @@ public final class ManifestBuild {
                 s.testExcludeClasses,
                 s.testExcludeSrc,
                 s.testExcludeDependencies,
-                s.testClassSuites,
+                s.testSuites,
                 s.testAssertions,
                 s.testCoverage,
                 s.testNetworkAllowed,

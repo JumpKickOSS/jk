@@ -15,7 +15,7 @@ import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
-import cc.jumpkick.test.SuiteClassFilter;
+import cc.jumpkick.test.SuiteFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * path (a {@code META-INF/services} file, a {@code junit-platform.properties}) would be whichever
  * copy came last, and every suite would read it. So such a run copies no suite's resources into the
  * tree: each suite runs in its own JVMs with its own roots ahead of the shared classpath, as it
- * would run alone. The default suite's roots carry the class-pattern suites' and its configured
+ * would run alone. The default suite's roots carry the declared suites' and its configured
  * extra roots. Empty when the run compiles one directory suite, whose resources the tree holds.
  */
 record SuiteResources(Map<String, List<Path>> bySuite) {
@@ -78,7 +78,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
     /**
      * Test resources ride the test classpath next to compiled tests, so getResourceAsStream
      * fixtures resolve: the test KSP round's output and, when the run compiles one directory suite,
-     * that suite's resources (plus the class-pattern suites' and its configured extra roots) are
+     * that suite's resources (plus the declared suites' and its configured extra roots) are
      * mirrored into target/test-classes. A run of several directory suites mirrors none of them:
      * this record runs each with its own roots, so a same-path resource never collides.
      * run-tests folds every root into its TestStamp key. Returns what compile-test publishes: its
@@ -111,7 +111,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 in.dir(),
                 compact,
                 suiteNames,
-                ctx.require(MODULE).project().build().testClassSuites().keySet(),
+                ctx.require(MODULE).project().build().testSuites().keySet(),
                 extraRoots);
         List<Path> suiteResDirs = new ArrayList<>(kspRoots);
         suiteResDirs.addAll(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
@@ -157,7 +157,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      */
     TestSummary launch(
             Path testClasses,
-            SuiteClassFilter suites,
+            SuiteFilter suites,
             List<String> classPatterns,
             List<String> excludeClasses,
             AffectedTestRun.@Nullable Outcome affected,
@@ -168,7 +168,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
         if (!split()) return launch.run(launcher.get().withSuites(suites), runtimeCp);
         TestSummary total = null;
         for (Map.Entry<String, List<Path>> suite : bySuite.entrySet()) {
-            SuiteClassFilter part = suites.part(suite.getKey());
+            SuiteFilter part = suites.part(suite.getKey());
             if (part == null) continue;
             JUnitLauncher one = launcher.get().withSuites(part);
             if (affected != null) {

@@ -33,7 +33,7 @@ record TestSources(Path javaTestSrc, List<Path> javaTest, List<Path> ktTest, Lis
             @Nullable PluginDeclarations decls)
             throws IOException {
         List<String> suiteNames = TestSuites.compiled(
-                dir, compact, selectedSuites, project.build().testClassSuites());
+                dir, compact, selectedSuites, project.build().testSuites());
         LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
         javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
         javaTest.addAll(PlannerKsp.generatedTestSources(layout, decls, ".java"));

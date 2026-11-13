@@ -78,7 +78,7 @@ public record BuildBlock(
          * compiled classes, in manifest order. The default suite leaves every class a suite's
          * {@code classes} match to that suite.
          */
-        Map<String, ClassSuite> testClassSuites,
+        Map<String, DeclaredSuite> testSuites,
         /**
          * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
          * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
@@ -282,7 +282,7 @@ public record BuildBlock(
         testExcludeClasses = testExcludeClasses == null ? List.of() : List.copyOf(testExcludeClasses);
         testExcludeSrc = testExcludeSrc == null ? List.of() : List.copyOf(testExcludeSrc);
         testExcludeDependencies = testExcludeDependencies == null ? List.of() : List.copyOf(testExcludeDependencies);
-        testClassSuites = suiteClasses(testClassSuites);
+        testSuites = suiteClasses(testSuites);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
         testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
@@ -369,13 +369,13 @@ public record BuildBlock(
         return with(f -> f.testExcludeDependencies = coordinates);
     }
 
-    /** The same block with its {@code [test.suites.<name>]} class-pattern suites set. */
-    public BuildBlock withTestClassSuites(Map<String, ClassSuite> suites) {
-        return with(f -> f.testClassSuites = suites);
+    /** The same block with its {@code [test.suites.<name>]} declared suites set. */
+    public BuildBlock withTestSuites(Map<String, DeclaredSuite> suites) {
+        return with(f -> f.testSuites = suites);
     }
 
     /** An unmodifiable copy that keeps the manifest's suite order. */
-    private static Map<String, ClassSuite> suiteClasses(@Nullable Map<String, ClassSuite> suites) {
+    private static Map<String, DeclaredSuite> suiteClasses(@Nullable Map<String, DeclaredSuite> suites) {
         if (suites == null || suites.isEmpty()) return Map.of();
         return Collections.unmodifiableMap(new LinkedHashMap<>(suites));
     }

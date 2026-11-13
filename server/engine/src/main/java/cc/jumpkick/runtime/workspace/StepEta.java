@@ -17,7 +17,7 @@ import cc.jumpkick.runtime.base.RungBias;
 import cc.jumpkick.runtime.base.StepLedger;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.SuiteSelection;
-import cc.jumpkick.test.SuiteClassFilter;
+import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.EtaSpread;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -456,8 +456,7 @@ public final class StepEta {
         if (walls.isEmpty()) return OptionalLong.empty();
         long ms = TestEffort.selectedClassesMillis(
                 walls,
-                SuiteClassFilter.selects(
-                        SessionContext.current().testSelection().classes()));
+                SuiteFilter.selects(SessionContext.current().testSelection().classes()));
         return OptionalLong.of(ms > 0 ? ms : EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT);
     }
 }

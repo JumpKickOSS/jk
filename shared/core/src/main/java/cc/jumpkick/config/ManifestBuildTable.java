@@ -3,8 +3,8 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
-import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.run.TaskNames;
@@ -60,7 +60,7 @@ final class ManifestBuildTable {
         final List<String> testExcludeClasses = new ArrayList<>();
         final List<String> testExcludeSrc = new ArrayList<>();
         final List<String> testExcludeDependencies = new ArrayList<>();
-        final Map<String, ClassSuite> testClassSuites = new LinkedHashMap<>();
+        final Map<String, DeclaredSuite> testSuites = new LinkedHashMap<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
         boolean testNetworkAllowed = false;
@@ -333,16 +333,17 @@ final class ManifestBuildTable {
     }
 
     /**
-     * {@code [test.suites.<name>]} — a suite selected by class pattern ({@code --class} syntax, no
-     * {@code #method}) over the default suite's classes: {@code classes}, and the {@code
-     * exclude-classes} among them that run in no suite. The default suite, the guard suite and the
-     * fixtures source set cannot be one.
+     * {@code [test.suites.<name>]} — the tests a suite claims beyond its own directory: {@code
+     * classes} by class pattern ({@code --class} syntax, no {@code #method}) over the default
+     * suite's classes, {@code tags} by JUnit tag from every test source, and the {@code
+     * exclude-classes} / {@code exclude-tags} among them that run in no suite. The default suite,
+     * the guard suite and the fixtures source set cannot be one.
      */
     private static void readSuites(TomlTable test, Settings s) {
         if (!test.contains("suites")) return;
         if (!(test.get("suites") instanceof TomlTable suites)) {
             throw new JkBuildParseException(
-                    "[test].suites must be a table of suites: [test.suites.integration]" + " classes = [\"*IT\"]");
+                    "[test].suites must be a table of suites: [test.suites.integration] tags = [\"integration\"]");
         }
         for (String name : suites.keySet()) {
             String where = "[test.suites." + name + "]";
@@ -351,32 +352,73 @@ final class ManifestBuildTable {
                     || TestSuites.GUARD.equals(name)
                     || "fixtures".equals(name)) {
                 throw new JkBuildParseException(
-                        where + " — a suite name is [a-z][a-z0-9_-]* and not test, guard" + " or fixtures");
+                        where + " — a suite name is [a-z][a-z0-9_-]* and not test, guard or fixtures");
             }
             if (!(suites.get(name) instanceof TomlTable suite)) {
-                throw new JkBuildParseException(where + " must be a table: classes = [\"*IT\"]");
+                throw new JkBuildParseException(where + " must be a table: tags = [\"" + name + "\"]");
             }
             for (String key : suite.keySet()) {
-                if (!"classes".equals(key) && !"exclude-classes".equals(key)) {
+                if (!SUITE_KEYS.contains(key)) {
                     throw new JkBuildParseException(
-                            where + " unknown key `" + key + "` — expected: classes, exclude-classes");
+                            where + " unknown key `" + key + "` — expected: " + String.join(", ", SUITE_KEYS));
                 }
             }
-            if (!(suite.get("classes") instanceof TomlArray values) || values.isEmpty()) {
+            List<String> classes = suite.contains("classes")
+                    ? classPatterns(where, "classes", array(suite, where, "classes", "classes = [\"*IT\"]"))
+                    : List.of();
+            List<String> tags = suite.contains("tags")
+                    ? tagNames(where, "tags", array(suite, where, "tags", "tags = [\"integration\"]"))
+                    : List.of();
+            if (classes.isEmpty() && tags.isEmpty()) {
                 throw new JkBuildParseException(
-                        where + " classes must be a non-empty array of class patterns: classes = [\"*IT\"]");
+                        where + " claims no tests — set classes = [\"*IT\"] or tags = [\"" + name + "\"]");
             }
-            List<String> classes = classPatterns(where, "classes", values);
-            List<String> excludes = List.of();
-            if (suite.contains("exclude-classes")) {
-                if (!(suite.get("exclude-classes") instanceof TomlArray excluded)) {
-                    throw new JkBuildParseException(where
-                            + " exclude-classes must be an array of class patterns: exclude-classes = [\"*SlowIT\"]");
-                }
-                excludes = classPatterns(where, "exclude-classes", excluded);
-            }
-            s.testClassSuites.put(name, new ClassSuite(classes, excludes));
+            List<String> excludeClasses = suite.contains("exclude-classes")
+                    ? classPatterns(
+                            where,
+                            "exclude-classes",
+                            array(suite, where, "exclude-classes", "exclude-classes = [\"*SlowIT\"]"))
+                    : List.of();
+            List<String> excludeTags = suite.contains("exclude-tags")
+                    ? tagNames(where, "exclude-tags", array(suite, where, "exclude-tags", "exclude-tags = [\"slow\"]"))
+                    : List.of();
+            s.testSuites.put(name, new DeclaredSuite(classes, tags, excludeClasses, excludeTags));
         }
+    }
+
+    /** The keys a {@code [test.suites.<name>]} table may carry, in the order errors list them. */
+    private static final List<String> SUITE_KEYS = List.of("classes", "tags", "exclude-classes", "exclude-tags");
+
+    private static TomlArray array(TomlTable suite, String where, String key, String example) {
+        if (!(suite.get(key) instanceof TomlArray values)) {
+            throw new JkBuildParseException(where + " " + key + " must be an array: " + example);
+        }
+        return values;
+    }
+
+    /**
+     * {@code values} as distinct JUnit tag names; a blank one, or one JUnit's tag syntax forbids
+     * (whitespace, control characters, {@code , ( ) & | !}), is an error.
+     */
+    private static List<String> tagNames(String where, String key, TomlArray values) {
+        List<String> tags = new ArrayList<>();
+        for (int i = 0; i < values.size(); i++) {
+            if (!(values.get(i) instanceof String str) || !isTagName(str.trim())) {
+                throw new JkBuildParseException(
+                        where + " " + key + " must be an array of JUnit tag names, e.g. [\"integration\"]");
+            }
+            if (!tags.contains(str.trim())) tags.add(str.trim());
+        }
+        return List.copyOf(tags);
+    }
+
+    private static boolean isTagName(String tag) {
+        if (tag.isEmpty()) return false;
+        for (int i = 0; i < tag.length(); i++) {
+            char c = tag.charAt(i);
+            if (Character.isWhitespace(c) || Character.isISOControl(c) || ",()&|!".indexOf(c) >= 0) return false;
+        }
+        return true;
     }
 
     /** {@code values} as trimmed, distinct class patterns; a blank one or one naming a method is an error. */

@@ -76,6 +76,22 @@ class LauncherPathTest {
     }
 
     @Test
+    void a_suite_member_places_each_test_by_its_class_and_tags() {
+        String tagged = Tagged.class.getName().replace(".", "\\.").replace("$", "\\$");
+        assertThat(runMembers(List.of("|slow|.*")))
+                .as("the default suite: what no suite claims by tag")
+                .containsExactlyInAnyOrder("plain()", "bracketed()");
+        assertThat(runMembers(List.of("slow||.*"))).containsExactly("slowOne()");
+        assertThat(runMembers(List.of("slow||.*", "brackets||" + tagged)))
+                .as("a test any member holds for runs")
+                .containsExactlyInAnyOrder("slowOne()", "bracketed()");
+        assertThat(runMembers(List.of("slow,brackets|[slow]|.*"))).containsExactly("slowOne()");
+        assertThat(runMembers(List.of("||com\\.acme\\..*")))
+                .as("another class's member")
+                .isEmpty();
+    }
+
+    @Test
     void a_tag_whose_name_contains_brackets_still_matches() {
         // "[slow]" is a legal TestTag and must filter, not truncate at ']'.
         assertThat(run(List.of(), List.of("[slow]"))).containsExactlyInAnyOrder("plain()", "slowOne()");
@@ -93,8 +109,7 @@ class LauncherPathTest {
         var events = new Recorder();
         LauncherPath.warnTagExcluded(
                 named(TagExcludedFixture.class),
-                List.of(),
-                List.of("slow"),
+                new TagFilters(List.of(), List.of("slow"), List.of()),
                 filtered(TagExcludedFixture.class, TagFilter.excludeTags("slow")),
                 events,
                 0);
@@ -111,8 +126,7 @@ class LauncherPathTest {
         var events = new Recorder();
         LauncherPath.warnTagExcluded(
                 named(TagExcludedFixture.class),
-                List.of("slow"),
-                List.of(),
+                new TagFilters(List.of("slow"), List.of(), List.of()),
                 filtered(TagExcludedFixture.class, TagFilter.includeTags("slow")),
                 events,
                 0);
@@ -128,8 +142,7 @@ class LauncherPathTest {
                     discoveries[0]++;
                     return named(TagExcludedFixture.class).get();
                 },
-                List.of(),
-                List.of(),
+                new TagFilters(List.of(), List.of(), List.of()),
                 filtered(TagExcludedFixture.class),
                 events,
                 0);
@@ -164,7 +177,8 @@ class LauncherPathTest {
             throws IOException {
         Path root = classpathRootOf(tmp, TagEmptiedFixture.class);
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of(), List.of("integration"), List.of(), 0, events);
+        LauncherPath.runListOnly(
+                root, null, List.of(), new TagFilters(List.of("integration"), List.of(), List.of()), 0, events);
         assertThat(events.warnings()).isEmpty();
         assertThat(events.finishedTests()).isEmpty();
     }
@@ -174,7 +188,8 @@ class LauncherPathTest {
             throws IOException {
         Path root = classpathRootOf(tmp, TestableOnlyFixture.class, EventType.class);
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of(), List.of("integration"), List.of(), 0, events);
+        LauncherPath.runListOnly(
+                root, null, List.of(), new TagFilters(List.of("integration"), List.of(), List.of()), 0, events);
         assertThat(events.warnings()).singleElement().satisfies(w -> {
             assertThat(w.get("code")).isEqualTo(LauncherPath.NO_TESTS_DISCOVERED);
             assertThat(String.valueOf(w.get("message"))).contains("no tests discovered in 2 classes");
@@ -186,7 +201,7 @@ class LauncherPathTest {
             throws IOException {
         Path root = classpathRootOf(tmp, EventType.class, Exit.class);
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of(), List.of(), List.of(), 0, events);
+        LauncherPath.runListOnly(root, null, List.of(), new TagFilters(List.of(), List.of(), List.of()), 0, events);
         assertThat(events.warnings()).singleElement().satisfies(w -> {
             assertThat(w.get("code")).isEqualTo("no-test-classes");
             assertThat(String.valueOf(w.get("message")))
@@ -260,7 +275,8 @@ class LauncherPathTest {
 
         LifecycleListenerFixture.reset();
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of(), List.of(), List.of("slow"), 0, events);
+        LauncherPath.runListOnly(
+                root, null, List.of(), new TagFilters(List.of(), List.of("slow"), List.of()), 0, events);
         assertThat(events.discovered()).containsExactly(TagEmptiedFixture.class.getName());
         assertThat(LifecycleListenerFixture.sessionsOpened()).isZero();
         assertThat(LifecycleListenerFixture.discoveriesStarted()).isZero();
@@ -278,7 +294,8 @@ class LauncherPathTest {
         LifecycleListenerFixture.reset();
         var events = new Recorder();
 
-        int exit = LauncherPath.runOneShot(root, null, List.of(), List.of(), List.of(), 0, events);
+        int exit = LauncherPath.runOneShot(
+                root, null, List.of(), new TagFilters(List.of(), List.of(), List.of()), 0, events);
 
         assertThat(exit).isZero();
         assertThat(events.discovered())
@@ -302,7 +319,12 @@ class LauncherPathTest {
     void a_parameterized_invocation_carries_its_display_name_and_a_plain_test_does_not() {
         var events = new Recorder();
         LauncherPath.runClass(
-                LauncherFactory.create(), Parameterized.class.getName(), List.of(), List.of(), List.of(), 0, events);
+                LauncherFactory.create(),
+                Parameterized.class.getName(),
+                List.of(),
+                new TagFilters(List.of(), List.of(), List.of()),
+                0,
+                events);
         List<Map<String, Object>> finished = events.finishedTests();
         assertThat(finished).hasSize(3);
         assertThat(finished.stream().filter(e -> e.containsKey("display")).map(e -> e.get("display")))
@@ -317,7 +339,12 @@ class LauncherPathTest {
     void finished_events_carry_split_identity_status_and_worker_id() {
         var events = new Recorder();
         LauncherPath.runClass(
-                LauncherFactory.create(), Tagged.class.getName(), List.of(), List.of("slow"), List.of(), 7, events);
+                LauncherFactory.create(),
+                Tagged.class.getName(),
+                List.of(),
+                new TagFilters(List.of("slow"), List.of(), List.of()),
+                7,
+                events);
         Map<String, Object> finished = events.finishedTests().get(0);
         assertThat(finished)
                 .containsEntry("testClass", Tagged.class.getName())
@@ -336,8 +363,7 @@ class LauncherPathTest {
                         LauncherFactory.create(),
                         Tagged.class.getName(),
                         List.of(),
-                        List.of(),
-                        List.of(),
+                        TagFilters.NONE,
                         0,
                         new Recorder()))
                 .isFalse();
@@ -350,8 +376,7 @@ class LauncherPathTest {
                         LauncherFactory.create(),
                         CaughtOutOfMemoryFixture.class.getName(),
                         List.of(),
-                        List.of(),
-                        List.of(),
+                        new TagFilters(List.of(), List.of(), List.of()),
                         0,
                         events))
                 .isFalse();
@@ -368,8 +393,7 @@ class LauncherPathTest {
                 LauncherFactory.create(),
                 Tagged.class.getName(),
                 selecting(Tagged.class, "slowOne"),
-                List.of(),
-                List.of(),
+                new TagFilters(List.of(), List.of(), List.of()),
                 0,
                 events);
         assertThat(methods(events)).containsExactly("slowOne()");
@@ -382,8 +406,7 @@ class LauncherPathTest {
                 LauncherFactory.create(),
                 Tagged.class.getName(),
                 selecting(Tagged.class, "*One"),
-                List.of(),
-                List.of(),
+                new TagFilters(List.of(), List.of(), List.of()),
                 0,
                 events);
         assertThat(methods(events)).containsExactly("slowOne()");
@@ -396,8 +419,7 @@ class LauncherPathTest {
                 LauncherFactory.create(),
                 WithNested.class.getName(),
                 selecting(WithNested.class, "inner"),
-                List.of(),
-                List.of(),
+                new TagFilters(List.of(), List.of(), List.of()),
                 0,
                 events);
         assertThat(methods(events)).containsExactly("inner()");
@@ -410,8 +432,7 @@ class LauncherPathTest {
                 LauncherFactory.create(),
                 Tagged.class.getName(),
                 selecting(Parameterized.class, "plain"),
-                List.of(),
-                List.of(),
+                new TagFilters(List.of(), List.of(), List.of()),
                 0,
                 events);
         assertThat(methods(events)).containsExactlyInAnyOrder("plain()", "slowOne()", "bracketed()");
@@ -537,9 +558,32 @@ class LauncherPathTest {
 
     // --- fixtures ------------------------------------------------------------
 
+    private static List<String> runMembers(List<String> members) {
+        var events = new Recorder();
+        LauncherPath.runClass(
+                LauncherFactory.create(),
+                Tagged.class.getName(),
+                List.of(),
+                new TagFilters(
+                        List.of(),
+                        List.of(),
+                        members.stream().map(SuiteMembers::parse).toList()),
+                0,
+                events);
+        return events.finishedTests().stream()
+                .map(p -> String.valueOf(p.get("testMethod")))
+                .toList();
+    }
+
     private static List<String> run(List<String> include, List<String> exclude) {
         var events = new Recorder();
-        LauncherPath.runClass(LauncherFactory.create(), Tagged.class.getName(), List.of(), include, exclude, 0, events);
+        LauncherPath.runClass(
+                LauncherFactory.create(),
+                Tagged.class.getName(),
+                List.of(),
+                new TagFilters(include, exclude, List.of()),
+                0,
+                events);
         return events.finishedTests().stream()
                 .map(p -> String.valueOf(p.get("testMethod")))
                 .toList();
