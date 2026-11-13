@@ -95,6 +95,31 @@ class WindowsCommandLinesTest {
         }
     }
 
+    /**
+     * When the snapshot has no row (PowerShell blocked, or too slow on a loaded host), the command
+     * line is unknown rather than the bare executable, so a JVM jk's pid file names still reads as
+     * an engine and a JVM no state names is still not claimed by its command line.
+     */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void with_no_snapshot_row_a_jvm_has_no_command_line_and_reads_as_an_engine_by_its_executable() throws Exception {
+        WindowsCommandLines.Scan blind = new WindowsCommandLines.Scan() {
+            @Override
+            String of(long pid) {
+                return "";
+            }
+        };
+        Process holder = SleepMain.spawnEngine(30_000);
+        try {
+            ProcessHandle handle = holder.toHandle();
+            assertThat(EngineFleet.commandLineOf(handle, blind)).isEmpty();
+            assertThat(EngineFleet.looksLikeEngine(handle, blind)).isTrue();
+        } finally {
+            holder.destroyForcibly();
+            holder.waitFor();
+        }
+    }
+
     /** A scan re-queries once, for the first process newer than the snapshot, and never again. */
     @Test
     @EnabledOnOs(OS.WINDOWS)

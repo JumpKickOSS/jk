@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.EnginePaths;
@@ -421,20 +422,20 @@ public final class EngineFleet {
         return commandLineOf(handle, new WindowsCommandLines.Scan());
     }
 
-    /** As {@link #commandLineOf(ProcessHandle)}, reading Windows command lines through {@code scan}. */
-    private static String commandLineOf(ProcessHandle handle, WindowsCommandLines.Scan scan) {
+    /**
+     * As {@link #commandLineOf(ProcessHandle)}, reading Windows command lines through {@code scan}.
+     * On Windows the JDK reports only the executable, never the arguments, so a CIM snapshot with
+     * no row answers {@code ""} rather than a bare {@code java.exe} that no predicate can read.
+     */
+    static String commandLineOf(ProcessHandle handle, WindowsCommandLines.Scan scan) {
         // /proc is the full argv; ProcessHandle.commandLine() is sometimes only the executable.
         String proc = procCmdline(handle.pid());
         if (!proc.isBlank()) return proc;
+        if (Os.isWindows()) return scan.of(handle.pid());
         var info = handle.info();
         String cmd = info.command().orElse("");
         String args = info.arguments().map(a -> String.join(" ", a)).orElse("");
         String joined = (cmd + " " + args).trim();
-        // On Windows that joined value is the bare executable path: the JDK populates command() but
-        // never arguments()/commandLine() there, so every predicate below would see `java.exe` and
-        // nothing else. The CIM snapshot is the only source of the real argv.
-        String windows = scan.of(handle.pid());
-        if (!windows.isBlank()) return windows;
         if (!joined.isBlank()) return joined;
         return info.commandLine().orElse("");
     }
@@ -472,11 +473,13 @@ public final class EngineFleet {
      * recorded, and a fleet that hides its own engines is the failure this class exists for.
      */
     static boolean isEnginePid(long pid) {
-        return ProcessHandle.of(pid).map(EngineFleet::looksLikeEngine).orElse(false);
+        return ProcessHandle.of(pid)
+                .map(h -> looksLikeEngine(h, new WindowsCommandLines.Scan()))
+                .orElse(false);
     }
 
-    private static boolean looksLikeEngine(ProcessHandle handle) {
-        String cmd = commandLineOf(handle);
+    static boolean looksLikeEngine(ProcessHandle handle, WindowsCommandLines.Scan scan) {
+        String cmd = commandLineOf(handle, scan);
         if (!cmd.isBlank()) return isResidentEngineProcess(handle, cmd);
         return isEngineExecutable(handle);
     }

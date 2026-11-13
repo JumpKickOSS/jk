@@ -79,7 +79,7 @@ final class WindowsCommandLines {
      * and later ones read that answer, so a busy machine's new processes cannot chain query after
      * query.
      */
-    static final class Scan {
+    static class Scan {
         private boolean requeried;
 
         /** As {@link WindowsCommandLines#of}, re-querying at most once for this scan. */
