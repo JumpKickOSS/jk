@@ -58,7 +58,7 @@ class RequestIsolationTest {
     void two_concurrent_jobs_each_see_only_their_own_request(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.perRequest = true;
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, roomyGate());
         CyclicBarrier bothRunning = new CyclicBarrier(2);
         Map<String, List<Seen>> seen = new ConcurrentHashMap<>();
         Map<String, Long> ids = new ConcurrentHashMap<>();
@@ -115,6 +115,36 @@ class RequestIsolationTest {
             }
         }
         assertThat(wrong).isEmpty();
+    }
+
+    /**
+     * A memory gate that admits both jobs at once. The body holds the barrier until the other job
+     * runs, so the gate must never queue one behind the other: the runtime's gate reads this test
+     * JVM's heap, and once a busy tier has grown the committed heap near its ceiling it queues the
+     * second build behind the first, as it should in an engine, and the barrier waits for a job
+     * that cannot start until the first one ends.
+     */
+    private static MemoryAdmission roomyGate() {
+        MemoryAdmission.Heap heap = new MemoryAdmission.Heap() {
+            @Override
+            public long maxBytes() {
+                return 64L << 30;
+            }
+
+            @Override
+            public long committedBytes() {
+                return 0;
+            }
+
+            @Override
+            public void collect() {}
+        };
+        return new MemoryAdmission(
+                heap,
+                (kind, dir) -> MemoryAdmission.BASE_JOB_BYTES,
+                () -> 64L << 30,
+                MemoryAdmission.Timing.DEFAULTS,
+                () -> 1_000L);
     }
 
     private static void expect(List<String> wrong, String job, Seen s, String what, @Nullable Object got, Object want) {
