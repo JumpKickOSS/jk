@@ -67,7 +67,9 @@ class ScalaJavadocE2eTest {
         assertThat(first.status("lib", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.SUCCESS);
         assertThat(first.labels("lib", TaskNames.PACKAGE_JAVADOC)).anyMatch(l -> l.startsWith("scaladoc "));
         TreeSet<String> docs = entries(lib.javadocJar());
-        assertThat(docs).contains("index.html");
+        assertThat(docs)
+                .as("scaladoc said: %s", first.labels("lib", TaskNames.PACKAGE_JAVADOC))
+                .contains("index.html");
         assertThat(docs).as("scaladoc documented the Scala type").anyMatch(e -> e.contains("Greeter"));
         assertThat(docs).noneMatch(e -> e.startsWith("README"));
 
