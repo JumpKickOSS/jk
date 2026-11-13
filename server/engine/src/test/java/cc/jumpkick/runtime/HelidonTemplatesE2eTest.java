@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -117,7 +118,8 @@ class HelidonTemplatesE2eTest {
         assertThat(target.resolve("demo.jar")).isRegularFile();
         assertThat(target.resolve("libs")).isDirectory();
         if ("true".equals(params.get("jlink"))) {
-            assertThat(target.resolve("demo-jri/bin/start")).isRegularFile();
+            assertThat(target.resolve(Os.isWindows() ? "demo-jri/bin/start.bat" : "demo-jri/bin/start"))
+                    .isRegularFile();
         }
         if (!"h2".equals(params.getOrDefault("db", "h2"))) return; // a database server the host lacks
         assertThat(serve(project, cache, target, "/greet")).contains("\"message\":\"Hello World!\"");

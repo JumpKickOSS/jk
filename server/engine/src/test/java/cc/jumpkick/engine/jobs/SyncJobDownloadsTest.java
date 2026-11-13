@@ -62,7 +62,7 @@ class SyncJobDownloadsTest {
 
         ConnectedClient.submit(
                 new JobEnvelope(new FakeEnvelopeHost(), JobLimits.DEFAULTS),
-                "{\"type\":\"build-request\",\"dir\":\"" + dir + "\"}",
+                "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
                 JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
                     try {
                         result.set(SessionContext.where(
