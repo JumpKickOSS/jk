@@ -118,7 +118,8 @@ class LiveVitalsTest {
                 max,
                 loaded,
                 active,
-                b.jobs());
+                b.jobs(),
+                b.identity());
     }
 
     private static StatusSnapshot withJobs(StatusSnapshot base, List<JobRow> rows) {

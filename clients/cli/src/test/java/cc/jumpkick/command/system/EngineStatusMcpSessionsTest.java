@@ -58,7 +58,9 @@ class EngineStatusMcpSessionsTest {
                 loaded,
                 active,
                 -1L,
-                List.of());
+                List.of(),
+                null,
+                null);
     }
 
     @Test

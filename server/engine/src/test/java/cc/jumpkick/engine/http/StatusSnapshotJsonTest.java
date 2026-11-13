@@ -68,7 +68,7 @@ class StatusSnapshotJsonTest {
 
         assertThat(StatusSnapshot.class.getRecordComponents())
                 .as("the record's components — an empty reflection result would pass the loop above")
-                .hasSize(41);
+                .hasSize(42);
         assertThat(missing)
                 .as("StatusSnapshot components that toJson() does not emit: %s", body)
                 .isEmpty();

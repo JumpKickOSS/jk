@@ -3,7 +3,7 @@
 // and /api/config reads, the offline fallback that takes over when the SSE stream drops, and the
 // storage and system meters those payloads drive. Spread into the root component's `methods`.
 
-import { get, getText, hardRefreshForEpoch, noteEngineEpoch } from './api.js';
+import { get, getText, hardRefreshForEpoch, noteEngineEpoch, noteEngineIdentity } from './api.js';
 import { ago, workerBudgetLine as workerBudgetText } from './format.js';
 import { outcomeOf } from './outcome.js';
 
@@ -42,6 +42,10 @@ export const statusMethods = {
   applyStatusEvent(data) {
     if (this.authModal || this.connection === 'unauthorized') return;
     if (!data || typeof data !== 'object') return;
+    if (noteEngineIdentity(data) === 'other') {
+      this.markOtherEngine(data.identity);
+      return;
+    }
     if (noteEngineEpoch(data) === 'mismatch') {
       hardRefreshForEpoch();
       return;
@@ -86,6 +90,10 @@ export const statusMethods = {
     return this.fetchOnce('status', async () => {
       try {
         const s = await get('/api/status', { bootstrap: true });
+        if (noteEngineIdentity(s) === 'other') {
+          this.markOtherEngine(s.identity);
+          return;
+        }
         if (noteEngineEpoch(s) === 'mismatch') {
           hardRefreshForEpoch();
           return;

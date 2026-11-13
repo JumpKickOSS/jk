@@ -146,7 +146,11 @@ public final class EngineProbe {
              */
             long drainDeadlineMillis,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
-            List<Job> jobs) {
+            List<Job> jobs,
+            /** The engine's own name for itself ({@code Windows on BocaMiniPC}); null when not reported. */
+            @Nullable String engineLabel,
+            /** The engine's stable instance id; null when not reported. */
+            @Nullable String engineId) {
 
         public Status {
             jobs = jobs == null ? List.of() : List.copyOf(jobs);
@@ -226,7 +230,9 @@ public final class EngineProbe {
                     0,
                     0,
                     -1L,
-                    jobs);
+                    jobs,
+                    null,
+                    null);
         }
     }
 
@@ -420,7 +426,9 @@ public final class EngineProbe {
                     Jsonl.intValue(ack, "mcpLoadedConnections", 0),
                     Jsonl.intValue(ack, "mcpActiveConnections", 0),
                     Jsonl.longValue(ack, "drainDeadline", -1),
-                    Job.decodeAll(ack)));
+                    Job.decodeAll(ack),
+                    Jsonl.str(Jsonl.nested(ack, "identity"), "label"),
+                    Jsonl.str(Jsonl.nested(ack, "identity"), "id")));
         } catch (IOException e) {
             return Optional.empty();
         }

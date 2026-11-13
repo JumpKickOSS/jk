@@ -14,6 +14,16 @@ what is each agent trying to do, what did it change, and does it need you. Every
 the same facts as `target/jk-results.md`, the journal and MCP, and colour means state: blue
 working, green done, red failed, amber needs you, cyan identity.
 
+## Which engine you are looking at
+
+The header names the engine under the JumpKick logo: `Windows on BocaMiniPC`, `WSL Ubuntu-26.10 on
+BocaMiniPC`. Windows with a WSL distro is two engines, each with its own builds, and both can serve a
+dashboard at once: the Windows engine on port 8910, the WSL one on a port of its own from 8911 up,
+which stays the same across restarts. Open the URL `jk web` prints on the machine you mean, and use
+that URL in bookmarks and MCP configs. A tab that finds another engine on its address than the one it
+was showing stops and names both, rather than showing the other engine's builds. `[http] port` in
+`~/.jk/config.toml` names a port yourself.
+
 ## The console
 
 `#console` is the landing page. From top to bottom and left to right:

@@ -41,7 +41,7 @@
           <span class="brand-name">JumpKick</span>
           <span v-if="versionPill()" class="ver-pill">{{ versionPill() }}</span>
         </div>
-        <div class="brand-sub">Build Engine</div>
+        <div class="brand-sub" :data-tip="status && status.identity ? 'JK_HOME ' + status.identity.jkHome : null">{{ status && status.identity && status.identity.label ? status.identity.label : 'Build Engine' }}</div>
       </div>
 
       <span class="spacer"></span>
@@ -1000,6 +1000,23 @@
         </div>
         <div class="modal-foot">
           <span class="dim small">Sessions, episodes and builds stream over SSE. Run <code>jk build</code> in any workspace, or let an agent call JumpKick, to see it on the console.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Another engine answers on this address than the one this tab showed: fail closed, name both. -->
+    <div v-if="otherEngine" class="modal-bg auth-modal-bg" role="presentation">
+      <div class="modal about auth-modal" role="alertdialog" aria-modal="true" aria-labelledby="other-title" aria-describedby="other-desc">
+        <div class="modal-head">
+          <jk-icon name="alert" class="auth-icon"></jk-icon>
+          <div>
+            <h2 id="other-title" class="about-title auth-denied">Another engine answers here</h2>
+          </div>
+        </div>
+        <div id="other-desc" class="auth-body modal-scroll">
+          <p>This tab showed <b>{{ otherEngine.was }}</b>. This address now answers <b>{{ otherEngine.now }}</b>.</p>
+          <p>Run <code>jk web</code> on the machine you meant, and open the URL it prints.</p>
+          <button type="button" class="action-cyan" @click="showThisEngine()">Show {{ otherEngine.now }}</button>
         </div>
       </div>
     </div>

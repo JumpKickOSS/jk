@@ -118,6 +118,11 @@ HTTP is **on by default** (loopback). Turn it off with `[http] enabled = false` 
 `JK_HTTP_ENABLED=false`. MCP rides the same server; disable with `[mcp] enabled = false`
 without killing the dashboard.
 
+Windows with a WSL distro, or a host with a build container, runs one engine on each side, and each
+serves its own dashboard and MCP endpoint: the host on port 8910, a WSL distro or container on a port
+of its own from 8911 up that it keeps across restarts. `jk engine status` names the engine (`Engine`)
+and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there.
+
 A resident engine **does not idle out**. It exits on `jk engine stop`, version-skew
 replacement, or (if displaced/orphaned) after draining. Details of lifetime and auth:
 [contributor HTTP](../contributors/http.md). User-facing dashboard: [Web](web.md).

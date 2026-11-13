@@ -6,8 +6,10 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.http.BandPort;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
+import cc.jumpkick.engine.http.EngineIdentity;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.SelfUpdateControl;
@@ -93,13 +95,79 @@ public final class EngineHttpFront {
         return h == null ? 0 : h.liveEventStreams();
     }
 
-    /** Start when {@code [http]} is present; bind failure is advisory only. */
+    /**
+     * Start when {@code [http]} is present; bind failure is advisory only. A named port is bound as
+     * named. Otherwise the host engine binds 8910, and a WSL or container guest its sticky band port
+     * ({@link BandPort}), moving to the next free one when another process holds it.
+     */
     public void start() {
         // The hub and the config are created together: no [http] table, neither of them.
         HttpEvents hub = events;
         if (config == null || hub == null) return;
+        EngineIdentity id = EngineIdentity.current(version);
+        Path bandFile =
+                id.guest().guest() && !JkHttpConfig.portNamed() ? paths.dir().resolve(BandPort.FILE) : null;
+        JkHttpConfig first = bandFile == null ? config : config.withPort(BandPort.preferred(bandFile, id.id()));
+        HttpEngineServer candidate = candidate(first, hub, id);
+        try {
+            candidate.start(1);
+            serve(candidate, bandFile);
+        } catch (BindException busy) {
+            // Someone holds the port: a predecessor still letting go, or another engine. The bind
+            // retries for seconds, and engine startup — the first build's wait — must not.
+            error = "port " + first.port() + " busy, retrying";
+            // Startup chore; reads no session.
+            Thread.ofVirtual().name("jk-engine-http-bind").start(() -> bindLater(candidate, first, hub, id, bandFile));
+        } catch (IOException | RuntimeException e) {
+            failed(candidate, e);
+        }
+    }
+
+    /**
+     * The retrying bind, off the startup path; a stop that lands meanwhile lets the port go. A guest
+     * whose band port stays taken tries the rest of the band and keeps the one it gets.
+     */
+    private void bindLater(
+            HttpEngineServer candidate,
+            JkHttpConfig first,
+            HttpEvents hub,
+            EngineIdentity id,
+            @Nullable Path bandFile) {
+        try {
+            candidate.start();
+            serve(candidate, bandFile);
+            return;
+        } catch (BindException taken) {
+            candidate.close();
+            if (bandFile == null) {
+                failed(candidate, taken);
+                return;
+            }
+        } catch (IOException | RuntimeException e) {
+            failed(candidate, e);
+            return;
+        }
+        for (int port = BandPort.next(first.port()); port != first.port() && !stopped; port = BandPort.next(port)) {
+            HttpEngineServer next = candidate(first.withPort(port), hub, id);
+            try {
+                next.start(1);
+                serve(next, bandFile);
+                return;
+            } catch (BindException taken) {
+                next.close();
+            } catch (IOException | RuntimeException e) {
+                failed(next, e);
+                return;
+            }
+        }
+        error = "no free port in " + BandPort.FIRST + "-" + BandPort.LAST;
+        log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
+    }
+
+    /** A server bound to {@code cfg}'s port, wired to this engine's surfaces. */
+    private HttpEngineServer candidate(JkHttpConfig cfg, HttpEvents hub, EngineIdentity id) {
         HttpEngineServer candidate = new HttpEngineServer(
-                config,
+                cfg,
                 JkDirs.home(),
                 paths.httpToken(),
                 paths.log(),
@@ -125,35 +193,17 @@ public final class EngineHttpFront {
         candidate.setNotices(notices);
         candidate.setSelfUpdate(selfUpdate);
         candidate.setActivity(new Activity(ChangeJournal::current, decisions, notices));
-        try {
-            candidate.start(1);
-            serve(candidate);
-        } catch (BindException busy) {
-            // Someone holds the port: a predecessor still letting go, or another engine. The bind
-            // retries for seconds, and engine startup — the first build's wait — must not.
-            error = "port " + config.port() + " busy, retrying";
-            // Startup chore; reads no session.
-            Thread.ofVirtual().name("jk-engine-http-bind").start(() -> bindLater(candidate));
-        } catch (IOException | RuntimeException e) {
-            failed(candidate, e);
-        }
+        candidate.setIdentity(id);
+        return candidate;
     }
 
-    /** The retrying bind, off the startup path; a stop that lands meanwhile lets the port go. */
-    private void bindLater(HttpEngineServer candidate) {
-        try {
-            candidate.start();
-            serve(candidate);
-        } catch (IOException | RuntimeException e) {
-            failed(candidate, e);
-        }
-    }
-
-    private void serve(HttpEngineServer candidate) throws IOException {
+    /** Serve {@code candidate}; a guest's band port is kept for the next start. */
+    private void serve(HttpEngineServer candidate, @Nullable Path bandFile) throws IOException {
         if (stopped) {
             candidate.close();
             return;
         }
+        if (bandFile != null) BandPort.remember(bandFile, candidate.port());
         Files.writeString(paths.http(), candidate.url());
         server = candidate;
         error = null;

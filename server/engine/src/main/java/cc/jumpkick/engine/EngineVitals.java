@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.engine.http.EngineIdentity;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpConnections;
@@ -17,6 +18,7 @@ import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /** Status snapshot for the socket {@code status-ack} and {@code /api/status}. */
 @RequiredArgsConstructor
@@ -38,6 +40,19 @@ public final class EngineVitals {
     private final IntSupplier queuedBuildPlans;
     private final Supplier<String> installSource;
     private final Supplier<List<Map<String, Object>>> jobs;
+
+    /** Which engine this is, read once: its inputs do not change while the process lives. */
+    private volatile @Nullable Map<String, Object> identity;
+
+    private Map<String, Object> identity() {
+        Map<String, Object> id = identity;
+        if (id == null) {
+            HttpEngineServer http = httpServer.get();
+            id = EngineIdentity.current(version).toMap(http == null ? -1 : http.port());
+            if (http != null) identity = id;
+        }
+        return id;
+    }
 
     public StatusSnapshot snapshot() {
         Runtime rt = Runtime.getRuntime();
@@ -92,7 +107,8 @@ public final class EngineVitals {
                 mcp.max(),
                 mcp.loaded(),
                 mcp.active(),
-                jobs.get());
+                jobs.get(),
+                identity());
     }
 
     public int liveConnectionCount() {

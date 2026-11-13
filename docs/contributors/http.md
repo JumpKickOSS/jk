@@ -23,6 +23,29 @@ project-overridable, read once at engine start.
 That default matters for reasoning about engine lifetime: since most engines have HTTP on, any rule
 of the form "engines with HTTP behave differently" applies to nearly all of them.
 
+## Which port, and which engine
+
+A port named in `[http] port` or `JK_HTTP_PORT` is bound as named. Otherwise the engine's role picks
+it: the host engine binds **8910**; a **guest** (a WSL distro, whose `127.0.0.1` binds Windows forwards
+onto its own loopback, or a container) binds a sticky port from 8911 to 8999. The guest's first choice
+comes from its identity; the port it binds is kept in `<state>/engine/http-port` and tried first on
+every start. When another process holds it after the bind's retries, the guest takes the next free
+port in the band and keeps that one. A guest never takes 8910 because it is free.
+
+`Guest` (`cc.jumpkick.host`) detects a guest from the kernel and the filesystem: WSL by `microsoft` in
+`/proc/sys/kernel/osrelease` (with `WSLInterop` saying whether Windows programs can run), a container
+by `/.dockerenv`, `/run/.containerenv` or `container=`. It never reads `WSL_*` variables for the
+answer, since a daemon or a service often lacks them.
+
+Each engine has an identity (`EngineIdentity`): OS, guest kind and name, hostname, `JK_HOME`, version
+and port, with an `id` hashed from OS, hostname and `JK_HOME`, so it is stable across restarts.
+`GET /api/identity` answers it **without a token**: it names nothing secret, and a tab whose token an
+engine refuses uses it to tell a rotated token from another engine on the same address. The same
+identity is in `GET /api/status` and the socket status as `identity`, and `jk engine status` prints
+it as `Engine`. The dashboard latches the `id` per tab, as it latches `engineEpoch`; when the address
+answers a different `id`, the tab freezes and names both engines instead of rendering the other
+engine's builds.
+
 ## The engine never idles out
 
 **A resident engine does not self-terminate for being idle.** There is no idle timeout, and adding
@@ -145,7 +168,8 @@ Manager.
 
 ## Auth tiers
 
-**Every `/api/*` call requires a valid bearer token**, including loopback binds. There is no
+**Every `/api/*` call requires a valid bearer token**, including loopback binds, except `GET
+/api/identity`, which names the engine and nothing secret. There is no
 tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
 history. Static content stays open. By default the engine serves **only the dashboard shipped in its jar**
 (`index.html`, JS, CSS, images, the manifest and the service worker), under the SPA's own CSP so it can

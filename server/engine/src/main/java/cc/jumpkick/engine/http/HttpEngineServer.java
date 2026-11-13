@@ -46,6 +46,12 @@ import org.jspecify.annotations.Nullable;
  */
 public final class HttpEngineServer implements AutoCloseable {
 
+    /**
+     * The token-free identity route: which engine answers here, so a tab can tell it from another
+     * engine on the same address and a front door can list it. Names nothing secret.
+     */
+    public static final String IDENTITY = "/api/identity";
+
     /** Grace period {@link HttpServer#stop} gives in-flight exchanges before hard-closing. */
     private static final int STOP_GRACE_SECONDS = 1;
 
@@ -61,6 +67,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final HttpAdmission admission;
     private final Optional<JkHttpConfig.WebDisk> webDisk;
     private final HttpTokenGate tokens;
+    private volatile @Nullable EngineIdentity identity;
     private final EngineEpochGate epoch;
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
@@ -159,6 +166,18 @@ public final class HttpEngineServer implements AutoCloseable {
             this.decisions = decisions;
             mcp.decisions(decisions);
         }
+    }
+
+    /** Which engine this is, answered token-free at {@link #IDENTITY}. Before {@link #start}. */
+    public void setIdentity(EngineIdentity identity) {
+        this.identity = identity;
+    }
+
+    /** The port this server is bound to, or -1 when it is not. */
+    public int port() {
+        HttpServer s = server;
+        InetSocketAddress addr = s == null ? null : s.getAddress();
+        return addr == null ? -1 : addr.getPort();
     }
 
     /**
@@ -519,6 +538,16 @@ public final class HttpEngineServer implements AutoCloseable {
                 return;
             }
             front.handle(exchange);
+            return;
+        }
+        if (path.equals(IDENTITY) && "GET".equals(exchange.getRequestMethod())) {
+            EngineIdentity id = identity;
+            if (id == null) {
+                HttpResponses.sendText(exchange, 404, "not found\n");
+                return;
+            }
+            HttpResponses.sendJson(
+                    exchange, 200, JsonOut.rawObject(id.toMap(port())).toString());
             return;
         }
         if (path.equals("/api") || path.startsWith("/api/")) {

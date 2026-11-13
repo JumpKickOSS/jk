@@ -130,10 +130,13 @@ public record StatusSnapshot(
          * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
          * {@code lastEventAt}, {@code ahead}.
          */
-        List<Map<String, Object>> jobs) {
+        List<Map<String, Object>> jobs,
+        /** Which engine this is ({@code EngineIdentity#toMap}); empty where a caller has none to give. */
+        Map<String, Object> identity) {
 
     public StatusSnapshot {
         jobs = jobs == null ? List.of() : List.copyOf(jobs);
+        identity = identity == null ? Map.of() : Map.copyOf(identity);
     }
 
     /**
@@ -207,7 +210,8 @@ public record StatusSnapshot(
                 0,
                 0,
                 0,
-                jobs);
+                jobs,
+                Map.of());
     }
 
     /** Compact constructor for tests that omit the job listing. */
@@ -275,7 +279,8 @@ public record StatusSnapshot(
                 0,
                 0,
                 0,
-                List.of());
+                List.of(),
+                Map.of());
     }
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
@@ -382,6 +387,7 @@ public record StatusSnapshot(
         m.put("mcpLoadedConnections", mcpLoadedConnections);
         m.put("mcpActiveConnections", mcpActiveConnections);
         m.put("jobs", jobs);
+        m.put("identity", identity);
         return m;
     }
 }

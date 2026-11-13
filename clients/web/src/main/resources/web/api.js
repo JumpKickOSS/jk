@@ -114,6 +114,45 @@ export function loopback() {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(location.hostname);
 }
 
+const ENGINE_KEY = 'jk-engine-id';
+
+/** The engine this tab has been showing, {@code {id, label}}, or null before its first status. */
+export function shownEngine() {
+  try {
+    return JSON.parse(sessionStorage.getItem(ENGINE_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Latch the engine a status payload names. Returns {@code 'other'} when this tab was showing a
+ * different engine: another engine answers on this address, and the tab must not render its builds.
+ */
+export function noteEngineIdentity(status) {
+  const id = status && status.identity;
+  if (!id || !id.id) return 'none';
+  const prev = shownEngine();
+  if (prev && prev.id !== id.id) return 'other';
+  sessionStorage.setItem(ENGINE_KEY, JSON.stringify({ id: id.id, label: id.label || '' }));
+  return 'ok';
+}
+
+/** Forget the engine this tab showed, so the next status latches whichever answers. */
+export function forgetShownEngine() {
+  sessionStorage.removeItem(ENGINE_KEY);
+}
+
+/** Which engine answers on this address, read without a token; null when none answers. */
+export async function identityHere() {
+  try {
+    const r = await fetch('/api/identity', { cache: 'no-store' });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Latched process generation for fail-closed API calls. */
 export function engineEpoch() {
   return sessionStorage.getItem(EPOCH_KEY) || null;

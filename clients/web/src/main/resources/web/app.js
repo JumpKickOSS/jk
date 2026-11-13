@@ -13,8 +13,12 @@ import {
   post,
   del,
   events,
+  forgetShownEngine,
+  identityHere,
   noteEngineEpoch,
+  noteEngineIdentity,
   settleEpochReload,
+  shownEngine,
 } from './api.js';
 import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
@@ -125,6 +129,7 @@ export const appOptions = {
     help: false, // the header Help/About modal
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
+    otherEngine: null,
     authCopied: false, // brief "Copied" feedback on the Access Denied console copy button
     _authCopiedTimer: null,
     wizard: emptyWizard(), // the #new page's form, answers and preview
@@ -263,11 +268,42 @@ export const appOptions = {
       this.help = false;
       this.wizard = emptyWizard();
     },
+    /**
+     * Another engine answers on this address than the one this tab showed: freeze the page as the
+     * auth gate does, keep the token, and name both engines.
+     */
+    markOtherEngine(now) {
+      const was = shownEngine();
+      this.markUnauthorized({ clear: false });
+      this.authModal = false;
+      this.otherEngine = {
+        was: (was && was.label) || 'another engine',
+        now: (now && now.label) || 'another engine',
+      };
+    },
+    /** Whether a refused token is another engine answering here; marks the page when it is. */
+    async otherEngineAnswers() {
+      const was = shownEngine();
+      if (!was) return false;
+      const now = await identityHere();
+      if (!now || now.id === was.id) return false;
+      this.markOtherEngine(now);
+      return true;
+    },
+    /** Show whichever engine answers here now: forget the one this tab showed and load again. */
+    showThisEngine() {
+      forgetShownEngine();
+      location.reload();
+    },
     /** True when {@code e} is a 401 — marks unauthorized and returns true so callers can stop. */
     handleHttpError(e) {
       if (e && e.status === 401) {
-        // Fail closed: any 401 (missing or rejected token) opens the blocking auth dialog.
-        this.markUnauthorized({ clear: !!token() });
+        // Fail closed: any 401 (missing or rejected token) opens the blocking auth dialog, unless
+        // another engine now answers here, which gets its own notice and keeps the token.
+        const clear = !!token();
+        this.otherEngineAnswers().then((other) => {
+          if (!other) this.markUnauthorized({ clear });
+        });
         return true;
       }
       return false;
@@ -289,8 +325,13 @@ export const appOptions = {
         // fresh tab pays a full reload. A stale epoch from an older engine in sessionStorage is
         // simply replaced: this page has read nothing yet, so there is nothing to reload.
         noteEngineEpoch(status, { fresh: true });
+        if (noteEngineIdentity(status) === 'other') {
+          this.markOtherEngine(status.identity);
+          return false;
+        }
       } catch (e) {
         if (e.status === 401) {
+          if (await this.otherEngineAnswers()) return false;
           this.markUnauthorized({ clear: true });
           return false;
         }

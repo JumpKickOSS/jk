@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.host.Guest;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.net.URI;
@@ -45,6 +46,26 @@ class HttpApiAuthTest extends HttpEngineServerHarness {
                 .contains("\"systemLoadAverage\":1.2")
                 .contains("\"engineEpoch\":\"9.9.9-test@1000\"")
                 .contains("\"httpUrl\":\"" + baseUrl + "\"");
+    }
+
+    @Test
+    void the_identity_answers_without_a_token_and_nothing_else_under_api_does() throws Exception {
+        server.setIdentity(
+                new EngineIdentity("0123456789ab", "linux", Guest.NONE, "box", "/home/me/.jk", "9.9.9-test"));
+
+        HttpResponse<String> identity = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/identity")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(identity.statusCode()).isEqualTo(200);
+        assertThat(identity.body())
+                .contains("\"id\":\"0123456789ab\"")
+                .contains("\"label\":\"Linux on box\"")
+                .contains("\"port\":" + server.port());
+
+        HttpResponse<String> status = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/status")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(status.statusCode()).isEqualTo(401);
     }
 
     @Test

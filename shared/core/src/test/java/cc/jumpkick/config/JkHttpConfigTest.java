@@ -18,6 +18,20 @@ class JkHttpConfigTest {
     }
 
     @Test
+    void a_port_is_named_by_the_file_or_the_environment_and_otherwise_left_to_the_role(@TempDir Path tempDir)
+            throws IOException {
+        Path none = Files.writeString(tempDir.resolve("none.toml"), "[http]\nhost = \"127.0.0.1\"\n");
+        Path named = Files.writeString(tempDir.resolve("named.toml"), "[http]\nport = 8920\n");
+
+        assertThat(JkHttpConfig.portNamed(none, Map.<String, String>of()::get)).isFalse();
+        assertThat(JkHttpConfig.portNamed(named, Map.<String, String>of()::get)).isTrue();
+        assertThat(JkHttpConfig.portNamed(none, Map.of("JK_HTTP_PORT", "0")::get))
+                .isTrue();
+        assertThat(JkHttpConfig.fromToml(named).orElseThrow().withPort(8933).port())
+                .isEqualTo(8933);
+    }
+
+    @Test
     void table_absent_means_enabled_with_defaults(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, "[engine]\nmax-heap-mb = 256\n");

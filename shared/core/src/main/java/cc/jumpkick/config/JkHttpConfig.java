@@ -194,6 +194,27 @@ public record JkHttpConfig(
                 MCP_TOOLS.layer(TomlValues.optString(mcp, "tools").orElse(null)));
     }
 
+    /** This config bound to {@code port} instead. */
+    public JkHttpConfig withPort(int port) {
+        return new JkHttpConfig(host, port, maxConcurrentRequests, maxEventStreams, webRoot, webOverlay, mcp);
+    }
+
+    /**
+     * Whether the user named the port ({@code [http] port} or {@code JK_HTTP_PORT}); when not, the
+     * engine's role chooses it: 8910 for the host, a sticky band port for a guest.
+     */
+    public static boolean portNamed() {
+        return portNamed(JkDirs.userConfigFile(), ProcessEnv::get);
+    }
+
+    static boolean portNamed(Path userConfig, Function<String, @Nullable String> env) {
+        if (EnvValues.intValue(env, "JK_HTTP_PORT").isPresent()) return true;
+        return TomlValues.parse(userConfig)
+                .map(root -> root.getTable("http"))
+                .flatMap(http -> TomlValues.optInt(http, "port"))
+                .isPresent();
+    }
+
     /** The admission-semaphore size: the configured cap, or the container-aware core count for 0. */
     public int effectiveMaxConcurrentRequests() {
         return maxConcurrentRequests > 0

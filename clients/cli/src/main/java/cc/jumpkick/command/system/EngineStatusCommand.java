@@ -112,6 +112,8 @@ public final class EngineStatusCommand implements CliCommand {
                     "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         }
         detail("Version", s.version());
+        if (s.engineLabel() != null)
+            detail("Engine", s.engineLabel() + (s.engineId() == null ? "" : " (id " + s.engineId() + ")"));
         if (s.installSource() != null && !s.installSource().isEmpty()) detail("Source", s.installSource());
         detail("Updates", SelfUpdateStatus.describe());
         detail("Uptime", formatUptime(uptimeSeconds));
