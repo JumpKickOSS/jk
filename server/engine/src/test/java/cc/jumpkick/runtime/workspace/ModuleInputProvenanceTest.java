@@ -152,4 +152,45 @@ class ModuleInputProvenanceTest {
                 .as("the recompile's output in place of the build's")
                 .isTrue();
     }
+
+    /**
+     * A build at another version writes its jar under another name, so a jar already at this
+     * version's name is not the one the record vouches for, however old: the module is scheduled,
+     * not skipped over a stale jar that the fat jar and native image would then link.
+     */
+    @Test
+    void a_jar_at_this_versions_name_left_by_an_older_build_schedules_the_module(@TempDir Path tmp) throws Exception {
+        BuildGraph.Result release = project(tmp);
+        Path module = tmp.toAbsolutePath().normalize();
+        BuildLayout releaseLayout =
+                BuildLayout.of(tmp, release.topoOrder().getFirst().manifest());
+        Files.write(Files.createDirectories(releaseLayout.classesDir()).resolve("App.class"), new byte[] {1, 2, 3});
+        Files.write(releaseLayout.mainJar(), new byte[] {1, 2, 3, 4});
+        var fps = PreflightMemo.snapshotFingerprints(release, false);
+        PreflightMemo.storeDirty(tmp, release, false, Set.of(), fps.fingerprints());
+        ModuleInputProvenance.record(tmp, release, fps.fingerprints());
+
+        BuildGraph.Result snapshot = BuildGraph.resolve(
+                tmp,
+                JkBuildParser.parse(
+                        Files.readString(tmp.resolve("jk.toml")).replace("\"0.1.0\"", "\"0.1.0-SNAPSHOT\"")));
+        var snapshotBuild = snapshot.topoOrder().getFirst().manifest();
+        Path snapshotJar = BuildLayout.of(tmp, snapshotBuild).mainJar();
+        assertThat(snapshotJar).isNotEqualTo(releaseLayout.mainJar());
+        String fp = fps.fingerprints().get(module);
+        assertThat(ModuleInputProvenance.outputsFromOtherInputs(tmp, module, snapshotBuild, fp))
+                .as("no jar at this version's name yet: the restore's to bring back")
+                .isFalse();
+
+        Files.write(snapshotJar, new byte[] {9, 9});
+        assertThat(ModuleInputProvenance.outputsFromOtherInputs(tmp, module, snapshotBuild, fp))
+                .isTrue();
+        assertThat(ModuleInputProvenance.outputsFromOtherInputs(
+                        tmp, module, release.topoOrder().getFirst().manifest(), fp))
+                .as("the release build's own jar is still the recorded one")
+                .isFalse();
+        assertThat(BuildForecasting.forecastWithFingerprints(snapshot, tmp.resolve("cache"), false, tmp)
+                        .dirty())
+                .contains(module);
+    }
 }
