@@ -8,7 +8,7 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One step's recorded wall, read from the harvested ledger for {@link EffortWeights}: this
+ * One step's recorded wall, read from the project store's run means for {@link EffortWeights}: this
  * module's own row, the host's row, or nothing. Every caller picks its own fallback from there.
  */
 @NullMarked
@@ -30,7 +30,7 @@ public final class StepWalls {
         if (key.isEmpty()) return 0;
         long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key);
         if (fromAgg > 0) return fromAgg;
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (metrics == null) metrics = BuildMetrics.current();
         var own = metrics.step(dir == null ? "" : dir, key);
         if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
             return own.get().ok().avgMillis();
@@ -44,7 +44,7 @@ public final class StepWalls {
         if (key.isEmpty()) return 0;
         long fromAgg = stepWallFromAggregates("", key);
         if (fromAgg > 0) return fromAgg;
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (metrics == null) metrics = BuildMetrics.current();
         var host = metrics.step("", key);
         if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
             return host.get().ok().avgMillis();
@@ -53,7 +53,7 @@ public final class StepWalls {
     }
 
     /**
-     * One step's wall from the harvested ledger: the trimmed mean once the row has two samples,
+     * One step's wall from the project store: its running mean once the row has two samples,
      * the single sample when it has one.
      *
      * <p>The mean, not the last sample, on purpose. The last sample of a step is whichever build
@@ -96,7 +96,7 @@ public final class StepWalls {
      * staticWeight}. Success-only samples.
      */
     public static int learnedFixedWeight(String dir, String step, int staticWeight) {
-        return learnedFixedWeight(BuildMetrics.load(BuildMetrics.defaultFile()), dir, step, staticWeight);
+        return learnedFixedWeight(BuildMetrics.current(), dir, step, staticWeight);
     }
 
     public static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {

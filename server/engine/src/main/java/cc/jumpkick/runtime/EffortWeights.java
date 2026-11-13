@@ -203,8 +203,7 @@ public final class EffortWeights {
      */
     static int learned(
             StepTimings timings, String dir, String step, int count, int staticWeight, Collection<String> projectDirs) {
-        return learned(
-                timings, BuildMetrics.load(BuildMetrics.defaultFile()), dir, step, count, staticWeight, projectDirs);
+        return learned(timings, BuildMetrics.current(), dir, step, count, staticWeight, projectDirs);
     }
 
     static int learned(
@@ -329,7 +328,7 @@ public final class EffortWeights {
         if (runningSteps == null || runningSteps.isEmpty()) {
             return new ModuleCost(dir, prereqs, 0, 0);
         }
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (metrics == null) metrics = BuildMetrics.current();
         if (projectDirs == null) projectDirs = List.of();
         if (stepCounts == null) stepCounts = Map.of();
         int weight = 0;
@@ -421,8 +420,8 @@ public final class EffortWeights {
     }
 
     /**
-     * Class walls from this process buffer or harvested project metrics (no class-file scan). The
-     * harvested walls come from the session's class-wall index, built once per aggregate window
+     * Class walls from this process buffer or the project store (no class-file scan). The
+     * stored walls come from the session's class-wall index, built once per aggregate window
      * over the same project-preferring aggregates every other learned weight reads.
      */
     public static Map<String, Long> loadClassWalls(String moduleDir, String step) {
@@ -579,7 +578,7 @@ public final class EffortWeights {
         // module dir, the same key the recorder writes at build end. One metrics view for the
         // whole prediction: every step below prices against the same fold.
         StepTimings timings = StepTimings.load(in.cache());
-        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        BuildMetrics metrics = BuildMetrics.current();
         String mod = in.dir().toString();
         // Sibling modules of this build, for the project-tier learned fallback (empty ⇒ host-median).
         List<String> projectDirs =

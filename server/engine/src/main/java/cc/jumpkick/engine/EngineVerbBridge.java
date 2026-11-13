@@ -16,6 +16,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -47,7 +48,7 @@ public final class EngineVerbBridge implements VerbHost {
     private final LongSupplier clock;
     private final BuildJournal journal;
     private final JkHistoryConfig historyConfig;
-    private final Supplier<Path> metricsFile;
+    private final Supplier<BuildMetrics> metrics;
     private final InFlightBuilds inFlight;
 
     @Override
@@ -210,8 +211,8 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public Path metricsFile() {
-        return metricsFile.get();
+    public BuildMetrics metrics() {
+        return metrics.get();
     }
 
     @Override

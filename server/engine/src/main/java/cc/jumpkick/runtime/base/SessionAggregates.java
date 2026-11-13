@@ -17,12 +17,12 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The harvested aggregates a session prices its steps from, parsed once per (builds root, working
+ * The run means a session prices its steps from, parsed once per (builds root, working
  * dir) and held until a ledger file changes.
  *
  * <p>Every priced step reads these. A parse is a scan of the project's ledger plus the host's;
  * a freshness check is one stat per file ({@link AggregatedMetrics#fresh()}), so a build reads
- * its ledger once and a harvest rewrite between builds is picked up on the next read. Memos are
+ * its store once and a run's fold between builds is picked up on the next read. Memos are
  * keyed by working dir so concurrent builds of different checkouts do not evict each other; the
  * table is an LRU bounded by {@link #MAX_BYTES}.
  *

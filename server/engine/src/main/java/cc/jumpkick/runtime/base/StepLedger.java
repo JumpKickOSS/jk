@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.config.StampedMemo;
-import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.runtime.StepCost;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,13 +23,13 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Each step's recent walls, per project, under the shape of the run that measured them: the
- * history the ETA prices a step from. One line per finished successful run in {@value #FILE} under
- * the project's home: the run's shape ({@link RunShapes.Shape}), its frontier (the work set its
+ * history the ETA prices a step from. One line per finished successful run in the project store's
+ * {@link ProjectStore#RUNS} section: the run's shape ({@link RunShapes.Shape}), its frontier (the work set its
  * estimate was priced under: the modules it runs a step in; the modules whose main compile ran when
  * it had no estimate), every step's status and wall, each finished suite's {@link SuiteCurve} and
  * the test JVMs it ran on.
@@ -47,9 +45,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class StepLedger {
 
-    /** The ledger's file name under a project's home. */
-    public static final String FILE = "step-ledger.jsonl";
-
     /** Runs kept: enough for every recent edit shape, small enough to read per estimate. */
     static final int MAX_RUNS = 60;
 
@@ -64,10 +59,8 @@ public final class StepLedger {
     /** Steps shorter than this are not recorded: they price as nothing either way. */
     static final long MIN_MS = 20;
 
-    private static final ReentrantLock WRITE = new ReentrantLock();
-
-    /** The ledgers read, one per project home, each re-read once its file's stamp moves. */
-    private static final StampedMemo<Path, FileTime, StepLedger> MEMO = StampedMemo.bounded(32);
+    /** The ledgers read, one per project home, each re-read once its store's stamp moves. */
+    private static final StampedMemo<Path, StatIdentity, StepLedger> MEMO = StampedMemo.bounded(32);
 
     /** One step's wall in a finished run. */
     public record Sample(String dir, String step, String status, long ms) {
@@ -120,15 +113,13 @@ public final class StepLedger {
     }
 
     private final List<Run> runs;
-    private final @Nullable FileTime stamp;
     /** dir + '\n' + step + '\n' + status → the runs' samples, oldest first. */
     private final Map<String, List<Indexed>> index = new HashMap<>();
 
     private record Indexed(Run run, long ms) {}
 
-    private StepLedger(List<Run> runs, @Nullable FileTime stamp) {
+    private StepLedger(List<Run> runs) {
         this.runs = List.copyOf(runs);
-        this.stamp = stamp;
         for (Run r : this.runs) {
             for (Sample s : r.samples()) {
                 index.computeIfAbsent(key(s.dir(), s.step(), s.status()), k -> new ArrayList<>())
@@ -139,7 +130,7 @@ public final class StepLedger {
 
     /** An empty ledger. */
     public static StepLedger empty() {
-        return new StepLedger(List.of(), null);
+        return new StepLedger(List.of());
     }
 
     /** Fewest modules with a main compile for a run to count as a full rebuild by its frontier. */
@@ -239,11 +230,28 @@ public final class StepLedger {
             Map<String, long[]> workers,
             int warmth,
             List<Sample> samples) {
+        UnaryOperator<List<String>> entry = entry(shape, frontier, curves, workers, warmth, samples);
+        if (entry != null) ProjectStore.updateRuns(projectHome, entry);
+    }
+
+    /**
+     * The edit of the store's {@link ProjectStore#RUNS} that records a finished run ({@link
+     * #append(Path, RunShapes.Shape, Set, Map, Map, int, List)}): its line appended, marked as the
+     * project's first when there was none, the oldest dropped past {@link #MAX_RUNS}. Null when the
+     * run has no step worth recording.
+     */
+    public static @Nullable UnaryOperator<List<String>> entry(
+            RunShapes.Shape shape,
+            @Nullable Set<String> frontier,
+            Map<String, int[]> curves,
+            Map<String, long[]> workers,
+            int warmth,
+            List<Sample> samples) {
         List<Sample> kept = new ArrayList<>();
         for (Sample s : samples) {
             if (s.ms() >= MIN_MS) kept.add(s);
         }
-        if (kept.isEmpty()) return;
+        if (kept.isEmpty()) return null;
         Set<String> compiled = frontierOf(samples);
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("profile", shape.profile());
@@ -275,50 +283,33 @@ public final class StepLedger {
             }
             if (!byDir.isEmpty()) line.put("workers", byDir);
         }
-        Path file = projectHome.resolve(FILE);
-        WRITE.lock();
-        try {
-            List<String> lines = new ArrayList<>();
-            if (Files.isRegularFile(file)) {
-                for (String l : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                    if (!l.isBlank()) lines.add(l);
-                }
-            }
-            if (lines.isEmpty()) line.put("first", true);
-            lines.add(MiniJson.write(line));
-            if (lines.size() > MAX_RUNS) lines = new ArrayList<>(lines.subList(lines.size() - MAX_RUNS, lines.size()));
-            Files.createDirectories(projectHome);
-            AtomicWrites.replace(file, String.join("\n", lines) + "\n");
-            MEMO.forget(projectHome);
-        } catch (IOException | RuntimeException e) {
-            Log.debug("StepLedger.append: not recorded", e);
-        } finally {
-            WRITE.unlock();
-        }
+        return lines -> {
+            List<String> out = new ArrayList<>(lines);
+            if (out.isEmpty()) line.put("first", true);
+            out.add(MiniJson.write(line));
+            return out.size() > MAX_RUNS ? new ArrayList<>(out.subList(out.size() - MAX_RUNS, out.size())) : out;
+        };
     }
 
-    /** The ledger under {@code projectHome}, read once per change of its file. */
+    /** The ledger under {@code projectHome}, read once per change of its store. */
     public static StepLedger load(Path projectHome) {
-        Path file = projectHome.resolve(FILE);
-        FileTime now;
+        StatIdentity stamp;
         try {
-            if (!Files.isRegularFile(file)) return empty();
-            now = Files.getLastModifiedTime(file);
-        } catch (IOException e) {
+            stamp = StatIdentity.of(ProjectStore.file(projectHome));
+        } catch (IOException absent) {
             return empty();
         }
-        FileTime stamp = now;
-        return MEMO.get(projectHome, stamp, () -> read(file, stamp));
+        return MEMO.get(projectHome, stamp, () -> read(ProjectStore.runs(projectHome)));
     }
 
-    private static StepLedger read(Path file, FileTime stamp) {
+    private static StepLedger read(List<String> lines) {
         List<Run> runs = new ArrayList<>();
         // Every run names the same modules, steps and statuses, and most share a frontier: one copy
         // of each per ledger. jk's 60-run ledger held 1.38 MB, most of it these repeated (JK-BSRC5).
         Map<String, String> strings = new HashMap<>();
         Map<Set<String>, Set<String>> frontiers = new HashMap<>();
         try {
-            for (String l : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            for (String l : lines) {
                 if (l.isBlank()) continue;
                 if (!(MiniJson.parseRelaxed(l) instanceof Map<?, ?> m)) continue;
                 RunShapes.Shape shape = new RunShapes.Shape(
@@ -370,11 +361,11 @@ public final class StepLedger {
                 runs.add(new Run(
                         shape, frontier, samples, curves, workers, Boolean.TRUE.equals(m.get("first")), warmth));
             }
-        } catch (IOException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.debug("StepLedger.read: unreadable, priced from nothing", e);
             return empty();
         }
-        return new StepLedger(runs, stamp);
+        return new StepLedger(runs);
     }
 
     /** The one copy of {@code s} in {@code pool}. */

@@ -52,7 +52,7 @@ public final class EngineHttpFront {
     private final String version;
     private final @Nullable HttpEvents events;
     private final BuildJournal journal;
-    private final Supplier<Path> metricsFile;
+    private final Supplier<BuildMetrics> metrics;
     private final Consumer<String> log;
     private final Supplier<StatusSnapshot> status;
     private final LiveRuns liveRuns;
@@ -108,7 +108,7 @@ public final class EngineHttpFront {
                 hub,
                 httpJobs(),
                 journal,
-                () -> BuildMetrics.load(metricsFile.get()).entries(),
+                () -> metrics.get().entries(),
                 // Single-flight + 30s TTL: dashboard SSE reconnect + GET /api/cache must not each
                 // exclusive-walk multi-GiB stores (SerialGC balloons committed heap ~90 MiB).
                 CacheSnapshot.memoizing(JkDirs.cache(), () -> status.get().activeBuildPlans() == 0),

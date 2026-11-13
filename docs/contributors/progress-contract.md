@@ -237,16 +237,16 @@ see [docs/perf/README.md](../perf/README.md).
 
 ### Metrics hygiene
 
-- Harvest uses **one project home per checkout path** (prefer `source=lock`, higher run count); a
-  home whose `identity.toml` lists several checkouts (worktrees sharing one lock id) claims each.
+- Every checkout of one project id (worktrees sharing one lock id) folds into one project store;
+  module keys are spelled relative to the project root and expanded against the reading checkout.
 - **Memory is bounded by the build, not the host.** A session in a project loads that project's
-  ledger, expanded against its own root only. Any other session (the engine's working dir, a
-  dashboard) reads the host tier: per-kind means and `[count]` in `host-metrics.toml`, written by
-  the harvest. Nothing in a request loads every project, and `identity.toml` keeps the 32 most
-  recently built checkouts, so a CI host's thousands of workspaces cost no heap.  
-- **Heavy-step floors:** native-image &lt; 5s and write-image &lt; 3s walls are dropped at journal
-  write and harvest (cache-restore noise).  
-- Cancelled / failed builds do not train.
+  store, expanded against its own root only. Any other session (the engine's working dir, a
+  dashboard) reads the host tier: the per-kind means and counts in the host store. Nothing in a
+  request loads every project, and `identity.toml` keeps the 32 most recently built checkouts, so a
+  CI host's thousands of workspaces cost no heap.
+- **Heavy-step floors:** native-image &lt; 5s and write-image &lt; 3s walls are dropped when a run's
+  measures are rendered (cache-restore noise).
+- Cancelled builds do not train; a failed build teaches only its suites' class walls.
 
 ## Progress bar
 
@@ -285,39 +285,59 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 
 ```
 ~/.jk/state/builds/
-  host-metrics.toml
+  host-estimates.txt  # the host store (HostStore)
   projects/<id>/
     identity.toml
-    project-metrics.toml
-    step-ledger.jsonl # the latest runs' step walls, shape, work set, suite curves and workers (StepLedger)
+    estimates.txt     # the project store (ProjectStore)
     runs/<build-number>/
       record.json
       details.jsonl
-      metrics.toml
   sessions/<session-id>/
     session.json      # the session and its episodes, rewritten on each change
     actions.jsonl     # one line per run or action, appended
 ```
 
-Per-class test walls are one table per package of a module in both files,
-`[test-class."<dir>"."<pkg>"]` with a `<SimpleName> = <ms>` row per class (a default-package class
-under `[test-class."<dir>"]` by its bare name), closing the file after the scalar rows; the run
-file carries the measured walls, the ledger their trimmed means. A standalone project's plan
-records them as a workspace member's does (`StandalonePlanTimings` attaches the same recorder
-and folds its step rates), so its ETA and slow-class hints read the same data. Naming the module and the package
-once each, instead of a qualified name per row, is what keeps a two-thousand-class ledger under
-200 KB.
+Both stores are one text file of `[section]` headers, each followed by its lines, rewritten whole
+and atomically under a lock beside the file. A finished run is folded in once, at its finish: one
+locked rewrite of its project store and one of the host store. Nothing scans the run directories
+to learn; they are kept for the record and reaped to the newest 50 runs, none older than 90 days.
 
-## Step metrics: wall and wait
+The project store holds:
 
-`metrics.toml` records every successful step twice: `task.<step>.wall-ms` /
-`module.<dir>.task.<step>.wall-ms` is the step's wall clock, and where the step spent part of
-that wall blocked on a shared resource, `…wait-ms` beside it says how much. All Java compilation
-in a job goes through one resident compiler worker, so on a wide build a module's `compile-java`
-wall is mostly its place in that queue: thirty modules summing to a minute of `compile-java`
-is a minute of machine-busy time, not a minute of javac. The wall stays the honest wall; the
-learned per-unit rates (`StepTimings`) train on `wall − wait`, so a rate never prices the queue
-as work. `task-finish` carries the same split as `waitMillis`, on the wire and in JSONL alike.
+| Section | Lines |
+|---------|-------|
+| `runs` | the step ledger: the latest 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, suite curves and suite workers (`StepLedger`) |
+| `means` | `key mean last count seen`: one running mean per measure the estimates read |
+| `classes` | `suiteDir⇥fqcn⇥last⇥mean⇥count⇥seen`: one running mean per test class of a suite, the suite as `<rel-dir><@selection>` |
+| `meta` | `runs N`, the number of runs folded, which `seen` counts in |
+
+The measures kept are a module's step walls (`module.<dir>.task.<step>.wall-ms`), a suite's wall
+normalized to one runner (`module.<dir>.task.run-tests*.wall1-ms`), a step kind's wall
+(`task.<step>.wall-ms`, the mean over the run's modules as one sample) and an invocation's
+(`invocation.<kind>[.<root>#dN].wall-ms`, `workspace.wall-ms`). A running mean is a plain mean for
+its first ten samples and then moves a tenth of the way to each new one; from the third sample on,
+a sample is clipped to within 4× of the mean before it is folded, so one stalled run cannot drag
+it. A row no run has refreshed in 200 runs is dropped, and past 4,000 means or 10,000 classes the
+least recently seen go first. A module step is read by its mean; another measure by its last sample
+unless that is a cache-restore blip beside a long mean.
+
+The host store holds the calibration probe, the continuous rates, the rung biases, the effort
+reference walls, the fetch and lock timings, and `means`: `key mean last count` for the step kinds
+and whole invocations of one kind every project's runs measured, folded the same way. A synthetic
+optimize or calibrate run teaches its project but not the host.
+
+A standalone project's plan records its class walls as a workspace member's does
+(`StandalonePlanTimings` attaches the same recorder and folds its step rates), so its ETA and
+slow-class hints read the same data. Live suite progress and `auto` test workers read each class's
+last wall; the ETA's class weights read its mean.
+
+## Step walls and waits
+
+A step's recorded wall is its wall clock, queue wait included. All Java compilation in a job goes
+through one resident compiler worker, so on a wide build a module's `compile-java` wall is partly
+its place in that queue. `task-finish` carries the wait as `waitMillis`, on the wire and in JSONL
+alike, and a run that went on hold for memory teaches its step ledger each step's wall less a wait
+long enough to be the hold.
 
 `task-finish` also carries `predictedMs` and `rung` for a step the run's seed priced: the price,
 and the layer that set it (`StepCost.Rung`), narrowest first:
@@ -332,18 +352,18 @@ and the layer that set it (`StepCost.Rung`), narrowest first:
 | `TOKEN` | a touch: a cache restore or an order check |
 
 A price from a prior (`PROJECT`, `HOST`, `CALIBRATION`) is corrected by that rung's bias for the
-step's kind on this host (`RungBias`, the `[bias]` section of the host store `~/.jk/state/builds/host-estimates.txt`). Each finished run
+step's kind on this host (`RungBias`, the host store's `bias` section). Each finished run
 teaches it: per rung and kind, the median of `ln(wall / price)` over the run's priced steps of a
 second or more, moved 40% of the way into the bias (a key's first run sets it outright), the factor
 clamped to ¼–4×. So cold priors improve with every project the host builds.
 
 A node step or plugin goal the module has never run is priced from one cheap measure of its effort
-(`StepEffort`, the host store's `[effort]` section): `node-install` by the packages its lockfile
+(`StepEffort`, the host store's `effort` section): `node-install` by the packages its lockfile
 pins, `node-build` and `node-test` by the tool their `package.json` script runs, a plugin goal at its
 kind's median on this host; reference prices from a cold set of example projects stand in until the
 host has run the kind (`bench/eta/coldset.sh`, `features.py`).
 
-A step replays walls measured under the conditions this run has. Each step-ledger run records
+A step replays walls measured under the conditions this run has. Each ledger run records
 whether it was the project's first and the compiler warmth it started with (the compiles the
 lingering javac worker had answered; 0 after an engine start or once its linger ran out). A node
 step or plugin goal does not replay a first run's walls once a later run measured it, since the

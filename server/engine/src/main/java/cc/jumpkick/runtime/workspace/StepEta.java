@@ -106,7 +106,7 @@ public final class StepEta {
         Map<Path, List<StepCost>> steps = new LinkedHashMap<>();
         Map<String, int[]> curves = new LinkedHashMap<>();
         Map<Path, long[]> suiteWalls = new HashMap<>();
-        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        BuildMetrics metrics = BuildMetrics.current();
         StepTimings timings = StepTimings.load(cache);
         Calibration calibration = Calibration.load();
         StepEffort effort = StepEffort.load();

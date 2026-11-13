@@ -383,7 +383,7 @@ class EffortWeightsTest {
             Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, moduleDir);
             Files.createDirectories(home);
             String key = "module." + AggregatedMetrics.sanitize(moduleDir.toString()) + ".task.native-image.wall-ms";
-            Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
+            StoreSeed.project(home, """
                 [mean]
                 %s = 60000
                 [last]

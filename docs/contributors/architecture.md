@@ -92,8 +92,8 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   `Build #N is already running`; across engines on one machine (a draining predecessor beside
   its successor, two homes sharing a cache) the checkout's `target/.jk/build.lock` (`BuildSlot`)
   does the same, and the file names the holder's build so the refusal can too. The OS releases
-  the lock with the process. Whole-file ledgers under the builds root (`project-metrics.toml`,
-  `host-metrics.toml`, the run-number counter) fold under a sibling
+  the lock with the process. Whole-file stores under the builds root (each project's `estimates.txt`,
+  `host-estimates.txt`, the run-number counter) fold under a sibling
   `<file>.lock` (`FileLocks`), so two engines cannot lose each other's rows; non-build journal
   dirs carry the engine's pid.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the

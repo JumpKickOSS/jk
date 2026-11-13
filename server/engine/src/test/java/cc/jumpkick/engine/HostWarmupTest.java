@@ -131,7 +131,7 @@ class HostWarmupTest {
 
             // 1. worker jars — the root PluginJar.locate() fetches into.
             assertThat(JkStores.storeCas().root()).isEqualTo(store);
-            // 2. host calibration (state/builds/host-metrics.toml).
+            // 2. host calibration (state/builds/host-estimates.txt).
             assertThat(JkDirs.builds()).startsWithRaw(state);
 
             for (Path written : List.of(JkStores.storeCas().root(), JkDirs.builds())) {

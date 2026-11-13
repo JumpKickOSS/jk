@@ -15,6 +15,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
@@ -83,7 +84,7 @@ class IterationDeltaE2eTest {
                 new JobSessions(() -> 0L),
                 journal,
                 new JkHistoryConfig(true, 30, 512),
-                () -> tmp.resolve("metrics.json"),
+                () -> BuildMetrics.load(tmp.resolve("metrics.json")),
                 System::currentTimeMillis,
                 "9.9-test",
                 log::add);

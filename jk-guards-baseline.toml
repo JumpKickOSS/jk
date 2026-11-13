@@ -736,7 +736,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1748, sites = 124319 }
+"server/engine" = { classes = 1792, sites = 127117 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 78, sites = 4704 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1091,10 +1091,6 @@ at     = "cc.jumpkick.runtime.workspace.WorkspaceFinalPhase#learn(Lcc/jumpkick/r
 reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.workspace.WorkspaceLock#recordLockSuccess(Ljava/nio/file/Path;J)V -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.task.SyncManifest#write(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/lock/Lockfile;)Ljava/nio/file/Path; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1199,11 +1195,11 @@ at     = "cc.jumpkick.repo.s3.S3Transport#forS3(Lcc/jumpkick/http/Http;Ljava/net
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "shared/core"
-at     = "cc.jumpkick.builds.MetricsHarvest#awaitIdle(J)V -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.builds.RunReaper#awaitIdle(J)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "shared/core"
-at     = "cc.jumpkick.builds.MetricsHarvest#runOnce(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.builds.RunReaper#runOnce(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "shared/toolchain-jdk"

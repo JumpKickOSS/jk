@@ -4,9 +4,10 @@ package cc.jumpkick.engine.journal;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
@@ -17,7 +18,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The {@code metrics.toml} a finished run writes beside its record. */
+/** The measures a finished run renders for its project and host stores to fold. */
 class RunMetricsTomlTest {
 
     @TempDir
@@ -55,72 +56,33 @@ class RunMetricsTomlTest {
     }
 
     /**
-     * The rollup buckets by the stage the plan <em>declared</em>, not by re-guessing from the task
-     * name. Those disagreed: a plugin source generator reports {@code generate} on the wire and was
-     * bucketed {@code compile} here, and every {@code stage(RESOLVE)} task in ScriptPlans landed in
-     * {@code other} — so the priors were fed by a different task set than the UI displayed.
+     * Only what the estimates read is rendered: step and invocation walls. A step's stage, its
+     * queue wait and a module's whole wall are not.
      */
     @Test
-    void metrics_bucket_by_the_declared_stage_not_the_task_name() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
-        var tasks = List.of(
-                // ofTaskName would call this one `compile`; the plan says `generate`.
-                new BuildRecord.Task("plugin-android-res", "generate", "SUCCESS", 700, 0L),
-                // ofTaskName has no case for this name at all and would bucket it `other`.
-                new BuildRecord.Task("resolve-kotlinc", "resolve", "SUCCESS", 300, 0L));
-        String locator = requireNonNull(
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
-
-        assertThat(toml).contains("phase.generate.wall-ms = 700");
-        assertThat(toml).contains("phase.resolve.wall-ms = 300");
-        assertThat(toml).doesNotContain("phase.other.wall-ms");
-    }
-
-    /**
-     * Regression: {@code phase.*.wall-ms} is one summed key per run — duplicate
-     * per-task keys would be folded as a MEAN by MetricsHarvest, deflating the phase priors.
-     */
-    @Test
-    void metrics_toml_sums_phase_walls_per_run() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
-        var tasks = List.of(
-                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 0L),
-                new BuildRecord.Task("copy-resources", "compile", "SUCCESS", 1000, 0L),
-                new BuildRecord.Task("write-stamp", "compile", "SUCCESS", 500, 0L),
-                new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000, 0L));
-        String locator = requireNonNull(
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
-        Path metrics = j.runDir(locator).orElseThrow().resolve("metrics.toml");
-        String toml = Files.readString(metrics);
-        // One key per phase, summed: compile-java + copy-resources + write-stamp.
-        assertThat(toml).contains("phase.compile.wall-ms = 3500");
-        assertThat(toml).contains("phase.test.wall-ms = 4000");
-        assertThat(toml.lines()
-                        .filter(l -> l.startsWith("phase.compile.wall-ms"))
-                        .count())
-                .isEqualTo(1);
-        // Per-task keys stay per task.
-        assertThat(toml).contains("task.compile-java.wall-ms = 2000");
-    }
-
-    /**
-     * A step that queued behind the shared compiler worker records that wait beside its wall, so a
-     * reader summing walls across thirty modules can see how much of the sum was the queue.
-     */
-    @Test
-    void metrics_toml_records_a_steps_queue_wait_beside_its_wall() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
+    void a_run_renders_step_and_invocation_walls_only() {
         var tasks = List.of(
                 new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 1700L),
                 new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000, 0L));
-        String locator = requireNonNull(
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
-        assertThat(toml).contains("task.compile-java.wall-ms = 2000");
-        assertThat(toml).contains("task.compile-java.wait-ms = 1700");
-        assertThat(toml).contains("task.run-tests.wall-ms = 4000");
-        assertThat(toml).doesNotContain("task.run-tests.wait-ms");
+        String toml =
+                RunMetricsToml.render(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), new RunMeasures());
+        assertThat(toml)
+                .contains("workspace.wall-ms = 100")
+                .contains("invocation.build.wall-ms = 100")
+                .contains("task.compile-java.wall-ms = 2000")
+                .contains("task.run-tests.wall-ms = 4000")
+                .doesNotContain("wait-ms")
+                .doesNotContain("phase.");
+        assertThat(ProjectStore.scalars(toml))
+                .allSatisfy((k, v) -> assertThat(ProjectStore.isKept(k)).isTrue());
+    }
+
+    /** A cancelled run renders nothing. */
+    @Test
+    void a_cancelled_run_renders_nothing() {
+        BuildRecord base = record(1_700_000_000_000L, true, "g:a");
+        assertThat(RunMetricsToml.render(withCancelled(base), new RunMeasures()))
+                .isNull();
     }
 
     /** {@code base} with its module list replaced. Same shape as {@link #withTasks}. */
@@ -163,7 +125,6 @@ class RunMetricsTomlTest {
      */
     @Test
     void a_suite_wall_is_journalled_with_its_runner_count_and_normalized() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
         Path mod = dir.resolve("server/engine");
         RunMeasures measures = new RunMeasures();
         measures.runners(mod.toString(), 8);
@@ -174,12 +135,9 @@ class RunMetricsTomlTest {
                 0,
                 20_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 17_384, 0L))));
-        String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), measured(measures)));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        String toml = RunMetricsToml.render(withModules(record(1_700_000_000_000L, true, "g:a"), modules), measures);
 
         assertThat(toml).contains(".task.run-tests.wall-ms = 17384");
-        assertThat(toml).contains(".task.run-tests.workers = 8");
         assertThat(toml)
                 .as("17384 x 8^(1/3), the single-runner-equivalent cost")
                 .contains(".task.run-tests.wall1-ms = " + TestSuiteScaling.normalize(17_384, 8));
@@ -197,9 +155,8 @@ class RunMetricsTomlTest {
                 0,
                 wall,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", wall, 0L))));
-        String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), measured(measures)));
-        return Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        return requireNonNull(
+                RunMetricsToml.render(withModules(record(1_700_000_000_000L, true, "g:a"), modules), measures));
     }
 
     /**
@@ -223,7 +180,6 @@ class RunMetricsTomlTest {
     /** A failed run trains no wall, but its suite's classes ran for real and their walls stay. */
     @Test
     void a_failed_run_keeps_its_class_walls_and_nothing_else() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
         Path mod = dir.resolve("server/engine");
         RunMeasures measures = new RunMeasures();
         measures.suite(mod.toString(), new RunMeasures.Suite("run-tests@all_integration", false));
@@ -235,9 +191,7 @@ class RunMetricsTomlTest {
                 0,
                 250_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "FAILED", 249_000, 0L))));
-        String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, false, "g:a"), modules), measured(measures)));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        String toml = RunMetricsToml.render(withModules(record(1_700_000_000_000L, false, "g:a"), modules), measures);
 
         assertThat(toml)
                 .containsPattern("\\[test-class\\.\"[^\"]*server/engine@all_integration\"\\.\"a\"]")
@@ -262,13 +216,12 @@ class RunMetricsTomlTest {
         assertThat(toml)
                 .doesNotContain("run-tests.wall-ms")
                 .doesNotContain("run-tests.wall1-ms")
-                .doesNotContain("run-tests.workers")
                 .contains("SlowIT = 9000");
     }
 
     /**
      * Module keys are spelled relative to the run's project root, so three worktrees of one
-     * project write the same keys and the harvest folds them into one row set.
+     * project write the same keys and their project store folds them into one row set.
      */
     @Test
     void three_worktrees_of_one_project_write_one_row_set() throws Exception {
@@ -287,19 +240,52 @@ class RunMetricsTomlTest {
                     List.of(new BuildRecord.Task("compile-java", "compile", "SUCCESS", 800, 0L))));
             BuildRecord base = record(1_700_000_000_000L, true, "g:a");
             BuildRecord rec = withModules(withTasks(withDir(base, root.toString()), tasks), modules);
-            String locator = requireNonNull(j.append(rec, BuildJournal.Snapshot.NONE));
-            String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+            requireNonNull(j.append(rec, BuildJournal.Snapshot.NONE));
+            String toml = RunMetricsToml.render(rec, new RunMeasures());
             assertThat(toml).contains("module.server/io.task.compile-java.wall-ms = 800");
             assertThat(toml).contains("module." + ModuleKeys.ROOT + ".task.guard.wall-ms = 70");
             assertThat(toml).doesNotContain(root.toString());
         }
-        MetricsHarvest.get().runOnce(dir);
         Path home = ProjectBuilds.projectHome(dir, null, dir.resolve("wt").resolve("a"));
-        String ledger = Files.readString(home.resolve(ProjectBuilds.PROJECT_METRICS));
-        assertThat(ledger.lines().filter(l -> l.startsWith("module.server/io.task.compile-java.wall-ms")))
-                .as("one mean, one count: a module task row keeps no last copy")
-                .hasSize(2);
-        assertThat(ledger).contains("module.server/io.task.compile-java.wall-ms = 3");
+        String store = Files.readString(ProjectStore.file(home));
+        assertThat(store.lines().filter(l -> l.startsWith("module.server/io.task.compile-java.wall-ms")))
+                .as("one row, three samples")
+                .containsExactly("module.server/io.task.compile-java.wall-ms 800 800 3 3");
+        assertThat(Files.readString(dir.resolve(HostStore.FILE)))
+                .as("the host learns the step kind, not the module")
+                .contains("task.compile-java.wall-ms 800 800 3")
+                .doesNotContain("module.");
+    }
+
+    private static BuildRecord withCancelled(BuildRecord base) {
+        return new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                BuildRecord.SCHEMA,
+                base.kind(),
+                base.dir(),
+                base.coord(),
+                base.projectId(),
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                true,
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                base.modules(),
+                base.steps(),
+                base.diagnostics(),
+                base.trigger(),
+                base.session(),
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io(),
+                base.requestId(),
+                base.publish(),
+                base.coverage());
     }
 
     private static BuildRecord withDir(BuildRecord base, String dir) {
@@ -336,7 +322,6 @@ class RunMetricsTomlTest {
     /** No recorded runner count → no runner keys at all, rather than a guessed 1. */
     @Test
     void a_suite_wall_with_no_recorded_concurrency_writes_no_runner_keys() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
         Path mod = dir.resolve("shared/host");
         var modules = List.of(new BuildRecord.Module(
                 "g:host",
@@ -345,12 +330,10 @@ class RunMetricsTomlTest {
                 0,
                 2_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 1_500, 0L))));
-        String locator = requireNonNull(
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        String toml =
+                RunMetricsToml.render(withModules(record(1_700_000_000_000L, true, "g:a"), modules), new RunMeasures());
 
         assertThat(toml).contains(".task.run-tests.wall-ms = 1500");
-        assertThat(toml).doesNotContain(".task.run-tests.workers");
         assertThat(toml).doesNotContain(".task.run-tests.wall1-ms");
     }
 
@@ -396,15 +379,12 @@ class RunMetricsTomlTest {
      */
     @Test
     void a_cold_worker_runs_compile_walls_are_not_recorded() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
         var tasks = List.of(
                 new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 0L),
                 new BuildRecord.Task("package-jar", "package", "SUCCESS", 300, 0L));
         RunMeasures measures = new RunMeasures();
         measures.startedWorker();
-        String locator = requireNonNull(
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks, 4242L), measured(measures)));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        String toml = RunMetricsToml.render(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks, 4242L), measures);
         assertThat(toml).contains("task.package-jar.wall-ms = 300");
         assertThat(toml).doesNotContain("task.compile-java.wall-ms");
     }
@@ -412,21 +392,15 @@ class RunMetricsTomlTest {
     /** A compile of part of its sources is recorded apart: the ETA prices the next one from it. */
     @Test
     void a_partial_compile_is_recorded_under_its_own_name() throws Exception {
-        BuildJournal j = new BuildJournal(dir);
         var tasks = List.of(
                 new BuildRecord.Task("compile-java", "compile", "SUCCESS", 400, 0L, TaskNames.compiledLabel(1, 12)),
                 new BuildRecord.Task("compile-test", "compile", "SUCCESS", 900, 0L, TaskNames.compiledLabel(5, 5)));
-        String locator = requireNonNull(
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
-        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        String toml =
+                RunMetricsToml.render(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), new RunMeasures());
         assertThat(toml).contains("task.compile-java-incremental.wall-ms = 400");
         assertThat(toml).doesNotContain("task.compile-java.wall-ms");
         assertThat(toml).contains("task.compile-test.wall-ms = 900");
         assertThat(TaskNames.compiledPart(TaskNames.compiledLabel(12, 12))).isFalse();
         assertThat(TaskNames.compiledPart("cache hit 1234abcd")).isFalse();
-    }
-
-    private static BuildJournal.Snapshot measured(RunMeasures measures) {
-        return new BuildJournal.Snapshot(null, null, null, null, null, measures);
     }
 }

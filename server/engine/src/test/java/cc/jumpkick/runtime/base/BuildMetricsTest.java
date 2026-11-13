@@ -7,10 +7,10 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.runtime.StepWalls;
+import cc.jumpkick.runtime.StoreSeed;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -86,7 +86,7 @@ class BuildMetricsTest {
         try {
             Path home = builds.resolve("projects").resolve("demo-home");
             Files.createDirectories(home);
-            Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
+            StoreSeed.project(home, """
                     [mean]
                     invocation.build.wall-ms = 4200
                     task.compile-java.wall-ms = 800
@@ -94,7 +94,7 @@ class BuildMetricsTest {
                     invocation.build.wall-ms = 9
                     task.compile-java.wall-ms = 9
                     """);
-            Files.writeString(builds.resolve(ProjectBuilds.HOST_METRICS), """
+            StoreSeed.host(builds, """
                     [mean]
                     invocation.build.wall-ms = 4100
                     task.compile-java.wall-ms = 750
@@ -108,7 +108,7 @@ class BuildMetricsTest {
             SessionContext.install(Session.defaults().withWorkingDir(engineCwd));
             BuildMetrics.clearSessionAggregatesMemo();
 
-            BuildMetrics m = BuildMetrics.load(BuildMetrics.defaultFile());
+            BuildMetrics m = BuildMetrics.current();
             assertThat(m.invocation("build", ""))
                     .as("global build tier from the host tier")
                     .isPresent();
@@ -135,7 +135,7 @@ class BuildMetricsTest {
             // Resolve the identity home this checkout would use, write metrics only there.
             Path home = ProjectBuilds.projectHome(builds, null, checkout);
             Files.createDirectories(home);
-            Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
+            StoreSeed.project(home, """
                     [mean]
                     invocation.build.wall-ms = 1000
                     [count]
@@ -144,7 +144,7 @@ class BuildMetricsTest {
             // A sibling home that must NOT appear when session is scoped to checkout.
             Path other = builds.resolve("projects").resolve("other-home");
             Files.createDirectories(other);
-            Files.writeString(other.resolve(ProjectBuilds.PROJECT_METRICS), """
+            StoreSeed.project(other, """
                     [mean]
                     invocation.build.wall-ms = 99999
                     [count]
@@ -153,7 +153,7 @@ class BuildMetricsTest {
 
             SessionContext.install(Session.defaults().withWorkingDir(checkout));
             BuildMetrics.clearSessionAggregatesMemo();
-            BuildMetrics m = BuildMetrics.load(BuildMetrics.defaultFile());
+            BuildMetrics m = BuildMetrics.current();
             assertThat(m.invocation("build", "").orElseThrow().ok().count())
                     .as("project session must not pick the unrelated home's 99 samples")
                     .isEqualTo(3);
@@ -371,60 +371,6 @@ class BuildMetricsTest {
         assertThat(entries.get(2).step()).isEqualTo("resolve-deps");
         assertThat(entries.get(2).dir()).isEmpty();
         assertThat(entries.get(3).dir()).isEqualTo("/p");
-    }
-
-    @Test
-    void prune_evicts_rows_older_than_the_max_age(@TempDir Path dir) {
-        Path f = file(dir);
-        record(f, build("/old", true, 100), NOW - 800 * DAY);
-        record(f, build("/new", true, 100), NOW);
-        var report = BuildMetrics.prune(f, new BuildMetrics.Limits(Long.MAX_VALUE, 730 * DAY), NOW, false);
-        assertThat(report.evictedByAge()).isEqualTo(1);
-        BuildMetrics.clearMemo();
-        BuildMetrics m = BuildMetrics.load(f);
-        assertThat(m.invocation("build", "/old")).isEmpty();
-        assertThat(m.invocation("build", "/new")).isPresent();
-        // The global row was refreshed by the /new build, so age eviction spares it.
-        assertThat(m.invocation("build", "")).isPresent();
-    }
-
-    @Test
-    void prune_evicts_oldest_rows_first_when_over_the_byte_cap(@TempDir Path dir) {
-        Path f = file(dir);
-        for (int i = 0; i < 20; i++) record(f, build("/p" + i, true, 100), NOW + i);
-        var report = BuildMetrics.prune(f, new BuildMetrics.Limits(600, Long.MAX_VALUE), NOW + 100, false);
-        assertThat(report.evictedBySize()).isPositive();
-        BuildMetrics.clearMemo();
-        BuildMetrics m = BuildMetrics.load(f);
-        // The newest project row outlives the oldest.
-        assertThat(m.invocation("build", "/p0")).isEmpty();
-        assertThat(m.invocation("build", "/p19")).isPresent();
-    }
-
-    @Test
-    void prune_dry_run_reports_but_does_not_rewrite(@TempDir Path dir) throws Exception {
-        Path f = file(dir);
-        record(f, build("/old", true, 100), NOW - 800 * DAY);
-        byte[] before = Files.readAllBytes(f);
-        var report = BuildMetrics.prune(f, new BuildMetrics.Limits(Long.MAX_VALUE, 730 * DAY), NOW, true);
-        assertThat(report.evictedByAge()).isPositive();
-        assertThat(Files.readAllBytes(f)).isEqualTo(before);
-    }
-
-    @Test
-    void limits_resolve_env_over_config_over_defaults(@TempDir Path dir) throws Exception {
-        Path cfg = dir.resolve("config.toml");
-        Files.writeString(cfg, "[metrics]\nmax-size-mb = 3\nmax-age-days = 10\n");
-        var fromCfg = BuildMetrics.Limits.resolve(cfg, k -> null);
-        assertThat(fromCfg.maxBytes()).isEqualTo(3L * 1024 * 1024);
-        assertThat(fromCfg.maxAgeMillis()).isEqualTo(10 * DAY);
-        var fromEnv = BuildMetrics.Limits.resolve(
-                cfg, Map.of("JK_METRICS_MAX_SIZE_MB", "1", "JK_METRICS_MAX_AGE_DAYS", "2")::get);
-        assertThat(fromEnv.maxBytes()).isEqualTo(1024L * 1024);
-        assertThat(fromEnv.maxAgeMillis()).isEqualTo(2 * DAY);
-        var defaults = BuildMetrics.Limits.resolve(dir.resolve("missing.toml"), k -> null);
-        assertThat(defaults.maxBytes()).isEqualTo(10L * 1024 * 1024);
-        assertThat(defaults.maxAgeMillis()).isEqualTo(730 * DAY);
     }
 
     @Test

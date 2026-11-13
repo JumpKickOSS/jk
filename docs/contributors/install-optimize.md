@@ -1,7 +1,7 @@
 # Host warmup: calibration on the idle engine
 
 JumpKick measures the host **inside the resident engine** and keeps the result in
-`state/builds/host-metrics.toml`. There is no user-facing command for it; the engine does it when
+the host store (`state/builds/host-estimates.txt`). There is no user-facing command for it; the engine does it when
 nothing else is running.
 
 ## When it runs
@@ -40,7 +40,7 @@ quiet** (no retries). The next minute/12 h cycle or engine restart tries again.
 
 | Artifact | Notes |
 |----------|--------|
-| **host-metrics.toml `[calibration]`** | `HardwareProbe` multi-probe (JVM fork, javac, disk, hash, JUnit fork and run, resolve) for the cold ETA. The resolve probe asks Central where a resolve would (its `mirror-of` mirror, else Central) and sends no credential; a 401 or 403 from a mirror that wants one is still a timed round trip |
+| **host store `[calibration]`** | `HardwareProbe` multi-probe (JVM fork, javac, disk, hash, JUnit fork and run, resolve) for the cold ETA. The resolve probe asks Central where a resolve would (its `mirror-of` mirror, else Central) and sends no credential; a 401 or 403 from a mirror that wants one is still a timed round trip |
 | **worker jars in the artifact store** | The probe forks the java-compiler and test-runner workers, which `PluginJar.locate()` fetches into `<store>` |
 
 Every root the pass writes under is outside `JK_CACHE_DIR`, so `jk cache nuke` is not undone by the
@@ -49,7 +49,7 @@ and the next engine rebuilds what it needs.
 
 Work runs on a **daemon idle thread** when `activeBuildPlans == 0` so client builds are not
 blocked. Within a maintenance workset, **`System.gc()` is always last** — after prune,
-journal/metrics retention, metrics harvest, feeds/templates and calibration — so the heap is not
+journal and run retention, feeds/templates and calibration — so the heap is not
 shrunk mid-chore.
 
 ## Worker startup caches

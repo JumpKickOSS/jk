@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.StepTimings;
@@ -44,11 +45,10 @@ class SessionMetricsFoldTest {
         Files.writeString(work.resolve("jk.toml"), "name = \"demo\"\n");
         Path home = ProjectBuilds.projectHome(state.resolve("builds"), null, work);
         Files.createDirectories(home);
-        Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
+        StoreSeed.project(home, """
                 [mean]
                 invocation.build.wall-ms = 4200
                 task.compile-java.wall-ms = 800
-                module./ws/app.task.run-tests.per-unit-ms = 12.5
                 [count]
                 invocation.build.wall-ms = 9
                 task.compile-java.wall-ms = 9
@@ -60,7 +60,7 @@ class SessionMetricsFoldTest {
                 [test-class."/ws/lib"]
                 com.example.LibTest = 300
                 """);
-        Files.writeString(state.resolve("builds").resolve(ProjectBuilds.HOST_METRICS), """
+        StoreSeed.host(state.resolve("builds"), """
                 [mean]
                 task.compile-java.wall-ms = 750
                 """);
@@ -77,10 +77,10 @@ class SessionMetricsFoldTest {
         BuildMetrics.resetSessionFoldCount();
 
         for (int i = 0; i < 5; i++) {
-            assertThat(BuildMetrics.load(BuildMetrics.defaultFile()).step("", "compile-java"))
-                    .isPresent();
-            assertThat(StepTimings.load(StepTimings.defaultFile()).perUnit("/ws/app", "run-tests"))
-                    .hasValue(12.5);
+            assertThat(BuildMetrics.current().step("", "compile-java")).isPresent();
+            assertThat(StepTimings.load(JkDirs.cache())
+                            .perUnit(StepTimings.HOST_METHOD_MS_DIR, "task.compile-java.wall-ms"))
+                    .hasValue(750.0);
             assertThat(EffortWeights.loadClassWalls("/ws/app", TaskNames.RUN_TESTS))
                     .containsEntry("com.example.AppTest", 900L)
                     .containsEntry("com.example.SlowTest", 5000L)
@@ -92,8 +92,8 @@ class SessionMetricsFoldTest {
 
         // A new window is a new fold, once, for the views that are asked for.
         BuildMetrics.clearSessionAggregatesMemo();
-        BuildMetrics.load(BuildMetrics.defaultFile());
-        BuildMetrics.load(BuildMetrics.defaultFile());
+        BuildMetrics.current();
+        BuildMetrics.current();
         assertThat(BuildMetrics.sessionFoldCount()).isEqualTo(4);
     }
 

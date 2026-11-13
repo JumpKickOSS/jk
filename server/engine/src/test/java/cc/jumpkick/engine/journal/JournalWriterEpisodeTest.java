@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.jobs.JobSessions;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,7 +31,7 @@ class JournalWriterEpisodeTest {
                 new JobSessions(() -> 0L),
                 journal,
                 new JkHistoryConfig(true, 30, 512),
-                () -> tmp.resolve("metrics.json"),
+                () -> BuildMetrics.load(tmp.resolve("metrics.json")),
                 () -> 1_700_000_000_100L,
                 "9.9",
                 s -> {});

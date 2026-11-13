@@ -13,6 +13,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
@@ -90,7 +91,7 @@ class AgentReportSizeTest {
                 new JobSessions(() -> 0L),
                 new BuildJournal(tmp.resolve("builds")),
                 new JkHistoryConfig(true, 30, 512),
-                () -> tmp.resolve("metrics.json"),
+                () -> BuildMetrics.load(tmp.resolve("metrics.json")),
                 System::currentTimeMillis,
                 "0.14.0",
                 line -> {});

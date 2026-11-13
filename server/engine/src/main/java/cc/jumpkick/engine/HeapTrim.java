@@ -19,7 +19,7 @@ import javax.management.ObjectName;
  * The native heap: worker I/O, jar reading and the JIT allocate through the C allocator, and glibc
  * keeps what they free in per-thread arenas until something calls {@code malloc_trim}; that is
  * {@link #trimNative}, the same operation as {@code jcmd <pid> System.trim_native_heap}. Both run
- * at the boundary and again after {@link #SETTLE} of idleness, once the harvest thread and the
+ * at the boundary and again after {@link #SETTLE} of idleness, once the run reaper and the
  * client disconnects that trail a job have finished allocating.
  */
 final class HeapTrim {

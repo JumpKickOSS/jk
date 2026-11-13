@@ -1525,8 +1525,8 @@ in     = "cc.jumpkick.resolver.MemberSolves#runAll"
 reason = "the member-solve pool's factory; every task is wrapped by ContextPropagator on the submitting thread"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "cc.jumpkick.builds.MetricsHarvest#request"
-reason = "the engine-lifetime harvest of finished runs' metrics reads journal files, never a request"
+in     = "cc.jumpkick.builds.RunReaper#request"
+reason = "the engine-lifetime reaper of finished runs' directories reads journal files, never a request"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.util.AccessLedger#<clinit>"
@@ -2161,10 +2161,6 @@ reason = "lock registry: one gate per checkout while a suite holds or waits for 
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.runtime.base.KtsSession#cancelGrace"
 reason = "seam: two seconds in production; a test shortens it"
-
-[[guards.engine-static-memo.allow]]
-in     = "cc.jumpkick.runtime.base.RecentClassWalls#CACHE"
-reason = "stamped: each checkout's merged class walls by the runs directory's mtime, which every build moves by adding its run"
 
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.runtime.base.SessionAggregates#MEMOS"

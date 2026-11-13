@@ -80,17 +80,17 @@ public final class NativeEffort {
     private NativeEffort() {}
 
     public static int weight(Path moduleDir) {
-        long ms = wallMillis(moduleDir, BuildMetrics.load(BuildMetrics.defaultFile()));
+        long ms = wallMillis(moduleDir, BuildMetrics.current());
         return ms > 0 ? EffortWeights.flatWeight(ms) : EffortWeights.TOKEN;
     }
 
     public static long wallMillis(Path moduleDir) {
-        return wallMillis(moduleDir, BuildMetrics.load(BuildMetrics.defaultFile()));
+        return wallMillis(moduleDir, BuildMetrics.current());
     }
 
     public static long wallMillis(Path moduleDir, BuildMetrics metrics) {
         String mod = moduleDir == null ? "" : moduleDir.toString();
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (metrics == null) metrics = BuildMetrics.current();
 
         // 1) Module-own measured wall — project history supersedes host / baselines
         long own = StepWalls.stepOkAvgMillisOwn(metrics, mod, TaskNames.NATIVE_IMAGE);

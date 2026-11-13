@@ -24,7 +24,7 @@ class TestEffortTest {
     /**
      * Pin state + builds, the same way {@link EffortWeightsStepEtaTest} and {@link NativeEffortTest}
      * do and for the same reason: every cold rung here ends at {@code Calibration.load()}, so without
-     * this the assertions read whatever {@code host-metrics.toml} the machine has and change meaning
+     * this the assertions read whatever host store the machine has and change meaning
      * the moment it is calibrated.
      *
      * <p>The cold-ladder test also supplies its calibration outright, which is the stronger statement

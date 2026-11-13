@@ -10,7 +10,6 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.runtime.base.BuildMetrics;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -102,8 +101,6 @@ class IdleHousekeepingTest {
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
                 new DecisionQueue(),
-                () -> roots.resolve("metrics.jsonl"),
-                () -> BuildMetrics.Limits.DEFAULTS,
                 roots.resolve("engine"),
                 System::currentTimeMillis,
                 log::add,
@@ -132,8 +129,6 @@ class IdleHousekeepingTest {
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
                 new DecisionQueue(),
-                () -> roots.resolve("metrics.jsonl"),
-                () -> BuildMetrics.Limits.DEFAULTS,
                 engineDir,
                 System::currentTimeMillis,
                 log::add,
@@ -160,8 +155,6 @@ class IdleHousekeepingTest {
                 new JkHistoryConfig(true, 30, 512),
                 journal,
                 new DecisionQueue(),
-                () -> roots.resolve("metrics.jsonl"),
-                () -> BuildMetrics.Limits.DEFAULTS,
                 roots.resolve("engine"),
                 now::get,
                 log::add,

@@ -7,7 +7,7 @@ import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.runtime.StoreSeed;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -46,9 +46,7 @@ class SessionAggregatesTest {
     private static Path ledger(Path state, Path checkout, String body) throws Exception {
         Path home = ProjectBuilds.projectHome(state.resolve("builds"), null, checkout);
         Files.createDirectories(home);
-        Path file = home.resolve(ProjectBuilds.PROJECT_METRICS);
-        Files.writeString(file, body, StandardCharsets.UTF_8);
-        return file;
+        return StoreSeed.project(home, body);
     }
 
     @Test
@@ -72,7 +70,7 @@ class SessionAggregatesTest {
                 .as("five reads, one parse")
                 .isEqualTo(1);
 
-        Files.writeString(file, """
+        ledger(state, work, """
                 [mean]
                 module.server/io.task.compile-java.wall-ms = 950
                 """);
@@ -120,8 +118,7 @@ class SessionAggregatesTest {
         assertThat(fromB.taskWallMs(b.toString(), "guard")).hasValue(70);
         assertThat(fromB.testClassWallMs(b.resolve("server/io").toString(), "com.example.IoTest"))
                 .hasValue(300);
-        assertThat(BuildMetrics.load(BuildMetrics.defaultFile())
-                        .step(b.resolve("server/io").toString(), "compile-java"))
+        assertThat(BuildMetrics.current().step(b.resolve("server/io").toString(), "compile-java"))
                 .as("the folded step view carries the same expansion")
                 .isPresent();
     }
@@ -192,7 +189,7 @@ class SessionAggregatesTest {
         StringBuilder rows = new StringBuilder("[mean]\n");
         for (int i = 0; i < 2_000; i++) rows.append("module.m").append(i).append(".task.compile-java.wall-ms = 800\n");
         ledger(state, work, rows.toString());
-        Files.writeString(state.resolve("builds").resolve(ProjectBuilds.HOST_METRICS), """
+        StoreSeed.host(state.resolve("builds"), """
                 [mean]
                 task.compile-java.wall-ms = 750
                 [count]

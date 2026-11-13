@@ -8,6 +8,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSessions;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -175,7 +176,7 @@ class NoopJournalTest {
                 sessions,
                 journal,
                 new JkHistoryConfig(true, 30, 512),
-                () -> tmp.resolve("metrics.json"),
+                () -> BuildMetrics.load(tmp.resolve("metrics.json")),
                 () -> 1_700_000_000_100L,
                 "9.9",
                 log::add);

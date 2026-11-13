@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -180,8 +181,8 @@ public interface VerbHost {
         throw new UnsupportedOperationException("historyConfig");
     }
 
-    default Path metricsFile() {
-        throw new UnsupportedOperationException("metricsFile");
+    default BuildMetrics metrics() {
+        throw new UnsupportedOperationException("metrics");
     }
 
     default InFlightBuilds inFlightBuilds() {

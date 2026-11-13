@@ -74,6 +74,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -250,7 +251,7 @@ public final class EngineServer implements AutoCloseable {
     private final JkHistoryConfig historyConfig;
 
     /** The running invocation/step aggregates every finished build/test folds into. */
-    private Path metricsFile = BuildMetrics.defaultFile();
+    private Supplier<BuildMetrics> metrics = BuildMetrics::current;
 
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
@@ -265,7 +266,7 @@ public final class EngineServer implements AutoCloseable {
 
     /** Test seam: point the metrics store at a sandbox file instead of the user's real state dir. */
     void metricsFileForTests(Path file) {
-        this.metricsFile = file;
+        this.metrics = () -> BuildMetrics.load(file);
     }
 
     /** How long a fresh connection may stay silent before it is closed. */
@@ -391,7 +392,7 @@ public final class EngineServer implements AutoCloseable {
                         this.version, activeBuildPlans::get, () -> draining || shuttingDown, this.log)
                 .orElse(null);
         this.journalWriter = new JournalWriter(
-                sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
+                sessions, journal, historyConfig, () -> metrics.get(), clockMillis, this.version, this.log);
         this.sessionLog = newSessionLog();
         decisions.store(new JournaledDecisions(sessionLog));
         MachineSetupDecisions.watch(decisions);
@@ -512,8 +513,6 @@ public final class EngineServer implements AutoCloseable {
                 historyConfig,
                 journal,
                 decisions,
-                () -> metricsFile,
-                () -> BuildMetrics.Limits.resolve(userConfig, ProcessEnv::get),
                 paths.dir(),
                 clockMillis,
                 this.log,
@@ -573,7 +572,7 @@ public final class EngineServer implements AutoCloseable {
                         clockMillis,
                         journal,
                         historyConfig,
-                        () -> metricsFile,
+                        () -> metrics.get(),
                         inFlightBuilds),
                 decisions);
     }
@@ -594,7 +593,7 @@ public final class EngineServer implements AutoCloseable {
                 this.version,
                 httpEvents,
                 journal,
-                () -> metricsFile,
+                () -> metrics.get(),
                 this.log,
                 this::statusSnapshot,
                 liveRuns,

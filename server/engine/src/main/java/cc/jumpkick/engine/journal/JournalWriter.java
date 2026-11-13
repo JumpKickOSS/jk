@@ -56,7 +56,7 @@ public final class JournalWriter {
     private final JobSessions sessions;
     private final BuildJournal journal;
     private final JkHistoryConfig historyConfig;
-    private final Supplier<Path> metricsFile;
+    private final Supplier<BuildMetrics> metrics;
     private final LongSupplier clock;
     private final String version;
     private final Consumer<String> log;
@@ -507,7 +507,7 @@ public final class JournalWriter {
 
     private CacheBenefit.@Nullable Result computeBenefit(BuildAccumulator a, long millis) {
         if (!a.succeeded() || a.wasCancelled() || !pricesCacheBenefit(a.kind())) return null;
-        BuildMetrics metrics = BuildMetrics.load(metricsFile.get());
+        BuildMetrics metrics = this.metrics.get();
         BiFunction<String, String, OptionalLong> baseline = (dir, step) -> {
             Optional<BuildMetrics.Entry> e = metrics.step(dir, step).filter(x -> x.ok().count() > 0);
             if (e.isEmpty()) e = metrics.step("", step).filter(x -> x.ok().count() > 0);

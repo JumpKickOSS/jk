@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.builds.HostStore;
-import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.MinimalToml;
@@ -51,7 +50,6 @@ final class HostMetricsFile {
                 TomlTable mean = t.getTable("mean");
                 Map<String, List<Double>> rings = new LinkedHashMap<>(learned.samples());
                 for (String key : mean.keySet()) {
-                    if (!MetricsHarvest.isContinuousMeanKey(key)) continue;
                     Object v = mean.get(key);
                     if (v instanceof Number n && n.doubleValue() > 0) {
                         rings.putIfAbsent(key, List.of(n.doubleValue()));

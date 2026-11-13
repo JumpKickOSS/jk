@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
-import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectStore;
+import cc.jumpkick.builds.RunReaper;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
@@ -46,7 +48,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a
  * UTC timestamp stamp for the run, not a path key. {@link #begin}/{@link #complete} locators are
- * the build-number directory name. On complete, {@link #current} requests a {@link MetricsHarvest}.
+ * the build-number directory name. On complete, {@link #current} requests a {@link RunReaper} pass.
  *
  * <p>A numbered run admitted through {@link #beginLater} has no directory until it has run for
  * {@link #STUB_DELAY_MILLIS}: a run that ends sooner is finished by {@link #complete}, which writes the
@@ -107,10 +109,10 @@ public final class BuildJournal {
 
     private final long stubDelayMillis;
 
-    /** Whether a finished run requests a {@link MetricsHarvest} of {@link #buildsRoot}. */
-    private final boolean harvests;
+    /** Whether a finished run requests a {@link RunReaper} pass over {@link #buildsRoot}. */
+    private final boolean reaps;
 
-    /** A journal under {@code buildsRoot} that leaves harvesting to its caller. */
+    /** A journal under {@code buildsRoot} that leaves run retention to its caller. */
     public BuildJournal(Path buildsRoot) {
         this(buildsRoot, STUB_DELAY_MILLIS, false);
     }
@@ -120,17 +122,17 @@ public final class BuildJournal {
         this(buildsRoot, stubDelayMillis, false);
     }
 
-    private BuildJournal(Path buildsRoot, long stubDelayMillis, boolean harvests) {
+    private BuildJournal(Path buildsRoot, long stubDelayMillis, boolean reaps) {
         this.buildsRoot = buildsRoot.normalize();
         this.stubDelayMillis = stubDelayMillis;
-        this.harvests = harvests;
+        this.reaps = reaps;
         this.runs = new JournalIndex(this.buildsRoot, this::headText);
     }
 
     /** Every run by its record head: what the reads below consult instead of listing the root. */
     private final JournalIndex runs;
 
-    /** This process's journal: every finished build-like run requests a harvest of its root. */
+    /** This process's journal: every finished build-like run requests a reaper pass over its root. */
     public static BuildJournal current() {
         return new BuildJournal(JkDirs.builds(), STUB_DELAY_MILLIS, true);
     }
@@ -264,9 +266,6 @@ public final class BuildJournal {
                 if (record.running()) {
                     Files.writeString(
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
-                } else {
-                    RunMetricsToml.write(tmp, withIds, snapshot.measures());
-                    RunStepLedger.record(home, withIds);
                 }
                 if (Files.isDirectory(target)) {
                     // A live entry (its details.jsonl is being written) is only ever rewritten in
@@ -274,17 +273,17 @@ public final class BuildJournal {
                     PathUtil.deleteRecursively(tmp);
                     return complete(dirName, withIds, snapshot) ? dirName : null;
                 }
-                // After the live-entry branch: complete() drains the models into the entry it
-                // finishes, and a drain into this tmp would be deleted with it.
-                if (!record.running()) EtaModels.write(tmp, withIds.requestId());
+                // After the live-entry branch: complete() learns from the run and drains the models
+                // into the entry it finishes, and a drain into this tmp would be deleted with it.
+                if (!record.running()) {
+                    learn(home, withIds, snapshot.measures());
+                    EtaModels.write(tmp, withIds.requestId());
+                }
                 OwnerOnlyFiles.seal(tmp);
                 move(tmp, target);
                 runs.touched(target);
-                if (harvests
-                        && !record.running()
-                        && !record.synthetic()
-                        && BuildHistoryKinds.isBuildLike(record.kind()))
-                    MetricsHarvest.get().request(buildsRoot);
+                if (reaps && !record.running() && !record.synthetic() && BuildHistoryKinds.isBuildLike(record.kind()))
+                    RunReaper.get().request(buildsRoot);
                 return dirName;
             } catch (IOException e) {
                 PathUtil.deleteRecursively(tmp);
@@ -403,10 +402,9 @@ public final class BuildJournal {
             BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
             writeRecord(tmp, toWrite);
             writeSnapshot(tmp, snapshot, previousRun(target));
-            RunMetricsToml.write(tmp, toWrite, snapshot.measures());
-            // parent is the project's runs/ directory; the ledger sits in the project's home above it.
+            // parent is the project's runs/ directory; the store sits in the project's home above it.
             Path projectHome = parent.getParent();
-            if (projectHome != null) RunStepLedger.record(projectHome, toWrite);
+            if (projectHome != null) learn(projectHome, toWrite, snapshot.measures());
             EtaModels.write(tmp, toWrite.requestId());
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
@@ -419,7 +417,6 @@ public final class BuildJournal {
             runs.touched(target);
             if (!spilled) Files.deleteIfExists(target.resolve(DIAGNOSTICS_SPILL));
             Files.deleteIfExists(target.resolve(ENGINE_OWNER));
-            moveIfPresent(tmp, target, ProjectBuilds.METRICS);
             moveIfPresent(tmp, target, EtaModels.FILE);
             if (snapshot != null) {
                 if (snapshot.resultsMd() != null) moveIfPresent(tmp, target, RESULTS_MD);
@@ -429,14 +426,26 @@ public final class BuildJournal {
                 moveIfPresent(tmp, target, SOURCES_TSV);
             }
             PathUtil.deleteRecursively(tmp);
-            // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
-            if (harvests && !toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
-                MetricsHarvest.get().request(buildsRoot);
+            if (reaps && !toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
+                RunReaper.get().request(buildsRoot);
             }
             return true;
         } catch (IOException | RuntimeException e) {
             PathUtil.deleteRecursively(tmp);
             return false;
+        }
+    }
+
+    /**
+     * What a finished run teaches: its measures ({@link RunMetricsToml}) and its ledger entry
+     * ({@link RunStepLedger}) folded into its project's store in one rewrite, and its host keys into
+     * the host's store. Synthetic optimize/calibrate fixtures do not train the host.
+     */
+    private void learn(Path projectHome, BuildRecord finished, RunMeasures measures) {
+        String metrics = RunMetricsToml.render(finished, measures);
+        ProjectStore.foldRun(projectHome, metrics, RunStepLedger.record(finished));
+        if (metrics != null && !finished.synthetic()) {
+            HostStore.foldMeans(buildsRoot.resolve(HostStore.FILE), ProjectStore.scalars(metrics));
         }
     }
 

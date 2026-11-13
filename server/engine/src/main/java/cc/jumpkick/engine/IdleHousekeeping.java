@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.RunReaper;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.SessionContext;
@@ -34,12 +34,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
-import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Idle-boundary chores: cache prune, journal/metrics/heap-dump retention, host warmup, trailing
+ * Idle-boundary chores: cache prune, journal/heap-dump retention, host warmup, trailing
  * GC and native-heap trim ({@link HeapTrim}). Exactly-once at the build boundary; GC is always
  * last, and a settled trim follows once the engine has been idle for {@link HeapTrim#SETTLE}. A
  * draining engine prunes and warms nothing: its successor owns the shared stores.
@@ -69,10 +68,6 @@ public final class IdleHousekeeping {
     private final BuildJournal journal;
     /** The decisions the journal prune drops settled ones from, so they leave the live queue with their files. */
     private final DecisionQueue decisions;
-
-    private final Supplier<Path> metricsFile;
-    /** The metrics store's size and age budget, read at each prune: the engine's config, not the process's. */
-    private final Supplier<BuildMetrics.Limits> metricsLimits;
 
     private final Path engineDir;
     private final LongSupplier clock;
@@ -136,7 +131,7 @@ public final class IdleHousekeeping {
     /**
      * The trim that runs once the engine has sat idle for {@link HeapTrim#SETTLE}, which is also when
      * the engine startup cache is recorded if this install has none: drop the
-     * per-build memos again (the harvest thread and client disconnects allocate after the
+     * per-build memos again (the run reaper and client disconnects allocate after the
      * boundary), empty the process-wide memos a next build of the same workspace would have
      * reused ({@link MemoTrim}), collect so the heap uncommits, and return the native heap. One
      * log line says what came back and what was dropped.
@@ -194,12 +189,11 @@ public final class IdleHousekeeping {
             if (!draining.getAsBoolean()) {
                 drainPendingPrune();
                 pruneJournal();
-                pruneMetrics();
                 pruneHeapDumps();
                 CacheStats.flush(JkDirs.state().resolve(CacheStats.FILE_NAME));
             }
             try {
-                MetricsHarvest.get().awaitIdle(30_000L);
+                RunReaper.get().awaitIdle(30_000L);
             } catch (RuntimeException e) {
                 Log.debug("run: RuntimeException ignored", e);
             }
@@ -315,7 +309,7 @@ public final class IdleHousekeeping {
                         }
                         drainPendingPrune();
                         try {
-                            MetricsHarvest.get().awaitIdle(30_000L);
+                            RunReaper.get().awaitIdle(30_000L);
                         } catch (RuntimeException e) {
                             Log.debug("kickPendingWarmup: RuntimeException ignored", e);
                         }
@@ -384,19 +378,6 @@ public final class IdleHousekeeping {
             }
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal prune failed: " + e.getMessage());
-        }
-    }
-
-    private void pruneMetrics() {
-        try {
-            BuildMetrics.PruneReport r =
-                    BuildMetrics.prune(metricsFile.get(), metricsLimits.get(), clock.getAsLong(), false);
-            if (r.evictedByAge() + r.evictedBySize() > 0) {
-                log.accept("jk engine: build metrics prune removed " + (r.evictedByAge() + r.evictedBySize())
-                        + " rows (" + r.kept() + " kept, " + r.finalBytes() + " bytes)");
-            }
-        } catch (RuntimeException e) {
-            log.accept("jk engine: build metrics prune failed: " + e.getMessage());
         }
     }
 

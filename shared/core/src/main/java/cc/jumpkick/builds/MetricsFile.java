@@ -8,14 +8,14 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The line grammar {@code metrics.toml} (one run) and {@code project-metrics.toml} (the ledger)
- * share. Scalar rows are {@code key = number}, keyed as {@code task.<step>.wall-ms}, {@code
+ * The line grammar a finished run's measures are rendered in, which {@link ProjectStore#foldRun}
+ * reads. Scalar rows are {@code key = number}, keyed as {@code task.<step>.wall-ms}, {@code
  * module.<dir>.task.<step>.wall-ms}, …, under a plain {@code [section]} or none. Per-class test
  * walls are one table per package of a module, {@code [test-class."<dir>"."<pkg>"]}, whose rows
  * are {@code <SimpleName> = <ms>}; a class in the default package sits under {@code
  * [test-class."<dir>"]} by its bare name. The module directory and the package are each spelled
- * once as a header instead of once per class, which is most of what keeps a large project's ledger
- * small. The class tables close the file, since every row after a header belongs to it.
+ * once as a header instead of once per class. The class tables close the text, since every row
+ * after a header belongs to it.
  */
 public final class MetricsFile {
 
@@ -54,7 +54,7 @@ public final class MetricsFile {
     /**
      * Append {@code moduleDir}'s class walls — qualified class name to its formatted value — as
      * one table per package, the classes in name order so each package is opened once, each row
-     * the class's simple name. Both writers of the grammar go through here.
+     * the class's simple name.
      */
     public static void appendClassWalls(StringBuilder sb, String moduleDir, Map<String, String> byClass) {
         String open = null;

@@ -5,7 +5,6 @@ import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
@@ -50,14 +49,10 @@ public final class WorkspaceLock {
     public static BuildService.LockGuard ensureWorkspaceLockFresh(
             Path root, Path cache, boolean stale, @Nullable URI repoUrl) {
         if (!stale) return BuildService.LockGuard.OK;
-        long t0 = Clock.SYSTEM.nanos();
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
             // explicit `jk lock`, so lock content never depends on which path freshened.
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, repoUrl);
-            if (r.status() == 0) {
-                recordLockSuccess(root, (Clock.SYSTEM.nanos() - t0) / 1_000_000L);
-            }
             return r.status() != 0 ? new BuildService.LockGuard(r.status(), r.error()) : BuildService.LockGuard.OK;
         } catch (UnsatisfiableException e) {
             return new BuildService.LockGuard(Exit.RESOLVE, e.getMessage());
@@ -111,7 +106,7 @@ public final class WorkspaceLock {
             String dir = entryDir == null
                     ? ""
                     : entryDir.toAbsolutePath().normalize().toString();
-            BuildMetrics.Stats hist = BuildMetrics.load(BuildMetrics.defaultFile())
+            BuildMetrics.Stats hist = BuildMetrics.current()
                     .invocation("lock", dir)
                     .map(BuildMetrics.Entry::ok)
                     .orElse(BuildMetrics.Stats.EMPTY);
@@ -125,21 +120,6 @@ public final class WorkspaceLock {
             Log.debug("estimateLockMillis: ignore", e);
         }
         return Math.max(200, composed);
-    }
-
-    /** Fold a successful lock wall into BuildMetrics under kind {@code lock} (project tier). */
-    private static void recordLockSuccess(Path entryDir, long millis) {
-        if (millis <= 0 || entryDir == null) return;
-        try {
-            String dir = entryDir.toAbsolutePath().normalize().toString();
-            BuildMetrics.record(
-                    BuildMetrics.defaultFile(),
-                    new BuildMetrics.Outcome("lock", dir, null, true, false, millis, List.of()),
-                    System.currentTimeMillis());
-        } catch (Exception e) {
-            // never fail a build over metrics I/O
-            Log.debug("recordLockSuccess: never fail a build over metrics I/O", e);
-        }
     }
 
     /**

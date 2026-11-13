@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * Machine-scoped cold ETA priors + continuous host learning).
  *
  * <p><b>Bootstrap:</b> {@link #ensure} runs a multi-phase {@link HardwareProbe} when no usable
- * {@code ~/.jk/state/builds/host-metrics.toml} exists (or on {@code --force}). Network probes
+ * {@code ~/.jk/state/builds/host-estimates.txt} exists (or on {@code --force}). Network probes
  * (JUnit jar fetch + resolve micro-GET) are <strong>on by default</strong>; opt out with global
  * {@code --offline}.
  *
@@ -55,7 +55,7 @@ public final class Calibration {
     private static final long MAX_AGE_MILLIS = 60L * 86_400_000L; // ~60 days
 
     /**
-     * The host-metrics schema: probe components + continuous {@code learned-*} sample rings. It is 1
+     * The calibration schema: probe components + continuous {@code learned-*} sample rings. It is 1
      * until 1.0, like every schema jk writes; a file at any other value is not this jk's and is
      * ignored by {@link HostMetricsFile}, which costs one re-probe.
      */
@@ -161,7 +161,7 @@ public final class Calibration {
     private static final AtomicReference<@Nullable Calibration> MEMO = new AtomicReference<>();
 
     /**
-     * One writer of the host-metrics file at a time in this engine: the probe, and every learned
+     * One writer of the host store at a time in this engine: the probe, and every learned
      * read-fold-write (refine, learnFromSuccess, recordEngineColdStart). Two builds finishing
      * together would otherwise each persist from their own read and one loses its samples.
      */

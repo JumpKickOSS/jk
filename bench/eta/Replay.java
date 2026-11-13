@@ -331,7 +331,7 @@ public class Replay {
     static final Map<String, Map<String, Map<String, List<long[]>>>> CLASS_HISTORY = new HashMap<>();
 
     /**
-     * Class walls read as the engine reads them, the mean of the earlier runs' (MetricsHarvest folds
+     * Class walls read as the engine reads them, the mean of the earlier runs' (the project store folds
      * every run before this one). {@code REPLAY_CLASS_WALLS=loo} reads the median of every other
      * run's, later ones included: an oracle, which hid the live model's errors from its class
      * weights (it replayed corpus run 5 at 13% median ETA error where the engine showed 18%).
@@ -888,7 +888,7 @@ public class Replay {
     /** Per suite and work set, then per suite and profile, the test JVMs its latest replayed run had. */
     static final Map<String, Integer> LAST_WORKERS = new HashMap<>();
 
-    /** {@code dir}'s key in metrics.toml: the module's path under the workspace. */
+    /** {@code dir}'s key in the project store: the module's path under the workspace. */
     static String metricsKey(Path run, String dir) {
         int at = dir.indexOf("eta-corpus/");
         return at < 0 ? dir : dir.substring(at + "eta-corpus/".length());

@@ -11,6 +11,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -195,7 +196,7 @@ class MarkdownTestReportTest {
                 sessions,
                 new BuildJournal(ws.resolve("builds")),
                 new JkHistoryConfig(false, 30, 512),
-                () -> ws.resolve("metrics.json"),
+                () -> BuildMetrics.load(ws.resolve("metrics.json")),
                 System::currentTimeMillis,
                 "9.9-test",
                 line -> {});

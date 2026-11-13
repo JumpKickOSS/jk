@@ -8,7 +8,6 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.task.CachePruneScheduler;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -287,8 +286,6 @@ class IdleHousekeepingPruneYieldTest {
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
                 new DecisionQueue(),
-                () -> roots.resolve("metrics.jsonl"),
-                () -> BuildMetrics.Limits.DEFAULTS,
                 roots.resolve("engine"),
                 System::currentTimeMillis,
                 log::add,

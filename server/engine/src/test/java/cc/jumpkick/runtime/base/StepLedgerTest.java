@@ -4,8 +4,8 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.wire.runtime.StepCost;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -138,7 +138,7 @@ class StepLedgerTest {
                             new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 1_000 + i),
                             new StepLedger.Sample("/ws/a", "write-stamp", "SUCCESS", 2)));
         }
-        assertThat(Files.readAllLines(home.resolve(StepLedger.FILE))).hasSize(StepLedger.MAX_RUNS);
+        assertThat(ProjectStore.runs(home)).hasSize(StepLedger.MAX_RUNS);
         StepLedger ledger = StepLedger.load(home);
         assertThat(ledger.runs()).isEqualTo(StepLedger.MAX_RUNS);
         assertThat(ledger.price("/ws/a", "write-stamp", "SUCCESS", DEFAULT, Set.of()))

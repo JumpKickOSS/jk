@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import java.io.IOException;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * Points the host state dir at a private directory holding a settled {@code host-metrics.toml}, so
+ * Points the host state dir at a private directory holding a settled host store calibration, so
  * an ETA's {@link Calibration#ensure} returns at once instead of running the multi-second hardware
  * probe. Register with {@code @ExtendWith(SettledHostCalibration.class)}.
  */
@@ -32,7 +33,7 @@ public final class SettledHostCalibration implements BeforeEachCallback, AfterEa
         Path stateDir = Files.createTempDirectory("jk-host-state");
         context.getStore(NS).put(Saved.class, new Saved(stateDir, System.getProperty(STATE_DIR)));
         System.setProperty(STATE_DIR, stateDir.toString());
-        Path file = JkDirs.builds().resolve("host-metrics.toml");
+        Path file = JkDirs.builds().resolve(HostStore.FILE);
         Files.createDirectories(file.getParent());
         Files.writeString(file, """
                 [calibration]

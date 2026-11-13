@@ -140,7 +140,7 @@ public final class EngineMaintenance implements AutoCloseable {
 
     private void configChanged(String message) {
         // Callers re-resolve JkCacheConfig / HostWarmup.enabled / templates each use.
-        // Invalidate calibration memo so a changed probe policy can re-read host-metrics.
+        // Invalidate calibration memo so a changed probe policy can re-read the host store.
         try {
             Calibration.invalidateMemo();
         } catch (Throwable e) {

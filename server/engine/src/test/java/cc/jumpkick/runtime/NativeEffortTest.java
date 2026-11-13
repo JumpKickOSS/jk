@@ -20,7 +20,7 @@ class NativeEffortTest {
 
     @BeforeEach
     void isolateHostState() {
-        // Pin state + builds so host-metrics.toml (cpuScale, learned native rates) cannot leak
+        // Pin state + builds so the host store (cpuScale, learned native rates) cannot leak
         // into assertions. builds/ hangs off the state root, so one override pins both.
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
         Calibration.invalidateMemo();
@@ -118,8 +118,7 @@ class NativeEffortTest {
         restoreHostState();
         Path cli = Path.of("clients/cli").toAbsolutePath().normalize();
         if (!Files.isRegularFile(cli.resolve("jk.toml"))) return;
-        long own = StepWalls.stepOkAvgMillisOwn(
-                BuildMetrics.load(BuildMetrics.defaultFile()), cli.toString(), "native-image");
+        long own = StepWalls.stepOkAvgMillisOwn(BuildMetrics.current(), cli.toString(), "native-image");
         if (own < NativeEffort.WALL_FLOOR_MS) return;
         long est = NativeEffort.wallMillis(cli);
         assertThat(est).isEqualTo(own);

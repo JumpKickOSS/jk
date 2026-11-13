@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.runtime.base.BuildMetrics;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -71,8 +70,6 @@ class CacheRetentionAutomaticPathTest {
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(cache.resolveSibling("builds")),
                 new DecisionQueue(),
-                () -> cache.resolve("metrics.jsonl"),
-                () -> BuildMetrics.Limits.DEFAULTS,
                 cache.resolveSibling("engine"),
                 System::currentTimeMillis,
                 log::add,

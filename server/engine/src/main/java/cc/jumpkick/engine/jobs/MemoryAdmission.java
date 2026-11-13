@@ -2,8 +2,10 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.builds.AggregatedMetrics;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
@@ -172,9 +174,9 @@ public final class MemoryAdmission {
     public static final long LOCK_BYTES_PER_DECLARED_DEPENDENCY = 64L << 10;
 
     /**
-     * Heap the metrics ledgers cost per byte of file. They are scanned line by line into three
-     * key-to-number maps ({@link AggregatedMetrics}), held once per session,
-     * so the cost is the keys and their boxed values, not a parse tree.
+     * Heap the estimate stores cost per byte of file. They are scanned line by line into
+     * key-to-number maps ({@link AggregatedMetrics}) and the step ledger's runs, held once per
+     * session, so the cost is the keys and their values, not a parse tree.
      */
     public static final long LEDGER_BYTES_PER_BYTE = 8;
 
@@ -471,7 +473,7 @@ public final class MemoryAdmission {
      * A plan job's coordinator cost from what it reads whole. An import holds the reactor: {@link
      * #IMPORT_BYTES_PER_POM} per {@code pom.xml} under {@code dir}, build outputs pruned. Any other
      * plan holds the workspace lock as a parse tree at {@link #TOML_TREE_BYTES_PER_BYTE}, the
-     * project's metrics ledger and the host ledger as scanned maps at {@link
+     * project's estimate store and the host's as scanned maps at {@link
      * #LEDGER_BYTES_PER_BYTE}. A lock holds the graph it solves, which the lock on disk sizes when
      * there is one and the manifests' declared dependencies size at {@link
      * #LOCK_BYTES_PER_DECLARED_DEPENDENCY} each when there is not — the larger of the two. All sit
@@ -489,9 +491,9 @@ public final class MemoryAdmission {
                 declared = DeclaredDependencies.countDistinct(LockPaths.lockOwnerDir(Path.of(dir)));
             String projectId = ProjectIds.idOf(dir);
             if (projectId != null) {
-                ledgers += sizeOf(ProjectBuilds.projectHome(projectId).resolve(ProjectBuilds.PROJECT_METRICS));
+                ledgers += sizeOf(ProjectStore.file(ProjectBuilds.projectHome(projectId)));
             }
-            ledgers += sizeOf(ProjectBuilds.hostMetricsFile());
+            ledgers += sizeOf(HostStore.defaultFile());
         } catch (RuntimeException e) {
             Log.debug("estimate: inputs unreadable, base cost only", e);
         }

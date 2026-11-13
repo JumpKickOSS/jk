@@ -444,7 +444,7 @@ An idle engine's memory returns to a floor. When the last job finishes the engin
 per-build memos, runs a full collection so the heap uncommits down to its live data (SerialGC
 with a low `MaxHeapFreeRatio`), and returns freed native memory to the operating system
 (`malloc_trim`, the same operation as `jcmd <pid> System.trim_native_heap`). Thirty seconds
-of idleness later it does both again, once the harvest and the client disconnects that trail a
+of idleness later it does both again, once the run reaper and the client disconnects that trail a
 job have finished, and also empties the memos a next build of the same workspace would have
 reused — parsed manifests, scanned TOML files, parsed versions, the interned-string table, the
 file-hash and ABI stores (persisted first; the next build reloads them from disk), and the

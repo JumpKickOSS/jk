@@ -14,11 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -28,16 +24,15 @@ import org.jspecify.annotations.Nullable;
  * Durable per-project build history under {@code ~/.jk/state/builds/projects/<key>/}.
  *
  * <pre>
- *   host-metrics.toml
+ *   host-estimates.txt          (HostStore)
  *   projects/&lt;key&gt;/
  *     identity.toml
  *     run-number.txt
- *     project-metrics.toml
+ *     estimates.txt             (ProjectStore)
  *     runs/&lt;build-number&gt;/
  *       record.json
  *       details.jsonl
  *       jk-results.md
- *       metrics.toml
  * </pre>
  *
  * <p>Key = {@link ProjectIdentity#id()} (hybrid: explicit / lock / git / path). Run directories are the
@@ -48,14 +43,11 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ProjectBuilds {
 
-    public static final String HOST_METRICS = "host-metrics.toml";
-
     /** One line, the absolute checkout dir, in a run the client opened without the engine. */
     public static final String CHECKOUT = "checkout";
 
     public static final String IDENTITY = "identity.toml";
     public static final String RUN_NUMBER = "run-number.txt";
-    public static final String PROJECT_METRICS = "project-metrics.toml";
     public static final String RUNS = "runs";
     public static final String RECORD = "record.json";
     public static final String DETAILS = "details.jsonl";
@@ -67,16 +59,10 @@ public final class ProjectBuilds {
     /** Every problem of the run in the agent format, beside {@link #AGENT}: its line past the cap. */
     public static final String AGENT_ALL = "jk-agent-all.txt";
 
-    public static final String METRICS = "metrics.toml";
-
     private ProjectBuilds() {}
 
     public static Path buildsRoot() {
         return JkDirs.builds();
-    }
-
-    public static Path hostMetricsFile() {
-        return hostMetricsFile(buildsRoot());
     }
 
     /**
@@ -86,10 +72,6 @@ public final class ProjectBuilds {
      */
     public static Path ledgerLock(Path ledger) {
         return ledger.resolveSibling(ledger.getFileName() + ".lock");
-    }
-
-    public static Path hostMetricsFile(Path buildsRoot) {
-        return buildsRoot.resolve(HOST_METRICS);
     }
 
     public static Path projectsRoot() {
@@ -247,40 +229,6 @@ public final class ProjectBuilds {
         } catch (IOException e) {
             return List.of();
         }
-    }
-
-    /**
-     * Project homes to use for metrics harvest — at most one home per absolute
-     * checkout path. When lock re-key left a stale sibling home for the same path (different id),
-     * keep the preferred one (source=lock, then most runs, then newest identity) so one-sample
-     * outliers cannot re-enter aggregates. A home listing several checkouts claims each of them.
-     */
-    public static List<Path> listProjectHomesForMetrics(Path buildsRoot) {
-        List<Path> all = listProjectHomes(buildsRoot);
-        if (all.size() <= 1) return all;
-        Map<String, Path> bestByPath = new LinkedHashMap<>();
-        Map<String, Long> scoreByPath = new HashMap<>();
-        List<Path> noPath = new ArrayList<>();
-        for (Path home : all) {
-            var idf = ProjectIdentity.IdentityFile.read(home);
-            if (idf.isEmpty() || idf.get().checkouts().isEmpty()) {
-                noPath.add(home);
-                continue;
-            }
-            long score = metricsHomeScore(home, idf.get());
-            for (ProjectIdentity.Checkout checkout : idf.get().checkouts()) {
-                String pathKey = checkout.path().toString();
-                Long prev = scoreByPath.get(pathKey);
-                if (prev == null || score > prev) {
-                    scoreByPath.put(pathKey, score);
-                    bestByPath.put(pathKey, home);
-                }
-            }
-        }
-        List<Path> out = new ArrayList<>(new LinkedHashSet<>(bestByPath.values()));
-        out.addAll(noPath);
-        out.sort(Comparator.naturalOrder());
-        return out;
     }
 
     /**
@@ -506,16 +454,8 @@ public final class ProjectBuilds {
             return runDir.resolve(RESULTS);
         }
 
-        public Path metricsFile() {
-            return runDir.resolve(METRICS);
-        }
-
         public Path recordFile() {
             return runDir.resolve(RECORD);
-        }
-
-        public Path projectMetricsFile() {
-            return projectHome.resolve(PROJECT_METRICS);
         }
     }
 }

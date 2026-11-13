@@ -3,19 +3,15 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
-import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,16 +20,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.TreeMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Best-effort machine build history (global/project/task tiers) at {@code ~/.jk/state/builds/metrics.json}.
- * Outcome buckets stay separate so estimators only learn from {@link Entry#ok}; {@link #record} is
- * locked atomic replace.
+ * Build history by tier (global/project/task): in production {@link #current}, folded from the
+ * session's project and host run means ({@link SessionAggregates}). {@link #load} and {@link
+ * #record} keep a store in a file of the caller's choosing, for hermetic tests. Outcome buckets stay
+ * separate so estimators only learn from {@link Entry#ok}.
  */
 public final class BuildMetrics {
 
@@ -172,43 +168,18 @@ public final class BuildMetrics {
         this.stepWall1 = stepWall1 == null ? Map.of() : Map.copyOf(stepWall1);
     }
 
-    /**
-     * The store production ETA names but never reads: {@link #load} answers it from the harvested
-     * project/host aggregates. Hermetic tests pass isolated temp files to {@link #load}/{@link #record}.
-     */
-    public static Path defaultFile() {
-        return JkDirs.builds().resolve("metrics.json");
-    }
-
-    /** Read-only store for {@code file}, read again once the file moves. Missing/unreadable → empty. */
+    /** A test's store in {@code file}, read again once the file moves. Missing/unreadable → empty. */
     public static BuildMetrics load(Path file) {
-        if (file != null && isDefaultMetricsPath(file)) {
-            // Production reads the harvested aggregates, never a file at this path.
-            return fromAggregates();
-        }
         FileStamp stamp = FileStamp.of(file);
         return stamp == null ? read(file) : MEMO.get(file, stamp, () -> read(file));
     }
 
-    private static boolean isDefaultMetricsPath(Path file) {
-        try {
-            return file.toAbsolutePath()
-                            .normalize()
-                            .equals(defaultFile().toAbsolutePath().normalize())
-                    || "metrics.json".equals(file.getFileName().toString())
-                            && file.getParent() != null
-                            && file.getParent().equals(JkDirs.builds());
-        } catch (RuntimeException e) {
-            return false;
-        }
-    }
-
     /**
-     * Invocation/task stats hydrated from {@code project-metrics.toml} / {@code host-metrics.toml},
-     * folded once per session-aggregate window: every priced step loads this, and re-splitting
-     * every mean-map key per load cost a dirty monorepo's ETA seed hundreds of identical folds.
+     * Invocation/task stats from the session's project and host run means, folded once per
+     * session-aggregate window: every priced step loads this, and re-splitting every mean-map key
+     * per load cost a dirty monorepo's ETA seed hundreds of identical folds.
      */
-    static BuildMetrics fromAggregates() {
+    public static BuildMetrics current() {
         return foldedForSession(BuildMetrics.class, BuildMetrics::fold);
     }
 
@@ -233,7 +204,7 @@ public final class BuildMetrics {
         }
 
         /**
-         * The walls harvested for {@code step}'s suite of {@code moduleDir} (an absolute module
+         * The walls stored for {@code step}'s suite of {@code moduleDir} (an absolute module
          * path), or empty: a tier's walls sit under the module's key with its selection appended.
          */
         public Map<String, Long> forModule(String moduleDir, String step) {
@@ -253,7 +224,7 @@ public final class BuildMetrics {
     }
 
     /**
-     * The session's harvested aggregates ({@link SessionAggregates#current}): the working dir's
+     * The session's aggregates ({@link SessionAggregates#current}): the working dir's
      * project ledger when it is a checkout, else the host's, parsed once and held until a
      * ledger file changes.
      */
@@ -282,7 +253,7 @@ public final class BuildMetrics {
     }
 
     /**
-     * Fold harvested scalars into invocation/task maps. When {@code hostOnly}, only fill keys not
+     * Fold stored scalars into invocation/task maps. When {@code hostOnly}, only fill keys not
      * already present (host tier / missing modules).
      */
     private static void foldAggregateEntries(
@@ -439,10 +410,6 @@ public final class BuildMetrics {
     /** As {@link #record(Path, Outcome, long)} with a start-time assigned build number. */
     public static long record(Path file, Outcome o, long nowMillis, long assignedBuildNumber) {
         if (o == null || o.kind() == null || o.dir() == null || o.dir().isEmpty()) return 0;
-        // Production path: per-run metrics.toml + MetricsHarvest own durable aggregates.
-        if (file != null && isDefaultMetricsPath(file)) {
-            return assignedBuildNumber > 0 ? assignedBuildNumber : 0;
-        }
         LOCK.lock();
         try {
             return FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> {
@@ -540,103 +507,6 @@ public final class BuildMetrics {
         };
     }
 
-    // --- GC -----------------------------------------------------------------
-
-    /** Bounds for {@link #prune}: a byte ceiling and a max row age. */
-    public record Limits(long maxBytes, long maxAgeMillis) {
-        static final long DEFAULT_MAX_MB = 10;
-        static final long DEFAULT_MAX_AGE_DAYS = 730; // 2 years
-
-        /** The budget with no config file and no environment: 10 MB, two years. */
-        public static final Limits DEFAULTS =
-                new Limits(DEFAULT_MAX_MB * 1024L * 1024L, DEFAULT_MAX_AGE_DAYS * 86_400_000L);
-
-        /**
-         * Resolve from {@code JK_METRICS_MAX_SIZE_MB} / {@code JK_METRICS_MAX_AGE_DAYS} env vars,
-         * else the {@code [metrics] max-size-mb} / {@code max-age-days} keys in the user config,
-         * else the defaults (10 MB / 2 years).
-         */
-        public static Limits resolve(Path userConfig, Function<String, @Nullable String> env) {
-            long mb = envLong(env, "JK_METRICS_MAX_SIZE_MB")
-                    .orElseGet(() -> tomlLong(userConfig, "max-size-mb").orElse(DEFAULT_MAX_MB));
-            long days = envLong(env, "JK_METRICS_MAX_AGE_DAYS")
-                    .orElseGet(() -> tomlLong(userConfig, "max-age-days").orElse(DEFAULT_MAX_AGE_DAYS));
-            return new Limits(Math.max(0, mb) * 1024L * 1024L, Math.max(0, days) * 86_400_000L);
-        }
-    }
-
-    /** What a {@link #prune} pass evicted. */
-    public record PruneReport(int evictedByAge, int evictedBySize, int kept, long finalBytes) {
-        static final PruneReport EMPTY = new PruneReport(0, 0, 0, 0);
-    }
-
-    /**
-     * Evict stale/overflowing rows: first anything older than {@code maxAge}, then — if the
-     * rendered file still exceeds {@code maxBytes} — the oldest rows until it fits. Global rows are
-     * refreshed by every build, so age eviction naturally spares them while a project you stopped
-     * building ages out. Rewrites the file unless {@code dryRun}.
-     */
-    public static PruneReport prune(Path file, Limits limits, long nowMillis, boolean dryRun) {
-        if (!Files.isRegularFile(file)) return PruneReport.EMPTY;
-        LOCK.lock();
-        try {
-            BuildMetrics cur = read(file);
-            Map<String, Entry> inv = new LinkedHashMap<>(cur.invocations);
-            Map<String, Entry> ph = new LinkedHashMap<>(cur.steps);
-
-            int byAge = 0;
-            if (limits.maxAgeMillis() > 0) {
-                byAge += evictOlderThan(inv, nowMillis - limits.maxAgeMillis());
-                byAge += evictOlderThan(ph, nowMillis - limits.maxAgeMillis());
-            }
-
-            int bySize = 0;
-            long bytes = renderedBytes(inv, ph);
-            int rows = inv.size() + ph.size();
-            if (limits.maxBytes() > 0 && bytes > limits.maxBytes() && rows > 0) {
-                long avg = Math.max(1, bytes / rows);
-                int keep = (int) Math.min(rows, Math.max(0, limits.maxBytes() / avg));
-                if (keep < rows) {
-                    // Drop the oldest (smallest updatedMillis) first, across both families.
-                    List<Map.Entry<Long, Runnable>> victims = new ArrayList<>(rows);
-                    inv.forEach((k, e) -> victims.add(Map.entry(e.updatedMillis(), () -> inv.remove(k))));
-                    ph.forEach((k, e) -> victims.add(Map.entry(e.updatedMillis(), () -> ph.remove(k))));
-                    victims.sort(Map.Entry.comparingByKey());
-                    for (int i = 0; i < rows - keep; i++) {
-                        victims.get(i).getValue().run();
-                        bySize++;
-                    }
-                }
-            }
-
-            if ((byAge > 0 || bySize > 0) && !dryRun) {
-                try {
-                    if (inv.isEmpty() && ph.isEmpty()) Files.deleteIfExists(file);
-                    else write(file, inv, ph);
-                } catch (IOException | RuntimeException e) {
-                    // advisory — leave the file as-is on failure
-                    Log.debug("prune: advisory", e);
-                }
-            }
-            return new PruneReport(byAge, bySize, inv.size() + ph.size(), renderedBytes(inv, ph));
-        } finally {
-            LOCK.unlock();
-        }
-    }
-
-    private static int evictOlderThan(Map<String, Entry> m, long cutoffMillis) {
-        int evicted = 0;
-        var it = m.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry e = it.next().getValue();
-            if (e.updatedMillis() > 0 && e.updatedMillis() < cutoffMillis) {
-                it.remove();
-                evicted++;
-            }
-        }
-        return evicted;
-    }
-
     // --- IO -----------------------------------------------------------------
 
     private static BuildMetrics read(Path file) {
@@ -665,7 +535,7 @@ public final class BuildMetrics {
             Log.debug("read: unreadable/corrupt store → treat as empty", e);
         }
         // The hermetic store records single-runner runs, so a suite wall is already its own
-        // normalized wall — the same shape the harvested `wall1-ms` gives production.
+        // normalized wall — the same shape the stored `wall1-ms` gives production.
         Map<String, Long> wall1 = new LinkedHashMap<>();
         for (Entry e : ph.values()) {
             if (e.step() != null && TaskNames.isRunTests(e.step()) && e.ok().count() > 0) {
@@ -735,10 +605,6 @@ public final class BuildMetrics {
         return o;
     }
 
-    private static long renderedBytes(Map<String, Entry> inv, Map<String, Entry> ph) {
-        return MiniJson.writePretty(render(inv, ph)).getBytes(StandardCharsets.UTF_8).length;
-    }
-
     private static void write(Path file, Map<String, Entry> inv, Map<String, Entry> ph) throws IOException {
         AtomicWrites.replace(file, MiniJson.writePretty(render(inv, ph)));
     }
@@ -753,19 +619,6 @@ public final class BuildMetrics {
 
     private static long lng(@Nullable Object v) {
         return v instanceof Number n ? n.longValue() : 0L;
-    }
-
-    private static OptionalLong envLong(Function<String, @Nullable String> env, String name) {
-        Optional<Long> v = EnvValues.longValue(env, name);
-        return v.isPresent() ? OptionalLong.of(v.get()) : OptionalLong.empty();
-    }
-
-    private static OptionalLong tomlLong(Path userConfig, String key) {
-        // The [metrics] table of the user-global ~/.jk/config.toml; missing/malformed → empty.
-        Optional<Long> v = TomlValues.parse(userConfig)
-                .map(toml -> toml.getTable("metrics"))
-                .flatMap(t -> TomlValues.optLong(t, key));
-        return v.isPresent() ? OptionalLong.of(v.get()) : OptionalLong.empty();
     }
 
     /** Test seam: drop the per-process load memo so a freshly-written file is re-read. */

@@ -29,7 +29,7 @@ class EffortWeightsStepEtaTest {
     /**
      * Pin state + builds, the same way {@link NativeEffortTest} does and for the same reason. Cold
      * pricing consults {@code Calibration.load()} before its uncalibrated baselines, so without
-     * this the assertions here read the developer's real {@code host-metrics.toml} and change
+     * this the assertions here read the developer's real host store and change
      * meaning the moment that host is calibrated — {@code cached_steps_excluded_from_cost} expects
      * the uncalibrated {@code 2 * TOKEN} and saw {@code 10}.
      *

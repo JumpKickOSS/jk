@@ -12,19 +12,23 @@ import cc.jumpkick.wire.runtime.WorkModel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
-/** A finished run's steps into its project's {@link StepLedger}, under the shape it ran with. */
+/** A finished run's steps as its project's {@link StepLedger} entry, under the shape it ran with. */
 final class RunStepLedger {
 
     private RunStepLedger() {}
 
     /**
-     * Record {@code finished} into the ledger under {@code projectHome}: successful build-like runs
-     * only, as their metrics are; a failed or cancelled run's walls are not what its steps cost.
+     * The ledger entry of {@code finished}, for its project store to apply ({@link
+     * StepLedger#entry}), and what it teaches the host's effort and rung-bias sections: successful
+     * build-like runs only; a failed or cancelled run's walls are not what its steps cost. Null when
+     * there is nothing to record.
      */
-    static void record(Path projectHome, BuildRecord finished) {
-        if (finished == null || finished.running() || !finished.success() || finished.cancelled()) return;
-        if (!BuildHistoryKinds.isBuildLike(finished.kind())) return;
+    static @Nullable UnaryOperator<List<String>> record(BuildRecord finished) {
+        if (finished == null || finished.running() || !finished.success() || finished.cancelled()) return null;
+        if (!BuildHistoryKinds.isBuildLike(finished.kind())) return null;
         // A run that went on hold for memory spent its steps' long waits paused, not working: those
         // waits come off the walls the ledger learns (JK-VYJ4X).
         boolean held = MemoryHolds.totalHeldMillis(finished.requestId()) > 0;
@@ -38,8 +42,7 @@ final class RunStepLedger {
                 for (BuildRecord.Task t : m.steps()) samples.add(sample(m.dir(), t, held));
             }
         }
-        StepLedger.append(
-                projectHome,
+        UnaryOperator<List<String>> entry = StepLedger.entry(
                 RunShapes.of(finished.requestId()),
                 RunShapes.frontierOf(finished.requestId()),
                 RunShapes.curvesOf(finished.requestId()),
@@ -48,6 +51,7 @@ final class RunStepLedger {
                 samples);
         StepEffort.learn(StepEffort.defaultFile(), effortSamples(samples));
         RungBias.learn(RungBias.defaultFile(), pricedPairs(finished.requestId(), samples));
+        return entry;
     }
 
     /** The run's finished node steps and plugin goals, each with its measure in its module ({@link StepEffort}). */

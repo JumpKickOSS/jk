@@ -48,7 +48,7 @@ class StepWallLadderTest {
         Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, moduleDir);
         Files.createDirectories(home);
         String key = "module." + AggregatedMetrics.sanitize(moduleDir.toString()) + ".task.compile-test.wall-ms";
-        Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
+        StoreSeed.project(home, """
                 [mean]
                 %s = %s
                 [last]
@@ -80,7 +80,7 @@ class StepWallLadderTest {
         Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, module);
         Files.createDirectories(home);
         String key = "module." + AggregatedMetrics.sanitize(module.toString()) + ".task.compile-test.wall-ms";
-        Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), "[last]\n" + key + " = 900\n");
+        StoreSeed.project(home, "[last]\n" + key + " = 900\n");
         BuildMetrics.clearSessionAggregatesMemo();
         long wall = SessionContext.where(
                 Session.defaults().withWorkingDir(module),

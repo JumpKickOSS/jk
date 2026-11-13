@@ -180,7 +180,7 @@ run_side() {  # run_side <label> <logbase> -- cmd...
 
 # ---------------------------------------------------------------------------
 # jk-side facts the wall alone does not show. Read from the run the CLI just wrote:
-# metrics.toml has per-module per-step walls, details.jsonl has module-start /
+# record.json has per-module per-step walls, details.jsonl has module-start /
 # module-finish timestamps.
 #
 # `cli_starts_before_engine_finishes` is the load-bearing one. It is the invariant the
@@ -195,8 +195,8 @@ jk_detail() {
   # with 141 once the runs root holds more records than one pipe buffer.
   latest="$(find "$runs_root" -name details.jsonl -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR==1{sub(/^[^ ]* /,""); print}')"
   [[ -z "$latest" ]] && { echo "  (no details.jsonl found)" >&2; return 0; }
-  python3 - "$latest" "$(dirname "$latest")/metrics.toml" <<'PY' >> "$ROW_FILE"
-import json,re,sys
+  python3 - "$latest" "$(dirname "$latest")/record.json" <<'PY' >> "$ROW_FILE"
+import json,sys
 ev=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 t0=ev[0]["ts"]
 start={};fin={}
@@ -205,10 +205,11 @@ for e in ev:
     if e["type"]=="module-finish": fin[e["coord"]]=(e["ts"]-t0)/1000
 step={}
 try:
-    for line in open(sys.argv[2]):
-        m=re.match(r'module\.(/\S+?)\.task\.([a-z-]+)\.wall-ms = (\d+)', line.strip())
-        if m: step[(m.group(1).split("/")[-2]+"/"+m.group(1).split("/")[-1], m.group(2))]=int(m.group(3))/1000
-except OSError: pass
+    for m in json.load(open(sys.argv[2])).get("modules", []):
+        mod="/".join(str(m.get("dir","")).split("/")[-2:])
+        for t in m.get("tasks", []):
+            if t.get("status")=="SUCCESS" and "millis" in t: step[(mod, t["name"])]=t["millis"]/1000
+except (OSError, ValueError): pass
 def g(mod,task): return step.get((mod,task))
 def fmt(v): return "n/a" if v is None else f"{v:.2f} s"
 cli_start=start.get("cc.jumpkick:jk-cli"); eng_fin=fin.get("cc.jumpkick:jk-engine")

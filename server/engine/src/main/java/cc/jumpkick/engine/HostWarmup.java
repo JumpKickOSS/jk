@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * hook that reaches this pass, so their cadence has one owner and is not behind the auto-warmup
  * switch.
  *
- * <p>The pass writes {@code state/builds/host-metrics.toml} and fetches the probe's worker jars
+ * <p>The pass writes {@code state/builds/host-estimates.txt} and fetches the probe's worker jars
  * into the artifact store, both outside {@code JK_CACHE_DIR}, so a cache wipe is unaffected. After
  * a store wipe this process stands down via {@link StoreWriteGate#wipedSinceStart}.
  */
@@ -48,7 +48,7 @@ public final class HostWarmup {
     }
 
     /**
-     * True when host-metrics lacks a current measured probe for this jk version + host JDK
+     * True when the host store lacks a current measured probe for this jk version + host JDK
      * identity (or the stored probe is stale).
      */
     public static boolean needsCalibration() {

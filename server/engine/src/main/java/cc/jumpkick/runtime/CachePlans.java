@@ -21,7 +21,6 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -35,7 +34,6 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
-import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CacheRetention;
 import cc.jumpkick.task.CacheRoots;
@@ -135,14 +133,6 @@ public final class CachePlans {
         TempSweep cacheTemps = sweepCasTemps(CacheTree.CACHE_CAS.under(root), dryRun, yield);
         totalFiles += cacheTemps.files();
         totalBytes += cacheTemps.bytes();
-
-        yield.check();
-        var timingsReport = StepTimings.prune(
-                root,
-                StepTimings.Limits.resolve(JkDirs.userConfigFile(), ProcessEnv::get),
-                Clock.SYSTEM.millis(),
-                dryRun);
-        totalFiles += timingsReport.evictedByAge() + timingsReport.evictedBySize();
 
         yield.check();
         if (includeJkTmp) {

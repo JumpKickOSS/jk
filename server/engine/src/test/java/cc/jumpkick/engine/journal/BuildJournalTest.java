@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import java.io.IOException;
@@ -381,8 +382,9 @@ class BuildJournalTest {
         assertThat(j.get(locator).orElseThrow().running()).isFalse();
         assertThat(j.get(locator).orElseThrow().buildNumber()).isEqualTo(27);
         assertThat(j.get(locator).orElseThrow().success()).isTrue();
-        assertThat(j.runDir(locator).map(p -> p.resolve("metrics.toml")).filter(Files::isRegularFile))
-                .isPresent();
+        // The run's measures fold into its project's store, not a file of the run's own.
+        assertThat(ProjectStore.file(ProjectBuilds.projectHome(dir, "g:a", Path.of("/proj"))))
+                .isRegularFile();
     }
 
     @Test
