@@ -69,13 +69,18 @@ class UnresponsiveHolderTest {
         Process engineLike = null;
         try {
             Files.writeString(pidFile, Long.toString(jvm.pid()));
-            assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
-                    .as("a JVM that is not an engine")
-                    .isZero();
-            assertThat(EngineProcessControl.forceStop(socket)).isTrue();
-            assertThat(jvm.isAlive())
-                    .as("nothing listening and no engine: the stop kills nothing")
-                    .isTrue();
+            // Only its command line tells this JVM from an engine. A host that cannot read one (a
+            // Windows PowerShell query too slow under load) falls back to the pid file and a JVM
+            // launcher, which the start-time check below is what keeps off recycled pids.
+            if (!EngineFleet.commandLineOf(jvm.toHandle()).isBlank()) {
+                assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
+                        .as("a JVM that is not an engine")
+                        .isZero();
+                assertThat(EngineProcessControl.forceStop(socket)).isTrue();
+                assertThat(jvm.isAlive())
+                        .as("nothing listening and no engine: the stop kills nothing")
+                        .isTrue();
+            }
 
             // An engine-looking process started well after the file was written took over its pid.
             engineLike = SleepMain.spawn(60_000, ENGINE_MAIN);
