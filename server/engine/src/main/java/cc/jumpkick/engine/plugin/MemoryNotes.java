@@ -9,16 +9,14 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * One memory-wait line per step. Grants add their wait; the step's scope closing writes the sum,
- * so a step that queued several forks names the wait once.
+ * One memory-wait line per step. Grants add their memory waits of {@link
+ * MemoryHolds#HOLD_AFTER_NANOS} or more; the step's scope closing writes the sum, so a step that
+ * queued several forks names the wait once. A wait for a JVM slot is never one.
  */
 public final class MemoryNotes {
 
     /** Diagnostic code. The results and the agent report print warnings with this code. */
     public static final String CODE = "memory-wait";
-
-    /** A finished wait shorter than this is recorded and not printed. */
-    private static final long OUTPUT_AFTER_NANOS = 500_000_000L;
 
     /** The step's summed wait, written once when its scope closes. */
     private static final StepScope.Local<AtomicLong> NANOS = new StepScope.Local<>(AtomicLong::new);
@@ -39,39 +37,42 @@ public final class MemoryNotes {
         return "waited " + text + "s for memory";
     }
 
-    /** The line a waiting fork shows: {@code waiting for memory: need 512 MiB, free 128 MiB}. */
-    public static String waitingLine(long needBytes, long freeBytes) {
-        return "waiting for memory: need " + WorkerLeases.format(needBytes) + ", free "
-                + WorkerLeases.format(Math.max(0, freeBytes));
-    }
-
-    /** The step's output carries the wait; its label stays the step's own ("compiling", …). */
-    static void reportWaiting(long need, long free) {
-        String line = waitingLine(need, free);
-        Log.info("jk engine: " + line);
-        TaskContext ctx = StepScope.current();
-        if (ctx != null) ctx.output(line);
-    }
-
-    /** A lease that queued was granted after {@code waitedNanos}. */
-    static void noteGranted(long waitedNanos) {
-        if (waitedNanos <= 0) return;
-        Log.info("jk engine: " + waitedPhrase(waitedNanos));
-        recordWait(waitedNanos);
+    /**
+     * The engine log's line for a fork still waiting: a memory wait at info, a slot wait, which is
+     * ordinary queueing, at debug. A step shows neither; its row says it waits ({@link StepWaits}).
+     */
+    static void logWaiting(WaitReason reason, long need, long free) {
+        if (reason == WaitReason.SLOT) {
+            Log.debug("jk engine: waiting for a free JVM slot");
+            return;
+        }
+        Log.info("jk engine: waiting for memory: need " + WorkerLeases.format(need) + ", free "
+                + WorkerLeases.format(Math.max(0, free)));
     }
 
     /**
-     * Count {@code waitedNanos} on this thread's step. Half a second or more is also a line on the
-     * step's output and one share of the results' single wait line. Outside a step, nothing.
+     * A lease that queued was granted after {@code waitedNanos}, {@code memoryNanos} of them waiting
+     * for memory and {@code heldNanos} with the build on hold.
      */
-    static void recordWait(long waitedNanos) {
+    static void noteGranted(long waitedNanos, long memoryNanos, long heldNanos) {
+        if (memoryNanos > 0) Log.info("jk engine: " + waitedPhrase(memoryNanos));
+        recordWait(memoryNanos, heldNanos);
+    }
+
+    /**
+     * Count a granted fork's wait on this thread's step. The time on hold is the step's wait, kept out
+     * of what it learns it costs; a memory wait of {@link MemoryHolds#HOLD_AFTER_NANOS} or more is
+     * also a line on the step's output and one share of the results' single wait line. Outside a step,
+     * nothing.
+     */
+    static void recordWait(long memoryNanos, long heldNanos) {
         TaskContext ctx = StepScope.current();
-        AtomicLong held = StepScope.local(NANOS);
-        if (ctx == null || held == null || waitedNanos <= 0) return;
-        ctx.waited(Duration.ofNanos(waitedNanos));
-        if (waitedNanos < OUTPUT_AFTER_NANOS) return;
-        ctx.output(waitedPhrase(waitedNanos));
-        held.addAndGet(waitedNanos);
+        AtomicLong waited = StepScope.local(NANOS);
+        if (ctx == null || waited == null) return;
+        if (heldNanos > 0) ctx.waited(Duration.ofNanos(heldNanos));
+        if (memoryNanos < MemoryHolds.HOLD_AFTER_NANOS) return;
+        ctx.output(waitedPhrase(memoryNanos));
+        waited.addAndGet(memoryNanos);
     }
 
     /** One warning for the closing step {@code ctx} when it waited. */

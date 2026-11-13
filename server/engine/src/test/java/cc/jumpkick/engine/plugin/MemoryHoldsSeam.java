@@ -11,6 +11,6 @@ public final class MemoryHoldsSeam {
     }
 
     public static void clear(long requestId) {
-        while (MemoryHolds.onHold(requestId)) MemoryHolds.done(requestId);
+        MemoryHolds.endNow(requestId);
     }
 }

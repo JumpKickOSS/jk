@@ -84,6 +84,7 @@ class EventCatalogConsoleTest {
         lines.add(ProtoEvents.tickUpdate(DIR, "compile", 1, 1, 10, 1, 0, false));
         lines.add(ProtoEvents.label(DIR, "compile", "compiling"));
         lines.add(ProtoEvents.output(DIR, "compile", "a line"));
+        lines.add(ProtoEvents.taskWait(DIR, "compile", "slot"));
         lines.add(ProtoEvents.warn(DIR, "compile", "w", "a warning"));
         lines.add(ProtoEvents.errorLine(DIR, "compile", "e", "an error", "", ""));
         lines.add(ProtoEvents.planDiagnostic(DIR, "compile", "e", "a diagnostic", "", ""));
@@ -323,6 +324,7 @@ class EventCatalogConsoleTest {
             EngineProtocol.TICK_UPDATE,
             EngineProtocol.LABEL,
             EngineProtocol.OUTPUT,
+            EngineProtocol.TASK_WAIT,
             EngineProtocol.WARN,
             EngineProtocol.ERROR_LINE,
             EngineProtocol.BUILDPLAN_DIAGNOSTIC,

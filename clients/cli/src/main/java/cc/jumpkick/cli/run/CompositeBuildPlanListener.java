@@ -71,6 +71,12 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void waiting(String step, @Nullable String reason) {
+        a.waiting(step, reason);
+        b.waiting(step, reason);
+    }
+
+    @Override
     public void output(String step, String line) {
         a.output(step, line);
         b.output(step, line);

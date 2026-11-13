@@ -29,9 +29,7 @@ final class RunStepLedger {
     static @Nullable UnaryOperator<List<String>> record(BuildRecord finished) {
         if (finished == null || finished.running() || !finished.success() || finished.cancelled()) return null;
         if (!BuildHistoryKinds.isBuildLike(finished.kind())) return null;
-        // A run that went on hold for memory spent its steps' long waits paused, not working: those
-        // waits come off the walls the ledger learns (JK-VYJ4X).
-        boolean held = MemoryHolds.totalHeldMillis(finished.requestId()) > 0;
+        long held = MemoryHolds.totalHeldMillis(finished.requestId());
         List<StepLedger.Sample> samples = new ArrayList<>();
         if (finished.steps() != null && finished.dir() != null) {
             for (BuildRecord.Task t : finished.steps()) samples.add(sample(finished.dir(), t, held));
@@ -83,14 +81,13 @@ final class RunStepLedger {
     }
 
     /**
-     * The step's sample: its wall, less its wait when the run was {@code held} and the wait was long
-     * enough to be a hold ({@link MemoryHolds#HOLD_AFTER_NANOS}). A short wait is ordinary queueing
-     * and part of what the step costs.
+     * The step's sample: its wall, less its wait up to the {@code heldMillis} the run spent on hold. A
+     * fork's wait counts only its time with the run on hold, so a run never on hold keeps every wall
+     * whole: a wait for a JVM slot, or for memory while other forks ran, is part of what a step costs.
      */
-    static StepLedger.Sample sample(String dir, BuildRecord.Task t, boolean held) {
+    static StepLedger.Sample sample(String dir, BuildRecord.Task t, long heldMillis) {
         long wall = Math.max(0, t.millis());
-        long wait = Math.max(0, t.waitMillis());
-        if (held && wait * 1_000_000L >= MemoryHolds.HOLD_AFTER_NANOS) wall = Math.max(0, wall - wait);
-        return new StepLedger.Sample(dir, t.name(), t.status(), wall);
+        long off = Math.min(Math.max(0, t.waitMillis()), Math.max(0, heldMillis));
+        return new StepLedger.Sample(dir, t.name(), t.status(), Math.max(0, wall - off));
     }
 }

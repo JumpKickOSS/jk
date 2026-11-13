@@ -52,6 +52,13 @@ public interface TaskContext {
      */
     default void waited(Duration blocked) {}
 
+    /**
+     * The step has no fork running and its next fork waits for a worker lease: {@code "slot"} when
+     * every JVM slot is taken, {@code "memory"} when its bytes do not fit; {@code null} once a fork
+     * runs again. Its row shows the wait in place of its work.
+     */
+    default void waiting(@Nullable String reason) {}
+
     /** Accumulating warning for the run report. */
     void warn(String code, String message);
 

@@ -67,6 +67,7 @@ public final class WireEventSink implements EventSink {
                         e.cancelled());
             case EngineEvent.Label e -> ProtoEvents.label(e.dir(), e.step(), e.text());
             case EngineEvent.Output e -> ProtoEvents.output(e.dir(), e.step(), e.line());
+            case EngineEvent.Waiting e -> ProtoEvents.taskWait(e.dir(), e.step(), e.reason());
             case EngineEvent.Warn e ->
                 e.module().isEmpty()
                         ? ProtoEvents.warn(e.dir(), e.step(), e.code(), e.message(), e.replayed())

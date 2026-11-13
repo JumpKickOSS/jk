@@ -271,6 +271,11 @@ public final class EventCatalog {
                     Carried.as(EngineProtocol.LABEL, "every label"),
                     Carried.bySink(EngineProtocol.LABEL, "every label, redacted")),
             new Row(
+                    EngineProtocol.TASK_WAIT,
+                    wire(),
+                    new Omitted("a waiting row's look in the terminal; plain and jsonl output print nothing for it"),
+                    new Omitted("the terminal's row state; the dashboard shows the step as running")),
+            new Row(
                     EngineProtocol.OUTPUT,
                     wire(),
                     Carried.as(EngineProtocol.OUTPUT, "every line"),

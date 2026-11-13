@@ -575,8 +575,8 @@ final class JkManagerView {
         String detail = d.planned() > 0
                 ? d.settled() + "/" + d.planned() + " · " + size
                 : d.files() + (d.files() == 1 ? " file · " : " files · ") + size;
-        Tree.Node node = Tree.node(
-                RichText.ansi(renderWorkRow("", "Download", false, detail).stripLeading()));
+        Tree.Node node = Tree.node(RichText.ansi(
+                renderWorkRow("", "Download", false, false, detail).stripLeading()));
         if (room <= 0) return node;
         Theme t = Theme.active();
         int fit = d.rows().size();
@@ -631,9 +631,11 @@ final class JkManagerView {
             PlanModel.PhaseNode n = m.model.phases().get(r.phase);
             if (n != null) brief = n.briefError;
         }
-        String detail = failed ? "" : JkManagerColor.detailForDisplay(r.module, r.message);
+        String waiting = failed ? "" : waitingDetail(r.waiting);
+        String detail =
+                failed ? "" : waiting.isEmpty() ? JkManagerColor.detailForDisplay(r.module, r.message) : waiting;
         return new PlanModel.TreeEntry(
-                renderWorkRow(r.module, JkManagerColor.phaseLabel(r.phase), failed, detail),
+                renderWorkRow(r.module, JkManagerColor.phaseLabel(r.phase), failed, !waiting.isEmpty(), detail),
                 brief == null ? "" : brief);
     }
 
@@ -641,19 +643,36 @@ final class JkManagerView {
         boolean failed = n.state == PlanModel.PhaseState.FAILED;
         String phaseLabel = n.label == null || n.label.isEmpty() ? JkManagerColor.phaseLabel(n.key) : n.label;
         String detail = failed ? "" : (n.detail == null ? "" : n.detail);
-        return new PlanModel.TreeEntry(renderWorkRow("", phaseLabel, failed, detail), failed ? n.briefError : "");
+        return new PlanModel.TreeEntry(
+                renderWorkRow("", phaseLabel, failed, false, detail), failed ? n.briefError : "");
+    }
+
+    /** The detail of a row whose step waits for {@code reason} ({@code slot}, {@code memory}); empty while it works. */
+    static String waitingDetail(String reason) {
+        return switch (reason == null ? "" : reason) {
+            case "slot" -> "Waiting for a free slot" + Glyphs.ELLIPSIS;
+            case "memory" -> "Waiting for memory" + Glyphs.ELLIPSIS;
+            default -> "";
+        };
     }
 
     /** Dim segment separator between module, phase, and detail on a work row. */
     private static final String WORK_ROW_SEP = "›";
 
-    private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
+    /**
+     * {@code waiting}: the step has no fork running and its next one waits, so the row reads as not
+     * working: a steady dim circle in place of the spinner, and a dim phase and detail.
+     */
+    private String renderWorkRow(String module, String displayPhase, boolean failed, boolean waiting, String detail) {
         Theme t = Theme.active();
         String icon;
         Style phaseStyle;
         if (failed) {
             icon = Theme.colorize(Glyphs.CROSS, t.error());
             phaseStyle = t.error();
+        } else if (waiting) {
+            icon = Theme.colorize(Glyphs.waiting(), t.darkGray());
+            phaseStyle = t.darkGray();
         } else {
             // Filling circle (○→◎→◉→◎) in constant blue — not the CommandWedge color-pulse ●.
             icon = Theme.colorize(Spinner.fillGlyph(m.frame), t.blue());
@@ -672,7 +691,9 @@ final class JkManagerView {
         }
         sb.append(Theme.colorize(phase, phaseStyle));
         if (detail != null && !detail.isBlank()) {
-            sb.append(' ').append(sep).append(' ').append(JkManagerColor.colorDetail(phase, detail, t));
+            String shown =
+                    waiting ? Theme.colorize(detail, t.darkGray()) : JkManagerColor.colorDetail(phase, detail, t);
+            sb.append(' ').append(sep).append(' ').append(shown);
         }
         return sb.toString();
     }

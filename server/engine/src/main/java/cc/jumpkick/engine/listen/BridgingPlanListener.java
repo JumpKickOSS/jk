@@ -177,6 +177,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void waiting(String step, @Nullable String reason) {
+        sink.emit(new EngineEvent.Waiting(dir, step, reason == null ? "" : reason));
+    }
+
+    @Override
     public void forkOutput(String step, String line) {
         hooks.forkOutput(dir, step, redact(line));
     }

@@ -13,21 +13,21 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-/** A step that waited more than once records one summed line when it finishes. */
+/** A step whose forks waited 5 s or more for memory records one summed line when it finishes. */
 class MemoryNotesTest {
 
     @Test
-    void two_grants_become_one_line_and_a_short_wait_is_only_counted() {
+    void two_long_memory_waits_become_one_line_and_a_short_one_writes_nothing() {
         List<String> output = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         TaskContext ctx = recording(output, warnings);
         StepScope.run(ctx, () -> {
-            MemoryNotes.recordWait(200_000_000L);
-            MemoryNotes.recordWait(2_000_000_000L);
-            MemoryNotes.recordWait(1_000_000_000L);
+            MemoryNotes.recordWait(4_900_000_000L, 0);
+            MemoryNotes.recordWait(6_000_000_000L, 0);
+            MemoryNotes.recordWait(12_000_000_000L, 0);
         });
-        assertThat(output).containsExactly("waited 2s for memory", "waited 1s for memory");
-        String phrase = MemoryNotes.waitedPhrase(3_000_000_000L);
+        assertThat(output).containsExactly("waited 6s for memory", "waited 12s for memory");
+        String phrase = MemoryNotes.waitedPhrase(18_000_000_000L);
         if (WorkerContainment.leaseBudget().source() == WorkerContainment.BudgetSource.OVERRIDE) {
             phrase = phrase + " (" + WorkerContainment.BUDGET_ENV + ")";
         }

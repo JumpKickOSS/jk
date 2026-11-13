@@ -14,7 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** A build on hold for memory (JK-VYJ4X): the header, the work rows and the plain lines, and their return. */
+/**
+ * A build on hold for memory: the header, the work rows and the plain lines, and their return; and a
+ * step that waits for a lease while the build works, shown on its own row only.
+ */
 class JkManagerHoldTest {
 
     @Test
@@ -34,6 +37,38 @@ class JkManagerHoldTest {
         assertThat(header).contains(Glyphs.STOP).doesNotContain(Glyphs.PULSE);
         String body = TestAnsi.strip(String.join("\n", held.subList(1, held.size())));
         assertThat(body).contains(JkManagerView.HOLD_LINE).doesNotContain("compile");
+    }
+
+    @Test
+    void a_waiting_step_dims_its_row_and_says_why_while_the_bar_the_rows_and_the_clock_go_on() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.progress(50, 100);
+        cm.setEtaEstimate(60_000);
+        cm.addTask("g:a", "run-tests");
+        cm.stepRunning("g:a", "run-tests", "test");
+        cm.addTask("g:b", "compile-java");
+        cm.stepRunning("g:b", "compile-java", "compile");
+        cm.stepMessage("g:a", "run-tests", "FooTest");
+
+        cm.stepWaiting("g:a", "run-tests", "memory");
+        List<String> lines = cm.renderBuildPlanLines(120, cm.elapsedMillis() + 5_000);
+        String header = TestAnsi.strip(lines.get(0));
+        assertThat(header).contains("ETA").doesNotContain("On hold");
+        String body = TestAnsi.strip(String.join("\n", lines.subList(1, lines.size())));
+        assertThat(body)
+                .contains(Glyphs.WAITING + " g:a › Test › Waiting for memory" + Glyphs.ELLIPSIS)
+                .doesNotContain("FooTest")
+                .doesNotContain(JkManagerView.HOLD_LINE)
+                .contains("g:b");
+
+        cm.stepWaiting("g:a", "run-tests", "slot");
+        body = TestAnsi.strip(String.join("\n", cm.renderBuildPlanLines(120, cm.elapsedMillis())));
+        assertThat(body).contains("g:a › Test › Waiting for a free slot" + Glyphs.ELLIPSIS);
+
+        cm.stepWaiting("g:a", "run-tests", null);
+        body = TestAnsi.strip(String.join("\n", cm.renderBuildPlanLines(120, cm.elapsedMillis())));
+        assertThat(body).contains("g:a › Test › FooTest").doesNotContain("Waiting for");
     }
 
     @Test

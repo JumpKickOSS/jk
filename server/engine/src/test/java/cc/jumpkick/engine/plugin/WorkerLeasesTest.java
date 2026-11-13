@@ -26,6 +26,9 @@ import org.junit.jupiter.api.Test;
 /** The byte ledger: order, clamp, cancel, and release. */
 class WorkerLeasesTest {
 
+    /** The hold threshold these tests wait past, in place of the engine's 5 s. */
+    private static final long HOLD_AFTER = TimeUnit.MILLISECONDS.toNanos(600);
+
     @Test
     void fork_cap_follows_the_host_when_nothing_quotas_the_cgroup() {
         assertThat(EngineLimits.forkCpuCap(24, -1)).isEqualTo(24);
@@ -373,15 +376,16 @@ class WorkerLeasesTest {
     }
 
     @Test
-    void a_wait_is_shown_in_the_steps_output_and_leaves_its_label_alone() throws Exception {
+    void a_wait_shows_on_its_steps_row_not_in_its_output_and_leaves_its_label_alone() throws Exception {
         WorkerLeases.Ledger ledger = ledger(40, 4);
         AtomicReference<String> label = new AtomicReference<>("compiling");
         List<String> output = new CopyOnWriteArrayList<>();
+        List<String> states = new CopyOnWriteArrayList<>();
         AtomicInteger waitedCalls = new AtomicInteger();
         try (WorkerLeases.Grant held = ledger.acquireBytes(40, false, 3L)) {
             CompletableFuture<WorkerLeases.Grant> waiting = new CompletableFuture<>();
             Thread.ofVirtual()
-                    .start(() -> StepScope.run(recording(label, output, waitedCalls), () -> {
+                    .start(() -> StepScope.run(recording(label, output, waitedCalls, states, new ArrayList<>()), () -> {
                         try {
                             waiting.complete(ledger.acquireBytes(40, false, 3L));
                         } catch (InterruptedException e) {
@@ -390,17 +394,97 @@ class WorkerLeasesTest {
                         }
                     }));
             awaitQueued(ledger, 1);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (output.stream().noneMatch(l -> l.startsWith("waiting for memory: need"))) {
-                if (System.nanoTime() > deadline) throw new AssertionError("no waiting line in " + output);
-                Thread.sleep(5);
-            }
+            awaitState(states, "memory");
             held.close();
             waiting.get(5, TimeUnit.SECONDS).close();
             assertThat(ledger.waitedNanos(3L)).isPositive();
+            assertThat(states).containsExactly("memory", "running");
+            assertThat(output).as("a short wait writes no line").isEmpty();
             assertThat(label.get())
                     .as("the step keeps its own label through the wait and the grant")
                     .isEqualTo("compiling");
+        }
+    }
+
+    @Test
+    void a_wait_for_a_jvm_slot_is_queueing_not_a_hold_and_writes_no_warning() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(1L << 30, 1);
+        long rid = 9_300_001L;
+        List<String> output = new CopyOnWriteArrayList<>();
+        List<String> states = new CopyOnWriteArrayList<>();
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        MemoryHolds.holdAfter(HOLD_AFTER);
+        try (WorkerLeases.Grant held = ledger.acquireBytes(1, true, 9_300_002L)) {
+            CompletableFuture<WorkerLeases.Grant> second = new CompletableFuture<>();
+            TaskContext step = recording(new AtomicReference<>(""), output, new AtomicInteger(), states, warnings);
+            CountDownLatch closed = new CountDownLatch(1);
+            Thread.ofVirtual().start(() -> {
+                StepScope.run(step, () -> {
+                    try {
+                        WorkerLeases.Grant g = ledger.acquireBytes(1, true, rid);
+                        g.close();
+                        second.complete(g);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        second.completeExceptionally(e);
+                    }
+                });
+                closed.countDown();
+            });
+            awaitState(states, "slot");
+            Thread.sleep(TimeUnit.NANOSECONDS.toMillis(HOLD_AFTER) + 300);
+            assertThat(MemoryHolds.onHold(rid))
+                    .as("a slot wait never holds the build")
+                    .isFalse();
+            held.close();
+            second.get(5, TimeUnit.SECONDS);
+            assertThat(closed.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            MemoryHolds.holdAfter(0);
+        }
+        assertThat(MemoryHolds.totalHeldMillis(rid)).as("states %s", states).isZero();
+        assertThat(states).containsExactly("slot", "running");
+        assertThat(output).isEmpty();
+        assertThat(warnings).isEmpty();
+    }
+
+    @Test
+    void a_memory_wait_holds_its_stalled_build_only_once_past_the_threshold() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(40, 4);
+        long rid = 9_300_003L;
+        MemoryHolds.holdAfter(HOLD_AFTER);
+        try (WorkerLeases.Grant held = ledger.acquireBytes(40, false, 9_300_004L)) {
+            CompletableFuture<WorkerLeases.Grant> waiting = new CompletableFuture<>();
+            Thread.ofVirtual().start(() -> {
+                try {
+                    waiting.complete(ledger.acquireBytes(40, false, rid));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    waiting.completeExceptionally(e);
+                }
+            });
+            awaitQueued(ledger, 1);
+            Thread.sleep(TimeUnit.NANOSECONDS.toMillis(HOLD_AFTER) / 3);
+            assertThat(MemoryHolds.onHold(rid))
+                    .as("a short memory wait is no hold")
+                    .isFalse();
+            long deadline = System.nanoTime() + HOLD_AFTER + TimeUnit.SECONDS.toNanos(3);
+            while (!MemoryHolds.onHold(rid)) {
+                if (System.nanoTime() > deadline) throw new AssertionError("never went on hold");
+                Thread.sleep(20);
+            }
+            held.close();
+            waiting.get(5, TimeUnit.SECONDS).close();
+        } finally {
+            MemoryHolds.holdAfter(0);
+        }
+    }
+
+    private static void awaitState(List<String> states, String state) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!states.contains(state)) {
+            if (System.nanoTime() > deadline) throw new AssertionError("no " + state + " in " + states);
+            Thread.sleep(5);
         }
     }
 
@@ -410,8 +494,17 @@ class WorkerLeasesTest {
     }
 
     private static TaskContext recording(
-            AtomicReference<String> label, List<String> output, AtomicInteger waitedCalls) {
+            AtomicReference<String> label,
+            List<String> output,
+            AtomicInteger waitedCalls,
+            List<String> states,
+            List<String> warnings) {
         return new TaskContext() {
+            @Override
+            public void waiting(@Nullable String reason) {
+                states.add(reason == null ? "running" : reason);
+            }
+
             @Override
             public void progress(int delta) {}
 
@@ -434,7 +527,9 @@ class WorkerLeasesTest {
             }
 
             @Override
-            public void warn(String code, String message) {}
+            public void warn(String code, String message) {
+                warnings.add(code + " " + message);
+            }
 
             @Override
             public void error(String code, String message) {}

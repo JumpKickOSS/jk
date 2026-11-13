@@ -31,6 +31,7 @@ import cc.jumpkick.wire.protocol.PreflightEvent;
 import cc.jumpkick.wire.protocol.ProgressEvent;
 import cc.jumpkick.wire.protocol.TaskFinishEvent;
 import cc.jumpkick.wire.protocol.TaskStartEvent;
+import cc.jumpkick.wire.protocol.TaskWaitEvent;
 import cc.jumpkick.wire.protocol.TickUpdateEvent;
 import cc.jumpkick.wire.protocol.WarnEvent;
 import cc.jumpkick.wire.protocol.WorkspaceFinishEvent;
@@ -381,6 +382,10 @@ final class EngineEventDecoder {
             case EngineProtocol.OUTPUT -> {
                 OutputEvent e = OutputEvent.decode(line);
                 listener.output(e.task(), e.line());
+            }
+            case EngineProtocol.TASK_WAIT -> {
+                TaskWaitEvent e = TaskWaitEvent.decode(line);
+                listener.waiting(e.task(), e.reason().isEmpty() ? null : e.reason());
             }
             case EngineProtocol.ERROR_LINE -> dispatchError(listener, line, texts);
             case EngineProtocol.CLASS_FINISH -> {

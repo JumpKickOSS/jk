@@ -195,6 +195,11 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
+    public void waiting(@Nullable String reason) {
+        plan.emit(l -> l.waiting(step, reason));
+    }
+
+    @Override
     public void forkOutput(String line) {
         plan.emit(l -> l.forkOutput(step, line));
     }

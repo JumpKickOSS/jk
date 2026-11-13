@@ -56,6 +56,9 @@ public final class Glyphs {
     /** Pulse / spinner circle (U+25CF) — open and chip spinners. */
     public static final String PULSE = "●";
 
+    /** A work row that waits for a worker lease — U+25CB white circle, steady and dim. */
+    public static final String WAITING = "○";
+
     /** Truncation marker — U+2026 horizontal ellipsis. One column, never three dots. */
     public static final String ELLIPSIS = "…";
 
@@ -77,6 +80,9 @@ public final class Glyphs {
     public static final String MENU_PLAIN = "=";
     /** Spinner / black-circle under plain. */
     public static final String PULSE_PLAIN = "*";
+
+    /** Waiting work row under plain — {@code o}, as {@link PlainAscii} writes {@link #WAITING}. */
+    public static final String WAITING_PLAIN = "o";
 
     /** ASCII stand-in for the breathing square of a build on hold. */
     public static final String HOLD_PLAIN = "#";
@@ -137,6 +143,11 @@ public final class Glyphs {
     /** {@link #MENU} or {@link #MENU_PLAIN}. */
     public static String menu() {
         return Theme.active().isAnsi() ? MENU : MENU_PLAIN;
+    }
+
+    /** {@link #WAITING} or {@link #WAITING_PLAIN}. */
+    public static String waiting() {
+        return Theme.active().isAnsi() ? WAITING : WAITING_PLAIN;
     }
 
     /** {@link #PULSE} or {@link #PULSE_PLAIN}. */

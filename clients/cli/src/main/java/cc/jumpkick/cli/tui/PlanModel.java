@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The step and phase state of one plan, and how wire events change it. No terminal, no ANSI, no
@@ -139,6 +140,18 @@ final class PlanModel {
     }
 
     /**
+     * The step waits for a worker lease with none of its forks running: {@code "slot"} or {@code
+     * "memory"}; {@code null} once a fork runs again.
+     */
+    public void stepWaiting(String module, String stepKey, @Nullable String reason) {
+        synchronized (lock) {
+            Row r = rows.get(key(module, stepKey));
+            if (r == null) return;
+            r.waiting = reason == null ? "" : reason;
+        }
+    }
+
+    /**
      * A static test finished. Decrements the plain remaining-test count without printing — the next
      * stage-change or 30s heartbeat line shows the updated {@code running N tests}.
      */
@@ -163,6 +176,7 @@ final class PlanModel {
             r.phase = phaseKey;
             r.state = ok ? RowState.DONE : RowState.FAILED;
             r.message = "";
+            r.waiting = "";
             r.seq = ++finishSeq;
             touchPhaseFinish(phaseKey, ok);
         }
@@ -361,6 +375,8 @@ final class PlanModel {
         String phase;
         RowState state = RowState.PENDING;
         String message = "";
+        /** Why the step waits with none of its forks running ({@code slot}, {@code memory}); empty while it works. */
+        String waiting = "";
         /** One-line failure summary under a failed row (full diagnostics stay above / in files). */
         String briefError = "";
         /** Plain status override ({@code compiling 12 sources} / {@code running 80 tests}). */

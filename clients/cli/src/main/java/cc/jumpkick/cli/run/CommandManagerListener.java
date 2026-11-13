@@ -140,6 +140,11 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm().stepMessage(module, step, label);
     }
 
+    @Override
+    public void waiting(String step, @Nullable String reason) {
+        cm().stepWaiting(module, step, reason);
+    }
+
     /** The row's phase: the step's stage, or under {@link #staged} the step itself. */
     private String phase(String step, @Nullable String group) {
         if (staged) return StageLines.display(steps, step);

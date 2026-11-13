@@ -211,6 +211,9 @@ public final class EngineProtocol {
     /** Server → client: {@code BuildPlanListener.label}. */
     public static final String LABEL = "label";
 
+    /** Server → client: {@code BuildPlanListener.waiting}, a step's wait for a worker lease. */
+    public static final String TASK_WAIT = "task-wait";
+
     /** Server → client: {@code BuildPlanListener.output}. */
     public static final String OUTPUT = "output";
 

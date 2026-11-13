@@ -222,6 +222,10 @@ public final class ProtoEvents {
         return new LabelEvent(dir, step, label).encode();
     }
 
+    public static String taskWait(String dir, String step, String reason) {
+        return new TaskWaitEvent(dir, step, reason).encode();
+    }
+
     public static String output(String dir, String step, String line) {
         return new OutputEvent(dir, step, line).encode();
     }

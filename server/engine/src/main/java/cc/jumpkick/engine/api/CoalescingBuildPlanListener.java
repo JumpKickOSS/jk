@@ -279,6 +279,11 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
+    public void waiting(String step, @Nullable String reason) {
+        structural(() -> delegate.waiting(step, reason));
+    }
+
+    @Override
     public void testClassStarted(String step, String className) {
         structural(() -> delegate.testClassStarted(step, className));
     }

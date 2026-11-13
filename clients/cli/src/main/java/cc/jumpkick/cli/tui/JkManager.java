@@ -285,6 +285,11 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         model.stepMessage(module == null ? "" : module, stepKey, message);
     }
 
+    /** The step waits for a worker lease ({@code slot}, {@code memory}), or works again ({@code null}). */
+    public void stepWaiting(@Nullable String module, String stepKey, @Nullable String reason) {
+        model.stepWaiting(module == null ? "" : module, stepKey, reason);
+    }
+
     /** A static test finished; the plain view's remaining-test count follows without printing. */
     public void notePlainTestTick(String module, String stepKey, int delta) {
         if (!plain.animating() || !OutputPane.isCuratedTestStep(stepKey)) return;

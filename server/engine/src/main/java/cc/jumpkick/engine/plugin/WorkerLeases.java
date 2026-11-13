@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -99,8 +100,6 @@ public final class WorkerLeases {
 
     /** Smallest heap a clamped worker is given when the budget can hold it. */
     static final long MIN_XMX = 32 * MIB;
-
-    private static final long REPORT_EVERY_NANOS = 2_000_000_000L;
 
     /** Holders {@link Snapshot#waiting()} names before it counts the rest. */
     private static final int HOLDERS_SHOWN = 3;
@@ -510,38 +509,34 @@ public final class WorkerLeases {
 
         private Grant acquire(Waiter waiter) throws InterruptedException {
             @Nullable Long requestId = waiter.requestId;
+            waiter.scope = waiter.resident == null ? StepScope.current() : null;
             long arrived = Clock.SYSTEM.nanos();
-            boolean queued = false;
             long deadlineNanos;
+            boolean head;
             synchronized (lock) {
                 refuseIfItNeverFits(waiter);
-                if (grantIfHead(waiter)) return finish(waiter, 0, false);
-                queue.addLast(waiter);
-                publish();
-                queued = true;
+                head = grantIfHead(waiter);
+                if (!head) {
+                    queue.addLast(waiter);
+                    publish();
+                }
                 deadlineNanos = waitAtMost.toNanos();
             }
-            if (queued) {
-                long free;
-                synchronized (lock) {
-                    free = Math.max(0, capacityBytes() - hostCharged());
-                }
-                MemoryNotes.reportWaiting(waiter.demand.bytes, free);
-            }
-            long lastReport = Clock.SYSTEM.nanos();
-            boolean holding = false;
+            if (head) return finish(waiter, 0, 0, 0);
+            ForkWait wait = new ForkWait(waiter, requestId, waiter.scope, waiter.resident != null, arrived);
             try {
                 while (true) {
                     boolean granted;
                     long need;
                     long free;
+                    @Nullable WaitReason reason;
                     synchronized (lock) {
                         if (waiter.cancelled || requestEnded(requestId)) {
                             queue.remove(waiter);
                             grantQueued();
                             publish();
                             lock.notifyAll();
-                            throw new InterruptedException("cancelled while waiting for memory");
+                            throw new InterruptedException("cancelled while waiting for a worker lease");
                         }
                         grantQueued();
                         granted = waiter.granted;
@@ -553,19 +548,16 @@ public final class WorkerLeases {
                                 lock.wait(Math.max(1, Math.min(250, TimeUnit.NANOSECONDS.toMillis(left))));
                             }
                         }
+                        // Every waiter waits on what refused the head; grantQueued dropped a cancelled one.
+                        reason = granted ? null : queue.isEmpty() ? waiter.reason : queue.peekFirst().reason;
                         need = waiter.demand.bytes;
                         free = Math.max(0, capacityBytes() - hostCharged());
                     }
-                    if (granted) break;
-                    long now = Clock.SYSTEM.nanos();
-                    if (!holding && now - arrived >= MemoryHolds.HOLD_AFTER_NANOS && waiter.resident == null) {
-                        holding = true;
-                        MemoryHolds.waiting(requestId, need, free);
+                    if (granted) {
+                        wait.granted(Clock.SYSTEM.nanos());
+                        break;
                     }
-                    if (lastReport == 0 || now - lastReport >= REPORT_EVERY_NANOS) {
-                        MemoryNotes.reportWaiting(need, free);
-                        lastReport = now;
-                    }
+                    wait.waiting(reason, need, free, Clock.SYSTEM.nanos());
                 }
             } catch (InterruptedException | LeaseRefused e) {
                 synchronized (lock) {
@@ -577,17 +569,26 @@ public final class WorkerLeases {
                 }
                 throw e;
             } finally {
-                if (holding) MemoryHolds.done(requestId);
+                wait.close();
             }
-            long waitedNanos = Clock.SYSTEM.nanos() - arrived;
-            return finish(waiter, waitedNanos, queued);
+            return finish(waiter, Clock.SYSTEM.nanos() - arrived, wait.memoryNanos(), wait.heldNanos());
         }
 
-        private Grant finish(Waiter waiter, long waitedNanos, boolean queued) {
+        /**
+         * Count the granted fork as running for its build and step, and note a wait: {@code memoryNanos}
+         * of {@code waitedNanos} were spent waiting for memory, {@code heldNanos} of them with the build
+         * on hold.
+         */
+        private Grant finish(Waiter waiter, long waitedNanos, long memoryNanos, long heldNanos) {
             if (waiter.requestId != null && waitedNanos > 0) {
                 waited.computeIfAbsent(waiter.requestId, id -> new AtomicLong()).addAndGet(waitedNanos);
             }
-            if (queued) MemoryNotes.noteGranted(waitedNanos);
+            boolean run;
+            synchronized (lock) {
+                run = waiter.counted = waiter.resident == null && !waiter.released;
+            }
+            if (run) ForkWait.running(waiter.requestId, waiter.scope);
+            if (waitedNanos > 0) MemoryNotes.noteGranted(waitedNanos, memoryNanos, heldNanos);
             return new Grant(this, waiter);
         }
 
@@ -763,7 +764,8 @@ public final class WorkerLeases {
 
         /** Under the lock: {@link #admit(Waiter)} with {@code others} held by other engines. */
         private boolean admit(Waiter waiter, HostLeases.Reading others) {
-            if (waiter.demand.cpuSlot && (long) jvmRunning + others.jvms() >= cpuCap()) return false;
+            if (waiter.demand.cpuSlot && (long) jvmRunning + others.jvms() >= cpuCap())
+                return refused(waiter, WaitReason.SLOT);
             long cap = capacityBytes();
             long charged = charged() + Math.max(0, others.bytes());
             if (charged < 0) charged = Long.MAX_VALUE;
@@ -771,7 +773,12 @@ public final class WorkerLeases {
                 waiter.overbooked = false;
                 return true;
             }
-            return overbook(waiter, cap, charged);
+            return overbook(waiter, cap, charged) || refused(waiter, WaitReason.MEMORY);
+        }
+
+        private static boolean refused(Waiter waiter, WaitReason reason) {
+            waiter.reason = reason;
+            return false;
         }
 
         private boolean overbook(Waiter waiter, long cap, long charged) {
@@ -784,9 +791,7 @@ public final class WorkerLeases {
             if (!reading.enabled() || !reading.pressureLow()) return false;
             if (!reading.covers(bytes, headroomBytes(cap))) return false;
             waiter.overbooked = true;
-            waiter.sampleFree = reading.freeBytes();
-            waiter.sampleSome = reading.someAvg10();
-            waiter.sampleFull = reading.fullAvg10();
+            waiter.sample = reading;
             return true;
         }
 
@@ -808,14 +813,9 @@ public final class WorkerLeases {
         }
 
         private void logOverbook(Waiter waiter) {
-            long cap = capacityBytes();
             Log.info("jk engine: "
                     + OverbookSignals.overbookedLine(
-                            waiter.demand.bytes,
-                            hostCharged(),
-                            cap,
-                            new OverbookSignals.Reading(
-                                    true, waiter.sampleFree, waiter.sampleSome, waiter.sampleFull)));
+                            waiter.demand.bytes, hostCharged(), capacityBytes(), waiter.sample));
         }
 
         private void release(Waiter waiter) {
@@ -959,11 +959,15 @@ public final class WorkerLeases {
         }
 
         private void close(Waiter waiter) {
+            boolean counted;
             synchronized (lock) {
+                counted = waiter.counted;
+                waiter.counted = false;
                 release(waiter);
                 grantQueued();
                 lock.notifyAll();
             }
+            if (counted) ForkWait.exited(waiter.requestId, waiter.scope);
         }
 
         private boolean requestEnded(@Nullable Long requestId) {
@@ -1068,10 +1072,20 @@ public final class WorkerLeases {
         boolean cancelled;
         boolean granted;
         boolean released;
+        /** Counted as a running fork of its build and step, until its grant closes. */
+        boolean counted;
+
+        /** Why its last {@code admit} refused it; null before the first refusal. */
+        @Nullable
+        WaitReason reason;
+
+        /** The step that asked for it, outside a resident; null outside a step. */
+        @Nullable
+        TaskContext scope;
+
         boolean overbooked;
-        long sampleFree;
-        double sampleSome;
-        double sampleFull;
+        /** The host sample an overbooked grant was allowed on. */
+        OverbookSignals.Reading sample = OverbookSignals.Reading.closed();
 
         /** The forked process, once {@link Grant#watch} names it; {@code -1} before. */
         long pid = -1;

@@ -1951,8 +1951,12 @@ in     = "cc.jumpkick.runtime.base.HostBusy#LAST_CPU"
 reason = "live registry: the CPU time of each live process of the engine's tree at the last sample, replaced whole every second"
 
 [[guards.engine-static-memo.allow]]
-in     = "cc.jumpkick.engine.plugin.MemoryHolds#HOLDS"
-reason = "live registry: the jobs on hold for memory now, each removed as it resumes"
+in     = "cc.jumpkick.engine.plugin.MemoryHolds#BUILDS"
+reason = "live registry: each job's running and memory-waiting forks and its hold, removed once it has none"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.plugin.StepWaits#STEPS"
+reason = "live registry: each running step's forks and waits, removed once it has none"
 
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.engine.plugin.MemoryHolds#TOTAL_NANOS"

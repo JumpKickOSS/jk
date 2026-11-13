@@ -29,6 +29,7 @@ public sealed interface EngineEvent {
             case TickUpdate e -> EngineProtocol.TICK_UPDATE;
             case Label e -> EngineProtocol.LABEL;
             case Output e -> EngineProtocol.OUTPUT;
+            case Waiting e -> EngineProtocol.TASK_WAIT;
             case Warn e -> EngineProtocol.WARN;
             case ErrorLine e -> EngineProtocol.ERROR_LINE;
             case ErrorFailure e -> EngineProtocol.ERROR_LINE;
@@ -88,6 +89,9 @@ public sealed interface EngineEvent {
     record Label(String dir, String step, String text) implements EngineEvent {}
 
     record Output(String dir, String step, String line) implements EngineEvent {}
+
+    /** {@code step} waits for a worker lease ({@code "slot"}, {@code "memory"}), or works again ({@code ""}). */
+    record Waiting(String dir, String step, String reason) implements EngineEvent {}
 
     /**
      * {@code replayed}: said again by a step that did not run, as its last run said it. {@code

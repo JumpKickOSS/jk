@@ -65,6 +65,11 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     @Override
+    public void waiting(String step, @Nullable String reason) {
+        cm.stepWaiting(module, step, reason);
+    }
+
+    @Override
     public void output(String step, String line) {
         // Test-failure blocks: keep the curated path (raw lines in outBuffer or stream paint).
         // Do not feed the Ctrl-O peek ring (and never force-show for tests).

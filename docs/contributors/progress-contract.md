@@ -14,8 +14,8 @@ Status: **normative** for TUI / wire progress. Implementations live under
 4. **An honest precision** — every estimate carries a likely range, the 10th to 90th percentile
    of where the truth lands, and a confidence, the chance that it lands within 10% of the
    estimate; a wide range is shown as the range, a very wide one as a rough figure.
-5. **Pauses are not work** — a build waiting for memory is on hold: shown as such, its countdown
-   stands still, and the hold teaches no timing.
+5. **Pauses are not work** — a build fully stalled for memory is on hold: shown as such, its
+   countdown stands still, and the hold teaches no timing. Queueing for a slot is work.
 6. **The bar never goes backwards** and never runs ahead of the estimate.
 7. **Measured** — `bench/eta` scores every change against a corpus of real builds before it lands.
 
@@ -179,12 +179,16 @@ and counts each module's `provisionalSteps`, the verdicts a revision will settle
 `workspace-progress`; MCP's `status` gives each job in flight its `progress`, `remainingMs`,
 `etaLowMs`, `etaHighMs` and `confidence` under `estimates`.
 
-**On hold.** A fork that has waited half a second for a worker lease (`WorkerLeases`) puts its build
-on hold until the build's last waiting fork leaves the queue (`MemoryHolds`). While held, the
-engine's clock and the build's running steps stand still; every surface shows the hold and restores
-itself on resume. The forks not waiting run on, so a suite's rate is read on the wall clock: what
-its classes did through the hold is real progress, and read against a clock that stood still the
-engine's suite, started inside a 21 s hold, projected double its rate:
+**On hold.** A build is on hold only when it is fully stalled: one of its forks has waited 5 s
+without a break for memory (`WorkerLeases` records why each waiter was refused, a JVM slot or
+memory) and none of its forks is running (`MemoryHolds`). A stall that comes back within 3 s
+continues the same hold, so `hold-start` and `hold-end` do not flap. A wait for a JVM slot, or a
+memory wait while other forks work, is ordinary scheduling: the bar, the work rows and the clock go
+on, and only the waiting step's row changes. While none of a step's forks runs and its next one
+waits, `task-wait` (`reason` `slot` or `memory`, `""` once a fork runs) dims the row's spinner to a
+steady `○` with the detail `Waiting for a free slot…` or `Waiting for memory…`; plain, jsonl and
+the dashboard print nothing for it. While held, the engine's clock and the build's running steps
+stand still; every surface shows the hold and restores itself on resume:
 
 | Surface | On hold |
 |---------|---------|
@@ -194,8 +198,8 @@ engine's suite, started inside a 21 s hold, projected double its rate:
 | Web | the TUI's hold in the build pane; the countdown's anchors move by the time held |
 | MCP | a parked call's progress notifications at the start, every 5 s, and on resume; `status` lists held jobs; the verdict names the time on hold |
 
-A held run's long waits come off the walls its steps teach the ledger; the scorer judges a run on its
-working time.
+A fork's time on hold, and only that, comes off the walls its step teaches the ledger: a slot wait
+or a memory wait while other forks ran is build time. The scorer judges a run on its working time.
 
 ### Packaging cascade (hard rule)
 
@@ -311,6 +315,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 | `eta` | `millis` (= remaining), `remainingMs`, `fullMillis` (explain), `lowMs`, `highMs`, `confidence` |
 | `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `confidence` (0–1, two decimals); on hold also `state: on-hold`, `heldMs` |
 | `hold-start` / `hold-end` | `needBytes`, `freeBytes` / `heldMs` |
+| `task-wait` | `dir`, `task`, `reason` (`slot`, `memory`, or `""` once a fork runs); wire only |
 
 ## Learning layout
 
@@ -369,8 +374,9 @@ last wall; the ETA's class weights read its mean.
 A step's recorded wall is its wall clock, queue wait included. All Java compilation in a job goes
 through one resident compiler worker, so on a wide build a module's `compile-java` wall is partly
 its place in that queue. `task-finish` carries the wait as `waitMillis`, on the wire and in JSONL
-alike, and a run that went on hold for memory teaches its step ledger each step's wall less a wait
-long enough to be the hold.
+alike. A fork's memory wait counts toward it only for the time its build was on hold, and a run
+that went on hold teaches its step ledger each step's wall less that wait, at most the run's time on
+hold.
 
 `task-finish` also carries `predictedMs` and `rung` for a step the run's seed priced: the price,
 and the layer that set it (`StepCost.Rung`), narrowest first:

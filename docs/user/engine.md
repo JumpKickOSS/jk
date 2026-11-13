@@ -412,10 +412,11 @@ overbooked. JumpKick does not kill it; the per-worker cgroup cap above is what b
 A lease that does not fit waits, first in line first. The first in line waits only on
 forks that are working: when it would fit once the build-script host let go of its lease,
 the host is asked to exit, finishes the script it is running, and starts again on the next
-script. The step shows
-`waiting for memory: need 512 MiB, free 128 MiB`, and a wait of half a second or more is
-recorded on the step as `waited Ns for memory`. Several waits on one step add up to that
-one line. `target/jk-results.md` and the agent report each carry it, and they carry
+script. A fork also waits when every JVM slot is taken (one per logical processor); that
+is ordinary queueing and writes nothing. While none of a step's forks runs and its next one
+waits, the terminal dims its row and says why: `Waiting for a free slot…` or
+`Waiting for memory…`. A memory wait of 5 seconds or more is recorded on the step as
+`waited Ns for memory`. Several waits on one step add up to that one line. `target/jk-results.md` and the agent report each carry it, and they carry
 `retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
 A workspace names the module on both lines.
 When the budget is an override, the wait line names it:

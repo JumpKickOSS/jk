@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** The hold events and a held progress event, on the wire and back (JK-VYJ4X). */
+/** The hold events and a held progress event, on the wire and back. */
 class MemoryHoldEventTest {
 
     @Test
