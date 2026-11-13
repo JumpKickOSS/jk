@@ -195,8 +195,7 @@ final class HttpReadApi {
         String dirFilter = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (BuildMetrics.Entry e : metrics.get()) {
-            // Same base-dir filter semantics as the wire metrics verb (project rows fold dir#dN).
-            if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+            if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameDir(dirFilter, e.dir())) {
                 continue;
             }
             if (body.length() > 1) body.append(',');

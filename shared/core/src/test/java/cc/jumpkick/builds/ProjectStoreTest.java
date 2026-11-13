@@ -62,7 +62,6 @@ class ProjectStoreTest {
         ProjectStore.foldRun(home, """
                 workspace.wall-ms = 1000
                 invocation.build.wall-ms = 1000
-                invocation.build._/d2.wall-ms = 1000
                 task.compile-java.wall-ms = 100
                 task.compile-java.wall-ms = 300
                 task.compile-java.wait-ms = 7
@@ -78,7 +77,6 @@ class ProjectStoreTest {
                 .containsOnlyKeys(
                         "workspace.wall-ms",
                         "invocation.build.wall-ms",
-                        "invocation.build._/d2.wall-ms",
                         "task.compile-java.wall-ms",
                         "module.a.task.compile-java.wall-ms",
                         "module.b.task.run-tests.wall1-ms");

@@ -39,18 +39,6 @@ final class RunMetricsToml {
                     .append(".wall-ms = ")
                     .append(finished.millis())
                     .append('\n');
-            if (finished.dir() != null && !finished.dir().isBlank()) {
-                int dirty = finished.modules() == null ? 0 : finished.modules().size();
-                if (dirty == 0 && finished.steps() != null && !finished.steps().isEmpty()) dirty = 1;
-                String dirKey = ModuleKeys.ROOT + (dirty > 0 ? "#d" + dirty : "");
-                sb.append("invocation.")
-                        .append(kind)
-                        .append('.')
-                        .append(dirKey)
-                        .append(".wall-ms = ")
-                        .append(finished.millis())
-                        .append('\n');
-            }
         }
         String root = finished.dir();
         boolean coldWorker = measures.coldWorker();

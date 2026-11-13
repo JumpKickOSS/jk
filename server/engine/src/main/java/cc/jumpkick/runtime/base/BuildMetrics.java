@@ -341,23 +341,9 @@ public final class BuildMetrics {
         return Optional.ofNullable(invocations.get(kind + SEP + slashKey(dir)));
     }
 
-    /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
-    public static boolean sameBaseDir(@Nullable String dir, @Nullable String candidate) {
-        String a = slashKey(dir);
-        String b = slashKey(candidate);
-        return a.equals(b) || a.equals(baseDir(b));
-    }
-
-    /** Strip a trailing {@code #dN} shape suffix{@code path#d3} → {@code path}. */
-    public static String baseDir(@Nullable String dir) {
-        if (dir == null) return "";
-        String s = slashKey(dir);
-        int i = s.lastIndexOf("#d");
-        if (i <= 0) return s;
-        for (int j = i + 2; j < s.length(); j++) {
-            if (!Character.isDigit(s.charAt(j))) return s;
-        }
-        return i + 2 == s.length() ? s : s.substring(0, i);
+    /** True when {@code dir} and {@code candidate} name one directory (see {@link #slashKey}). */
+    public static boolean sameDir(@Nullable String dir, @Nullable String candidate) {
+        return slashKey(dir).equals(slashKey(candidate));
     }
 
     /** Canonical metrics dir key: forward slashes + folded drive-letter case (see DirKeys). */
@@ -367,7 +353,7 @@ public final class BuildMetrics {
     }
 
     /**
-     * Total finished runs recorded for {@code dir} (all kinds, including {@code #dN} shapes). Used by
+     * Total finished runs recorded for {@code dir} (all kinds). Used by
      * {@link BuildNumberAllocator} so start-time numbers continue past historical metrics.
      */
     public long projectRunCount(String dir) {
@@ -454,12 +440,9 @@ public final class BuildMetrics {
      * eviction spares them — which is what makes it a stable per-project sequence.
      */
     private static long projectRunCount(Map<String, Entry> inv, String dir) {
-        // Shaped keys (path#dN) all belong to ONE project: fold them together or the
-        // documented monotonic per-project sequence forks per dirty-count.
-        String base = baseDir(dir);
         long n = 0;
         for (Entry e : inv.values()) {
-            if (sameBaseDir(base, e.dir()))
+            if (sameDir(dir, e.dir()))
                 n += e.ok().count() + e.failed().count() + e.cancelled().count();
         }
         return n;

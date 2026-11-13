@@ -196,10 +196,10 @@ class BuildMetricsTest {
     void rebuild_kind_is_stored_separately_from_incremental(@TempDir Path dir) {
         Path f = file(dir);
         record(f, build("/p", true, 500), NOW);
-        record(f, new BuildMetrics.Outcome("build:rebuild", "/p#d4", "g:n", true, false, 3200, List.of()), NOW + 1);
+        record(f, new BuildMetrics.Outcome("build:rebuild", "/p", "g:n", true, false, 3200, List.of()), NOW + 1);
         BuildMetrics m = BuildMetrics.load(f);
         assertThat(m.invocation("build", "/p").orElseThrow().ok().avgMillis()).isEqualTo(500);
-        assertThat(m.invocation("build:rebuild", "/p#d4").orElseThrow().ok().avgMillis())
+        assertThat(m.invocation("build:rebuild", "/p").orElseThrow().ok().avgMillis())
                 .isEqualTo(3200);
         // Host tier also sees rebuild samples under the rebuild kind.
         assertThat(m.invocation("build:rebuild", "").orElseThrow().ok().count()).isEqualTo(1);
@@ -336,7 +336,7 @@ class BuildMetricsTest {
         assertThat(m.invocation("build", windows).orElseThrow().ok().totalMillis())
                 .isEqualTo(900);
         assertThat(m.step(windows, "compile-java").orElseThrow().dir()).isEqualTo(slashed);
-        assertThat(BuildMetrics.sameBaseDir(windows, slashed + "#d3")).isTrue();
+        assertThat(BuildMetrics.sameDir(windows, slashed)).isTrue();
 
         // A row persisted in the old `\` shape is re-keyed on read, not orphaned.
         Files.writeString(f, Files.readString(f).replace(slashed, "C:\\\\ws\\\\app"));

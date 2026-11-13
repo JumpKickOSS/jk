@@ -45,9 +45,7 @@ public final class MetricsVerb implements HostedVerb {
             String dirFilter = MetricsRequest.decode(requestLine).dir();
             int n = 0;
             for (BuildMetrics.Entry e : host.metrics().entries()) {
-                // Project rows are stored as bare dir and dirty-count shapes (dir#dN). Match
-                // the project's base path so `jk status` sees the folded project tier.
-                if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+                if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameDir(dirFilter, e.dir())) {
                     continue;
                 }
                 host.send(writer, metricsEntryJson(e));

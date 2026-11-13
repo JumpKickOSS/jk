@@ -208,26 +208,6 @@ public final class AggregatedMetrics {
         return classWalls;
     }
 
-    public OptionalLong invocationWallMs(String kind, String dirKey) {
-        String k = kind == null ? "build" : kind;
-        if (dirKey != null && !dirKey.isBlank()) {
-            OptionalDouble shaped = value("invocation." + sanitize(k) + "." + sanitize(dirKey) + ".wall-ms");
-            if (shaped.isPresent()) return OptionalLong.of(Math.round(shaped.getAsDouble()));
-            // strip #dN
-            int hash = dirKey.lastIndexOf("#d");
-            if (hash > 0) {
-                String base = dirKey.substring(0, hash);
-                OptionalDouble any = value("invocation." + sanitize(k) + "." + sanitize(base) + ".wall-ms");
-                if (any.isPresent()) return OptionalLong.of(Math.round(any.getAsDouble()));
-            }
-        }
-        OptionalDouble ws = value("workspace.wall-ms");
-        if (ws.isPresent() && (kind == null || "build".equals(kind) || kind.startsWith("build"))) {
-            return OptionalLong.of(Math.round(ws.getAsDouble()));
-        }
-        return OptionalLong.empty();
-    }
-
     public Map<String, Double> meanMap() {
         return mean;
     }

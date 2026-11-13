@@ -345,7 +345,7 @@ The project store holds:
 The measures kept are a module's step walls (`module.<dir>.task.<step>.wall-ms`), a suite's wall
 normalized to one runner (`module.<dir>.task.run-tests*.wall1-ms`), a step kind's wall
 (`task.<step>.wall-ms`, the mean over the run's modules as one sample) and an invocation's
-(`invocation.<kind>[.<root>#dN].wall-ms`, `workspace.wall-ms`). A running mean is a plain mean for
+(`invocation.<kind>.wall-ms`, `workspace.wall-ms`). A running mean is a plain mean for
 its first ten samples and then moves a tenth of the way to each new one; from the third sample on,
 a sample is clipped to within 4× of the mean before it is folded, so one stalled run cannot drag
 it. A row no run has refreshed in 200 runs is dropped, and past 4,000 means or 10,000 classes the

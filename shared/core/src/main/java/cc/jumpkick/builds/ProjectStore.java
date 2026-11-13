@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@value #MEANS}: one {@link RunningMean} per measure the estimates read, {@code key mean
  *       last count seen}: a module's step walls ({@code module.<dir>.task.<step>.wall-ms}, a suite's
  *       one-runner {@code wall1-ms}), a step kind's ({@code task.<step>.wall-ms}) and an
- *       invocation's ({@code invocation.<kind>[.<root>#dN].wall-ms}, {@code workspace.wall-ms}).
+ *       invocation's ({@code invocation.<kind>.wall-ms}, {@code workspace.wall-ms}).
  *       Module keys are spelled relative to the project root ({@link ModuleKeys});
  *   <li>{@value #CLASSES}: one {@link RunningMean} per test class of a suite, {@code
  *       suiteDir<TAB>fqcn<TAB>last<TAB>mean<TAB>count<TAB>seen}, the suite as {@code
