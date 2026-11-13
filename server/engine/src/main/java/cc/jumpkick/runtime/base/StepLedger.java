@@ -57,6 +57,9 @@ public final class StepLedger {
 
     static final int ANY_FRONTIER = 7;
 
+    /** A run that recorded no compiler warmth (one from before it was recorded). */
+    public static final int UNKNOWN_WARMTH = -1;
+
     /** Steps shorter than this are not recorded: they price as nothing either way. */
     static final long MIN_MS = 20;
 
@@ -80,9 +83,26 @@ public final class StepLedger {
             Set<String> frontier,
             List<Sample> samples,
             Map<String, int[]> curves,
-            Map<String, long[]> workers) {
+            Map<String, long[]> workers,
+            boolean first,
+            int warmth) {
         Run(RunShapes.Shape shape, Set<String> frontier, List<Sample> samples) {
-            this(shape, frontier, samples, Map.of(), Map.of());
+            this(shape, frontier, samples, Map.of(), Map.of(), false, UNKNOWN_WARMTH);
+        }
+
+        Run(
+                RunShapes.Shape shape,
+                Set<String> frontier,
+                List<Sample> samples,
+                Map<String, int[]> curves,
+                Map<String, long[]> workers) {
+            this(shape, frontier, samples, curves, workers, false, UNKNOWN_WARMTH);
+        }
+
+        /** Whether the run's compiles ran on a fresh compiler worker; null when it did not record it. */
+        @Nullable
+        Boolean freshCompiler() {
+            return warmth < 0 ? null : warmth == 0;
         }
 
         /** The test JVMs the suite of {@code dir} ran on in this run; {@code 0} when not recorded. */
@@ -201,6 +221,23 @@ public final class StepLedger {
             Map<String, int[]> curves,
             Map<String, long[]> workers,
             List<Sample> samples) {
+        append(projectHome, shape, frontier, curves, workers, UNKNOWN_WARMTH, samples);
+    }
+
+    /**
+     * {@link #append(Path, RunShapes.Shape, Set, Map, Map, List)}, with the compiler warmth the run
+     * started with ({@code JavaCompilerHost#warmth}: the compiles the lingering worker had answered,
+     * 0 for a fresh one). The run is also marked as the project's first when the ledger had none:
+     * its walls carry what only a first build pays (empty caches, downloads, a cold worker).
+     */
+    public static void append(
+            Path projectHome,
+            RunShapes.Shape shape,
+            @Nullable Set<String> frontier,
+            Map<String, int[]> curves,
+            Map<String, long[]> workers,
+            int warmth,
+            List<Sample> samples) {
         List<Sample> kept = new ArrayList<>();
         for (Sample s : samples) {
             if (s.ms() >= MIN_MS) kept.add(s);
@@ -214,6 +251,7 @@ public final class StepLedger {
                 shape.forced()
                         || fullRebuild(compiled.size(), compilableOf(samples).size()));
         line.put("filtered", shape.filtered());
+        if (warmth >= 0) line.put("warmth", warmth);
         line.put("frontier", List.copyOf(new TreeSet<>(frontier == null ? compiled : frontier)));
         List<Object> steps = new ArrayList<>();
         for (Sample s : kept) steps.add(List.of(s.dir(), s.step(), s.status(), s.ms()));
@@ -245,6 +283,7 @@ public final class StepLedger {
                     if (!l.isBlank()) lines.add(l);
                 }
             }
+            if (lines.isEmpty()) line.put("first", true);
             lines.add(MiniJson.write(line));
             if (lines.size() > MAX_RUNS) lines = new ArrayList<>(lines.subList(lines.size() - MAX_RUNS, lines.size()));
             Files.createDirectories(projectHome);
@@ -321,7 +360,9 @@ public final class StepLedger {
                         }
                     }
                 }
-                runs.add(new Run(shape, frontier, samples, curves, workers));
+                int warmth = m.get("warmth") instanceof Number w ? Math.max(0, w.intValue()) : UNKNOWN_WARMTH;
+                runs.add(new Run(
+                        shape, frontier, samples, curves, workers, Boolean.TRUE.equals(m.get("first")), warmth));
             }
         } catch (IOException | RuntimeException e) {
             Log.debug("StepLedger.read: unreadable, priced from nothing", e);
@@ -349,7 +390,22 @@ public final class StepLedger {
      * filtered test run, and a forced integration run's guard is neither.
      */
     public OptionalLong price(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
-        Rung rung = rung(dir, step, status, shape, frontier);
+        return price(dir, step, status, shape, frontier, null);
+    }
+
+    /**
+     * {@link #price(String, String, String, RunShapes.Shape, Set)} for a run whose javac worker is
+     * fresh ({@code true}) or lingering ({@code false}): a compile reads the runs whose worker was
+     * the same where any recorded it ({@link #conditioned}); {@code null} reads them all.
+     */
+    public OptionalLong price(
+            String dir,
+            String step,
+            String status,
+            RunShapes.Shape shape,
+            Set<String> frontier,
+            @Nullable Boolean freshCompiler) {
+        Rung rung = rung(dir, step, status, shape, frontier, freshCompiler);
         return rung.samples().isEmpty() ? OptionalLong.empty() : OptionalLong.of(rung.at(median(rung.samples())));
     }
 
@@ -360,7 +416,18 @@ public final class StepLedger {
      * from another load or profile). Empty when {@link #price} is.
      */
     public Optional<long[]> range(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
-        Rung rung = rung(dir, step, status, shape, frontier);
+        return range(dir, step, status, shape, frontier, null);
+    }
+
+    /** {@link #range(String, String, String, RunShapes.Shape, Set)} under {@code freshCompiler} ({@link #price}). */
+    public Optional<long[]> range(
+            String dir,
+            String step,
+            String status,
+            RunShapes.Shape shape,
+            Set<String> frontier,
+            @Nullable Boolean freshCompiler) {
+        Rung rung = rung(dir, step, status, shape, frontier, freshCompiler);
         if (rung.samples().isEmpty()) return Optional.empty();
         List<Long> sorted = new ArrayList<>(rung.samples());
         sorted.sort(Long::compare);
@@ -486,9 +553,19 @@ public final class StepLedger {
      * default profile's walls, as a floor.
      */
     private Rung rung(String dir, String step, String status, RunShapes.Shape shape, Set<String> frontier) {
+        return rung(dir, step, status, shape, frontier, null);
+    }
+
+    private Rung rung(
+            String dir,
+            String step,
+            String status,
+            RunShapes.Shape shape,
+            Set<String> frontier,
+            @Nullable Boolean freshCompiler) {
         boolean suite = TaskNames.isRunTests(step);
         if (suite && shape.filtered()) return Rung.NONE;
-        List<Indexed> rows = index.getOrDefault(key(dir, step, status), List.of());
+        List<Indexed> rows = conditioned(index.getOrDefault(key(dir, step, status), List.of()), step, freshCompiler);
         if (rows.isEmpty()) return Rung.NONE;
         boolean forcedMatters = loadChangesWork(step);
         List<Indexed> sameShapeFrontier = new ArrayList<>();
@@ -536,6 +613,84 @@ public final class StepLedger {
             return read(defaultProfile, dir, suite, 1, MIN_SPREAD, PROFILE_SPREAD_ABOVE)
                     .borrowed();
         return Rung.NONE;
+    }
+
+    /**
+     * The rows a price may read, by the conditions their runs were measured under. A project's first
+     * run paid for empty caches and cold tools ({@link #firstRunPays}), so for such a step it is read
+     * only while no later run measured it: two-frontends' node steps replayed a first install that downloaded into an
+     * empty cache and read 10.9 s over the next build. A javac compile reads the runs whose worker
+     * was in the state this run's is ({@code freshCompiler}) where any recorded it; a warm build
+     * read the 0.5 to 0.9 s more its compiles took on the fresh worker the run before had.
+     */
+    private static List<Indexed> conditioned(List<Indexed> rows, String step, @Nullable Boolean freshCompiler) {
+        if (rows.isEmpty()) return rows;
+        List<Indexed> later =
+                firstRunPays(step) ? rows.stream().filter(r -> !r.run().first()).toList() : rows;
+        List<Indexed> out = later.isEmpty() ? rows : later;
+        if (freshCompiler == null || !javacStep(step)) return out;
+        List<Indexed> same = out.stream()
+                .filter(r -> freshCompiler.equals(r.run().freshCompiler()))
+                .toList();
+        return same.isEmpty() ? out : same;
+    }
+
+    /**
+     * Which worker the walls {@link #price} reads for a javac compile were measured on, against
+     * this run's ({@code freshCompiler}): {@link Borrowed#NONE} when they match or nothing recorded
+     * it, else which way the price must be carried to this run's worker.
+     */
+    public Borrowed compilerBorrowed(String dir, String step, String status, boolean freshCompiler) {
+        if (!javacStep(step)) return Borrowed.NONE;
+        List<Indexed> rows = conditioned(index.getOrDefault(key(dir, step, status), List.of()), step, freshCompiler);
+        long fresh = rows.stream()
+                .filter(r -> Boolean.TRUE.equals(r.run().freshCompiler()))
+                .count();
+        long warm = rows.stream()
+                .filter(r -> Boolean.FALSE.equals(r.run().freshCompiler()))
+                .count();
+        if (freshCompiler && fresh == 0) return Borrowed.WARM_WALLS;
+        if (!freshCompiler && fresh > 0 && warm == 0) return Borrowed.FRESH_WALLS;
+        return Borrowed.NONE;
+    }
+
+    /** How a compile's replayed walls differ from this run's worker ({@link #compilerBorrowed}). */
+    public enum Borrowed {
+        NONE,
+        /** Walls from a lingering worker, for a run on a fresh one: they lack its warm-up. */
+        WARM_WALLS,
+        /** Walls from fresh workers, for a run on a lingering one: they carry a warm-up it will not pay. */
+        FRESH_WALLS
+    }
+
+    /**
+     * Whether a project's first run pays for {@code step} what later runs do not: a node step fills
+     * an empty package cache, a plugin goal starts its tools cold. Compiles are matched by their
+     * worker instead ({@link #compilerBorrowed}); a suite's first wall measured nothing extra.
+     */
+    public static boolean firstRunPays(String step) {
+        return step.equals(TaskNames.NODE_INSTALL)
+                || step.equals(TaskNames.NODE_BUILD)
+                || step.equals(TaskNames.NODE_TEST)
+                || step.startsWith("plugin-");
+    }
+
+    /** Whether every wall the ledger has of {@code step} in {@code dir} is from the project's first run. */
+    public boolean firstRunOnly(String dir, String step, String status) {
+        List<Indexed> rows = index.getOrDefault(key(dir, step, status), List.of());
+        return !rows.isEmpty() && rows.stream().allMatch(r -> r.run().first());
+    }
+
+    /** A step the resident javac worker runs: the Java main, test, test-fixtures and multi-release compiles. */
+    public static boolean javacStep(String step) {
+        return switch (step) {
+            case TaskNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_JAVA_INCREMENTAL,
+                    TaskNames.COMPILE_TEST,
+                    TaskNames.COMPILE_TEST_FIXTURES,
+                    TaskNames.COMPILE_VERSIONS -> true;
+            default -> false;
+        };
     }
 
     /**

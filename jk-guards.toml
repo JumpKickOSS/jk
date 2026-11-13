@@ -1935,6 +1935,10 @@ in     = "cc.jumpkick.runtime.base.RunShapes#PRICED"
 reason = "live registry: each live run's priced work set and curves by request id, read as the journal records the run, at most 256"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RunShapes#WARMTH"
+reason = "live registry: each live run's compiler warmth at its start by request id, read as the journal records the run, at most 256"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.engine.plugin.MemoryHolds#HOLDS"
 reason = "live registry: the jobs on hold for memory now, each removed as it resumes"
 
@@ -2521,6 +2525,10 @@ reason = "the step a task reports to, and its locals"
 [[guards.carried-value-owners.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/HeapScope.java"
 reason = "the heap key a forked worker learns its peak under"
+
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/CompilerWarmUp.java"
+reason = "the compiler warmth a build started with, bound around its estimate, which is priced beside the build"
 
 [[guards.carried-value-owners.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java"

@@ -93,6 +93,10 @@ final class WorkspaceResourcePhase {
         Calibration.ensureAnnounced(incoming.jdksDir(), listener::onPreflight);
         Long requestId = JobWorkers.currentRequestId();
         RunShapes.mark(requestId, shape(incoming));
+        // Before any compile of this build: the estimate is priced beside the build, by when its
+        // first compiles may have warmed a fresh worker.
+        int compilerWarmth = CompilerWarmUp.warmth();
+        RunShapes.markCompilerWarmth(requestId, compilerWarmth);
 
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
@@ -121,7 +125,8 @@ final class WorkspaceResourcePhase {
                         () -> {
                             ExplainPlan plan = etaPlan(preflight, priced, dirtyUnits);
                             provisional.priced(plan);
-                            return estimate(plan, priced, incoming, parallelTests, null);
+                            return CompilerWarmUp.startedWith(
+                                    compilerWarmth, () -> estimate(plan, priced, incoming, parallelTests, null));
                         },
                         model -> {
                             RunShapes.markPriced(requestId, model.frontier(), model.curves());
@@ -134,7 +139,8 @@ final class WorkspaceResourcePhase {
                         seedModel -> {
                             ExplainPlan plan = scheduledPlan(preflight, priced);
                             provisional.priced(plan);
-                            return estimate(plan, priced, incoming, parallelTests, seedModel);
+                            return CompilerWarmUp.startedWith(
+                                    compilerWarmth, () -> estimate(plan, priced, incoming, parallelTests, seedModel));
                         },
                         (model, n) -> listener.onWorkModel(
                                 workModel(model, dirtyUnits, parallelTests).asRevision(n)));

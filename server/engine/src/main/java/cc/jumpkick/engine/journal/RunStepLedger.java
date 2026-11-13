@@ -44,6 +44,7 @@ final class RunStepLedger {
                 RunShapes.frontierOf(finished.requestId()),
                 RunShapes.curvesOf(finished.requestId()),
                 RunShapes.workersOf(finished.requestId()),
+                RunShapes.compilerWarmthOf(finished.requestId()),
                 samples);
         StepEffort.learn(StepEffort.defaultFile(), effortSamples(samples));
         RungBias.learn(RungBias.defaultFile(), pricedPairs(finished.requestId(), samples));

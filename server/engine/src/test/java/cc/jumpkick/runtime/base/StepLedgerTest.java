@@ -390,4 +390,80 @@ class StepLedgerTest {
                 .as("the newer of the build's two")
                 .hasValue(43_000);
     }
+
+    @Test
+    void a_projects_first_run_is_read_only_until_a_later_run_measures_the_step(@TempDir Path home) {
+        // JK-D3785: two-frontends' node install replayed a first build's download into an empty cache.
+        StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/web", "node-install", "SUCCESS", 9_000)));
+        StepLedger first = StepLedger.load(home);
+        assertThat(first.firstRunOnly("/ws/web", "node-install", "SUCCESS")).isTrue();
+        assertThat(first.price("/ws/web", "node-install", "SUCCESS", DEFAULT, Set.of()))
+                .hasValue(9_000);
+
+        StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/web", "node-install", "SUCCESS", 1_000)));
+        StepLedger later = StepLedger.load(home);
+        assertThat(later.firstRunOnly("/ws/web", "node-install", "SUCCESS")).isFalse();
+        assertThat(later.price("/ws/web", "node-install", "SUCCESS", DEFAULT, Set.of()))
+                .as("the first run's download is not replayed once a later run measured the step")
+                .hasValue(1_000);
+    }
+
+    @Test
+    void a_compile_replays_walls_from_the_same_kind_of_worker(@TempDir Path home) {
+        StepLedger.Sample head = new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 100);
+        StepLedger.append(home, DEFAULT, null, Map.of(), Map.of(), 0, List.of(head));
+        StepLedger.append(
+                home,
+                DEFAULT,
+                null,
+                Map.of(),
+                Map.of(),
+                0,
+                List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 900)));
+        StepLedger.append(
+                home,
+                DEFAULT,
+                null,
+                Map.of(),
+                Map.of(),
+                12,
+                List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 300)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.price("/ws/a", "compile-java", "SUCCESS", DEFAULT, Set.of(), true))
+                .as("a fresh worker reads the fresh run (the first is excluded)")
+                .hasValue(900);
+        assertThat(ledger.price("/ws/a", "compile-java", "SUCCESS", DEFAULT, Set.of(), false))
+                .hasValue(300);
+        assertThat(ledger.compilerBorrowed("/ws/a", "compile-java", "SUCCESS", true))
+                .isEqualTo(StepLedger.Borrowed.NONE);
+        assertThat(ledger.compilerBorrowed("/ws/a", "compile-java", "SUCCESS", false))
+                .isEqualTo(StepLedger.Borrowed.NONE);
+    }
+
+    @Test
+    void a_compile_with_only_the_other_workers_walls_says_which_way_to_carry_them(@TempDir Path home) {
+        StepLedger.append(
+                home,
+                DEFAULT,
+                null,
+                Map.of(),
+                Map.of(),
+                5,
+                List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 100)));
+        StepLedger.append(
+                home,
+                DEFAULT,
+                null,
+                Map.of(),
+                Map.of(),
+                9,
+                List.of(new StepLedger.Sample("/ws/a", "compile-java", "SUCCESS", 120)));
+        StepLedger warmOnly = StepLedger.load(home);
+        assertThat(warmOnly.compilerBorrowed("/ws/a", "compile-java", "SUCCESS", true))
+                .isEqualTo(StepLedger.Borrowed.WARM_WALLS);
+        assertThat(warmOnly.compilerBorrowed("/ws/a", "run-tests", "SUCCESS", true))
+                .as("not a javac compile")
+                .isEqualTo(StepLedger.Borrowed.NONE);
+    }
 }

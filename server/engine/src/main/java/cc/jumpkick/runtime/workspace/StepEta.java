@@ -113,6 +113,10 @@ public final class StepEta {
         RungBias bias = RungBias.load();
         List<String> projectDirs =
                 plan.modules().stream().map(m -> m.dir().toString()).toList();
+        // The javac worker this build compiles on: fresh after an engine start or once its linger
+        // ran out. Compiles replay walls from the same kind of worker (CompilerWarmUp).
+        boolean freshCompiler = CompilerWarmUp.warmth() <= 0;
+        CompilerWarmUp warmUp = new CompilerWarmUp(calibration.effortScale());
         for (TaskForecast.Module m : pricedModules(plan, distrust)) {
             Path dir = m.dir();
             Set<Path> prereqs = plan.edges().getOrDefault(dir, Set.of());
@@ -131,7 +135,8 @@ public final class StepEta {
                         projectDirs,
                         m,
                         calibration,
-                        effort);
+                        effort,
+                        freshCompiler);
                 priced = priced.corrected(bias.factor(priced.rung(), t.name()));
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
@@ -155,6 +160,7 @@ public final class StepEta {
                 if (!ledger.ownShape(dir.toString(), c.step(), "SUCCESS", shape, frontier))
                     suiteWalls.put(dir, ledger.classWalls(dir.toString(), c.step(), "SUCCESS", shape, frontier));
             }
+            own = warmUp.apply(own, c -> warmUpDirection(c, ledger, dir, freshCompiler, distrust, m));
             if (own.isEmpty()) {
                 costs.add(EffortWeights.costOf(dir, prereqs, EffortWeights.TOKEN, 0));
                 continue;
@@ -181,6 +187,23 @@ public final class StepEta {
                 frontier.size());
         return new BuildService.EtaModel(
                 ms, costs, concurrency, serialEta, ledger.runs() > 0, steps, frontier, curves, fullRebuild);
+    }
+
+    /**
+     * How a javac compile's price is carried to this build's worker: a price from its own walls by
+     * the worker they were measured on ({@link StepLedger#compilerBorrowed}). A prior is left as it
+     * is: the cold compile prior was fitted to a first build, on a fresh worker, so it already
+     * carries the warm-up; adding it again put the first project on a fresh engine at +76% for +1%.
+     * A touch or a cached step is not a compile that runs.
+     */
+    private static CompilerWarmUp.Direction warmUpDirection(
+            StepCost c, StepLedger ledger, Path dir, boolean freshCompiler, boolean distrust, TaskForecast.Module m) {
+        if (c.rung() != StepCost.Rung.REPLAY) return CompilerWarmUp.Direction.NONE;
+        return switch (ledger.compilerBorrowed(dir.toString(), c.step(), "SUCCESS", freshCompiler)) {
+            case WARM_WALLS -> CompilerWarmUp.Direction.ADD;
+            case FRESH_WALLS -> CompilerWarmUp.Direction.REMOVE;
+            case NONE -> CompilerWarmUp.Direction.NONE;
+        };
     }
 
     /** The modules an estimate prices: every dirty one, or all of them on a forced run. */
@@ -338,7 +361,8 @@ public final class StepEta {
             List<String> projectDirs,
             TaskForecast.Module m,
             Calibration calibration,
-            StepEffort effort) {
+            StepEffort effort,
+            boolean freshCompiler) {
         String name = t.name();
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
@@ -351,11 +375,16 @@ public final class StepEta {
             if (narrowed.isPresent()) return Priced.spread(narrowed.getAsLong(), 0.7, 1.3, StepCost.Rung.MODULE);
         }
         String status = runs ? "SUCCESS" : "SKIPPED";
-        var own = ledger.price(dir.toString(), name, status, shape, frontier);
+        // A node step or plugin goal measured only in the project's first build replays a download
+        // into an empty cache: its effort price is the better guess until a second run measures it.
+        boolean firstOnly = runs && StepEffort.prices(name) && ledger.firstRunOnly(dir.toString(), name, status);
+        var own = firstOnly
+                ? OptionalLong.empty()
+                : ledger.price(dir.toString(), name, status, shape, frontier, freshCompiler);
         if (own.isPresent()) {
             long ms = own.getAsLong();
-            long[] range =
-                    ledger.range(dir.toString(), name, status, shape, frontier).orElse(new long[] {ms, ms});
+            long[] range = ledger.range(dir.toString(), name, status, shape, frontier, freshCompiler)
+                    .orElse(new long[] {ms, ms});
             return new Priced(ms, range[0], range[1], false, StepCost.Rung.REPLAY);
         }
         if (!runs) return Priced.exact(0, StepCost.Rung.TOKEN);

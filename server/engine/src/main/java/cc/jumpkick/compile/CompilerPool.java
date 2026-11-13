@@ -626,6 +626,27 @@ final class CompilerPool {
         return List.copyOf(workers);
     }
 
+    /** The most compiles any of this pool's ready workers has answered; -1 when none is ready. */
+    synchronized int warmestAnswered() {
+        int most = -1;
+        for (CompilerWorker w : workers) {
+            if (w.ready() && !w.retiring()) most = Math.max(most, w.answered());
+        }
+        return most;
+    }
+
+    /**
+     * How warm the engine's resident compiler is for the next build: the most compiles a ready
+     * worker of a lingering pool has answered, 0 when no worker lingers (the next build starts one).
+     */
+    static int lingeringWarmth() {
+        int most = 0;
+        for (CompilerPool pool : POOLS.values()) {
+            if (pool.job == null) most = Math.max(most, pool.warmestAnswered());
+        }
+        return most;
+    }
+
     synchronized boolean hasReadyWorker() {
         for (CompilerWorker w : workers) {
             if (w.ready() && !w.retiring()) return true;
