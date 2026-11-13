@@ -44,6 +44,8 @@ class KspProcessTest {
         Optional<String> outsider = System.getenv().keySet().stream()
                 .filter(k -> !WorkerEnv.allowed(k, Os.isWindows()))
                 .filter(k -> !k.equalsIgnoreCase("JAVA_TOOL_OPTIONS"))
+                // Every worker is given JAVA_HOME: the JDK it was launched under.
+                .filter(k -> !k.equalsIgnoreCase("JAVA_HOME"))
                 .sorted()
                 .findFirst();
         Assumptions.assumeTrue(outsider.isPresent(), "no variable outside the worker allow-list to plant");
