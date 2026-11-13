@@ -156,7 +156,8 @@ public final class Linking {
      * number, not {@link java.nio.file.FileStore#name}: two btrfs subvolumes of one partition, every
      * tmpfs and every overlay mount share a store name, and one cross-device failure between two of
      * them must not turn every later link within one into a copy. One stat per side, no mount table.
-     * Where the platform has no device attribute the directories themselves are the pair.
+     * Windows has no device number, so its volume serial number stands in. Where the platform has
+     * neither, the directories themselves are the pair.
      */
     record VolumePair(String source, String target) {
         static @Nullable VolumePair of(Path source, Path target) {
@@ -174,7 +175,11 @@ public final class Linking {
         }
 
         private static String device(Path p) throws IOException {
-            return String.valueOf(Files.getAttribute(p, "unix:dev"));
+            try {
+                return String.valueOf(Files.getAttribute(p, "unix:dev"));
+            } catch (UnsupportedOperationException | IllegalArgumentException noUnixView) {
+                return "vsn:" + Files.getFileStore(p).getAttribute("volume:vsn");
+            }
         }
     }
 }

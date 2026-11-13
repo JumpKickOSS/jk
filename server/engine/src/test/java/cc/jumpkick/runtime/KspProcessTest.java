@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -49,7 +50,7 @@ class KspProcessTest {
 
         String out = PlannerKsp.runKspProcess(silent(), dir, WorkerEnv.strict(), cmd("env"));
 
-        assertThat(names(out)).doesNotContain(outsider.get());
+        assertThat(names(out)).doesNotContain(nameKey(outsider.get()));
     }
 
     /** One byte, then two-byte characters: every even-sized read boundary falls inside one. */
@@ -62,10 +63,16 @@ class KspProcessTest {
     private static final String SPLIT = "x" + "é".repeat(20_000) + "\n";
 
     /** The variable names a {@code name=value} listing holds. */
+    /** The variable names in an {@code env} listing, upper-cased on Windows where case does not matter. */
     private static List<String> names(String listing) {
         return listing.lines()
                 .map(l -> l.substring(0, Math.max(0, l.indexOf('='))))
+                .map(KspProcessTest::nameKey)
                 .toList();
+    }
+
+    private static String nameKey(String name) {
+        return Os.isWindows() ? name.toUpperCase(Locale.ROOT) : name;
     }
 
     private static List<String> cmd(String... args) {

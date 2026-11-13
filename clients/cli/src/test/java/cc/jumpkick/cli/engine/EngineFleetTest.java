@@ -111,8 +111,6 @@ class EngineFleetTest {
         Path jar = retired.engineHome().resolve("lib/jk-engine/jk-engine-test.jar");
         Process oldEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
         try {
-            // The Windows command-line snapshot predates this child; the test knows the table moved.
-            WindowsCommandLines.resetForTests();
             var member = new EngineFleet.Member(null, null, null, oldEngine.pid(), false);
 
             var results = EngineFleet.retireOldDefaultLayoutEngines(
@@ -136,7 +134,6 @@ class EngineFleetTest {
         Path jar = explicitHome.resolve("lib/jk-engine/jk-engine-test.jar");
         Process currentEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
         try {
-            WindowsCommandLines.resetForTests();
             var member = new EngineFleet.Member(null, null, null, currentEngine.pid(), false);
 
             assertThat(EngineFleet.retireOldDefaultLayoutEngines(
@@ -158,7 +155,6 @@ class EngineFleetTest {
         Process shell =
                 Sleepers.sleeperMentioning(30, "cc.jumpkick.engine.EngineMain").start();
         try {
-            WindowsCommandLines.resetForTests();
             ProcessHandle handle = ProcessHandle.of(shell.pid()).orElseThrow();
             String cmd = EngineFleet.commandLineOf(handle);
 
@@ -194,7 +190,6 @@ class EngineFleetTest {
         try {
             // The Windows command-line snapshot is taken at most once per TTL; this process table
             // is one process older than any snapshot a sibling test left behind.
-            WindowsCommandLines.resetForTests();
             Path engineDir = Files.createDirectories(state.resolve("engine"));
             Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen2.sock\n");
             Files.writeString(engineDir.resolve("abcd1234.gen1.pid"), dummy.pid() + "\n");
@@ -219,7 +214,6 @@ class EngineFleetTest {
         // The heap-dump flag goes last: its value runs to the next " -" or the end of the line.
         Process foreign = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain", "-XX:HeapDumpPath=" + heapDumps);
         try {
-            WindowsCommandLines.resetForTests();
 
             var listed = EngineFleet.list(tmp.resolve("state"), "abcd1234").stream()
                     .filter(m -> m.pid() == foreign.pid())
