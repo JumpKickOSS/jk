@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedHome;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.RecordingProxy;
@@ -14,7 +16,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -69,7 +70,7 @@ class UserConfigSecretsTest {
                 [repositories.private]
                 url = "%s"
                 groups = ["%s"]
-                token = "${file:%s}"
+                token = '${file:%s}'
                 """.formatted(securedUrl(), GROUP, token));
         accepted.set("Bearer first-token");
 
@@ -95,7 +96,7 @@ class UserConfigSecretsTest {
                 [repositories.private]
                 url = "%s"
                 groups = ["%s"]
-                token = "${cmd:%s}"
+                token = '${cmd:%s}'
                 """.formatted(securedUrl(), GROUP, helper));
         accepted.set("Bearer token-1");
 
@@ -121,7 +122,7 @@ class UserConfigSecretsTest {
                 [repositories.corp]
                 url = "%s"
                 mirror-of = ["*"]
-                token = "${cmd:%s}"
+                token = '${cmd:%s}'
                 """.formatted(http.baseUrl(), helper));
         accepted.set("Bearer token-1");
 
@@ -211,8 +212,28 @@ class UserConfigSecretsTest {
                 """.formatted(GROUP, ARTIFACT, version));
     }
 
-    /** A helper that prints {@code token-<n>}, n counting its runs in a file beside it. */
+    /**
+     * A helper that prints {@code token-<n>}, n counting its runs in a file beside it: a batch file on
+     * Windows, a shell script elsewhere.
+     */
     private static Path countingHelper(Path dir) throws IOException {
+        if (Os.isWindows()) {
+            Path helper = dir.resolve("token-helper.cmd");
+            Files.writeString(
+                    helper,
+                    String.join(
+                            "\r\n",
+                            "@echo off",
+                            "setlocal",
+                            "set \"count=%~f0.count\"",
+                            "set n=0",
+                            "if exist \"%count%\" set /p n=<\"%count%\"",
+                            "set /a n=n+1",
+                            ">\"%count%\" echo %n%",
+                            "echo token-%n%",
+                            ""));
+            return helper;
+        }
         Path helper = dir.resolve("token-helper.sh");
         Files.writeString(helper, """
                 #!/bin/sh
@@ -222,7 +243,7 @@ class UserConfigSecretsTest {
                 echo "$n" > "$count"
                 echo "token-$n"
                 """);
-        Files.setPosixFilePermissions(helper, PosixFilePermissions.fromString("rwx------"));
+        OwnerOnlyFiles.setOwnerOnly(helper, "rwx------");
         return helper;
     }
 
@@ -233,7 +254,7 @@ class UserConfigSecretsTest {
 
     private static void writeOwnerOnly(Path file, String body) throws IOException {
         Files.writeString(file, body);
-        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+        OwnerOnlyFiles.setOwnerOnly(file, "rw-------");
     }
 
     /** The isolated home's {@code config.toml}: its starting text, then {@code tables}. */

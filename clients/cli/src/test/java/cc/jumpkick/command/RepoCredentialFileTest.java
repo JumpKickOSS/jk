@@ -5,13 +5,13 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
@@ -49,7 +49,7 @@ class RepoCredentialFileTest {
         Path cache = tempDir.resolve("cache");
         Path token = tempDir.resolve("private-token");
         Files.writeString(token, "first-token\n");
-        Files.setPosixFilePermissions(token, PosixFilePermissions.fromString("rw-------"));
+        OwnerOnlyFiles.setOwnerOnly(token, "rw-------");
         System.setProperty(HOST, maven.base().getHost() + ":" + maven.base().getPort());
         System.setProperty(TOKEN_FILE, token.toString());
 
