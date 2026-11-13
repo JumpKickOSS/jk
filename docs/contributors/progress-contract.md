@@ -333,6 +333,20 @@ teaches it: per rung and kind, the median of `ln(wall / price)` over the run's p
 second or more, moved 40% of the way into the bias (a key's first run sets it outright), the factor
 clamped to ¼–4×. So cold priors improve with every project the host builds.
 
+A node step or plugin goal the module has never run is priced from one cheap measure of its effort
+(`StepEffort`, `~/.jk/state/builds/step-effort.txt`): `node-install` by the packages its lockfile
+pins, `node-build` and `node-test` by the tool their `package.json` script runs, a plugin goal at its
+kind's median on this host; reference prices from a cold set of example projects stand in until the
+host has run the kind (`bench/eta/coldset.sh`, `features.py`).
+
+A step replays walls measured under the conditions this run has. Each step-ledger run records
+whether it was the project's first and the compiler warmth it started with (the compiles the
+lingering javac worker had answered; 0 after an engine start or once its linger ran out). A node
+step or plugin goal does not replay a first run's walls once a later run measured it, since the
+first paid for empty caches. A javac compile reads runs whose worker was in the same state; with
+only the other kind's walls it is carried by the measured warm-up (`CompilerWarmUp`,
+`bench/eta/compile-warmth.sh`).
+
 ## Measurement
 
 `bench/eta` holds the instrument: `score.py` scores a home's runs against their walls (seed error,
