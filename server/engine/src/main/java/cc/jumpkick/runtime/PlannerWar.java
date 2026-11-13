@@ -60,7 +60,7 @@ final class PlannerWar {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
                     BuildBlock.War war = Objects.requireNonNull(project.build().war(), "[war]");
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     List<Path> contributed =
                             packagedDirs(pluginDeclarationsFor(project, layout, cache), layout, project);
                     // A node sibling's output is web content under its webapp root, not a jar in WEB-INF/lib.

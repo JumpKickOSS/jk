@@ -5,9 +5,9 @@ import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -216,7 +216,7 @@ public final class PlannerFixtures {
                     SiblingWaits.awaitSiblingTestCompile(ctx, in);
                     ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
                     List<Path> classpath = new ArrayList<>();
-                    classpath.add(ctx.require(MAIN_CLASSES));
+                    classpath.add(mainClasses(ctx));
                     classpath.addAll(classpaths.testCompile());
                     List<String> javacArgs = ctx.require(JAVAC_ARGS);
                     CompileRequest request = fixturesCompileRequest(

@@ -5,9 +5,9 @@ import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -322,7 +322,7 @@ public final class PlannerVersions {
                             + " but finds no .java sources; the jar gets no META-INF/versions/" + entry.release());
             return true;
         }
-        Path mainClasses = ctx.require(MAIN_CLASSES);
+        Path mainClasses = mainClasses(ctx);
         ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         CompileRequest request = versionsCompileRequest(
                 sources,

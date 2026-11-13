@@ -222,7 +222,7 @@ public final class PlannerTails {
                             JkStores.storeCas(),
                             new PluginBuild.StepTools(),
                             project,
-                            ctx.require(MAIN_CLASSES),
+                            mainClasses(ctx),
                             layout.minifiedJar(),
                             minifier,
                             decls,
@@ -250,7 +250,7 @@ public final class PlannerTails {
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     // Listed, not staged — see packageJarStep. package-jar runs first (hard
                     // requires edge) and publishes its stage, so the copy below is usually a
                     // no-op; when package-jar restored from cache there is nothing to reuse and

@@ -121,7 +121,7 @@ final class TestLaunch {
         BuildLayout layout = ctx.require(LAYOUT);
         Path html = layout.jacocoReportDir();
         Path xml = html.resolve(OutputArtifacts.DEFAULT_COVERAGE);
-        List<Path> classDirs = List.of(ctx.require(MAIN_CLASSES), layout.kotlinClassesDir(), layout.groovyClassesDir());
+        List<Path> classDirs = List.of(mainClasses(ctx), layout.kotlinClassesDir(), layout.groovyClassesDir());
         List<Path> sourceDirs = new ArrayList<>();
         for (ModuleLayout.Root root : ModuleLayout.roots(in.dir())) {
             if (root.kind() == ModuleLayout.Kind.SOURCE) sourceDirs.add(in.dir().resolve(root.relative()));
@@ -270,7 +270,7 @@ final class TestLaunch {
                     "cpFp",
                     ClasspathFingerprint.of(testRtCp),
                     "mainFp",
-                    ClasspathFingerprint.entry(ctx.require(MAIN_CLASSES)));
+                    ClasspathFingerprint.entry(mainClasses(ctx)));
         }
     }
 
@@ -336,7 +336,7 @@ final class TestLaunch {
                 ctx.require(PROJECT),
                 ctx.require(LAYOUT),
                 feature > 0 ? feature : Integer.MAX_VALUE,
-                ctx.require(MAIN_CLASSES),
+                mainClasses(ctx),
                 testRtCp));
         boolean ktTestSources = testSrcs.stream()
                 .anyMatch(p -> p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));

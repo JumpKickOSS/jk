@@ -2,8 +2,8 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.W_RESOURCES;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.ModuleDescriptors;
@@ -74,7 +74,7 @@ final class PlannerModuleServices {
                 .weight(W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     Path incremental = incremental(ctx.require(LAYOUT));
                     Plan plan = plan(classes, incremental);
                     int changed = apply(plan, classes, incremental);

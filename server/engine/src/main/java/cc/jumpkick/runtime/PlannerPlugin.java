@@ -600,7 +600,7 @@ public final class PlannerPlugin {
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     Path javaHome = ctx.require(JAVA_HOME);
                     Path scratch = PluginBuild.taskScratch(layout, step.name());
                     // Before compile no classes exist to scan — the declared main (or null) rides.
@@ -674,7 +674,7 @@ public final class PlannerPlugin {
                             if (actionCache.restore(hit.get(), scratch)) {
                                 said.replay(hit.get());
                                 if (step.transforms()) {
-                                    ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
+                                    ctx.put(TRANSFORMED_CLASSES, scratch.resolve(step.transformsClasses()));
                                 }
                                 ctx.label(step.name() + " up-to-date");
                                 ctx.cached();
@@ -716,11 +716,11 @@ public final class PlannerPlugin {
                     } else if (said.said().isEmpty()) {
                         ctx.warn(step.name(), "the step wrote no files; its output is not cached");
                     }
-                    // A transform's output IS the classes dir from here on: re-point MAIN_CLASSES
-                    // so packaging, later steps' In.classes, and the native tail read it
+                    // A transform's output IS the classes dir from here on: packaging, later
+                    // steps' In.classes and the native tail read it through mainClasses
                     // (ordering: consumers carry a requires edge on this step).
                     if (step.transforms()) {
-                        ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
+                        ctx.put(TRANSFORMED_CLASSES, scratch.resolve(step.transformsClasses()));
                     }
                     ctx.progress(1);
                 })

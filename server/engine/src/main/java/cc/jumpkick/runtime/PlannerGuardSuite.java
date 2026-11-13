@@ -5,9 +5,9 @@ import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -210,7 +210,7 @@ public final class PlannerGuardSuite {
                     Path library = GuardSuiteLibrary.locate(root, cas).path();
                     ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
                     List<Path> classpath = classpath(project, layout, classpaths.testCompile(), library);
-                    if (!classpath.contains(ctx.require(MAIN_CLASSES))) classpath.add(0, ctx.require(MAIN_CLASSES));
+                    if (!classpath.contains(mainClasses(ctx))) classpath.add(0, mainClasses(ctx));
                     CompileRequest request = guardCompileRequest(
                             sources,
                             classpath,

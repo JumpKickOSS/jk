@@ -207,7 +207,7 @@ final class TestCompileSteps {
     /** target/classes, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
     private List<Path> testCompileClasspath(TaskContext ctx, TestSources src) throws Exception {
         return TestOutputs.baseClasspath(
-                ctx.require(MAIN_CLASSES),
+                mainClasses(ctx),
                 ctx.require(PROJECT),
                 ctx.require(LAYOUT),
                 ctx.require(CLASSPATHS).testCompile(),
@@ -359,7 +359,7 @@ final class TestCompileSteps {
                         ctx.require(PROJECT).javac().forTests(),
                         ctx.require(JAVA_HOME),
                         scalaSetup,
-                        ctx.require(MAIN_CLASSES),
+                        mainClasses(ctx),
                         classpaths.testProcessorDiscovery(),
                         CompilerJdk.pinned(ctx.require(PROJECT), in.session())),
                 genDir,

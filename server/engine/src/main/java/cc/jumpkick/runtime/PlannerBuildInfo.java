@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.W_RESOURCES;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.git.GitFetcher;
@@ -82,7 +82,7 @@ final class PlannerBuildInfo {
                     BuildBlock.BuildInfo info = project.build().buildInfo();
                     if (info == null)
                         throw new IllegalStateException("build-info planned without a [build-info] table");
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     boolean changed = write(in.dir(), project, info, classes, Clock.SYSTEM, ctx::warn);
                     ctx.label(changed ? "write " + info.file() : info.file() + " up-to-date");
                     if (!changed) ctx.cached();

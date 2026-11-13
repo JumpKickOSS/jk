@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import static cc.jumpkick.runtime.PlannerGuards.*;
 
 import cc.jumpkick.cache.Cas;
@@ -175,8 +175,7 @@ final class GuardSteps {
         SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         String module = WorkspaceModel.rel(g.root(), moduleDir);
         Path buildDir = ctx.require(LAYOUT).buildDir();
-        FactsIndexing.Ensured main =
-                FactsIndexing.ensure(ctx.require(MAIN_CLASSES), FactsIndexing.indexPath(buildDir, "main"));
+        FactsIndexing.Ensured main = FactsIndexing.ensure(mainClasses(ctx), FactsIndexing.indexPath(buildDir, "main"));
         Path testClasses = indexTests ? ctx.get(TEST_CLASSES).orElse(null) : null;
         FactsIndexing.Ensured test = testClasses != null && Files.isDirectory(testClasses)
                 ? FactsIndexing.ensure(testClasses, FactsIndexing.indexPath(buildDir, "test"))
@@ -233,7 +232,7 @@ final class GuardSteps {
             } else {
                 factsIdx.add(FactsIndexing.indexPath(buildDir, "main"));
                 if (test != null) testIdx.add(FactsIndexing.indexPath(buildDir, "test"));
-                classDirs.add(ctx.require(MAIN_CLASSES));
+                classDirs.add(mainClasses(ctx));
             }
             Path library = GuardSuiteLibrary.locate(g.root(), cas).path();
             List<Path> runtimeCp = PlannerGuardSuite.classpath(

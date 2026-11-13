@@ -125,7 +125,7 @@ final class CompileSteps {
 
     /** The compile-java body: the source union, the freshness stamp, javac in the worker, the ABI index. */
     private void runCompileJava(TaskContext ctx) throws Exception {
-        Path classes = ctx.require(MAIN_CLASSES);
+        Path classes = mainClasses(ctx);
         // javac always writes to the canonical classes dir (java/main/).
         // The Kotlin incremental compiler gets its own dir (kotlin/main/)
         // so it cannot prune Java's output; the assembler merges both.
@@ -317,7 +317,7 @@ final class CompileSteps {
             Path abiFile,
             Map<String, ClassAbi.Fingerprint> preAbi)
             throws Exception {
-        Path mainClasses = ctx.require(MAIN_CLASSES);
+        Path mainClasses = mainClasses(ctx);
         Map<String, ClassAbi.Fingerprint> currentAbi;
         if (!preAbi.isEmpty() && r.compiledSources().isEmpty()) {
             currentAbi = preAbi;

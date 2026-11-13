@@ -8,9 +8,9 @@ import static cc.jumpkick.runtime.BuildPlanner.JAVA_SOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.KOTLIN_SOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 
@@ -98,7 +98,7 @@ final class PlannerJavadoc {
         String scalaVersion = scalaSources.isEmpty() ? null : scaladocVersion(project, ctx.require(LOCKFILE));
         // What javac saw, plus the module's own classes: a Java source may name a Kotlin type.
         List<Path> classpath = new ArrayList<>(ctx.require(CLASSPATHS).main());
-        classpath.add(ctx.require(MAIN_CLASSES));
+        classpath.add(mainClasses(ctx));
         Path javaHome = ctx.require(JAVA_HOME);
         JavadocMode mode = project.project().javadocMode();
         int release = ctx.require(RELEASE);
@@ -218,7 +218,7 @@ final class PlannerJavadoc {
                 out,
                 project.project().name(),
                 project.project().version(),
-                ctx.require(MAIN_CLASSES),
+                mainClasses(ctx),
                 docClasspath);
         writeJar("scaladoc", ctx, mode, r, out, jar);
     }

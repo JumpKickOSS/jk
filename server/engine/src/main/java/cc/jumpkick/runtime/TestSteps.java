@@ -290,7 +290,7 @@ final class TestSteps {
      * resources are read through. Taken before the stamp key, held against them after the run.
      */
     private static InputGuard suiteGuard(TaskContext ctx, Path testClasses, List<Path> testRtCp) throws IOException {
-        List<Path> suiteInputs = new ArrayList<>(List.of(testClasses, ctx.require(MAIN_CLASSES)));
+        List<Path> suiteInputs = new ArrayList<>(List.of(testClasses, mainClasses(ctx)));
         suiteInputs.addAll(
                 ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()));
         suiteInputs.addAll(testRtCp);
@@ -332,8 +332,7 @@ final class TestSteps {
             List<Path> runtimeCp,
             Map<String, String> workerJars)
             throws IOException {
-        List<Path> roots =
-                new ArrayList<>(List.of(ctx.require(TEST_CLASSES), ctx.require(MAIN_CLASSES), in.lockFile()));
+        List<Path> roots = new ArrayList<>(List.of(ctx.require(TEST_CLASSES), mainClasses(ctx), in.lockFile()));
         // The temp roots the suite was handed: what it makes there is its own.
         for (String name : List.of("TMPDIR", "TMP", "TEMP")) {
             String tmp = testEnv.extras().get(name);
@@ -445,7 +444,7 @@ final class TestSteps {
             extras.add("affected:" + affected.stampToken());
         }
         // Unchanged inputs replay the green run; null (an unreadable input) is "not cached".
-        String key = stamp.key(testSrcs, ctx.require(MAIN_CLASSES), null, testResDirs, in.lockFile(), extras);
+        String key = stamp.key(testSrcs, mainClasses(ctx), null, testResDirs, in.lockFile(), extras);
         TestLaunch.noteStampKey(ctx, in, key, testSrcs, testResDirs, stamp.runtimeClasspath(), extras);
         return key;
     }

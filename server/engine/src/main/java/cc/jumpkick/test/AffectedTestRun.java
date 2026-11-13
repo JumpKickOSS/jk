@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
+import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
@@ -49,7 +49,7 @@ public final class AffectedTestRun {
         Path wsRoot = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
         JkBuild project = ctx.require(PROJECT);
         String coord = project.project().group() + ":" + project.project().name();
-        Path classesDir = ctx.require(MAIN_CLASSES);
+        Path classesDir = mainClasses(ctx);
         Path testClasses = ctx.require(TEST_CLASSES);
 
         // One git exec per invocation: the carrier memoizes the WIP set for every module.

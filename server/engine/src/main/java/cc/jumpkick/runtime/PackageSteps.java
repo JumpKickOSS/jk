@@ -99,7 +99,7 @@ final class PackageSteps {
                     SiblingWaits.awaitSiblingArtifacts(ctx, in);
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     Path jarPath = layout.mainJar();
                     if (pluginDecls != null && pluginDecls.packager() != null) {
                         // The packager's declared artifact extension replaces .jar (an APK, …).
@@ -301,7 +301,7 @@ final class PackageSteps {
         }
         ctx.label("write freshness stamp");
         FreshnessStamp.write(
-                ctx.require(MAIN_CLASSES),
+                mainClasses(ctx),
                 stampName,
                 taskId,
                 stamp.actionKey(),
@@ -327,7 +327,7 @@ final class PackageSteps {
                 .weight(() -> plan.get().fullyCached() ? 0 : W_ASSEMBLE)
                 .ticks(1)
                 .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     boolean settled = settled(ctx, JAVA_COMPILE)
                             && (!mixed || settled(ctx, KOTLIN_COMPILE))
                             && (!mixedGroovy || settled(ctx, GROOVY_COMPILE));

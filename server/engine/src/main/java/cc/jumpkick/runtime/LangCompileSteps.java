@@ -115,7 +115,7 @@ final class LangCompileSteps {
 
     /** The compile-kotlin body: the source union, the freshness stamp, kotlinc in the worker. */
     private void runCompileKotlin(TaskContext ctx) throws Exception {
-        Path classes = ctx.require(MAIN_CLASSES);
+        Path classes = mainClasses(ctx);
         Files.createDirectories(classes); // compile-java may be skipped
         List<Path> declaredKt = kotlinSources(ctx);
         // Plugin-contributed generated Kotlin (a KSP round, a codegen step) joins the source list
@@ -233,7 +233,7 @@ final class LangCompileSteps {
 
     /** The compile-groovy body: the source union, the freshness stamp, groovyc in the worker. */
     private void runCompileGroovy(TaskContext ctx) throws Exception {
-        Path classes = ctx.require(MAIN_CLASSES);
+        Path classes = mainClasses(ctx);
         Files.createDirectories(classes); // compile-java may be skipped
         List<Path> declaredGv = groovySources(ctx);
         // Plugin-contributed generated Groovy joins the source list exactly like the Kotlin side.

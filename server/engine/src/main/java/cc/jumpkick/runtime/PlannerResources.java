@@ -65,7 +65,7 @@ public final class PlannerResources {
                 .weight(() -> plan.get().fullyCached() ? 0 : W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = mainClasses(ctx);
                     Files.createDirectories(classes);
                     boolean copied = mirrorMainResources(ctx, cx.in().dir(), cx.compact(), classes);
                     // Test-classpath fixtures must not ride main classes into the jar. Leftover
@@ -252,8 +252,7 @@ public final class PlannerResources {
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
                 .execute(ctx -> {
-                    if (!runAnchor(ctx, cx, ctx.require(MAIN_CLASSES), anchor))
-                        ctx.cached(); // SKIPPED — no logic this run
+                    if (!runAnchor(ctx, cx, mainClasses(ctx), anchor)) ctx.cached(); // SKIPPED — no logic this run
                     ctx.progress(1);
                 })
                 .build();

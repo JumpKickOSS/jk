@@ -17,6 +17,7 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.SessionCancel;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
@@ -104,6 +105,10 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
 
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
+
+    /** The classes dir a {@code transformsClasses} plugin step wrote, once it ran: its output replaces the tree. */
+    static final BuildPlanKey<Path> TRANSFORMED_CLASSES = BuildPlanKey.scalar("transformed-classes", Path.class);
+
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
 
@@ -135,11 +140,21 @@ public final class BuildPlanner {
             COMPILED_TESTS,
             BUILD_OUTCOME,
             MAIN_CLASSES,
+            TRANSFORMED_CLASSES,
             TEST_CLASSES,
             LAYOUT,
             TEST_RUN,
             MAIN_ABI,
             AFFECTED_TESTS);
+
+    /**
+     * The module's main classes: a {@code transformsClasses} plugin step's output once it ran, else
+     * the compiled tree.
+     */
+    public static Path mainClasses(TaskContext ctx) {
+        Path transformed = ctx.get(TRANSFORMED_CLASSES).orElse(null);
+        return transformed != null ? transformed : ctx.require(MAIN_CLASSES);
+    }
 
     /**
      * Everything a build needs that isn't carried through the plan's state. Every component has a
