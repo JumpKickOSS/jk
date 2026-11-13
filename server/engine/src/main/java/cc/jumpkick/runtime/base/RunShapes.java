@@ -97,6 +97,14 @@ public final class RunShapes {
         }
     });
 
+    /** Each recent request's external load at its start ({@link #markHostBusy}). */
+    private static final Map<Long, Double> BUSY = Collections.synchronizedMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Long, Double> eldest) {
+            return size() > MAX;
+        }
+    });
+
     /**
      * {@code requestId} started with its javac worker at {@code warmth} (the compiles the lingering
      * worker had answered; 0 for a fresh one): its run is recorded with it, so a compile replays
@@ -105,6 +113,21 @@ public final class RunShapes {
     public static void markCompilerWarmth(@Nullable Long requestId, int warmth) {
         if (requestId == null || requestId <= 0) return;
         WARMTH.put(requestId, Math.max(0, warmth));
+    }
+
+    /**
+     * {@code requestId} started under {@code busy} external load ({@link HostBusy#external}): its
+     * run is recorded with it, so a replay under another load is re-priced (JK-6BJTV).
+     */
+    public static void markHostBusy(@Nullable Long requestId, double busy) {
+        if (requestId == null || requestId <= 0 || busy < 0) return;
+        BUSY.put(requestId, busy);
+    }
+
+    /** The external load {@code requestId} started under, or {@link StepLedger#UNKNOWN_BUSY}. */
+    public static double hostBusyOf(long requestId) {
+        Double b = BUSY.get(requestId);
+        return b == null ? StepLedger.UNKNOWN_BUSY : b;
     }
 
     /** The compiler warmth {@code requestId} started with, or {@link StepLedger#UNKNOWN_WARMTH}. */

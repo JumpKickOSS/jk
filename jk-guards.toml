@@ -1939,6 +1939,18 @@ in     = "cc.jumpkick.runtime.base.RunShapes#WARMTH"
 reason = "live registry: each live run's compiler warmth at its start by request id, read as the journal records the run, at most 256"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.RunShapes#BUSY"
+reason = "live registry: each live run's external host load at its start by request id, read as the journal records the run, at most 256"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.HostBusy#SAMPLES"
+reason = "engine-process fact: the host's last five CPU samples, one a second, which the external load is read over"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.runtime.base.HostBusy#LAST_CPU"
+reason = "live registry: the CPU time of each live process of the engine's tree at the last sample, replaced whole every second"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.engine.plugin.MemoryHolds#HOLDS"
 reason = "live registry: the jobs on hold for memory now, each removed as it resumes"
 

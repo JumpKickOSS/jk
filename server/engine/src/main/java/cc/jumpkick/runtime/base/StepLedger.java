@@ -54,6 +54,9 @@ public final class StepLedger {
 
     static final int ANY_FRONTIER = 7;
 
+    /** A run that recorded no external load ({@link HostBusy}): one on a host that reports none. */
+    public static final double UNKNOWN_BUSY = -1;
+
     /** A run that recorded no compiler warmth (one from before it was recorded). */
     public static final int UNKNOWN_WARMTH = -1;
 
@@ -85,9 +88,10 @@ public final class StepLedger {
             Map<String, int[]> curves,
             Map<String, long[]> workers,
             boolean first,
-            int warmth) {
+            int warmth,
+            double busy) {
         Run(RunShapes.Shape shape, Set<String> frontier, List<Sample> samples) {
-            this(shape, frontier, samples, Map.of(), Map.of(), false, UNKNOWN_WARMTH);
+            this(shape, frontier, samples, Map.of(), Map.of(), false, UNKNOWN_WARMTH, UNKNOWN_BUSY);
         }
 
         Run(
@@ -96,7 +100,7 @@ public final class StepLedger {
                 List<Sample> samples,
                 Map<String, int[]> curves,
                 Map<String, long[]> workers) {
-            this(shape, frontier, samples, curves, workers, false, UNKNOWN_WARMTH);
+            this(shape, frontier, samples, curves, workers, false, UNKNOWN_WARMTH, UNKNOWN_BUSY);
         }
 
         /** Whether the run's compiles ran on a fresh compiler worker; null when it did not record it. */
@@ -236,7 +240,23 @@ public final class StepLedger {
             Map<String, long[]> workers,
             int warmth,
             List<Sample> samples) {
-        UnaryOperator<List<String>> entry = entry(shape, frontier, curves, workers, warmth, samples);
+        append(projectHome, shape, frontier, curves, workers, warmth, UNKNOWN_BUSY, samples);
+    }
+
+    /**
+     * {@link #append(Path, RunShapes.Shape, Set, Map, Map, int, List)}, with the external load the
+     * run started under ({@link HostBusy#external}).
+     */
+    public static void append(
+            Path projectHome,
+            RunShapes.Shape shape,
+            @Nullable Set<String> frontier,
+            Map<String, int[]> curves,
+            Map<String, long[]> workers,
+            int warmth,
+            double busy,
+            List<Sample> samples) {
+        UnaryOperator<List<String>> entry = entry(shape, frontier, curves, workers, warmth, busy, samples);
         if (entry != null) ProjectStore.updateRuns(projectHome, entry);
     }
 
@@ -252,6 +272,7 @@ public final class StepLedger {
             Map<String, int[]> curves,
             Map<String, long[]> workers,
             int warmth,
+            double busy,
             List<Sample> samples) {
         List<Sample> kept = new ArrayList<>();
         for (Sample s : samples) {
@@ -267,6 +288,7 @@ public final class StepLedger {
                         || fullRebuild(compiled.size(), compilableOf(samples).size()));
         line.put("filtered", shape.filtered());
         if (warmth >= 0) line.put("warmth", warmth);
+        if (busy >= 0) line.put("busy", Math.round(busy * 1000) / 1000.0);
         line.put("frontier", List.copyOf(new TreeSet<>(frontier == null ? compiled : frontier)));
         List<Object> steps = new ArrayList<>();
         for (Sample s : kept) steps.add(List.of(s.dir(), s.step(), s.status(), s.ms()));
@@ -364,8 +386,9 @@ public final class StepLedger {
                     }
                 }
                 int warmth = m.get("warmth") instanceof Number w ? Math.max(0, w.intValue()) : UNKNOWN_WARMTH;
+                double busy = m.get("busy") instanceof Number b ? Math.max(0, b.doubleValue()) : UNKNOWN_BUSY;
                 runs.add(new Run(
-                        shape, frontier, samples, curves, workers, Boolean.TRUE.equals(m.get("first")), warmth));
+                        shape, frontier, samples, curves, workers, Boolean.TRUE.equals(m.get("first")), warmth, busy));
             }
         } catch (RuntimeException e) {
             Log.debug("StepLedger.read: unreadable, priced from nothing", e);
@@ -718,7 +741,12 @@ public final class StepLedger {
         List<Long> samples = new ArrayList<>(rows.size());
         for (Indexed r : rows) {
             double at = workers > 0 ? StepCost.scale(r.run().workersOf(dir), workers, walls[0], walls[1]) : 1;
-            samples.add(Math.round(r.ms() * at));
+            // Each wall read as it would have run on an idle host, by the external load its run
+            // started under (HostBusy); the estimate prices the lot at the load it sees now. Taken
+            // as a median first, a mix of idle and loaded walls was carried to the load as if all
+            // were idle, and S4's runs under load read +52% for +19% (JK-6BJTV).
+            double idle = HostBusy.factor(0, r.run().busy());
+            samples.add(Math.round(r.ms() * at * idle));
         }
         return new Rung(samples, scale, 0, workers, walls, true);
     }

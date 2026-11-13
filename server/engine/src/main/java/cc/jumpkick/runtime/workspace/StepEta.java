@@ -10,6 +10,7 @@ import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.StepEffort;
 import cc.jumpkick.runtime.TestEffort;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.RungBias;
@@ -117,6 +118,9 @@ public final class StepEta {
         // The javac worker this build compiles on: fresh after an engine start or once its linger
         // ran out. Compiles replay walls from the same kind of worker (CompilerWarmUp).
         boolean freshCompiler = CompilerWarmUp.warmth() <= 0;
+        // The cores other work keeps busy now: a wall measured under another load is re-priced to
+        // this one (HostBusy).
+        double busyNow = HostBusy.external();
         CompilerWarmUp warmUp = new CompilerWarmUp(calibration.effortScale());
         for (TaskForecast.Module m : pricedModules(plan, distrust)) {
             Path dir = m.dir();
@@ -139,6 +143,9 @@ public final class StepEta {
                         effort,
                         freshCompiler);
                 priced = priced.corrected(bias.factor(priced.rung(), t.name()));
+                // Every price is an idle host's (the ledger reads each wall at the load its run
+                // started under), carried to the load other work puts on the host now.
+                priced = priced.corrected(HostBusy.factor(busyNow, 0));
                 if (priced.ms() <= 0) continue;
                 StepCost.Kind kind = kindOf(t.name());
                 // A cold suite's price names no JVM count: its constants were fit to walls on the

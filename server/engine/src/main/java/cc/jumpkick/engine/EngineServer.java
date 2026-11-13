@@ -51,6 +51,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -436,6 +437,8 @@ public final class EngineServer implements AutoCloseable {
             return scheduler != null ? scheduler : SelfUpdateControl.NONE;
         });
         this.vitals = newVitals();
+        // The first estimate after an engine start reads the host's load over a window already sampled.
+        HostBusy.warm();
     }
 
     // ---- constructor wiring, in the order the constructor assigns them ---------------------

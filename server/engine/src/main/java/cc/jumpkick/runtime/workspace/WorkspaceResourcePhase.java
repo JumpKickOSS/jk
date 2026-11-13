@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepTimings;
@@ -97,6 +98,7 @@ final class WorkspaceResourcePhase {
         // first compiles may have warmed a fresh worker.
         int compilerWarmth = CompilerWarmUp.warmth();
         RunShapes.markCompilerWarmth(requestId, compilerWarmth);
+        RunShapes.markHostBusy(requestId, HostBusy.external());
 
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
