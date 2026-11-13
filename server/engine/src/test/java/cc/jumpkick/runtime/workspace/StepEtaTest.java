@@ -8,6 +8,7 @@ import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.runtime.SettledHostCalibration;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.StepLedger;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -20,12 +21,14 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The step-priced estimate prices each step the forecast runs at its own recent wall from the
  * project's ledger, with no scale on top, and hands the live model each module's steps.
  */
+@ExtendWith(SettledHostCalibration.class)
 class StepEtaTest {
 
     /** A warm resident compiler, so each step reads at its ledger wall (CompilerWarmUp prices a cold one). */
