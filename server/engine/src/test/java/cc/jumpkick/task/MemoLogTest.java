@@ -4,12 +4,14 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -90,6 +92,54 @@ class MemoLogTest {
         }
         assertThat(log.linesOnDisk()).as("rewritten to the live entry").isEqualTo(1);
         assertThat(read(new MemoLog(file))).containsExactly("k=" + (MemoLog.COMPACT_SLACK + 4));
+    }
+
+    /**
+     * A flush renders a few lines at a time and writes them before rendering more, whether it
+     * rewrites the file or appends to it: a store of tens of thousands of long paths must not be
+     * built up as one string in the heap of the engine that flushes it.
+     */
+    @Test
+    void a_flush_holds_at_most_a_chunk_of_lines_in_memory(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("memo.v1");
+        String value = "v".repeat(1_000);
+        Map<String, String> map = new LinkedHashMap<>();
+        MemoLog log = new MemoLog(file);
+        for (int i = 0; i < 2_000; i++) {
+            map.put("k" + i, value);
+            log.changed("k" + i);
+        }
+        long[] rendered = {0};
+        long[] start = {0};
+        long[] lag = {0};
+        BiFunction<String, String, @Nullable String> watched = (k, v) -> {
+            long written = bytesIn(dir) - start[0];
+            lag[0] = Math.max(lag[0], rendered[0] - written);
+            String line = k + "=" + v;
+            rendered[0] += line.length() + 1;
+            return line;
+        };
+        long bound = MemoLog.CHUNK_CHARS + value.length() + 16;
+
+        log.flush(map, watched);
+        assertThat(lag[0]).as("rendered but unwritten while rewriting").isLessThanOrEqualTo(bound);
+
+        for (String k : map.keySet()) log.changed(k);
+        rendered[0] = 0;
+        lag[0] = 0;
+        start[0] = bytesIn(dir);
+        log.flush(map, watched);
+        assertThat(lag[0]).as("rendered but unwritten while appending").isLessThanOrEqualTo(bound);
+        assertThat(read(new MemoLog(file))).hasSize(4_000);
+    }
+
+    /** Bytes in every file of {@code dir}, the memo's staging sibling included. */
+    private static long bytesIn(Path dir) {
+        try (var files = Files.list(dir)) {
+            return files.mapToLong(f -> f.toFile().length()).sum();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Test

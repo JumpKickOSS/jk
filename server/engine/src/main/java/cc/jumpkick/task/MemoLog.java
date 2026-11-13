@@ -25,16 +25,21 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The file is rewritten whole only to compact it: when it holds more than twice as many lines
  * as the map has entries (plus {@link #COMPACT_SLACK}), after entries were dropped, after a flush
- * failed, and when a load found a final line with no newline. An append is one write under
- * {@code O_APPEND}, so a crash or a full disk can only cut the last line short; that line is never
- * read as a record, and the next flush starts the file again rather than appending onto it. Two
- * engines on one cache root interleave whole lines; a rewrite by one can drop the other's latest
- * appends, which costs those entries one recomputation, as a lost write always has.
+ * failed, and when a load found a final line with no newline. Either way the lines go out
+ * {@link #CHUNK_CHARS} at a time, each write whole lines under {@code O_APPEND} (or into the
+ * rewrite's staging file), so a flush holds a chunk in the heap rather than the whole log, which for
+ * a hash memo at its ceiling is tens of megabytes. A crash or a full disk can only cut the last line
+ * short; that line is never read as a record, and the next flush starts the file again rather than
+ * appending onto it. Two engines on one cache root interleave whole lines; a rewrite by one can drop
+ * the other's latest appends, which costs those entries one recomputation, as a lost write always has.
  */
 final class MemoLog {
 
     /** Lines a log may carry beyond twice its live entries before a flush compacts it. */
     static final int COMPACT_SLACK = 1_024;
+
+    /** Characters of rendered lines a flush holds before writing them. */
+    static final int CHUNK_CHARS = 64 * 1_024;
 
     private final Path file;
     /** Keys put since the last flush: what the next append writes. */
@@ -105,37 +110,79 @@ final class MemoLog {
 
     private <V> void rewrite(Map<String, V> entries, BiFunction<String, V, @Nullable String> encode)
             throws IOException {
-        StringBuilder sb = new StringBuilder(entries.size() * 128);
-        long lines = 0;
-        for (Map.Entry<String, V> e : entries.entrySet()) {
-            String line = encode.apply(e.getKey(), e.getValue());
-            if (line == null) continue;
-            sb.append(line).append('\n');
-            lines++;
+        Path staging = AtomicWrites.staging(file);
+        boolean moved = false;
+        try {
+            long lines;
+            try (Chunks out = new Chunks(staging, StandardOpenOption.WRITE)) {
+                for (Map.Entry<String, V> e : entries.entrySet()) {
+                    out.line(encode.apply(e.getKey(), e.getValue()));
+                }
+                lines = out.lines;
+            }
+            AtomicWrites.moveInto(staging, file);
+            moved = true;
+            linesOnDisk = lines;
+            compact = false;
+        } finally {
+            if (!moved) Files.deleteIfExists(staging);
         }
-        AtomicWrites.replace(file, sb.toString());
-        linesOnDisk = lines;
-        compact = false;
     }
 
     private <V> void append(List<String> keys, Map<String, V> entries, BiFunction<String, V, @Nullable String> encode)
             throws IOException {
-        StringBuilder sb = new StringBuilder(keys.size() * 128);
-        long lines = 0;
-        for (String key : keys) {
-            pending.remove(key);
-            V v = entries.get(key);
-            String line = v == null ? null : encode.apply(key, v);
-            if (line == null) continue;
-            sb.append(line).append('\n');
+        try (Chunks out = new Chunks(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+            for (String key : keys) {
+                pending.remove(key);
+                V v = entries.get(key);
+                out.line(v == null ? null : encode.apply(key, v));
+            }
+            linesOnDisk += out.lines;
+        }
+    }
+
+    /**
+     * Lines on their way to a file, written {@link #CHUNK_CHARS} at a time. Each write carries
+     * whole lines, so a crash or a full disk can cut only the last line short, and two engines
+     * appending to one log interleave lines, never bytes of one. The file is opened at the first
+     * write: a flush with nothing to say leaves it untouched.
+     */
+    private static final class Chunks implements AutoCloseable {
+        private final Path target;
+        private final StandardOpenOption[] options;
+        private final StringBuilder buffer = new StringBuilder(CHUNK_CHARS + 1_024);
+        private @Nullable FileChannel channel;
+        /** Lines handed to the file so far. */
+        long lines;
+
+        Chunks(Path target, StandardOpenOption... options) {
+            this.target = target;
+            this.options = options;
+        }
+
+        void line(@Nullable String line) throws IOException {
+            if (line == null) return;
+            buffer.append(line).append('\n');
             lines++;
+            if (buffer.length() >= CHUNK_CHARS) drain();
         }
-        if (lines == 0) return;
-        ByteBuffer buf = ByteBuffer.wrap(sb.toString().getBytes(StandardCharsets.UTF_8));
-        try (FileChannel ch = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
-            while (buf.hasRemaining()) ch.write(buf);
+
+        private void drain() throws IOException {
+            if (buffer.isEmpty()) return;
+            if (channel == null) channel = FileChannel.open(target, options);
+            ByteBuffer bytes = ByteBuffer.wrap(buffer.toString().getBytes(StandardCharsets.UTF_8));
+            buffer.setLength(0);
+            while (bytes.hasRemaining()) channel.write(bytes);
         }
-        linesOnDisk += lines;
+
+        @Override
+        public void close() throws IOException {
+            try {
+                drain();
+            } finally {
+                if (channel != null) channel.close();
+            }
+        }
     }
 
     /** Test seam: lines the file is known to hold. */
