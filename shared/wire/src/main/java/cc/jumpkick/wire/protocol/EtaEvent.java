@@ -13,6 +13,10 @@ import cc.jumpkick.wire.runtime.EtaSpread;
  */
 public record EtaEvent(long remainingMs, long fullMillis, long lowMs, long highMs, double confidence) {
 
+    public EtaEvent {
+        confidence = EtaSpread.wire(confidence);
+    }
+
     public EtaEvent(long remainingMs, long fullMillis) {
         this(remainingMs, fullMillis, -1, -1, -1);
     }

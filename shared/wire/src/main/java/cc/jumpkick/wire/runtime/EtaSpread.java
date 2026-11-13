@@ -124,6 +124,12 @@ public final class EtaSpread {
         return x >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
     }
 
+    /** {@code c} as the wire carries it: two decimals within 0 to 1, {@code -1} for none. */
+    public static double wire(double c) {
+        if (!(c >= 0)) return -1;
+        return Math.round(Math.min(1, c) * 100) / 100.0;
+    }
+
     /** {@code c} as the wire carries it, two decimals; {@code null} (left out) when there is none ({@code c < 0}). */
     public static @Nullable String token(double c) {
         if (!(c >= 0)) return null;

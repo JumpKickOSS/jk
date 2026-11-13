@@ -30,6 +30,10 @@ public record WorkspaceProgressEvent(
         long etaHighMs,
         double confidence) {
 
+    public WorkspaceProgressEvent {
+        confidence = EtaSpread.wire(confidence);
+    }
+
     /** The state a held event carries. */
     public static final String ON_HOLD = "on-hold";
 
