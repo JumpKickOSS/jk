@@ -26,7 +26,7 @@ class NativeHeapTest {
         HeapScope.Key key = new HeapScope.Key(dir, "g:app", HeapScope.NATIVE_IMAGE, 25);
         Path app = jar(dir, "app-1.0.jar", 1_000_000);
         Path lib = jar(dir, "lib-2.3.jar", 9_000_000);
-        NativeHeap.Inputs built = NativeHeap.Inputs.of(List.of(app, lib), List.of());
+        NativeHeap.Inputs built = NativeHeap.Inputs.of(List.of(app, lib), List.of(), "1.0");
 
         NativeHeap.Choice first = NativeHeap.choose(heaps, key, built, GENEROUS);
         assertThat(first.learned()).isFalse();
@@ -40,35 +40,62 @@ class NativeHeapTest {
 
         jar(dir, "app-1.0.jar", 2_000_000);
         NativeHeap.Choice grown =
-                NativeHeap.choose(heaps, key, NativeHeap.Inputs.of(List.of(app, lib), List.of()), GENEROUS);
+                NativeHeap.choose(heaps, key, NativeHeap.Inputs.of(List.of(app, lib), List.of(), "1.0"), GENEROUS);
         assertThat(grown.learned()).as("10% more classpath").isTrue();
         assertThat(grown.xmxBytes()).isGreaterThan(6 * GIB).isLessThan(7 * GIB);
 
         jar(dir, "app-1.0.jar", 5_000_000);
         NativeHeap.Choice far =
-                NativeHeap.choose(heaps, key, NativeHeap.Inputs.of(List.of(app, lib), List.of()), GENEROUS);
+                NativeHeap.choose(heaps, key, NativeHeap.Inputs.of(List.of(app, lib), List.of(), "1.0"), GENEROUS);
         assertThat(far.learned()).as("40% more classpath").isFalse();
         assertThat(far.why()).contains("grew 40%");
 
         jar(dir, "app-1.0.jar", 1_000_000);
         Path newer = jar(dir, "lib-2.4.jar", 9_000_000);
         NativeHeap.Choice bumped =
-                NativeHeap.choose(heaps, key, NativeHeap.Inputs.of(List.of(app, newer), List.of()), GENEROUS);
+                NativeHeap.choose(heaps, key, NativeHeap.Inputs.of(List.of(app, newer), List.of(), "1.0"), GENEROUS);
         assertThat(bumped.learned())
                 .as("one dependency moved to another version")
                 .isFalse();
         assertThat(bumped.why()).contains("dependencies changed");
 
         NativeHeap.Choice metadata = NativeHeap.choose(
-                heaps, key, NativeHeap.Inputs.of(List.of(app, lib), List.of(dir.resolve("reachability"))), GENEROUS);
+                heaps,
+                key,
+                NativeHeap.Inputs.of(List.of(app, lib), List.of(dir.resolve("reachability")), "1.0"),
+                GENEROUS);
         assertThat(metadata.learned()).as("reachability metadata added").isFalse();
+    }
+
+    @Test
+    void a_snapshot_or_a_release_bump_of_the_builds_own_jars_keeps_the_learned_heap(@TempDir Path dir)
+            throws Exception {
+        LearnedHeaps heaps = new LearnedHeaps(dir.resolve("heaps"));
+        HeapScope.Key key = new HeapScope.Key(dir, "g:app", HeapScope.NATIVE_IMAGE, 25);
+        Path lib = jar(dir, "lib-2.3.jar", 9_000_000);
+        NativeHeap.Inputs built =
+                NativeHeap.Inputs.of(List.of(jar(dir, "core-0.51.0.jar", 1_000_000), lib), List.of(), "0.51.0");
+        heaps.note(key, 3 * GIB);
+        heaps.inputs(key, built.encode());
+
+        NativeHeap.Inputs snapshot = NativeHeap.Inputs.of(
+                List.of(jar(dir, "core-0.51.0-SNAPSHOT.jar", 1_000_000), lib), List.of(), "0.51.0-SNAPSHOT");
+        NativeHeap.Inputs released =
+                NativeHeap.Inputs.of(List.of(jar(dir, "core-0.52.0.jar", 1_000_000), lib), List.of(), "0.52.0");
+
+        assertThat(NativeHeap.choose(heaps, key, snapshot, GENEROUS).learned())
+                .as("the same jars stamped -SNAPSHOT")
+                .isTrue();
+        assertThat(NativeHeap.choose(heaps, key, released, GENEROUS).learned())
+                .as("the workspace's own version bumped")
+                .isTrue();
     }
 
     @Test
     void a_small_peak_is_raised_to_the_floor_and_a_large_one_stays_generous(@TempDir Path dir) throws Exception {
         LearnedHeaps heaps = new LearnedHeaps(dir.resolve("heaps"));
         HeapScope.Key key = new HeapScope.Key(dir, "g:app", HeapScope.NATIVE_IMAGE, 25);
-        NativeHeap.Inputs inputs = NativeHeap.Inputs.of(List.of(jar(dir, "app.jar", 1_000)), List.of());
+        NativeHeap.Inputs inputs = NativeHeap.Inputs.of(List.of(jar(dir, "app.jar", 1_000)), List.of(), "1.0");
         heaps.inputs(key, inputs.encode());
 
         heaps.note(key, 300L << 20);
@@ -84,7 +111,7 @@ class NativeHeapTest {
     void inputs_round_trip_through_the_store(@TempDir Path dir) throws Exception {
         LearnedHeaps heaps = new LearnedHeaps(dir.resolve("heaps"));
         HeapScope.Key key = new HeapScope.Key(dir, "g:app", HeapScope.NATIVE_IMAGE, 25);
-        NativeHeap.Inputs inputs = NativeHeap.Inputs.of(List.of(jar(dir, "app.jar", 42)), List.of());
+        NativeHeap.Inputs inputs = NativeHeap.Inputs.of(List.of(jar(dir, "app.jar", 42)), List.of(), "1.0");
         heaps.note(key, GIB);
         heaps.inputs(key, inputs.encode());
         heaps.note(key, 2 * GIB);

@@ -578,7 +578,8 @@ public final class PlannerNative {
                 project.project().group() + ":" + project.project().name(),
                 HeapScope.NATIVE_IMAGE,
                 JvmOptions.hostFeature(javaHome));
-        NativeHeap.Inputs inputs = NativeHeap.Inputs.of(classpath, metadataDirs);
+        NativeHeap.Inputs inputs =
+                NativeHeap.Inputs.of(classpath, metadataDirs, project.project().version());
         long generous = NativeHeap.generous(WorkerLeases.engine().capacityBytes());
         NativeHeap.Choice heap = JvmOptions.userPinnedHeap(allArgs)
                 ? null

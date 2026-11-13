@@ -42,12 +42,17 @@ public final class NativeHeap {
      */
     public record Inputs(long bytes, String shape) {
 
-        /** The inputs of a build of {@code classpath} with {@code metadataDirs}. */
-        public static Inputs of(List<Path> classpath, List<Path> metadataDirs) {
+        /**
+         * The inputs of a build of {@code classpath} with {@code metadataDirs}. A jar of the build's
+         * own {@code version} is named without it, with or without {@code -SNAPSHOT}: {@code jk build}
+         * and {@code jk snapshot} stamp the workspace's jars differently, and a release bump renames
+         * them all, while what the builder reads stays the same.
+         */
+        public static Inputs of(List<Path> classpath, List<Path> metadataDirs, String version) {
             long bytes = 0;
             List<String> names = new ArrayList<>();
             for (Path entry : classpath) {
-                names.add("cp:" + entry.getFileName());
+                names.add("cp:" + withoutVersion(String.valueOf(entry.getFileName()), version));
                 try {
                     if (Files.isRegularFile(entry)) bytes += Files.size(entry);
                 } catch (IOException e) {
@@ -57,6 +62,13 @@ public final class NativeHeap {
             for (Path dir : metadataDirs) names.add("meta:" + dir.getFileName());
             names.sort(null);
             return new Inputs(bytes, digest(String.join("\n", names)));
+        }
+
+        /** {@code name} with {@code -<version>} and {@code -<version>-SNAPSHOT} taken out. */
+        static String withoutVersion(String name, String version) {
+            String base = version == null ? "" : version.replace("-SNAPSHOT", "");
+            if (base.isEmpty()) return name;
+            return name.replace("-" + base + "-SNAPSHOT", "").replace("-" + base, "");
         }
 
         /** {@code <bytes>:<shape>}, the form {@link LearnedHeaps#inputs} stores. */
