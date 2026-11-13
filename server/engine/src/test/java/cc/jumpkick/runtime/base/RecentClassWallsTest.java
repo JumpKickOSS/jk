@@ -169,6 +169,56 @@ class RecentClassWallsTest {
                 .isEqualTo(3);
     }
 
+    @Test
+    void a_pruned_oldest_run_takes_only_the_walls_it_alone_supplied() throws Exception {
+        Path module = Files.createDirectories(state.resolve("pruned"));
+        Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, module);
+        writeRun(home, module, 1, """
+                [test-class."_"."com.example"]
+                A = 100
+                B = 100
+                """);
+        writeRun(home, module, 2, """
+                [test-class."_"."com.example"]
+                B = 200
+                """);
+        RecentClassWalls.clear();
+        assertThat(RecentClassWalls.forModule(module))
+                .containsEntry("com.example.A", 100L)
+                .containsEntry("com.example.B", 200L);
+        long before = RecentClassWalls.PARSES.get();
+
+        // A build adds run 3 and retention drops run 1.
+        writeRun(home, module, 3, """
+                [test-class."_"."com.example"]
+                C = 300
+                """);
+        Path runs = home.resolve(ProjectBuilds.RUNS);
+        Files.delete(runs.resolve("1").resolve(ProjectBuilds.METRICS));
+        Files.delete(runs.resolve("1").resolve(ProjectBuilds.CHECKOUT));
+        Files.delete(runs.resolve("1"));
+        Files.setLastModifiedTime(
+                runs, FileTime.fromMillis(Files.getLastModifiedTime(runs).toMillis() + 10_000));
+
+        assertThat(RecentClassWalls.forModule(module))
+                .doesNotContainKey("com.example.A")
+                .containsEntry("com.example.B", 200L)
+                .containsEntry("com.example.C", 300L);
+        assertThat(RecentClassWalls.PARSES.get() - before)
+                .as("only the new run is parsed")
+                .isEqualTo(1);
+
+        // A run rewritten in the middle: everything is merged again.
+        Files.writeString(runs.resolve("2").resolve(ProjectBuilds.METRICS), """
+                [test-class."_"."com.example"]
+                B = 2500
+                """);
+        Files.setLastModifiedTime(
+                runs, FileTime.fromMillis(Files.getLastModifiedTime(runs).toMillis() + 10_000));
+        assertThat(RecentClassWalls.forModule(module)).containsEntry("com.example.B", 2_500L);
+        assertThat(RecentClassWalls.PARSES.get() - before).isEqualTo(3);
+    }
+
     private static void writeRun(Path home, Path module, int n, String metrics) throws Exception {
         Path run = home.resolve(ProjectBuilds.RUNS).resolve(Integer.toString(n));
         Files.createDirectories(run);

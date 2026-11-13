@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
-import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.OwnerOnlyFiles;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
@@ -57,8 +52,9 @@ public final class LockTimings {
 
     private LockTimings() {}
 
+    /** The host's store, whose {@link HostStore#LOCK} section these are. */
     public static Path defaultFile() {
-        return JkDirs.builds().resolve("lock-timings.toml");
+        return HostStore.defaultFile();
     }
 
     /**
@@ -76,31 +72,32 @@ public final class LockTimings {
         if (graphMs <= 0 && materializeMs <= 0 && totalMs <= 0) return;
         LOCK.lock();
         try {
-            Snapshot cur = memo != null ? memo : loadUnlocked();
-            List<Long> graph = new ArrayList<>(cur.graphPerPackageMs);
-            List<Long> mat = new ArrayList<>(cur.materializePerPackageMs);
-            List<Long> over = new ArrayList<>(cur.overheadMs);
-
-            if (graphMs > 0 && graphPackages > 0) {
-                long per = Math.max(1, graphMs / graphPackages);
-                push(graph, per);
-            }
-            if (materializeMs > 0 && materializePackages > 0) {
-                long per = Math.max(1, materializeMs / materializePackages);
-                push(mat, per);
-            }
-            long residual = totalMs - Math.max(0, graphMs) - Math.max(0, materializeMs);
-            if (residual > 0) {
-                push(over, residual);
-            } else if (totalMs > 0 && graphMs <= 0 && materializeMs <= 0) {
-                // Only whole-wall known — treat as overhead (coarse).
-                push(over, totalMs);
-            }
-
-            Snapshot next = new Snapshot(List.copyOf(graph), List.copyOf(mat), List.copyOf(over));
-            writeUnlocked(next);
-            memo = next;
-        } catch (IOException | RuntimeException e) {
+            AtomicReference<@Nullable Snapshot> kept = new AtomicReference<>();
+            HostStore.update(defaultFile(), HostStore.LOCK, lines -> {
+                Snapshot cur = parse(lines);
+                List<Long> graph = new ArrayList<>(cur.graphPerPackageMs);
+                List<Long> mat = new ArrayList<>(cur.materializePerPackageMs);
+                List<Long> over = new ArrayList<>(cur.overheadMs);
+                if (graphMs > 0 && graphPackages > 0) push(graph, Math.max(1, graphMs / graphPackages));
+                if (materializeMs > 0 && materializePackages > 0)
+                    push(mat, Math.max(1, materializeMs / materializePackages));
+                long residual = totalMs - Math.max(0, graphMs) - Math.max(0, materializeMs);
+                if (residual > 0) {
+                    push(over, residual);
+                } else if (totalMs > 0 && graphMs <= 0 && materializeMs <= 0) {
+                    // Only whole-wall known — treat as overhead (coarse).
+                    push(over, totalMs);
+                }
+                Snapshot next = new Snapshot(List.copyOf(graph), List.copyOf(mat), List.copyOf(over));
+                kept.set(next);
+                return List.of(
+                        line(GRAPH, next.graphPerPackageMs),
+                        line(MATERIALIZE, next.materializePerPackageMs),
+                        line(OVERHEAD, next.overheadMs));
+            });
+            Snapshot next = kept.get();
+            if (next != null) memo = next;
+        } catch (RuntimeException e) {
             // advisory
             Log.debug("record: advisory", e);
         } finally {
@@ -199,61 +196,45 @@ public final class LockTimings {
         while (ring.size() > MAX_SAMPLES) ring.remove(0);
     }
 
+    private static final String GRAPH = "graph-per-package-ms";
+    private static final String MATERIALIZE = "materialize-per-package-ms";
+    private static final String OVERHEAD = "overhead-ms";
+
     private static Snapshot loadUnlocked() {
-        Path file = defaultFile();
-        if (!Files.isRegularFile(file)) return Snapshot.EMPTY;
-        try {
-            List<Long> graph = new ArrayList<>();
-            List<Long> mat = new ArrayList<>();
-            List<Long> over = new ArrayList<>();
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                String s = line.strip();
-                if (s.isEmpty() || s.startsWith("#")) continue;
-                if (s.startsWith("graph-per-package-ms")) parseArray(s, graph);
-                else if (s.startsWith("materialize-per-package-ms")) parseArray(s, mat);
-                else if (s.startsWith("overhead-ms")) parseArray(s, over);
-            }
-            return new Snapshot(List.copyOf(graph), List.copyOf(mat), List.copyOf(over));
-        } catch (IOException e) {
-            return Snapshot.EMPTY;
-        }
+        return parse(HostStore.section(defaultFile(), HostStore.LOCK));
     }
 
-    private static void parseArray(String line, List<Long> out) {
-        int lb = line.indexOf('[');
-        int rb = line.lastIndexOf(']');
-        if (lb < 0 || rb <= lb) return;
-        for (String part : line.substring(lb + 1, rb).split(",")) {
-            String t = part.strip();
-            if (t.isEmpty()) continue;
-            try {
-                long v = Long.parseLong(t);
-                if (v > 0) out.add(v);
-            } catch (NumberFormatException ignored) {
-                // skip
+    /** {@code name ms ms ...} lines. */
+    private static Snapshot parse(List<String> lines) {
+        List<Long> graph = new ArrayList<>();
+        List<Long> mat = new ArrayList<>();
+        List<Long> over = new ArrayList<>();
+        for (String line : lines) {
+            String[] f = line.strip().split("\\s+");
+            @Nullable
+            List<Long> into =
+                    switch (f[0]) {
+                        case GRAPH -> graph;
+                        case MATERIALIZE -> mat;
+                        case OVERHEAD -> over;
+                        default -> null;
+                    };
+            if (into == null) continue;
+            for (int i = 1; i < f.length; i++) {
+                try {
+                    long v = Long.parseLong(f[i]);
+                    if (v > 0) into.add(v);
+                } catch (NumberFormatException ignored) {
+                    // skip
+                }
             }
         }
+        return new Snapshot(List.copyOf(graph), List.copyOf(mat), List.copyOf(over));
     }
 
-    private static void writeUnlocked(Snapshot s) throws IOException {
-        Path file = defaultFile();
-        OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
-        StringBuilder sb = new StringBuilder();
-        sb.append("# jk lock phase timings (ms) — successful locks only\n");
-        sb.append("# Atomized host priors: scale by package count for project-specific ETAs.\n");
-        sb.append("schema = 1\n");
-        appendArray(sb, "graph-per-package-ms", s.graphPerPackageMs);
-        appendArray(sb, "materialize-per-package-ms", s.materializePerPackageMs);
-        appendArray(sb, "overhead-ms", s.overheadMs);
-        AtomicWrites.replace(file, sb.toString());
-    }
-
-    private static void appendArray(StringBuilder sb, String key, List<Long> samples) {
-        sb.append(key).append(" = [");
-        for (int i = 0; i < samples.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(samples.get(i));
-        }
-        sb.append("]\n");
+    private static String line(String key, List<Long> samples) {
+        StringBuilder sb = new StringBuilder(key);
+        for (long v : samples) sb.append(' ').append(v);
+        return sb.toString();
     }
 }

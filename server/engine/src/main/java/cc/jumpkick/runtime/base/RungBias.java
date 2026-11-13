@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.host.Log;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.runtime.StepCost;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,7 +11,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * How far each prior layer of the estimate misses on this host, per step kind: the factor its next
@@ -38,7 +32,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public final class RungBias {
 
     /** The file's name beside the host's other build metrics. */
-    public static final String FILE = "rung-bias.txt";
+    public static final String FILE = HostStore.FILE;
 
     /** How far each run's correction moves the bias: a half-life of about 1.4 runs. */
     static final double ALPHA = 0.4;
@@ -50,8 +44,6 @@ public final class RungBias {
     static final double MAX_FACTOR = 4.0;
 
     private static final double MAX_LOG = Math.log(MAX_FACTOR);
-
-    private static final ReentrantLock WRITE = new ReentrantLock();
 
     /** One rung and kind's bias: the log of the factor, and the runs it was learned from. */
     record Entry(double log, int runs) {}
@@ -65,9 +57,9 @@ public final class RungBias {
         this.entries = entries;
     }
 
-    /** The host's bias file. */
+    /** The host's store, whose {@link HostStore#BIAS} section the biases are. */
     public static Path defaultFile() {
-        return JkDirs.builds().resolve(FILE);
+        return HostStore.defaultFile();
     }
 
     /** The host's biases. */
@@ -119,9 +111,8 @@ public final class RungBias {
                     .add(Math.max(-MAX_LOG, Math.min(MAX_LOG, r)));
         }
         if (residuals.isEmpty()) return;
-        WRITE.lock();
-        try {
-            Map<String, Entry> entries = new TreeMap<>(read(file));
+        HostStore.update(file, HostStore.BIAS, lines -> {
+            Map<String, Entry> entries = new TreeMap<>(parse(lines));
             for (Map.Entry<String, List<Double>> e : residuals.entrySet()) {
                 double residual = median(e.getValue());
                 Entry was = entries.get(e.getKey());
@@ -129,22 +120,16 @@ public final class RungBias {
                 log = Math.max(-MAX_LOG, Math.min(MAX_LOG, log));
                 entries.put(e.getKey(), new Entry(log, was == null ? 1 : was.runs() + 1));
             }
-            StringBuilder sb = new StringBuilder("# rung kind log-factor runs: how far each prior misses here\n");
+            List<String> out = new ArrayList<>();
             for (Map.Entry<String, Entry> e : entries.entrySet()) {
-                sb.append(e.getKey())
-                        .append(' ')
-                        .append(String.format(Locale.ROOT, "%.4f", e.getValue().log()))
-                        .append(' ')
-                        .append(e.getValue().runs())
-                        .append('\n');
+                out.add(e.getKey()
+                        + ' '
+                        + String.format(Locale.ROOT, "%.4f", e.getValue().log())
+                        + ' '
+                        + e.getValue().runs());
             }
-            Files.createDirectories(file.getParent());
-            AtomicWrites.replace(file, sb.toString());
-        } catch (IOException | RuntimeException e) {
-            Log.debug("RungBias.learn: not recorded", e);
-        } finally {
-            WRITE.unlock();
-        }
+            return out;
+        });
     }
 
     private static String key(StepCost.Rung rung, String kind) {
@@ -152,22 +137,20 @@ public final class RungBias {
     }
 
     private static Map<String, Entry> read(Path file) {
+        return parse(HostStore.section(file, HostStore.BIAS));
+    }
+
+    private static Map<String, Entry> parse(List<String> lines) {
         Map<String, Entry> out = new HashMap<>();
-        if (!Files.isRegularFile(file)) return out;
-        try {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                if (line.isBlank() || line.startsWith("#")) continue;
-                String[] f = line.trim().split("\\s+");
-                if (f.length != 4) continue;
-                try {
-                    StepCost.Rung.valueOf(f[0]);
-                    out.put(f[0] + " " + f[1], new Entry(Double.parseDouble(f[2]), Integer.parseInt(f[3])));
-                } catch (IllegalArgumentException malformed) {
-                    // a line of another rung or a torn number: skipped, the rest still read
-                }
+        for (String line : lines) {
+            String[] f = line.trim().split("\\s+");
+            if (f.length != 4) continue;
+            try {
+                StepCost.Rung.valueOf(f[0]);
+                out.put(f[0] + " " + f[1], new Entry(Double.parseDouble(f[2]), Integer.parseInt(f[3])));
+            } catch (IllegalArgumentException malformed) {
+                // a line of another rung or a torn number: skipped, the rest still read
             }
-        } catch (IOException e) {
-            Log.debug("RungBias: unreadable " + file, e);
         }
         return out;
     }

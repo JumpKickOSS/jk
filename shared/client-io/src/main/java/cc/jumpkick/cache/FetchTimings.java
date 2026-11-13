@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
-import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.OwnerOnlyFiles;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
@@ -21,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * cancelled / failed downloads never train. Outliers are dropped by trimming the top and bottom 10%
  * of samples before averaging.
  *
- * <p>Stored at {@code ~/.jk/state/builds/fetch-timings.toml} so it survives {@code jk clean}.
+ * <p>Stored in the host's {@link HostStore} ({@link HostStore#FETCH}) so it survives {@code jk clean}.
  */
 public final class FetchTimings {
 
@@ -33,9 +28,9 @@ public final class FetchTimings {
 
     private FetchTimings() {}
 
-    /** Default store path (state dir, next to metrics/calibration). */
+    /** The host's store. */
     public static Path defaultFile() {
-        return JkDirs.builds().resolve("fetch-timings.toml");
+        return HostStore.defaultFile();
     }
 
     /**
@@ -50,14 +45,17 @@ public final class FetchTimings {
         if (durationMs <= 0) return;
         LOCK.lock();
         try {
-            List<Long> current = memo;
-            if (current == null) current = loadUnlocked();
-            List<Long> samples = new ArrayList<>(current);
-            samples.add(durationMs);
-            while (samples.size() > MAX_SAMPLES) samples.remove(0);
-            writeUnlocked(samples);
-            memo = List.copyOf(samples);
-        } catch (IOException | RuntimeException e) {
+            AtomicReference<@Nullable List<Long>> kept = new AtomicReference<>();
+            HostStore.update(defaultFile(), HostStore.FETCH, lines -> {
+                List<Long> samples = new ArrayList<>(parse(lines));
+                samples.add(durationMs);
+                while (samples.size() > MAX_SAMPLES) samples.remove(0);
+                kept.set(List.copyOf(samples));
+                return List.of(render(samples));
+            });
+            List<Long> now = kept.get();
+            if (now != null) memo = now;
+        } catch (RuntimeException e) {
             // advisory
             Log.debug("record: advisory", e);
         } finally {
@@ -116,47 +114,30 @@ public final class FetchTimings {
     }
 
     private static List<Long> loadUnlocked() {
-        Path file = defaultFile();
-        if (!Files.isRegularFile(file)) return List.of();
-        try {
-            List<Long> out = new ArrayList<>();
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                String s = line.strip();
-                if (s.isEmpty() || s.startsWith("#") || s.startsWith("[")) continue;
-                // samples = [12, 34, 56]
-                if (s.startsWith("samples")) {
-                    int lb = s.indexOf('[');
-                    int rb = s.lastIndexOf(']');
-                    if (lb < 0 || rb <= lb) continue;
-                    for (String part : s.substring(lb + 1, rb).split(",")) {
-                        String t = part.strip();
-                        if (t.isEmpty()) continue;
-                        try {
-                            long v = Long.parseLong(t);
-                            if (v > 0) out.add(v);
-                        } catch (NumberFormatException ignored) {
-                            // skip
-                        }
-                    }
-                }
-            }
-            return out;
-        } catch (IOException e) {
-            return List.of();
-        }
+        return parse(HostStore.section(defaultFile(), HostStore.FETCH));
     }
 
-    private static void writeUnlocked(List<Long> samples) throws IOException {
-        Path file = defaultFile();
-        OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
-        StringBuilder sb = new StringBuilder();
-        sb.append("# jk remote artifact fetch durations (ms) — successful fetches only\n");
-        sb.append("samples = [");
-        for (int i = 0; i < samples.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(samples.get(i));
+    /** {@code samples ms ms ...}. */
+    private static List<Long> parse(List<String> lines) {
+        List<Long> out = new ArrayList<>();
+        for (String line : lines) {
+            String[] f = line.strip().split("\\s+");
+            if (f.length == 0 || !f[0].equals("samples")) continue;
+            for (int i = 1; i < f.length; i++) {
+                try {
+                    long v = Long.parseLong(f[i]);
+                    if (v > 0) out.add(v);
+                } catch (NumberFormatException ignored) {
+                    // skip
+                }
+            }
         }
-        sb.append("]\n");
-        AtomicWrites.replace(file, sb.toString());
+        return out;
+    }
+
+    private static String render(List<Long> samples) {
+        StringBuilder sb = new StringBuilder("samples");
+        for (long v : samples) sb.append(' ').append(v);
+        return sb.toString();
     }
 }

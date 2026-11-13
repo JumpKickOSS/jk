@@ -995,7 +995,7 @@ public final class Calibration {
     private static void persist(Calibration c) {
         try {
             HostMetricsFile.writeTo(HostMetricsFile.file(), c);
-        } catch (IOException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.debug("persist: IOException|RuntimeException ignored", e);
         }
     }

@@ -122,7 +122,9 @@ public final class AggregatedMetrics {
         Map<String, Long> hostCount = new LinkedHashMap<>();
         Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
         stamps.add(FileStamp.of(host));
-        parseHost(host, hostMean, hostCount);
+        Path store = buildsRoot.resolve(HostStore.FILE);
+        stamps.add(FileStamp.of(store));
+        parseHost(host, store, hostMean, hostCount);
         return new AggregatedMetrics(mean, last, count, hostMean, hostCount, classWalls, List.copyOf(stamps));
     }
 
@@ -134,9 +136,12 @@ public final class AggregatedMetrics {
         Map<String, Double> hostMean = new LinkedHashMap<>();
         Map<String, Long> hostCount = new LinkedHashMap<>();
         Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
-        parseHost(host, hostMean, hostCount);
-        return new AggregatedMetrics(
-                Map.of(), Map.of(), Map.of(), hostMean, hostCount, Map.of(), List.of(FileStamp.of(host)));
+        Path store = buildsRoot.resolve(HostStore.FILE);
+        parseHost(host, store, hostMean, hostCount);
+        List<FileStamp> stamps = new ArrayList<>(2);
+        stamps.add(FileStamp.of(host));
+        stamps.add(FileStamp.of(store));
+        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), hostMean, hostCount, Map.of(), stamps);
     }
 
     /**
@@ -331,7 +336,20 @@ public final class AggregatedMetrics {
         }
     }
 
-    private static void parseHost(Path file, Map<String, Double> hostMean, Map<String, Long> hostCount) {
+    private static void parseHost(Path file, Path store, Map<String, Double> hostMean, Map<String, Long> hostCount) {
+        // The host store's continuous rates and calibration constants are host-tier keys too.
+        for (String section : List.of(HostStore.RATES, HostStore.CALIBRATION)) {
+            for (String line : HostStore.section(store, section)) {
+                int eq = line.indexOf('=');
+                if (eq <= 0) continue;
+                try {
+                    double v = Double.parseDouble(line.substring(eq + 1).strip());
+                    hostMean.putIfAbsent(line.substring(0, eq).strip(), v);
+                } catch (NumberFormatException notANumber) {
+                    // a string or boolean constant: not a mean
+                }
+            }
+        }
         if (!Files.isRegularFile(file)) return;
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);

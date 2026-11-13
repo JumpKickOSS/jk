@@ -2167,10 +2167,6 @@ in     = "cc.jumpkick.runtime.base.RecentClassWalls#CACHE"
 reason = "stamped: each checkout's merged class walls by the runs directory's mtime, which every build moves by adding its run"
 
 [[guards.engine-static-memo.allow]]
-in     = "cc.jumpkick.runtime.base.RecentClassWalls#RUNS"
-reason = "stamped: each run's parsed walls by its metrics file's size and mtime (a run's metrics are written once), dropped when its run is pruned"
-
-[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.runtime.base.SessionAggregates#MEMOS"
 reason = "stamped: every read re-checks the ledger files an aggregate came from; the least recently read go past 8 MiB"
 

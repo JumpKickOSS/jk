@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.base.HostLearnedRates;
@@ -127,7 +128,7 @@ class CalibrationTest {
     void a_measured_calibration_on_disk_ends_the_bootstrap_probe(@TempDir Path home) throws Exception {
         withJkHome(home, () -> {
             Calibration.invalidateMemo();
-            Path file = JkDirs.builds().resolve("host-metrics.toml");
+            Path file = JkDirs.builds().resolve(HostStore.FILE);
             Files.createDirectories(file.getParent());
             // 12345.0 is a value no real probe produces: if ensure() probes, it is overwritten.
             HostMetricsFile.writeTo(
@@ -164,9 +165,9 @@ class CalibrationTest {
             throws Exception {
         withJkHome(home, () -> {
             Calibration.invalidateMemo();
-            Path file = JkDirs.builds().resolve("host-metrics.toml");
+            Path file = JkDirs.builds().resolve(HostStore.FILE);
             Files.createDirectories(file.getParent());
-            Files.writeString(file, "[mean]\nnative-image-ms-per-mib = 111\n");
+            Files.writeString(file, "[rates]\nnative-image-ms-per-mib = 111\n");
             HostMetricsFile.writeTo(file, Calibration.testInstance(12345.0, true, "0.0.1", System.currentTimeMillis()));
             Calibration.invalidateMemo();
 

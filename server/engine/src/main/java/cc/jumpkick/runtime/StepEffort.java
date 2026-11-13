@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.host.Log;
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TaskNames;
 import java.io.BufferedReader;
@@ -16,7 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -46,7 +43,7 @@ import org.jspecify.annotations.Nullable;
 public final class StepEffort {
 
     /** The host file's name, beside its other build metrics. */
-    public static final String FILE = "step-effort.txt";
+    public static final String FILE = HostStore.FILE;
 
     /** Samples kept per kind and measure: recent runs only, so a faster machine or tool shows. */
     static final int KEEP = 16;
@@ -67,8 +64,6 @@ public final class StepEffort {
     static final Map<String, Long> REF_PLUGIN_MS = Map.of("plugin-spring-aot", 3_500L, "plugin-generate-jooq", 1_300L);
 
     static final long REF_PLUGIN_OTHER_MS = 1_500L;
-
-    private static final ReentrantLock WRITE = new ReentrantLock();
 
     /** A step kind's cheap measure in a module: a count, a tool's name, or nothing it measures. */
     public record Measure(String key, long units) {
@@ -97,7 +92,7 @@ public final class StepEffort {
     }
 
     public static Path defaultFile() {
-        return JkDirs.builds().resolve(FILE);
+        return HostStore.defaultFile();
     }
 
     /** Whether this prices {@code step}: the node steps and every plugin goal. */
@@ -169,34 +164,20 @@ public final class StepEffort {
         List<Sample> kept =
                 run.stream().filter(s -> prices(s.step()) && s.wallMs() > 0).toList();
         if (kept.isEmpty()) return;
-        WRITE.lock();
-        try {
-            Map<String, List<long[]>> all = read(file);
+        HostStore.update(file, HostStore.EFFORT, lines -> {
+            Map<String, List<long[]>> all = parse(lines);
             for (Sample s : kept) {
                 List<long[]> list =
                         all.computeIfAbsent(key(s.step(), s.measure().key()), k -> new ArrayList<>());
                 list.add(new long[] {s.measure().units(), s.wallMs()});
                 while (list.size() > KEEP) list.remove(0);
             }
-            StringBuilder sb =
-                    new StringBuilder("# kind\tmeasure\tunits\twall-ms: what each kind took here (StepEffort)\n");
+            List<String> out = new ArrayList<>();
             for (Map.Entry<String, List<long[]>> e : all.entrySet()) {
-                for (long[] v : e.getValue()) {
-                    sb.append(e.getKey())
-                            .append('\t')
-                            .append(v[0])
-                            .append('\t')
-                            .append(v[1])
-                            .append('\n');
-                }
+                for (long[] v : e.getValue()) out.add(e.getKey() + '\t' + v[0] + '\t' + v[1]);
             }
-            Files.createDirectories(file.getParent());
-            AtomicWrites.replace(file, sb.toString());
-        } catch (IOException | RuntimeException e) {
-            Log.debug("StepEffort.learn: not recorded", e);
-        } finally {
-            WRITE.unlock();
-        }
+            return out;
+        });
     }
 
     private static String key(String step, String measure) {
@@ -235,22 +216,20 @@ public final class StepEffort {
     }
 
     private static Map<String, List<long[]>> read(Path file) {
+        return parse(HostStore.section(file, HostStore.EFFORT));
+    }
+
+    private static Map<String, List<long[]>> parse(List<String> lines) {
         Map<String, List<long[]>> out = new LinkedHashMap<>();
-        if (!Files.isRegularFile(file)) return out;
-        try {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                if (line.isBlank() || line.startsWith("#")) continue;
-                String[] f = line.split("\t");
-                if (f.length != 4) continue;
-                try {
-                    out.computeIfAbsent(f[0] + "\t" + f[1], k -> new ArrayList<>())
-                            .add(new long[] {Long.parseLong(f[2]), Long.parseLong(f[3])});
-                } catch (NumberFormatException torn) {
-                    // a torn line: skipped, the rest still read
-                }
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length != 4) continue;
+            try {
+                out.computeIfAbsent(f[0] + "\t" + f[1], k -> new ArrayList<>())
+                        .add(new long[] {Long.parseLong(f[2]), Long.parseLong(f[3])});
+            } catch (NumberFormatException torn) {
+                // a torn line: skipped, the rest still read
             }
-        } catch (IOException e) {
-            Log.debug("StepEffort: unreadable " + file, e);
         }
         return out;
     }

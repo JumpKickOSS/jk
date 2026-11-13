@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
@@ -50,15 +51,15 @@ class HostWarmupTest {
 
             // Written as text rather than through HostMetricsFile (package-private, and a
             // round-trip through the writer would only prove the writer agrees with itself).
-            Path file = JkDirs.builds().resolve("host-metrics.toml");
+            Path file = JkDirs.builds().resolve(HostStore.FILE);
             Files.createDirectories(file.getParent());
             Files.writeString(file, """
                     [calibration]
-                    schema        = 1
+                    schema = 1
                     ms-per-weight = 120.0
-                    measured      = true
-                    jk-version    = "%s"
-                    updated       = %d
+                    measured = true
+                    jk-version = "%s"
+                    updated = %d
                     """.formatted(JkVersion.VERSION, System.currentTimeMillis()));
             Calibration.invalidateMemo();
 

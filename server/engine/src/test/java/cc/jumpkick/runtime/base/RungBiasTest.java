@@ -82,7 +82,8 @@ class RungBiasTest {
 
     @Test
     void a_torn_line_is_skipped_and_the_rest_still_read() throws Exception {
-        Files.writeString(file(), "# header\nCALIBRATION compile 0.6931 2\nCALIBRATION suite x 1\nNOPE compile 1 1\n");
+        Files.writeString(
+                file(), "# header\n[bias]\nCALIBRATION compile 0.6931 2\nCALIBRATION suite x 1\nNOPE compile 1 1\n");
         RungBias bias = RungBias.load(file());
         assertThat(bias.factor(Rung.CALIBRATION, "compile-java")).isCloseTo(2.0, within(1e-3));
         assertThat(bias.factor(Rung.CALIBRATION, "run-tests")).isEqualTo(1.0);

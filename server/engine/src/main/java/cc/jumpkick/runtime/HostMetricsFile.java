@@ -1,38 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.builds.MetricsHarvest;
-import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.HostLearnedRates;
-import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * The {@code host-metrics.toml} grammar: where the file lives, how a {@link Calibration} is read
- * out of it, and the section-preserving merge that writes one back without clobbering what the
- * other writers ({@code MetricsHarvest} scalars, lock/fetch timings, {@code jk optimize} language
- * buckets) put there. {@code Calibration} owns the model; this class owns the file format.
+ * A {@link Calibration} in the host's {@link HostStore}: the probe under {@link
+ * HostStore#CALIBRATION} and the continuous rates under {@link HostStore#RATES}, each {@code key =
+ * value} lines. {@code Calibration} owns the model; this class owns its sections' grammar.
  */
 final class HostMetricsFile {
 
     private HostMetricsFile() {}
 
-    /** Host metrics file (probe + continuous means): {@code host-metrics.toml}. */
+    /** The host's store. */
     static Path file() {
-        return JkDirs.builds().resolve("host-metrics.toml");
+        return HostStore.defaultFile();
     }
 
     static Calibration readOrAbsent(long nowMillis) {
@@ -42,16 +35,18 @@ final class HostMetricsFile {
     static Calibration readFrom(Path f, long nowMillis) {
         Calibration absent = Calibration.absent();
         try {
-            if (!Files.isRegularFile(f)) return absent;
-            TomlParseResult t = Toml.parse(f);
-            // Prefer [calibration] table in host-metrics.toml; fall back to root keys.
+            List<String> calLines = HostStore.section(f, HostStore.CALIBRATION);
+            List<String> rateLines = HostStore.section(f, HostStore.RATES);
+            if (calLines.isEmpty() && rateLines.isEmpty()) return absent;
+            TomlParseResult t = Toml.parse("[calibration]\n" + String.join("\n", calLines) + "\n[mean]\n"
+                    + String.join("\n", rateLines) + "\n");
             TomlTable cal = t.getTable("calibration") != null ? t.getTable("calibration") : t;
             double mpw = numberOr(cal, "ms-per-weight", 0);
             long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
             String version = cal.getString("jk-version");
-            HostLearnedRates learned = HostLearnedRates.readFrom(t);
-            // Fold continuous [mean] scalars (native-image-ms-per-mib, compile-*-per-source-ms, …)
-            // as single-sample learned priors. Skip run-harvest keys (task.*/phase.*/module.*).
+            HostLearnedRates learned = new HostLearnedRates();
+            // The continuous rates (native-image-ms-per-mib, compile-*-per-source-ms, …), each a
+            // single-sample learned prior.
             if (t.getTable("mean") != null) {
                 TomlTable mean = t.getTable("mean");
                 Map<String, List<Double>> rings = new LinkedHashMap<>(learned.samples());
@@ -64,9 +59,6 @@ final class HostMetricsFile {
                 }
                 if (!rings.isEmpty()) learned = new HostLearnedRates(rings);
             }
-            // Language buckets from jk optimize: mean.by_language.<lang>.compile_per_source_ms
-            // seeds cold compile priors when continuous harvest has not yet measured that language.
-            learned = foldLanguageBuckets(t, learned);
             if (mpw <= 0 && learned.isEmpty()) return absent;
             if (mpw <= 0) mpw = EffortWeights.MS_PER_WEIGHT;
             if (Calibration.stale(version, updated, nowMillis) && learned.isEmpty()) return absent;
@@ -146,143 +138,29 @@ final class HostMetricsFile {
         return dflt;
     }
 
-    /**
-     * Fold {@code [mean.by_language.<lang>].compile_per_source_ms} into HostLearnedRates compile
-     * keys when continuous means are still cold.
-     */
-    static HostLearnedRates foldLanguageBuckets(TomlParseResult t, HostLearnedRates learned) {
-        if (t == null) return learned == null ? new HostLearnedRates() : learned;
-        Map<String, List<Double>> rings = new LinkedHashMap<>(learned == null ? Map.of() : learned.samples());
-        foldLang(t, "java", HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, rings);
-        foldLang(t, "kotlin", HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, rings);
-        foldLang(t, "groovy", HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, rings);
-        return rings.isEmpty() ? (learned == null ? new HostLearnedRates() : learned) : new HostLearnedRates(rings);
-    }
-
-    private static void foldLang(TomlParseResult t, String lang, String rateKey, Map<String, List<Double>> rings) {
-        if (rings.containsKey(rateKey)) return;
-        // Nested table [mean.by_language.<lang>] — prefer dotted path (tomlj), then table walk.
-        // Reads are type-tolerant per key: a mistyped value skips this bucket only, never the
-        // whole calibration (readFrom's blanket catch would otherwise return absent).
-        double ms = numberOr(t, "mean.by_language." + lang + ".compile_per_source_ms", 0);
-        if (ms <= 0) {
-            try {
-                TomlTable mean = t.getTable("mean");
-                TomlTable byLang = mean != null ? mean.getTable("by_language") : null;
-                TomlTable tbl = byLang != null ? byLang.getTable(lang) : null;
-                if (tbl != null) ms = numberOr(tbl, "compile_per_source_ms", 0);
-            } catch (RuntimeException e) {
-                Log.debug("foldLang: RuntimeException ignored", e);
-            }
-        }
-        // Sanity: reject implausible compile_per_source_ms (must be 1–500).
-        if (!(ms >= 1 && ms <= 500)) return;
-        rings.put(rateKey, List.of(ms));
-    }
-
-    static void writeTo(Path file, Calibration c) throws IOException {
-        // Read, fold and replace under the ledger lock: MetricsHarvest folds the same file from
-        // another engine, and a fold that read before its write would drop the other's rows.
-        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> fold(file, c));
-    }
-
-    private static void fold(Path file, Calibration c) throws IOException {
-        // Merge [calibration] into host-metrics.toml; carry [lock], [fetch], [bootstrap] and the
-        // language buckets verbatim, and fold this calibration's learned rates into the ONE [mean].
-        // [mean] is co-owned: MetricsHarvest owns the run keys (task.*/phase.*/module.*/...), this
-        // writer owns the continuous rates. Appending a second [mean] header instead of merging
-        // makes the file illegal TOML and leaves the two readers disagreeing about which copy wins
-        // (tomlj takes the first, MetricsHarvest.parseContinuousMeanKeys takes the last), so a
-        // freshly written trimmed mean is discarded on the way back in.
-        StringBuilder out = new StringBuilder();
-        out.append("# host-metrics — probe + continuous means\n");
-        // key -> verbatim line, so a carried-forward value never churns its formatting.
-        Map<String, String> harvestKeys = new LinkedHashMap<>();
-        Map<String, String> continuousKeys = new LinkedHashMap<>();
-        StringBuilder foreign = new StringBuilder();
-        if (Files.isRegularFile(file)) {
-            try {
-                String existing = Files.readString(file);
-                splitMeanLines(existing, harvestKeys, continuousKeys);
-                // Keep every section this writer does not own: the shared ones and the harvest's own
-                // ([count]). The lists are MetricsHarvest's, not a second copy; [calibration] is
-                // absent because this writer regenerates it below.
-                for (String section : Stream.concat(
-                                MetricsHarvest.FOREIGN_SECTIONS.stream(), MetricsHarvest.HARVEST_SECTIONS.stream())
-                        .toList()) {
-                    int idx = existing.indexOf("\n[" + section + "]");
-                    if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
-                    if (idx >= 0) {
-                        int end = existing.indexOf("\n[", idx + 2);
-                        String block = end < 0 ? existing.substring(idx) : existing.substring(idx, end);
-                        if (!block.isBlank()) foreign.append(block.strip()).append('\n');
-                    }
-                }
-                // Preserve mean.by_language.* tables written by jk optimize.
-                foreign.append(extractByLanguageBlocks(existing));
-            } catch (IOException ignored) {
-            }
-        }
-        // Learned rates as scalar means under [mean] (no sample rings) — freshest value wins.
+    static void writeTo(Path file, Calibration c) {
+        // The rates replace what this calibration learned and keep the others; the probe section is
+        // this calibration's whole.
         if (c.learned() != null && !c.learned().isEmpty()) {
+            Map<String, String> fresh = new LinkedHashMap<>();
             for (var e : c.learned().samples().entrySet()) {
                 double m = HostLearnedRates.trimmedMean(e.getValue());
-                if (m > 0) continuousKeys.put(e.getKey(), e.getKey() + " = " + round3(m));
+                if (m > 0) fresh.put(e.getKey(), e.getKey() + " = " + round3(m));
             }
-        }
-        out.append("\n[mean]\n");
-        for (String line : harvestKeys.values()) out.append(line).append('\n');
-        for (String line : continuousKeys.values()) out.append(line).append('\n');
-        if (!foreign.isEmpty()) out.append('\n').append(foreign);
-        out.append('\n').append(renderCalibrationSection(c));
-        AtomicWrites.replace(file, out.toString());
-    }
-
-    /**
-     * Split every {@code [mean]} scalar in {@code existing} into the run-harvest keys and the
-     * continuous-rate keys, each mapped to its verbatim line. Sub-tables ({@code
-     * [mean.by_language.*]}) are not {@code [mean]} and travel via {@link #extractByLanguageBlocks}.
-     * The last occurrence of a key wins.
-     */
-    static void splitMeanLines(String existing, Map<String, String> harvest, Map<String, String> continuous) {
-        if (existing == null || existing.isBlank()) return;
-        boolean inMean = false;
-        for (String raw : existing.split("\n", -1)) {
-            String line = raw.strip();
-            if (line.startsWith("[")) {
-                inMean = line.equals("[mean]");
-                continue;
-            }
-            if (!inMean || line.isEmpty() || line.startsWith("#")) continue;
-            int eq = line.indexOf('=');
-            if (eq <= 0) continue;
-            String key = line.substring(0, eq).strip();
-            if (key.isEmpty()) continue;
-            (MetricsHarvest.isContinuousMeanKey(key) ? continuous : harvest).put(key, line);
-        }
-    }
-
-    /** Extract contiguous {@code [mean.by_language.*]} tables from an existing host-metrics file. */
-    static String extractByLanguageBlocks(String existing) {
-        if (existing == null || existing.isBlank()) return "";
-        StringBuilder lang = new StringBuilder();
-        boolean in = false;
-        for (String line : existing.split("\n", -1)) {
-            String t = line.trim();
-            if (t.startsWith("[mean.by_language.")) {
-                in = true;
-                lang.append(line).append('\n');
-                continue;
-            }
-            if (in) {
-                if (t.startsWith("[")) {
-                    in = false;
-                } else {
-                    lang.append(line).append('\n');
+            HostStore.update(file, HostStore.RATES, lines -> {
+                Map<String, String> all = new LinkedHashMap<>();
+                for (String line : lines) {
+                    int eq = line.indexOf('=');
+                    if (eq > 0) all.put(line.substring(0, eq).strip(), line);
                 }
-            }
+                all.putAll(fresh);
+                return List.copyOf(all.values());
+            });
         }
-        return lang.isEmpty() ? "" : "\n" + lang;
+        HostStore.update(
+                file,
+                HostStore.CALIBRATION,
+                lines -> renderCalibrationSection(c).lines().skip(1).toList());
     }
 
     private static String renderCalibrationSection(Calibration c) {
