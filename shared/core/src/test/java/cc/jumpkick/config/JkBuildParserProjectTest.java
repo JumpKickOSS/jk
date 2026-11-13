@@ -10,10 +10,12 @@ import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class JkBuildParserProjectTest {
@@ -541,19 +543,53 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void parses_a_suites_own_jvm_settings() {
+        var suite = JkBuildParser.parse(PROJECT + """
+
+                [test.suites.integration]
+                tags = ["integration"]
+                env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
+                jvm-args = ["-Xmx1g"]
+                system-properties = { "spring.profiles.active" = "it", retries = 2 }
+                timeout = "5m"
+
+                [test.suites.live]
+                tags = ["live"]
+                explicit = true
+
+                [test.suites.e2e]
+                env = { BROWSER = "headless" }
+                """).build().testSuites();
+        assertThat(Objects.requireNonNull(suite.get("integration")).settings())
+                .isEqualTo(new SuiteSettings(
+                        Map.of("JK_HTTP_DENY_HOSTS", "jumpkick.build"),
+                        List.of("-Xmx1g"),
+                        Map.of("spring.profiles.active", "it", "retries", "2"),
+                        300_000L));
+        assertThat(Objects.requireNonNull(suite.get("integration")).explicit()).isFalse();
+        assertThat(Objects.requireNonNull(suite.get("live")).explicit()).isTrue();
+        assertThat(Objects.requireNonNull(suite.get("e2e")).classes())
+                .as("a directory suite with settings alone")
+                .isEmpty();
+    }
+
+    @Test
     void refuses_a_suite_it_cannot_run() {
         for (String bad : List.of(
                 "[test.suites.test]\nclasses = [\"*IT\"]",
                 "[test.suites.guard]\nclasses = [\"*IT\"]",
                 "[test.suites.Integration]\nclasses = [\"*IT\"]",
-                "[test.suites.integration]\nclasses = []",
                 "[test.suites.integration]\nclasses = \"*IT\"",
                 "[test.suites.integration]\nclasses = [\"FooIT#slow\"]",
                 "[test.suites.integration]\nclasses = [\"*IT\"]\ndir = \"src/it/java\"",
                 "[test.suites.integration]\nclasses = [\"*IT\"]\nexclude-classes = \"*SlowIT\"",
                 "[test.suites.integration]\nclasses = [\"*IT\"]\nexclude-classes = [\"SlowIT#run\"]",
-                "[test.suites.integration]\nexclude-tags = [\"slow\"]",
-                "[test.suites.integration]\ntags = []",
+                "[test.suites.integration]",
+                "[test.suites.integration]\nenv = [\"A\"]",
+                "[test.suites.integration]\nenv = { A = [1] }",
+                "[test.suites.integration]\ntimeout = \"soon\"",
+                "[test.suites.integration]\nexplicit = \"yes\"",
+                "[test.suites.integration]\njvm-args = \"-Xmx1g\"",
                 "[test.suites.integration]\ntags = \"integration\"",
                 "[test.suites.integration]\ntags = [\"slow | bench\"]",
                 "[test.suites.integration]\ntags = [\"integration\"]\nexclude-tags = [\"!slow\"]",

@@ -9,15 +9,29 @@ import java.util.List;
  * sources; {@code tags} claims every test carrying one of them, from any of the module's test
  * sources. A test {@code excludeClasses} or {@code excludeTags} also names stays claimed, so no other
  * suite runs it, but this suite does not run it either, as a Failsafe {@code <excludes>} entry does.
+ * {@code settings} are what the suite's own test JVMs get; an {@code explicit} suite runs only when
+ * named ({@code -s}, {@code guard-suites}), never under {@code --all}.
  */
 public record DeclaredSuite(
-        List<String> classes, List<String> tags, List<String> excludeClasses, List<String> excludeTags) {
+        List<String> classes,
+        List<String> tags,
+        List<String> excludeClasses,
+        List<String> excludeTags,
+        SuiteSettings settings,
+        boolean explicit) {
 
     public DeclaredSuite {
         classes = classes == null ? List.of() : List.copyOf(classes);
         tags = tags == null ? List.of() : List.copyOf(tags);
         excludeClasses = excludeClasses == null ? List.of() : List.copyOf(excludeClasses);
         excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
+        settings = settings == null ? SuiteSettings.NONE : settings;
+    }
+
+    /** A suite claiming by class and tag, with no settings of its own. */
+    public DeclaredSuite(
+            List<String> classes, List<String> tags, List<String> excludeClasses, List<String> excludeTags) {
+        this(classes, tags, excludeClasses, excludeTags, SuiteSettings.NONE, false);
     }
 
     /** A suite of {@code classes} that leaves none out. */

@@ -20,6 +20,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -183,11 +184,13 @@ public record TestStampInputs(
             throws IOException {
         Path dir = facts.dir();
         JkBuild project = facts.project();
-        List<String> discovered =
-                TestSuites.available(dir, compact, project.build().testSuites());
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps.
-        var resolved = SessionContext.current().testSelection().resolve(discovered);
+        var resolved = TestSuites.resolve(
+                SessionContext.current().testSelection(),
+                dir,
+                compact,
+                project.build().testSuites());
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         // The same factory compile-test collects its sources with, so the forecast stamps exactly
         // the files the run stamps: every selected suite's sources in every language, plus the
@@ -312,6 +315,20 @@ public record TestStampInputs(
     }
 
     /**
+     * The stamp tokens of the selected suites' own JVM settings: they change what those suites'
+     * tests see. An unselected suite's settings change nothing this run runs, so they stay out.
+     */
+    static List<String> suiteRunExtras(BuildBlock build, @Nullable TestSelection selection) {
+        List<String> out = new ArrayList<>();
+        build.testSuites().forEach((suite, spec) -> {
+            SuiteSettings run = spec.settings();
+            if (run.isEmpty() || selection == null || !selection.runs(suite, spec.explicit())) return;
+            out.add("suite-run:" + suite + "=" + String.join(" ", run.forkArgs()) + ";env=" + run.env());
+        });
+        return out;
+    }
+
+    /**
      * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}. There is
      * deliberately no lookup-free overload: it would silently skip both expansion and hashing and
      * produce a key that disagrees with this one.
@@ -363,6 +380,7 @@ public record TestStampInputs(
                                         + (spec.excludeTags().isEmpty()
                                                 ? ""
                                                 : "!" + String.join(",", spec.excludeTags())))));
+        extras.addAll(suiteRunExtras(build, selection));
         // The test JVM's flags change what the suite sees (-D properties, heap), so they retest:
         // the module's, then the request's own, which the suite fork appends from the same source.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));

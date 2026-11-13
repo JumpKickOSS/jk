@@ -5,6 +5,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.DeclaredSuite;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.run.TaskNames;
@@ -369,9 +370,9 @@ final class ManifestBuildTable {
             List<String> tags = suite.contains("tags")
                     ? tagNames(where, "tags", array(suite, where, "tags", "tags = [\"integration\"]"))
                     : List.of();
-            if (classes.isEmpty() && tags.isEmpty()) {
+            if (suite.isEmpty()) {
                 throw new JkBuildParseException(
-                        where + " claims no tests — set classes = [\"*IT\"] or tags = [\"" + name + "\"]");
+                        where + " is empty — set tags = [\"" + name + "\"], classes or a setting");
             }
             List<String> excludeClasses = suite.contains("exclude-classes")
                     ? classPatterns(
@@ -382,12 +383,77 @@ final class ManifestBuildTable {
             List<String> excludeTags = suite.contains("exclude-tags")
                     ? tagNames(where, "exclude-tags", array(suite, where, "exclude-tags", "exclude-tags = [\"slow\"]"))
                     : List.of();
-            s.testSuites.put(name, new DeclaredSuite(classes, tags, excludeClasses, excludeTags));
+            boolean explicit = false;
+            if (suite.contains("explicit")) {
+                if (!(suite.get("explicit") instanceof Boolean flag)) {
+                    throw new JkBuildParseException(where + " explicit must be true or false");
+                }
+                explicit = flag;
+            }
+            s.testSuites.put(
+                    name,
+                    new DeclaredSuite(
+                            classes, tags, excludeClasses, excludeTags, suiteSettings(suite, where), explicit));
         }
     }
 
     /** The keys a {@code [test.suites.<name>]} table may carry, in the order errors list them. */
-    private static final List<String> SUITE_KEYS = List.of("classes", "tags", "exclude-classes", "exclude-tags");
+    private static final List<String> SUITE_KEYS = List.of(
+            "classes",
+            "tags",
+            "exclude-classes",
+            "exclude-tags",
+            "env",
+            "jvm-args",
+            "system-properties",
+            "timeout",
+            "explicit");
+
+    /**
+     * A suite's own test JVM settings: {@code env} a table of names to strings, {@code jvm-args} an
+     * array of flags, {@code system-properties} a table of scalars, {@code timeout} a duration.
+     */
+    private static SuiteSettings suiteSettings(TomlTable suite, String where) {
+        Map<String, String> env = scalars(suite, where, "env", "env = { NAME = \"value\" }");
+        Map<String, String> props = scalars(
+                suite, where, "system-properties", "system-properties = { \"spring.profiles.active\" = \"it\" }");
+        List<String> jvmArgs = new ArrayList<>();
+        if (suite.contains("jvm-args")) {
+            TomlArray flags = array(suite, where, "jvm-args", "jvm-args = [\"-Xmx1g\"]");
+            for (int i = 0; i < flags.size(); i++) {
+                if (!(flags.get(i) instanceof String flag) || flag.isBlank()) {
+                    throw new JkBuildParseException(
+                            where + " jvm-args must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
+                }
+                jvmArgs.add(flag.trim());
+            }
+        }
+        Long timeout = suite.contains("timeout")
+                ? ManifestBuild.durationMillis(suite.get(List.of("timeout")), where + " timeout")
+                : null;
+        return new SuiteSettings(env, jvmArgs, props, timeout);
+    }
+
+    /** {@code [test.suites.<name>] <key>} as a table of names to string, number or boolean values. */
+    private static Map<String, String> scalars(TomlTable suite, String where, String key, String example) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (!suite.contains(key)) return out;
+        if (!(suite.get(key) instanceof TomlTable table)) {
+            throw new JkBuildParseException(where + " " + key + " must be a table: " + example);
+        }
+        for (String name : table.keySet()) {
+            Object value = table.get(List.of(name));
+            if (!(value instanceof String)
+                    && !(value instanceof Boolean)
+                    && !(value instanceof Long)
+                    && !(value instanceof Double)) {
+                throw new JkBuildParseException(
+                        where + " " + key + "." + name + " must be a string, number or boolean");
+            }
+            out.put(name, String.valueOf(value));
+        }
+        return out;
+    }
 
     private static TomlArray array(TomlTable suite, String where, String key, String example) {
         if (!(suite.get(key) instanceof TomlArray values)) {

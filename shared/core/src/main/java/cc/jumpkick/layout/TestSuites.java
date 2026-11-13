@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.model.DeclaredSuite;
 import java.io.IOException;
@@ -164,6 +165,19 @@ public final class TestSuites {
         LinkedHashSet<String> names = new LinkedHashSet<>(found);
         names.addAll(declared.keySet());
         return List.copyOf(names);
+    }
+
+    /**
+     * {@code selection}'s suites in this module: the {@link #available} ones it names, every one
+     * but the {@code explicit} declared suites under {@code --all}.
+     */
+    public static TestSelection.Resolved resolve(
+            TestSelection selection, Path projectDir, boolean compact, Map<String, DeclaredSuite> declared) {
+        Set<String> explicit = new LinkedHashSet<>();
+        declared.forEach((name, suite) -> {
+            if (suite.explicit()) explicit.add(name);
+        });
+        return selection.resolve(available(projectDir, compact, declared), explicit);
     }
 
     /**

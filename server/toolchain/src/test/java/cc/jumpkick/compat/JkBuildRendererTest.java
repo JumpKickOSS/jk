@@ -28,6 +28,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
@@ -95,6 +96,24 @@ class JkBuildRendererTest {
                         + "exclude-tags = [\"slow\"]\n");
         assertThat(JkBuildParser.parse(out).build().testSuites())
                 .containsExactly(Map.entry("integration", integration));
+    }
+
+    @Test
+    void renders_and_round_trips_a_suites_own_settings() {
+        DeclaredSuite live = new DeclaredSuite(
+                List.of(),
+                List.of("live"),
+                List.of(),
+                List.of(),
+                new SuiteSettings(Map.of("KEYCHAIN", "1"), List.of("-Xmx1g"), Map.of("mode", "live"), 90_000L),
+                true);
+        JkBuild model = JkBuild.builder(new Project("com.ex", "widget", "1.0.0", 25))
+                .build(BuildBlock.EMPTY.withTestSuites(Map.of("live", live)))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("timeout = \"90000ms\"\nexplicit = true\n");
+        assertThat(JkBuildParser.parse(out).build().testSuites()).containsExactly(Map.entry("live", live));
     }
 
     @Test

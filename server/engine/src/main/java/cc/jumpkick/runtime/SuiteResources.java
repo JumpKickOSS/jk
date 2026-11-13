@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -26,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Supplier;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,8 +36,8 @@ import org.jspecify.annotations.Nullable;
  * path (a {@code META-INF/services} file, a {@code junit-platform.properties}) would be whichever
  * copy came last, and every suite would read it. So such a run copies no suite's resources into the
  * tree: each suite runs in its own JVMs with its own roots ahead of the shared classpath, as it
- * would run alone. The default suite's roots carry the declared suites' and its configured
- * extra roots. Empty when the run compiles one directory suite, whose resources the tree holds.
+ * would run alone. The default suite's roots carry its configured extra roots. Empty when the run
+ * compiles one directory suite, whose resources the tree holds.
  */
 record SuiteResources(Map<String, List<Path>> bySuite) {
 
@@ -52,33 +53,20 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * when fewer than two are directory suites. {@code defaultExtra} are the default suite's
      * configured roots beyond its resources directory.
      */
-    static SuiteResources of(
-            Path moduleDir,
-            boolean compact,
-            List<String> compiled,
-            Set<String> patternSuites,
-            List<Path> defaultExtra) {
-        List<String> directory =
-                compiled.stream().filter(s -> !patternSuites.contains(s)).toList();
-        if (directory.size() < 2) return NONE;
+    static SuiteResources of(Path moduleDir, boolean compact, List<String> compiled, List<Path> defaultExtra) {
+        if (compiled.size() < 2) return NONE;
         Map<String, List<Path>> out = new LinkedHashMap<>();
-        for (String suite : directory) {
+        for (String suite : compiled) {
             out.put(suite, new ArrayList<>(ModuleLayout.suiteResourceDirs(moduleDir, compact, List.of(suite))));
         }
-        List<Path> withDefault = out.computeIfAbsent(TestSuites.DEFAULT, k -> new ArrayList<>());
-        for (String suite : compiled) {
-            if (patternSuites.contains(suite)) {
-                withDefault.addAll(ModuleLayout.suiteResourceDirs(moduleDir, compact, List.of(suite)));
-            }
-        }
-        withDefault.addAll(defaultExtra);
+        out.computeIfAbsent(TestSuites.DEFAULT, k -> new ArrayList<>()).addAll(defaultExtra);
         return new SuiteResources(out);
     }
 
     /**
      * Test resources ride the test classpath next to compiled tests, so getResourceAsStream
      * fixtures resolve: the test KSP round's output and, when the run compiles one directory suite,
-     * that suite's resources (plus the declared suites' and its configured extra roots) are
+     * that suite's resources (plus its configured extra roots) are
      * mirrored into target/test-classes. A run of several directory suites mirrors none of them:
      * this record runs each with its own roots, so a same-path resource never collides.
      * run-tests folds every root into its TestStamp key. Returns what compile-test publishes: its
@@ -107,12 +95,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                     in.dir(), ctx.require(MODULE).project(), ctx.require(MODULE).layout(), unresolved));
             PlannerResources.warnUnresolved(ctx, unresolved);
         }
-        SuiteResources apart = SuiteResources.of(
-                in.dir(),
-                compact,
-                suiteNames,
-                ctx.require(MODULE).project().build().testSuites().keySet(),
-                extraRoots);
+        SuiteResources apart = SuiteResources.of(in.dir(), compact, suiteNames, extraRoots);
         List<Path> suiteResDirs = new ArrayList<>(kspRoots);
         suiteResDirs.addAll(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
         suiteResDirs.addAll(extraRoots);
@@ -143,17 +126,21 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
         return !bySuite.isEmpty();
     }
 
-    /** One test JVM run: a launcher over the shared classpath with {@code classpath} after the test classes. */
+    /**
+     * One test JVM run: a launcher over the shared classpath with {@code classpath} after the test
+     * classes, for suites whose own {@code settings} its JVMs get.
+     */
     @FunctionalInterface
     interface Launch {
-        TestSummary run(JUnitLauncher launcher, List<Path> classpath) throws Exception;
+        TestSummary run(JUnitLauncher launcher, List<Path> classpath, SuiteSettings settings) throws Exception;
     }
 
     /**
-     * Run the selection: in one launch over {@code runtimeCp} when the tree holds the resources,
-     * else one launch per directory suite, its roots first, its classes alone, the results as one
-     * summary. A part the {@code --class} patterns or the affected classes name nothing in is not
-     * started.
+     * Run the selection: in one launch over {@code runtimeCp} when the tree holds the resources and
+     * no selected suite has settings of its own, else one launch per directory suite, its roots
+     * first, its classes alone, and within it one per {@link SuiteFilter#launches} set of suites,
+     * the results as one summary. A launch the {@code --class} patterns or the affected classes
+     * name nothing in is not started.
      */
     TestSummary launch(
             Path testClasses,
@@ -161,29 +148,39 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             List<String> classPatterns,
             List<String> excludeClasses,
             AffectedTestRun.@Nullable Outcome affected,
-            Supplier<JUnitLauncher> launcher,
+            Function<SuiteSettings, JUnitLauncher> launcher,
             List<Path> runtimeCp,
             Launch launch)
             throws Exception {
-        if (!split()) return launch.run(launcher.get().withSuites(suites), runtimeCp);
+        List<SuiteFilter.Launch> launches = suites.launches();
+        if (!split() && launches.size() == 1) {
+            SuiteSettings settings = launches.getFirst().settings();
+            return launch.run(launcher.apply(settings).withSuites(suites), runtimeCp, settings);
+        }
+        Map<String, List<Path>> groups = split() ? bySuite : Collections.singletonMap(TestSuites.DEFAULT, List.of());
         TestSummary total = null;
-        for (Map.Entry<String, List<Path>> suite : bySuite.entrySet()) {
-            SuiteFilter part = suites.part(suite.getKey());
+        for (Map.Entry<String, List<Path>> group : groups.entrySet()) {
+            SuiteFilter part = split() ? suites.part(group.getKey()) : suites;
             if (part == null) continue;
-            JUnitLauncher one = launcher.get().withSuites(part);
-            if (affected != null) {
-                List<String> names =
-                        affected.classNames().stream().filter(part.acceptor()).toList();
-                if (names.isEmpty()) continue;
-                one.withClassNames(names);
-            } else if (!classPatterns.isEmpty()
-                    && !part.namesCompiledClass(testClasses, classPatterns, excludeClasses)) {
-                continue;
+            for (SuiteFilter.Launch shared : launches) {
+                SuiteFilter unit = launches.size() == 1 ? part : part.only(shared.suites());
+                if (unit == null) continue;
+                JUnitLauncher one = launcher.apply(shared.settings()).withSuites(unit);
+                if (affected != null) {
+                    List<String> names = affected.classNames().stream()
+                            .filter(unit.acceptor())
+                            .toList();
+                    if (names.isEmpty()) continue;
+                    one.withClassNames(names);
+                } else if (!classPatterns.isEmpty()
+                        && !unit.namesCompiledClass(testClasses, classPatterns, excludeClasses)) {
+                    continue;
+                }
+                List<Path> classpath = new ArrayList<>(group.getValue());
+                classpath.addAll(runtimeCp);
+                TestSummary ran = launch.run(one, classpath, shared.settings());
+                total = total == null ? ran : JUnitLauncher.merge(total, ran);
             }
-            List<Path> classpath = new ArrayList<>(suite.getValue());
-            classpath.addAll(runtimeCp);
-            TestSummary ran = launch.run(one, classpath);
-            total = total == null ? ran : JUnitLauncher.merge(total, ran);
         }
         return total != null ? total : new TestSummary(0, 0, 0, 0, List.of());
     }

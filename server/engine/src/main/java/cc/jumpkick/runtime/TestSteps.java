@@ -18,6 +18,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.StepForecast;
@@ -47,6 +48,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -195,8 +197,8 @@ final class TestSteps {
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
-            Supplier<JUnitLauncher> launcher = () -> TestLaunch.launcher(
-                            in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec, settled)
+            Function<SuiteSettings, JUnitLauncher> launcher = s -> TestLaunch.launcher(
+                            in, projectUnderTest, effectiveSel, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
                     .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
                     .withRecording(reads.flag());
@@ -214,8 +216,8 @@ final class TestSteps {
                                 affected,
                                 launcher,
                                 runtimeCp,
-                                (one, cp) -> TestLaunch.launch(
-                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, tagExcluded));
+                                (one, cp, s) -> TestLaunch.launch(
+                                        ctx, in, one, cp, testWorkers, workerJars, testEnv.with(s.env()), tagExcluded));
             } catch (TestLauncherFailure e) {
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;

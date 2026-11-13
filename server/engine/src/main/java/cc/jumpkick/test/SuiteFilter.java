@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.DeclaredSuite;
+import cc.jumpkick.model.SuiteSettings;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -43,17 +44,19 @@ public final class SuiteFilter {
      * compiled class is the run's and belongs to {@link TestSuites#DEFAULT}.
      */
     public static final SuiteFilter NONE =
-            new SuiteFilter(Map.of(), List.of(TestSuites.DEFAULT), Map.of(), Set.of(), null, name -> null);
+            new SuiteFilter(Map.of(), List.of(TestSuites.DEFAULT), Map.of(), Set.of(), null, null, name -> null);
 
     private final Map<String, DeclaredSuite> declared;
     /** The resolved suites, in selection order. */
     private final List<String> selected;
     /** Each class compiled from a directory suite other than the default one, to that suite. */
     private final Map<String, String> directoryClasses;
-    /** The directory groups compiled: {@link TestSuites#DEFAULT} for the default suite's and every declared suite's sources. */
+    /** The directory groups compiled: {@link TestSuites#DEFAULT} for the default suite's sources, each suite directory its own. */
     private final Set<String> groups;
     /** The directory group this filter runs beside, when it is a {@link #part}; null for the whole selection. */
     private final @Nullable String part;
+    /** The selected suites this filter runs, when it is one {@link #only} launch of several; null for all of them. */
+    private final @Nullable Set<String> runs;
 
     private final Function<String, @Nullable ClassTags> tags;
 
@@ -63,12 +66,14 @@ public final class SuiteFilter {
             Map<String, String> directoryClasses,
             Set<String> groups,
             @Nullable String part,
+            @Nullable Set<String> runs,
             Function<String, @Nullable ClassTags> tags) {
         this.declared = declared;
         this.selected = selected;
         this.directoryClasses = directoryClasses;
         this.groups = groups;
         this.part = part;
+        this.runs = runs;
         this.tags = tags;
     }
 
@@ -84,7 +89,7 @@ public final class SuiteFilter {
         Map<String, String> directoryClasses = new LinkedHashMap<>();
         Set<String> groups = new LinkedHashSet<>();
         for (String suite : compiled) {
-            groups.add(declared.containsKey(suite) ? TestSuites.DEFAULT : suite);
+            groups.add(suite);
             if (TestSuites.DEFAULT.equals(suite)) continue;
             for (String name : sourceClasses(moduleDir, compact, suite)) directoryClasses.putIfAbsent(name, suite);
         }
@@ -93,6 +98,7 @@ public final class SuiteFilter {
                 List.copyOf(new LinkedHashSet<>(suites)),
                 Collections.unmodifiableMap(directoryClasses),
                 Collections.unmodifiableSet(groups),
+                null,
                 null,
                 name -> null);
     }
@@ -104,18 +110,60 @@ public final class SuiteFilter {
      */
     public SuiteFilter withTags(Function<String, @Nullable ClassTags> lookup) {
         if (claimedTags().isEmpty()) return this;
-        return new SuiteFilter(declared, selected, directoryClasses, groups, part, lookup);
+        return new SuiteFilter(declared, selected, directoryClasses, groups, part, runs, lookup);
     }
 
     /**
      * The part of this selection that runs beside {@code directorySuite}'s own resources: that
-     * suite's classes alone, or for the default suite every class of the default and declared
-     * suites' sources, never a class another directory suite declares. Null when no selected suite
-     * runs anything there.
+     * suite's classes alone, or for the default suite every class of its sources, never a class a
+     * suite directory declares. Null when no selected suite runs anything there.
      */
     public @Nullable SuiteFilter part(String directorySuite) {
-        if (selected.stream().noneMatch(suite -> contributes(suite, directorySuite))) return null;
-        return new SuiteFilter(declared, selected, directoryClasses, groups, directorySuite, tags);
+        if (running().stream().noneMatch(suite -> contributes(suite, directorySuite))) return null;
+        return new SuiteFilter(declared, selected, directoryClasses, groups, directorySuite, runs, tags);
+    }
+
+    /**
+     * This filter running only {@code suites} of the selection, as one of {@link #launches}; null
+     * when none of them runs anything in this filter's {@link #part}.
+     */
+    public @Nullable SuiteFilter only(Set<String> suites) {
+        Set<String> kept = new LinkedHashSet<>();
+        for (String suite : running()) {
+            if (suites.contains(suite) && (part == null || contributes(suite, part))) kept.add(suite);
+        }
+        if (kept.isEmpty()) return null;
+        return new SuiteFilter(declared, selected, directoryClasses, groups, part, Set.copyOf(kept), tags);
+    }
+
+    /** One set of the selection's suites that run in the same test JVMs, under {@code settings}. */
+    public record Launch(Set<String> suites, SuiteSettings settings) {}
+
+    /**
+     * How the selection's suites share test JVMs: the suites without settings of their own in one
+     * launch, then each suite with settings alone, since its env and flags are its JVMs' only. A
+     * test two launches' suites claim runs in each.
+     */
+    public List<Launch> launches() {
+        Set<String> shared = new LinkedHashSet<>();
+        List<Launch> own = new ArrayList<>();
+        for (String suite : selected) {
+            DeclaredSuite spec = declared.get(suite);
+            if (spec == null || spec.settings().isEmpty()) shared.add(suite);
+            else own.add(new Launch(Set.of(suite), spec.settings()));
+        }
+        List<Launch> out = new ArrayList<>();
+        if (!shared.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(shared), SuiteSettings.NONE));
+        out.addAll(own);
+        return out;
+    }
+
+    /** The selected suites this filter runs. */
+    private List<String> running() {
+        Set<String> only = runs;
+        return only == null
+                ? selected
+                : selected.stream().filter(only::contains).toList();
     }
 
     /**
@@ -341,7 +389,7 @@ public final class SuiteFilter {
         Cls within = within();
         Set<String> claimed = claimedTags();
         List<Clause> out = new ArrayList<>();
-        for (String suite : selected) {
+        for (String suite : running()) {
             if (part != null && !contributes(suite, part)) continue;
             DeclaredSuite spec = declared.get(suite);
             if (spec == null) {
@@ -363,11 +411,14 @@ public final class SuiteFilter {
             out.add(new Clause(classes, List.copyOf(new TreeSet<>(any)), List.copyOf(new TreeSet<>(none))));
     }
 
-    /** Whether {@code suite} runs tests beside directory group {@code group}'s resources. */
+    /** Whether {@code suite} runs tests beside directory group {@code group}'s resources: its own directory, or what it claims there. */
     private boolean contributes(String suite, String group) {
         DeclaredSuite spec = declared.get(suite);
-        if (spec == null) return suite.equals(group);
-        return TestSuites.DEFAULT.equals(group) || !spec.tags().isEmpty();
+        if (suite.equals(group)) return true;
+        if (spec == null) return false;
+        // Tags claim from every source; class patterns from the default suite's.
+        return !spec.tags().isEmpty()
+                || (TestSuites.DEFAULT.equals(group) && !spec.classes().isEmpty());
     }
 
     /** The classes this filter's part holds: every class, or one directory group's. */

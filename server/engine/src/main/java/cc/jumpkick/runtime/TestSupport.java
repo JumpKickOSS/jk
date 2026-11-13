@@ -165,7 +165,7 @@ public final class TestSupport {
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
         Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
         List<String> discovered = TestSuites.available(moduleDir, compact, declared);
-        var resolved = selection.resolve(discovered);
+        var resolved = TestSuites.resolve(selection, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : discovered;
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (String suite : TestSuites.compiled(moduleDir, compact, suites, declared)) {
@@ -260,7 +260,7 @@ public final class TestSupport {
             Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
         List<String> discovered = TestSuites.available(moduleDir, compact, build.testSuites());
         if (selection != null) {
-            var resolved = selection.resolve(discovered);
+            var resolved = TestSuites.resolve(selection, moduleDir, compact, build.testSuites());
             if (resolved.ok()) return resolved.suites();
         }
         return discovered;

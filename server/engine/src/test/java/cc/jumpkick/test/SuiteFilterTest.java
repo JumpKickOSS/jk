@@ -2,8 +2,10 @@
 package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.model.DeclaredSuite;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
@@ -325,6 +327,53 @@ class SuiteFilterTest {
         assertThat(SuiteFilter.of(module, false, List.of("test"), FAILSAFE).members())
                 .isEmpty();
         assertThat(SuiteFilter.NONE.members()).isEmpty();
+    }
+
+    @Test
+    void a_suite_with_settings_runs_in_jvms_of_its_own(@TempDir Path module) {
+        Map<String, DeclaredSuite> suites = new LinkedHashMap<>();
+        SuiteSettings env = new SuiteSettings(Map.of("DENY", "remote"), List.of(), Map.of(), null);
+        suites.put(
+                "integration", new DeclaredSuite(List.of(), List.of("integration"), List.of(), List.of(), env, false));
+        suites.put("slow", DeclaredSuite.ofTags(List.of("slow")));
+        SuiteFilter all = SuiteFilter.of(module, false, List.of("test", "integration", "slow"), suites);
+
+        assertThat(all.launches())
+                .extracting(SuiteFilter.Launch::suites, SuiteFilter.Launch::settings)
+                .containsExactly(tuple(Set.of("test", "slow"), SuiteSettings.NONE), tuple(Set.of("integration"), env));
+        assertThat(Objects.requireNonNull(all.only(Set.of("integration"))).members())
+                .containsExactly("integration||.*");
+        assertThat(Objects.requireNonNull(all.only(Set.of("test", "slow"))).members())
+                .containsExactly("|integration,slow|.*", "slow||.*");
+        assertThat(SuiteFilter.of(module, false, List.of("test", "slow"), suites)
+                        .launches())
+                .as("integration not selected: one launch, as before")
+                .singleElement()
+                .extracting(SuiteFilter.Launch::settings)
+                .isEqualTo(SuiteSettings.NONE);
+    }
+
+    @Test
+    void a_declared_suite_with_a_directory_runs_beside_its_own_resources(@TempDir Path module) throws Exception {
+        Files.createDirectories(module.resolve("src/test/java/com/acme"));
+        Files.writeString(module.resolve("src/test/java/com/acme/FooTest.java"), "package com.acme; class FooTest {}");
+        Path e2e = Files.createDirectories(module.resolve("src/e2e/java/com/acme"));
+        Files.writeString(e2e.resolve("CheckoutE2e.java"), "package com.acme; class CheckoutE2e {}");
+        SuiteSettings env = new SuiteSettings(Map.of("BROWSER", "headless"), List.of(), Map.of(), null);
+        Map<String, DeclaredSuite> suites =
+                Map.of("e2e", new DeclaredSuite(List.of(), List.of(), List.of(), List.of(), env, false));
+        SuiteFilter both = SuiteFilter.of(module, false, List.of("test", "e2e"), suites);
+
+        Pattern beside = runs(Objects.requireNonNull(both.part("e2e")));
+        assertThat(beside.matcher("com.acme.CheckoutE2e").matches()).isTrue();
+        assertThat(beside.matcher("com.acme.FooTest").matches()).isFalse();
+        assertThat(runs(Objects.requireNonNull(both.part("test")))
+                        .matcher("com.acme.CheckoutE2e")
+                        .matches())
+                .isFalse();
+        assertThat(Objects.requireNonNull(both.part("test")).only(Set.of("e2e")))
+                .as("e2e runs nothing beside the default suite's resources")
+                .isNull();
     }
 
     /** Whether clause {@code index} of {@code suites}' members admits {@code className} by class. */

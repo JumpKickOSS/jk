@@ -76,7 +76,9 @@ classes = ["*ContractTest"]        # classes of the default suite's sources, by 
 exclude-classes = ["*SlowContractTest"]   # optional
 ```
 
-A table needs `classes` or `tags`; it may set both, and the suite takes the union.
+A table claims with `classes`, `tags` or both, and the suite takes the union. A table without
+either claims nothing beyond its own directory, for a suite directory that only needs
+[its own JVM settings](#a-suites-own-test-jvms).
 
 - **By tag.** A test carrying one of `tags` belongs to the suite, from whichever test source it
   comes: the default suite's (`src/test/java`, `test/src/`, …) and every suite directory's
@@ -114,6 +116,37 @@ A table needs `classes` or `tags`; it may set both, and the suite takes the unio
   as for a directory suite, and MCP `affected_tests` and the progress estimate count only the
   selected suites' tests.
 
+### A suite's own test JVMs
+
+A suite table may also say how its tests run. A suite directory takes a table for this alone
+(`[test.suites.e2e]` with only `env`):
+
+```toml
+[test.suites.integration]
+tags = ["integration"]
+env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }     # on top of [test] env; the suite wins a name both set
+jvm-args = ["-Xmx1g"]                                # after [test] jvm-args
+system-properties = { "spring.profiles.active" = "it" }
+timeout = "5m"                                       # every test and lifecycle method stops here
+
+[test.suites.live]
+tags = ["live"]
+explicit = true                                      # only when named: -s live or guard-suites
+```
+
+- A suite with any of `env`, `jvm-args`, `system-properties` or `timeout` runs in test JVMs of its
+  own, so its settings reach its tests and no other suite's: `jk test -g` runs the default suite in
+  one set of JVMs and `integration` in another. A test two such suites claim runs in each.
+- `timeout` takes `"90s"`, `"5m"`, `"500ms"` or seconds. A method past it fails (`check() timed out
+  after 300000 milliseconds`), with a thread dump of the test JVM printed first. The method runs on
+  a separate thread, so the failure comes even when it ignores interrupts. An explicit `@Timeout`
+  keeps its own value.
+- `explicit = true` keeps the suite out of `--all`. It runs when named with `-s` or listed in
+  `guard-suites`, for tests that touch the machine itself (the OS keychain) or cost too much for
+  any routine run.
+- A selected suite's settings are part of the run's stamp; an unselected suite's are not, so
+  changing `integration`'s env re-runs `jk test -s integration` and leaves `jk test` cached.
+
 The suite name follows the directory rule (`[a-z][a-z0-9_-]*`), and `test`, `guard` and
 `fixtures` cannot be one. A tag is a JUnit tag name: no whitespace and none of `, ( ) & | !`. The
 table is per module, like the rest of `[test]`. `[test] exclude-classes` still removes a class
@@ -136,7 +169,7 @@ test has a debugger. The rules themselves, their kinds and their baseline: [Guar
 
 `--all` and `--suite` cannot be combined. `--all` and `--guard` cannot be combined.
 Unknown suite names error with the available list (`--guard`'s default `integration`
-is the exception: skip if absent). `--all` means “everything”: every suite directory and declared suite
+is the exception: skip if absent). `--all` means “everything”: every suite directory and declared suite (not an `explicit` one)
 **and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
 `--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
 

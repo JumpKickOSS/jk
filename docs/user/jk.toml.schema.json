@@ -421,9 +421,32 @@
                 "type": "array",
                 "items": { "type": "string", "pattern": "^[^\\s,()&|!]+$" },
                 "description": "JUnit tag names among the suite's tests that run in no suite: the suite skips them and the default suite does not take them back. A run-tests input."
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": ["string", "number", "boolean"] },
+                "description": "Environment for the suite's own test JVMs, on top of [test] env; the suite wins a name both set. A run-tests input of the runs that select the suite."
+              },
+              "jvm-args": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Flags for the suite's own test JVMs, after [test] jvm-args. A run-tests input of the runs that select the suite."
+              },
+              "system-properties": {
+                "type": "object",
+                "additionalProperties": { "type": ["string", "number", "boolean"] },
+                "description": "One -Dkey=value each on the suite's own test JVMs. A run-tests input of the runs that select the suite."
+              },
+              "timeout": {
+                "type": ["string", "integer"],
+                "description": "Per-method limit (\"90s\", \"5m\", \"500ms\" or seconds): a method past it fails after a thread dump, run on a separate thread so one that ignores interrupts still fails."
+              },
+              "explicit": {
+                "type": "boolean",
+                "description": "Run only when named (-s, guard-suites), never under --all."
               }
             },
-            "anyOf": [{ "required": ["classes"] }, { "required": ["tags"] }],
+            "minProperties": 1,
             "additionalProperties": false
           }
         }

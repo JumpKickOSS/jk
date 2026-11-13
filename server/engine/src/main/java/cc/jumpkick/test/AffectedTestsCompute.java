@@ -225,7 +225,7 @@ public final class AffectedTestsCompute {
         boolean compact = ModuleLayout.isCompact(moduleDir);
         Map<String, DeclaredSuite> declared = build.build().testSuites();
         TestSelection.Resolved resolved =
-                (sel == null ? TestSelection.DEFAULT : sel).resolve(TestSuites.available(moduleDir, compact, declared));
+                TestSuites.resolve(sel == null ? TestSelection.DEFAULT : sel, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production);
         Map<String, ClassTags> tags = new HashMap<>();

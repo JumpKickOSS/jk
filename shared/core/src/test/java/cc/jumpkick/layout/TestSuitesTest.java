@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.DeclaredSuite;
+import cc.jumpkick.model.SuiteSettings;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -185,6 +187,24 @@ class TestSuitesTest {
         assertThat(TestSuites.compiled(tmp, false, List.of("test"), tiers))
                 .as("the default suite alone still compiles alone")
                 .containsExactly("test");
+    }
+
+    @Test
+    void all_leaves_an_explicit_suite_out_and_naming_it_runs_it(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/test/java"));
+        Files.writeString(tmp.resolve("src/test/java/FooTest.java"), "class FooTest {}");
+        Map<String, DeclaredSuite> suites = new LinkedHashMap<>();
+        suites.put("integration", DeclaredSuite.ofTags(List.of("integration")));
+        suites.put(
+                "live", new DeclaredSuite(List.of(), List.of("live"), List.of(), List.of(), SuiteSettings.NONE, true));
+
+        assertThat(TestSuites.resolve(TestSelection.of(List.of(), true, List.of(), List.of()), tmp, false, suites)
+                        .suites())
+                .containsExactly("test", "integration");
+        assertThat(TestSuites.resolve(
+                                TestSelection.of(List.of("live"), false, List.of(), List.of()), tmp, false, suites)
+                        .suites())
+                .containsExactly("live");
     }
 
     /** The stamp identity names the suites the selection runs, so a guard run never replays a plain one. */

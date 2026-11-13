@@ -24,6 +24,7 @@ import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -119,6 +120,19 @@ public final class JkBuildRenderer {
             if (!spec.excludeTags().isEmpty()) {
                 sb.append("exclude-tags = ").append(list(spec.excludeTags())).append('\n');
             }
+            SuiteSettings run = spec.settings();
+            if (!run.env().isEmpty())
+                sb.append("env = ").append(inlineTable(run.env())).append('\n');
+            if (!run.jvmArgs().isEmpty())
+                sb.append("jvm-args = ").append(list(run.jvmArgs())).append('\n');
+            if (!run.systemProperties().isEmpty()) {
+                sb.append("system-properties = ")
+                        .append(inlineTable(run.systemProperties()))
+                        .append('\n');
+            }
+            if (run.timeoutMs() != null)
+                sb.append("timeout = \"").append(run.timeoutMs()).append("ms\"\n");
+            if (spec.explicit()) sb.append("explicit = true\n");
         });
     }
 
