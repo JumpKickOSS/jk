@@ -22,11 +22,12 @@ class PluginRecompileInputTest {
 
     @Test
     void a_compile_that_found_its_classes_up_to_date_is_not_a_recompile() {
-        assertThat(PlannerPlugin.recompiled(context(Map.of(BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate()))))
+        assertThat(PlannerPlugin.recompiled(
+                        context(Map.of(BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate(List.of())))))
                 .isFalse();
         assertThat(PlannerPlugin.recompiled(context(Map.of(
                         BuildPlanner.JAVA_COMPILE,
-                        CompileStamp.upToDate(),
+                        CompileStamp.upToDate(List.of()),
                         BuildPlanner.KOTLIN_COMPILE,
                         CompileStamp.noSources()))))
                 .isFalse();
@@ -35,7 +36,10 @@ class PluginRecompileInputTest {
     @Test
     void an_artifact_written_anew_over_up_to_date_classes_is_not_a_recompile() {
         assertThat(PlannerPlugin.recompiled(context(Map.of(
-                        BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate(), BuildPlanner.BUILD_OUTCOME, "built"))))
+                        BuildPlanner.JAVA_COMPILE,
+                        CompileStamp.upToDate(List.of()),
+                        BuildPlanner.BUILD_OUTCOME,
+                        "built"))))
                 .isFalse();
     }
 
@@ -44,7 +48,10 @@ class PluginRecompileInputTest {
         assertThat(PlannerPlugin.recompiled(context(Map.of(BuildPlanner.JAVA_COMPILE, compiled()))))
                 .isTrue();
         assertThat(PlannerPlugin.recompiled(context(Map.of(
-                        BuildPlanner.JAVA_COMPILE, CompileStamp.upToDate(), BuildPlanner.KOTLIN_COMPILE, compiled()))))
+                        BuildPlanner.JAVA_COMPILE,
+                        CompileStamp.upToDate(List.of()),
+                        BuildPlanner.KOTLIN_COMPILE,
+                        compiled()))))
                 .as("one language recompiled is enough")
                 .isTrue();
     }
@@ -55,7 +62,7 @@ class PluginRecompileInputTest {
     }
 
     private static CompileStamp compiled() {
-        return new CompileStamp("compiled", List.of(), "", List.of(), 0L, "");
+        return new CompileStamp("compiled", List.of(), "", List.of(), 0L, "", List.of());
     }
 
     private static TaskContext context(Map<BuildPlanKey<?>, ?> values) {

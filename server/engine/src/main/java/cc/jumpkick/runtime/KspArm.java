@@ -3,8 +3,6 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerKsp.*;
-import static cc.jumpkick.runtime.PlannerNative.javaSources;
-import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;

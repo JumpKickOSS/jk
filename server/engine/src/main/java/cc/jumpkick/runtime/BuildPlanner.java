@@ -157,6 +157,30 @@ public final class BuildPlanner {
     }
 
     /**
+     * The module's Java and Scala sources: the union compile-java compiled once it decided, else
+     * the declared list parse-build published.
+     */
+    static List<Path> javaSources(TaskContext ctx) {
+        return sources(ctx, JAVA_COMPILE, JAVA_SOURCES);
+    }
+
+    /** The module's Kotlin sources: compile-kotlin's union once it decided, else the declared list. */
+    static List<Path> kotlinSources(TaskContext ctx) {
+        return sources(ctx, KOTLIN_COMPILE, KOTLIN_SOURCES);
+    }
+
+    /** The module's Groovy sources: compile-groovy's union once it decided, else the declared list. */
+    static List<Path> groovySources(TaskContext ctx) {
+        return sources(ctx, GROOVY_COMPILE, GROOVY_SOURCES);
+    }
+
+    private static List<Path> sources(
+            TaskContext ctx, BuildPlanKey<CompileStamp> compiled, BuildPlanKey<List<Path>> declared) {
+        CompileStamp stamp = ctx.get(compiled).orElse(null);
+        return stamp != null ? stamp.sources() : ctx.get(declared).orElse(List.of());
+    }
+
+    /**
      * Everything a build needs that isn't carried through the plan's state. Every component has a
      * {@code with} copy; {@link #of} is where one starts.
      *

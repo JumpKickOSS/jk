@@ -8,8 +8,6 @@ import static cc.jumpkick.runtime.PlannerCompile.mainKotlinSourcesWithGenerated;
 import static cc.jumpkick.runtime.PlannerCompile.warnMovedSources;
 import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
 import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
-import static cc.jumpkick.runtime.PlannerNative.groovySources;
-import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.base.ResourceMirror.mergeLanguageOutput;
 
 import cc.jumpkick.cache.Cas;
@@ -117,12 +115,11 @@ final class LangCompileSteps {
     private void runCompileKotlin(TaskContext ctx) throws Exception {
         Path classes = mainClasses(ctx);
         Files.createDirectories(classes); // compile-java may be skipped
-        List<Path> declaredKt = kotlinSources(ctx);
         // Plugin-contributed generated Kotlin (a KSP round, a codegen step) joins the source list
         // exactly like the Java side: the freshness stamp and the plugin see generated files as
         // ordinary sources.
-        List<Path> ktSources = mainKotlinSourcesWithGenerated(declaredKt, ctx.require(LAYOUT), pluginDecls, ksp);
-        if (ktSources != declaredKt) ctx.put(KOTLIN_SOURCES, ktSources);
+        List<Path> ktSources =
+                mainKotlinSourcesWithGenerated(kotlinSources(ctx), ctx.require(LAYOUT), pluginDecls, ksp);
         if (ktSources.isEmpty()) {
             ctx.label("no Kotlin sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_KOTLIN);
@@ -166,7 +163,7 @@ final class LangCompileSteps {
             JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.KOTLINC, List.of(), ktKept.get());
             ctx.label("up to date");
             ctx.cached();
-            ctx.put(KOTLIN_COMPILE, CompileStamp.upToDate());
+            ctx.put(KOTLIN_COMPILE, CompileStamp.upToDate(ktSources));
             ctx.progress(ktSources.size());
             return;
         }
@@ -195,7 +192,8 @@ final class LangCompileSteps {
         }
         ctx.put(
                 KOTLIN_COMPILE,
-                new CompileStamp("compiled", freshInputs, optionsDigest, stampTokens, clock, kr.actionKey()));
+                new CompileStamp(
+                        "compiled", freshInputs, optionsDigest, stampTokens, clock, kr.actionKey(), ktSources));
         ctx.progress(ktSources.size());
     }
 
@@ -235,10 +233,8 @@ final class LangCompileSteps {
     private void runCompileGroovy(TaskContext ctx) throws Exception {
         Path classes = mainClasses(ctx);
         Files.createDirectories(classes); // compile-java may be skipped
-        List<Path> declaredGv = groovySources(ctx);
         // Plugin-contributed generated Groovy joins the source list exactly like the Kotlin side.
-        List<Path> gvSources = mainGroovySourcesWithGenerated(declaredGv, ctx.require(LAYOUT), pluginDecls);
-        if (gvSources != declaredGv) ctx.put(GROOVY_SOURCES, gvSources);
+        List<Path> gvSources = mainGroovySourcesWithGenerated(groovySources(ctx), ctx.require(LAYOUT), pluginDecls);
         if (gvSources.isEmpty()) {
             ctx.label("no Groovy sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_GROOVY);
@@ -290,7 +286,7 @@ final class LangCompileSteps {
             JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.GROOVYC, List.of(), gvKept.get());
             ctx.label("up to date");
             ctx.cached();
-            ctx.put(GROOVY_COMPILE, CompileStamp.upToDate());
+            ctx.put(GROOVY_COMPILE, CompileStamp.upToDate(gvSources));
             ctx.progress(gvSources.size());
             return;
         }
@@ -313,7 +309,8 @@ final class LangCompileSteps {
         if (!mixedGroovy) mergeLanguageOutput(gvOut, classes, module.layout().buildDir(), "groovy");
         ctx.put(
                 GROOVY_COMPILE,
-                new CompileStamp("compiled", freshInputs, optionsDigest, stampTokens, clock, gr.actionKey()));
+                new CompileStamp(
+                        "compiled", freshInputs, optionsDigest, stampTokens, clock, gr.actionKey(), gvSources));
         ctx.progress(gvSources.size());
     }
 

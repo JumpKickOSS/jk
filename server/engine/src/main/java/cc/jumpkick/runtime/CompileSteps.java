@@ -7,7 +7,6 @@ import static cc.jumpkick.runtime.PlannerCompile.dropOutputOfRemovedSources;
 import static cc.jumpkick.runtime.PlannerCompile.incremental;
 import static cc.jumpkick.runtime.PlannerCompile.mainCompileRequest;
 import static cc.jumpkick.runtime.PlannerCompile.warnMovedSources;
-import static cc.jumpkick.runtime.PlannerNative.javaSources;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -130,14 +129,10 @@ final class CompileSteps {
         // The Kotlin incremental compiler gets its own dir (kotlin/main/)
         // so it cannot prune Java's output; the assembler merges both.
         Path javaOut = classes;
-        // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root .scala)
-        // that parse-build published: the Scala toolchain is decided from it.
-        List<Path> declared = javaSources(ctx);
-        List<Path> sources = PlannerCompile.mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls, ksp);
-        if (sources != declared) {
-            // Re-publish the union: the steps after the compile read the set javac compiled.
-            ctx.put(JAVA_SOURCES, sources);
-        }
+        // The declared list already carries the java+scala union (incl. extra-src/plugin-root
+        // .scala) parse-build published: the Scala toolchain is decided from it. The steps after
+        // the compile read the set javac compiled off its stamp.
+        List<Path> sources = mainJavaSources(ctx, pluginDecls, ksp);
         if (sources.isEmpty()) {
             ctx.label("no Java sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_JAVA);
@@ -190,7 +185,7 @@ final class CompileSteps {
             JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, List.of(), kept.get());
             ctx.label("up to date");
             ctx.cached();
-            ctx.put(JAVA_COMPILE, CompileStamp.upToDate());
+            ctx.put(JAVA_COMPILE, CompileStamp.upToDate(sources));
             ctx.progress(sources.size());
             return;
         }
@@ -230,7 +225,9 @@ final class CompileSteps {
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, request, r);
         afterJavac(ctx, request, r);
-        ctx.put(JAVA_COMPILE, new CompileStamp(r.outcome(), sources, optionsDigest, stampTokens, clock, r.actionKey()));
+        ctx.put(
+                JAVA_COMPILE,
+                new CompileStamp(r.outcome(), sources, optionsDigest, stampTokens, clock, r.actionKey(), sources));
         ctx.put(MAIN_ABI, new MainAbi(preAbi, r.compiledSources()));
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
         advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);

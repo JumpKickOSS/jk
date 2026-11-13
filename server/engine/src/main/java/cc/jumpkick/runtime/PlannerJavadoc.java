@@ -4,12 +4,12 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
-import static cc.jumpkick.runtime.BuildPlanner.JAVA_SOURCES;
-import static cc.jumpkick.runtime.BuildPlanner.KOTLIN_SOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
+import static cc.jumpkick.runtime.BuildPlanner.javaSources;
+import static cc.jumpkick.runtime.BuildPlanner.kotlinSources;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
 import static cc.jumpkick.runtime.PackagingCache.storePackaged;
@@ -89,11 +89,11 @@ final class PlannerJavadoc {
         JkBuild project = ctx.require(PROJECT);
         BuildLayout layout = ctx.require(LAYOUT);
         Path javadocJar = layout.javadocJar();
-        List<Path> javaAndScala = ctx.require(JAVA_SOURCES);
+        List<Path> javaAndScala = javaSources(ctx);
         List<Path> sources = javaAndScala.stream()
                 .filter(p -> p.toString().endsWith(".java"))
                 .toList();
-        List<Path> kotlinSources = ctx.get(KOTLIN_SOURCES).orElse(List.of());
+        List<Path> kotlinSources = kotlinSources(ctx);
         List<Path> scalaSources = scaladocSources(javaAndScala, kotlinSources);
         String scalaVersion = scalaSources.isEmpty() ? null : scaladocVersion(project, ctx.require(LOCKFILE));
         // What javac saw, plus the module's own classes: a Java source may name a Kotlin type.

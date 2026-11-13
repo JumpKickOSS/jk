@@ -17,9 +17,17 @@ import java.util.List;
  * @param clock the filesystem clock ({@link FreshnessStamp#clockNow}) before the compile read its
  *     first input: a source edited while it ran is stale on the next check
  * @param actionKey the compile's action key: the record the classes tree is held against
+ * @param sources the sources the compile compiled, generated ones included, whether it ran or its
+ *     stamp held: what the steps after it read as the module's sources in that language
  */
 public record CompileStamp(
-        String outcome, List<Path> inputs, String digest, List<String> tokens, long clock, String actionKey) {
+        String outcome,
+        List<Path> inputs,
+        String digest,
+        List<String> tokens,
+        long clock,
+        String actionKey,
+        List<Path> sources) {
 
     public static final String NO_SOURCES = "no-sources";
     public static final String UP_TO_DATE = "up-to-date";
@@ -27,16 +35,17 @@ public record CompileStamp(
     public CompileStamp {
         inputs = List.copyOf(inputs);
         tokens = List.copyOf(tokens);
+        sources = List.copyOf(sources);
     }
 
     /** A compile with nothing to compile: no stamp to write. */
     public static CompileStamp noSources() {
-        return new CompileStamp(NO_SOURCES, List.of(), "", List.of(), Long.MAX_VALUE, "");
+        return new CompileStamp(NO_SOURCES, List.of(), "", List.of(), Long.MAX_VALUE, "", List.of());
     }
 
-    /** A compile its stamp already vouched for: the stamp stays as it is. */
-    public static CompileStamp upToDate() {
-        return new CompileStamp(UP_TO_DATE, List.of(), "", List.of(), Long.MAX_VALUE, "");
+    /** A compile of {@code sources} its stamp already vouched for: the stamp stays as it is. */
+    public static CompileStamp upToDate(List<Path> sources) {
+        return new CompileStamp(UP_TO_DATE, List.of(), "", List.of(), Long.MAX_VALUE, "", sources);
     }
 
     /** Whether the classes tree is as the last build left it: nothing compiled, nothing to stamp. */

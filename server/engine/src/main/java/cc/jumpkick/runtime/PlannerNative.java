@@ -815,14 +815,6 @@ public final class PlannerNative {
         }
     }
 
-    static List<Path> javaSources(TaskContext ctx) {
-        return ctx.get(JAVA_SOURCES).orElse(List.of());
-    }
-
-    static List<Path> kotlinSources(TaskContext ctx) {
-        return ctx.get(KOTLIN_SOURCES).orElse(List.of());
-    }
-
     /**
      * GraalVM / JDK home that {@code NativeImageDriver.resolve} recognises — i.e. one where
      * {@code GraalLauncher} finds a native-image launcher; that owner defines which directories
@@ -891,10 +883,6 @@ public final class PlannerNative {
         } catch (IOException e) {
             return JavaHomes.runningJavaHome();
         }
-    }
-
-    static List<Path> groovySources(TaskContext ctx) {
-        return ctx.get(GROOVY_SOURCES).orElse(List.of());
     }
 
     /**

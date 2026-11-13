@@ -92,8 +92,8 @@ public final class PlannerCompile {
     /**
      * {@link #javaAndScalaSources} plus the generated roots compile-main folds in at execute time:
      * plugin {@code contributesSources}, KSP output when {@code ksp} (the module runs a main round),
-     * and build-logic output. The build re-publishes this union as {@code JAVA_SOURCES}; a union
-     * already taken comes back unchanged.
+     * and build-logic output. compile-java records this union on its {@link
+     * cc.jumpkick.task.CompileStamp}; a union already taken comes back unchanged.
      */
     public static List<Path> mainJavaSources(
             List<Path> javaAndScala, BuildLayout layout, @Nullable PluginDeclarations decls, boolean ksp)
@@ -144,8 +144,8 @@ public final class PlannerCompile {
     /**
      * {@link #mainKotlinSources} plus the generated Kotlin compile-kotlin folds in at execute time:
      * plugin {@code contributesSources}, KSP output when {@code ksp} and build-logic output — the
-     * same union the Java side takes in {@link #mainJavaSources}. The build re-publishes it as {@code
-     * KOTLIN_SOURCES}, and the forecast derives its stamp inputs from the same body.
+     * same union the Java side takes in {@link #mainJavaSources}. compile-kotlin records it on its
+     * stamp, and the forecast derives its stamp inputs from the same body.
      */
     public static List<Path> mainKotlinSourcesWithGenerated(
             List<Path> kotlin, BuildLayout layout, @Nullable PluginDeclarations decls, boolean kspRound)
@@ -170,8 +170,8 @@ public final class PlannerCompile {
 
     /**
      * {@link #mainGroovySources} plus the generated Groovy compile-groovy folds in at execute
-     * time: plugin {@code contributesSources} and build-logic output. The build re-publishes it as
-     * {@code GROOVY_SOURCES}, and the forecast keys the same set.
+     * time: plugin {@code contributesSources} and build-logic output. compile-groovy records it on
+     * its stamp, and the forecast keys the same set.
      */
     public static List<Path> mainGroovySourcesWithGenerated(
             List<Path> groovy, BuildLayout layout, @Nullable PluginDeclarations decls) throws IOException {
