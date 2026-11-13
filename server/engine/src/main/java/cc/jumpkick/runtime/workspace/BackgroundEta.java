@@ -207,13 +207,17 @@ final class BackgroundEta {
     }
 
     /**
-     * Stop publishing and cancel a pricing still running. Returns the estimate when it had already
-     * settled, which is what the build learns its schedule bias from.
+     * Stop publishing and cancel a pricing that has not published. Returns the published estimate,
+     * or one that settled unpublished. A published pricing is not cancelled: its task may still be
+     * returning the estimate it has already handed out.
      */
     Optional<BuildService.EtaModel> close() {
+        BuildService.EtaModel shown;
         synchronized (lock) {
             open = false;
+            shown = published ? seed : null;
         }
+        if (shown != null) return Optional.of(shown);
         Future<BuildService.EtaModel> f = pricing;
         if (f != null && !f.isDone()) f.cancel(true);
         return settled();
