@@ -97,6 +97,18 @@ install_pass() {
 
 cd "$ROOT"
 state_log="$(mktemp)"
+# On Windows, setup-graalvm puts cl.exe on PATH with INCLUDE and LIB, and the pinned release's engine
+# keeps PATH but drops INCLUDE and LIB, which native-image cannot build under. Its engine is stopped,
+# and the next one starts without the Visual Studio environment, so native-image finds Visual Studio
+# on its own. Retire this once the pin's engine passes INCLUDE, LIB and LIBPATH through.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*)
+    unset INCLUDE LIB LIBPATH EXTERNAL_INCLUDE
+    PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'Microsoft Visual Studio\|Windows Kits' | paste -sd:)"
+    export PATH
+    run jk engine stop --now --no-ansi
+    ;;
+esac
 install_pass jk install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 install_pass "$JK_HOME/bin/jk" install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 ((checks)) || exit 0

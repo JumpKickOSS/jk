@@ -381,23 +381,9 @@ jobs:
           JK_CLIENT: native
         run: bash scripts/ci-bootstrap.sh
 
-      # On Windows, setup-graalvm exports the Visual Studio environment and puts cl.exe on PATH;
-      # the hosted bootstrap's engine keeps PATH and drops INCLUDE and LIB, a state native-image
-      # neither compiles in nor sets up itself. The installer started an engine under that
-      # environment, so it is stopped and respawned with those gone, and native-image locates
-      # Visual Studio 2022 on its own. Retire this once the pin's engine inherits INCLUDE, LIB
-      # and LIBPATH.
       - name: The checkout's own jk takes over
         shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            unset INCLUDE LIB LIBPATH EXTERNAL_INCLUDE
-            PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'Microsoft Visual Studio\|Windows Kits' | paste -sd:)"
-            export PATH
-            jk engine stop --now --no-ansi
-          fi
-          bash scripts/ci-takeover.sh --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Product smoke
         shell: bash
@@ -407,7 +393,8 @@ jobs:
   # push gate's row of the same name leaves out.
   node-windows-network:
     name: Node.js toolchain with network (Windows)
-    runs-on: windows-latest
+    # windows-2022 for the reason the product smoke gives.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -428,6 +415,11 @@ jobs:
         env:
           JK_CLIENT: native
         run: bash scripts/ci-bootstrap.sh
+
+      # The suites run under the checkout's jk: the pinned release cannot read the tree's guard rules.
+      - name: The checkout's own jk takes over
+        shell: bash
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Node.js toolchain suites
         shell: bash
