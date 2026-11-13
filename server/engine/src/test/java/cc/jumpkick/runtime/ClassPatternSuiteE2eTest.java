@@ -10,6 +10,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -93,7 +94,7 @@ class ClassPatternSuiteE2eTest {
     void a_class_of_the_integration_suite_named_under_the_default_suite_says_where_it_lives() throws Exception {
         Run run = run(TestSelection.DEFAULT.withClasses(List.of("FooIT")));
         assertThat(run.result().success()).isFalse();
-        assertThat(run.plan().get(BuildPlanner.TEST_RESULT))
+        assertThat(run.plan().get(BuildPlanner.TEST_RUN).map(TestRun::result))
                 .as("a selection that matched nothing is no red test")
                 .isEmpty();
         assertThat(run.result().errors()).singleElement().satisfies(d -> {
@@ -106,7 +107,7 @@ class ClassPatternSuiteE2eTest {
 
     private record Run(BuildPlan plan, BuildPlanResult result) {
         TestSummary tests() {
-            return plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+            return plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         }
     }
 

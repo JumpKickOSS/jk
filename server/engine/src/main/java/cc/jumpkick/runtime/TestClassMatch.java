@@ -9,6 +9,7 @@ import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -157,8 +158,9 @@ public final class TestClassMatch {
      */
     public static void skip(
             TaskContext ctx, TestSelection selection, @Nullable String tagExcluded, @Nullable String suiteHint) {
-        if (tagExcluded != null) ctx.put(BuildPlanner.TAG_EXCLUDED, tagExcluded);
-        if (suiteHint != null) ctx.put(BuildPlanner.CLASS_SUITE_HINT, suiteHint);
+        if (tagExcluded != null || suiteHint != null) {
+            ctx.put(BuildPlanner.TEST_RUN, new TestRun(null, tagExcluded, suiteHint));
+        }
         ctx.label(skipLabel(selection.classes(), suiteHint));
         ctx.cached();
     }
@@ -198,25 +200,25 @@ public final class TestClassMatch {
     /**
      * The workspace's verdict once every module has finished: the no-match message when the session
      * asked for classes, the run executed suites, and no module's suite ran a test — otherwise
-     * {@code null}. A module that matched carries a {@link BuildPlanner#TEST_RESULT} with tests in
-     * it, whether it ran them or replayed a green stamp for the same patterns. A module whose tag
-     * filter dropped a named class left {@link BuildPlanner#TAG_EXCLUDED}, and a module whose
-     * unselected suite owns a named class left {@link BuildPlanner#CLASS_SUITE_HINT}; the verdict
-     * carries them.
+     * {@code null}. A module that matched carries a {@link TestRun#result} with tests in it, whether
+     * it ran them or replayed a green stamp for the same patterns. A module whose tag filter dropped
+     * a named class left {@link TestRun#tagExcluded}, and a module whose unselected suite owns a
+     * named class left {@link TestRun#suiteHint}; the verdict carries them.
      */
     public static @Nullable String runWideVerdict(Session session, boolean skipTests, Collection<BuildPlan> plans) {
         TestSelection selection = session.testSelection();
         if (selection.classes().isEmpty() || session.affected()) return null;
         if (skipTests || selection.scriptsOnly()) return null;
         for (BuildPlan plan : plans) {
-            TestSummary result = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
+            TestSummary result =
+                    plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
             if (result != null && result.total() > 0) return null;
         }
         List<String> excluded = new ArrayList<>();
         List<String> hints = new ArrayList<>();
         for (BuildPlan plan : plans) {
-            plan.get(BuildPlanner.TAG_EXCLUDED).ifPresent(excluded::add);
-            plan.get(BuildPlanner.CLASS_SUITE_HINT).ifPresent(hints::add);
+            plan.get(BuildPlanner.TEST_RUN).map(TestRun::tagExcluded).ifPresent(excluded::add);
+            plan.get(BuildPlanner.TEST_RUN).map(TestRun::suiteHint).ifPresent(hints::add);
         }
         return noMatchMessage(
                 selection,

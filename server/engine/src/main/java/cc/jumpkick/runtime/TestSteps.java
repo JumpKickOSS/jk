@@ -33,6 +33,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
@@ -381,7 +382,7 @@ final class TestSteps {
         TestSummary ran = judged.result();
         if (ran != null) {
             TagExcludedSuite.note(ctx, sel, in.profileName(), exactClassList, ran);
-            ctx.put(TEST_RESULT, ran);
+            ctx.put(TEST_RUN, TestRun.of(ran));
         }
         if (judged.noMatch() != null) {
             ctx.error(TestClassMatch.NO_TESTS_MATCHED, judged.noMatch());

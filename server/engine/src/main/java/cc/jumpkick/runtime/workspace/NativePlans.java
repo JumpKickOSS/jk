@@ -10,6 +10,7 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.PlannerNative;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.TestClassMatch;
+import cc.jumpkick.task.TestRun;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -94,7 +95,7 @@ public final class NativePlans {
                 return Exit.NO_INPUT;
             }
         }
-        var testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
+        var testResult = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
         if (testResult != null && !testResult.allPassed()) return Exit.TESTS_FAILED;
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             if (TestClassMatch.NO_TESTS_MATCHED.equals(d.code())) return Exit.USAGE;

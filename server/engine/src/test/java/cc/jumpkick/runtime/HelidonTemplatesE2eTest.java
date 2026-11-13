@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.workspace.ExecPlans;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -110,7 +111,7 @@ class HelidonTemplatesE2eTest {
         BuildPlanResult built = plan.run();
         assertThat(built.errors()).as("build").isEmpty();
         assertThat(built.success()).as("build").isTrue();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.failed()).as("failed tests").isZero();
         assertThat(tests.succeeded()).as("the template's MainTest").isGreaterThanOrEqualTo(3);
 

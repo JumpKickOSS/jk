@@ -18,6 +18,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -77,7 +78,9 @@ class TestClassSelectionE2eTest {
         @Nullable
         TestSummary tests(Path module) {
             BuildPlan plan = plans.get(module);
-            return plan == null ? null : plan.get(BuildPlanner.TEST_RESULT).orElse(null);
+            return plan == null
+                    ? null
+                    : plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
         }
     }
 
@@ -228,7 +231,7 @@ class TestClassSelectionE2eTest {
 
         Standalone missing = standalone(lib, tmp, List.of("NoSuchTest"));
         assertThat(missing.result().success()).isFalse();
-        assertThat(missing.plan().get(BuildPlanner.TEST_RESULT))
+        assertThat(missing.plan().get(BuildPlanner.TEST_RUN).map(TestRun::result))
                 .as("the typo is a usage error, not a red test")
                 .isEmpty();
         assertThat(missing.result().errors()).singleElement().satisfies(d -> {
@@ -238,7 +241,7 @@ class TestClassSelectionE2eTest {
 
         Standalone present = standalone(lib, tmp, List.of("LibTest"));
         assertThat(present.result().success()).isTrue();
-        assertThat(present.plan().get(BuildPlanner.TEST_RESULT))
+        assertThat(present.plan().get(BuildPlanner.TEST_RUN).map(TestRun::result))
                 .hasValueSatisfying(tests -> assertThat(tests.total()).isEqualTo(1L));
     }
 

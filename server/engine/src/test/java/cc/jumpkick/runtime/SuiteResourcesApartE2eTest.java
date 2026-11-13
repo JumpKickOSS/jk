@@ -10,6 +10,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -122,7 +123,7 @@ class SuiteResourcesApartE2eTest {
 
     private record Run(BuildPlan plan, BuildPlanResult result) {
         TestSummary tests() {
-            return plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+            return plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         }
     }
 

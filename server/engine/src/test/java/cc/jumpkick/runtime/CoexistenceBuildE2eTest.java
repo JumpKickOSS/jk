@@ -18,6 +18,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -114,7 +115,8 @@ class CoexistenceBuildE2eTest {
         assertThat(built.errors()).isEmpty();
         assertThat(built.success()).isTrue();
         assertThat(project.resolve("target/classes/com/example/Greeter.class")).exists();
-        TestSummary tests = first.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests =
+                first.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).isEqualTo(1);
         assertThat(tests.failed()).isZero();
 

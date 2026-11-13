@@ -23,6 +23,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.NodeOutput;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.io.IOException;
 import java.net.URI;
@@ -119,7 +120,8 @@ class NodeBuildStepsTest {
         assertThat(web.resolve("dist/env.txt")).hasContent("a");
         assertThat(lines("builds.log")).isEqualTo(1);
         assertThat(lines("tests.log")).isEqualTo(1);
-        TestSummary tests = first.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests =
+                first.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).as("node --test's JUnit report").isEqualTo(2);
         assertThat(tests.succeeded()).isEqualTo(2);
 
@@ -128,7 +130,11 @@ class NodeBuildStepsTest {
         assertThat(run(again, session).errors()).isEmpty();
         assertThat(lines("builds.log")).as("build cached").isEqualTo(1);
         assertThat(lines("tests.log")).as("tests replayed").isEqualTo(1);
-        assertThat(again.get(BuildPlanner.TEST_RESULT).orElseThrow().total()).isEqualTo(2);
+        assertThat(again.get(BuildPlanner.TEST_RUN)
+                        .map(TestRun::result)
+                        .orElseThrow()
+                        .total())
+                .isEqualTo(2);
         assertThat(marker).as("install not rerun").exists();
 
         write("src/main.js", "module.exports = 2;\n");
@@ -189,7 +195,10 @@ class NodeBuildStepsTest {
         BuildPlanResult ok = run(reported, reporting);
         assertThat(ok.success()).isTrue();
         assertThat(ok.warnings()).anyMatch(d -> TestLaunch.FAILURES_REPORTED.equals(d.code()));
-        assertThat(reported.get(BuildPlanner.TEST_RESULT).orElseThrow().failed())
+        assertThat(reported.get(BuildPlanner.TEST_RUN)
+                        .map(TestRun::result)
+                        .orElseThrow()
+                        .failed())
                 .isEqualTo(1);
     }
 

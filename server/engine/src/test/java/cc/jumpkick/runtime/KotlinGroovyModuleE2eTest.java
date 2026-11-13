@@ -9,6 +9,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,7 +111,7 @@ class KotlinGroovyModuleE2eTest {
         Path testClasses = project.resolve("target/test-classes/com/example");
         assertThat(testClasses.resolve("GreetingTest.class")).exists();
         assertThat(testClasses.resolve("ShouterTest.class")).exists();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).as("one Kotlin test and one Groovy test").isEqualTo(2L);
         assertThat(tests.failures()).isEmpty();
     }

@@ -15,6 +15,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.TestClassMatch;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Files;
@@ -130,8 +131,7 @@ class NativePlansTest {
 
     @Test
     void failure_exit_code_maps_native_main_misconfig_to_usage() {
-        var plan =
-                BuildPlan.builder("native").stateKeys(BuildPlanner.TEST_RESULT).build();
+        var plan = BuildPlan.builder("native").stateKeys(BuildPlanner.TEST_RUN).build();
         var usage = new BuildPlanResult(
                 "native",
                 false,
@@ -161,7 +161,7 @@ class NativePlansTest {
 
     @Test
     void failure_exit_code_maps_a_class_selection_that_matched_nothing_to_usage() {
-        var plan = BuildPlan.builder("test").stateKeys(BuildPlanner.TEST_RESULT).build();
+        var plan = BuildPlan.builder("test").stateKeys(BuildPlanner.TEST_RUN).build();
         var noMatch = new BuildPlanResult(
                 "test",
                 false,
@@ -180,9 +180,9 @@ class NativePlansTest {
         TestSummary red =
                 new TestSummary(1, 0, 1, 0, List.of(new TestFailureInfo("m", "a.FooTest", "x", "x()", "", "boom", "")));
         var plan = BuildPlan.builder("test")
-                .stateKeys(BuildPlanner.TEST_RESULT)
+                .stateKeys(BuildPlanner.TEST_RUN)
                 .addTask(Task.builder("run-tests")
-                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RESULT, red))
+                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RUN, TestRun.of(red)))
                         .build())
                 .build();
         plan.run();

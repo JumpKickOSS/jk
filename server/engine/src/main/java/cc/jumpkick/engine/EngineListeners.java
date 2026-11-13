@@ -25,6 +25,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.CompileStamp;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.TimelineEvent;
@@ -71,7 +72,7 @@ public final class EngineListeners {
 
     /**
      * Plan listener for one hosted single-plan run. {@code realBuildPlan} is non-null only for a
-     * single-project build — its {@code TEST_RESULT}/{@code BUILD_OUTCOME} keys ride along on
+     * single-project build — its {@code TEST_RUN}/{@code BUILD_OUTCOME} keys ride along on
      * {@link EngineProtocol#BUILDPLAN_FINISH}.
      */
     public BuildPlanListener plan(String dir, @Nullable BufferedWriter writer, @Nullable BuildPlan realBuildPlan) {
@@ -213,7 +214,9 @@ public final class EngineListeners {
 
             @Override
             public void testsFrom(BuildPlan plan) {
-                journal.accTests(rid, plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+                journal.accTests(
+                        rid,
+                        plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null));
                 journal.accAffected(rid, plan.get(BuildPlanner.AFFECTED_TESTS).orElse(null));
             }
         };
@@ -279,7 +282,7 @@ public final class EngineListeners {
     static String encodePlanFinish(String dir, @Nullable BuildPlan realBuildPlan, BuildPlanResult result) {
         TestSummary testResult = realBuildPlan == null
                 ? null
-                : realBuildPlan.get(BuildPlanner.TEST_RESULT).orElse(null);
+                : realBuildPlan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
         // A packaging step that wrote the artifact anew says so; otherwise compile-java's outcome is the module's.
         String buildOutcome = realBuildPlan == null
                 ? null

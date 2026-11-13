@@ -40,6 +40,7 @@ import cc.jumpkick.runtime.base.TestStoreSeed;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.CoverageAgent;
@@ -293,7 +294,7 @@ final class TestLaunch {
         // sources. Markers written before counts were stored replay nothing;
         // the next real run upgrades them.
         TestSummary previous = PlannerTest.stampedSummary(marker.get());
-        if (previous != null) ctx.put(TEST_RESULT, previous);
+        if (previous != null) ctx.put(TEST_RUN, TestRun.of(previous));
         return true;
     }
 

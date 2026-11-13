@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.runtime.workspace.ExecPlans;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -85,7 +86,7 @@ class HelidonQuickstartE2eTest {
         BuildPlanResult built = plan.run();
         assertThat(built.errors()).isEmpty();
         assertThat(built.success()).isTrue();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.failed()).isZero();
         assertThat(tests.succeeded())
                 .as("MainTest's four and ConfigProfileTest, which reads helidon.config.profile=test")
@@ -123,7 +124,7 @@ class HelidonQuickstartE2eTest {
                                 "target/test-classes/io/helidon/examples/quickstart/inject/TestConfigFactory__ServiceDescriptor.class"))
                 .as("compile-test runs the processors too")
                 .isRegularFile();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.failed()).isZero();
         assertThat(tests.succeeded()).isPositive();
 
@@ -268,7 +269,7 @@ class HelidonQuickstartE2eTest {
         assertThat(binding(project, "test-classes", "TestApplicationBinding"))
                 .as("helidon-test-binding wrote TestApplicationBinding beside the test classes")
                 .isNotEmpty();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.failed()).isZero();
         assertThat(tests.succeeded()).isPositive();
     }

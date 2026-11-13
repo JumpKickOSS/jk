@@ -7,7 +7,7 @@ import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_INSTALLED;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_OUTPUT;
-import static cc.jumpkick.runtime.BuildPlanner.TEST_RESULT;
+import static cc.jumpkick.runtime.BuildPlanner.TEST_RUN;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -31,6 +31,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.NodeOutput;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -646,7 +647,7 @@ final class NodeArm {
                     NodeProcess.Result r = NodeProcess.run(ctx, argv, nodeDir, runEnv);
                     TestSummary summary =
                             NodeTestReport.summary(NodeTestReport.read(xml, module()), r, module(), script);
-                    ctx.put(TEST_RESULT, summary);
+                    ctx.put(TEST_RUN, TestRun.of(summary));
                     if (summary.allPassed() && r.ok()) {
                         actionCache.storeWithOutputs(
                                 keyed.taskId(),
@@ -669,7 +670,7 @@ final class NodeArm {
         ctx.label(TaskNames.TESTS_UP_TO_DATE);
         ctx.cached();
         TestSummary previous = PlannerTest.stampedSummary(marker.get());
-        if (previous != null) ctx.put(TEST_RESULT, previous);
+        if (previous != null) ctx.put(TEST_RUN, TestRun.of(previous));
         return true;
     }
 

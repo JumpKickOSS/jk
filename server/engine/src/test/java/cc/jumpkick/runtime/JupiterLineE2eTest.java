@@ -7,6 +7,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -68,7 +69,7 @@ class JupiterLineE2eTest {
                 .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.9.0\"");
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).as("the Jupiter 5 engine ran its test").isEqualTo(1);
         assertThat(tests.succeeded()).isEqualTo(1);
     }
@@ -85,7 +86,7 @@ class JupiterLineE2eTest {
                 .contains("org.junit.jupiter:junit-jupiter-engine:jar:\"\nversion  = \"5.12.2\"")
                 .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.12.2\"");
         assertThat(result.errors()).isEmpty();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.succeeded())
                 .as("the injected engine ran the API-only suite")
                 .isEqualTo(1);
@@ -103,7 +104,7 @@ class JupiterLineE2eTest {
                 .as("no launcher pin: the launcher follows the Jupiter 5.12.2 the library brings in")
                 .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.12.2\"");
         assertThat(result.errors()).isEmpty();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.succeeded()).isEqualTo(1);
     }
 
@@ -122,7 +123,7 @@ class JupiterLineE2eTest {
                 .contains("org.junit.jupiter:junit-jupiter-engine:jar:\"\nversion  = \"5.12.2\"")
                 .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.12.2\"");
         assertThat(result.errors()).isEmpty();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.succeeded()).isEqualTo(1);
     }
 
@@ -178,7 +179,7 @@ class JupiterLineE2eTest {
         assertThat(result.success())
                 .as("a helper-only root is the empty run, as surefire's 'No tests to run'")
                 .isTrue();
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).isZero();
         assertThat(result.warnings())
                 .filteredOn(d -> "no-test-classes".equals(d.code()))
@@ -208,7 +209,7 @@ class JupiterLineE2eTest {
                 .as("a declared test that no engine discovers is a failed step, never OK")
                 .isFalse();
         assertThat(result.errors()).anySatisfy(d -> assertThat(d.step()).isEqualTo("run-tests"));
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.failed()).isEqualTo(1);
         assertThat(tests.failures()).anySatisfy(f -> {
             assertThat(f.method()).isEqualTo("(test run)");

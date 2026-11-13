@@ -11,6 +11,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.test.TestProgressListener;
 import java.util.ArrayList;
 import java.util.List;
@@ -86,10 +87,10 @@ class TestClassMatchTest {
 
         Session session = Session.defaults().withTestSelection(fooIt);
         BuildPlan hinted = BuildPlan.builder("module")
-                .stateKeys(BuildPlanner.TEST_RESULT, BuildPlanner.CLASS_SUITE_HINT)
+                .stateKeys(BuildPlanner.TEST_RUN)
                 .addTask(Task.builder("run-tests")
                         .ticks(1)
-                        .execute(ctx -> ctx.put(BuildPlanner.CLASS_SUITE_HINT, hint))
+                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RUN, new TestRun(null, null, hint)))
                         .build())
                 .build();
         hinted.run();
@@ -101,10 +102,10 @@ class TestClassMatchTest {
     void a_module_whose_tag_filter_dropped_the_named_class_is_the_run_wide_verdict() {
         Session session = Session.defaults().withTestSelection(ORDERS);
         BuildPlan dropped = BuildPlan.builder("module")
-                .stateKeys(BuildPlanner.TEST_RESULT, BuildPlanner.TAG_EXCLUDED)
+                .stateKeys(BuildPlanner.TEST_RUN)
                 .addTask(Task.builder("run-tests")
                         .ticks(1)
-                        .execute(ctx -> ctx.put(BuildPlanner.TAG_EXCLUDED, TAG_EXCLUDED))
+                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RUN, new TestRun(null, TAG_EXCLUDED, null)))
                         .build())
                 .build();
         dropped.run();
@@ -251,11 +252,11 @@ class TestClassMatchTest {
     /** A finished module plan whose run-tests step left {@code result} behind, or nothing when skipped. */
     private static BuildPlan plan(@Nullable TestSummary result) {
         BuildPlan plan = BuildPlan.builder("module")
-                .stateKeys(BuildPlanner.TEST_RESULT)
+                .stateKeys(BuildPlanner.TEST_RUN)
                 .addTask(Task.builder("run-tests")
                         .ticks(1)
                         .execute(ctx -> {
-                            if (result != null) ctx.put(BuildPlanner.TEST_RESULT, result);
+                            if (result != null) ctx.put(BuildPlanner.TEST_RUN, TestRun.of(result));
                         })
                         .build())
                 .build();

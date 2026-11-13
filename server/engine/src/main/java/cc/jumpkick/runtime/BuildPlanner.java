@@ -17,13 +17,13 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.SessionCancel;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.task.NodeOutput;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Path;
@@ -123,13 +123,11 @@ public final class BuildPlanner {
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
-    public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.scalar("test-result", TestSummary.class);
-    /** The runner's {@code tag-excluded} warning on a {@code --class} run the tag filter emptied. */
-    public static final BuildPlanKey<String> TAG_EXCLUDED = BuildPlanKey.scalar("tag-excluded", String.class);
+
+    /** What {@code run-tests} or {@code node-test} left: the suite's summary, or why the module skipped. */
+    public static final BuildPlanKey<TestRun> TEST_RUN = BuildPlanKey.scalar("test-run", TestRun.class);
 
     public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.scalar("no-test-sources", Boolean.class);
-    /** The suite a {@code --class} that matched nothing in this module named instead, when one owns it. */
-    public static final BuildPlanKey<String> CLASS_SUITE_HINT = BuildPlanKey.scalar("class-suite-hint", String.class);
 
     /** What a javac main compile that ran changed, for {@code --affected}. */
     public static final BuildPlanKey<MainAbi> MAIN_ABI = BuildPlanKey.scalar("main-abi", MainAbi.class);
@@ -163,10 +161,8 @@ public final class BuildPlanner {
             MAIN_CLASSES,
             TEST_CLASSES,
             LAYOUT,
-            TEST_RESULT,
-            TAG_EXCLUDED,
+            TEST_RUN,
             NO_TEST_SOURCES,
-            CLASS_SUITE_HINT,
             MAIN_ABI,
             AFFECTED_TESTS);
 

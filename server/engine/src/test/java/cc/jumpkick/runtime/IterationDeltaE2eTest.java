@@ -15,6 +15,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.charset.StandardCharsets;
@@ -140,7 +141,8 @@ class IterationDeltaE2eTest {
                 .call(plan::run);
         long millis = Math.max(1, (System.nanoTime() - start) / 1_000_000);
         writer.accBuildPlanFinish(requestId, "", result);
-        writer.accTests(requestId, plan.get(BuildPlanner.TEST_RESULT).orElse(null));
+        writer.accTests(
+                requestId, plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null));
         writer.write(requestId, false, millis, null);
         return result;
     }

@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -96,7 +97,7 @@ import org.junit.jupiter.api.Tag;
                         .append(d.message())
                         .append('\n');
             }
-            plan.get(BuildPlanner.TEST_RESULT).ifPresent(ts -> {
+            plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).ifPresent(ts -> {
                 dump.append("NESTED-SUMMARY total=")
                         .append(ts.total())
                         .append(" fail=")

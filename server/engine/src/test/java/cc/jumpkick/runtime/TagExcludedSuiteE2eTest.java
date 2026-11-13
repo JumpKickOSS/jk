@@ -10,6 +10,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -88,7 +89,7 @@ class TagExcludedSuiteE2eTest {
                 .noneMatch(d -> "no-tests-discovered".equals(d.code()))
                 .noneMatch(d -> d.message() != null && d.message().contains("discovery found 0 tests"));
         assertThat(outputs).contains("run-tests: 0 tests (all excluded by profile nightly)");
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).isZero();
         assertThat(tests.failed()).isZero();
     }

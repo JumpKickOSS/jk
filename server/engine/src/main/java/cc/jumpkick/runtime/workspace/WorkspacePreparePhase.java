@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.runtime.base.SuiteSelection;
+import cc.jumpkick.task.TestRun;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -205,7 +206,10 @@ final class WorkspacePreparePhase {
                 .addListener(new StepTimingsRecorder(
                         plan.dir().toString(),
                         resources.timingSamples(),
-                        () -> plan.plan().get(BuildPlanner.TEST_RESULT).orElse(null),
+                        () -> plan.plan()
+                                .get(BuildPlanner.TEST_RUN)
+                                .map(TestRun::result)
+                                .orElse(null),
                         resources.hostSamples(),
                         suiteOf(SessionContext.current())));
     }
