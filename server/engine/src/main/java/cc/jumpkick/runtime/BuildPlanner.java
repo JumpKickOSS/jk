@@ -21,6 +21,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
+import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.task.NodeOutput;
 import cc.jumpkick.task.TestRun;
@@ -80,18 +81,6 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<List<String>> JAVAC_ARGS = BuildPlanKey.list("javac-args", String.class);
 
-    /** The javac test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
-    public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
-            BuildPlanKey.scalar("compile-test-action-key", String.class);
-
-    /** The Kotlin test compile's action key — the same stamp input, absent when no Kotlin test sources exist. */
-    public static final BuildPlanKey<String> COMPILE_TEST_KOTLIN_ACTION_KEY =
-            BuildPlanKey.scalar("compile-test-kotlin-action-key", String.class);
-
-    /** The Groovy test compile's action key — the same stamp input, absent when no Groovy test sources exist. */
-    public static final BuildPlanKey<String> COMPILE_TEST_GROOVY_ACTION_KEY =
-            BuildPlanKey.scalar("compile-test-groovy-action-key", String.class);
-
     /** What compile-java decided, for write-stamp, assemble-classes and the steps after them. */
     public static final BuildPlanKey<CompileStamp> JAVA_COMPILE =
             BuildPlanKey.scalar("java-compile", CompileStamp.class);
@@ -104,15 +93,9 @@ public final class BuildPlanner {
     public static final BuildPlanKey<CompileStamp> GROOVY_COMPILE =
             BuildPlanKey.scalar("groovy-compile", CompileStamp.class);
 
-    public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
-
-    /** Suite resource dirs copied into target/test-classes — a TestStamp input. */
-    public static final BuildPlanKey<List<Path>> TEST_RESOURCE_DIRS =
-            BuildPlanKey.list("test-resource-dirs", Path.class);
-
-    /** Each directory suite's own resource roots when a run compiles several apart; empty otherwise. */
-    static final BuildPlanKey<SuiteResources> SUITE_RESOURCES =
-            BuildPlanKey.scalar("suite-resources", SuiteResources.class);
+    /** What compile-test left for run-tests: the sources, action keys and resource roots of the suite. */
+    static final BuildPlanKey<CompiledTests> COMPILED_TESTS =
+            BuildPlanKey.scalar("compiled-tests", CompiledTests.class);
 
     /**
      * {@code built} once a packaging step wrote the module's artifact anew, whatever its compiles
@@ -126,8 +109,6 @@ public final class BuildPlanner {
 
     /** What {@code run-tests} or {@code node-test} left: the suite's summary, or why the module skipped. */
     public static final BuildPlanKey<TestRun> TEST_RUN = BuildPlanKey.scalar("test-run", TestRun.class);
-
-    public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.scalar("no-test-sources", Boolean.class);
 
     /** What a javac main compile that ran changed, for {@code --affected}. */
     public static final BuildPlanKey<MainAbi> MAIN_ABI = BuildPlanKey.scalar("main-abi", MainAbi.class);
@@ -151,18 +132,12 @@ public final class BuildPlanner {
             JAVA_COMPILE,
             KOTLIN_COMPILE,
             GROOVY_COMPILE,
-            COMPILE_TEST_ACTION_KEY,
-            COMPILE_TEST_KOTLIN_ACTION_KEY,
-            COMPILE_TEST_GROOVY_ACTION_KEY,
-            TEST_SOURCES,
-            TEST_RESOURCE_DIRS,
-            SUITE_RESOURCES,
+            COMPILED_TESTS,
             BUILD_OUTCOME,
             MAIN_CLASSES,
             TEST_CLASSES,
             LAYOUT,
             TEST_RUN,
-            NO_TEST_SOURCES,
             MAIN_ABI,
             AFFECTED_TESTS);
 

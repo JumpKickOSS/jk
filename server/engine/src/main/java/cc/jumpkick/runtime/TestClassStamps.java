@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_ACTION_KEY;
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_GROOVY_ACTION_KEY;
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_KOTLIN_ACTION_KEY;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
@@ -12,6 +9,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,13 +26,15 @@ final class TestClassStamps {
     private TestClassStamps() {}
 
     /**
-     * Stamp {@code testClasses} for this run's Java, Kotlin and Groovy test compiles, the sources
-     * each read and {@code readClock}, the instant before the first of them read a source. One
+     * Stamp {@code testClasses} for this run's Java, Kotlin and Groovy test compiles: each one's
+     * action key in {@code keys}, the sources each read and {@code readClock}, the instant before
+     * the first of them read a source. One
      * compile reads every selected suite's sources, so its key covers every suite the tree holds. A
      * stamp of a compiler that wrote nothing this run is removed.
      */
     static void write(
             TaskContext ctx,
+            TestStamp.CompileTestKeys keys,
             List<Path> javaSources,
             List<Path> kotlinSources,
             List<Path> groovySources,
@@ -47,7 +47,7 @@ final class TestClassStamps {
                 testClasses,
                 BuildStamps.JAVA,
                 TaskNames.COMPILE_TEST,
-                ctx.get(COMPILE_TEST_ACTION_KEY).orElse(null),
+                keys.javac(),
                 javaSources,
                 classpath,
                 ctx.require(PROJECT).javac().testRelease(release),
@@ -56,7 +56,7 @@ final class TestClassStamps {
                 testClasses,
                 BuildStamps.KOTLIN,
                 TaskNames.COMPILE_TEST_KOTLIN,
-                ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).orElse(null),
+                keys.kotlin(),
                 kotlinSources,
                 classpath,
                 release,
@@ -65,7 +65,7 @@ final class TestClassStamps {
                 testClasses,
                 BuildStamps.GROOVY,
                 TaskNames.COMPILE_TEST_GROOVY,
-                ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).orElse(null),
+                keys.groovy(),
                 groovySources,
                 classpath,
                 release,

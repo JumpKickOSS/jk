@@ -189,7 +189,7 @@ public record TestStampInputs(
         // forecast's source list must cover the same files the live run stamps.
         var resolved = SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        // The same factory the live plan fills TEST_SOURCES from, so the forecast stamps exactly
+        // The same factory compile-test collects its sources with, so the forecast stamps exactly
         // the files the run stamps: every selected suite's sources in every language, plus the
         // `[test] extra-src` files that belong to the tier and to no suite.
         BuildLayout layout = facts.layout();

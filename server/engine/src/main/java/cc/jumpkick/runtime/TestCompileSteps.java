@@ -35,9 +35,11 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.LangCompile;
+import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -115,7 +117,7 @@ final class TestCompileSteps {
         if (src.isEmpty()) {
             ctx.label("no test sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_TEST);
-            ctx.put(NO_TEST_SOURCES, true);
+            ctx.put(COMPILED_TESTS, CompiledTests.NO_SOURCES);
             warnDeclaredTestDepsButNoSources(ctx, project, in.dir());
             ctx.cached(); // SKIPPED — nothing to compile
             ctx.progress(1);
@@ -128,8 +130,6 @@ final class TestCompileSteps {
             src = TestSources.collect( // the round rewrote its generated sources
                     project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
         }
-        // Store combined test sources for the TestStamp in run-tests.
-        ctx.put(TEST_SOURCES, src.all());
         Path testClasses = ctx.require(TEST_CLASSES);
         String selectionKey = String.join(",", compiledSuites);
         resetOnSelectionChange(ctx, testClasses, selectionKey);
@@ -144,11 +144,10 @@ final class TestCompileSteps {
         long readClock = FreshnessStamp.clockNow(testClasses);
         // Kotlin first, then Groovy against its output (Gradle's order), then Java against
         // both. The step did no work when the round and every compiler restored.
-        boolean restored = round != KspArm.RoundOutcome.RAN;
         StepWarnings warnings = new StepWarnings();
-        restored &= compileKotlinTests(
+        TestSupport.Compiled kotlin = compileKotlinTests(
                 ctx, warnings, src, baseCp, outs.kotlinOut(), testClasses, outs.mixedKotlin() && javaTests);
-        restored &= compileGroovyTests(
+        TestSupport.Compiled groovy = compileGroovyTests(
                 ctx,
                 warnings,
                 src,
@@ -157,22 +156,31 @@ final class TestCompileSteps {
                 testClasses,
                 compiledSuites,
                 outs.mixedGroovy() && javaTests);
-        restored &= compileJavaTests(ctx, warnings, src, outs.javacClasspath(baseCp), testClasses);
+        TestSupport.Compiled javac = compileJavaTests(ctx, warnings, src, outs.javacClasspath(baseCp), testClasses);
+        boolean restored =
+                round != KspArm.RoundOutcome.RAN && kotlin.restored() && groovy.restored() && javac.restored();
+        TestStamp.CompileTestKeys keys =
+                new TestStamp.CompileTestKeys(javac.actionKey(), kotlin.actionKey(), groovy.actionKey());
         warnings.write(ctx, TaskNames.COMPILE_TEST);
         mergeLanguageOutputs(src, outs, ctx.require(LAYOUT).buildDir());
-        SuiteResources.mirror(
-                ctx,
-                in,
-                actionCache,
-                compact,
-                compiledSuites,
-                testClasses,
-                beforeNonClass,
-                outs.mixedKotlin(),
-                outs.mixedGroovy());
+        ctx.put(
+                COMPILED_TESTS,
+                SuiteResources.mirror(
+                        ctx,
+                        in,
+                        actionCache,
+                        compact,
+                        compiledSuites,
+                        testClasses,
+                        beforeNonClass,
+                        outs.mixedKotlin(),
+                        outs.mixedGroovy(),
+                        src.all(),
+                        keys));
         Files.createDirectories(testClasses);
         Files.writeString(suiteMarker(testClasses), selectionKey);
-        TestClassStamps.write(ctx, src.javacSources(), src.ktTest(), src.gvTest(), baseCp, testClasses, readClock);
+        TestClassStamps.write(
+                ctx, keys, src.javacSources(), src.ktTest(), src.gvTest(), baseCp, testClasses, readClock);
         if (restored) ctx.cached(); // SKIPPED — every compiler restored its record
         ctx.progress(1);
     }
@@ -188,7 +196,7 @@ final class TestCompileSteps {
         if (resolved.ok()) return resolved.suites();
         if (in.projectModules().size() > 1) {
             ctx.label("skipped: suite not in this module");
-            ctx.put(NO_TEST_SOURCES, true);
+            ctx.put(COMPILED_TESTS, CompiledTests.NO_SOURCES);
             ctx.cached(); // SKIPPED — suite absent in this workspace module
             ctx.progress(1);
             return null;
@@ -235,10 +243,9 @@ final class TestCompileSteps {
 
     /**
      * Groovy test sources before Java's (joint mode sweeps the Java test roots for resolution), so
-     * Java tests can reference Groovy test types. {@code jointWithJava} sweeps the Java roots. True
-     * when groovyc restored its record or had nothing to compile.
+     * Java tests can reference Groovy test types. {@code jointWithJava} sweeps the Java roots.
      */
-    private boolean compileGroovyTests(
+    private TestSupport.Compiled compileGroovyTests(
             TaskContext ctx,
             StepWarnings warnings,
             TestSources src,
@@ -248,7 +255,7 @@ final class TestCompileSteps {
             List<String> suiteNames,
             boolean jointWithJava)
             throws Exception {
-        if (src.gvTest().isEmpty()) return true;
+        if (src.gvTest().isEmpty()) return TestSupport.Compiled.NOTHING;
         ctx.label("compiling " + src.gvTest().size() + " Groovy test sources");
         String gvTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses);
         List<Path> gvJavaRoots = null;
@@ -273,16 +280,14 @@ final class TestCompileSteps {
         }
         JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.GROOVYC, gr.freshWarnings(), gr.replayed());
         warnings.add(JavacDiagnostics.GROOVYC, gr.warnings());
-        ctx.put(COMPILE_TEST_GROOVY_ACTION_KEY, gr.actionKey());
-        return gr.cacheHit();
+        return new TestSupport.Compiled(true, gr.cacheHit(), gr.actionKey());
     }
 
     /**
      * Kotlin test sources first, so Groovy and Java tests can reference Kotlin test types (mirrors
      * the main ordering). {@code readsJava} has kotlinc read the Java test sources' declarations.
-     * True when kotlinc restored its record or had nothing to compile.
      */
-    private boolean compileKotlinTests(
+    private TestSupport.Compiled compileKotlinTests(
             TaskContext ctx,
             StepWarnings warnings,
             TestSources src,
@@ -291,7 +296,7 @@ final class TestCompileSteps {
             Path testClasses,
             boolean readsJava)
             throws Exception {
-        if (src.ktTest().isEmpty()) return true;
+        if (src.ktTest().isEmpty()) return TestSupport.Compiled.NOTHING;
         ctx.label("compiling " + src.ktTest().size() + " Kotlin test sources");
         String ktTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses);
         Path ktWorkingDir = ActionKey.stateDir(
@@ -319,18 +324,14 @@ final class TestCompileSteps {
         }
         JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.KOTLINC, kr.freshWarnings(), kr.replayed());
         warnings.add(JavacDiagnostics.KOTLINC, kr.warnings());
-        ctx.put(COMPILE_TEST_KOTLIN_ACTION_KEY, kr.actionKey());
-        return kr.cacheHit();
+        return new TestSupport.Compiled(true, kr.cacheHit(), kr.actionKey());
     }
 
-    /**
-     * Java/Scala test sources over {@code javaCp} ({@link TestOutputs#javacClasspath}). True when
-     * javac restored its record or had nothing to compile.
-     */
-    private boolean compileJavaTests(
+    /** Java/Scala test sources over {@code javaCp} ({@link TestOutputs#javacClasspath}). */
+    private TestSupport.Compiled compileJavaTests(
             TaskContext ctx, StepWarnings warnings, TestSources src, List<Path> javaCp, Path testClasses)
             throws Exception {
-        if (src.javaTest().isEmpty() && src.scTest().isEmpty()) return true;
+        if (src.javaTest().isEmpty() && src.scTest().isEmpty()) return TestSupport.Compiled.NOTHING;
         Path javaTestOut = testClasses; // javac always writes to java/test/
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
         // The declared annotation processors run over test sources — the shared table's javac
@@ -369,7 +370,7 @@ final class TestCompileSteps {
                         in.dir(),
                         ctx.require(LAYOUT).moduleTargetDir()));
         if (!compiled.ok()) throw new RuntimeException("test compile failed");
-        return compiled == TestSupport.Compiled.RESTORED;
+        return compiled;
     }
 
     /**

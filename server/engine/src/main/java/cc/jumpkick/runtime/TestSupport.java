@@ -741,7 +741,7 @@ public final class TestSupport {
         Path outputDir = compile.outputDir();
         if (sources.isEmpty()) {
             Files.createDirectories(outputDir);
-            return Compiled.RESTORED;
+            return Compiled.NOTHING;
         }
 
         // Project-qualify so the `tasks/<taskId>` pointer is unique per module
@@ -828,30 +828,29 @@ public final class TestSupport {
             return Compiled.FAILED;
         }
         warnings.add(JavacDiagnostics.TOOL, r.warnings());
-        if (TaskNames.COMPILE_TEST.equals(taskId)) {
-            // run-tests folds this into its stamp: the test javac configuration is an input to
-            // the suite's outcome, and nothing else in the stamp reads it.
-            ctx.put(BuildPlanner.COMPILE_TEST_ACTION_KEY, r.actionKey());
-        }
         if (r.cacheHit()) {
             ctx.label(taskId + ": cache hit " + r.actionKey().substring(0, 8));
-            return Compiled.RESTORED;
+            return new Compiled(true, true, r.actionKey());
         }
         ctx.label(taskId + ": compiled " + sources.size() + " sources");
-        return Compiled.COMPILED;
+        return new Compiled(true, false, r.actionKey());
     }
 
     /**
-     * How a test compile ended: failed, compiled, or restored from its record (or had nothing to
-     * compile). The step reports itself a cache hit only when every compiler it ran restored.
+     * How a test compile ended. The step reports itself a cache hit only when every compiler it ran
+     * restored.
+     *
+     * @param ok false when the compile failed
+     * @param restored the compile restored its record or had nothing to compile
+     * @param actionKey the compile's action key, a run-tests stamp input; {@code null} when it failed
+     *     or had nothing to compile
      */
-    public enum Compiled {
-        FAILED,
-        COMPILED,
-        RESTORED;
+    public record Compiled(
+            boolean ok, boolean restored, @Nullable String actionKey) {
 
-        public boolean ok() {
-            return this != FAILED;
-        }
+        static final Compiled FAILED = new Compiled(false, false, null);
+
+        /** Nothing to compile. */
+        static final Compiled NOTHING = new Compiled(true, true, null);
     }
 }

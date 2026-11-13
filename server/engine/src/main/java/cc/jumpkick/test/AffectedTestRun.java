@@ -69,8 +69,8 @@ public final class AffectedTestRun {
         production.addAll(foreign.keySet());
         List<TestClassIndex.Entry> tests = runnable(
                 TestClassIndex.scan(testClasses, production), project.build().testExcludeClasses(), suites);
-        // run-tests only executes when test sources exist (NO_TEST_SOURCES short-circuits), so an
-        // empty scan after compile-test means the classes are missing — refuse, don't guess.
+        // run-tests only executes when compile-test found test sources, so an empty scan after
+        // compile-test means the classes are missing — refuse, don't guess.
         if (tests.isEmpty()) {
             throw refuse(ctx, "no-tests", "no compiled test classes");
         }

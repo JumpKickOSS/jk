@@ -2262,7 +2262,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-mutual-classes]
 [runtime-mutual-classes.populations]
-"server/engine" = { classes = 287, edges = 1059 }
+"server/engine" = { classes = 290, edges = 1062 }
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ActivePlugins~cc.jumpkick.runtime.PluginBuild"
@@ -2287,11 +2287,6 @@ reason = "the runtime packages as the coupling guard first measured them"
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.PlannerTails"
 value  = 12
-reason = "the runtime packages as the coupling guard first measured them"
-[[runtime-mutual-classes.entries]]
-in     = "server/engine"
-unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner~cc.jumpkick.runtime.TestSupport"
-value  = 2
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
@@ -2471,7 +2466,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 285, edges = 1052 }
+"server/engine" = { classes = 290, edges = 1062 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -2480,7 +2475,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 50
+value  = 49
 reason = "the guard lanes run in the per-plan GuardSteps, which reads the plan keys from BuildPlanner as PlannerGuards' step bodies did, and PlannerGuards still reads them for the output lane the packaging tails plan"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"

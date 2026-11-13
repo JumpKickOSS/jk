@@ -320,9 +320,8 @@ final class TestLaunch {
     }
 
     /**
-     * target/classes, the test runtime classpath, and the language runtimes keyed on the SELECTED
-     * suites' sources (TEST_SOURCES is selection-scoped) — the old default-suite-only collectors
-     * missed a Kotlin/Groovy-only named suite and the forked JVM lacked the runtime.
+     * target/classes, the test runtime classpath, and the language runtimes keyed on the selected
+     * suites' sources, so a Kotlin- or Groovy-only named suite's forked JVM has its runtime.
      */
     static List<Path> testRuntimeCpWithLanguageRuntimes(
             TaskContext ctx,

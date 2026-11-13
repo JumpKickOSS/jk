@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_ACTION_KEY;
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_GROOVY_ACTION_KEY;
-import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_KOTLIN_ACTION_KEY;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
-import static cc.jumpkick.runtime.BuildPlanner.SUITE_RESOURCES;
-import static cc.jumpkick.runtime.BuildPlanner.TEST_RESOURCE_DIRS;
 
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -16,7 +11,9 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.MirroredOutputs;
+import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteClassFilter;
@@ -85,9 +82,11 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * that suite's resources (plus the class-pattern suites' and its configured extra roots) are
      * mirrored into target/test-classes. A run of several directory suites mirrors none of them:
      * this record runs each with its own roots, so a same-path resource never collides.
-     * run-tests folds every root into its TestStamp key.
+     * run-tests folds every root into its TestStamp key. Returns what compile-test publishes: its
+     * {@code sources}, the test compiles' action {@code keys}, whose records drop the mirrored
+     * paths, and the resource roots.
      */
-    static void mirror(
+    static CompiledTests mirror(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             ActionCache actionCache,
@@ -96,7 +95,9 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             Path testClasses,
             Map<String, String> beforeNonClass,
             boolean mixedTest,
-            boolean mixedTestGv)
+            boolean mixedTestGv,
+            List<Path> sources,
+            TestStamp.CompileTestKeys keys)
             throws IOException {
         List<Path> kspRoots = PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(ctx.require(LAYOUT)));
         List<Path> extraRoots = new ArrayList<>();
@@ -128,13 +129,12 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 ResourceMirror.changedNonClass(testClasses, beforeNonClass));
         // The compile stored whatever was in the tree, including a resource it did not produce.
         // Drop those paths so a later restore cannot put a deleted one back.
-        List<String> keys = new ArrayList<>();
-        ctx.get(COMPILE_TEST_ACTION_KEY).ifPresent(keys::add);
-        if (!mixedTest) ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).ifPresent(keys::add);
-        if (!mixedTestGv) ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).ifPresent(keys::add);
-        for (String key : keys) MirroredOutputs.release(actionCache, key, testClasses, mirrored);
-        ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
-        ctx.put(SUITE_RESOURCES, apart);
+        List<String> released = new ArrayList<>();
+        if (keys.javac() != null) released.add(keys.javac());
+        if (!mixedTest && keys.kotlin() != null) released.add(keys.kotlin());
+        if (!mixedTestGv && keys.groovy() != null) released.add(keys.groovy());
+        for (String key : released) MirroredOutputs.release(actionCache, key, testClasses, mirrored);
+        return new CompiledTests(false, sources, keys, suiteResDirs, apart.bySuite());
     }
 
     /** Whether the suites run apart, each with its own roots, rather than over the tree's copy. */

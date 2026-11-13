@@ -32,6 +32,7 @@ import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
@@ -94,12 +95,13 @@ final class TestSteps {
             ctx.cached();
             return;
         }
-        if (ctx.get(NO_TEST_SOURCES).orElse(false)) {
+        if (ctx.get(COMPILED_TESTS).map(CompiledTests::noSources).orElse(false)) {
             ctx.label("no tests to run");
             return;
         }
         Path testClasses = ctx.require(TEST_CLASSES);
-        List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
+        List<Path> testSrcs =
+                ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of());
         JkBuild projectUnderTest = ctx.require(PROJECT);
         String moduleLabel = coordinate(projectUnderTest);
         String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
@@ -198,7 +200,8 @@ final class TestSteps {
                     .withAutoShare(auto)
                     .withRecording(reads.flag());
             try {
-                result = ctx.get(SUITE_RESOURCES)
+                result = ctx.get(COMPILED_TESTS)
+                        .map(c -> new SuiteResources(c.suiteRoots()))
                         .orElse(SuiteResources.NONE)
                         .launch(
                                 testClasses,
@@ -288,7 +291,8 @@ final class TestSteps {
      */
     private static InputGuard suiteGuard(TaskContext ctx, Path testClasses, List<Path> testRtCp) throws IOException {
         List<Path> suiteInputs = new ArrayList<>(List.of(testClasses, ctx.require(MAIN_CLASSES)));
-        suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
+        suiteInputs.addAll(
+                ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()));
         suiteInputs.addAll(testRtCp);
         return InputGuard.of(suiteInputs);
     }
@@ -307,7 +311,7 @@ final class TestSteps {
                 ctx,
                 in,
                 testEnv,
-                ctx.get(TEST_SOURCES).orElse(List.of()),
+                ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of()),
                 runtimeCp,
                 testStampWorkerJars(in.dir(), project));
         return SuiteDiscovery.start(
@@ -335,7 +339,7 @@ final class TestSteps {
             String tmp = testEnv.extras().get(name);
             if (tmp != null && !tmp.isBlank()) roots.add(Path.of(tmp));
         }
-        roots.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
+        roots.addAll(ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()));
         roots.addAll(runtimeCp);
         roots.addAll(testSrcs);
         ctx.get(JAVA_HOME).ifPresent(roots::add);
@@ -434,7 +438,8 @@ final class TestSteps {
             AffectedTestRun.@Nullable Outcome affected,
             List<Path> testSrcs)
             throws Exception {
-        List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
+        List<Path> testResDirs =
+                ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of());
         List<String> extras = new ArrayList<>(stamp.extras());
         if (affected != null && !affected.stampToken().isBlank()) {
             extras.add("affected:" + affected.stampToken());
@@ -509,10 +514,7 @@ final class TestSteps {
      * shaped the test classes — and nothing else in the stamp reads them.
      */
     private static TestStamp.CompileTestKeys compileTestKeys(TaskContext ctx) {
-        return new TestStamp.CompileTestKeys(
-                ctx.get(COMPILE_TEST_ACTION_KEY).orElse(null),
-                ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).orElse(null),
-                ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).orElse(null));
+        return ctx.get(COMPILED_TESTS).map(CompiledTests::actionKeys).orElse(TestStamp.CompileTestKeys.NONE);
     }
 
     /**
