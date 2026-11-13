@@ -15,7 +15,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.winhost.MachineSetup;
-import cc.jumpkick.winhost.SetupChange;
+import cc.jumpkick.winhost.SetupConsent;
 import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
@@ -42,8 +42,8 @@ import org.jspecify.annotations.Nullable;
  * ones applied behind one UAC prompt. The decision is raised in the engine's queue, so the
  * dashboard's bell, a notification and {@code jk decide} show it too. At a terminal it is asked here
  * while the command watches the queue, so an answer from another surface ends the prompt; without a
- * terminal the command waits up to {@link #WAIT} for one. {@code -y} takes every change
- * without asking.
+ * terminal the command waits up to {@link #WAIT} for one. {@code -y}, or {@code [windows] fix =
+ * apply}, takes every change without asking; {@code [windows] fix = never} records a decline.
  */
 final class DoctorFix {
 
@@ -78,7 +78,15 @@ final class DoctorFix {
             CommandWedge.printOk("Doctor", "this machine is set up: nothing to change");
             return Exit.SUCCESS;
         }
-        Answer answer = global.yes ? new Answer.Accepted(ids(plan)) : ask(plan, check, global);
+        SetupConsent consent = WindowsSetup.consent();
+        if (consent == SetupConsent.NEVER && !global.yes) {
+            WindowsSetup.machine(check).decline(plan, "declined by " + consent.settledBy());
+            CommandWedge.printOk("Doctor", "not asked: " + consent.settledBy() + "; -y applies anyway");
+            return Exit.SUCCESS;
+        }
+        Answer answer = global.yes || consent == SetupConsent.APPLY
+                ? new Answer.Accepted(WindowsSetup.all(plan))
+                : ask(plan, check, global);
         switch (answer) {
             case Answer.Declined d -> {
                 CommandWedge.printOk("Doctor", "declined; JumpKick keeps working, `jk doctor` notes what is slower");
@@ -100,12 +108,6 @@ final class DoctorFix {
                 return Exit.SUCCESS;
             }
         }
-    }
-
-    private static Set<String> ids(SetupPlan plan) {
-        Set<String> out = new LinkedHashSet<>();
-        for (SetupChange c : plan.changes()) out.add(c.id());
-        return out;
     }
 
     /** Raises the decision and waits for its answer: typed here at a terminal, else from any surface. */

@@ -57,6 +57,15 @@ public final class AgentMode {
 
     private AgentMode() {}
 
+    /** True when a coding-agent CLI spawned this process, whatever its terminal. */
+    public static boolean spawned(Function<String, @Nullable String> env) {
+        for (String name : SPAWNED) {
+            String value = env.apply(name);
+            if (value != null && !value.isBlank()) return true;
+        }
+        return false;
+    }
+
     public static boolean requested(Invocation in) {
         return requested(in.isSet("agent"), System::getenv, Terminals.stdoutIsTty(), GlobalOptions.outputIsJson(in));
     }
@@ -71,11 +80,7 @@ public final class AgentMode {
         Optional<Boolean> flag = EnvValues.bool(env, ENV);
         if (flag.isPresent()) return flag.get();
         if (jsonStdout || stdoutTty) return false;
-        for (String name : SPAWNED) {
-            String value = env.apply(name);
-            if (value != null && !value.isBlank()) return true;
-        }
-        return false;
+        return spawned(env);
     }
 
     public static boolean reportsRun(String command) {

@@ -15,6 +15,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupChange;
+import cc.jumpkick.winhost.SetupConsent;
 import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
@@ -63,7 +64,17 @@ public final class DoctorTool implements McpTool {
     private Map<String, Object> fix(McpCall in) {
         if (!Os.isWindows()) return in.text("nothing to set up: the host fixes are for Windows\n");
         WindowsHostCheck check = WindowsSetup.check(MachineSetupDecisions.project(in.dir()));
-        if (!check.memo().mayAsk() && in.str(McpDecisions.DECISION) == null) {
+        SetupConsent consent = WindowsSetup.consent();
+        if (consent == SetupConsent.NEVER) {
+            try {
+                WindowsSetup.machine(check)
+                        .decline(WindowsSetup.plan(check, MachineSetupDecisions.served()), "declined");
+            } catch (IOException | RuntimeException e) {
+                return in.error("machine setup failed: " + Errors.text(e) + "\n");
+            }
+            return in.text("DECLINED machine setup: " + consent.settledBy() + "; the user changes it there\n");
+        }
+        if (consent == SetupConsent.ASK && !check.memo().mayAsk() && in.str(McpDecisions.DECISION) == null) {
             return in.text("ANSWERED machine setup was " + check.memo().answered() + "; it is not asked again\n"
                     + "the user changes the answer with `jk doctor --fix`\n");
         }
@@ -79,12 +90,14 @@ public final class DoctorTool implements McpTool {
                 WindowsSetup.YES,
                 items,
                 true);
-        Decision accepted;
-        switch (McpDecisions.require(in, this, ask)) {
-            case McpDecisions.Outcome.Stop s -> {
-                return s.result();
+        Decision accepted = null;
+        if (consent == SetupConsent.ASK) {
+            switch (McpDecisions.require(in, this, ask)) {
+                case McpDecisions.Outcome.Stop s -> {
+                    return s.result();
+                }
+                case McpDecisions.Outcome.Proceed p -> accepted = p.decision();
             }
-            case McpDecisions.Outcome.Proceed p -> accepted = p.decision();
         }
         Set<String> chosen = new LinkedHashSet<>();
         if (accepted == null) plan.changes().forEach(c -> chosen.add(c.id()));

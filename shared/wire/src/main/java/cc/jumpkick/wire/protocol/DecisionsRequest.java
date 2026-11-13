@@ -10,7 +10,8 @@ import org.jspecify.annotations.Nullable;
  * it proceeds one operation), or {@code raise} the question {@code ask} carries. {@code answers} is
  * the accepted form's values as a JSON object; {@code ask} is {@code {kind, question, detail[],
  * items[{id,label,help}], yes, project, alert}}, where {@code alert} asks the engine to tell a person
- * the way {@code [ui] ask} says.
+ * the way {@code [ui] ask} says. {@code offer} is a person's build offering the machine-setup
+ * decision once; its {@code ask} is {@code {project}}.
  */
 public record DecisionsRequest(
         String action,
@@ -23,6 +24,7 @@ public record DecisionsRequest(
     public static final String DECLINE = "decline";
     public static final String SPEND = "spend";
     public static final String RAISE = "raise";
+    public static final String OFFER = "offer";
 
     public DecisionsRequest {
         action = action == null || action.isBlank() ? LIST : action;

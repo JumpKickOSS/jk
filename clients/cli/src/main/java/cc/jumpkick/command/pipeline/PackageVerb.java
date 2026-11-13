@@ -113,6 +113,7 @@ final class PackageVerb implements BuildVerb {
 
     @Override
     public int after(BuildRun run, int code) {
+        if (code == 0) SetupOfferAfterBuild.offer(run.global());
         if (code != 0 || !run.standalone()) return code;
         Path dir = run.global().workingDir();
         if (aotCache) {

@@ -6,9 +6,11 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -74,6 +76,18 @@ public final class WindowsSetup {
     /** The plan's changes as the decision's items. */
     public static List<Map<String, Object>> items(SetupPlan plan) {
         return plan.changes().stream().map(SetupChange::item).toList();
+    }
+
+    /** This machine's answer given in advance, from the user config. */
+    public static SetupConsent consent() {
+        return SetupConsent.read(JkDirs.userConfigFile());
+    }
+
+    /** Every change in {@code plan}, as the ids a full acceptance chooses. */
+    public static Set<String> all(SetupPlan plan) {
+        Set<String> out = new LinkedHashSet<>();
+        for (SetupChange c : plan.changes()) out.add(c.id());
+        return out;
     }
 
     /** The setup that applies an answer on this machine. */

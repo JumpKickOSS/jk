@@ -6,6 +6,7 @@ import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionForms;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.DecisionSurface;
+import cc.jumpkick.engine.decisions.MachineSetupDecisions;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.form.Form;
@@ -23,7 +24,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk decide}: lists the decision queue, and answers one decision; a command that asks a
- * person ({@code jk doctor --fix}) raises its decision and spends the accepted one here too.
+ * person ({@code jk doctor --fix}) raises its decision and spends the accepted one here too, and a
+ * person's build offers the machine-setup decision here.
  */
 public final class DecideVerb implements HostedVerb {
 
@@ -73,6 +75,13 @@ public final class DecideVerb implements HostedVerb {
 
     static DecisionsAck answer(DecisionQueue queue, DecisionsRequest req) {
         if (DecisionsRequest.RAISE.equals(req.action())) return raise(queue, req.ask());
+        if (DecisionsRequest.OFFER.equals(req.action())) {
+            String project = req.ask() != null && MiniJson.parse(req.ask()) instanceof Map<?, ?> ask
+                    ? MiniJson.str(ask, "project")
+                    : null;
+            MachineSetupDecisions.offer(queue, MachineSetupDecisions.project(project));
+            return new DecisionsAck(null, "[]", null);
+        }
         String list = MiniJson.write(queue.list().stream().map(Decision::toMap).toList());
         if (DecisionsRequest.LIST.equals(req.action())) return new DecisionsAck(null, list, null);
         String id = req.id();

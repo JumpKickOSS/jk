@@ -360,6 +360,21 @@ The decision opens in the engine's queue, so it shows wherever you are: the term
 that opens that dialog, `jk decide`, or the agent's host when an agent raised it through the MCP
 `doctor` tool with `fix=true`. Any of them may answer; the UAC prompt is Windows' own consent.
 
+You don't have to run it to be asked. After your first successful `jk build` at a terminal, the
+same decision arrives once as a notification, never as a prompt in the build's output. A run by
+an agent, with `-a`, with `-O jsonl` or without a terminal never raises it. If it expires
+unanswered, that counts as declined.
+
+To answer in advance, for a managed or scripted machine, set it in `~/.jk/config.toml`:
+
+```toml
+[windows]
+fix = "apply"   # ask (default) | apply | never
+```
+
+`apply` takes every recommended change without asking; Windows still shows its one UAC prompt.
+`never` records a decline, and `jk doctor --fix` then asks only with `-y`.
+
 The answer is remembered for this machine in `~/.jk/state/windows-host.toml`. Accepted or
 declined, an agent does not raise it again; run `jk doctor --fix` to change your mind. The
 exclusions are a strong recommendation, never a requirement: if you decline (many people build
