@@ -57,9 +57,18 @@ class StoreCollectorSafePointTest {
         AtomicBoolean wanted = new AtomicBoolean();
         AtomicInteger visits = new AtomicInteger();
         CountDownLatch midScan = new CountDownLatch(1);
+        CountDownLatch asked = new CountDownLatch(1);
         AtomicLong stoppedAt = new AtomicLong();
         SafePoint caller = () -> {
-            if (visits.incrementAndGet() == 300) midScan.countDown();
+            if (visits.incrementAndGet() == 300) {
+                // Held here until the stop is asked for, so a fast scan cannot finish first.
+                midScan.countDown();
+                try {
+                    asked.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             if (wanted.get()) throw new Stop();
         };
         AtomicReference<Throwable> outcome = new AtomicReference<>();
@@ -75,6 +84,7 @@ class StoreCollectorSafePointTest {
         assertThat(midScan.await(60, TimeUnit.SECONDS)).isTrue();
         long askedAt = System.nanoTime();
         wanted.set(true);
+        asked.countDown();
         pass.join(TimeUnit.SECONDS.toMillis(60));
 
         assertThat(outcome.get()).as("the pass stopped at a safe point").isInstanceOf(Stop.class);
