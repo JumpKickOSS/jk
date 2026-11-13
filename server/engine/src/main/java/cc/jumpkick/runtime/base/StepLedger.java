@@ -60,8 +60,13 @@ public final class StepLedger {
     /** Steps shorter than this are not recorded: they price as nothing either way. */
     static final long MIN_MS = 20;
 
-    /** The ledgers read, one per project home, each re-read once its store's stamp moves. */
-    private static final StampedMemo<Path, StatIdentity, StepLedger> MEMO = StampedMemo.bounded(32);
+    /**
+     * The ledgers read, one per project home, each re-read once its store's stamp moves. Eight, as
+     * many as the class-wall memo keeps: jk's own 60-run ledger is 0.52 MB of heap and re-reads in
+     * 7 ms, so the engine's estimates hold at most about 4 MB here however many projects it served,
+     * plus 2.6 MB of class walls and the 8 MiB aggregates (JK-BSRC5).
+     */
+    private static final StampedMemo<Path, StatIdentity, StepLedger> MEMO = StampedMemo.bounded(8);
 
     /** One step's wall in a finished run. */
     public record Sample(String dir, String step, String status, long ms) {
