@@ -271,7 +271,12 @@ public final class StepEta {
             Integer running = inFlight.get(dir);
             long[] walls = suiteWalls.get(dir);
             if (own == null || running == null || walls == null) continue;
-            int share = requestedWorkers > 0 ? requestedWorkers : TestWorkers.liveShare(planShare, jobs, running);
+            // The JVMs the launcher will start: the live share, capped as autoCount caps it by the
+            // suite's class walls. The engine's suite got 5 of a share of 8 (its walls over its
+            // longest class), and priced at 8 it read 44 s for 70 (JK-EQVYV).
+            int share = requestedWorkers > 0
+                    ? requestedWorkers
+                    : TestWorkers.autoCount(TestWorkers.liveShare(planShare, jobs, running), dir, List.of(), 0);
             List<StepCost> repriced = new ArrayList<>(own.size());
             boolean moved = false;
             for (StepCost c : own) {

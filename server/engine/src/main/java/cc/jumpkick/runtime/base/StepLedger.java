@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -312,6 +313,10 @@ public final class StepLedger {
 
     private static StepLedger read(Path file, FileTime stamp) {
         List<Run> runs = new ArrayList<>();
+        // Every run names the same modules, steps and statuses, and most share a frontier: one copy
+        // of each per ledger. jk's 60-run ledger held 1.38 MB, most of it these repeated (JK-BSRC5).
+        Map<String, String> strings = new HashMap<>();
+        Map<Set<String>, Set<String>> frontiers = new HashMap<>();
         try {
             for (String l : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (l.isBlank()) continue;
@@ -320,16 +325,17 @@ public final class StepLedger {
                         String.valueOf(m.get("profile") == null ? "" : m.get("profile")),
                         Boolean.TRUE.equals(m.get("forced")),
                         Boolean.TRUE.equals(m.get("filtered")));
-                Set<String> frontier = new TreeSet<>();
-                for (Object o : MiniJson.list(m, "frontier")) frontier.add(String.valueOf(o));
+                Set<String> read = new TreeSet<>();
+                for (Object o : MiniJson.list(m, "frontier")) read.add(one(strings, String.valueOf(o)));
+                Set<String> frontier = frontiers.computeIfAbsent(read, f -> Collections.unmodifiableSet(f));
                 List<Sample> samples = new ArrayList<>();
                 for (Object o : MiniJson.list(m, "steps")) {
                     if (!(o instanceof List<?> row) || row.size() < 4) continue;
                     if (!(row.get(3) instanceof Number n)) continue;
                     samples.add(new Sample(
-                            String.valueOf(row.get(0)),
-                            String.valueOf(row.get(1)),
-                            String.valueOf(row.get(2)),
+                            one(strings, String.valueOf(row.get(0))),
+                            one(strings, String.valueOf(row.get(1))),
+                            one(strings, String.valueOf(row.get(2))),
                             n.longValue()));
                 }
                 Map<String, int[]> curves = new HashMap<>();
@@ -342,7 +348,7 @@ public final class StepLedger {
                             if (points.get(i) instanceof Number n) curve[i] = n.intValue();
                             else ok = false;
                         }
-                        if (ok) curves.put(String.valueOf(e.getKey()), curve);
+                        if (ok) curves.put(one(strings, String.valueOf(e.getKey())), curve);
                     }
                 }
                 Map<String, long[]> workers = new HashMap<>();
@@ -355,7 +361,7 @@ public final class StepLedger {
                                 && w.get(2) instanceof Number longest
                                 && n.intValue() > 0) {
                             workers.put(
-                                    String.valueOf(e.getKey()),
+                                    one(strings, String.valueOf(e.getKey())),
                                     new long[] {n.longValue(), sum.longValue(), longest.longValue()});
                         }
                     }
@@ -369,6 +375,12 @@ public final class StepLedger {
             return empty();
         }
         return new StepLedger(runs, stamp);
+    }
+
+    /** The one copy of {@code s} in {@code pool}. */
+    private static String one(Map<String, String> pool, String s) {
+        String known = pool.putIfAbsent(s, s);
+        return known == null ? s : known;
     }
 
     /** Runs recorded. */
@@ -586,8 +598,9 @@ public final class StepLedger {
             if (suite && !s.profile().equals(shape.profile())) {
                 if (s.profile().isEmpty() && defaultProfile.size() < ANY_FRONTIER) {
                     // Read at this run's load: a first build's suites ran beside every compile.
-                    double atLoad =
-                            s.forced() == shape.forced() ? 1 : shape.forced() ? 1 / lightOverHeavy() : lightOverHeavy();
+                    double atLoad = s.forced() == shape.forced()
+                            ? 1
+                            : shape.forced() ? 1 / suiteLightOverHeavy() : suiteLightOverHeavy();
                     defaultProfile.add(new Indexed(r.run(), Math.round(r.ms() * atLoad)));
                 }
                 continue;
@@ -605,7 +618,7 @@ public final class StepLedger {
                 return read(rung, dir, suite, 1, MIN_SPREAD, MIN_SPREAD).borrowed();
         }
         if (!otherLoad.isEmpty()) {
-            double ratio = lightOverHeavy();
+            double ratio = suite ? suiteLightOverHeavy() : lightOverHeavy();
             return read(otherLoad, dir, suite, shape.forced() ? 1 / ratio : ratio, LOAD_SPREAD, LOAD_SPREAD)
                     .borrowed();
         }
@@ -775,6 +788,72 @@ public final class StepLedger {
         }
         lightOverHeavy = ratio;
         return ratio;
+    }
+
+    /** Suites that ran under both loads needed before the ledger's own suite ratio is read. */
+    static final int MIN_SUITE_LOAD_PAIRS = 2;
+
+    private volatile double suiteLightOverHeavy = Double.NaN;
+
+    /**
+     * {@link #lightOverHeavy} for a suite: the median, over the suites that ran under both loads
+     * (same profile, unfiltered), of their light median over their heavy one, each heavy wall first
+     * read at the test JVMs of the newest light run ({@link StepCost#scale}); {@code 1} until {@link
+     * #MIN_SUITE_LOAD_PAIRS} suites have. A suite runs the same classes under either load, and the
+     * JVMs a light run gives it are priced on their own (StepEta's dispatch share), so the compile
+     * ratio would count the load twice: the engine's first-build suite, 101.8 s on 2 JVMs, was read
+     * at it for a light run on 5 and priced at 17.4 s for 70 s (JK-EQVYV).
+     */
+    double suiteLightOverHeavy() {
+        double memo = suiteLightOverHeavy;
+        if (!Double.isNaN(memo)) return memo;
+        List<Double> ratios = new ArrayList<>();
+        for (Map.Entry<String, List<Indexed>> e : index.entrySet()) {
+            String[] k = e.getKey().split("\n", -1);
+            if (!TaskNames.isRunTests(k[1]) || !"SUCCESS".equals(k[2])) continue;
+            String dir = k[0];
+            Map<String, List<Indexed>> light = new HashMap<>();
+            Map<String, List<Indexed>> heavy = new HashMap<>();
+            for (Indexed r : e.getValue()) {
+                RunShapes.Shape s = r.run().shape();
+                if (s.filtered()) continue;
+                (s.forced() ? heavy : light)
+                        .computeIfAbsent(s.profile(), p -> new ArrayList<>())
+                        .add(r);
+            }
+            for (Map.Entry<String, List<Indexed>> h : heavy.entrySet()) {
+                List<Indexed> l = light.get(h.getKey());
+                if (l == null) continue;
+                int workers = 0;
+                long[] walls = new long[2];
+                for (int i = l.size() - 1; i >= 0; i--) {
+                    if ((workers = l.get(i).run().workersOf(dir)) > 0) {
+                        walls = l.get(i).run().classWallsOf(dir);
+                        break;
+                    }
+                }
+                long hm = median(atWorkers(h.getValue(), dir, workers, walls));
+                if (hm < MIN_LOAD_PAIR_MS) continue;
+                ratios.add((double) median(atWorkers(l, dir, workers, walls)) / hm);
+            }
+        }
+        double ratio = 1;
+        if (ratios.size() >= MIN_SUITE_LOAD_PAIRS) {
+            ratios.sort(Double::compare);
+            ratio = Math.max(0.5, Math.min(2.0, ratios.get(ratios.size() / 2)));
+        }
+        suiteLightOverHeavy = ratio;
+        return ratio;
+    }
+
+    /** {@code rows}' walls read at {@code workers} test JVMs; as recorded when {@code workers} is unknown. */
+    private static List<Long> atWorkers(List<Indexed> rows, String dir, int workers, long[] walls) {
+        List<Long> out = new ArrayList<>(rows.size());
+        for (Indexed r : rows) {
+            double at = workers > 0 ? StepCost.scale(r.run().workersOf(dir), workers, walls[0], walls[1]) : 1;
+            out.add(Math.round(r.ms() * at));
+        }
+        return out;
     }
 
     /**

@@ -2,7 +2,9 @@
 package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.wire.runtime.StepCost;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -355,6 +357,59 @@ class StepLedgerTest {
         assertThat(StepLedger.load(home).lightOverHeavy())
                 .as("a light run's suite is faster for its JVMs, which are priced apart")
                 .isEqualTo(StepLedger.DEFAULT_LIGHT_OVER_HEAVY);
+    }
+
+    @Test
+    void a_suite_seen_only_under_a_full_rebuild_keeps_its_wall_and_not_the_compile_load_ratio(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        // Guards that teach a steep compile-like ratio (0.3), then the engine's first-build suite on 2 JVMs.
+        for (String step : List.of("guard", "package-jar", "javadoc")) {
+            StepLedger.append(home, full, List.of(new StepLedger.Sample("/ws/a", step, "SUCCESS", 10_000)));
+            StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/a", step, "SUCCESS", 3_000)));
+        }
+        StepLedger.append(
+                home,
+                full,
+                Set.of(),
+                Map.of(),
+                Map.of("/ws/engine", new long[] {2, 0, 0}),
+                List.of(new StepLedger.Sample("/ws/engine", "run-tests", "SUCCESS", 101_755)));
+        StepLedger ledger = StepLedger.load(home);
+
+        assertThat(ledger.lightOverHeavy()).isEqualTo(0.3);
+        assertThat(ledger.suiteLightOverHeavy())
+                .as("no suite ran under both loads")
+                .isEqualTo(1.0);
+        assertThat(ledger.price("/ws/engine", "run-tests", "SUCCESS", DEFAULT, Set.of("/ws/engine")))
+                .as("its wall on its 2 JVMs, which StepEta re-prices at the light run's share; never at 0.3")
+                .hasValue(101_755);
+        assertThat(ledger.range("/ws/engine", "run-tests", "SUCCESS", DEFAULT, Set.of("/ws/engine")))
+                .as("still a wide range: read across loads")
+                .hasValueSatisfying(r -> assertThat(r[1] - r[0]).isGreaterThanOrEqualTo(2 * 40_000));
+    }
+
+    @Test
+    void the_suite_load_ratio_is_learned_from_suites_under_both_loads_at_the_light_runs_jvms(@TempDir Path home) {
+        RunShapes.Shape full = new RunShapes.Shape("", true, false);
+        // Heavy on 2 JVMs, light on 8: the heavy walls read at 8 JVMs are (2/8)^0.6 = 0.435 of theirs.
+        double atEight = StepCost.scale(2, 8, 0, 0);
+        for (String dir : List.of("/ws/a", "/ws/b")) {
+            StepLedger.append(
+                    home,
+                    full,
+                    Set.of(),
+                    Map.of(),
+                    Map.of(dir, new long[] {2, 0, 0}),
+                    List.of(new StepLedger.Sample(dir, "run-tests", "SUCCESS", 100_000)));
+            StepLedger.append(
+                    home,
+                    DEFAULT,
+                    Set.of(),
+                    Map.of(),
+                    Map.of(dir, new long[] {8, 0, 0}),
+                    List.of(new StepLedger.Sample(dir, "run-tests", "SUCCESS", Math.round(100_000 * atEight * 1.2))));
+        }
+        assertThat(StepLedger.load(home).suiteLightOverHeavy()).isCloseTo(1.2, within(0.01));
     }
 
     @Test

@@ -56,13 +56,17 @@ priced from a filtered run; a compile or native image keeps to a full rebuild or
 runs under its own load. A step seen only under the other load is read at the **load ratio**: the
 median, over the steps that ran under both, of their light wall over their full-rebuild wall (0.5
 until three steps have; suites do not teach it, their light runs being faster mostly for the test
-JVMs those runs give them). A suite under a profile it never ran in borrows its default profile's
+JVMs those runs give them). A suite is read across loads at its own **suite ratio** instead: the
+median, over the suites that ran under both, of their light wall over their full-rebuild wall read at
+the light run's JVMs (1 until two suites have), since a suite runs the same classes either way and its
+JVMs are priced on their own. A suite under a profile it never ran in borrows its default profile's
 wall as a floor, with a range up to three times it. A compile is never read across loads: with no
 wall of its own under this load, a full compile reads its full rebuild's at the load ratio and a
 partial one the median of the project's compiles under this load, never above its own full compile.
 
 **Test JVMs.** The executor picks a suite's JVMs as it dispatches, the jobs budget over the modules
-in flight then. A suite priced from runs of another shape or work set ran on the JVMs that work left
+in flight then, capped by the suite's recorded class walls over its longest class; the estimate reads
+the same rule. A suite priced from runs of another shape or work set ran on the JVMs that work left
 it; the schedule says how many modules are in flight at its dispatch, and the suite is read at that
 share through its class walls (`StepCost.scale`) and priced for it.
 
@@ -328,13 +332,13 @@ and the layer that set it (`StepCost.Rung`), narrowest first:
 | `TOKEN` | a touch: a cache restore or an order check |
 
 A price from a prior (`PROJECT`, `HOST`, `CALIBRATION`) is corrected by that rung's bias for the
-step's kind on this host (`RungBias`, `~/.jk/state/builds/rung-bias.txt`). Each finished run
+step's kind on this host (`RungBias`, the `[bias]` section of the host store `~/.jk/state/builds/host-estimates.txt`). Each finished run
 teaches it: per rung and kind, the median of `ln(wall / price)` over the run's priced steps of a
 second or more, moved 40% of the way into the bias (a key's first run sets it outright), the factor
 clamped to ¼–4×. So cold priors improve with every project the host builds.
 
 A node step or plugin goal the module has never run is priced from one cheap measure of its effort
-(`StepEffort`, `~/.jk/state/builds/step-effort.txt`): `node-install` by the packages its lockfile
+(`StepEffort`, the host store's `[effort]` section): `node-install` by the packages its lockfile
 pins, `node-build` and `node-test` by the tool their `package.json` script runs, a plugin goal at its
 kind's median on this host; reference prices from a cold set of example projects stand in until the
 host has run the kind (`bench/eta/coldset.sh`, `features.py`).
