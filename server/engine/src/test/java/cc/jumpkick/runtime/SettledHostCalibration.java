@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.runtime.base.HostBusy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +45,8 @@ public final class SettledHostCalibration implements BeforeEachCallback, AfterEa
                 updated       = %d
                 """.formatted(JkVersion.VERSION, System.currentTimeMillis()));
         Calibration.invalidateMemo();
+        // A settled host is an idle one: a price must not read what else the test machine runs.
+        HostBusy.forTests(() -> 0);
     }
 
     @Override
@@ -53,6 +56,7 @@ public final class SettledHostCalibration implements BeforeEachCallback, AfterEa
         if (saved.prevStateDir() == null) System.clearProperty(STATE_DIR);
         else System.setProperty(STATE_DIR, saved.prevStateDir());
         Calibration.invalidateMemo();
+        HostBusy.forTests(null);
         try (Stream<Path> walk = Files.walk(saved.stateDir())) {
             for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(p);
         }

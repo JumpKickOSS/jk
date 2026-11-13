@@ -12,6 +12,7 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.DoubleSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,8 +62,24 @@ public final class HostBusy {
         start();
     }
 
+    /**
+     * What {@link #external} answers: the sampled host, or what a test pins it to ({@link
+     * #forTests}), since a test that prices a build must not read whatever else the host it runs on
+     * is doing.
+     */
+    private static volatile DoubleSupplier live = HostBusy::sampled;
+
+    /** Pins {@link #external} for a test; {@code null} goes back to the sampled host. */
+    public static void forTests(@Nullable DoubleSupplier pinned) {
+        live = pinned == null ? HostBusy::sampled : pinned;
+    }
+
     /** The external busy share over the last few seconds, 0 to 1; {@code -1} when unknown. */
     public static double external() {
+        return live.getAsDouble();
+    }
+
+    private static double sampled() {
         start();
         synchronized (SAMPLES) {
             if (SAMPLES.size() < 2) return -1;
