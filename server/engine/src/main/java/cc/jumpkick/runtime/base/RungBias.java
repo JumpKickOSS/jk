@@ -28,16 +28,19 @@ import org.jspecify.annotations.Nullable;
  * run is smoothed; a key's first run sets it outright. The factor is clamped to {@link #MIN_FACTOR}
  * to {@link #MAX_FACTOR}.
  *
- * <p>Beside the bias, every rung but a touch keeps its spread per kind (JK-R0N5S): the mean square
- * of its steps' {@code ln(wall / price)}, each step weighed by its price, moved {@link
- * #ALPHA_SPREAD} of the way toward each run's, so a step's price carries how far that layer has
- * missed for that kind of step on this host, the bias it was corrected by included ({@link
- * #spread}). A rung and kind with none learned yet takes {@link EtaSpread#defaultFor its default}.
+ * <p>Beside the bias, every rung but a touch keeps the scale of its spread per kind (JK-R0N5S): how
+ * far its steps' {@code ln(wall / price)} reach against the spread each was priced with, the root
+ * of their price-weighted mean square {@code (residual / spread)²}, moved {@link #ALPHA_SPREAD} of
+ * the way toward each run's. The layer's spread is its {@link EtaSpread#defaultFor default} times
+ * that scale ({@link #spread}), so a step's spread carries how far that layer has missed for that
+ * kind of step on this host, the bias it was corrected by included, while what a step's own samples
+ * and their distance from the run add is not counted twice: a suite read across loads misses by
+ * more than one replayed under its own shape, and was priced wider for it.
  * And the host keeps how strongly its steps' errors go the same way ({@link #correlation}): a run's
  * price-weighted mean residual against what it would be were the errors independent, or one.
  *
  * <p>One small file per host ({@link #defaultFile}), one line per rung and kind ({@code rung kind
- * log meanSquare runs}) and one {@code correlation meanSquare independent correlated runs}: read
+ * log scale runs}) and one {@code correlation meanSquare independent correlated runs}: read
  * whole when an estimate is priced, rewritten once per finished run.
  */
 public final class RungBias {
@@ -74,11 +77,16 @@ public final class RungBias {
     /** The line that carries the correlation, in the same section as the rungs. */
     static final String CORRELATION = "correlation";
 
+    /** The least and most a layer's spread is scaled by. */
+    static final double MIN_SCALE = 0.25;
+
+    static final double MAX_SCALE = 10;
+
     /**
-     * One rung and kind: the log of its bias factor (prior rungs only), the mean square of its log
-     * residuals, and the runs it was learned from.
+     * One rung and kind: the log of its bias factor (prior rungs only), the scale of its spread, and
+     * the runs it was learned from.
      */
-    record Entry(double log, double meanSquare, int runs) {}
+    record Entry(double log, double scale, int runs) {}
 
     /**
      * The host's correlation, as three running means over its runs: the square of a run's
@@ -138,13 +146,13 @@ public final class RungBias {
 
     /**
      * How far a {@code rung} price for {@code step} misses on this host, one sigma of {@code
-     * ln(wall / price)}: the root of the learned mean square, or the rung's {@link
-     * EtaSpread#defaultFor default} while none is learned.
+     * ln(wall / price)}: the rung's {@link EtaSpread#defaultFor default} at the scale this host
+     * learned for the kind, or at none while it has learned none.
      */
     public double spread(StepCost.Rung rung, String step) {
         Entry e = rung == StepCost.Rung.TOKEN ? null : entries.get(key(rung, kindOf(step)));
         if (e == null || e.runs() <= 0) return EtaSpread.defaultFor(rung);
-        return EtaSpread.clamp(Math.sqrt(e.meanSquare()));
+        return EtaSpread.clamp(EtaSpread.defaultFor(rung) * e.scale());
     }
 
     /**
@@ -177,9 +185,9 @@ public final class RungBias {
      * Teach {@code file} a finished run's priced steps: per prior rung and kind, the median of the
      * steps' {@code ln(wall / price)}, moved into the bias by {@link #ALPHA}. The price already
      * carries the bias it was corrected by, so the median is the residual the bias still misses by.
-     * Per rung (a touch aside) and kind, the price-weighted mean of the residuals' squares, moved
-     * into the spread by {@link #ALPHA_SPREAD}, less for a run with fewer than {@link #SPREAD_STEPS}
-     * of the kind. Over all of them, the run's correlation terms ({@link #correlation}).
+     * Per rung (a touch aside) and kind, the price-weighted mean of the squared residuals over the
+     * squared spreads they were priced with, which rescales the layer's spread, moved by {@link
+     * #ALPHA_SPREAD}, less for a run with fewer than {@link #SPREAD_STEPS} of the kind. Over all of them, the run's correlation terms ({@link #correlation}).
      */
     public static void learn(Path file, List<Pair> pairs) {
         Map<String, List<double[]>> residuals = new HashMap<>();
@@ -191,7 +199,7 @@ public final class RungBias {
             double w = p.pricedMs();
             residuals
                     .computeIfAbsent(key(p.rung(), kindOf(p.step())), k -> new ArrayList<>())
-                    .add(new double[] {r, w});
+                    .add(new double[] {r, w, p.spread()});
             weights += w;
             mean += w * r;
             independent += Math.pow(w * p.spread(), 2);
@@ -219,7 +227,7 @@ public final class RungBias {
                         + ' '
                         + String.format(Locale.ROOT, "%.4f", e.getValue().log())
                         + ' '
-                        + String.format(Locale.ROOT, "%.5f", e.getValue().meanSquare())
+                        + String.format(Locale.ROOT, "%.4f", e.getValue().scale())
                         + ' '
                         + e.getValue().runs());
             }
@@ -237,7 +245,10 @@ public final class RungBias {
         });
     }
 
-    /** {@code was} (null on a key's first run) moved by one run's residuals {@code {residual, weight}}. */
+    /**
+     * {@code was} (null on a key's first run) moved by one run's residuals {@code {residual, weight,
+     * spread}}.
+     */
     private static Entry learned(String key, @Nullable Entry was, List<double[]> v) {
         boolean prior =
                 StepCost.Rung.valueOf(key.substring(0, key.indexOf(' '))).prior();
@@ -249,16 +260,21 @@ public final class RungBias {
             log = was == null ? residual : log + ALPHA * residual;
             log = Math.max(-MAX_LOG, Math.min(MAX_LOG, log));
         }
-        double square = 0, weights = 0;
+        double z2 = 0, weights = 0;
         for (double[] r : v) {
-            double c = Math.min(EtaSpread.MAX, Math.abs(r[0]));
-            square += r[1] * c * c;
+            double z = Math.min(EtaSpread.MAX, Math.abs(r[0])) / Math.max(EtaSpread.MIN, r[2]);
+            z2 += r[1] * z * z;
             weights += r[1];
         }
-        square /= weights;
+        z2 /= weights;
+        // The spreads were priced at the old scale: the scale that would have fit them is the old
+        // one times the root of their mean square.
+        double old = was == null ? 1 : was.scale();
+        double fit = old * old * z2;
         double alpha = ALPHA_SPREAD * Math.min(1, (double) v.size() / SPREAD_STEPS);
-        double meanSquare = was == null ? square : was.meanSquare() + alpha * (square - was.meanSquare());
-        return new Entry(log, meanSquare, was == null ? 1 : was.runs() + 1);
+        double squared = was == null ? fit : old * old + alpha * (fit - old * old);
+        double scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.sqrt(squared)));
+        return new Entry(log, scale, was == null ? 1 : was.runs() + 1);
     }
 
     /** {@code was} moved {@link #ALPHA_SPREAD} toward one run's terms; a first run sets them. */

@@ -385,4 +385,21 @@ class RemainingWorkStepsTest {
         assertThat(parallel.residual().spread()).isCloseTo(0.2, within(1e-9));
         assertThat(serial.residual().spread()).isCloseTo(Math.sqrt(0.03), within(1e-9));
     }
+
+    /** A branch beside a longer one has slack: only the module's longest branch carries its spread. */
+    @Test
+    void a_guard_lane_beside_a_longer_suite_adds_no_spread() {
+        ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 600, 600, 100, 0);
+        RemainingWork rw = RemainingWork.seedSteps(
+                List.of(cost),
+                Map.of(
+                        A,
+                        List.of(
+                                new StepCost("run-tests", 600, StepCost.Kind.TEST, 0.05, 0, StepCost.Rung.REPLAY),
+                                new StepCost("guard", 100, StepCost.Kind.LANE, 0.5, 0, StepCost.Rung.REPLAY))),
+                4,
+                false,
+                false);
+        assertThat(rw.residual().spread()).isCloseTo(0.05, within(1e-9));
+    }
 }

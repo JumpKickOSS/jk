@@ -39,7 +39,8 @@ R(t)          = WorkSchedule of what remains:
                                         both on the wall clock; never less than a running class's
                                         recorded wall less the time it has run
 σ(t)          = sqrt((1 − ρ)·Σ(leftᵢσᵢ)² / (Σleftᵢ · R(t)) + ρ·(Σleftᵢσᵢ / Σleftᵢ)²)
-                over the unfinished steps, leftᵢ what each has left and σᵢ its spread
+                over the unfinished steps on each module's longest branch (its prefix, then the
+                longest of suite, tails and guard chain), leftᵢ what each has left, σᵢ its spread
 range         = R(t)·e^(±1.2816·σ(t))            # the 10th and 90th percentiles
 confidence    = Φ(ln 1.1 / σ(t)) − Φ(ln 0.9 / σ(t))  # P(truth within ±10% of R(t))
 countdown     = R_anchor − Δwork-time   # re-anchored on every engine sample, at least once a second
@@ -141,11 +142,13 @@ while the clock caught up.
 **Spread, range and confidence** (JK-R0N5S). Every step's price carries a relative spread σ, one
 sigma of `ln(wall / price)` (`StepCost.spread`, `EtaSpread`):
 
-- **Its layer's**, learned on this host per rung and step kind (`RungBias`, the host store's `bias`
-  section): the price-weighted mean square of `ln(wall / price)` over each finished run's priced
-  steps of a second or more, moved 30% of the way toward each run's (less for a run with fewer than
-  three steps of the kind; a key's first run sets it). Until a rung and kind has one, its default:
-  `REPLAY` 0.05, `MODULE` 0.12, `PROJECT` 0.22, `HOST` 0.32, `CALIBRATION` 0.45, `TOKEN` 0.5.
+- **Its layer's**: the rung's default (`REPLAY` 0.05, `MODULE` 0.12, `PROJECT` 0.22, `HOST` 0.32,
+  `CALIBRATION` 0.45, `TOKEN` 0.5) at a scale learned on this host per rung and step kind
+  (`RungBias`, the host store's `bias` section): the root of the price-weighted mean of
+  `(ln(wall / price) / spread)²` over each finished run's priced steps of a second or more, moved 30%
+  of the way toward each run's (less for a run with fewer than three steps of the kind; a key's
+  first run sets it). Read against the spread each step was priced with, a miss a step was priced
+  wide for (read across loads, say) does not widen its whole layer.
 - **The step's own run-to-run spread** where wider: `ln(p80 / p20) / 1.683` of the samples a
   replayed price comes from (three samples at least).
 - **Widened**, in quadrature, by how far its samples are from this run: another work set 0.05,
@@ -350,7 +353,7 @@ least recently seen go first. A module step is read by its mean; another measure
 unless that is a cache-restore blip beside a long mean.
 
 The host store holds the calibration probe, the continuous rates, the rung biases and spreads
-(`rung kind log-factor mean-square runs`, and one `correlation mean-square independent correlated
+(`rung kind log-factor scale runs`, and one `correlation mean-square independent correlated
 runs`), the effort
 reference walls, the fetch and lock timings, and `means`: `key mean last count` for the step kinds
 and whole invocations of one kind every project's runs measured, folded the same way. A synthetic

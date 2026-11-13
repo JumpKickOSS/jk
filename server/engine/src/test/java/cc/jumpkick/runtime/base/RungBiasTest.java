@@ -85,15 +85,15 @@ class RungBiasTest {
     void a_torn_line_is_skipped_and_the_rest_still_read() throws Exception {
         Files.writeString(
                 file(),
-                "# header\n[bias]\nCALIBRATION compile 0.6931 0.04 2\nCALIBRATION suite x 0.1 1\nNOPE compile 1 1 1\n");
+                "# header\n[bias]\nCALIBRATION compile 0.6931 0.5 2\nCALIBRATION suite x 0.1 1\nNOPE compile 1 1 1\n");
         RungBias bias = RungBias.load(file());
         assertThat(bias.factor(Rung.CALIBRATION, "compile-java")).isCloseTo(2.0, within(1e-3));
         assertThat(bias.factor(Rung.CALIBRATION, "run-tests")).isEqualTo(1.0);
-        assertThat(bias.spread(Rung.CALIBRATION, "compile-java")).isCloseTo(0.2, within(1e-9));
+        assertThat(bias.spread(Rung.CALIBRATION, "compile-java")).isCloseTo(0.225, within(1e-9));
     }
 
     @Test
-    void every_layer_learns_its_spread_from_the_squares_of_its_misses() {
+    void every_layer_scales_its_spread_by_how_far_its_misses_reach_against_it() {
         assertThat(RungBias.load(file()).spread(Rung.HOST, "compile-java"))
                 .as("nothing learned: the rung's default")
                 .isEqualTo(EtaSpread.defaultFor(Rung.HOST));
@@ -117,6 +117,14 @@ class RungBiasTest {
         double second = first - RungBias.ALPHA_SPREAD / RungBias.SPREAD_STEPS * first;
         assertThat(RungBias.load(file()).spread(Rung.REPLAY, "compile-java"))
                 .isCloseTo(Math.sqrt(second), within(1e-4));
+    }
+
+    @Test
+    void a_miss_a_step_was_priced_wide_for_does_not_widen_its_layer() {
+        // A suite read across loads, priced at 0.3, ran 30% long: as far as it was priced to miss.
+        RungBias.learn(file(), List.of(new RungBias.Pair(Rung.REPLAY, "run-tests", 10_000, 13_499, 0.3)));
+        assertThat(RungBias.load(file()).spread(Rung.REPLAY, "run-tests"))
+                .isCloseTo(EtaSpread.defaultFor(Rung.REPLAY), within(1e-3));
     }
 
     @Test

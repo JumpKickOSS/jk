@@ -404,6 +404,7 @@ public final class RemainingWork {
         Set<String> done = finished.getOrDefault(dir, Set.of());
         Map<String, Long> starts = started.getOrDefault(dir, Map.of());
         double pre = 0, test = 0, tail = 0, lane = 0, prePriced = 0, testPriced = 0;
+        double[] testAcc = new double[3], tailAcc = new double[3], laneAcc = new double[3];
         long[] running = suiteWorkers.get(dir);
         for (StepCost s : own) {
             double w = s.weight();
@@ -445,14 +446,34 @@ public final class RemainingWork {
                     left = Math.max(left, classFloor(dir, clock.millis()) / (double) WorkModel.MS_PER_WEIGHT);
                 }
             }
-            accumulate(acc, left, sigma);
             switch (s.kind()) {
-                case PRE -> pre += left;
-                case TEST -> test += left;
-                case TAIL -> tail = Math.max(tail, left);
-                case LANE -> lane += left;
+                case PRE -> {
+                    pre += left;
+                    accumulate(acc, left, sigma);
+                }
+                case TEST -> {
+                    test += left;
+                    accumulate(testAcc, left, sigma);
+                }
+                case TAIL -> {
+                    if (left > tail) {
+                        tailAcc[0] = tailAcc[1] = tailAcc[2] = 0;
+                        accumulate(tailAcc, left, sigma);
+                    }
+                    tail = Math.max(tail, left);
+                }
+                case LANE -> {
+                    lane += left;
+                    accumulate(laneAcc, left, sigma);
+                }
             }
         }
+        // Of the branches beside each other, the suite, the longest tail and the guard chain, only
+        // the longest decides when the module ends: its spread is the module's, the others' slack
+        // absorbs theirs: a guard lane that misses by 40% beside a suite twice its length moves
+        // nothing.
+        double[] longest = test >= Math.max(tail, lane) ? testAcc : tail >= lane ? tailAcc : laneAcc;
+        for (int i = 0; i < 3; i++) acc[i] += longest[i];
         // The guard chain runs beside the suite as the tails do.
         tail = Math.max(tail, lane);
         int gate = c.gateWeight() == ModuleWorkCost.UNKNOWN_GATE
