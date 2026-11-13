@@ -108,8 +108,9 @@ final class TestCompileSteps {
     private void runCompileTest(TaskContext ctx) throws Exception {
         List<String> suiteNames = selectedSuites(ctx);
         if (suiteNames == null) return;
-        JkBuild project = ctx.require(PROJECT);
-        TestSources src = TestSources.collect(project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
+        JkBuild project = ctx.require(MODULE).project();
+        TestSources src = TestSources.collect(
+                project, in.dir(), compact, suiteNames, ctx.require(MODULE).layout(), pluginDecls);
         // A class-pattern suite compiles the default suite's roots: the suites whose
         // directories this compile reads, which is what the shared output records.
         List<String> compiledSuites = TestSuites.compiled(
@@ -128,7 +129,7 @@ final class TestCompileSteps {
         KspArm.RoundOutcome round = ksp.runTestRound(ctx, src, baseCp, compiledSuites);
         if (round != KspArm.RoundOutcome.KEPT) {
             src = TestSources.collect( // the round rewrote its generated sources
-                    project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
+                    project, in.dir(), compact, suiteNames, ctx.require(MODULE).layout(), pluginDecls);
         }
         Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();
         String selectionKey = String.join(",", compiledSuites);
@@ -136,9 +137,10 @@ final class TestCompileSteps {
         // Identity before the compilers run. Adoption may remove a copy that predates
         // the ledger, and must not remove a file this compile rewrote.
         Map<String, String> beforeNonClass = ResourceMirror.nonClassIdentity(testClasses);
-        Path testLedger = ctx.require(LAYOUT).buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
+        Path testLedger =
+                ctx.require(MODULE).layout().buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
         if (!Files.isRegularFile(testLedger)) forgetTestCompileState(in.cache(), testClasses);
-        TestOutputs outs = TestOutputs.of(src, ctx.require(LAYOUT), testClasses);
+        TestOutputs outs = TestOutputs.of(src, ctx.require(MODULE).layout(), testClasses);
         boolean javaTests = !src.javaTest().isEmpty();
         // The stamps' instant: before any test compiler reads its first source.
         long readClock = FreshnessStamp.clockNow(testClasses);
@@ -162,7 +164,7 @@ final class TestCompileSteps {
         TestStamp.CompileTestKeys keys =
                 new TestStamp.CompileTestKeys(javac.actionKey(), kotlin.actionKey(), groovy.actionKey());
         warnings.write(ctx, TaskNames.COMPILE_TEST);
-        mergeLanguageOutputs(src, outs, ctx.require(LAYOUT).buildDir());
+        mergeLanguageOutputs(src, outs, ctx.require(MODULE).layout().buildDir());
         ctx.put(
                 COMPILED_TESTS,
                 SuiteResources.mirror(
@@ -192,7 +194,7 @@ final class TestCompileSteps {
      * workspace. Single-module runs keep the hard error (typo protection).
      */
     private @Nullable List<String> selectedSuites(TaskContext ctx) {
-        var resolved = resolveSuites(in, compact, ctx.require(PROJECT));
+        var resolved = resolveSuites(in, compact, ctx.require(MODULE).project());
         if (resolved.ok()) return resolved.suites();
         if (in.projectModules().size() > 1) {
             ctx.label("skipped: suite not in this module");
@@ -208,11 +210,11 @@ final class TestCompileSteps {
     private List<Path> testCompileClasspath(TaskContext ctx, TestSources src) throws Exception {
         return TestOutputs.baseClasspath(
                 mainClasses(ctx),
-                ctx.require(PROJECT),
-                ctx.require(LAYOUT),
+                ctx.require(MODULE).project(),
+                ctx.require(MODULE).layout(),
                 ctx.require(CLASSPATHS).testCompile(),
                 ModuleClasspaths.groovyJar(
-                        ctx.require(PROJECT),
+                        ctx.require(MODULE).project(),
                         ctx.require(PARSED_BUILD).lockfile(),
                         cas,
                         groovyModule || !src.gvTest().isEmpty()));
@@ -232,8 +234,8 @@ final class TestCompileSteps {
         if (prevSelection != null && !prevSelection.equals(selectionKey)) {
             PathUtil.deleteRecursively(testClasses);
             for (Path langOut : List.of(
-                    ctx.require(LAYOUT).kotlinTestClassesDir(),
-                    ctx.require(LAYOUT).groovyTestClassesDir())) {
+                    ctx.require(MODULE).layout().kotlinTestClassesDir(),
+                    ctx.require(MODULE).layout().groovyTestClassesDir())) {
                 if (Files.isDirectory(langOut)) {
                     PathUtil.deleteRecursively(langOut);
                 }
@@ -340,12 +342,12 @@ final class TestCompileSteps {
         // when none are declared, exactly as compile-main does, so a Lombok-using test sees its
         // generated members.
         ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
-        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
+        Path genDir = ctx.require(MODULE).layout().generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);
         ScalaCompile.Setup scalaSetup = src.scTest().isEmpty()
                 ? null
                 : ScalaCompile.prepare(
-                        ctx.require(PROJECT), ctx.require(PARSED_BUILD).lockfile(), cas);
+                        ctx.require(MODULE).project(), ctx.require(PARSED_BUILD).lockfile(), cas);
         TestSupport.Compiled compiled = TestSupport.compileWithCache(
                 ctx,
                 warnings,
@@ -356,23 +358,24 @@ final class TestCompileSteps {
                         classpaths.javacTestProcessor(),
                         classpaths.contributedTestProcessor(),
                         javaTestOut,
-                        ctx.require(PROJECT)
+                        ctx.require(MODULE)
+                                .project()
                                 .javac()
                                 .testRelease(ctx.require(PARSED_BUILD).release()),
                         javacArgs,
-                        ctx.require(PROJECT).javac().forTests(),
+                        ctx.require(MODULE).project().javac().forTests(),
                         ctx.require(JAVA_HOME),
                         scalaSetup,
                         mainClasses(ctx),
                         classpaths.testProcessorDiscovery(),
-                        CompilerJdk.pinned(ctx.require(PROJECT), in.session())),
+                        CompilerJdk.pinned(ctx.require(MODULE).project(), in.session())),
                 genDir,
                 cas,
                 in.cache(),
                 WorkerEnv.forModule(
-                        ctx.require(PROJECT).build().env(),
+                        ctx.require(MODULE).project().build().env(),
                         in.dir(),
-                        ctx.require(LAYOUT).moduleTargetDir()));
+                        ctx.require(MODULE).layout().moduleTargetDir()));
         if (!compiled.ok()) throw new RuntimeException("test compile failed");
         return compiled;
     }

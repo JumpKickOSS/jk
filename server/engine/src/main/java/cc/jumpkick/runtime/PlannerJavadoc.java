@@ -3,9 +3,8 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.javaSources;
 import static cc.jumpkick.runtime.BuildPlanner.kotlinSources;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
@@ -84,8 +83,8 @@ final class PlannerJavadoc {
     private PlannerJavadoc() {}
 
     static void run(TaskContext ctx, Path cache, Cas cas, boolean persist) throws Exception {
-        JkBuild project = ctx.require(PROJECT);
-        BuildLayout layout = ctx.require(LAYOUT);
+        JkBuild project = ctx.require(MODULE).project();
+        BuildLayout layout = ctx.require(MODULE).layout();
         Path javadocJar = layout.javadocJar();
         List<Path> javaAndScala = javaSources(ctx);
         List<Path> sources = javaAndScala.stream()

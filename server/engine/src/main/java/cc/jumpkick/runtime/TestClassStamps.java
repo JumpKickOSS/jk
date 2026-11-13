@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.run.TaskContext;
@@ -50,7 +50,7 @@ final class TestClassStamps {
                 keys.javac(),
                 javaSources,
                 classpath,
-                ctx.require(PROJECT).javac().testRelease(release),
+                ctx.require(MODULE).project().javac().testRelease(release),
                 readClock);
         write(
                 testClasses,

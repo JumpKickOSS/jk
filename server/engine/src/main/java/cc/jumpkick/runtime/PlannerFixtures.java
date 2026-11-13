@@ -3,9 +3,8 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
@@ -201,9 +200,9 @@ public final class PlannerFixtures {
                 .weight(() -> plan.get().compileTest())
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
+                    JkBuild project = ctx.require(MODULE).project();
                     List<Path> sources = sources(project, in.dir());
-                    Path out = ctx.require(LAYOUT).testFixturesClassesDir();
+                    Path out = ctx.require(MODULE).layout().testFixturesClassesDir();
                     if (sources.isEmpty()) {
                         Files.createDirectories(out);
                         ctx.label("no fixture sources");
@@ -250,7 +249,7 @@ public final class PlannerFixtures {
                             Log.debug("compileTestFixturesStep: keep the up-front estimate", e);
                         }
                     }
-                    Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "fixtures");
+                    Path genDir = ctx.require(MODULE).layout().generatedSourcesDir("annotations", "fixtures");
                     Files.createDirectories(genDir);
                     Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
                     ctx.label("compiling " + sources.size() + " fixture sources");
@@ -267,9 +266,9 @@ public final class PlannerFixtures {
                             workerJar,
                             genDir,
                             WorkerEnv.forModule(
-                                    ctx.require(PROJECT).build().env(),
+                                    ctx.require(MODULE).project().build().env(),
                                     in.dir(),
-                                    ctx.require(LAYOUT).moduleTargetDir()),
+                                    ctx.require(MODULE).layout().moduleTargetDir()),
                             classpathTokens);
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = JavacDiagnostics.report(

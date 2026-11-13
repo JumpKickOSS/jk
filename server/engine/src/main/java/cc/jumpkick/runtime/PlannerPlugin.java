@@ -598,8 +598,8 @@ public final class PlannerPlugin {
                 // machine has seen it run (own-project average, else host average).
                 .weight(() -> StepWalls.learnedFixedWeight(in.dir().toString(), "plugin-" + step.name(), 1))
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     Path classes = mainClasses(ctx);
                     Path javaHome = ctx.require(JAVA_HOME);
                     Path scratch = PluginBuild.taskScratch(layout, step.name());
@@ -874,7 +874,7 @@ public final class PlannerPlugin {
         // A plugin packager runs because this plugin declared one.
         ActivePlugin active = Objects.requireNonNull(declaredActive, "active plugin");
         Lockfile lock = ctx.require(PARSED_BUILD).lockfile();
-        BuildLayout layout = ctx.require(LAYOUT);
+        BuildLayout layout = ctx.require(MODULE).layout();
         // Key AND spec from one derivation (PackagingKeys): the facts, runtime entries and tool
         // artifacts the packager body receives below are the very objects that keyed its output,
         // so nothing can reach the plugin without reaching its key — and `jk explain` prices this
@@ -1047,8 +1047,8 @@ public final class PlannerPlugin {
     /** The module's {@code [env]} policy for a plugin step's worker, {@code ${target}} being its output root. */
     private static WorkerEnv workerEnv(TaskContext ctx, BuildPlanner.Inputs in) {
         return WorkerEnv.forModule(
-                ctx.require(PROJECT).build().env(),
+                ctx.require(MODULE).project().build().env(),
                 in.dir(),
-                ctx.require(LAYOUT).moduleTargetDir());
+                ctx.require(MODULE).layout().moduleTargetDir());
     }
 }

@@ -57,8 +57,8 @@ final class PlannerWar {
                 .weight(() -> EffortWeights.assemblyWeight(Objects.requireNonNull(lockFile.getParent(), "lock dir")))
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     BuildBlock.War war = Objects.requireNonNull(project.build().war(), "[war]");
                     Path classes = mainClasses(ctx);
                     List<Path> contributed =

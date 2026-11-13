@@ -40,6 +40,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.scala.ScalaResolver;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -143,10 +144,9 @@ final class SetupSteps {
                         ctx.error("toml", Errors.text(e));
                         throw e;
                     }
-                    ctx.put(PROJECT, project);
                     warnManifestRows(ctx, in.dir(), project);
                     BuildLayout layout = BuildLayout.of(in.dir(), project);
-                    ctx.put(LAYOUT, layout);
+                    ctx.put(MODULE, new ModuleIdentity(project, layout));
 
                     Lockfile lock;
                     if (!Files.exists(in.lockFile())) {
@@ -269,7 +269,10 @@ final class SetupSteps {
                     try {
                         publishClasspaths(ctx, in, shape, cas, tools);
                         // Ahead of the KSP round and every compile that reads its output.
-                        PlannerKsp.dropRetiredRounds(shape, ctx.require(LAYOUT), ctx.require(PROJECT));
+                        PlannerKsp.dropRetiredRounds(
+                                shape,
+                                ctx.require(MODULE).layout(),
+                                ctx.require(MODULE).project());
                     } catch (RuntimeException e) {
                         ctx.error("classpath", Errors.text(e));
                         throw e;
@@ -296,7 +299,7 @@ final class SetupSteps {
             TaskContext ctx, BuildPlanner.Inputs in, ModuleShape shape, Cas cas, PluginBuild.StepTools tools)
             throws Exception {
         Lockfile lock = ctx.require(PARSED_BUILD).lockfile();
-        JkBuild project = ctx.require(PROJECT);
+        JkBuild project = ctx.require(MODULE).project();
         Path dir = in.dir();
         SiblingWaits.requireSiblingsCompiled(
                 ctx,
@@ -354,7 +357,7 @@ final class SetupSteps {
                 .execute(ctx -> {
                     ctx.label("resolve JDK");
                     Lockfile lock = ctx.require(PARSED_BUILD).lockfile();
-                    JkBuild project = ctx.require(PROJECT);
+                    JkBuild project = ctx.require(MODULE).project();
                     try {
                         JdkEnsure.Outcome outcome = JdkEnsure.ensure(
                                 in.dir(),

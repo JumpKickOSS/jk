@@ -118,8 +118,8 @@ public final class PlannerNative {
             boolean allowShared,
             boolean persist)
             throws Exception {
-        JkBuild project = ctx.require(PROJECT);
-        BuildLayout layout = ctx.require(LAYOUT);
+        JkBuild project = ctx.require(MODULE).project();
+        BuildLayout layout = ctx.require(MODULE).layout();
         Path mainJar = layout.mainJar();
         if (!Files.exists(mainJar)) {
             ctx.error("native", "jar not found at " + mainJar);

@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME;
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_INSTALLED;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_OUTPUT;
@@ -373,7 +373,8 @@ final class NodeArm {
                         throw new IOException(
                                 module() + ": no " + node.out() + "/ to package; build once without --skip-node");
                     }
-                    Path stage = NodePackaging.sideBySideStage(project, ctx.require(LAYOUT));
+                    Path stage = NodePackaging.sideBySideStage(
+                            project, ctx.require(MODULE).layout());
                     if (stage == null) {
                         String root = project.node().webappRoot();
                         ctx.label(node.out() + "/ → the war"

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.W_RESOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
@@ -78,7 +78,7 @@ final class PlannerBuildInfo {
                 .weight(W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
+                    JkBuild project = ctx.require(MODULE).project();
                     BuildBlock.BuildInfo info = project.build().buildInfo();
                     if (info == null)
                         throw new IllegalStateException("build-info planned without a [build-info] table");

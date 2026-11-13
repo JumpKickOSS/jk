@@ -44,6 +44,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -170,8 +171,7 @@ public final class InstallPlans {
                         ctx.error("missing-jar", "jar not found at " + jar);
                         throw new RuntimeException("missing jar for re-shelve");
                     }
-                    ctx.put(BuildPlanner.PROJECT, project);
-                    ctx.put(BuildPlanner.LAYOUT, layout);
+                    ctx.put(BuildPlanner.MODULE, new ModuleIdentity(project, layout));
                     ctx.progress(1);
                 })
                 .build();
@@ -183,7 +183,7 @@ public final class InstallPlans {
                 .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir, override))
                 .build();
         return BuildPlan.builder("reshelve")
-                .stateKeys(BuildPlanner.PROJECT, BuildPlanner.LAYOUT, PRIMARY, INSTALLED)
+                .stateKeys(BuildPlanner.MODULE, PRIMARY, INSTALLED)
                 .addTask(parseBuild)
                 .addTask(cacheInstall)
                 .terminal(TaskNames.CACHE_INSTALL)
@@ -197,8 +197,8 @@ public final class InstallPlans {
      */
     private static void executeCacheInstall(
             TaskContext ctx, Path cache, @Nullable Path m2Dir, @Nullable InstallDestination override) {
-        JkBuild project = ctx.require(BuildPlanner.PROJECT);
-        BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+        JkBuild project = ctx.require(BuildPlanner.MODULE).project();
+        BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         String hidden = shadowedByRelease(coord, destinationOf(project, layout.moduleRoot(), override), m2Dir);

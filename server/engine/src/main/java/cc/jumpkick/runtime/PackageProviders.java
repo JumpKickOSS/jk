@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.ParsedBuild;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -164,7 +165,7 @@ public final class PackageProviders {
      */
     private static @Nullable String projectId(TaskContext ctx, Lockfile lock) {
         if (lock.projectId() != null && !lock.projectId().isBlank()) return lock.projectId();
-        Optional<BuildLayout> layout = ctx.get(BuildPlanner.LAYOUT);
+        Optional<BuildLayout> layout = ctx.get(BuildPlanner.MODULE).map(ModuleIdentity::layout);
         if (layout.isEmpty()) return null;
         return ProjectIdentity.recordedId(LockPaths.lockFile(layout.get().moduleRoot()))
                 .orElse(null);

@@ -198,11 +198,11 @@ final class CompileSteps {
         // compile runs is stale on the next build instead of vouched for by a later stamp.
         long clock = FreshnessStamp.clockNow(javaOut);
         if (!rerun) reweightForActionCache(ctx, actionCache, taskId, request, stampTokens, sources.size());
-        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
+        Path genDir = ctx.require(MODULE).layout().generatedSourcesDir("annotations");
         Files.createDirectories(genDir);
         Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
         ctx.label("compiling " + sources.size() + " sources");
-        Path abiFile = AbiIndex.path(ctx.require(LAYOUT).buildDir());
+        Path abiFile = AbiIndex.path(ctx.require(MODULE).layout().buildDir());
         Map<String, ClassAbi.Fingerprint> preAbi = AbiIndex.load(abiFile);
         JavaCompile.Result r = JavaCompile.run(
                 taskId,
@@ -217,9 +217,9 @@ final class CompileSteps {
                 workerJar,
                 genDir,
                 WorkerEnv.forModule(
-                        ctx.require(PROJECT).build().env(),
+                        ctx.require(MODULE).project().build().env(),
                         in.dir(),
-                        ctx.require(LAYOUT).moduleTargetDir()),
+                        ctx.require(MODULE).layout().moduleTargetDir()),
                 stampTokens);
         HeapNotes.flush(ctx);
         ctx.waited(Duration.ofMillis(r.waitMillis()));
@@ -230,7 +230,7 @@ final class CompileSteps {
                 new CompileStamp(r.outcome(), sources, optionsDigest, stampTokens, clock, r.actionKey(), sources));
         ctx.put(MAIN_ABI, new MainAbi(preAbi, r.compiledSources()));
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
-        advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);
+        advanceSourceApiIndex(in.dir(), ctx.require(MODULE).layout().buildDir(), r, sources);
         ctx.progress(sources.size());
     }
 
@@ -355,14 +355,14 @@ final class CompileSteps {
             Cas cas,
             ModuleShape shape,
             @Nullable PluginDeclarations pluginDecls) {
-        JkBuild project = ctx.require(PROJECT);
+        JkBuild project = ctx.require(MODULE).project();
         return new CompileInputs.Module(
                 project,
                 in.dir(),
                 in.cache(),
                 cas,
                 ctx.require(PARSED_BUILD).lockfile(),
-                ctx.require(LAYOUT),
+                ctx.require(MODULE).layout(),
                 shape,
                 shape.ksp(),
                 ctx.require(CLASSPATHS),
@@ -376,7 +376,8 @@ final class CompileSteps {
     /** The Java union compile-java compiles, as a step that runs before it reads it. */
     static List<Path> mainJavaSources(TaskContext ctx, @Nullable PluginDeclarations pluginDecls, boolean ksp)
             throws IOException {
-        return PlannerCompile.mainJavaSources(javaSources(ctx), ctx.require(LAYOUT), pluginDecls, ksp);
+        return PlannerCompile.mainJavaSources(
+                javaSources(ctx), ctx.require(MODULE).layout(), pluginDecls, ksp);
     }
 
     // ---- predictor ------------------------------------------------------------------------

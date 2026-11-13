@@ -11,6 +11,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.ModuleIdentity;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -102,7 +103,8 @@ final class PackagingCache {
         // ([cache] heavy-ttl, 0 on CI) and the module has not opted out ([build] cache-heavy-outputs).
         if (HeavyActionPolicy.classC(taskId) || largestOf(artifacts) >= DiskGuard.HEAVY_BYTES) {
             if (!HeavyTtl.caches(HeavyTtl.resolve())) return false;
-            JkBuild project = ctx.get(BuildPlanner.PROJECT).orElse(null);
+            JkBuild project =
+                    ctx.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
             if (project != null && !project.build().cacheHeavyOutputs()) return false;
         }
         if (DiskGuard.admits(cacheRoot, artifacts)) return true;

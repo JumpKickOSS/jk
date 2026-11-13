@@ -16,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.ParsedBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -144,7 +145,7 @@ class ClasspathAfterSyncTest {
         LockfileWriter.write(lock, lockFile);
         StashContext ctx = new StashContext();
         ctx.put(BuildPlanner.PARSED_BUILD, parsed(lock));
-        ctx.put(BuildPlanner.PROJECT, project);
+        ctx.put(BuildPlanner.MODULE, new ModuleIdentity(project, BuildLayout.of(module, project)));
         BuildPlanner.Inputs in = TestInputs.of(module, store).withLockFile(lockFile);
 
         SetupSteps.publishClasspaths(ctx, in, ModuleShape.UNREAD, new Cas(store), new PluginBuild.StepTools());
@@ -493,7 +494,8 @@ class ClasspathAfterSyncTest {
         StashContext context(Lockfile lock) throws Exception {
             StashContext ctx = new StashContext();
             ctx.put(BuildPlanner.PARSED_BUILD, parsed(lock));
-            ctx.put(BuildPlanner.PROJECT, JkBuildParser.parse(app.resolve("jk.toml")));
+            JkBuild project = JkBuildParser.parse(app.resolve("jk.toml"));
+            ctx.put(BuildPlanner.MODULE, new ModuleIdentity(project, BuildLayout.of(app, project)));
             return ctx;
         }
 
@@ -542,7 +544,7 @@ class ClasspathAfterSyncTest {
         JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
         StashContext ctx = new StashContext();
         ctx.put(BuildPlanner.PARSED_BUILD, parsed(lock));
-        ctx.put(BuildPlanner.PROJECT, project);
+        ctx.put(BuildPlanner.MODULE, new ModuleIdentity(project, BuildLayout.of(module, project)));
 
         BuildPlanner.Inputs in = TestInputs.of(module, store);
 

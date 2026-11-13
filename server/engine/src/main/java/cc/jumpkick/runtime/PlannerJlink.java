@@ -51,8 +51,8 @@ final class PlannerJlink {
                 .weight(() -> EffortWeights.assemblyWeight(Objects.requireNonNull(lockFile.getParent(), "lock dir")))
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     Jlink config = Objects.requireNonNull(project.build().jlink(), "[jlink]");
                     boolean selfContained = PluginBuild.shape(project, layout.moduleRoot())
                             .map(sh -> sh.selfContained())

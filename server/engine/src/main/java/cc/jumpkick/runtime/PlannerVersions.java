@@ -3,9 +3,8 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
@@ -285,8 +284,8 @@ public final class PlannerVersions {
                 .weight(() -> cx.plan().get().compileJava())
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     dropUndeclared(project, layout);
                     boolean allCached = true;
                     StepWarnings warnings = new StepWarnings();

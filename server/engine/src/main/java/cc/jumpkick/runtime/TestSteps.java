@@ -102,7 +102,7 @@ final class TestSteps {
         Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();
         List<Path> testSrcs =
                 ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of());
-        JkBuild projectUnderTest = ctx.require(PROJECT);
+        JkBuild projectUnderTest = ctx.require(MODULE).project();
         String moduleLabel = coordinate(projectUnderTest);
         String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
         TestFailureSource.Cache snippets = new TestFailureSource.Cache();
@@ -178,7 +178,8 @@ final class TestSteps {
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
-                () -> gate[0] = TestGates.acquire(ctx.require(LAYOUT).workspaceRoot(), SessionCancel::cancelled));
+                () -> gate[0] =
+                        TestGates.acquire(ctx.require(MODULE).layout().workspaceRoot(), SessionCancel::cancelled));
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         TagExcludedCapture tagExcluded;
@@ -196,7 +197,7 @@ final class TestSteps {
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             Supplier<JUnitLauncher> launcher = () -> TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec, settled)
-                    .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
+                    .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
                     .withRecording(reads.flag());
             try {
@@ -315,7 +316,7 @@ final class TestSteps {
                 runtimeCp,
                 testStampWorkerJars(in.dir(), project));
         return SuiteDiscovery.start(
-                ctx.require(LAYOUT),
+                ctx.require(MODULE).layout(),
                 in.dir(),
                 selection,
                 keyed,
@@ -416,7 +417,7 @@ final class TestSteps {
                 new TestStampInputs.Facts(
                         in.dir(),
                         projectUnderTest,
-                        ctx.require(LAYOUT),
+                        ctx.require(MODULE).layout(),
                         in.profileName(),
                         in.session().testSelection(),
                         pluginDecls,
@@ -468,7 +469,7 @@ final class TestSteps {
             TestSummary result)
             throws IOException {
         if (tagExcluded != null) {
-            JkBuild project = ctx.require(PROJECT);
+            JkBuild project = ctx.require(MODULE).project();
             tagExcluded = TestClassMatch.explainTagExcluded(
                     tagExcluded,
                     project.profiles().byName().keySet(),

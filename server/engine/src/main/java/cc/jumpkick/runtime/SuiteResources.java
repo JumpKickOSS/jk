@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -99,19 +98,20 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             List<Path> sources,
             TestStamp.CompileTestKeys keys)
             throws IOException {
-        List<Path> kspRoots = PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(ctx.require(LAYOUT)));
+        List<Path> kspRoots = PlannerKsp.outputRoots(
+                PlannerKsp.kspTestOutBase(ctx.require(MODULE).layout()));
         List<Path> extraRoots = new ArrayList<>();
         if (suiteNames.contains(TestSuites.DEFAULT)) {
             Set<String> unresolved = new TreeSet<>();
-            extraRoots.addAll(
-                    FilteredResources.testRoots(in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), unresolved));
+            extraRoots.addAll(FilteredResources.testRoots(
+                    in.dir(), ctx.require(MODULE).project(), ctx.require(MODULE).layout(), unresolved));
             PlannerResources.warnUnresolved(ctx, unresolved);
         }
         SuiteResources apart = SuiteResources.of(
                 in.dir(),
                 compact,
                 suiteNames,
-                ctx.require(PROJECT).build().testClassSuites().keySet(),
+                ctx.require(MODULE).project().build().testClassSuites().keySet(),
                 extraRoots);
         List<Path> suiteResDirs = new ArrayList<>(kspRoots);
         suiteResDirs.addAll(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
@@ -120,7 +120,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
         // adoptUnowned: a test-resource copy that predates the ledger left files this mirror
         // must still remove. A file the compile just wrote is protected; main classes already
         // carry a ledger, so they do not adopt.
-        Path ledger = ctx.require(LAYOUT).buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
+        Path ledger =
+                ctx.require(MODULE).layout().buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
         Set<String> mirrored = ResourceMirror.sync(
                 apart.split() ? kspRoots : suiteResDirs,
                 testClasses,

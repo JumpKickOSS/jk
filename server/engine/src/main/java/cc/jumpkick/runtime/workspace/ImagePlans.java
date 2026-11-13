@@ -43,6 +43,7 @@ import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -135,8 +136,8 @@ public final class ImagePlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve image config");
-                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.MODULE).project();
+                    BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     Path tarballPath = resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(TARBALL_PATH, tarballPath);
                     ImageConfig config = buildConfig(jkBuildPath, project, registry, tag, dockerExecutableArg);
@@ -181,8 +182,8 @@ public final class ImagePlans {
                 .weight(() -> EffortWeights.ociWeight(projectDir))
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.MODULE).project();
+                    BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     ImageConfig config = ctx.require(CONFIG);
                     Path tarballPath = ctx.get(TARBALL_PATH).orElse(null);
 
@@ -254,7 +255,8 @@ public final class ImagePlans {
         Path tarball = plan.get(TARBALL_PATH).orElse(null);
         String reference = plan.get(IMAGE_REF).orElse(null);
         if (config == null && tarball == null && reference == null) return null;
-        JkBuild project = plan.get(BuildPlanner.PROJECT).orElse(null);
+        JkBuild project =
+                plan.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
         boolean daemonMode = tarball == null
                 && (config == null
                         || config.registry() == null

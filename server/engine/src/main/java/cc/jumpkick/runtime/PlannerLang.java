@@ -337,7 +337,15 @@ public final class PlannerLang {
             @Nullable Path workingDir,
             KotlinConfig config) {
         return kotlinWorker(
-                ctx.require(PROJECT), in.dir(), in.cache(), cas, sources, classpath, outputDir, workingDir, config);
+                ctx.require(MODULE).project(),
+                in.dir(),
+                in.cache(),
+                cas,
+                sources,
+                classpath,
+                outputDir,
+                workingDir,
+                config);
     }
 
     /**
@@ -476,7 +484,7 @@ public final class PlannerLang {
     /** {@link #kotlinConfig} from the running step's published state, for the module being built. */
     static KotlinConfig kotlinConfig(TaskContext ctx, Path moduleDir, @Nullable List<Path> javaSourceRoots) {
         return kotlinConfig(
-                ctx.require(PROJECT),
+                ctx.require(MODULE).project(),
                 ctx.require(PARSED_BUILD).lockfile(),
                 moduleDir,
                 ctx.require(PARSED_BUILD).release(),
@@ -557,7 +565,7 @@ public final class PlannerLang {
         List<Path> processorCp =
                 javaSourceRoots == null ? List.of() : ctx.require(CLASSPATHS).processor();
         return groovyRequest(
-                ctx.require(PROJECT),
+                ctx.require(MODULE).project(),
                 ctx.require(PARSED_BUILD).lockfile(),
                 in.dir(),
                 cas,
@@ -658,7 +666,8 @@ public final class PlannerLang {
                         !in.ephemeralActions(), // verify-scratch: no persistent residue
                         actionCache.cas(),
                         actionCache,
-                        WorkerEnv.forModule(ctx.require(PROJECT).build().env(), in.dir(), null)));
+                        WorkerEnv.forModule(
+                                ctx.require(MODULE).project().build().env(), in.dir(), null)));
     }
 
     /** Fork {@code body} under this module's learned-heap key and flush any retry line onto {@code ctx}. */
@@ -673,7 +682,7 @@ public final class PlannerLang {
 
     private static <T> T learning(TaskContext ctx, Path project, String kind, Callable<T> body) throws IOException {
         try {
-            return HeapScope.call(heapKey(project, ctx.require(PROJECT), kind), body::call);
+            return HeapScope.call(heapKey(project, ctx.require(MODULE).project(), kind), body::call);
         } catch (IOException | RuntimeException e) {
             throw e;
         } catch (Exception e) {

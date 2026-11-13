@@ -98,7 +98,7 @@ final class TestLaunch {
 
     /** A fresh {@code target/jacoco.exec}: every suite JVM of this module appends to it. */
     static Path coverageExecFile(TaskContext ctx) throws IOException {
-        Path exec = ctx.require(LAYOUT).jacocoExec();
+        Path exec = ctx.require(MODULE).layout().jacocoExec();
         Files.deleteIfExists(exec);
         Files.createDirectories(exec.getParent());
         return exec;
@@ -118,7 +118,7 @@ final class TestLaunch {
             String moduleLabel)
             throws Exception {
         if (jacoco == null || exec == null) return; // not a coverage run
-        BuildLayout layout = ctx.require(LAYOUT);
+        BuildLayout layout = ctx.require(MODULE).layout();
         Path html = layout.jacocoReportDir();
         Path xml = html.resolve(OutputArtifacts.DEFAULT_COVERAGE);
         List<Path> classDirs = List.of(mainClasses(ctx), layout.kotlinClassesDir(), layout.groovyClassesDir());
@@ -161,7 +161,8 @@ final class TestLaunch {
     static WorkerEnv testEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild projectUnderTest)
             throws Exception {
         warmTestRoots();
-        WorkerEnv testEnv = TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT));
+        WorkerEnv testEnv = TestEnv.forModule(
+                projectUnderTest, in.dir(), ctx.require(MODULE).layout());
         if (needsNestedEngineIsolation(projectUnderTest)) {
             testEnv = testEnv.with(nestedEngineTestEnv(in.dir()));
         }
@@ -333,8 +334,8 @@ final class TestLaunch {
             throws Exception {
         int feature = JavaHomes.featureVersion(ctx.require(JAVA_HOME));
         List<Path> runtimeCp = new ArrayList<>(PlannerVersions.launchClasspath(
-                ctx.require(PROJECT),
-                ctx.require(LAYOUT),
+                ctx.require(MODULE).project(),
+                ctx.require(MODULE).layout(),
                 feature > 0 ? feature : Integer.MAX_VALUE,
                 mainClasses(ctx),
                 testRtCp));
@@ -342,12 +343,12 @@ final class TestLaunch {
                 .anyMatch(p -> p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));
         boolean gvTestSources = testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
         if (kotlinModule || ktTestSources) {
-            runtimeCp.add(
-                    kotlinStdlib(ctx.require(PROJECT), ctx.require(PARSED_BUILD).lockfile(), cas));
+            runtimeCp.add(kotlinStdlib(
+                    ctx.require(MODULE).project(), ctx.require(PARSED_BUILD).lockfile(), cas));
         }
         if (groovyModule || gvTestSources) {
             for (Path jar : groovyRuntime(
-                    ctx.require(PROJECT), ctx.require(PARSED_BUILD).lockfile(), cas)) {
+                    ctx.require(MODULE).project(), ctx.require(PARSED_BUILD).lockfile(), cas)) {
                 if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
             }
         }
@@ -459,7 +460,7 @@ final class TestLaunch {
                     workerJars,
                     testEnv,
                     listener,
-                    ctx.require(LAYOUT).testResultsDir());
+                    ctx.require(MODULE).layout().testResultsDir());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             ctx.error("test", "interrupted");
@@ -520,7 +521,7 @@ final class TestLaunch {
             for (String line : TestSupport.renderFailures(result, in.dir(), snippets)) ctx.output(line);
             if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
             String failed = result.failed() + " test failure" + (result.failed() == 1 ? "" : "s");
-            if (failureMode(in, ctx.require(PROJECT)) == TestFailureMode.REPORT) {
+            if (failureMode(in, ctx.require(MODULE).project()) == TestFailureMode.REPORT) {
                 ctx.warn(FAILURES_REPORTED, failed + " reported, not failing: [test] failures = \"report\"");
                 return;
             }

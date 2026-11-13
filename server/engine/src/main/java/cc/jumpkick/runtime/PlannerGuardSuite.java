@@ -3,9 +3,8 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
@@ -190,8 +189,8 @@ public final class PlannerGuardSuite {
                 .weight(() -> plan.get().compileTest())
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     List<Path> sources = sources(in.dir(), compact);
                     Path out = layout.guardClassesDir();
                     if (sources.isEmpty()) {
@@ -259,9 +258,9 @@ public final class PlannerGuardSuite {
                             workerJar,
                             genDir,
                             WorkerEnv.forModule(
-                                    ctx.require(PROJECT).build().env(),
+                                    ctx.require(MODULE).project().build().env(),
                                     in.dir(),
-                                    ctx.require(LAYOUT).moduleTargetDir()),
+                                    ctx.require(MODULE).layout().moduleTargetDir()),
                             classpathTokens);
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = JavacDiagnostics.report(

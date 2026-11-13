@@ -48,7 +48,7 @@ public final class TrainPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("train dynamic surface");
-                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+                    BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     // The module's resolved toolchain, not the engine's own JVM: an AOT cache
                     // trained by the engine JDK is silently rejected by the app's.
                     Path moduleJdk = ctx.get(BuildPlanner.JAVA_HOME).orElse(javaHome);

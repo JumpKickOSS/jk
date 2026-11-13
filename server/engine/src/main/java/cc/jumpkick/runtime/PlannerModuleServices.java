@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.W_RESOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
@@ -75,7 +75,7 @@ final class PlannerModuleServices {
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = mainClasses(ctx);
-                    Path incremental = incremental(ctx.require(LAYOUT));
+                    Path incremental = incremental(ctx.require(MODULE).layout());
                     Plan plan = plan(classes, incremental);
                     int changed = apply(plan, classes, incremental);
                     ctx.label(

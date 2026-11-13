@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.config.JkBuildParser;
@@ -47,7 +47,7 @@ public final class AffectedTestRun {
         if (!in.session().affected()) return null;
         Path moduleDir = in.dir();
         Path wsRoot = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
-        JkBuild project = ctx.require(PROJECT);
+        JkBuild project = ctx.require(MODULE).project();
         String coord = project.project().group() + ":" + project.project().name();
         Path classesDir = mainClasses(ctx);
         Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();

@@ -102,10 +102,10 @@ public final class PlannerResources {
      */
     private static boolean mirrorMainResources(TaskContext ctx, Path dir, boolean compact, Path classes)
             throws IOException {
-        BuildLayout layout = ctx.require(LAYOUT);
+        BuildLayout layout = ctx.require(MODULE).layout();
         Set<String> unresolved = new TreeSet<>();
         List<Path> resDirs = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(layout)));
-        resDirs.addAll(FilteredResources.mainRoots(dir, ctx.require(PROJECT), layout, compact, unresolved));
+        resDirs.addAll(FilteredResources.mainRoots(dir, ctx.require(MODULE).project(), layout, compact, unresolved));
         warnUnresolved(ctx, unresolved);
         for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {
             if (!root.resource()) continue;
@@ -136,7 +136,7 @@ public final class PlannerResources {
         try {
             boolean ran = BuildLogicSupport.run(
                     cx.in().dir(),
-                    ctx.require(LAYOUT),
+                    ctx.require(MODULE).layout(),
                     cx.actionCache(),
                     classes,
                     anchor,
@@ -284,7 +284,7 @@ public final class PlannerResources {
                     try {
                         boolean ran = BuildLogicSupport.run(
                                 in.dir(),
-                                ctx.require(LAYOUT),
+                                ctx.require(MODULE).layout(),
                                 actionCache,
                                 /* classesDir */ null,
                                 BuildLogicAnchor.AFTER_BUILD,
@@ -325,7 +325,7 @@ public final class PlannerResources {
                     try {
                         boolean ran = BuildLogicSupport.run(
                                 in.dir(),
-                                ctx.require(LAYOUT),
+                                ctx.require(MODULE).layout(),
                                 actionCache,
                                 /* classesDir */ null,
                                 BuildLogicAnchor.GUARD,

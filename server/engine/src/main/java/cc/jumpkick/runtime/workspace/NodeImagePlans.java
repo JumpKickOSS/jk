@@ -94,8 +94,8 @@ final class NodeImagePlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve image config");
-                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.MODULE).project();
+                    BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     ImageTable data = ManifestImage.merge(project.image(), GlobalConfig.image());
                     if (Boolean.TRUE.equals(data.aotCache())) {
                         String refusal = "[image] aot-cache: "
@@ -191,8 +191,8 @@ final class NodeImagePlans {
                         ctx.progress(1);
                         return;
                     }
-                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.MODULE).project();
+                    BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     Path tarballPath = ctx.get(ImagePlans.TARBALL_PATH).orElse(null);
                     boolean staticSite = ctx.get(STATIC).orElse(false);
                     String declared = Objects.requireNonNull(config.base(), "image base");

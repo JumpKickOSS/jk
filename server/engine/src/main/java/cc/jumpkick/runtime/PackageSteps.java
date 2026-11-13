@@ -98,8 +98,8 @@ final class PackageSteps {
                     // runtime view (an APK's dex, a boot jar, the assembly and the tails behind
                     // this step) needs the siblings' jars written, so the wait for them is here.
                     SiblingWaits.awaitSiblingArtifacts(ctx, in);
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     Path classes = mainClasses(ctx);
                     Path jarPath = layout.mainJar();
                     if (pluginDecls != null && pluginDecls.packager() != null) {
@@ -343,14 +343,14 @@ final class PackageSteps {
                     // Java output already lives in classes (java/main/); mirror the other
                     // language dirs in. The Groovy merge runs after javac, so real Groovy
                     // classes overwrite any stub-compiled duplicates.
-                    Path buildDir = ctx.require(LAYOUT).buildDir();
+                    Path buildDir = ctx.require(MODULE).layout().buildDir();
                     if (mixed) {
                         ResourceMirror.mergeLanguageOutput(
-                                ctx.require(LAYOUT).kotlinClassesDir(), classes, buildDir, "kotlin");
+                                ctx.require(MODULE).layout().kotlinClassesDir(), classes, buildDir, "kotlin");
                     }
                     if (mixedGroovy) {
                         ResourceMirror.mergeLanguageOutput(
-                                ctx.require(LAYOUT).groovyClassesDir(), classes, buildDir, "groovy");
+                                ctx.require(MODULE).layout().groovyClassesDir(), classes, buildDir, "groovy");
                     }
                     ctx.progress(1);
                 })

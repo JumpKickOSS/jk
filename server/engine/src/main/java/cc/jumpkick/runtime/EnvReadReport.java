@@ -69,7 +69,7 @@ public final class EnvReadReport {
         if (testEnv.inherit()) return; // every variable reaches the suite
         boolean failed = result.failed() > 0 || !result.failures().isEmpty();
         String manifest = manifest(in.session().workingDir(), in.dir());
-        Path mainClasses = ctx.require(BuildPlanner.LAYOUT).classesDir();
+        Path mainClasses = ctx.require(BuildPlanner.MODULE).layout().classesDir();
         Map<String, String> looked = lookedUp(lookups, declared(project), testEnv, compiledInto(testClasses), failed);
         // What the suite looked up as it ran is the exact answer; the bytecode stands in without it.
         Findings f = probed && !failed

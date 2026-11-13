@@ -8,7 +8,6 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -23,6 +22,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.MainAbi;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.NodeOutput;
 import cc.jumpkick.task.ParsedBuild;
 import cc.jumpkick.task.TestRun;
@@ -56,7 +56,9 @@ public final class BuildPlanner {
     private BuildPlanner() {}
 
     // ---- shared cross-step keys ---------------------------------------
-    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
+    /** Which module the plan builds: its effective manifest and layout; published by every parse-build. */
+    public static final BuildPlanKey<ModuleIdentity> MODULE = BuildPlanKey.scalar("module", ModuleIdentity.class);
+
     public static final BuildPlanKey<Path> JAVA_HOME = BuildPlanKey.scalar("java-home", Path.class);
 
     /** The locked Node.js home with its package manager; published by {@code ensure-node}. */
@@ -99,8 +101,6 @@ public final class BuildPlanner {
     /** The classes dir a {@code transformsClasses} plugin step wrote, once it ran: its output replaces the tree. */
     static final BuildPlanKey<Path> TRANSFORMED_CLASSES = BuildPlanKey.scalar("transformed-classes", Path.class);
 
-    public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
-
     /** What {@code run-tests} or {@code node-test} left: the suite's summary, or why the module skipped. */
     public static final BuildPlanKey<TestRun> TEST_RUN = BuildPlanKey.scalar("test-run", TestRun.class);
 
@@ -111,7 +111,7 @@ public final class BuildPlanner {
             BuildPlanKey.scalar("affected-tests", AffectedTests.class);
 
     static final List<BuildPlanKey<?>> STATE_KEYS = List.of(
-            PROJECT,
+            MODULE,
             JAVA_HOME,
             NODE_HOME,
             NODE_OUTPUT,
@@ -124,7 +124,6 @@ public final class BuildPlanner {
             COMPILED_TESTS,
             BUILD_OUTCOME,
             TRANSFORMED_CLASSES,
-            LAYOUT,
             TEST_RUN,
             MAIN_ABI,
             AFFECTED_TESTS);

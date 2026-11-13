@@ -200,8 +200,8 @@ public final class PlannerTails {
                 .requires(TaskNames.PACKAGE_ASSEMBLY)
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     // The minifier packages beside the main artifact, so among the module's plugins
                     // it is the one with a [packaging] table that does not replace that artifact.
                     ActivePlugin minifier = ActivePlugins.of(project, layout.moduleRoot()).stream()
@@ -248,8 +248,8 @@ public final class PlannerTails {
                 .weight(() -> EffortWeights.assemblyWeight(Objects.requireNonNull(lockFile.getParent(), "lock dir")))
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     Path classes = mainClasses(ctx);
                     // Listed, not staged — see packageJarStep. package-jar runs first (hard
                     // requires edge) and publishes its stage, so the copy below is usually a
@@ -363,8 +363,8 @@ public final class PlannerTails {
                 .weight(W_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(PROJECT);
-                    BuildLayout layout = ctx.require(LAYOUT);
+                    JkBuild project = ctx.require(MODULE).project();
+                    BuildLayout layout = ctx.require(MODULE).layout();
                     Path moduleRoot = layout.moduleRoot();
                     Path sourcesJar = layout.sourcesJar();
                     boolean compact = CompileSupport.isSimpleLayout(project.project(), moduleRoot);

@@ -20,6 +20,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ModuleIdentity;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -405,7 +406,8 @@ public final class PlannerCompile {
 
     /** What a compiler-worker failure names: the module's coordinates when the plan carries them, and the {@code step}. */
     static String compileLabel(TaskContext ctx, String step) {
-        return ctx.get(PROJECT)
+        return ctx.get(MODULE)
+                        .map(ModuleIdentity::project)
                         .map(build ->
                                 build.project().group() + ":" + build.project().name() + " ")
                         .orElse("")
@@ -445,7 +447,7 @@ public final class PlannerCompile {
 
     /** {@code target/incremental}: the resource and compile ledgers beside the classes tree. */
     static Path incremental(TaskContext ctx) {
-        return ctx.require(LAYOUT).buildDir().resolve("incremental");
+        return ctx.require(MODULE).layout().buildDir().resolve("incremental");
     }
 
     /** The steps each main compile waits on: setup, the resource copy, KSP and the source generators. */

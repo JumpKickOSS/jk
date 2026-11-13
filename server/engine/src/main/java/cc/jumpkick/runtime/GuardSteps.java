@@ -3,9 +3,8 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
-import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import static cc.jumpkick.runtime.PlannerGuards.*;
 
@@ -33,6 +32,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -175,7 +175,7 @@ final class GuardSteps {
         // guard suite on the test runtime classpath — sibling jars included.
         SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         String module = WorkspaceModel.rel(g.root(), moduleDir);
-        Path buildDir = ctx.require(LAYOUT).buildDir();
+        Path buildDir = ctx.require(MODULE).layout().buildDir();
         FactsIndexing.Ensured main = FactsIndexing.ensure(mainClasses(ctx), FactsIndexing.indexPath(buildDir, "main"));
         Path testClasses = indexTests
                 ? ctx.get(PARSED_BUILD).map(ParsedBuild::testClassesDir).orElse(null)
@@ -195,7 +195,7 @@ final class GuardSteps {
                 testFacts(test),
                 () -> ctx.require(CLASSPATHS).main());
         // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
-        Path guardClasses = ctx.require(LAYOUT).guardClassesDir();
+        Path guardClasses = ctx.require(MODULE).layout().guardClassesDir();
         List<Rule> suiteRules = List.of();
         Evaluation withSuite = null;
         List<String> suiteTokens = List.of();
@@ -203,8 +203,8 @@ final class GuardSteps {
             FactsIndexing.Ensured suite =
                     FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
             List<GuardSuites.Declared> declared = GuardSuites.declared(FactsIndexing.load(suite));
-            List<Path> workspaceModules =
-                    workspaceModuleDirs(g.root(), ctx.get(PROJECT).orElse(null));
+            List<Path> workspaceModules = workspaceModuleDirs(
+                    g.root(), ctx.get(MODULE).map(ModuleIdentity::project).orElse(null));
             boolean workspace = GuardSuites.anyWorkspace(declared);
             // A workspace guard judges every module's index: each must describe what this
             // build compiled before the key is taken or the suite reads it.
@@ -239,15 +239,15 @@ final class GuardSteps {
             }
             Path library = GuardSuiteLibrary.locate(g.root(), cas).path();
             List<Path> runtimeCp = PlannerGuardSuite.classpath(
-                    ctx.require(PROJECT),
-                    ctx.require(LAYOUT),
+                    ctx.require(MODULE).project(),
+                    ctx.require(MODULE).layout(),
                     ctx.require(CLASSPATHS).testRuntime(),
                     library);
             GuardSuiteRunner.Inputs inputs = new GuardSuiteRunner.Inputs(
                     g.root(),
                     module,
                     moduleDir,
-                    ctx.require(LAYOUT),
+                    ctx.require(MODULE).layout(),
                     ctx.require(JAVA_HOME),
                     runtimeCp,
                     in.cache(),
@@ -305,8 +305,9 @@ final class GuardSteps {
 
     /** The model lane: the manifests and the lock at the invocation root. */
     private void runModelLane(TaskContext ctx) throws Exception {
-        List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
-        JkBuild rootBuild = ctx.get(PROJECT).orElse(null);
+        List<Path> modules = moduleDirs(
+                g.root(), ctx.get(MODULE).map(ModuleIdentity::project).orElse(null));
+        JkBuild rootBuild = ctx.get(MODULE).map(ModuleIdentity::project).orElse(null);
         List<String> tokens = rootBuild == null
                 ? new ArrayList<>(List.of(GuardKeys.fileToken("manifest", ManifestPaths.manifestIn(g.root()))))
                 : GuardKeys.modelTokens(g.root(), rootBuild);
@@ -385,7 +386,8 @@ final class GuardSteps {
     /** The tree lane: the text scan over the workspace. */
     private void runTreeLane(TaskContext ctx) throws Exception {
         EvalContext.IoSupplier<List<String>> tokens = () -> GuardKeys.treeLaneTokens(g.root());
-        List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
+        List<Path> modules = moduleDirs(
+                g.root(), ctx.get(MODULE).map(ModuleIdentity::project).orElse(null));
         EvalContext ectx = new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null, List::of);
         executeLane(
                 ctx,

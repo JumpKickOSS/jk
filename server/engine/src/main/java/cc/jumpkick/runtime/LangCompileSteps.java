@@ -118,8 +118,8 @@ final class LangCompileSteps {
         // Plugin-contributed generated Kotlin (a KSP round, a codegen step) joins the source list
         // exactly like the Java side: the freshness stamp and the plugin see generated files as
         // ordinary sources.
-        List<Path> ktSources =
-                mainKotlinSourcesWithGenerated(kotlinSources(ctx), ctx.require(LAYOUT), pluginDecls, ksp);
+        List<Path> ktSources = mainKotlinSourcesWithGenerated(
+                kotlinSources(ctx), ctx.require(MODULE).layout(), pluginDecls, ksp);
         if (ktSources.isEmpty()) {
             ctx.label("no Kotlin sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_KOTLIN);
@@ -234,7 +234,8 @@ final class LangCompileSteps {
         Path classes = mainClasses(ctx);
         Files.createDirectories(classes); // compile-java may be skipped
         // Plugin-contributed generated Groovy joins the source list exactly like the Kotlin side.
-        List<Path> gvSources = mainGroovySourcesWithGenerated(groovySources(ctx), ctx.require(LAYOUT), pluginDecls);
+        List<Path> gvSources = mainGroovySourcesWithGenerated(
+                groovySources(ctx), ctx.require(MODULE).layout(), pluginDecls);
         if (gvSources.isEmpty()) {
             ctx.label("no Groovy sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_GROOVY);

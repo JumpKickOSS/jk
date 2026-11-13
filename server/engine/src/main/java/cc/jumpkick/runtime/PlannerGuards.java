@@ -3,7 +3,7 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.guard.eval.GuardMessages.WITHHELD;
 import static cc.jumpkick.guard.eval.GuardMessages.withheldNotice;
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
@@ -63,6 +63,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.GuardBaselineMarker;
 import java.io.IOException;
@@ -250,7 +251,9 @@ final class PlannerGuards {
                 .weight(1)
                 .ticks(1)
                 .execute(ctx -> {
-                    List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
+                    List<Path> modules = moduleDirs(
+                            g.root(),
+                            ctx.get(MODULE).map(ModuleIdentity::project).orElse(null));
                     EvalContext.IoSupplier<List<String>> tokens = () ->
                             GuardKeys.outputTokens(g.root(), modules, g.config().coverageReport());
                     EvalContext ectx =
@@ -700,7 +703,7 @@ final class PlannerGuards {
     // ---- helpers -------------------------------------------------------------------------------
 
     /**
-     * The workspace's module directories from inside a member's step, where {@code PROJECT} is the
+     * The workspace's module directories from inside a member's step, where the plan's project is the
      * member's own manifest and knows nothing of its siblings: a WORKSPACE suite declared in a member
      * still sees the whole workspace.
      */

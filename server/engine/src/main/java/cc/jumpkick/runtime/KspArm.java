@@ -103,7 +103,7 @@ final class KspArm {
         ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         List<Path> processorCp = classpaths.processor();
         var split = KspProcessors.split(processorCp);
-        BuildLayout layout = ctx.require(LAYOUT);
+        BuildLayout layout = ctx.require(MODULE).layout();
         if (split.ksp().isEmpty()) {
             // Processors that are all javac's leave nothing of an earlier round to read.
             PathUtil.deleteRecursively(kspOutBase(layout));
@@ -113,7 +113,7 @@ final class KspArm {
             ctx.progress(1);
             return;
         }
-        JkBuild project = ctx.require(PROJECT);
+        JkBuild project = ctx.require(MODULE).project();
         Round round = new Round(
                 kspOutBase(layout),
                 TaskNames.KSP,
@@ -168,7 +168,7 @@ final class KspArm {
         Path outBase = round.outBase();
         List<Path> stampCp = stampClasspath(round.classpath(), round.kspJars());
         boolean rerun = in.session().config().rebuildOr(false);
-        JkBuild project = ctx.require(PROJECT);
+        JkBuild project = ctx.require(MODULE).project();
         String kotlinVersion = kotlinVersion(ctx.require(PARSED_BUILD).lockfile(), project);
         // Processor options and the toolchain are round inputs no file mtime reflects; the digest
         // is what makes a `ksp-options` edit with untouched sources re-run the round.
@@ -181,7 +181,8 @@ final class KspArm {
                 ctx.require(PARSED_BUILD).release());
         // The warnings the round's outputs were made with: a fresh stamp without them is not up to date.
         Path warnings = CompileWarnings.currentFile(
-                ctx.require(LAYOUT).buildDir().resolve("incremental"), CompileWarnings.roundFile(round.producer()));
+                ctx.require(MODULE).layout().buildDir().resolve("incremental"),
+                CompileWarnings.roundFile(round.producer()));
         Optional<List<CompileWarnings.Kept>> kept =
                 rerun ? Optional.empty() : CompileWarnings.readCurrent(warnings, round.stampInputs());
         if (kept.isPresent()
@@ -302,13 +303,13 @@ final class KspArm {
      */
     RoundOutcome runTestRound(TaskContext ctx, TestSources src, List<Path> classpath, List<String> compiledSuites)
             throws Exception {
-        BuildLayout layout = ctx.require(LAYOUT);
+        BuildLayout layout = ctx.require(MODULE).layout();
         if (!kotlinModule) return dropped(dropTestRound(layout));
         Path outBase = kspTestOutBase(layout);
         List<Path> processorCp = ctx.require(CLASSPATHS).kspTestProcessor();
         List<Path> kspJars = KspProcessors.split(processorCp).ksp();
         List<Path> roots =
-                testSourceRoots(ctx.require(PROJECT), in.dir(), compact, compiledSuites, layout, pluginDecls);
+                testSourceRoots(ctx.require(MODULE).project(), in.dir(), compact, compiledSuites, layout, pluginDecls);
         if (kspJars.isEmpty() || roots.isEmpty()) return dropped(dropTestRound(layout));
         List<Path> handWritten = new ArrayList<>();
         for (Path source : src.all()) {

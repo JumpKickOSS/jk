@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
+import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -66,14 +66,14 @@ final class SiblingWaits {
         requireRuntimeSiblings(ctx, in);
         if (!PlannerResources.skipJUnit(in)) {
             WorkspaceClasspath.Result testSiblings =
-                    WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.TEST_SCOPES);
+                    WorkspaceClasspath.resolve(in.dir(), ctx.require(MODULE).project(), WorkspaceClasspath.TEST_SCOPES);
             requireSiblingsBuilt(ctx, testSiblings, "test dependency module not built: ", in.siblings());
         }
     }
 
     private static void requireRuntimeSiblings(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
         WorkspaceClasspath.Result mainSiblings =
-                WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.RUNTIME_SCOPES);
+                WorkspaceClasspath.resolve(in.dir(), ctx.require(MODULE).project(), WorkspaceClasspath.RUNTIME_SCOPES);
         requireSiblingsBuilt(ctx, mainSiblings, "dependency module not built: ", in.siblings());
     }
 
@@ -113,7 +113,7 @@ final class SiblingWaits {
     static void awaitSiblingTestCompile(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
         in.siblings().awaitTestCompile(ctx::cancelled);
         if (ctx.cancelled() || PlannerResources.skipJUnit(in)) return;
-        JkBuild project = ctx.require(PROJECT);
+        JkBuild project = ctx.require(MODULE).project();
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
         requireSiblingsCompiled(ctx, testSiblings, "test dependency module not compiled: ");
