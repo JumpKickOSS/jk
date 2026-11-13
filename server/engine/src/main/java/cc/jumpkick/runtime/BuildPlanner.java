@@ -23,6 +23,7 @@ import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.MainAbi;
+import cc.jumpkick.task.NodeOutput;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Path;
@@ -60,15 +61,11 @@ public final class BuildPlanner {
     /** The locked Node.js home with its package manager; published by {@code ensure-node}. */
     public static final BuildPlanKey<NodeHome> NODE_HOME = BuildPlanKey.scalar("node-home", NodeHome.class);
 
-    /** A node build's output directory, once {@code node-build} has written or restored it. */
-    public static final BuildPlanKey<Path> NODE_OUT = BuildPlanKey.scalar("node-out", Path.class);
+    /** What {@code node-build} wrote or restored: its output directory and {@code [node] exports}. */
+    public static final BuildPlanKey<NodeOutput> NODE_OUTPUT = BuildPlanKey.scalar("node-output", NodeOutput.class);
 
     /** The {@code node-install} key {@code node_modules} answers to; later node steps hash it. */
     public static final BuildPlanKey<String> NODE_INSTALLED = BuildPlanKey.scalar("node-installed", String.class);
-
-    /** {@code [node] exports}: each name to the output it names, once the node build has it on disk. */
-    public static final BuildPlanKey<Map<String, Path>> NODE_EXPORTS =
-            BuildPlanKey.map("node-exports", String.class, Path.class);
 
     public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
@@ -145,9 +142,8 @@ public final class BuildPlanner {
             LOCKFILE,
             JAVA_HOME,
             NODE_HOME,
-            NODE_OUT,
+            NODE_OUTPUT,
             NODE_INSTALLED,
-            NODE_EXPORTS,
             RELEASE,
             CLASSPATHS,
             JAVA_SOURCES,

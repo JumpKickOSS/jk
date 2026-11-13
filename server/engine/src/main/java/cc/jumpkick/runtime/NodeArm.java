@@ -4,10 +4,9 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
-import static cc.jumpkick.runtime.BuildPlanner.NODE_EXPORTS;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_INSTALLED;
-import static cc.jumpkick.runtime.BuildPlanner.NODE_OUT;
+import static cc.jumpkick.runtime.BuildPlanner.NODE_OUTPUT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_RESULT;
 
 import cc.jumpkick.host.PathUtil;
@@ -31,6 +30,7 @@ import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.NodeOutput;
 import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -334,18 +334,16 @@ final class NodeArm {
     }
 
     /**
-     * Check {@code [node] exports} against what the build writes and publish it: every export names
-     * {@code out/}, a step's output, or a path under one of them.
+     * Check {@code [node] exports} against what the build writes and publish them with {@code out}:
+     * every export names {@code out/}, a step's output, or a path under one of them.
      */
-    private void publishExports(TaskContext ctx) throws IOException {
-        Map<String, String> exports = project.node().exports();
-        if (exports.isEmpty()) return;
+    private void publish(TaskContext ctx, @Nullable Path out) throws IOException {
         Map<String, Path> published = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : exports.entrySet()) {
+        for (Map.Entry<String, String> e : project.node().exports().entrySet()) {
             Path path = nodeDir.resolve(e.getValue()).normalize();
             boolean written = false;
-            for (String out : NodeKeys.outputs(project, node)) {
-                if (path.startsWith(nodeDir.resolve(out).normalize())) written = true;
+            for (String output : NodeKeys.outputs(project, node)) {
+                if (path.startsWith(nodeDir.resolve(output).normalize())) written = true;
             }
             if (!written) {
                 throw new IOException("[node] exports." + e.getKey() + " = \"" + e.getValue()
@@ -353,7 +351,7 @@ final class NodeArm {
             }
             published.put(e.getKey(), path);
         }
-        ctx.put(NODE_EXPORTS, published);
+        ctx.put(NODE_OUTPUT, new NodeOutput(out, published));
     }
 
     /**
@@ -369,7 +367,7 @@ final class NodeArm {
                 .requires(after)
                 .ticks(1)
                 .execute(ctx -> {
-                    Path out = ctx.get(NODE_OUT).orElse(out());
+                    Path out = ctx.get(NODE_OUTPUT).map(NodeOutput::out).orElse(out());
                     if (!Files.isDirectory(out)) {
                         throw new IOException(
                                 module() + ": no " + node.out() + "/ to package; build once without --skip-node");
@@ -413,7 +411,7 @@ final class NodeArm {
                         ctx.progress(1);
                         return;
                     }
-                    Path out = ctx.get(NODE_OUT).orElse(null);
+                    Path out = ctx.get(NODE_OUTPUT).map(NodeOutput::out).orElse(null);
                     if (out == null || !Files.isDirectory(out)) {
                         throw new IOException(
                                 module() + ": no " + node.out() + "/ to package; build once without --skip-node");
@@ -466,8 +464,7 @@ final class NodeArm {
                 .execute(ctx -> {
                     Path out = out();
                     if (Files.isDirectory(out)) {
-                        ctx.put(NODE_OUT, out);
-                        publishExports(ctx);
+                        publish(ctx, out);
                         ctx.label("skipped · using " + node.out() + "/ as it is");
                     } else {
                         ctx.label("skipped · no " + node.out() + "/ yet");
@@ -544,7 +541,7 @@ final class NodeArm {
                 .execute(ctx -> {
                     NodeTable.Command command = node.build();
                     if (command == null) {
-                        publishExports(ctx);
+                        publish(ctx, null);
                         ctx.label("nothing to build");
                         ctx.progress(1);
                         return;
@@ -568,8 +565,7 @@ final class NodeArm {
                     Optional<ActionCache.ActionRecord> hit =
                             rebuild() ? Optional.empty() : actionCache.lookup(keyed.key());
                     if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
-                        ctx.put(NODE_OUT, out);
-                        publishExports(ctx);
+                        publish(ctx, out);
                         ctx.label(node.out() + "/ up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -595,8 +591,7 @@ final class NodeArm {
                                 + "/; set [node] out to the directory it writes");
                     }
                     actionCache.store(keyed.taskId(), keyed.key(), keyed.inputs(), out);
-                    ctx.put(NODE_OUT, out);
-                    publishExports(ctx);
+                    publish(ctx, out);
                     ctx.put(BUILD_OUTCOME, "built");
                     ctx.progress(1);
                 })

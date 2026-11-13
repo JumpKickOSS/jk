@@ -22,6 +22,7 @@ import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.NodeOutput;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.io.IOException;
 import java.net.URI;
@@ -172,7 +173,7 @@ class NodeBuildStepsTest {
         assertThat(run(skipped, skipping).errors()).isEmpty();
         assertThat(lines("builds.log")).isEqualTo(1);
         assertThat(lines("tests.log")).isEqualTo(1);
-        assertThat(skipped.get(BuildPlanner.NODE_OUT)).contains(web.resolve("dist"));
+        assertThat(skipped.get(BuildPlanner.NODE_OUTPUT).map(NodeOutput::out)).contains(web.resolve("dist"));
     }
 
     @Test

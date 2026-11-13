@@ -294,7 +294,7 @@ class NodeStepsE2eTest {
         Session session = session();
         BuildPlan plan = plan(session, false);
         assertThat(run(plan, session).errors()).isEmpty();
-        assertThat(plan.get(BuildPlanner.NODE_EXPORTS).orElseThrow())
+        assertThat(plan.get(BuildPlanner.NODE_OUTPUT).orElseThrow().exports())
                 .containsEntry("bundle", web.resolve("dist"))
                 .containsEntry("generated", web.resolve("src/gen.js"));
 
