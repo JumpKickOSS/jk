@@ -169,12 +169,16 @@ final class KspArm {
         List<Path> stampCp = stampClasspath(round.classpath(), round.kspJars());
         boolean rerun = in.session().config().rebuildOr(false);
         JkBuild project = ctx.require(PROJECT);
-        String kotlinVersion = kotlinVersion(ctx.require(LOCKFILE), project);
+        String kotlinVersion = kotlinVersion(ctx.require(PARSED_BUILD).lockfile(), project);
         // Processor options and the toolchain are round inputs no file mtime reflects; the digest
         // is what makes a `ksp-options` edit with untouched sources re-run the round.
         String kspVersion = KspResolver.versionFor(project);
-        String optionsDigest =
-                roundDigest(project, ctx.require(LOCKFILE), in.dir(), ctx.require(JAVA_HOME), ctx.require(RELEASE));
+        String optionsDigest = roundDigest(
+                project,
+                ctx.require(PARSED_BUILD).lockfile(),
+                in.dir(),
+                ctx.require(JAVA_HOME),
+                ctx.require(PARSED_BUILD).release());
         // The warnings the round's outputs were made with: a fresh stamp without them is not up to date.
         Path warnings = CompileWarnings.currentFile(
                 ctx.require(LAYOUT).buildDir().resolve("incremental"), CompileWarnings.roundFile(round.producer()));
@@ -186,7 +190,7 @@ final class KspArm {
                         round.stampInputs(),
                         round.classpath(),
                         round.kspJars(),
-                        ctx.require(RELEASE),
+                        ctx.require(PARSED_BUILD).release(),
                         optionsDigest)) {
             for (CompileWarnings.Kept k : kept.get())
                 ctx.replayedWarn(k.tool(), "", k.warning().describe());
@@ -262,7 +266,7 @@ final class KspArm {
                 key,
                 round.stampInputs(),
                 stampCp,
-                ctx.require(RELEASE),
+                ctx.require(PARSED_BUILD).release(),
                 optionsDigest,
                 readClock);
         return outcome;

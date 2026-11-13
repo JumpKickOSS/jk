@@ -4,8 +4,8 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
-import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import static cc.jumpkick.runtime.PlannerGuards.*;
 
@@ -33,6 +33,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -176,7 +177,9 @@ final class GuardSteps {
         String module = WorkspaceModel.rel(g.root(), moduleDir);
         Path buildDir = ctx.require(LAYOUT).buildDir();
         FactsIndexing.Ensured main = FactsIndexing.ensure(mainClasses(ctx), FactsIndexing.indexPath(buildDir, "main"));
-        Path testClasses = indexTests ? ctx.get(TEST_CLASSES).orElse(null) : null;
+        Path testClasses = indexTests
+                ? ctx.get(PARSED_BUILD).map(ParsedBuild::testClassesDir).orElse(null)
+                : null;
         FactsIndexing.Ensured test = testClasses != null && Files.isDirectory(testClasses)
                 ? FactsIndexing.ensure(testClasses, FactsIndexing.indexPath(buildDir, "test"))
                 : null;

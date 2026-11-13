@@ -168,7 +168,7 @@ final class CompileSteps {
                     "src",
                     sources.size(),
                     "release",
-                    ctx.require(RELEASE),
+                    ctx.require(PARSED_BUILD).release(),
                     "javaHome",
                     request.javaHome(),
                     "pp-list",
@@ -361,15 +361,15 @@ final class CompileSteps {
                 in.dir(),
                 in.cache(),
                 cas,
-                ctx.require(LOCKFILE),
+                ctx.require(PARSED_BUILD).lockfile(),
                 ctx.require(LAYOUT),
                 shape,
                 shape.ksp(),
                 ctx.require(CLASSPATHS),
                 pluginDecls,
-                ctx.require(RELEASE),
+                ctx.require(PARSED_BUILD).release(),
                 ctx.require(JAVA_HOME),
-                ctx.require(JAVAC_ARGS),
+                ctx.require(PARSED_BUILD).javacArgs(),
                 CompilerJdk.pinned(project, in.session()));
     }
 

@@ -40,6 +40,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.scala.ScalaResolver;
+import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -147,6 +148,7 @@ final class SetupSteps {
                     BuildLayout layout = BuildLayout.of(in.dir(), project);
                     ctx.put(LAYOUT, layout);
 
+                    Lockfile lock;
                     if (!Files.exists(in.lockFile())) {
                         ctx.label("resolving dependencies: no jk-lock.toml yet");
                         LockFlow.Result result;
@@ -163,7 +165,7 @@ final class SetupSteps {
                                     result.error() != null ? result.error() : "dependency resolution failed");
                             throw new RuntimeException("lock failed");
                         }
-                        ctx.put(LOCKFILE, memberView(in, Objects.requireNonNull(result.lockfile(), "lockfile")));
+                        lock = memberView(in, Objects.requireNonNull(result.lockfile(), "lockfile"));
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
                         ctx.label("jk.toml changed: updating jk-lock.toml");
                         Lockfile existing = LockfileReader.read(in.lockFile());
@@ -183,17 +185,15 @@ final class SetupSteps {
                             ctx.error("verbatim", Errors.text(e));
                             throw new RuntimeException("lock refused");
                         }
-                        ctx.put(LOCKFILE, memberView(in, updated != null ? updated : existing));
+                        lock = memberView(in, updated != null ? updated : existing);
                     } else {
-                        ctx.put(LOCKFILE, memberView(in, followFirstPartyPins(in, project, ctx)));
+                        lock = memberView(in, followFirstPartyPins(in, project, ctx));
                     }
 
-                    Lockfile lock = ctx.require(LOCKFILE);
-
-                    // Shared by the main- and test-compile steps (both read JAVAC_ARGS).
-                    // Classpaths are published in resolve-deps AFTER sync — same reason
-                    // JAVA_HOME is published in ensure-jdk, not here.
-                    ctx.put(JAVAC_ARGS, effectiveJavacArgs(project, in.dir(), lock, in.profileName()));
+                    // Shared by the main- and test-compile steps. Classpaths are published in
+                    // resolve-deps AFTER sync — same reason JAVA_HOME is published in ensure-jdk,
+                    // not here.
+                    List<String> javacArgs = effectiveJavacArgs(project, in.dir(), lock, in.profileName());
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
                     coverModule(ctx, in.dir(), in.skipTests());
@@ -221,12 +221,17 @@ final class SetupSteps {
                             : PlannerCompile.mainGroovySources(project, in.dir(), groovyMainSrcs);
                     kotlinMainSrcRef.set(kotlinMainSrcs);
                     groovyMainSrcRef.set(groovyMainSrcs);
-                    ctx.put(JAVA_SOURCES, javaMainSrcs);
-                    ctx.put(KOTLIN_SOURCES, kotlinMainSrcs);
-                    ctx.put(GROOVY_SOURCES, groovyMainSrcs);
-                    ctx.put(RELEASE, project.project().javaRelease());
-                    ctx.put(MAIN_CLASSES, layout.classesDir());
-                    ctx.put(TEST_CLASSES, layout.testClassesDir());
+                    ctx.put(
+                            PARSED_BUILD,
+                            new ParsedBuild(
+                                    lock,
+                                    javacArgs,
+                                    project.project().javaRelease(),
+                                    layout.classesDir(),
+                                    layout.testClassesDir(),
+                                    javaMainSrcs,
+                                    kotlinMainSrcs,
+                                    groovyMainSrcs));
                     ctx.progress(1);
                 })
                 .build();
@@ -290,7 +295,7 @@ final class SetupSteps {
     static void publishClasspaths(
             TaskContext ctx, BuildPlanner.Inputs in, ModuleShape shape, Cas cas, PluginBuild.StepTools tools)
             throws Exception {
-        Lockfile lock = ctx.require(LOCKFILE);
+        Lockfile lock = ctx.require(PARSED_BUILD).lockfile();
         JkBuild project = ctx.require(PROJECT);
         Path dir = in.dir();
         SiblingWaits.requireSiblingsCompiled(
@@ -348,7 +353,7 @@ final class SetupSteps {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve JDK");
-                    Lockfile lock = ctx.require(LOCKFILE);
+                    Lockfile lock = ctx.require(PARSED_BUILD).lockfile();
                     JkBuild project = ctx.require(PROJECT);
                     try {
                         JdkEnsure.Outcome outcome = JdkEnsure.ensure(

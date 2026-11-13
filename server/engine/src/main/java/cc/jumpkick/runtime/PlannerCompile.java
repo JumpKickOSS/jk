@@ -67,7 +67,7 @@ public final class PlannerCompile {
     }
 
     /**
-     * What {@code BuildPlanner.JAVA_SOURCES} holds: the module's {@code .java} plus the extra-src
+     * The declared Java list parse-build publishes: the module's {@code .java} plus the extra-src
      * overlay, plus <em>every</em> {@code .scala} (a mixed Java+Scala module compiles through one
      * Zinc session, so the Scala sources are javac's inputs too) and the {@code .java} under
      * {@code src/main/scala}. {@code javaSeed} is the caller's already-walked {@code .java} list,
@@ -126,7 +126,7 @@ public final class PlannerCompile {
     }
 
     /**
-     * What {@code BuildPlanner.KOTLIN_SOURCES} holds: the module's {@code .kt} walk plus the
+     * The declared Kotlin list parse-build publishes: the module's {@code .kt} walk plus the
      * {@code [build] extra-src} overlay and plugin-contributed source roots. One derivation for
      * the build, the forecast and the pricing walks — a bare {@code src/main} walk sees no
      * sources at all for a module whose Kotlin lives only under contributed roots.
@@ -157,7 +157,7 @@ public final class PlannerCompile {
                 BuildLogicSupport.generatedSources(layout, ".kt"));
     }
 
-    /** {@link #mainKotlinSources(JkBuild, Path, boolean)}, for {@code GROOVY_SOURCES}. */
+    /** {@link #mainKotlinSources(JkBuild, Path, boolean)}, for the declared Groovy list. */
     public static List<Path> mainGroovySources(JkBuild project, Path moduleDir, boolean compact) throws IOException {
         return mainGroovySources(project, moduleDir, CompileSupport.collectGroovySources(moduleDir, compact));
     }

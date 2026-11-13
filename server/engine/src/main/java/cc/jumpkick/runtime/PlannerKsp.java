@@ -653,12 +653,14 @@ public final class PlannerKsp {
         cmd.add("-language-version=" + languageVersion);
         cmd.add("-api-version=" + languageVersion);
         cmd.add("-jvm-target="
-                + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE), JvmOptions.hostFeature(javaHome)));
+                + CompileSupport.kotlinJvmTarget(
+                        ctx.require(PARSED_BUILD).release(), JvmOptions.hostFeature(javaHome)));
         cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
         cmd.add("-libraries=" + Classpaths.join(libs));
         // KSP's map syntax joins entries with the platform path separator, same as its list
         // args; relative option paths resolve against the module dir (the KSP process CWD).
-        List<String> kspOptions = kspOptions(project, in.dir(), ctx.require(LOCKFILE));
+        List<String> kspOptions =
+                kspOptions(project, in.dir(), ctx.require(PARSED_BUILD).lockfile());
         if (!kspOptions.isEmpty()) {
             cmd.add("-processor-options=" + String.join(Classpaths.SEPARATOR, kspOptions));
         }

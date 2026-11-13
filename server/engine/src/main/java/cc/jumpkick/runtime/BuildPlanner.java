@@ -10,7 +10,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeHome;
@@ -25,6 +24,7 @@ import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.task.NodeOutput;
+import cc.jumpkick.task.ParsedBuild;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.wire.runtime.BuildKnobs;
@@ -57,7 +57,6 @@ public final class BuildPlanner {
 
     // ---- shared cross-step keys ---------------------------------------
     public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
-    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.scalar("lockfile", Lockfile.class);
     public static final BuildPlanKey<Path> JAVA_HOME = BuildPlanKey.scalar("java-home", Path.class);
 
     /** The locked Node.js home with its package manager; published by {@code ensure-node}. */
@@ -69,18 +68,11 @@ public final class BuildPlanner {
     /** The {@code node-install} key {@code node_modules} answers to; later node steps hash it. */
     public static final BuildPlanKey<String> NODE_INSTALLED = BuildPlanKey.scalar("node-installed", String.class);
 
-    public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
+    /** What parse-build declared: lockfile, compiler settings, output trees and source lists. */
+    public static final BuildPlanKey<ParsedBuild> PARSED_BUILD = BuildPlanKey.scalar("parsed-build", ParsedBuild.class);
 
     /** Every classpath the module's compiles and tests read; published by {@code resolve-deps}. */
     static final BuildPlanKey<ModuleClasspaths> CLASSPATHS = BuildPlanKey.scalar("classpaths", ModuleClasspaths.class);
-
-    public static final BuildPlanKey<List<Path>> JAVA_SOURCES = BuildPlanKey.list("java-sources", Path.class);
-
-    public static final BuildPlanKey<List<Path>> KOTLIN_SOURCES = BuildPlanKey.list("kotlin-sources", Path.class);
-
-    public static final BuildPlanKey<List<Path>> GROOVY_SOURCES = BuildPlanKey.list("groovy-sources", Path.class);
-
-    public static final BuildPlanKey<List<String>> JAVAC_ARGS = BuildPlanKey.list("javac-args", String.class);
 
     /** What compile-java decided, for write-stamp, assemble-classes and the steps after them. */
     public static final BuildPlanKey<CompileStamp> JAVA_COMPILE =
@@ -104,12 +96,9 @@ public final class BuildPlanner {
      */
     public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
 
-    public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
-
     /** The classes dir a {@code transformsClasses} plugin step wrote, once it ran: its output replaces the tree. */
     static final BuildPlanKey<Path> TRANSFORMED_CLASSES = BuildPlanKey.scalar("transformed-classes", Path.class);
 
-    public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
 
     /** What {@code run-tests} or {@code node-test} left: the suite's summary, or why the module skipped. */
@@ -123,25 +112,18 @@ public final class BuildPlanner {
 
     static final List<BuildPlanKey<?>> STATE_KEYS = List.of(
             PROJECT,
-            LOCKFILE,
             JAVA_HOME,
             NODE_HOME,
             NODE_OUTPUT,
             NODE_INSTALLED,
-            RELEASE,
+            PARSED_BUILD,
             CLASSPATHS,
-            JAVA_SOURCES,
-            KOTLIN_SOURCES,
-            GROOVY_SOURCES,
-            JAVAC_ARGS,
             JAVA_COMPILE,
             KOTLIN_COMPILE,
             GROOVY_COMPILE,
             COMPILED_TESTS,
             BUILD_OUTCOME,
-            MAIN_CLASSES,
             TRANSFORMED_CLASSES,
-            TEST_CLASSES,
             LAYOUT,
             TEST_RUN,
             MAIN_ABI,
@@ -153,7 +135,7 @@ public final class BuildPlanner {
      */
     public static Path mainClasses(TaskContext ctx) {
         Path transformed = ctx.get(TRANSFORMED_CLASSES).orElse(null);
-        return transformed != null ? transformed : ctx.require(MAIN_CLASSES);
+        return transformed != null ? transformed : ctx.require(PARSED_BUILD).classesDir();
     }
 
     /**
@@ -161,23 +143,25 @@ public final class BuildPlanner {
      * the declared list parse-build published.
      */
     static List<Path> javaSources(TaskContext ctx) {
-        return sources(ctx, JAVA_COMPILE, JAVA_SOURCES);
+        return sources(ctx, JAVA_COMPILE, ParsedBuild::javaSources);
     }
 
     /** The module's Kotlin sources: compile-kotlin's union once it decided, else the declared list. */
     static List<Path> kotlinSources(TaskContext ctx) {
-        return sources(ctx, KOTLIN_COMPILE, KOTLIN_SOURCES);
+        return sources(ctx, KOTLIN_COMPILE, ParsedBuild::kotlinSources);
     }
 
     /** The module's Groovy sources: compile-groovy's union once it decided, else the declared list. */
     static List<Path> groovySources(TaskContext ctx) {
-        return sources(ctx, GROOVY_COMPILE, GROOVY_SOURCES);
+        return sources(ctx, GROOVY_COMPILE, ParsedBuild::groovySources);
     }
 
     private static List<Path> sources(
-            TaskContext ctx, BuildPlanKey<CompileStamp> compiled, BuildPlanKey<List<Path>> declared) {
+            TaskContext ctx, BuildPlanKey<CompileStamp> compiled, Function<ParsedBuild, List<Path>> declared) {
         CompileStamp stamp = ctx.get(compiled).orElse(null);
-        return stamp != null ? stamp.sources() : ctx.get(declared).orElse(List.of());
+        return stamp != null
+                ? stamp.sources()
+                : ctx.get(PARSED_BUILD).map(declared).orElse(List.of());
     }
 
     /**

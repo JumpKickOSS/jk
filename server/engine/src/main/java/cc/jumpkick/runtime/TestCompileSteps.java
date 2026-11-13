@@ -130,7 +130,7 @@ final class TestCompileSteps {
             src = TestSources.collect( // the round rewrote its generated sources
                     project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
         }
-        Path testClasses = ctx.require(TEST_CLASSES);
+        Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();
         String selectionKey = String.join(",", compiledSuites);
         resetOnSelectionChange(ctx, testClasses, selectionKey);
         // Identity before the compilers run. Adoption may remove a copy that predates
@@ -213,7 +213,7 @@ final class TestCompileSteps {
                 ctx.require(CLASSPATHS).testCompile(),
                 ModuleClasspaths.groovyJar(
                         ctx.require(PROJECT),
-                        ctx.require(LOCKFILE),
+                        ctx.require(PARSED_BUILD).lockfile(),
                         cas,
                         groovyModule || !src.gvTest().isEmpty()));
     }
@@ -333,7 +333,7 @@ final class TestCompileSteps {
             throws Exception {
         if (src.javaTest().isEmpty() && src.scTest().isEmpty()) return TestSupport.Compiled.NOTHING;
         Path javaTestOut = testClasses; // javac always writes to java/test/
-        List<String> javacArgs = ctx.require(JAVAC_ARGS);
+        List<String> javacArgs = ctx.require(PARSED_BUILD).javacArgs();
         // The declared annotation processors run over test sources — the shared table's javac
         // half, then the test table's own, or that table alone under its inherit = false; the
         // request builder discovers classpath processors
@@ -342,8 +342,10 @@ final class TestCompileSteps {
         ModuleClasspaths classpaths = ctx.require(CLASSPATHS);
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);
-        ScalaCompile.Setup scalaSetup =
-                src.scTest().isEmpty() ? null : ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
+        ScalaCompile.Setup scalaSetup = src.scTest().isEmpty()
+                ? null
+                : ScalaCompile.prepare(
+                        ctx.require(PROJECT), ctx.require(PARSED_BUILD).lockfile(), cas);
         TestSupport.Compiled compiled = TestSupport.compileWithCache(
                 ctx,
                 warnings,
@@ -354,7 +356,9 @@ final class TestCompileSteps {
                         classpaths.javacTestProcessor(),
                         classpaths.contributedTestProcessor(),
                         javaTestOut,
-                        ctx.require(PROJECT).javac().testRelease(ctx.require(RELEASE)),
+                        ctx.require(PROJECT)
+                                .javac()
+                                .testRelease(ctx.require(PARSED_BUILD).release()),
                         javacArgs,
                         ctx.require(PROJECT).javac().forTests(),
                         ctx.require(JAVA_HOME),

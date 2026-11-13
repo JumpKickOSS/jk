@@ -24,6 +24,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ParsedBuild;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,7 +70,8 @@ final class PlannerJlink {
                         throw new IllegalStateException(message);
                     }
                     Path javaHome = ctx.require(JAVA_HOME);
-                    int release = ctx.get(RELEASE).orElse(0);
+                    int release =
+                            ctx.get(PARSED_BUILD).map(ParsedBuild::release).orElse(0);
                     Path thinJar = layout.mainJar();
                     Path image = layout.jlinkImage();
                     LibDir libConfig = project.libDir() != null ? project.libDir() : LibDir.defaults();

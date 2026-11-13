@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.ParsedBuild;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -144,7 +145,7 @@ public final class PackageProviders {
      * the layered catalog. Null when the plan has no lock, in which case no diagnostic is enriched.
      */
     public static @Nullable PackageProviders forContext(TaskContext ctx, List<Path> classpath, Set<Scope> scopes) {
-        Optional<Lockfile> lock = ctx.get(BuildPlanner.LOCKFILE);
+        Optional<Lockfile> lock = ctx.get(BuildPlanner.PARSED_BUILD).map(ParsedBuild::lockfile);
         if (lock.isEmpty()) return null;
         return of(
                 new ClasspathResolver(JkStores.storeCas()),

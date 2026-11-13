@@ -342,10 +342,12 @@ final class TestLaunch {
                 .anyMatch(p -> p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));
         boolean gvTestSources = testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
         if (kotlinModule || ktTestSources) {
-            runtimeCp.add(kotlinStdlib(ctx.require(PROJECT), ctx.require(LOCKFILE), cas));
+            runtimeCp.add(
+                    kotlinStdlib(ctx.require(PROJECT), ctx.require(PARSED_BUILD).lockfile(), cas));
         }
         if (groovyModule || gvTestSources) {
-            for (Path jar : groovyRuntime(ctx.require(PROJECT), ctx.require(LOCKFILE), cas)) {
+            for (Path jar : groovyRuntime(
+                    ctx.require(PROJECT), ctx.require(PARSED_BUILD).lockfile(), cas)) {
                 if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
             }
         }
@@ -450,7 +452,7 @@ final class TestLaunch {
         try (TestHomes.Hold held = TestEnv.holdSandboxes(in.dir())) {
             summary = launcher.run(
                     ctx.require(JAVA_HOME),
-                    ctx.require(TEST_CLASSES),
+                    ctx.require(PARSED_BUILD).testClassesDir(),
                     runtimeCp,
                     in.cache(),
                     testWorkers,

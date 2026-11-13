@@ -33,6 +33,7 @@ import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -131,7 +132,8 @@ final class PackageSteps {
                     // their consumers' lockfiles are the truth for the final classpath).
                     byte[] sbom = null;
                     if (project.isApplication()) {
-                        Lockfile sbomLock = ctx.get(LOCKFILE).orElse(null);
+                        Lockfile sbomLock =
+                                ctx.get(PARSED_BUILD).map(ParsedBuild::lockfile).orElse(null);
                         if (sbomLock != null) sbom = applicationSbom(project, sbomLock);
                     }
                     List<Path> guarded = new ArrayList<>(List.of(classes));
@@ -307,7 +309,7 @@ final class PackageSteps {
                 stamp.actionKey(),
                 stamp.inputs(),
                 FreshnessStamp.ClasspathTokens.of(stamp.tokens()),
-                ctx.require(RELEASE),
+                ctx.require(PARSED_BUILD).release(),
                 stamp.digest(),
                 stamp.clock());
         ctx.progress(1);

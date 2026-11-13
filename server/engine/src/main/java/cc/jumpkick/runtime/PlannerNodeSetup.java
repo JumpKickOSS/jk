@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
+import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 
 import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.compat.ToolProgress;
@@ -39,7 +39,7 @@ public final class PlannerNodeSetup {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve Node.js");
-                    NodePin pin = ctx.require(LOCKFILE).node();
+                    NodePin pin = ctx.require(PARSED_BUILD).lockfile().node();
                     if (pin == null) {
                         throw new IllegalStateException("jk-lock.toml pins no Node.js; run jk lock");
                     }

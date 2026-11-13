@@ -2,11 +2,10 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
-import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
-import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
 import cc.jumpkick.cache.Cas;
@@ -218,14 +217,14 @@ public final class PlannerFixtures {
                     List<Path> classpath = new ArrayList<>();
                     classpath.add(mainClasses(ctx));
                     classpath.addAll(classpaths.testCompile());
-                    List<String> javacArgs = ctx.require(JAVAC_ARGS);
+                    List<String> javacArgs = ctx.require(PARSED_BUILD).javacArgs();
                     CompileRequest request = fixturesCompileRequest(
                             sources,
                             classpath,
                             classpaths.javacProcessor(),
                             classpaths.contributedProcessor(),
                             out,
-                            ctx.require(RELEASE),
+                            ctx.require(PARSED_BUILD).release(),
                             javacArgs,
                             project.javac(),
                             ctx.require(JAVA_HOME));

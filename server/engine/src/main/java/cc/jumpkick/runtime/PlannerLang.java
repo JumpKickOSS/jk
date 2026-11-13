@@ -477,9 +477,9 @@ public final class PlannerLang {
     static KotlinConfig kotlinConfig(TaskContext ctx, Path moduleDir, @Nullable List<Path> javaSourceRoots) {
         return kotlinConfig(
                 ctx.require(PROJECT),
-                ctx.require(LOCKFILE),
+                ctx.require(PARSED_BUILD).lockfile(),
                 moduleDir,
-                ctx.require(RELEASE),
+                ctx.require(PARSED_BUILD).release(),
                 ctx.require(JAVA_HOME),
                 javaSourceRoots);
     }
@@ -558,7 +558,7 @@ public final class PlannerLang {
                 javaSourceRoots == null ? List.of() : ctx.require(CLASSPATHS).processor();
         return groovyRequest(
                 ctx.require(PROJECT),
-                ctx.require(LOCKFILE),
+                ctx.require(PARSED_BUILD).lockfile(),
                 in.dir(),
                 cas,
                 sources,
@@ -567,7 +567,7 @@ public final class PlannerLang {
                 javaSourceRoots,
                 stubsOut,
                 processorCp,
-                ctx.require(RELEASE),
+                ctx.require(PARSED_BUILD).release(),
                 ctx.require(JAVA_HOME));
     }
 

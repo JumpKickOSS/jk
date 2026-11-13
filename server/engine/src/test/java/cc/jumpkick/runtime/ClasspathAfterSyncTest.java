@@ -16,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.ParsedBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -142,7 +143,7 @@ class ClasspathAfterSyncTest {
         Path lockFile = module.resolve("jk-lock.toml");
         LockfileWriter.write(lock, lockFile);
         StashContext ctx = new StashContext();
-        ctx.put(BuildPlanner.LOCKFILE, lock);
+        ctx.put(BuildPlanner.PARSED_BUILD, parsed(lock));
         ctx.put(BuildPlanner.PROJECT, project);
         BuildPlanner.Inputs in = TestInputs.of(module, store).withLockFile(lockFile);
 
@@ -491,7 +492,7 @@ class ClasspathAfterSyncTest {
 
         StashContext context(Lockfile lock) throws Exception {
             StashContext ctx = new StashContext();
-            ctx.put(BuildPlanner.LOCKFILE, lock);
+            ctx.put(BuildPlanner.PARSED_BUILD, parsed(lock));
             ctx.put(BuildPlanner.PROJECT, JkBuildParser.parse(app.resolve("jk.toml")));
             return ctx;
         }
@@ -540,7 +541,7 @@ class ClasspathAfterSyncTest {
 
         JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
         StashContext ctx = new StashContext();
-        ctx.put(BuildPlanner.LOCKFILE, lock);
+        ctx.put(BuildPlanner.PARSED_BUILD, parsed(lock));
         ctx.put(BuildPlanner.PROJECT, project);
 
         BuildPlanner.Inputs in = TestInputs.of(module, store);
@@ -600,5 +601,11 @@ class ClasspathAfterSyncTest {
     private static void centralIsTheLocalRepository(Path store) {
         System.setProperty(
                 "jk.m2.local", store.resolve("repos").resolve("central").toString());
+    }
+
+    /** What parse-build publishes, with {@code lock} and nothing else the classpath steps read. */
+    private static ParsedBuild parsed(Lockfile lock) {
+        return new ParsedBuild(
+                lock, List.of(), 25, Path.of("classes"), Path.of("test-classes"), List.of(), List.of(), List.of());
     }
 }

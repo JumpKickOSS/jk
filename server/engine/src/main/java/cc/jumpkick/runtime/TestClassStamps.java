@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
-import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.run.TaskContext;
@@ -42,7 +42,7 @@ final class TestClassStamps {
             Path testClasses,
             long readClock)
             throws IOException {
-        int release = ctx.require(RELEASE);
+        int release = ctx.require(PARSED_BUILD).release();
         write(
                 testClasses,
                 BuildStamps.JAVA,

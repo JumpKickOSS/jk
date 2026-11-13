@@ -2,12 +2,10 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
-import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
+import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
-import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 import static cc.jumpkick.runtime.BuildPlanner.javaSources;
 import static cc.jumpkick.runtime.BuildPlanner.kotlinSources;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
@@ -95,16 +93,19 @@ final class PlannerJavadoc {
                 .toList();
         List<Path> kotlinSources = kotlinSources(ctx);
         List<Path> scalaSources = scaladocSources(javaAndScala, kotlinSources);
-        String scalaVersion = scalaSources.isEmpty() ? null : scaladocVersion(project, ctx.require(LOCKFILE));
+        String scalaVersion = scalaSources.isEmpty()
+                ? null
+                : scaladocVersion(project, ctx.require(PARSED_BUILD).lockfile());
         // What javac saw, plus the module's own classes: a Java source may name a Kotlin type.
         List<Path> classpath = new ArrayList<>(ctx.require(CLASSPATHS).main());
         classpath.add(mainClasses(ctx));
         Path javaHome = ctx.require(JAVA_HOME);
         JavadocMode mode = project.project().javadocMode();
-        int release = ctx.require(RELEASE);
+        int release = ctx.require(PARSED_BUILD).release();
         // The module graph javac compiled under: the plugin-contributed and profile args, then the
         // module's own [javac] table, as the compile step assembles them.
-        List<String> javacArgs = PlannerCompile.javacOptions(ctx.require(JAVAC_ARGS), project.javac());
+        List<String> javacArgs =
+                PlannerCompile.javacOptions(ctx.require(PARSED_BUILD).javacArgs(), project.javac());
         List<String> options = JavadocTool.options(mode, release, javacArgs);
         // Kotlin sources make it a Dokka run; the release documents with is part of the key.
         RepoGroup repos = kotlinSources.isEmpty() ? null : RepoGroupBuilder.buildFor(project, null, cas);
@@ -202,7 +203,8 @@ final class PlannerJavadoc {
             Path javaHome,
             Path jar)
             throws Exception {
-        ScalaCompile.Setup scala = ScalaCompile.prepare(project, ctx.require(LOCKFILE), cas);
+        ScalaCompile.Setup scala =
+                ScalaCompile.prepare(project, ctx.require(PARSED_BUILD).lockfile(), cas);
         List<Path> tool =
                 ScalaToolResolver.resolveScaladoc(RepoGroupBuilder.buildFor(project, null, cas), cas, scala.version());
         List<Path> docClasspath = new ArrayList<>(scala.libraryJars());

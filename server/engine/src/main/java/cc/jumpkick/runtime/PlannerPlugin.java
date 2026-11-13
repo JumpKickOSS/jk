@@ -873,7 +873,7 @@ public final class PlannerPlugin {
             throws Exception {
         // A plugin packager runs because this plugin declared one.
         ActivePlugin active = Objects.requireNonNull(declaredActive, "active plugin");
-        Lockfile lock = ctx.require(LOCKFILE);
+        Lockfile lock = ctx.require(PARSED_BUILD).lockfile();
         BuildLayout layout = ctx.require(LAYOUT);
         // Key AND spec from one derivation (PackagingKeys): the facts, runtime entries and tool
         // artifacts the packager body receives below are the very objects that keyed its output,

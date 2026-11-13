@@ -3,10 +3,10 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
-import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_INSTALLED;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_OUTPUT;
+import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_RUN;
 
 import cc.jumpkick.host.PathUtil;
@@ -301,7 +301,7 @@ final class NodeArm {
                 NodeKeys.outputs(project, node),
                 NodeEnv.keyed(project, node, moduleDir, false),
                 ctx.require(NODE_INSTALLED),
-                PlannerNodeSetup.token(ctx.require(LOCKFILE)),
+                PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
                 fetched,
                 project.node().inputs());
     }
@@ -489,8 +489,10 @@ final class NodeArm {
                     NodeHome home = ctx.require(NODE_HOME);
                     String override = project.node().install();
                     if (override == null) requireLockfile(home.packageManager());
-                    NodeKeys.Keyed keyed =
-                            NodeKeys.install(nodeDir, override, PlannerNodeSetup.token(ctx.require(LOCKFILE)));
+                    NodeKeys.Keyed keyed = NodeKeys.install(
+                            nodeDir,
+                            override,
+                            PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()));
                     ctx.put(NODE_INSTALLED, keyed.key());
                     Path stamp = NodeKeys.stamp(moduleDir);
                     if (!rebuild() && NodeKeys.installed(nodeDir, stamp, keyed.key())) {
@@ -559,7 +561,7 @@ final class NodeArm {
                             command,
                             NodeEnv.keyed(project, node, moduleDir, true),
                             ctx.require(NODE_INSTALLED),
-                            PlannerNodeSetup.token(ctx.require(LOCKFILE)),
+                            PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
                             NodeKeys.afterBuild(project),
                             project.node().inputs());
                     Path out = out();
@@ -622,7 +624,7 @@ final class NodeArm {
                             script,
                             NodeEnv.keyed(project, node, moduleDir, false),
                             ctx.require(NODE_INSTALLED),
-                            PlannerNodeSetup.token(ctx.require(LOCKFILE)),
+                            PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
                             NodeKeys.afterTest(project),
                             project.node().inputs());
                     boolean coverage = in.session().coverage();

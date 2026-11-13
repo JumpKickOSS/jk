@@ -99,7 +99,7 @@ final class TestSteps {
             ctx.label("no tests to run");
             return;
         }
-        Path testClasses = ctx.require(TEST_CLASSES);
+        Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();
         List<Path> testSrcs =
                 ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of());
         JkBuild projectUnderTest = ctx.require(PROJECT);
@@ -332,7 +332,8 @@ final class TestSteps {
             List<Path> runtimeCp,
             Map<String, String> workerJars)
             throws IOException {
-        List<Path> roots = new ArrayList<>(List.of(ctx.require(TEST_CLASSES), mainClasses(ctx), in.lockFile()));
+        List<Path> roots =
+                new ArrayList<>(List.of(ctx.require(PARSED_BUILD).testClassesDir(), mainClasses(ctx), in.lockFile()));
         // The temp roots the suite was handed: what it makes there is its own.
         for (String name : List.of("TMPDIR", "TMP", "TEMP")) {
             String tmp = testEnv.extras().get(name);
@@ -475,7 +476,9 @@ final class TestSteps {
                     in.profileName(),
                     defaultTier(in.dir()));
         }
-        String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
+        String suiteHint = exactClassList
+                ? null
+                : suites.classHint(ctx.require(PARSED_BUILD).testClassesDir(), sel.classes());
         boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
         if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
             return nothing
