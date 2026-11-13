@@ -145,22 +145,24 @@ class RemainingWorkStepsTest {
     }
 
     @Test
-    void a_running_step_counts_down_by_the_clock_and_holds_a_floor_once_it_overruns() {
+    void a_running_step_counts_down_by_the_clock_and_keeps_a_quarter_of_its_run_once_it_overruns() {
         RemainingWork rw = model();
         rw.stepStart(A, "compile-java");
         now.addAndGet(2_000);
         assertThat(rw.remaining()).isEqualTo(94_050); // 4 s left of compile + the suite, in weight units
         now.addAndGet(60_000);
-        assertThat(rw.remaining()).isEqualTo(90_300); // 5% of the compile's price + the suite
+        // Ten times its 6 s price, far past its high bound: a quarter of its 62 s run + the suite.
+        assertThat(rw.remaining()).isEqualTo(105_450); // in weight units: 15.5 s rounds to 15.45 s
     }
 
     /**
      * An integration suite priced at 110 s from its default profile's wall ran 249 s, and held at a
      * twentieth of its price it read 4 s left for its last three minutes: a running step never has
-     * less left than a quarter of the time it has run, up to what its high bound leaves.
+     * less left than a quarter of the time it has run, past its high bound too (JK-ZJ8D9: capped at
+     * what the bound left, a suite priced at 54 s that ran 638 s read 3.3 s left for six minutes).
      */
     @Test
-    void a_running_step_has_a_share_of_its_run_left_up_to_its_high_bound() {
+    void a_running_step_has_a_share_of_its_run_left_past_its_high_bound_too() {
         ModuleWorkCost cost = new ModuleWorkCost(A, Set.of(), 110_000 / MS, 110_000 / MS, 0, 0);
         RemainingWork rw = RemainingWork.seedSteps(
                         List.of(cost),
@@ -187,8 +189,14 @@ class RemainingWorkStepsTest {
                 .isCloseTo(25_000, within((long) MS));
         now.addAndGet(100_000);
         assertThat(rw.remaining()).as("200 s in: a quarter of it").isCloseTo(50_000, within((long) MS));
-        now.addAndGet(120_000);
-        assertThat(rw.remaining()).as("320 s in: what the high bound leaves").isCloseTo(9_850, within((long) MS));
+        now.addAndGet(130_000);
+        assertThat(rw.remaining())
+                .as("330 s in, at its high bound: a quarter of it, not nothing")
+                .isCloseTo(82_500, within((long) MS));
+        now.addAndGet(330_000);
+        assertThat(rw.remaining()).as("660 s in, twice its high bound").isCloseTo(165_000, within((long) MS));
+        now.addAndGet(2_640_000);
+        assertThat(rw.remaining()).as("3300 s in, ten times its high bound").isCloseTo(825_000, within((long) MS));
     }
 
     @Test
