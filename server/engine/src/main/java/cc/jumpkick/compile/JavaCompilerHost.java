@@ -65,6 +65,15 @@ public final class JavaCompilerHost {
         CompilerPool.endJob(requestId);
     }
 
+    /**
+     * How warm the resident compiler is for the next build: the compiles its lingering worker has
+     * answered, 0 when none lingers (after an engine start, or once the linger ran out), so the
+     * build's first compiles start a JVM and a cold JIT (JK-D3785).
+     */
+    public static int warmth() {
+        return CompilerPool.lingeringWarmth();
+    }
+
     static ForkedJavac.Result compile(ForkedJavac.Request req) {
         WorkerScope scope = WorkerScope.current();
         if (scope == null) return scoped(() -> compile(req));

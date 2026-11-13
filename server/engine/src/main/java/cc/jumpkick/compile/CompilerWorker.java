@@ -92,6 +92,14 @@ final class CompilerWorker {
     private volatile int threads;
     private volatile long pid = -1;
     private final AtomicInteger peakInflight = new AtomicInteger();
+
+    /**
+     * Compiles this worker has answered: how far its JIT is past its warm-up. A worker's first
+     * compile ran 3.2 times its warm wall, and its compiles came within a tenth of warm after about
+     * nine (JK-D3785); the estimate prices a build's first compiles by it.
+     */
+    private final AtomicInteger answered = new AtomicInteger();
+
     private volatile boolean dead;
     private volatile boolean retiring;
     private volatile @Nullable HeapReading heap;
@@ -429,7 +437,15 @@ final class CompilerWorker {
         for (String s : Jsonl.strArray(json, "compiled")) w.compiledSources.add(Path.of(s));
         w.whys.addAll(Jsonl.strArray(json, "whys"));
         // Free the credit before waking the submitter: its next module may be submitted at once.
-        if (pool.settle(this, w.id) == w) complete(w);
+        if (pool.settle(this, w.id) == w) {
+            answered.incrementAndGet();
+            complete(w);
+        }
+    }
+
+    /** Compiles this worker has answered ({@link #answered}). */
+    int answered() {
+        return answered.get();
     }
 
     private void onError(String json) {

@@ -90,6 +90,29 @@ public final class RunShapes {
         }
     }
 
+    private static final Map<Long, Integer> WARMTH = Collections.synchronizedMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Long, Integer> eldest) {
+            return size() > MAX;
+        }
+    });
+
+    /**
+     * {@code requestId} started with its javac worker at {@code warmth} (the compiles the lingering
+     * worker had answered; 0 for a fresh one): its run is recorded with it, so a compile replays
+     * walls from the same kind of worker.
+     */
+    public static void markCompilerWarmth(@Nullable Long requestId, int warmth) {
+        if (requestId == null || requestId <= 0) return;
+        WARMTH.put(requestId, Math.max(0, warmth));
+    }
+
+    /** The compiler warmth {@code requestId} started with, or {@link StepLedger#UNKNOWN_WARMTH}. */
+    public static int compilerWarmthOf(long requestId) {
+        Integer w = WARMTH.get(requestId);
+        return w == null ? StepLedger.UNKNOWN_WARMTH : w;
+    }
+
     /** The work set {@code requestId}'s estimate was priced under, or {@code null} when none was. */
     public static @Nullable Set<String> frontierOf(long requestId) {
         Priced p = PRICED.get(requestId);

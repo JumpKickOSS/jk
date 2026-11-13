@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TaskForecast;
@@ -16,6 +17,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +27,17 @@ import org.junit.jupiter.api.io.TempDir;
  * project's ledger, with no scale on top, and hands the live model each module's steps.
  */
 class StepEtaTest {
+
+    /** A warm resident compiler, so each step reads at its ledger wall (CompilerWarmUp prices a cold one). */
+    @BeforeEach
+    void warmCompiler() {
+        CompilerWarmUp.warmthForTests(() -> 1_000);
+    }
+
+    @AfterEach
+    void liveCompiler() {
+        CompilerWarmUp.warmthForTests(JavaCompilerHost::warmth);
+    }
 
     @Test
     void each_forecast_step_is_priced_at_its_ledger_wall(@TempDir Path ws) throws Exception {
