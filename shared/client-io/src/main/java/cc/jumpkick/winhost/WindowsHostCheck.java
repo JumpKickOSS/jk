@@ -70,7 +70,8 @@ public record WindowsHostCheck(
                 this::folders,
                 this::longPaths,
                 this::volumes,
-                this::arch);
+                this::arch,
+                this::wsl);
         List<String> labels = List.of(
                 "smart-app-control:smart app control",
                 "powershell:powershell",
@@ -78,7 +79,8 @@ public record WindowsHostCheck(
                 "folders:folders",
                 "long-paths:long paths",
                 "volumes:volumes",
-                "arch:arch");
+                "arch:arch",
+                "wsl:wsl");
         long deadline = Clock.SYSTEM.nanos() + budget.toNanos();
         List<HostRow> out = new ArrayList<>();
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -419,6 +421,25 @@ public record WindowsHostCheck(
         String type = v.type();
         String suffix = type.equalsIgnoreCase("ReFS") ? " (a Dev Drive's trust needs admin to read)" : "";
         return v.root() + " " + type + suffix;
+    }
+
+    // ---- WSL ----
+
+    /** The user's WSL distros, which run, and which JumpKick each running one has. Never a warning. */
+    HostRow wsl() {
+        String id = "wsl", label = "wsl";
+        List<WslDistros.Distro> distros = facts.wslDistros();
+        if (distros.isEmpty()) return HostRow.ok(id, label, "no WSL distros");
+        List<String> parts = new ArrayList<>();
+        for (WslDistros.Distro d : distros) {
+            List<String> facts = new ArrayList<>();
+            if (d.isDefault()) facts.add("default");
+            if (d.version() == 1) facts.add("WSL 1");
+            facts.add(d.running() ? "running" : "stopped");
+            if (d.jumpKick() != null) facts.add(d.jumpKick());
+            parts.add(d.name() + " (" + String.join(", ", facts) + ")");
+        }
+        return HostRow.ok(id, label, String.join("; ", parts));
     }
 
     // ---- architecture ----

@@ -10,11 +10,13 @@ import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code RegGetValueW} from {@code advapi32} through the foreign-function API, reading the 64-bit
- * view. The handle is bound on first use, never while a native image is built; its shape is
+ * {@code RegGetValueW}, and {@code RegOpenKeyExW} with {@code RegEnumKeyExW} for subkeys, from {@code
+ * advapi32} through the foreign-function API, reading the 64-bit view. The handle is bound on first use, never while a native image is built; its shape is
  * registered in this module's {@code reachability-metadata.json}.
  */
 final class Advapi32Registry implements Registry {
@@ -31,10 +33,23 @@ final class Advapi32Registry implements Registry {
 
     private static final long HKCU = 0xFFFF_FFFF_8000_0001L;
 
-    private final MethodHandle regGetValue;
+    private static final int KEY_READ = 0x20019;
+    private static final int KEY_WOW64_64KEY = 0x0100;
+    private static final int ERROR_NO_MORE_ITEMS = 259;
+    /** A key name is at most 255 characters. */
+    private static final int MAX_KEY_CHARS = 256;
 
-    private Advapi32Registry(MethodHandle regGetValue) {
+    private final MethodHandle regGetValue;
+    private final MethodHandle regOpenKey;
+    private final MethodHandle regEnumKey;
+    private final MethodHandle regCloseKey;
+
+    private Advapi32Registry(
+            MethodHandle regGetValue, MethodHandle regOpenKey, MethodHandle regEnumKey, MethodHandle regCloseKey) {
         this.regGetValue = regGetValue;
+        this.regOpenKey = regOpenKey;
+        this.regEnumKey = regEnumKey;
+        this.regCloseKey = regCloseKey;
     }
 
     private static final class Holder {
@@ -63,7 +78,32 @@ final class Advapi32Registry implements Registry {
                                     ValueLayout.ADDRESS,
                                     ValueLayout.ADDRESS,
                                     ValueLayout.ADDRESS));
-            return new Advapi32Registry(get);
+            Linker linker = Linker.nativeLinker();
+            MethodHandle open = linker.downcallHandle(
+                    advapi.findOrThrow("RegOpenKeyExW"),
+                    FunctionDescriptor.of(
+                            ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.JAVA_INT,
+                            ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS));
+            MethodHandle enumKey = linker.downcallHandle(
+                    advapi.findOrThrow("RegEnumKeyExW"),
+                    FunctionDescriptor.of(
+                            ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS));
+            MethodHandle close = linker.downcallHandle(
+                    advapi.findOrThrow("RegCloseKey"),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            return new Advapi32Registry(get, open, enumKey, close);
         } catch (Throwable unbound) {
             return Registry.NONE;
         }
@@ -102,11 +142,56 @@ final class Advapi32Registry implements Registry {
         }
     }
 
+    @Override
+    public List<String> subkeys(Hive hive, String key) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment handle = arena.allocate(ValueLayout.ADDRESS);
+            int opened = (int) regOpenKey.invokeExact(
+                    root(hive),
+                    arena.allocateFrom(key, StandardCharsets.UTF_16LE),
+                    0,
+                    KEY_READ | KEY_WOW64_64KEY,
+                    handle);
+            if (opened != ERROR_SUCCESS) return List.of();
+            MemorySegment open = handle.get(ValueLayout.ADDRESS, 0);
+            List<String> out = new ArrayList<>();
+            try {
+                MemorySegment name = arena.allocate(MAX_KEY_CHARS * 2L);
+                MemorySegment chars = arena.allocate(ValueLayout.JAVA_INT);
+                for (int i = 0; ; i++) {
+                    chars.set(ValueLayout.JAVA_INT, 0, MAX_KEY_CHARS);
+                    int status = (int) regEnumKey.invokeExact(
+                            open,
+                            i,
+                            name,
+                            chars,
+                            MemorySegment.NULL,
+                            MemorySegment.NULL,
+                            MemorySegment.NULL,
+                            MemorySegment.NULL);
+                    if (status == ERROR_NO_MORE_ITEMS || status != ERROR_SUCCESS) break;
+                    int n = chars.get(ValueLayout.JAVA_INT, 0);
+                    out.add(new String(
+                            name.asSlice(0, n * 2L).toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_16LE));
+                }
+            } finally {
+                int closed = (int) regCloseKey.invokeExact(open);
+                if (closed != ERROR_SUCCESS) out.clear();
+            }
+            return List.copyOf(out);
+        } catch (Throwable unreadable) {
+            return List.of();
+        }
+    }
+
+    private static MemorySegment root(Hive hive) {
+        return MemorySegment.ofAddress(hive == Hive.LOCAL_MACHINE ? HKLM : HKCU);
+    }
+
     private int call(Arena arena, Hive hive, String key, String value, int type, MemorySegment data, MemorySegment size)
             throws Throwable {
-        MemorySegment root = MemorySegment.ofAddress(hive == Hive.LOCAL_MACHINE ? HKLM : HKCU);
         return (int) regGetValue.invokeExact(
-                root,
+                root(hive),
                 arena.allocateFrom(key, StandardCharsets.UTF_16LE),
                 arena.allocateFrom(value, StandardCharsets.UTF_16LE),
                 type | RRF_SUBKEY_WOW6464KEY,

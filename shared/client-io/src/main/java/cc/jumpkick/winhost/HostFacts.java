@@ -2,6 +2,7 @@
 package cc.jumpkick.winhost;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** What the Windows checks read from the host; a fake one makes every row testable anywhere. */
@@ -35,6 +36,11 @@ public interface HostFacts {
     /** The file's text, or null when it cannot be read. */
     @Nullable
     String read(Path path);
+
+    /** The user's WSL distros, found without starting one; empty where WSL is missing. */
+    default List<WslDistros.Distro> wslDistros() {
+        return List.of();
+    }
 
     /** The facts of this machine. */
     static HostFacts live() {

@@ -336,6 +336,7 @@ warning names its fix; `jk doctor -O jsonl` and the MCP `doctor` tool carry the 
 | `long paths` | Windows' `LongPathsEnabled` or git's `core.longpaths` is off |
 | `volumes` | The project and `JK_HOME` are on different volumes, so the cache copies files instead of linking them; the row also names the filesystem (NTFS, ReFS) |
 | `arch` | An x64 `jk` or JDK runs under ARM64 emulation |
+| `wsl` | Never: it lists your WSL distros, which is the default, which run, and which JumpKick each running one has. It reads the list from the registry and starts no stopped distro; the ones Docker Desktop, Rancher Desktop and Podman keep for themselves are left out |
 
 ### `jk doctor --fix`: set up the machine once
 

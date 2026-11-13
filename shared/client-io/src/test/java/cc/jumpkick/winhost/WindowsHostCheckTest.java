@@ -31,7 +31,14 @@ class WindowsHostCheckTest {
         assertThat(rows)
                 .extracting(HostRow::id)
                 .containsExactly(
-                        "smart-app-control", "powershell", "defender", "folders", "long-paths", "volumes", "arch");
+                        "smart-app-control",
+                        "powershell",
+                        "defender",
+                        "folders",
+                        "long-paths",
+                        "volumes",
+                        "arch",
+                        "wsl");
         assertThat(rows).allMatch(r -> r.status() == HostRow.Status.OK);
     }
 

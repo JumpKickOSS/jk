@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-/** Reads single registry values. A value that is missing, unreadable or of another type reads as null. */
+/**
+ * Reads single registry values and lists subkeys. A value that is missing, unreadable or of another
+ * type reads as null; a key that is missing or unreadable has no subkeys.
+ */
 public interface Registry {
 
     /** The predefined root keys the host checks read. */
@@ -30,4 +34,9 @@ public interface Registry {
 
     @Nullable
     String string(Hive hive, String key, String value);
+
+    /** The names of {@code key}'s direct subkeys, in the registry's order. */
+    default List<String> subkeys(Hive hive, String key) {
+        return List.of();
+    }
 }

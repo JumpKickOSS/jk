@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,6 +61,18 @@ final class LiveHostFacts implements HostFacts {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    @Override
+    public List<WslDistros.Distro> wslDistros() {
+        return WslDistros.list(registry(), (argv, limit) -> {
+            try {
+                Processes.Captured c = Processes.capture(argv, limit);
+                return c.timedOut() || c.exit() != 0 ? null : c.output().getBytes(StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                return null;
+            }
+        });
     }
 
     @Override
