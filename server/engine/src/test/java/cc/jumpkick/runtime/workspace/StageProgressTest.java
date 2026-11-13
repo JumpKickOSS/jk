@@ -14,10 +14,12 @@ import org.junit.jupiter.api.Test;
 class StageProgressTest {
 
     private final List<String> reports = new ArrayList<>();
+    private final List<String> labels = new ArrayList<>();
     private final WorkspaceBuildListener listener = new WorkspaceBuildListener() {
         @Override
         public void onPreflight(String stage, int done, int total, String label) {
             reports.add(stage + " " + done + "/" + total);
+            labels.add(label);
         }
     };
 
@@ -26,7 +28,7 @@ class StageProgressTest {
     }
 
     private void report(TransferBoard.Snapshot d, StageProgress.Reported r) {
-        StageProgress.report(d, listener, "sync", StageProgress.SYNC_LABEL, r);
+        StageProgress.report(d, new TransferBoard.InFlight(0, 0, 0), listener, "sync", StageProgress.SYNC_LABEL, r);
     }
 
     @Test
@@ -73,5 +75,43 @@ class StageProgressTest {
                 .isLessThan(lockDone);
         assertThat(syncHalf).isGreaterThan(graphDone).isLessThan(syncDone);
         assertThat(planStart).isGreaterThanOrEqualTo(syncDone);
+    }
+
+    private static final long MB = 1024L * 1024L;
+
+    @Test
+    void a_stage_no_declared_set_moves_moves_by_the_bytes_its_bodies_stream() {
+        // JK-RYA7W: a tool sync fetched a 645 MB IDE zip with no declared set, and the band sat still.
+        var r = new StageProgress.Reported(snap(0, 0));
+        List<TransferBoard.Row> rows =
+                List.of(new TransferBoard.Row("com.jetbrains.intellij.idea:ideaIC:262.1", 129 * MB, 645 * MB));
+        StageProgress.report(
+                new TransferBoard.Snapshot(0, 0, 0, 129 * MB, 1, rows),
+                new TransferBoard.InFlight(516 * MB, 129 * MB, 0),
+                listener,
+                "sync",
+                StageProgress.SYNC_LABEL,
+                r);
+        rows = List.of(new TransferBoard.Row("com.jetbrains.intellij.idea:ideaIC:262.1", 516 * MB, 645 * MB));
+        StageProgress.report(
+                new TransferBoard.Snapshot(0, 0, 0, 516 * MB, 1, rows),
+                new TransferBoard.InFlight(129 * MB, 516 * MB, 0),
+                listener,
+                "sync",
+                StageProgress.SYNC_LABEL,
+                r);
+
+        assertThat(reports).containsExactly("sync 200/1000", "sync 800/1000");
+        assertThat(labels.getLast()).isEqualTo(StageProgress.SYNC_LABEL + " · ideaIC 262.1 516 / 645 MB");
+    }
+
+    @Test
+    void a_warm_stage_that_moves_no_bytes_reports_nothing() {
+        var r = new StageProgress.Reported(snap(0, 0));
+        StageProgress.report(
+                snap(0, 0), new TransferBoard.InFlight(0, 0, 0), listener, "sync", StageProgress.SYNC_LABEL, r);
+        assertThat(reports).isEmpty();
+        assertThat(StageProgress.downloading(List.of(new TransferBoard.Row("g:small:1", 10_000, 20_000))))
+                .isEmpty();
     }
 }

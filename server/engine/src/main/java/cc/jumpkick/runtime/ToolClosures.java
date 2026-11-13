@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ToolsGc;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -12,6 +13,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.repo.ArtifactFanOut;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.Pom;
@@ -21,6 +23,7 @@ import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
@@ -115,8 +118,18 @@ final class ToolClosures {
         Path staging = null;
         try {
             staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
-            for (Map.Entry<Coordinate, String> jar : pinned.entrySet()) {
-                alias(staging, jar.getKey(), PluginBuild.fetchPinned(repos, jar.getKey(), lock));
+            // The closure's jars at once, as a declared set on the run's board: the sync stage and
+            // its estimate then see every file still to come, not only the one streaming. One by
+            // one, jk's IntelliJ plugin tools took 19 s after the IDE zip with the bar at its top
+            // (JK-RYA7W).
+            TransferBoard board = SessionContext.current().io().transfers();
+            List<ArtifactFanOut.Fetch<Fetched>> fetches = new ArrayList<>(pinned.size());
+            for (Coordinate coord : pinned.keySet()) {
+                fetches.add(() -> new Fetched(coord, PluginBuild.fetchPinned(repos, coord, lock)));
+            }
+            for (Fetched f :
+                    ArtifactFanOut.all(fetches, f -> board.landed(f.coord().toString()))) {
+                alias(staging, f.coord(), f.jar());
             }
             writeListing(staging);
             publish(staging, dir);
@@ -126,6 +139,9 @@ final class ToolClosures {
         }
         return used(cas, dir);
     }
+
+    /** One jar of a closure and where its bytes are. */
+    private record Fetched(Coordinate coord, Path jar) {}
 
     /**
      * The family of the store's tools every closure directory lives in — a tool closure's and a
