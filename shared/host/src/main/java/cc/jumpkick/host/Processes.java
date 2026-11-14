@@ -66,6 +66,14 @@ public final class Processes {
      */
     public static Captured capture(Process child, byte @Nullable [] stdin, Duration timeout, int limit)
             throws IOException {
+        Ran ran = run(child, stdin, timeout, limit);
+        return new Captured(ran.exit(), ran.out().text(), ran.err().text(), ran.timedOut());
+    }
+
+    /** A finished or killed child and its two drained pipes. */
+    private record Ran(int exit, Drain out, Drain err, boolean timedOut) {}
+
+    private static Ran run(Process child, byte @Nullable [] stdin, Duration timeout, int limit) throws IOException {
         Drain out = Drain.start(child.getInputStream(), limit, "jk-process-stdout");
         Drain err = Drain.start(child.getErrorStream(), limit, "jk-process-stderr");
         try (OutputStream in = child.getOutputStream()) {
@@ -77,17 +85,31 @@ public final class Processes {
         try {
             if (!child.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
                 killTree(child);
-                return new Captured(-1, out.text(), err.text(), true);
+                return new Ran(-1, out, err, true);
             }
             // The child is gone, but a descendant may still hold a pipe: wait for the end of the
             // output no later than the deadline, and keep what was read by then.
             out.await(deadline);
             err.await(deadline);
-            return new Captured(child.exitValue(), out.text(), err.text(), false);
+            return new Ran(child.exitValue(), out, err, false);
         } catch (InterruptedException e) {
             killTree(child);
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("interrupted waiting for pid " + child.pid());
+        }
+    }
+
+    /**
+     * {@code command}'s raw output (stderr merged) when it exits 0 within {@code timeout}, for a
+     * child whose output is not UTF-8; {@code null} on every failure, as {@link #outputIfOk}.
+     */
+    public static byte @Nullable [] bytesIfOk(List<String> command, Duration timeout) {
+        try {
+            Ran ran = run(
+                    new ProcessBuilder(command).redirectErrorStream(true).start(), null, timeout, Integer.MAX_VALUE);
+            return ran.timedOut() || ran.exit() != 0 ? null : ran.out().bytes();
+        } catch (IOException | RuntimeException e) {
+            return null;
         }
     }
 
@@ -161,6 +183,12 @@ public final class Processes {
         String text() {
             synchronized (kept) {
                 return kept.toString(StandardCharsets.UTF_8);
+            }
+        }
+
+        byte[] bytes() {
+            synchronized (kept) {
+                return kept.toByteArray();
             }
         }
     }
