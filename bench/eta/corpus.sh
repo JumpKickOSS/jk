@@ -158,14 +158,14 @@ for i in $(seq 1 "$ITER"); do
   want S5 && { edit "$CORE" public; scored S5-core-api-build "$i" build; }
   want S6 && { edit "$LEAF" private; scored S6-leaf-body-skip-tests "$i" build --skip-tests; }
   want S7 && { edit "$MID" private; scored S7-engine-body-test "$i" test; }
-  want S9 && { edit "$MID" private; scored S9-integration-engine-only "$i" test -p integration -m jk-engine; }
+  want S9 && { edit "$MID" private; scored S9-integration-engine-only "$i" test -s integration -m jk-engine; }
   want S10 && { edit "$MID" private; scored S10-class-filter "$i" test --class=TestEffortTest; }
   # A test class added to the engine's suite: its replayed wall did not run it (JK-4N8PA).
   want S12 && { add_test; scored S12-engine-test-added "$i" test -m jk-engine; }
 done
 # The long ones last, so a short-scenario regression shows up early in progress.txt.
 for i in $(seq 1 "$ITER"); do
-  want S8 && scored S8-integration-forced "$i" test -p integration -F
+  want S8 && scored S8-integration-forced "$i" test -s integration -F
   want S11 && scored S11-forced-build "$i" build -F
 done
 

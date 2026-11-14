@@ -47,7 +47,7 @@ import org.junit.jupiter.api.io.TempDir;
  * included; the project page the create opens shows what was wired for agents.
  *
  * <p>{@code release}: a real browser is worth running once per release, not on every push, and
- * Playwright fetches it while the dashboard loads Vue from a CDN ({@code jk test -p release -m
+ * Playwright fetches it while the dashboard loads Vue from a CDN ({@code jk test -s release -m
  * clients/cli --class …}). Each step's screenshot lands under {@code
  * clients/cli/target/new-project-wizard/}.
  */

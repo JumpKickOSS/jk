@@ -27,8 +27,8 @@ class ModelViewTest {
              "lock":[{"coordinate":"org.x:y","version":"1.2","repository":"central","scopes":["main","test"]},
                      {"coordinate":"org.p:proc","version":"1.0","repository":"corp","scopes":["processor"]}],
              "tiers":{"tiers":[{"name":"jk test","include":[],"exclude":["slow","network"]},
-                               {"name":"jk test -p slow","include":["slow"],"exclude":[]},
-                               {"name":"jk test -p network","include":["network"],"exclude":["slow"]}]},
+                               {"name":"jk test -s slow","include":["slow"],"exclude":[]},
+                               {"name":"jk test -s network","include":["network"],"exclude":["slow"]}]},
              "toolchain":{"java":{"":25,"lib":17},"kotlin":"2.4.10","repositories":["central","corp"]}}
             """;
 
@@ -76,11 +76,11 @@ class ModelViewTest {
         var tiers = ModelView.parse(JSON).tiers();
         assertThat(tiers.tagVocabulary()).containsExactly("network", "slow");
         assertThat(tiers.running(Set.of())).containsExactly("jk test");
-        assertThat(tiers.running(Set.of("slow"))).containsExactly("jk test -p slow");
-        assertThat(tiers.running(Set.of("network"))).containsExactly("jk test -p network");
+        assertThat(tiers.running(Set.of("slow"))).containsExactly("jk test -s slow");
+        assertThat(tiers.running(Set.of("network"))).containsExactly("jk test -s network");
         assertThat(tiers.running(Set.of("slow", "network")))
                 .as("network excludes slow; slow's tier includes it")
-                .containsExactly("jk test -p slow");
+                .containsExactly("jk test -s slow");
         assertThat(tiers.running(Set.of("unknown")))
                 .as("an unknown tag runs in the default tier")
                 .containsExactly("jk test");

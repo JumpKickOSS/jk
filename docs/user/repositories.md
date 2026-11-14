@@ -750,7 +750,7 @@ is Maven 3's format above. When gpg-agent has nothing cached, let a `mvn` run as
 under the cache id `plexus:secDispatcherMasterPassword`; JumpKick asks the agent again on every
 command.
 
-The `gpg-agent:` source is verified on Linux against a real agent (`jk test -p live`). It needs
+The `gpg-agent:` source is verified on Linux against a real agent (`jk test -s live`). It needs
 the agent's Unix socket. On macOS it is unverified: macOS ships no GnuPG, and the live test needs
 one on `PATH` (GnuPG 2.1 or later from Homebrew, MacPorts or GPG Suite, whose agent listens on a
 Unix socket as on Linux); without it the test is skipped. On

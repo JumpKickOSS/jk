@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The e2e suite runs on the same harness as the unit suite: the fixtures' engine extension
  * materializes the engine under test into the sandbox home, so a verb the engine hosts answers
- * from it ({@code jk test -p integration -s e2e -m clients/cli}).
+ * from it ({@code jk test -s integration -m clients/cli}).
  */
 @Tag("integration")
 class E2eSuiteEngineTest {

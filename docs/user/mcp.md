@@ -154,7 +154,7 @@ A failure with no failed step, test or source error carries its reason on the he
 ` — `: the run-level error that decided it, or else the warning the run left.
 
 ```
-FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.example.FormatThreadsBenchTest [bench]; pass --include-tags bench to run it; -p bench runs it
+FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.example.FormatThreadsBenchTest [bench]; drop --exclude-tags bench to run it
 ```
 
 Paths are relative to the project directory. A quoted source row is its line number, `|`, a

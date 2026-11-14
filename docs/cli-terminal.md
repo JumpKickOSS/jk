@@ -1623,7 +1623,7 @@ This is a local CLI, not a service. No metrics backend.
   `MissingForeignRegistrationError` per descriptor; `PosixTty.ensure()` binds independently so
   one miss does not null `open`/`tcgetattr`. A hole here makes `canPrompt()` false on a live
   TTY and `jk new` skips the wizard.
-- **Alerting:** none. Dogfood + `jk test -m clients/cli` / `jk test -p integration -m clients/cli` / reinstall smoke.
+- **Alerting:** none. Dogfood + `jk test -m clients/cli` / `jk test -s integration -m clients/cli` / reinstall smoke.
 
 Latency targets: `controlling()` first open < 5ms (no 200ms grapheme timeout). `readKey(75ms)`
 worst case is the timeout plus a single `read`. Restore < 10ms so the 500ms halt budget is
@@ -1926,7 +1926,7 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
   aliases remain for adopters.
 
 Done criteria (ticket, when one exists): `jk test -m jk-cli` green; `jk test -m jk-cli-terminal`
-green; integration profile if wire-adjacent tests were touched (they should not be);
+green; integration suite if wire-adjacent tests were touched (they should not be);
 `jk install -S && jk engine stop`; `jk engine status`; `jk init` + `jk build` smoke;
 interactive wizard + Ctrl-C + Ctrl-O + `jk run` echo on a real TTY; Done greps above;
 `tui.md` no longer mentions JLine's reader before status `done`; record `stat target/dist/jk`

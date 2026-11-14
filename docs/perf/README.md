@@ -137,7 +137,7 @@ schtasks /Create /TN "jk scoreboard night" /SC DAILY /ST 01:30 /TR ^
 
 ## Microbenchmarks
 
-The nightly bench profile (`jk test -p bench`, `@Tag("bench")`) reports each bench's median through
+The nightly bench suite (`jk test -s bench`, `@Tag("bench")`) reports each bench's median through
 `cc.jumpkick.testing.BenchBand`. A bench with a `dim = "bench"` row in `scoreboard.toml` (subject the
 bench's name, value in `ms`) fails when its median exceeds the banked value by 15 %; one without
 prints its number as `unbaselined` so it can be banked from the job log. The `BenchBand` unit test
@@ -156,5 +156,5 @@ version string changing length inside the SBOM, not for noise. The current table
 decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
 
 ```bash
-jk test -p bench -m server/engine -S cc.jumpkick.compile.JarSizeBenchTest
+jk test -s bench -m server/engine -S cc.jumpkick.compile.JarSizeBenchTest
 ```
