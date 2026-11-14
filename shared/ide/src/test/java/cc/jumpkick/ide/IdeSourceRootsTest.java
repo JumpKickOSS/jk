@@ -55,6 +55,31 @@ class IdeSourceRootsTest {
         assertThat(IdeSourceRoots.suites(tmp)).containsExactly("test", "integration");
     }
 
+    /** A suite the workspace root declares is a suite of every member, tests of it there or not. */
+    @Test
+    void a_member_lists_the_suites_its_workspace_root_declares(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["m"]
+
+                [test.suites.integration]
+                tags = ["integration"]
+                """);
+        Path member = tmp.resolve("m");
+        Files.createDirectories(member.resolve("test/src"));
+        Files.writeString(member.resolve("jk.toml"), "name = \"m\"\n");
+        Files.createDirectories(member.resolve("src"));
+        Files.writeString(member.resolve("src/Main.java"), "class Main {}");
+        Files.writeString(member.resolve("test/src/UnitTest.java"), "class UnitTest {}");
+
+        assertThat(IdeSourceRoots.suites(member)).containsExactly("test", "integration");
+    }
+
     @Test
     void traditional_layout_includes_src_integration_java(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """

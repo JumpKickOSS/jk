@@ -78,6 +78,7 @@ public final class WorkspaceResolve {
             // loadModules already rewrites project.*.workspace / omitted-field inherits.
             module = WorkspaceLoader.inheritFromRoot(module, root);
             module = WorkspaceLoader.inheritProfiles(module, root);
+            module = WorkspaceLoader.inheritSuites(module, root);
             module = WorkspaceLoader.inheritPublish(module, root);
             module = WorkspaceLoader.inheritImage(module, root, moduleDir);
             // Conditioned plugin contributions (kotlin-project, …) were folded pre-inheritance;

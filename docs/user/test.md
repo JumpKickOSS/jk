@@ -148,9 +148,10 @@ explicit = true                                      # only when named: -s live 
   changing `integration`'s env re-runs `jk test -s integration` and leaves `jk test` cached.
 
 The suite name follows the directory rule (`[a-z][a-z0-9_-]*`), and `test`, `guard` and
-`fixtures` cannot be one. A tag is a JUnit tag name: no whitespace and none of `, ( ) & | !`. The
-table is per module, like the rest of `[test]`. `[test] exclude-classes` still removes a class
-from every suite, declared suites included.
+`fixtures` cannot be one. A tag is a JUnit tag name: no whitespace and none of `, ( ) & | !`. A
+table at a workspace root declares a suite of every member, which may add suites of its own and
+add settings to the root's ([Workspace scope](#workspace-scope-tag-filters-come-from-the-root)).
+`[test] exclude-classes` still removes a class from every suite, declared suites included.
 
 ## The guard suite is not a test suite
 
@@ -536,6 +537,19 @@ merge key by key and the root wins unless the key is additive per member:
 | `inherits` | The root's when it sets the key, else the member's | One chain per profile name |
 
 A profile only one of them declares is that one's, whole.
+
+Suites are a workspace fact the same way. A `[test.suites.<name>]` table the root declares is a
+suite of every member: `jk test -s <name>` and `-g` select it in each, BSP and `jk ide` list it as a
+target in each, and a member holding none of its tests simply runs none. A member declares suites of
+its own beside the root's. Where a member's table names a suite the root declares, the member may
+add to its settings and nothing else:
+
+| Key | Rule | Why |
+|-----|------|-----|
+| `classes`, `tags`, `exclude-classes`, `exclude-tags`, `explicit` | The root's; a member setting one is a config error naming the root's table | A suite that claims different tests in each member is no tier at all |
+| `env`, `system-properties` | Additive; the root's value wins a name both set | A member adds what only its tests need, such as its own database |
+| `jvm-args` | Additive; the root's follow the member's, so the root wins a flag both set | A member adds flags only its test JVMs need |
+| `timeout` | The root's when it sets one, else the member's | One limit per tier where the root names it |
 
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
 `workers`, `assertions`, `jvm-args`, `system-properties` and `env`. This is not the `key.workspace = true` spelling that identity keys
