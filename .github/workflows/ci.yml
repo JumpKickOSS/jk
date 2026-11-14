@@ -108,6 +108,9 @@ jobs:
       - name: Manual release merge and publish fixtures
         run: bash scripts/test-release-publish.sh
 
+      - name: Manual release lane fixtures
+        run: bash scripts/test-release-lane.sh
+
       - name: Release-notes fixtures
         run: bash scripts/test-release-notes.sh
 

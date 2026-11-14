@@ -64,7 +64,11 @@ cd "$W/src"
 export JK_HOME="$W/home" CI=1 NO_COLOR=1 JK_NONINTERACTIVE=1 JK_SELF_UPDATE=never JK_CLIENT="${JK_CLIENT:-native}"
 export PATH="$JK_HOME/bin:$PATH"
 out="$W/out/release-$VER-$LABEL"
-{
+# A subshell outside any `||` or `if`, so set -e stops it at the first failed step: in a `{ … } || …`
+# list bash ignores set -e, and a lane whose assembly failed went on to report itself done.
+set +e
+(
+  set -e
   echo "== $LABEL $VER from $(git rev-parse HEAD)"
   echo "== bootstrap"; bash scripts/ci-bootstrap.sh
   echo "== takeover"; bash scripts/ci-takeover.sh --install-only --yes
@@ -91,5 +95,12 @@ out="$W/out/release-$VER-$LABEL"
   fi
   jk engine stop --now --no-ansi || true
   echo "== lane $LABEL done: $out"
-} >"$log" 2>&1 || { tail -60 "$log" >&2; echo "release-lane: $LABEL failed; log: $log" >&2; exit 1; }
+) >"$log" 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 0 ]]; then
+  tail -60 "$log" >&2
+  echo "release-lane: $LABEL failed (exit $status); log: $log" >&2
+  exit 1
+fi
 tail -2 "$log"
