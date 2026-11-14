@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.args;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -8,6 +9,7 @@ import cc.jumpkick.model.command.Param;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -117,7 +119,7 @@ public final class ArgParser {
                 neg = r.value();
             }
             if (neg != null && neg.negatable() && !neg.takesValue()) {
-                out.flag(neg.canonicalName(), false);
+                out.flag(neg.canonicalName(), !inlineBoolean(name, inline));
                 return i;
             }
         }
@@ -162,7 +164,7 @@ public final class ArgParser {
     private static int consume(Invocation.Builder out, Opt opt, List<String> args, int i, @Nullable String inline)
             throws ParseException {
         if (!opt.takesValue()) {
-            out.flag(opt.canonicalName(), true);
+            out.flag(opt.canonicalName(), inlineBoolean(opt.names().getLast(), inline));
             return i;
         }
         String value = inline;
@@ -192,6 +194,22 @@ public final class ArgParser {
             out.putValue(opt.canonicalName(), value);
         }
         return consumed;
+    }
+
+    /**
+     * The state a boolean flag written {@code --flag} or {@code --flag=<inline>} asks for: true when
+     * no value is given, else the value read as jk reads every boolean ({@link EnvValues#parseBool}:
+     * true/false, yes/no, on/off, 1/0). So {@code
+     * --skip-tests=false} leaves tests on and {@code --no-foo=false} leaves {@code foo} on.
+     */
+    private static boolean inlineBoolean(String name, @Nullable String inline) throws ParseException {
+        if (inline == null) return true;
+        Optional<Boolean> value = EnvValues.parseBool(inline);
+        if (value.isPresent()) return value.get();
+        throw new ParseException(
+                ParseException.Kind.UNEXPECTED_VALUE,
+                name + "=" + inline,
+                "option " + name + " takes no value; write " + name + " or " + name + "=true|false");
     }
 
     private static ParseException ambiguous(String tok, String name, List<String> candidates) {

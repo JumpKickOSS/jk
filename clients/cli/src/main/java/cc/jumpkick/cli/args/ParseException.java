@@ -16,6 +16,8 @@ public final class ParseException extends Exception {
         UNKNOWN_OPTION,
         AMBIGUOUS_OPTION,
         MISSING_VALUE,
+        /** A boolean flag given an inline value that is not a boolean. */
+        UNEXPECTED_VALUE,
         MISSING_REQUIRED,
         TOO_MANY_ARGS,
         /** A JVM flag such as {@code -Xmx2g} given where jk's own short options are parsed. */
