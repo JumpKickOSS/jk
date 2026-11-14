@@ -10,6 +10,7 @@
     bench/scoreboard --no-bank                 # judge only; scoreboard.toml is not rewritten
     bench/scoreboard --gaps                    # banked rows ranked by distance to target, nothing measured
     bench/scoreboard --render                  # docs tables from the banked rows, nothing measured
+    bench/scoreboard --render --check          # exit 1 when a generated docs block is not what --render writes
     bench/scoreboard --selftest                # the band arithmetic and the quiet gate
 
 A row is one (dimension, subject, project, tool, kind). Kinds:
@@ -37,10 +38,12 @@ dicts and an optional render(board, host). Results land in $SCOREBOARD_HOME/resu
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import fcntl
 import fnmatch
 import importlib.util
+import io
 import json
 import re
 import statistics
@@ -474,6 +477,23 @@ def render_docs(dims: dict, board: list[dict], host: str) -> None:
             mod.render(board, host)
 
 
+def check_docs(dims: dict, board: list[dict], host: str) -> int:
+    """Render, list each page whose generated blocks differ from the banked rows, and put every page back."""
+    pages = [JK_TREE / "README.md", *sorted((JK_TREE / "docs").rglob("*.md")), *sorted((JK_TREE / "hosting").rglob("*.html"))]
+    before = {p: p.read_bytes() for p in pages if p.is_file()}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            render_docs(dims, board, host)
+        stale = [p for p, b in before.items() if p.read_bytes() != b]
+    finally:
+        for p, b in before.items():
+            if p.read_bytes() != b:
+                p.write_bytes(b)
+    for p in stale:
+        print(f"stale: {p.relative_to(JK_TREE)} differs from what `bench/scoreboard --render` writes", file=sys.stderr)
+    return 1 if stale else 0
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--tier", choices=TIERS, default="fast")
@@ -485,6 +505,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--no-bank", action="store_true", help="judge only; leave scoreboard.toml as it is")
     ap.add_argument("--gaps", action="store_true", help="rank banked rows by distance to target; measure nothing")
     ap.add_argument("--render", action="store_true", help="render the docs tables from scoreboard.toml; measure nothing")
+    ap.add_argument("--check", action="store_true", help="with --render: change nothing, exit 1 when a generated block is stale")
     ap.add_argument("--deadline", help="night tier: stop waiting for a quiet host at this local HH:MM (default 06:30)")
     ap.add_argument("--tool", action="append", help="only this tool, where a dimension measures several (repeatable)")
     ap.add_argument("--selftest", action="store_true")
@@ -504,6 +525,8 @@ def main(argv: list[str]) -> int:
         return 0
     dims = load_dims()
     if ns.render:
+        if ns.check:
+            return check_docs(dims, board, host)
         render_docs(dims, board, host)
         return 0
 

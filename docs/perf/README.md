@@ -20,6 +20,7 @@ bench/scoreboard --dim paired --baseline ~/jk-0.15.2/bin/jk
 bench/scoreboard --subject 'inner.noop.*'
 bench/scoreboard --gaps                  # banked rows over their target, worst first
 bench/scoreboard --render                # docs tables from the banked rows
+bench/scoreboard --render --check        # exit 1 when a generated block is not what --render writes
 bench/scoreboard --selftest
 ```
 
@@ -102,7 +103,8 @@ another (an integration tier, a corpus re-run), never beside the measurements. T
 renders the `wall` rows into three kinds of generated block — the tables (`wall-table`, in
 `docs/user/performance.md` and `why.md`), the comparison sentences (`wall-claims`, in the README,
 `why.md`, `comparison.md` and `performance.md`) and the website's proof strip (`wall-strip`, in
-`hosting/public/index.html`) — each from every tool's latest measurement, never JumpKick's ratcheted best;
+`hosting/public/index.html`) — each from every tool's latest measurement on the host that banked the latest run, whichever host
+renders, never JumpKick's ratcheted best;
 every number names its commit and conditions. In the reference pages, speed and memory comparisons
 appear nowhere else (guard `speed-claims-are-generated`); the README and the website pitch in
 their own words, and every number they show comes from these blocks. It then writes the morning report

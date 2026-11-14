@@ -1490,30 +1490,30 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
 <div class="proof-strip">
   <div class="proof-tile">
     <div class="proof-label">No-op</div>
-    <div class="proof-value">0.05 s</div>
-    <div class="proof-vs">Gradle 0.53 s · Maven 2.37 s</div>
-    <div class="proof-lead">11× faster than Gradle</div>
-  </div>
-  <div class="proof-tile">
-    <div class="proof-label">One-file edit</div>
-    <div class="proof-value">0.13 s</div>
-    <div class="proof-vs">Gradle 0.61 s · Maven 3.14 s</div>
+    <div class="proof-value">0.07 s</div>
+    <div class="proof-vs">Gradle 0.37 s · Maven 1.79 s</div>
     <div class="proof-lead">5× faster than Gradle</div>
   </div>
   <div class="proof-tile">
+    <div class="proof-label">One-file edit</div>
+    <div class="proof-value">0.21 s</div>
+    <div class="proof-vs">Gradle 0.45 s · Maven 2.38 s</div>
+    <div class="proof-lead">2× faster than Gradle</div>
+  </div>
+  <div class="proof-tile">
     <div class="proof-label">Warm rebuild</div>
-    <div class="proof-value">0.09 s</div>
-    <div class="proof-vs">Gradle 0.57 s · Maven 3.16 s</div>
-    <div class="proof-lead">6× faster than Gradle</div>
+    <div class="proof-value">0.10 s</div>
+    <div class="proof-vs">Gradle 0.41 s · Maven 2.36 s</div>
+    <div class="proof-lead">4× faster than Gradle</div>
   </div>
   <div class="proof-tile">
     <div class="proof-label">Resident between builds</div>
-    <div class="proof-value">863 MiB</div>
-    <div class="proof-vs">Gradle 1,734 MiB, its daemon up 3 hours · Maven none: a cold JVM every build</div>
+    <div class="proof-value">186 MiB</div>
+    <div class="proof-vs">Gradle 1,712 MiB, its daemon up 3 hours · Maven none: a cold JVM every build</div>
     <div class="proof-lead">one engine for every project, heap capped at 256 MiB</div>
   </div>
 </div>
-<p class="proof-note">spring-petclinic, the same work for every tool; Gradle 9.8.2; JumpKick 0.41.1; Maven 3.10.0. <a href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/performance.md" target="_blank" rel="noopener noreferrer">How it is measured, and where JumpKick loses →</a></p>
+<p class="proof-note">spring-petclinic, the same work for every tool; Gradle 9.9.0; JumpKick 0.50.4-SNAPSHOT; Maven 3.10.0. <a href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/performance.md" target="_blank" rel="noopener noreferrer">How it is measured, and where JumpKick loses →</a></p>
 <!-- wall-strip:end -->
   </section>
 

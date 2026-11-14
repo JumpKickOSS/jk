@@ -4704,6 +4704,24 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.clean"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 2.16
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 8.01
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 0.39
@@ -4768,6 +4786,24 @@ memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 3.37
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.44
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 2.28
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -4840,6 +4876,24 @@ tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.37
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 2.54
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.clean.peak-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -4908,6 +4962,23 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.clean.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1400897536
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 1101004800
@@ -4963,6 +5034,23 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 1414529024
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -5028,6 +5116,23 @@ host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubu
 load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 569376768
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
 tool-version = "Maven 3.10.0"
 
 [[row]]
@@ -5098,6 +5203,24 @@ memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 0.65
 tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.45
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 0.49
+tool-version = "Gradle 9.9.0"
 
 [[row]]
 dim = "wall"
@@ -5174,6 +5297,25 @@ tool-version = "jk 0.41.1"
 dim = "wall"
 subject = "wall.edit"
 project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.21
+unit = "s"
+band = 0.15
+target = 0.3
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 0.41
+tool-version = "jk 0.50.4-SNAPSHOT"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
 tool = "maven"
 kind = "absolute-wall"
 value = 3.32
@@ -5237,6 +5379,24 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 3.23
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.38
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 2.4
 tool-version = "Maven 3.10.0"
 
 [[row]]
@@ -5309,6 +5469,23 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.edit.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1569718272
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 660602880
@@ -5364,6 +5541,23 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 1023410176
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -5433,6 +5627,23 @@ tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 564133888
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.idle-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -5456,6 +5667,24 @@ memory-psi-avg60-end = 0.0
 root-rss = 1188036608
 settle-s = 60
 tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.idle-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1795162112
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+settle-s = 600
+tool-version = "Gradle 9.9.0"
 
 [[row]]
 dim = "wall"
@@ -5487,6 +5716,25 @@ tool-version = "jk 0.41.1"
 dim = "wall"
 subject = "wall.idle-rss"
 project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 195035136
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+root-rss = 195035136
+settle-s = 600
+tool-version = "jk 0.50.4-SNAPSHOT"
+
+[[row]]
+dim = "wall"
+subject = "wall.idle-rss"
+project = "spring-petclinic"
 tool = "maven"
 kind = "absolute-wall"
 value = 0
@@ -5507,6 +5755,25 @@ memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 root-rss = 0
 settle-s = 60
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.idle-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 0
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+root-rss = 0
+settle-s = 600
 tool-version = "Maven 3.10.0"
 
 [[row]]
@@ -5577,6 +5844,24 @@ memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 0.56
 tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.37
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 0.38
+tool-version = "Gradle 9.9.0"
 
 [[row]]
 dim = "wall"
@@ -5653,6 +5938,25 @@ tool-version = "jk 0.41.1"
 dim = "wall"
 subject = "wall.noop"
 project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.07
+unit = "s"
+band = 0.15
+target = 0.1
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 0.08
+tool-version = "jk 0.50.4-SNAPSHOT"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
 tool = "maven"
 kind = "absolute-wall"
 value = 2.51
@@ -5716,6 +6020,24 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 2.42
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 1.79
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 1.83
 tool-version = "Maven 3.10.0"
 
 [[row]]
@@ -5788,6 +6110,23 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.noop.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1408237568
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 575668224
@@ -5843,6 +6182,23 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 943718400
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -5908,6 +6264,23 @@ host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubu
 load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 461373440
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
 tool-version = "Maven 3.10.0"
 
 [[row]]
@@ -5983,6 +6356,24 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.rebuild"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.41
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 0.43
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 0.1
@@ -6047,6 +6438,24 @@ memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 0.12
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.1
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 0.13
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -6119,6 +6528,24 @@ tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.36
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 2.4
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.rebuild.peak-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -6187,6 +6614,23 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.rebuild.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1408237568
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 562036736
@@ -6242,6 +6686,23 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 900726784
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -6307,6 +6768,23 @@ host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubu
 load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 547356672
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
 tool-version = "Maven 3.10.0"
 
 [[row]]
@@ -6382,6 +6860,24 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.test"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 23.67
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 47.61
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 28.33
@@ -6440,6 +6936,24 @@ memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 p90-s = 8.84
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 23.04
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 24.8
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -6512,6 +7026,24 @@ tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 23.71
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+p90-s = 28.96
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.test.peak-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -6580,6 +7112,23 @@ tool-version = "Gradle 9.8.2"
 dim = "wall"
 subject = "wall.test.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1894776832
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "Gradle 9.9.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 1990197248
@@ -6635,6 +7184,23 @@ load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
 tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 2318401536
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
+tool-version = "jk 0.50.4-SNAPSHOT"
 
 [[row]]
 dim = "wall"
@@ -6700,4 +7266,21 @@ host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubu
 load-end = 1.43
 memory-psi-avg10-end = 0.0
 memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 1319108608
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-11-09"
+commit = "1ac34fa27"
+host-id = "d7ad360c1bc7"
+conditions = "loadavg 0.4 at start, engine live jobs ?"
+host = "AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64"
 tool-version = "Maven 3.10.0"

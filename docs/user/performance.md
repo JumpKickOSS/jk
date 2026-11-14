@@ -32,7 +32,7 @@ Between builds JumpKick keeps 186 MiB resident, all of it the engine, whose heap
 | Test run | 2,211 MiB | 1,807 MiB | 1,258 MiB |
 | Idle, 10 minutes after the test run | 186 MiB | 1,712 MiB | 0 MiB |
 
-Measured on AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64 (host `d7ad360c1bc7`); project spring-projects/spring-petclinic; Gradle 9.9.0; JumpKick 0.50.4-SNAPSHOT; Maven 3.10.0; 5 timed runs per cell. Measured 2026-11-09 at JumpKick tree 1ac34fa27 with `bench/wall/measure`; not yet banked in `scoreboard.toml`. Conditions: JumpKick loadavg 0.4 at start, engine live jobs ?; Gradle loadavg 0.4 at start, engine live jobs ?; Maven loadavg 0.4 at start, engine live jobs ?.
+Measured on AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64 (host `d7ad360c1bc7`); project spring-projects/spring-petclinic; Gradle 9.9.0; JumpKick 0.50.4-SNAPSHOT; Maven 3.10.0; 5 timed runs per cell. Banked 2026-11-09 at JumpKick tree 1ac34fa27. Conditions: JumpKick loadavg 0.4 at start, engine live jobs ?; Gradle loadavg 0.4 at start, engine live jobs ?; Maven loadavg 0.4 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
 Walls are wall-clock seconds, median and p90 over the timed runs. Peak RSS is the highest sum of

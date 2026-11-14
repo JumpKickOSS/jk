@@ -308,7 +308,8 @@ def render(board: list[dict], host: str) -> None:
         for doc in TABLE_DOCS:
             _splice(doc, "table", "_No banked wall yet: run `bench/scoreboard --tier night`._")
         return
-    latest = host if host in hosts else max(hosts, key=lambda h: max(pub(r, "date") for r in rows if r["host-id"] == h))
+    # The latest banked run, whichever host took it: the published pages never depend on who renders them.
+    latest = max(hosts, key=lambda h: max(pub(r, "date") for r in rows if r["host-id"] == h))
     mine = [r for r in rows if r["host-id"] == latest]
     for doc in TABLE_DOCS:
         _splice(doc, "table", table(mine))
