@@ -13,7 +13,8 @@
 #             so S1 is a first build on an empty ledger
 # --logs      where the logs, manifest and scores go (default ~/src/scratch/eta-corpus/<label>)
 #
-# Every run is spot-checked the moment it finishes (score.py --spot): its R0, ETA and bar errors
+# Every run holds an idle and sleep inhibitor (systemd-inhibit, where it exists) and is spot-checked
+# the moment it finishes (score.py --spot), which rejects a run that was suspended anyway: its R0, ETA and bar errors
 # print beside its exit, and the corpus stops at the first run that shows a broken estimate (no ETA,
 # no rung on any task-finish, a warm ETA off by more than half late in the run), so a regression
 # surfaces after minutes, not after the whole corpus. --no-fail-fast reports and runs on.
@@ -61,6 +62,15 @@ echo "# run_dir	scenario	iteration	exit	started" >> "$MANIFEST"
 
 export JK_HOME="$HOME_DIR" JK_SELF_UPDATE=never
 J="$JK_HOME/bin/jk"
+
+# Each scored run holds an idle and sleep inhibitor where systemd-inhibit exists, so the desktop's
+# idle timer cannot suspend the machine mid-run; a run it slept through anyway (a closed lid is never
+# blocked) is rejected by score.py. Where there is none the run goes ahead unguarded.
+AWAKE=()
+if command -v systemd-inhibit >/dev/null 2>&1 \
+  && systemd-inhibit --what=sleep:idle --who="jk ETA bench" --why="probe" true >/dev/null 2>&1; then
+  AWAKE=(systemd-inhibit --what=sleep:idle --who="jk ETA bench" --why="a scored ETA run" --mode=block)
+fi
 
 if [[ $KEEP -eq 0 ]]; then
   [[ -x "$J" ]] && "$J" engine stop --now >/dev/null 2>&1 || true
@@ -127,7 +137,7 @@ scored() {
   started="$(date +%T)"
   echo "== $scenario #$iteration: jk $* ($started)" | tee -a "$LOGS/progress.txt"
   set +e
-  (cd "$WT" && "$J" "$@") > "$LOGS/${scenario}-${iteration}.log" 2>&1
+  (cd "$WT" && "${AWAKE[@]}" "$J" "$@") > "$LOGS/${scenario}-${iteration}.log" 2>&1
   rc=$?
   set -e
   echo "   exit=$rc $(date +%T)" | tee -a "$LOGS/progress.txt"
@@ -139,6 +149,9 @@ scored() {
   python3 -I "$(dirname "$0")/score.py" --spot "$run" "${warm[@]}" | tee -a "$LOGS/progress.txt"
   local spot=${PIPESTATUS[0]}
   set -e
+  if [[ "$spot" == 4 ]]; then
+    echo "REJECTED: $scenario #$iteration was suspended; score.py leaves it out" | tee -a "$LOGS/progress.txt"
+  fi
   if [[ "$spot" == 3 && "$FAIL_FAST" == 1 ]]; then
     echo "STOPPED: $scenario #$iteration shows a broken estimate (--no-fail-fast to run on)" | tee -a "$LOGS/progress.txt"
     "$J" engine stop --now >/dev/null 2>&1 || true

@@ -483,6 +483,12 @@ run, warm and cold. A rung whose median misses by more than 25% over five or mor
 way in 80% of them, fails the score: that is the layer itself being wrong, not the steps it happened
 to price. A step priced and never run is a decision error, not a pricing one, and is judged per step.
 
+A run the machine slept through, or whose engine was stopped, is never scored: `score.py` rejects it
+and names the gap (`--spot` exits 4), from the run's recorded suspensions, or, for a run recorded
+before the engine detected them, from its wall exceeding the build's own counter (`workspace-finish` `millis`)
+by more than 5 s. `corpus.sh` and `coldset.sh` run each scenario under `systemd-inhibit
+--what=sleep:idle` where it exists, so the desktop's idle timer cannot suspend the host mid-run.
+
 ## Out of scope
 
 - Method-level live TUI rows

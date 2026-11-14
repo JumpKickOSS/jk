@@ -12,6 +12,12 @@ the user was shown against the truth:
 - calibration: checkpoints bucketed by the confidence shown (the predicted chance that the truth
   lands within 10% of the ETA, JK-R0N5S) against the share that did
 
+A run the machine slept through (or whose engine was stopped) is rejected, never scored: its wall
+holds time nothing ran. The run's own record names the gap (`suspensions` in record.json, the
+`suspended` event in details.jsonl); a run recorded before jk detected it is rejected when its wall
+exceeds the build's own counter (workspace-finish `millis`, on the monotonic clock) by more than
+SUSPENDED_GAP_MS.
+
 The state at a checkpoint is the last event at or before it: what the screen showed then.
 Runs are grouped by scenario (a corpus manifest) or by argv, and each group is held to the
 targets in TARGETS. Exit status is 1 when any group that a target applies to misses it.
@@ -21,6 +27,7 @@ targets in TARGETS. Exit status is 1 when any group that a target applies to mis
     score.py --home H --manifest corpus/manifest.tsv      # group by scenario, warm/cold
     score.py --home H --json out.jsonl                    # one line per run, appended
     score.py --spot RUN_DIR [--warm]                       # judge one run the moment it finishes
+                                                           # (exit 3: a broken estimate; 4: rejected)
 """
 
 from __future__ import annotations
@@ -44,6 +51,38 @@ TARGETS = {
     "plateau": {"band": (0.10, 0.15), "share": 0.80},
     "tail": {"band": (0.03, 0.03), "share": 0.80, "or_seconds": 2.0},
 }
+
+
+# A run whose wall exceeds its build's own counter by more than this was suspended (or stopped).
+SUSPENDED_GAP_MS = 5_000
+
+
+def suspended_gap(run_dir: Path, ev: list[dict]) -> tuple[int, str] | None:
+    """The time the run's engine was not running, and how it is known; None for a run that ran throughout."""
+    record = run_dir / "record.json"
+    if record.is_file():
+        try:
+            ms = int(json.loads(record.read_text(encoding="utf-8")).get("suspendedMillis") or 0)
+        except (ValueError, OSError):
+            ms = 0
+        if ms > 0:
+            return ms, "recorded by the engine"
+    told = sum(int(e.get("suspendedMs") or 0) for e in ev if e.get("type") == "suspended")
+    if told > 0:
+        return told, "suspended events"
+    session = [e for e in ev if e.get("type") == "session-finish" and isinstance(e.get("millis"), (int, float))]
+    build = [e for e in ev if e.get("type") == "workspace-finish" and isinstance(e.get("millis"), (int, float))]
+    if session and build:
+        wall, counter = int(session[-1]["millis"]), int(build[-1]["millis"])
+        if wall - counter > SUSPENDED_GAP_MS:
+            return wall - counter, f"wall {wall / 1000:.0f}s against the build's counter {counter / 1000:.0f}s"
+    return None
+
+
+def clock(ms: int) -> str:
+    s = max(0, ms) // 1000
+    h, m, sec = s // 3600, (s % 3600) // 60, s % 60
+    return f"{h}h {m:02d}m {sec:02d}s" if h else f"{m}m {sec:02d}s" if m else f"{sec}s"
 
 
 @dataclass
@@ -78,6 +117,15 @@ class RunScore:
     # Per step the seed priced or the run ran: [module dir, step, priced ms, ran ms, rung] (attribution);
     # the rung is the layer that priced it (StepCost.Rung), empty for a step never priced.
     steps: list[list] = field(default_factory=list)
+    # The time the engine was not running and how it is known: such a run is rejected, never scored.
+    suspended_ms: int = 0
+    suspended_how: str = ""
+
+    def rejection(self) -> str:
+        """Why the run is not scored, or "" when it is."""
+        if self.suspended_ms <= 0:
+            return ""
+        return f"rejected: suspended {clock(self.suspended_ms)} ({self.suspended_how}); run it again"
 
 
 # A step judged for systematic error: priced or run for at least this long, in this many warm runs.
@@ -178,6 +226,7 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
     ev = load_events(details)
     if not ev or ev[0].get("type") != "session-start":
         return None
+    gap = suspended_gap(run_dir, ev)
     # Time on hold for memory comes off the run's clock: the countdown stands still through a
     # hold, and the run's wall the estimate is judged against is its working time (JK-VYJ4X).
     holds = hold_intervals(ev)
@@ -201,6 +250,8 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
         r0_err = (r0 - r0_true) / r0_true if r0_true > 0 else None
 
     s = RunScore(run_dir.name, argv, scenario or argv, warm, wall, success, r0, r0_true, r0_err)
+    if gap is not None:
+        s.suspended_ms, s.suspended_how = gap
     s.steps = attribute(run_dir, ev)
 
     for f in CHECKPOINTS:
@@ -342,6 +393,9 @@ def spot(run_dir: Path, warm: bool) -> int:
     if s is None:
         print(f"   spot: {run_dir.name}: no record to score")
         return 0
+    if s.rejection():
+        print(f"   spot: run {s.run} {s.rejection()}")
+        return 4
     p = {pt.at: pt for pt in s.points}
     line = (
         f"   spot: run {s.run} {s.wall_ms / 1000:.0f}s R0 {pct(s.r0_err)} ETA "
@@ -393,20 +447,25 @@ def main(argv: list[str]) -> int:
         dirs = dirs[-a.last :]
 
     scores: list[RunScore] = []
+    rejected: list[RunScore] = []
     for d in dirs:
         scenario, warm = manifest.get(str(d.resolve()), ("", True)) if manifest else ("", True)
         s = score_run(d, scenario, warm)
         if s is None or s.wall_ms < a.min_wall * 1000:
             continue
-        if not a.all and not s.success:
-            continue
         if a.match and a.match not in s.argv:
+            continue
+        if s.rejection():
+            print(f"run {s.run} ({s.scenario[:48]}) {s.rejection()}", file=sys.stderr)
+            rejected.append(s)
+            continue
+        if not a.all and not s.success:
             continue
         scores.append(s)
 
     if a.json:
         with a.json.expanduser().open("a", encoding="utf-8") as f:
-            for s in scores:
+            for s in scores + rejected:
                 f.write(json.dumps(asdict(s)) + "\n")
 
     if not scores:

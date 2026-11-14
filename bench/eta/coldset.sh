@@ -39,6 +39,15 @@ echo "# run_dir	scenario	iteration	exit	started	copy" > "$MANIFEST"
 
 export JK_HOME="$HOME_DIR" JK_SELF_UPDATE=never
 J="$JK_HOME/bin/jk"
+
+# Each scored run holds an idle and sleep inhibitor where systemd-inhibit exists, so the desktop's
+# idle timer cannot suspend the machine mid-run; a run it slept through anyway (a closed lid is never
+# blocked) is rejected by score.py. Where there is none the run goes ahead unguarded.
+AWAKE=()
+if command -v systemd-inhibit >/dev/null 2>&1 \
+  && systemd-inhibit --what=sleep:idle --who="jk ETA bench" --why="probe" true >/dev/null 2>&1; then
+  AWAKE=(systemd-inhibit --what=sleep:idle --who="jk ETA bench" --why="a scored ETA run" --mode=block)
+fi
 [[ -x "$J" ]] && "$J" engine stop --now >/dev/null 2>&1 || true
 rm -rf "$HOME_DIR" "$COPIES"
 mkdir -p "$HOME_DIR" "$COPIES"
@@ -57,7 +66,7 @@ for src in "${PROJECTS[@]}"; do
   started="$(date +%T)"
   echo "== $name: jk build ($started)" | tee -a "$LOGS/progress.txt"
   set +e
-  (cd "$copy" && "$J" build) > "$LOGS/$name.log" 2>&1
+  (cd "$copy" && "${AWAKE[@]}" "$J" build) > "$LOGS/$name.log" 2>&1
   rc=$?
   set -e
   echo "   exit=$rc $(date +%T)" | tee -a "$LOGS/progress.txt"
