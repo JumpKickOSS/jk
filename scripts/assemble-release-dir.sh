@@ -19,7 +19,8 @@
 # jk-whats-new-<version>.md (the release's highlights and the four before it, from
 #   docs/user/whats-new.md; a self-update downloads it and shows what is new since the version it replaced)
 # jk-repo-<version>.sha256 (the digest of every first-party jar and POM published on repo/ at this
-#   version; the engine holds a worker it fetches to it)
+#   version; the engine holds a worker it fetches to it). JK_REPO_STAGE_DIR, when set, names the
+#   staged repo/ and adds what it holds beyond the dist's shelf.
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
 # The ../latest/ pointer (LATEST, the one signed object, and VERSION) is the caller's job:
@@ -145,13 +146,34 @@ if [[ ! -d "$shelf" ]]; then
   echo "assemble-release-dir: no shelf at $shelf (jk build writes it beside the engine)" >&2
   exit 2
 fi
-(
-  cd "$shelf"
-  find . -type f \( -name "*-${VERSION}.jar" -o -name "*-${VERSION}.pom" \) | sed 's|^\./||' | LC_ALL=C sort |
-    while IFS= read -r f; do
-      if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$f"; else shasum -a 256 -- "$f"; fi
-    done
-) >"$repo_sums"
+sha_line() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1"; else shasum -a 256 -- "$1"; fi; }
+version_files() { (cd "$1" && find . -type f \( -name "*-${VERSION}.jar" -o -name "*-${VERSION}.pom" \) | sed 's|^\./||' | LC_ALL=C sort); }
+(cd "$shelf" && version_files . | while IFS= read -r f; do sha_line "$f"; done) >"$repo_sums"
+# JK_REPO_STAGE_DIR names the repository staged for repo/ (publish-maven-repo.sh's stage). Every jar
+# and POM it holds at this version is listed too, so the file covers all of repo/ at the version:
+# a staged artifact the dist's shelf also carries must be the same bytes, and one the shelf lacks
+# (the IntelliJ plugin, which no engine fetches) is listed from the stage.
+if [[ -n "${JK_REPO_STAGE_DIR:-}" ]]; then
+  if [[ ! -d "$JK_REPO_STAGE_DIR" ]]; then
+    echo "assemble-release-dir: JK_REPO_STAGE_DIR $JK_REPO_STAGE_DIR is not a directory" >&2
+    exit 2
+  fi
+  extra="$(mktemp "${TMPDIR:-/tmp}/jk-repo-extra.XXXXXX")"
+  while IFS= read -r f; do
+    staged="$(cd "$JK_REPO_STAGE_DIR" && sha_line "$f")"
+    if listed="$(grep -F "  $f" "$repo_sums" | awk -v p="$f" '$2 == p')" && [[ -n "$listed" ]]; then
+      if [[ "${listed%% *}" != "${staged%% *}" ]]; then
+        rm -f "$extra"
+        echo "assemble-release-dir: $f differs between the dist's shelf and $JK_REPO_STAGE_DIR; stage the repository from the pass that built the dist" >&2
+        exit 2
+      fi
+    else
+      printf '%s\n' "$staged" >>"$extra"
+    fi
+  done < <(version_files "$JK_REPO_STAGE_DIR")
+  cat "$repo_sums" "$extra" | LC_ALL=C sort -k2 >"$repo_sums.tmp" && mv "$repo_sums.tmp" "$repo_sums"
+  rm -f "$extra"
+fi
 if ! grep -q "/jk-test-runner-${VERSION}\.jar$" "$repo_sums"; then
   echo "assemble-release-dir: $shelf holds no jk-test-runner at $VERSION; the workers' digests would be missing" >&2
   exit 2
