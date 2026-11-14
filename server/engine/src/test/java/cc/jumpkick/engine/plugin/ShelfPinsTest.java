@@ -19,7 +19,6 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -171,8 +170,8 @@ class ShelfPinsTest {
         Path store = JkStores.store();
         Coordinate libV1 = Coordinate.of("org.example", "lib", "1.0");
         Coordinate libV2 = Coordinate.of("org.example", "lib", "2.0");
-        Path libV1Jar = central(store, libV1);
-        Path libV2Jar = central(store, libV2);
+        Path libV1Jar = shelved(store, libV1);
+        Path libV2Jar = shelved(store, libV2);
         Path manifest = tmp.resolve(ShelfManifest.FILE_NAME);
         ShelfPins engineA = new ShelfPins(() -> ENGINE_A, () -> manifest);
         ShelfPins engineB = new ShelfPins(() -> ENGINE_B, () -> manifest);
@@ -224,26 +223,23 @@ class ShelfPinsTest {
                 + "</artifactId><version>" + dep.version() + "</version></dependency></dependencies></project>";
     }
 
-    /** A dependency-free library in the store's {@code central} mirror, jar and POM with memos; returns the jar. */
-    private static Path central(Path store, Coordinate coord) throws Exception {
+    /**
+     * A dependency-free library on the store's {@code jk-local} shelf, jar and POM; returns the jar's
+     * blob, the path a worker's classpath names.
+     * Local, not a {@code central} mirror copy: a mirror copy of an artifact Central does not publish
+     * is confirmed against Central whenever the network is reachable, and refused.
+     */
+    private static Path shelved(Path store, Coordinate coord) throws Exception {
         String pom = "<project><modelVersion>4.0.0</modelVersion><groupId>" + coord.group() + "</groupId><artifactId>"
                 + coord.artifact() + "</artifactId><version>" + coord.version() + "</version></project>";
-        RepoArtifactStore repo = RepoArtifactStore.forStoreId(store, "central");
-        Path jar = null;
-        for (var entry : Map.of(
-                        MavenLayout.artifactPath(coord),
-                        coord.artifact() + " " + coord.version(),
-                        MavenLayout.pomPath(coord),
-                        pom)
-                .entrySet()) {
-            Path f = store.resolve("repos/central").resolve(entry.getKey());
-            Files.createDirectories(f.getParent());
-            byte[] bytes = entry.getValue().getBytes(StandardCharsets.UTF_8);
-            Files.write(f, bytes);
-            repo.writeMemo(entry.getKey(), f, Hashing.sha256Hex(bytes));
-            if (entry.getKey().endsWith(".jar")) jar = f.toAbsolutePath().normalize();
-        }
-        return requireNonNull(jar);
+        Path staged = Files.createDirectories(
+                store.resolve("staged").resolve(coord.toGav().replace(':', '_')));
+        Path jarFile =
+                Files.writeString(staged.resolve(coord.artifact() + ".jar"), coord.artifact() + " " + coord.version());
+        Path pomFile = Files.writeString(staged.resolve(coord.artifact() + ".pom"), pom);
+        String jarSha = RepoArtifactStore.writeToLocalStore(store, MavenLayout.artifactPath(coord), jarFile);
+        RepoArtifactStore.writeToLocalStore(store, MavenLayout.pomPath(coord), pomFile);
+        return JkStores.storeCas().pathFor(jarSha).toAbsolutePath().normalize();
     }
 
     /** One checkout's install of the compiler alone: jar and POM shelved, both pinned to {@code engine}. */
