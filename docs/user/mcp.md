@@ -376,9 +376,9 @@ when there are several) with the same widgets `jk new` uses. Anywhere, `-y` acce
 | `jk://skill` | JumpKick skill (same as `skill` / CLI `jk skill`). `jk://skill/<topic>` is one topic |
 | `jk://session` | Bound dir + engine status |
 | `jk://project` | Project card for the connection's bound dir (`bind` first) |
-| `jk://runs/latest` | Latest history summary |
-| `jk://runs/latest/results` | Latest verdict (same text as `run`) |
-| `jk://runs/latest/details` | Budgeted tail of latest `details.jsonl` (same as `details`) |
+| `jk://runs/latest` | Summary of the bound dir's newest finished run (`bind` first) |
+| `jk://runs/latest/results` | That run's verdict (same text as `run`) |
+| `jk://runs/latest/details` | Budgeted tail of that run's `details.jsonl` (same as `details`) |
 | `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Reads the connection's bound dir (`bind` first); an unknown id is a `-32602` error naming the nearest ids |
 | `jk://disk` | Cache and store usage |
 | `jk://config` | Effective machine config |

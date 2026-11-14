@@ -300,8 +300,18 @@ class McpContractTest {
                 dir -> Map.of(),
                 () -> List.of("{not json", runningStub, FAIL_A),
                 "0.12.0");
-        String body = withNoise.handleBody(
-                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"jk://runs/latest\"}}");
+        String sid = requireNonNull(withNoise
+                .handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
+                .openedSessionId());
+        withNoise.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\"/ws\"}}}",
+                sid);
+        String body = withNoise
+                .handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"resources/read\",\"params\":{\"uri\":\"jk://runs/latest\"}}",
+                        sid)
+                .body();
         assertThat(body).doesNotContain("-32603");
         assertThat(body).contains("r1"); // the next parseable finished run
         assertThat(body).doesNotContain("live");

@@ -519,8 +519,18 @@ class McpHandlerTest {
                 () -> List.of(rec),
                 "0.12.0");
         h.detailsFile(id -> Optional.of(run.resolve("details.jsonl")));
-        String body = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":32,\"method\":\"resources/read\","
-                + "\"params\":{\"uri\":\"jk://runs/latest/details\"}}");
+        String sid =
+                requireNonNull(h.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
+                        .openedSessionId());
+        h.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"bind\","
+                        + "\"arguments\":{\"dir\":" + Jsonl.quote(dir.toString()) + "}}}",
+                sid);
+        String body = h.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":32,\"method\":\"resources/read\","
+                                + "\"params\":{\"uri\":\"jk://runs/latest/details\"}}",
+                        sid)
+                .body();
         assertThat(body).contains("boom");
         assertThat(body).contains("task-finish");
         assertThat(body).contains("jk://runs/latest/details");

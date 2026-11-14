@@ -29,11 +29,11 @@ public final class McpResources {
         rs.add(resource("jk://skill", "JumpKick skill (same as CLI jk skill / tool skill)", "text/markdown"));
         rs.add(resource("jk://session", "Bound dir + engine status"));
         rs.add(resource("jk://project", "Project card"));
-        rs.add(resource("jk://runs/latest", "Latest history summary"));
-        rs.add(resource("jk://runs/latest/results", "Latest run verdict (same text as run)", "text/plain"));
+        rs.add(resource("jk://runs/latest", "Latest run of the bound project"));
+        rs.add(resource("jk://runs/latest/results", "That run's verdict (same text as run)", "text/plain"));
         rs.add(resource(
                 "jk://runs/latest/details",
-                "Budgeted tail of latest details.jsonl (same as details; CLI jk results -d dumps the full file)",
+                "Budgeted tail of that run's details.jsonl (same as details; CLI jk results -d dumps the full file)",
                 "application/json"));
         rs.add(
                 resource(
@@ -56,8 +56,7 @@ public final class McpResources {
         if (uri == null) throw new McpError(-32602, "resources/read requires uri");
         String bound = connection == null ? null : connection.dir();
         if ("jk://skill".equals(uri) || uri.startsWith("jk://skill/")) return skillResource(uri);
-        if ("jk://runs/latest/results".equals(uri)) return resultsResource(ctx, bound);
-        if ("jk://runs/latest/details".equals(uri)) return detailsResource(ctx, bound);
+        if (uri.equals(LATEST) || uri.startsWith(LATEST + "/")) return latestResource(ctx, uri, bound);
         if (uri.equals(GUARDS) || uri.startsWith(GUARDS + "/")) return guardsResource(ctx, uri, bound);
         Map<String, Object> payload =
                 switch (uri) {
@@ -67,14 +66,6 @@ public final class McpResources {
                         if (dir == null) yield Map.of("error", "bind first");
                         yield McpProjectCards.card(dir, ctx.history());
                     }
-                    case "jk://runs/latest" -> {
-                        // Newest finished record — skips corrupt rows and running stubs instead
-                        // of NPEing on parseRecord(null).
-                        Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), null);
-                        yield rec == null
-                                ? Map.of("records", List.of())
-                                : Map.of("record", McpHistoryViews.summarize(rec));
-                    }
                     case "jk://disk" -> McpMachine.diskUsage(ctx.cacheSnapshot());
                     case "jk://config" -> McpMachine.configGet();
                     default -> throw new McpError(-32602, "unknown resource: " + uri);
@@ -83,6 +74,39 @@ public final class McpResources {
     }
 
     static final String GUARDS = "jk://guards";
+
+    static final String LATEST = "jk://runs/latest";
+
+    /**
+     * {@code jk://runs/latest} and its {@code /results} and {@code /details}: one selection, the
+     * bound project's newest finished run, rendered three ways. An unbound reader binds first.
+     */
+    private static Map<String, Object> latestResource(McpContext ctx, String uri, @Nullable String bound) {
+        if (bound == null) return contents(uri, "application/json", MiniJson.write(Map.of("error", "bind first")));
+        Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), bound);
+        return switch (uri) {
+            case LATEST ->
+                contents(
+                        uri,
+                        "application/json",
+                        MiniJson.write(
+                                rec == null
+                                        ? Map.of("records", List.of())
+                                        : Map.of("record", McpHistoryViews.summarize(rec))));
+            case LATEST + "/results" -> {
+                String text = McpAgentText.of(ctx, rec);
+                yield text == null
+                        ? contents(uri, "application/json", MiniJson.write(Map.of("error", "no matching run")))
+                        : contents(uri, "text/plain", text);
+            }
+            case LATEST + "/details" ->
+                contents(
+                        uri,
+                        "application/json",
+                        MiniJson.write(McpDetails.tail(rec, ctx.detailsFile(), List.of(), McpDetails.DEFAULT_TAIL, 0)));
+            default -> throw new McpError(-32602, "unknown resource: " + uri);
+        };
+    }
 
     /**
      * {@code jk://guards} is the catalog, {@code jk://guards/<id>} one rule's card — both the JSON
@@ -123,22 +147,6 @@ public final class McpResources {
         String text = JkSkill.topic(topic);
         if (text == null) throw new McpError(-32602, "unknown skill topic: " + topic);
         return contents(uri, "text/markdown", text);
-    }
-
-    private static Map<String, Object> resultsResource(McpContext ctx, @Nullable String bound) {
-        Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), bound);
-        String text = McpAgentText.of(ctx, rec);
-        if (text == null) {
-            return contents(
-                    "jk://runs/latest/results", "application/json", MiniJson.write(Map.of("error", "no matching run")));
-        }
-        return contents("jk://runs/latest/results", "text/plain", text);
-    }
-
-    private static Map<String, Object> detailsResource(McpContext ctx, @Nullable String bound) {
-        Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), bound);
-        Map<String, Object> fields = McpDetails.tail(rec, ctx.detailsFile(), List.of(), McpDetails.DEFAULT_TAIL, 0);
-        return contents("jk://runs/latest/details", "application/json", MiniJson.write(fields));
     }
 
     private static Map<String, Object> contents(String uri, String mimeType, String text) {
