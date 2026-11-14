@@ -72,7 +72,9 @@ jk self rollback            # put back the engine and client the last install re
 
 `jk self rollback` needs no network and no running engine: the store keeps the engine and client
 the last install replaced, so an install that left a JumpKick that fails every command can still be
-undone. A second rollback undoes the first.
+undone. A second rollback undoes the first. Every install records the client it pairs with its
+engine (the installers, `jk self update`, `jk snapshot` and `jk install`), native binary or JVM
+client jar alike, so the client a rollback puts back is always the one that ran with that engine.
 
 `self-update` in `~/.jk/config.toml` (or env `JK_SELF_UPDATE`, which wins) picks the behaviour:
 

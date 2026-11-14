@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.cli.engine.InstallLock;
+import cc.jumpkick.cli.engine.InstalledClients;
 import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
@@ -191,7 +192,8 @@ public final class SelfCommand extends GroupCommand {
             EngineInstall install = EngineInstall.current();
             try {
                 EngineFleet.stopAll(false);
-                EngineInstall.RolledBack back = install.rollback(JkStores.storeCas(), JkDirs.binDir());
+                EngineInstall.RolledBack back =
+                        install.rollback(JkStores.storeCas(), ClientPlacement.at(JkDirs.binDir()));
                 CommandWedge.printOk(
                         "Rollback",
                         "jk-engine " + back.version() + " (" + back.engineJar().getFileName() + ")"
@@ -421,8 +423,16 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
-            EngineInstall.Materialized m =
-                    install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar);
+            Cas cas = JkStores.storeCas();
+            // The client the installer just put in place is recorded beside its engine, so the
+            // first rollback after an update can put it back.
+            Path clientBin = WorkingDirectory.resolve(in.positionals().get(0));
+            EngineInstall.Materialized m = install.materializeFromFiles(
+                    JkVersion.VERSION,
+                    cas,
+                    engineJar,
+                    false,
+                    InstalledClients.running(cas, clientBin).orElse(null));
             install.gc();
             // The install two back is no longer pinned: its blobs go now, not at the weekly prune.
             StoreCasGc.afterInstall();
@@ -666,38 +676,39 @@ public final class SelfCommand extends GroupCommand {
         }
 
         /**
-         * Install a prepared update: the PATH client is replaced (a native binary renamed in, or the
-         * JVM client's jar placed under {@code <home>/lib/jk} with the launcher rewritten over it),
-         * then the engine pointer moves to its jar, and the record goes. The client goes first: a
-         * newer client installs its own engine when the pointer still names an older one, while an
-         * older client cannot replace the newer engine a moved pointer names, so an update cut
-         * short between the steps leaves a client that starts. {@code downgrade} lets an explicit
-         * older target replace the live engine; a refusal is raised before anything moves. Returns
-         * the engine jar.
+         * Install a prepared update: the engine pointer moves to its jar and the PATH client is
+         * replaced (a native binary renamed in, or the JVM client's jar placed under {@code
+         * <home>/lib/jk} with the launcher rewritten over it), in the order {@link
+         * EngineInstall#install} keeps so a run cut short between the steps leaves a client that
+         * starts, and the record goes. The pointer records the client beside its engine, and the
+         * install it replaces, engine and client, as the previous one for {@code jk self
+         * rollback}; a pointer that names no client yet (a home an older installer set up) first
+         * records the client in place now. {@code downgrade} lets an explicit older target replace
+         * the live engine; a refusal is raised before anything moves. Returns the engine jar.
          */
         static String apply(PreparedUpdate prepared, EngineInstall install, Cas cas, boolean downgrade)
                 throws IOException {
             install.requireAccepts(prepared.version(), downgrade);
-            Path client = cas.pathFor(prepared.clientSha256());
-            if (prepared.client() == PreparedUpdate.Client.JVM) {
-                JvmClientInstall.install(
-                        Files.readAllBytes(client),
-                        JvmClientInstall.libDir(),
-                        JkDirs.binDir(),
-                        prepared.version(),
-                        JvmClientInstall.runningJava(),
-                        Os.isWindows());
-            } else {
-                EngineInstall.installBinaries(client, JkDirs.binDir());
-                if (JvmClient.installed()) {
-                    JvmClientInstall.retire(JkDirs.binDir(), JvmClientInstall.libDir(), Os.isWindows());
-                }
+            if (install.liveClient().isEmpty()) {
+                Optional<EngineInstall.InstalledClient> inPlace =
+                        InstalledClients.running(cas, EngineInstall.pathClient(JkDirs.binDir()));
+                if (inPlace.isPresent()) install.recordClient(inPlace.get());
             }
-            EngineInstall.Materialized engine =
-                    install.materialize(prepared.version(), cas, prepared.engineSha256(), downgrade);
-            // A native client is named beside its engine, so `jk self rollback` can put both back. A
-            // release's client carries its own commit; nothing is recorded for it.
-            if (prepared.client() != PreparedUpdate.Client.JVM) install.recordClient(prepared.clientSha256(), null);
+            // A release's client carries its own commit; none is recorded for it.
+            EngineInstall.InstalledClient client = new EngineInstall.InstalledClient(
+                    prepared.clientSha256(),
+                    prepared.client() == PreparedUpdate.Client.JVM
+                            ? EngineInstall.ClientKind.JVM
+                            : EngineInstall.ClientKind.NATIVE,
+                    null);
+            EngineInstall.Materialized engine = install.install(
+                            prepared.version(),
+                            cas,
+                            prepared.engineSha256(),
+                            downgrade,
+                            client,
+                            ClientPlacement.at(JkDirs.binDir()))
+                    .engine();
             keepWhatsNew(install);
             PreparedUpdate.delete(install.engineHome());
             StoreCasGc.afterInstall();

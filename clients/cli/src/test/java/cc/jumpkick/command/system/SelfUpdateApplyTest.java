@@ -48,6 +48,10 @@ class SelfUpdateApplyTest {
     }
 
     private static PreparedUpdate prepared(Cas cas, String version) throws IOException {
+        return prepared(cas, version, PreparedUpdate.Client.NATIVE);
+    }
+
+    private static PreparedUpdate prepared(Cas cas, String version, PreparedUpdate.Client kind) throws IOException {
         byte[] engine = ("engine " + version).getBytes(StandardCharsets.UTF_8);
         byte[] client = ("client " + version).getBytes(StandardCharsets.UTF_8);
         cas.put(engine, Hashing.sha256Hex(engine));
@@ -56,7 +60,7 @@ class SelfUpdateApplyTest {
                 version,
                 "0.16.2",
                 Hashing.sha256Hex(engine),
-                PreparedUpdate.Client.NATIVE,
+                kind,
                 Hashing.sha256Hex(client),
                 Instant.parse("2026-10-30T12:00:00Z"));
         p.write(EngineInstall.current().engineHome());
@@ -111,6 +115,68 @@ class SelfUpdateApplyTest {
                 .isInstanceOf(IOException.class);
 
         assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.17.0");
+    }
+
+    /** The home the installers leave: the engine materialized, the client copied in and named nowhere. */
+    private static void installedByTheInstaller(EngineInstall install, Cas cas, String version) throws IOException {
+        byte[] engine = ("engine " + version).getBytes(StandardCharsets.UTF_8);
+        cas.put(engine, Hashing.sha256Hex(engine));
+        install.materialize(version, cas, Hashing.sha256Hex(engine));
+        Path bin = Files.createDirectories(JkDirs.binDir());
+        Files.deleteIfExists(bin.resolve("jk"));
+        Files.writeString(bin.resolve("jk"), "client " + version);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void rolling_back_the_first_update_after_an_install_puts_back_the_installed_client() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        installedByTheInstaller(install, cas, "0.16.2");
+
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
+
+        assertThat(back.version()).isEqualTo("0.16.2");
+        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+                .as("the client paired with the engine put back")
+                .isEqualTo("client 0.16.2");
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_rollback_after_an_installer_reinstall_never_pairs_an_engine_with_another_releases_client()
+            throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.18.0"), install, cas, false);
+        installedByTheInstaller(install, cas, "0.19.0");
+
+        var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
+
+        assertThat(back.version()).isEqualTo("0.18.0");
+        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+                .as("the client of the engine put back, not the one before it")
+                .isEqualTo("client 0.18.0");
+    }
+
+    /** A JVM client is recorded beside its engine like a native one, and a rollback puts its jar back. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void rolling_back_a_jvm_client_update_puts_back_the_jar_the_engine_ran_with() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0", PreparedUpdate.Client.JVM), install, cas, false);
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.18.0", PreparedUpdate.Client.JVM), install, cas, false);
+
+        var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
+
+        Path lib = JvmClientInstall.libDir();
+        assertThat(back.version()).isEqualTo("0.17.0");
+        assertThat(lib.resolve("jk-0.17.0.jar")).hasContent("client 0.17.0");
+        assertThat(lib.resolve("jk-0.18.0.jar")).as("the later client's jar is retired").doesNotExist();
+        assertThat(Files.readString(JvmClientInstall.launcher(JkDirs.binDir(), false))).contains("jk-0.17.0.jar");
     }
 
     @Test

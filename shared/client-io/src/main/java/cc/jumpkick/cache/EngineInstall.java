@@ -135,6 +135,71 @@ public final class EngineInstall {
     /** The commit recorded for the {@link #PREVIOUS_CLIENT_SHA} client, which a rollback restores with it. */
     public static final String PREVIOUS_CLIENT_COMMIT = "previous-client-commit";
 
+    /** The pointer key naming the kind of the {@link #CLIENT_SHA} client ({@code native} or {@code jvm}). */
+    public static final String CLIENT_KIND = "client-kind";
+
+    /** The kind of the {@link #PREVIOUS_CLIENT_SHA} client. */
+    public static final String PREVIOUS_CLIENT_KIND = "previous-client-kind";
+
+    /** What a PATH client is: a native binary in {@code bin/}, or the JVM client's jar under {@code lib/jk}. */
+    public enum ClientKind {
+        NATIVE,
+        JVM;
+
+        String key() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+
+        static ClientKind of(@Nullable String key) {
+            return "jvm".equals(key) ? JVM : NATIVE;
+        }
+    }
+
+    /**
+     * A PATH client an install put in place, as the pointer records it beside the engine it pairs
+     * with: its bytes' digest (a blob the store keeps), its kind, and the commit it was built from
+     * when the client does not carry that itself ({@code null}: not known).
+     */
+    public record InstalledClient(String sha256, ClientKind kind, @Nullable String commit) {
+
+        private static @Nullable InstalledClient read(Map<String, String> keys, String sha, String kind, String commit) {
+            String digest = keys.get(sha);
+            if (digest == null || digest.isBlank()) return null;
+            String c = keys.get(commit);
+            return new InstalledClient(digest, ClientKind.of(keys.get(kind)), c == null || c.isBlank() ? null : c);
+        }
+
+        private void write(Map<String, String> keys, String sha, String kind, String commit) {
+            keys.put(sha, sha256);
+            keys.put(kind, this.kind.key());
+            if (this.commit != null && !this.commit.isBlank()) keys.put(commit, this.commit);
+        }
+    }
+
+    /** One install as the pointer records it: an engine and the client paired with it, when one is known. */
+    public record Install(String version, String engineSha, @Nullable InstalledClient client) {}
+
+    /**
+     * Puts a recorded client's bytes ({@code blob}, from the store) in place as the PATH client of
+     * {@code version}, returning the path it is run by. The CLI owns the JVM client's layout; {@link
+     * #nativeClients} places native binaries only.
+     */
+    @FunctionalInterface
+    public interface ClientPlacer {
+        Path place(InstalledClient client, Path blob, String version) throws IOException;
+    }
+
+    /** A {@link ClientPlacer} for native clients under {@code binDir}; a JVM client is refused. */
+    public static ClientPlacer nativeClients(Path binDir) {
+        return (client, blob, version) -> {
+            if (client.kind() != ClientKind.NATIVE) {
+                throw new IOException("a JVM client is put back by the jk client, not here");
+            }
+            installBinaries(blob, binDir);
+            return pathClient(binDir);
+        };
+    }
+
     /**
      * The engine jars and PATH clients the store must keep for this install: the live ones the
      * pointer names, and the ones the install before it named, which {@link #rollback} puts back.
@@ -234,10 +299,24 @@ public final class EngineInstall {
      */
     public Materialized materialize(String version, Cas cas, String engineJarSha, boolean downgrade)
             throws IOException {
+        return materialize(version, cas, engineJarSha, downgrade, null);
+    }
+
+    /**
+     * As {@link #materialize(String, Cas, String, boolean)}, recording {@code client} as the PATH
+     * client paired with this engine. A new engine makes the install the pointer named until now,
+     * engine and client together, the previous one ({@link #rollback} puts it back); {@code null}
+     * keeps the client the pointer names, since this install did not change it. The same engine
+     * again only records the client.
+     */
+    public Materialized materialize(
+            String version, Cas cas, String engineJarSha, boolean downgrade, @Nullable InstalledClient client)
+            throws IOException {
         Optional<Materialized> existing = currentInstall();
         if (sameLive(existing, version, engineJarSha)
                 && pointerComplete(existing.get())
                 && intact(existing.get(), cas, engineJarSha)) {
+            if (client != null) recordClient(client);
             return existing.get();
         }
 
@@ -247,12 +326,40 @@ public final class EngineInstall {
                 FileLock lock = lockCh.lock()) {
             Optional<Materialized> raced = currentInstall();
             if (sameLive(raced, version, engineJarSha) && intact(raced.get(), cas, engineJarSha)) {
-                return confirmLive(raced.get(), version, engineJarSha);
+                Materialized live = confirmLive(raced.get(), version, engineJarSha);
+                if (client != null) recordClient(client);
+                return live;
             }
             refuseOlder(raced, version, downgrade);
-            return materializeLocked(version, cas, engineJarSha);
+            return materializeLocked(version, cas, engineJarSha, client);
         }
     }
+
+    /**
+     * Install {@code version}'s engine and {@code client} as one step: the client first, then the
+     * engine, since a newer client installs its own engine when the pointer still names an older
+     * one. A {@code client} whose blob the store no longer holds is not placed, and the pointer
+     * keeps naming the client in place. Refusals ({@link #requireAccepts}) come before anything
+     * moves.
+     */
+    public Installed install(
+            String version,
+            Cas cas,
+            String engineJarSha,
+            boolean downgrade,
+            @Nullable InstalledClient client,
+            ClientPlacer placer)
+            throws IOException {
+        requireAccepts(version, downgrade);
+        if (client == null || !Files.isRegularFile(cas.pathFor(client.sha256()))) {
+            return new Installed(materialize(version, cas, engineJarSha, downgrade, null), null);
+        }
+        Path placed = placer.place(client, cas.pathFor(client.sha256()), version);
+        return new Installed(materialize(version, cas, engineJarSha, downgrade, client), placed);
+    }
+
+    /** What {@link #install} put in place: the engine, and the client's path when it placed one. */
+    public record Installed(Materialized engine, @Nullable Path client) {}
 
     /**
      * Throw the refusal {@link #materialize(String, Cas, String, boolean)} would, without changing
@@ -294,9 +401,16 @@ public final class EngineInstall {
      */
     public Materialized materializeFromFiles(String version, Cas cas, Path engineJar, boolean downgrade)
             throws IOException {
+        return materializeFromFiles(version, cas, engineJar, downgrade, null);
+    }
+
+    /** As {@link #materializeFromFiles(String, Cas, Path, boolean)}, recording {@code client} as {@link #materialize(String, Cas, String, boolean, InstalledClient)} does. */
+    public Materialized materializeFromFiles(
+            String version, Cas cas, Path engineJar, boolean downgrade, @Nullable InstalledClient client)
+            throws IOException {
         String engineSha = Hashing.sha256Hex(engineJar);
         cas.putFile(engineJar, engineSha);
-        return materialize(version, cas, engineSha, downgrade);
+        return materialize(version, cas, engineSha, downgrade, client);
     }
 
     public static Optional<Path> displaceToOld(Path live) throws IOException {
@@ -475,7 +589,8 @@ public final class EngineInstall {
 
     // ---- internals -------------------------------------------------------
 
-    private Materialized materializeLocked(String version, Cas cas, String engineJarSha) throws IOException {
+    private Materialized materializeLocked(
+            String version, Cas cas, String engineJarSha, @Nullable InstalledClient client) throws IOException {
         Path dest = allocateJarPath(version);
         Path jarTmp = Files.createTempFile(engineHome(), ".jk-engine-", ".tmp");
         try {
@@ -489,7 +604,7 @@ public final class EngineInstall {
         } finally {
             Files.deleteIfExists(jarTmp);
         }
-        writePointer(version, engineJarSha, dest.getFileName().toString());
+        writePointer(version, engineJarSha, dest.getFileName().toString(), client);
         sweepRetiredJars(new ArrayList<>());
         return currentInstall()
                 .orElseThrow(() -> new IOException("materialization of " + version + " left no engine jar"));
@@ -511,7 +626,9 @@ public final class EngineInstall {
         throw new IOException("could not allocate a unique engine jar name for " + version);
     }
 
-    private void writePointer(String version, String engineJarSha, String jarFileName) throws IOException {
+    private void writePointer(
+            String version, String engineJarSha, String jarFileName, @Nullable InstalledClient client)
+            throws IOException {
         // jk-config.* properties are the base; the COMPUTED identity keys are written last so they
         // always win. A stray -Djk-config.engine-sha256 could otherwise poison the digest and make
         // every command see a build-id mismatch and respawn the engine.
@@ -519,26 +636,35 @@ public final class EngineInstall {
         Map<String, String> before = pointerKeys();
         keys.put("version", version);
         keys.put("engine-sha256", engineJarSha);
-        // The engine the pointer named until now stays the previous one, so a rollback still has its jar.
-        String previous = previousEngineSha(engineJarSha);
-        if (previous != null) {
-            keys.put(PREVIOUS_ENGINE_SHA, previous);
-            String live = before.get("engine-sha256");
-            String previousVersion = live != null && live.equalsIgnoreCase(previous)
-                    ? before.get("version")
-                    : before.get(PREVIOUS_VERSION);
-            if (previousVersion != null && !previousVersion.isBlank()) keys.put(PREVIOUS_VERSION, previousVersion);
-        }
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
-        // The clients the pointer names are another install step's to change ({@link #recordClient}).
-        for (String key : List.of(CLIENT_SHA, PREVIOUS_CLIENT_SHA, CLIENT_COMMIT, PREVIOUS_CLIENT_COMMIT)) {
-            String sha = before.get(key);
-            if (sha != null && !sha.isBlank()) keys.put(key, sha);
+        String live = before.get("engine-sha256");
+        InstalledClient liveClient = InstalledClient.read(before, CLIENT_SHA, CLIENT_KIND, CLIENT_COMMIT);
+        if (live != null && !live.isBlank() && !live.equalsIgnoreCase(engineJarSha)) {
+            // A new engine: the install the pointer named until now, engine and client together,
+            // becomes the previous one, so a rollback puts back a pair that ran together.
+            keys.put(PREVIOUS_ENGINE_SHA, live);
+            String liveVersion = before.get("version");
+            if (liveVersion != null && !liveVersion.isBlank()) keys.put(PREVIOUS_VERSION, liveVersion);
+            if (liveClient != null) liveClient.write(keys, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT);
+        } else {
+            for (String key : List.of(
+                    PREVIOUS_ENGINE_SHA, PREVIOUS_VERSION, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT)) {
+                String value = before.get(key);
+                if (value != null && !value.isBlank()) keys.put(key, value);
+            }
         }
+        InstalledClient next = client == null ? liveClient : withKnownCommit(client, liveClient);
+        if (next != null) next.write(keys, CLIENT_SHA, CLIENT_KIND, CLIENT_COMMIT);
         // Durably: a pointer torn by a power loss names no jar, and every later command sees an
         // install it cannot start rather than one it can re-derive.
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /** {@code client}, taking the commit recorded for {@code live} when it is the same binary and names none itself. */
+    private static InstalledClient withKnownCommit(InstalledClient client, @Nullable InstalledClient live) {
+        if (client.commit() != null || live == null || !live.sha256().equalsIgnoreCase(client.sha256())) return client;
+        return new InstalledClient(client.sha256(), client.kind(), live.commit());
     }
 
     /** The pointer's keys as they stand, or none when it is missing or unreadable. */
@@ -553,31 +679,42 @@ public final class EngineInstall {
     }
 
     /**
-     * Name {@code clientSha} as the PATH client this install put in place, built from {@code commit}
-     * ({@code null}: not known), the one named until now becoming the previous one, so {@link
-     * #rollback} can put it back. The same client installed again keeps its place and takes the new
-     * commit: a snapshot's image is not relinked when only the commit moved. A no-op when the
-     * pointer is missing (nothing to roll back with).
+     * Name {@code client} as the PATH client paired with the engine the pointer names, replacing the
+     * one named until now; the previous install is untouched (a new engine moves it, in {@link
+     * #materialize(String, Cas, String, boolean, InstalledClient)}). The same binary again keeps
+     * the commit recorded for it unless {@code client} names one. A no-op when the pointer is
+     * missing (nothing to pair the client with).
      */
-    public void recordClient(String clientSha, @Nullable String commit) throws IOException {
+    public void recordClient(InstalledClient client) throws IOException {
         Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
         if (keys.isEmpty()) return;
         Map<String, String> before = Map.copyOf(keys);
-        String live = keys.get(CLIENT_SHA);
-        if (!clientSha.equalsIgnoreCase(live)) {
-            keys.remove(PREVIOUS_CLIENT_SHA);
-            keys.remove(PREVIOUS_CLIENT_COMMIT);
-            if (live != null && !live.isBlank()) {
-                keys.put(PREVIOUS_CLIENT_SHA, live);
-                String liveCommit = keys.get(CLIENT_COMMIT);
-                if (liveCommit != null && !liveCommit.isBlank()) keys.put(PREVIOUS_CLIENT_COMMIT, liveCommit);
-            }
-            keys.put(CLIENT_SHA, clientSha);
-        }
-        if (commit == null || commit.isBlank()) keys.remove(CLIENT_COMMIT);
-        else keys.put(CLIENT_COMMIT, commit);
+        InstalledClient next = withKnownCommit(client, liveClient(keys));
+        keys.remove(CLIENT_SHA);
+        keys.remove(CLIENT_KIND);
+        keys.remove(CLIENT_COMMIT);
+        next.write(keys, CLIENT_SHA, CLIENT_KIND, CLIENT_COMMIT);
         if (keys.equals(before)) return;
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /** The PATH client the pointer pairs with the live engine, when it names one. */
+    public Optional<InstalledClient> liveClient() {
+        return Optional.ofNullable(liveClient(pointerKeys()));
+    }
+
+    private static @Nullable InstalledClient liveClient(Map<String, String> keys) {
+        return InstalledClient.read(keys, CLIENT_SHA, CLIENT_KIND, CLIENT_COMMIT);
+    }
+
+    /** The install before the live one, as the pointer records it for {@link #rollback}. */
+    public Optional<Install> previousInstall() {
+        Map<String, String> keys = pointerKeys();
+        String engineSha = keys.get(PREVIOUS_ENGINE_SHA);
+        String version = keys.get(PREVIOUS_VERSION);
+        if (engineSha == null || engineSha.isBlank() || version == null || version.isBlank()) return Optional.empty();
+        return Optional.of(new Install(
+                version, engineSha, InstalledClient.read(keys, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT)));
     }
 
     /**
@@ -595,53 +732,21 @@ public final class EngineInstall {
             String version, Path engineJar, @Nullable Path client) {}
 
     /**
-     * Put back the engine and PATH client the install before this one put in place, from the store
-     * that keeps them ({@link #pinnedEngineShas}); the ones replaced become the previous ones, so a
-     * second rollback undoes the first. Needs no engine: an install that left an engine and client
-     * that fail every command is rolled back from the client alone. Throws when the pointer names no
-     * previous engine, or the store no longer holds it.
+     * Put back the install before this one, its engine and the client paired with it, from the store
+     * that keeps them ({@link #pinnedEngineShas}); the install replaced becomes the previous one, so
+     * a second rollback undoes the first. Both move in the order {@link #install} keeps. Needs no
+     * engine: an install that left an engine and client that fail every command is rolled back from
+     * the client alone. Throws when the pointer names no previous engine, or the store no longer
+     * holds it.
      */
-    public RolledBack rollback(Cas cas, Path binDir) throws IOException {
-        Map<String, String> keys = pointerKeys();
-        String engineSha = keys.get(PREVIOUS_ENGINE_SHA);
-        if (engineSha == null || engineSha.isBlank()) {
-            throw new IOException("no previous engine to roll back to: " + configFile() + " names none");
+    public RolledBack rollback(Cas cas, ClientPlacer placer) throws IOException {
+        Install previous = previousInstall()
+                .orElseThrow(() -> new IOException("no previous engine to roll back to: " + configFile() + " names none"));
+        if (!Files.isRegularFile(cas.pathFor(previous.engineSha()))) {
+            throw new IOException("the previous engine " + previous.engineSha() + " is no longer in the store");
         }
-        if (!Files.isRegularFile(cas.pathFor(engineSha))) {
-            throw new IOException("the previous engine " + engineSha + " is no longer in the store");
-        }
-        String version = keys.getOrDefault(PREVIOUS_VERSION, keys.get("version"));
-        if (version == null || version.isBlank()) {
-            throw new IOException("no version for the previous engine in " + configFile());
-        }
-        String clientSha = keys.get(PREVIOUS_CLIENT_SHA);
-        String clientCommit = keys.get(PREVIOUS_CLIENT_COMMIT);
-        Materialized engine = materialize(version, cas, engineSha, true);
-        Path installed = null;
-        if (clientSha != null && !clientSha.isBlank() && Files.isRegularFile(cas.pathFor(clientSha))) {
-            installBinaries(cas.pathFor(clientSha), binDir);
-            recordClient(clientSha, clientCommit);
-            installed = pathClient(binDir);
-        }
-        return new RolledBack(engine.version(), engine.engineJar(), installed);
-    }
-
-    /**
-     * The engine the install before this pointer write ran: the pointer's live engine when it differs
-     * from {@code next}, else the previous one it already names; null when there is none.
-     */
-    private @Nullable String previousEngineSha(String next) {
-        try {
-            Path pointer = configFile();
-            if (!Files.isRegularFile(pointer)) return null;
-            Map<String, String> cfg = AppInstallConfig.parse(Files.readString(pointer));
-            String live = cfg.get("engine-sha256");
-            if (live != null && !live.isBlank() && !live.equalsIgnoreCase(next)) return live;
-            String kept = cfg.get(PREVIOUS_ENGINE_SHA);
-            return kept == null || kept.isBlank() ? null : kept;
-        } catch (IOException | RuntimeException unreadable) {
-            return null;
-        }
+        Installed back = install(previous.version(), cas, previous.engineSha(), true, previous.client(), placer);
+        return new RolledBack(back.engine().version(), back.engine().engineJar(), back.client());
     }
 
     private Optional<Materialized> readLive() {
@@ -731,7 +836,7 @@ public final class EngineInstall {
 
     private Materialized confirmLive(Materialized m, String version, String sha) throws IOException {
         if (pointerComplete(m) && sha.equalsIgnoreCase(m.engineSha())) return m;
-        writePointer(version, sha, m.engineJar().getFileName().toString());
+        writePointer(version, sha, m.engineJar().getFileName().toString(), null);
         return new Materialized(version, m.root(), m.engineJar(), sha);
     }
 

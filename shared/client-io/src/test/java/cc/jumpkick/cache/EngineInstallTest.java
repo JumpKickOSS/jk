@@ -146,10 +146,10 @@ class EngineInstallTest {
 
         store.materializeFromFiles("0.12.0", cas, good);
         EngineInstall.installBinaries(cas.pathFor(goodClient), bin);
-        store.recordClient(goodClient, "aaaa");
+        store.recordClient(nativeClient(goodClient, "aaaa"));
         store.materializeFromFiles("0.13.0", cas, bad);
         EngineInstall.installBinaries(cas.pathFor(badClient), bin);
-        store.recordClient(badClient, "bbbb");
+        store.recordClient(nativeClient(badClient, "bbbb"));
         assertThat(store.pinnedEngineShas())
                 .as("the store keeps both engines and both clients")
                 .containsExactlyInAnyOrder(Hashing.sha256Hex(good), Hashing.sha256Hex(bad), goodClient, badClient);
@@ -159,7 +159,7 @@ class EngineInstallTest {
                 .as("not the live client")
                 .isEmpty();
 
-        var back = store.rollback(cas, bin);
+        var back = store.rollback(cas, EngineInstall.nativeClients(bin));
         assertThat(back.version()).isEqualTo("0.12.0");
         assertThat(store.recordedClientCommit(goodClient))
                 .as("the commit comes back with its client")
@@ -168,7 +168,7 @@ class EngineInstallTest {
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-good");
         assertThat(back.client()).isEqualTo(EngineInstall.pathClient(bin));
 
-        var again = store.rollback(cas, bin);
+        var again = store.rollback(cas, EngineInstall.nativeClients(bin));
         assertThat(again.version()).as("a second rollback undoes the first").isEqualTo("0.13.0");
         assertThat(store.engineJarPath()).hasContent("engine-bad");
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-bad");
@@ -180,17 +180,18 @@ class EngineInstallTest {
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
         EngineInstall store = install(home);
         store.materializeFromFiles("0.12.0", cas, Files.writeString(tmp.resolve("e.jar"), "engine"));
-        store.recordClient("c1", "aaaa-dirty");
-        store.recordClient("c1", "bbbb");
+        store.recordClient(nativeClient("c1", "aaaa-dirty"));
+        store.recordClient(nativeClient("c1", "bbbb"));
         assertThat(store.recordedClientCommit("c1")).hasValue("bbbb");
         assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
                 .as("an unchanged binary is not its own previous client")
                 .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
-        store.recordClient("c2", null);
+        store.recordClient(nativeClient("c2", null));
         assertThat(store.recordedClientCommit("c2")).isEmpty();
         assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
-                .containsEntry(EngineInstall.PREVIOUS_CLIENT_SHA, "c1")
-                .containsEntry(EngineInstall.PREVIOUS_CLIENT_COMMIT, "bbbb");
+                .as("another client for the same engine replaces the live one; the previous install is the engine's to move")
+                .containsEntry(EngineInstall.CLIENT_SHA, "c2")
+                .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
     }
 
     @Test
@@ -201,7 +202,7 @@ class EngineInstallTest {
         store.materializeFromFiles(
                 "0.12.0", cas, Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-only"));
 
-        assertThatThrownBy(() -> store.rollback(cas, home.resolve("bin")))
+        assertThatThrownBy(() -> store.rollback(cas, EngineInstall.nativeClients(home.resolve("bin"))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("no previous engine");
     }
@@ -567,10 +568,10 @@ class EngineInstallTest {
         }
         store.gc(null);
 
-        var back = store.rollback(cas, home.resolve("bin"));
+        var back = store.rollback(cas, EngineInstall.nativeClients(home.resolve("bin")));
         assertThat(back.version()).isEqualTo("1.0.2");
         assertThat(store.engineJarPath()).hasContent("v2");
-        var again = store.rollback(cas, home.resolve("bin"));
+        var again = store.rollback(cas, EngineInstall.nativeClients(home.resolve("bin")));
         assertThat(again.version()).isEqualTo("1.0.3");
         assertThat(store.engineJarPath()).hasContent("v3");
         assertThat(jarsIn(store)).hasSize(2);
@@ -743,5 +744,9 @@ class EngineInstallTest {
         assertThat(EngineInstall.isEngineJarName("jk-engine-0.12.0.1724400000000.jar"))
                 .isTrue();
         assertThat(EngineInstall.isEngineJarName("widget-1.0.0.jar")).isFalse();
+    }
+
+    private static EngineInstall.InstalledClient nativeClient(String sha, @org.jspecify.annotations.Nullable String commit) {
+        return new EngineInstall.InstalledClient(sha, EngineInstall.ClientKind.NATIVE, commit);
     }
 }
