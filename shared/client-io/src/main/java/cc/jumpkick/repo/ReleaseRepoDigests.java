@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +58,14 @@ public record ReleaseRepoDigests(String version, Map<String, String> byPath) {
         ReleaseArtifacts.Verified file = ReleaseArtifacts.manifest(releasesBase, version, verifier)
                 .fetch(fileName(version), "first-party repository digests", ReleaseArtifacts.Progress.NONE);
         return parse(version, file.bytes());
+    }
+
+    /** The list as {@link #parse} reads it: one {@code <hex>  <path>} line per file, sorted by path. */
+    public byte[] render() {
+        StringBuilder sb = new StringBuilder();
+        new TreeMap<>(byPath)
+                .forEach((path, sha) -> sb.append(sha).append("  ").append(path).append('\n'));
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /**

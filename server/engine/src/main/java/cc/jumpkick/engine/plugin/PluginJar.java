@@ -15,6 +15,7 @@ import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.repo.ReleaseRepoDigests;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.wire.PluginJarNotFoundException;
@@ -34,8 +35,9 @@ import org.jspecify.annotations.Nullable;
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
  * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then the
  * first-party stores ({@code repos/jk-local}, the official repository's, Central's), then a
- * one-shot fetch from the official JumpKick Maven repository into that repository's store, held to
- * the digests the signed release lists.
+ * one-shot fetch from the official JumpKick Maven repository into that repository's store. A jar
+ * from the official repository's or Central's store, or from the fetch, runs only once it hashes
+ * to what the signed release of its version lists ({@link StoredWorkers}).
  */
 public enum PluginJar {
     TEST_RUNNER("jk-test-runner", "jk.test.runner.jar"),
@@ -116,27 +118,55 @@ public enum PluginJar {
                     "-D" + jarProperty + " is set to '" + override + "' but no file exists there.");
         }
 
-        Path cacheRoot = cas.root();
         String relPath = relativePath();
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
-
-        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cacheRoot)) {
-            var result = store.locate(relPath);
-            if (result.isPresent()) return result.get();
-            checked.add(Objects.requireNonNull(store.root(), "store root").resolve(relPath));
-        }
+        List<String> refused = new ArrayList<>();
+        Path stored = stored(cas, PluginJar::signedDigests, checked, refused);
+        if (stored != null) return stored;
 
         // First-run / clean cache: pull from the official Maven layout on GCS (or JK_OFFICIAL_REPO_URL).
         try {
             Path fetched = fetchOfficial(cas, relPath);
             if (fetched != null) return fetched;
         } catch (Exception e) {
+            refused.add("official fetch failed: " + e.getMessage());
             throw new PluginJarNotFoundException(
-                    artifactId, coordinate, checked, jarProperty, "official fetch failed: " + e.getMessage());
+                    artifactId, coordinate, checked, jarProperty, String.join("; ", refused));
         }
-
+        if (!refused.isEmpty()) {
+            throw new PluginJarNotFoundException(
+                    artifactId, coordinate, checked, jarProperty, String.join("; ", refused));
+        }
         throw new PluginJarNotFoundException(artifactId, coordinate, checked, jarProperty);
+    }
+
+    /**
+     * The first stored copy this engine may run: the shelf's, which its install pinned, else the
+     * official repository's or Central's once {@link StoredWorkers} vouches for it, asking {@code
+     * signed} for the release's digests when none are kept ({@code null}: never). Every store
+     * searched goes in {@code checked}, every copy refused in {@code refused}.
+     */
+    private @Nullable Path stored(
+            Cas cas, StoredWorkers.@Nullable SignedDigests signed, List<Path> checked, List<String> refused) {
+        String relPath = relativePath();
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
+            Path root = Objects.requireNonNull(store.root(), "store root");
+            Optional<Path> hit = store.locate(relPath);
+            checked.add(root.resolve(relPath));
+            if (hit.isEmpty()) continue;
+            if (root.getFileName().toString().equals(RepoArtifactResolver.JK_LOCAL)) return hit.get();
+            switch (StoredWorkers.check(cas, relPath, hit.get(), signed)) {
+                case StoredWorkers.Verdict.Vouched v -> {
+                    return hit.get();
+                }
+                case StoredWorkers.Verdict.Refused r -> refused.add(r.reason());
+                case StoredWorkers.Verdict.Unknown u -> {
+                    // checked again by locate, which may fetch the digests
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -152,11 +182,7 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
-            var result = store.locate(relativePath());
-            if (result.isPresent()) return result.get();
-        }
-        return null;
+        return stored(cas, null, new ArrayList<>(), new ArrayList<>());
     }
 
     /**
@@ -211,6 +237,7 @@ public enum PluginJar {
         ReleaseRepoDigests signed = signedDigests(versionOf(relPath));
         String sha = vouched(signed, relPath, jarUri, bytes);
         String pomSha = vouched(signed, pomRel, pomUri, pomBody);
+        StoredWorkers.keep(cas, signed);
         RepoArtifactStore store = RepoArtifactStore.forRepository(cas.root(), RepositorySpec.JUMPKICK_NAME, base);
         Files.createDirectories(cas.root());
         Path tmpJar = Files.createTempFile(cas.root(), ".worker-", ".jar");
