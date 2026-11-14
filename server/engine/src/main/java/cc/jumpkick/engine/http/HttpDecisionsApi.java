@@ -82,6 +82,7 @@ final class HttpDecisionsApi {
             }
             case DecisionQueue.Result.Invalid i -> error(exchange, 400, i.problems());
             case DecisionQueue.Result.Missing m -> error(exchange, 404, "no such decision: " + id);
+            case DecisionQueue.Result.Unsaved u -> error(exchange, 503, DecisionQueue.UNSAVED);
         }
     }
 

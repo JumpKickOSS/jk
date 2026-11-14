@@ -3,6 +3,7 @@ package cc.jumpkick.engine.decisions;
 
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.SessionLog;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,12 +22,12 @@ public final class JournaledDecisions implements DecisionQueue.Store {
     }
 
     @Override
-    public boolean save(String id, Map<String, Object> record) {
+    public boolean save(String id, Map<String, Object> record) throws IOException {
         return log.whileWriting("decision " + id, journal -> journal.writeDecision(id, record));
     }
 
     @Override
-    public boolean drop(String id) {
+    public boolean drop(String id) throws IOException {
         return log.whileWriting("decision " + id, journal -> journal.deleteDecision(id));
     }
 

@@ -215,18 +215,19 @@ public final class SessionLog {
 
     /**
      * Run {@code write} while this engine writes the records, once it has adopted, and answer true;
-     * answer false, writing nothing, once it no longer does. A log with no journal writes nothing and
+     * answer false, writing nothing, once it no longer does. A write that fails throws, so the caller
+     * never takes an unwritten record for a durable one. A log with no journal writes nothing and
      * answers as the gate stands. Records kept beside the sessions (decisions) cross a hand-off
      * under the same one-writer rule this way.
      */
-    public synchronized boolean whileWriting(String what, JournalWrite write) {
+    public synchronized boolean whileWriting(String what, JournalWrite write) throws IOException {
         adopt();
         if (!writing()) return false;
         if (journal == null) return true;
         try {
             write.to(journal);
-        } catch (IOException | RuntimeException e) {
-            Log.debug("not written: " + what, e);
+        } catch (RuntimeException e) {
+            throw new IOException("not written: " + what, e);
         }
         return true;
     }

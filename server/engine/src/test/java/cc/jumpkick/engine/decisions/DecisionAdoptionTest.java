@@ -150,6 +150,30 @@ class DecisionAdoptionTest {
         assertThat(record(open.id())).exists();
     }
 
+    @Test
+    void an_answer_whose_record_cannot_be_written_is_refused_until_its_write_lands() throws Exception {
+        DecisionQueue first = queue(new AtomicBoolean(true));
+        Decision d = first.open(ask());
+        Path record = record(d.id());
+        Files.delete(record);
+        Files.createDirectories(record.resolve("blocks-the-write"));
+
+        assertThat(first.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.CLI))
+                .as("an answer that is not durable is not settled")
+                .isInstanceOf(DecisionQueue.Result.Unsaved.class);
+        assertThat(first.find(d.id()).orElseThrow().open()).isTrue();
+        assertThat(first.spend(d.id())).isFalse();
+
+        Files.delete(record.resolve("blocks-the-write"));
+        Files.delete(record);
+        assertThat(first.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.CLI))
+                .isInstanceOf(DecisionQueue.Result.Settled.class);
+        DecisionQueue next = queue(new AtomicBoolean(true));
+        assertThat(next.find(d.id()).orElseThrow().accepted())
+                .as("the answer given once the write went through survives the hand-off")
+                .isTrue();
+    }
+
     private Path record(String id) {
         return state.resolve(SessionJournal.DECISIONS_DIR).resolve(id + ".json");
     }

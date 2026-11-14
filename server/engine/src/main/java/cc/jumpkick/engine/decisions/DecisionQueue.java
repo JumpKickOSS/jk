@@ -5,7 +5,9 @@ import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCheck;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Decisions outlive the engine. Every change is written to the {@link Store} before it takes
  * effect, and a new engine {@link #adopt adopts} what a previous one left, so a decision opened on
  * one engine is answered on its successor and its operation still runs once. A store that refuses a
- * write (this engine was displaced) refuses the answer or the use it would record.
+ * write (this engine was displaced) or fails it refuses the answer or the use it would record.
  *
  * <p>Ids are 24 hex digits from {@link SecureRandom}: unguessable, never reused.
  */
@@ -41,6 +43,9 @@ public final class DecisionQueue {
 
     /** How long an open decision waits for a person. */
     public static final Duration DEADLINE = Duration.ofMinutes(30);
+
+    /** What a surface says when an answer was not saved. */
+    public static final String UNSAVED = "the answer was not saved; answer again";
 
     /** Decisions kept in all, open ones included; past it the oldest settled ones go first. */
     static final int MAX_KEPT = 200;
@@ -82,10 +87,10 @@ public final class DecisionQueue {
         };
 
         /** Replace {@code id}'s record; false when this engine no longer writes decisions. */
-        boolean save(String id, Map<String, Object> record);
+        boolean save(String id, Map<String, Object> record) throws IOException;
 
         /** Forget {@code id}'s record; false when this engine no longer writes decisions. */
-        boolean drop(String id);
+        boolean drop(String id) throws IOException;
 
         /** Every stored record, once the engine this one displaced has stopped writing them. */
         List<Map<String, Object>> load();
@@ -161,6 +166,9 @@ public final class DecisionQueue {
 
         /** The answers do not fit the form. */
         record Invalid(String problems) implements Result {}
+
+        /** The answer could not be written, so the decision is still open; asking again may land it. */
+        record Unsaved() implements Result {}
     }
 
     public DecisionQueue() {
@@ -387,7 +395,15 @@ public final class DecisionQueue {
             if (!DecisionForms.declines(values)) state = Decision.State.ACCEPTED;
         }
         Decision settled = e.decision.settled(state, values, surface, clock.millis());
-        if (!save(e, settled, e.spent)) return new Result.Missing();
+        switch (save(e, settled, e.spent)) {
+            case REFUSED -> {
+                return new Result.Missing();
+            }
+            case FAILED -> {
+                return new Result.Unsaved();
+            }
+            case WRITTEN -> {}
+        }
         e.decision = settled;
         e.settled.complete(settled);
         return new Result.Settled(settled);
@@ -425,7 +441,7 @@ public final class DecisionQueue {
         synchronized (this) {
             Entry e = entries.get(id);
             if (e == null || !e.decision.accepted() || e.spent) return false;
-            if (!save(e, e.decision, true)) return false;
+            if (save(e, e.decision, true) != Saved.WRITTEN) return false;
             e.spent = true;
             return true;
         }
@@ -507,16 +523,41 @@ public final class DecisionQueue {
         synchronized (this) {
             expired = expire();
             Entry e = entries.get(id);
-            dropped = (e == null || !e.decision.open()) && store.drop(id);
+            dropped = (e == null || !e.decision.open()) && drop(id) == Saved.WRITTEN;
             if (dropped) entries.remove(id);
         }
         expired.forEach(changed);
         return dropped;
     }
 
-    /** Write {@code e} as it stands with {@code d} and {@code spent}; false when the store refused it. */
-    private boolean save(Entry e, Decision d, boolean spent) {
-        return store.save(d.id(), e.record(d, spent));
+    /** How a store write went: written, refused because this engine was displaced, or failed. */
+    private enum Saved {
+        WRITTEN,
+        REFUSED,
+        FAILED
+    }
+
+    /**
+     * Write {@code e} as it stands with {@code d} and {@code spent}. A caller that ignores a failure
+     * (an expiry, a call, a channel) loses nothing a successor cannot rebuild: it settles a passed
+     * deadline itself, and the next write of the entry carries the rest.
+     */
+    private Saved save(Entry e, Decision d, boolean spent) {
+        try {
+            return store.save(d.id(), e.record(d, spent)) ? Saved.WRITTEN : Saved.REFUSED;
+        } catch (IOException | RuntimeException failed) {
+            Log.warn("decision " + d.id() + " not saved: " + failed.getMessage());
+            return Saved.FAILED;
+        }
+    }
+
+    private Saved drop(String id) {
+        try {
+            return store.drop(id) ? Saved.WRITTEN : Saved.REFUSED;
+        } catch (IOException | RuntimeException failed) {
+            Log.warn("decision " + id + " not dropped: " + failed.getMessage());
+            return Saved.FAILED;
+        }
     }
 
     /** Settles every open decision past its deadline; answers them for {@link #changed}. */
@@ -543,7 +584,7 @@ public final class DecisionQueue {
                     .findFirst()
                     .orElseGet(() -> entries.keySet().iterator().next());
             entries.remove(victim);
-            store.drop(victim);
+            drop(victim);
         }
     }
 

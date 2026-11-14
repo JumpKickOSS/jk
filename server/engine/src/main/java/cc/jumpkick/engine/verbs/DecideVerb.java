@@ -107,6 +107,7 @@ public final class DecideVerb implements HostedVerb {
                         MiniJson.write(a.decision().toMap()));
             case DecisionQueue.Result.Missing m -> DecisionsAck.error("no decision " + id);
             case DecisionQueue.Result.Invalid i -> DecisionsAck.error(i.problems());
+            case DecisionQueue.Result.Unsaved u -> DecisionsAck.error(DecisionQueue.UNSAVED);
         };
     }
 
