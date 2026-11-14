@@ -137,9 +137,12 @@ public final class LocalTemplateCatalog {
         }
     }
 
-    /** {@code git args} in {@code cwd}. */
+    /**
+     * {@code git args} in {@code cwd}, with long paths on: under a test sandbox the copied templates
+     * nest past Windows' 260 characters (git reads the setting only there).
+     */
     private static void git(Path cwd, String... args) throws IOException {
-        List<String> command = new ArrayList<>(List.of("git"));
+        List<String> command = new ArrayList<>(List.of("git", "-c", "core.longpaths=true"));
         command.addAll(List.of(args));
         ProcessBuilder pb = new ProcessBuilder(command)
                 .directory(cwd.toFile())
