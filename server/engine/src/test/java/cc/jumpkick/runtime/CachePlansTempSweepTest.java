@@ -26,7 +26,7 @@ class CachePlansTempSweepTest {
     @Test
     void sweeps_and_counts_temps_under_a_cas_tree(@TempDir Path root) throws IOException {
         Path shaDir = root.resolve("sha256");
-        Path temp = seed(shaDir.resolve("ab/.put-1234"), "partial");
+        Path temp = seedLeftover(shaDir.resolve("ab/.put-1234"), "partial");
         Path blob = seed(shaDir.resolve("ab/cd/deadbeef"), "real");
 
         CachePlans.TempSweep swept = CachePlans.sweepCasTemps(shaDir, false);
@@ -40,7 +40,7 @@ class CachePlansTempSweepTest {
     @Test
     void dry_run_counts_without_deleting(@TempDir Path root) throws IOException {
         Path shaDir = root.resolve("sha256");
-        Path temp = seed(shaDir.resolve("ab/.put-1234"), "partial");
+        Path temp = seedLeftover(shaDir.resolve("ab/.put-1234"), "partial");
 
         CachePlans.TempSweep swept = CachePlans.sweepCasTemps(shaDir, true);
 
@@ -58,13 +58,28 @@ class CachePlansTempSweepTest {
 
     @Test
     void prune_reports_every_temp_it_removed(@TempDir Path root) throws Exception {
-        Path cacheTemp = seed(root.resolve("sha256/ab/.put-1234"), "partial");
+        Path cacheTemp = seedLeftover(root.resolve("sha256/ab/.put-1234"), "partial");
 
         BuildPlan plan = CachePlans.pruneBuildPlan(root, false, false);
         plan.run();
 
         assertThat(cacheTemp).doesNotExist();
         assertThat(plan.get(CachePlans.FILES).orElse(-1L)).isEqualTo(1);
+    }
+
+    /**
+     * A temp younger than the sweep grace may be another engine's store still writing it: the
+     * prune leaves it, so that store's move into place does not fail.
+     */
+    @Test
+    void a_temp_younger_than_the_grace_is_a_store_in_flight_and_stays(@TempDir Path root) throws Exception {
+        Path inFlight = seed(root.resolve("sha256/ab/.put-5678-42-1.tmp"), "writing");
+        Path leftover = seedLeftover(root.resolve("sha256/ab/.put-1234-41-1.tmp"), "partial");
+
+        CachePlans.pruneBuildPlan(root, false, false).run();
+
+        assertThat(inFlight).exists();
+        assertThat(leftover).doesNotExist();
     }
 
     /**
@@ -116,6 +131,16 @@ class CachePlansTempSweepTest {
         } finally {
             Files.deleteIfExists(storeTemp); // the store is machine-shared; do not leave litter
         }
+    }
+
+    /** A temp older than the sweep grace: what an interrupted store leaves behind. */
+    private static Path seedLeftover(Path file, String content) throws IOException {
+        seed(file, content);
+        Files.setLastModifiedTime(
+                file,
+                FileTime.fromMillis(System.currentTimeMillis()
+                        - Cas.MIN_AGE_FOR_SWEEP.plusMinutes(5).toMillis()));
+        return file;
     }
 
     private static Path seed(Path file, String content) throws IOException {

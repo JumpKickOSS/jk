@@ -655,7 +655,8 @@ public final class CachePlans {
     record TempSweep(long files, long bytes) {}
 
     /**
-     * Delete leftover {@code .put-} temps under one CAS {@code sha256/} tree. Same shape for the
+     * Delete leftover {@code .put-} temps under one CAS {@code sha256/} tree, once they are older
+     * than the CAS's sweep grace: a younger one may be a store still writing. Same shape for the
      * cache tier and the artifact store — the only difference is which root resolves the dir.
      */
     static TempSweep sweepCasTemps(Path shaDir, boolean dryRun) throws IOException {
@@ -679,9 +680,14 @@ public final class CachePlans {
     private static List<Path> tempFiles(Path dir, PruneYield yield) throws IOException {
         List<Path> temps = new ArrayList<>();
         // The walk hands each entry's attributes over, so the name test is the only question asked.
+        long cutoff = Clock.SYSTEM.millis() - Cas.MIN_AGE_FOR_SWEEP.toMillis();
         PathUtil.forEachRegularFile(dir, (file, attrs) -> {
             yield.check();
-            if (file.getFileName().toString().startsWith(".put-")) temps.add(file);
+            // A young temp is another engine's or process's store in flight: its move would fail.
+            if (file.getFileName().toString().startsWith(".put-")
+                    && attrs.lastModifiedTime().toMillis() < cutoff) {
+                temps.add(file);
+            }
         });
         return temps;
     }

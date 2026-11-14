@@ -429,8 +429,11 @@ public final class ActionCachePrune {
                 if (blobs.release(blob) > 0) continue;
                 long size = blobs.size(blob);
                 if (size < 0) continue; // swept this pass, or never in this CAS
-                if (now - blobs.mtime(blob) < grace) continue;
-                if (!dryRun) Files.deleteIfExists(cacheCas.pathFor(blobs.sha(blob)));
+                Path file = cacheCas.pathFor(blobs.sha(blob));
+                // Read again, as the key's is: another engine that stored a record over this blob
+                // since the scan refreshed it (Cas.REUSE_REFRESH), and its new key names it.
+                if (now - liveMtime(file, blobs.mtime(blob)) < grace) continue;
+                if (!dryRun) Files.deleteIfExists(file);
                 deletedBlobs++;
                 bytes += size;
             }
@@ -841,11 +844,11 @@ public final class ActionCachePrune {
         return true;
     }
 
-    /** The key file's mtime when it is still there, otherwise the mtime captured at scan time. */
-    private static long liveMtime(Path keyFile, long scanned) {
+    /** {@code file}'s mtime (a key record or a blob) when it is still there, otherwise the one captured at scan time. */
+    private static long liveMtime(Path file, long scanned) {
         try {
-            if (Files.isRegularFile(keyFile))
-                return Files.getLastModifiedTime(keyFile).toMillis();
+            if (Files.isRegularFile(file))
+                return Files.getLastModifiedTime(file).toMillis();
         } catch (IOException ignored) {
             // keep the scan-time mtime
         }

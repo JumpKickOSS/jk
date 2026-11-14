@@ -3,6 +3,7 @@ package cc.jumpkick.cache;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AccessLedger;
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Objects;
@@ -148,9 +150,7 @@ public final class Cas {
      */
     public Path put(byte[] data, String hex) throws IOException {
         Path target = pathFor(hex);
-        if (Files.exists(target)) {
-            return target;
-        }
+        if (reused(target)) return target;
         Path shard = shardOf(target);
         ensureShard(shard);
         Path tmp = staging(shard, hex);
@@ -195,7 +195,7 @@ public final class Cas {
             }
             String hex = Hashing.hex(digest.digest());
             Path target = pathFor(hex);
-            if (Files.exists(target)) {
+            if (reused(target)) {
                 Files.deleteIfExists(tmp);
                 return new Stored(target, hex, size);
             }
@@ -210,6 +210,38 @@ public final class Cas {
 
     /** A blob stored in the CAS: its on-disk path, hex hash, and byte size. */
     public record Stored(Path path, String sha256, long size) {}
+
+    /**
+     * How old a blob's mtime may grow before a store that finds it refreshes it: half the prune's
+     * grace ({@link #MIN_AGE_FOR_SWEEP}), so a blob reused since a prune scanned its keys looks
+     * younger than the grace and is not deleted with the key it was first stored under.
+     */
+    public static final Duration REUSE_REFRESH = MIN_AGE_FOR_SWEEP.dividedBy(2);
+
+    /**
+     * True when {@code target} is already stored, its mtime refreshed when it is {@link
+     * #REUSE_REFRESH} or more old: one stat a hit, at most one write per blob per window.
+     * Best-effort: a read-only root keeps the mtime it has.
+     */
+    private static boolean reused(Path target) {
+        long mtime;
+        try {
+            mtime = Files.getLastModifiedTime(target).toMillis();
+        } catch (NoSuchFileException absent) {
+            return false;
+        } catch (IOException unreadable) {
+            return Files.exists(target);
+        }
+        long now = Clock.SYSTEM.millis();
+        if (now - mtime >= REUSE_REFRESH.toMillis()) {
+            try {
+                Files.setLastModifiedTime(target, FileTime.fromMillis(now));
+            } catch (IOException ignored) {
+                // A ranking hint for the prune, never correctness.
+            }
+        }
+        return true;
+    }
 
     /** The staging path for {@code hex} in {@code dir}: unique by construction, not yet created. */
     private static Path staging(Path dir, String hex) {
@@ -247,9 +279,7 @@ public final class Cas {
      */
     public Path putFile(Path source, String hex) throws IOException {
         Path target = pathFor(hex);
-        if (Files.exists(target)) {
-            return target;
-        }
+        if (reused(target)) return target;
         Path shard = shardOf(target);
         ensureShard(shard);
         Path tmp = staging(shard, hex);

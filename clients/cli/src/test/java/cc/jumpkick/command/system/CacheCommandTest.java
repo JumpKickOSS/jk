@@ -268,6 +268,8 @@ class CacheCommandTest {
         Path storeTmp = writeBlob(storeCas.resolve("ab/cd/.put-jk1531.tmp"), new byte[128]);
         try {
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
+            // A leftover, not a store in flight: older than the sweep grace.
+            Files.setLastModifiedTime(cacheTmp, FileTime.from(Instant.now().minus(2, ChronoUnit.HOURS)));
 
             String stdout = Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString()));
 
@@ -286,6 +288,7 @@ class CacheCommandTest {
     void clean_dry_run_reports_without_deleting(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
         Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[1024]);
+        Files.setLastModifiedTime(cacheTmp, FileTime.from(Instant.now().minus(2, ChronoUnit.HOURS)));
 
         String stdout = Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--dry-run"));
 

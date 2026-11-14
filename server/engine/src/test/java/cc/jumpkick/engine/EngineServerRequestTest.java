@@ -585,6 +585,10 @@ class EngineServerRequestTest extends EngineServerHarness {
         Path putTmp = cache.resolve("sha256").resolve(".put-1234");
         Files.createDirectories(putTmp.getParent());
         Files.writeString(putTmp, "partial");
+        Files.setLastModifiedTime(
+                putTmp,
+                FileTime.fromMillis(
+                        System.currentTimeMillis() - Duration.ofHours(2).toMillis()));
 
         EnginePaths.Paths p = paths(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);

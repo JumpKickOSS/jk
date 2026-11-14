@@ -46,11 +46,11 @@ public final class ActionRecordText {
     private static final String END = "END ";
 
     /**
-     * How old a record's mtime may grow before a read refreshes it: half the grace in which the
-     * prune takes nothing ({@link Cas#MIN_AGE_FOR_SWEEP}), so a record in active use always looks
-     * younger than the grace, and another engine's prune never takes it mid-restore.
+     * How old a record's mtime may grow before a read refreshes it: the window a reused blob's is
+     * refreshed in ({@link Cas#REUSE_REFRESH}), so a record in active use always looks younger than
+     * the prune's grace, and another engine's prune never takes it mid-restore.
      */
-    public static final Duration READ_REFRESH = Cas.MIN_AGE_FOR_SWEEP.dividedBy(2);
+    public static final Duration READ_REFRESH = Cas.REUSE_REFRESH;
 
     /**
      * Marks the key record at {@code record} as used now: its mtime is the last use the prune ranks

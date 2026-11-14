@@ -292,7 +292,8 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
     30 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
     trees are left to installs.
 
-  `jk storage clean` reclaims leaked `.put-` download temps and legacy `repos/<name>` trees;
+  `jk storage clean` reclaims leaked `.put-` download temps (an hour old or more: a younger one
+  may be a download still writing) and legacy `repos/<name>` trees;
   `jk storage nuke` removes everything on purpose.
 - **Test sandboxes** (`test-homes`, `test-store`): a green `jk test` deletes its module's
   sandbox as it finishes; a red one keeps it for two days to look at. The shared download pool
