@@ -4,6 +4,7 @@ package cc.jumpkick.templates;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
+import cc.jumpkick.host.GitLongPaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
@@ -253,6 +254,7 @@ public final class OfficialTemplatesFreshen {
     private static List<String> pinnedGit(Path dest, String... args) {
         List<String> out = new ArrayList<>();
         out.add("git");
+        out.addAll(GitLongPaths.options());
         out.add("--git-dir=" + dest.resolve(".git"));
         out.add("--work-tree=" + dest);
         out.addAll(List.of(args));
@@ -511,6 +513,7 @@ public final class OfficialTemplatesFreshen {
         List<String> cloneArgs(Path dest) {
             List<String> args = new ArrayList<>();
             args.add("git");
+            args.addAll(GitLongPaths.options());
             args.add("clone");
             args.add("--depth");
             args.add("1");

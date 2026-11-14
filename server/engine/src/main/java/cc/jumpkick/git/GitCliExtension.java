@@ -7,6 +7,7 @@ import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.host.GitLongPaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
@@ -422,14 +423,11 @@ public final class GitCliExtension implements GitBackend {
      * process tree: {@code git-remote-https} and {@code ssh} are children that would otherwise
      * keep the transfer, and the stdout pipe, going.
      */
-    /**
-     * The git command line. On Windows it turns on {@code core.longpaths}: a checkout in jk's cache
-     * nests past 260 characters, which git refuses there unless the user set it.
-     */
+    /** The git command line, long paths on under Windows ({@link GitLongPaths}). */
     static List<String> command(String exe, List<String> lead, List<String> args, boolean windows) {
         List<String> cmd = new ArrayList<>();
         cmd.add(exe);
-        if (windows) cmd.addAll(List.of("-c", "core.longpaths=true"));
+        cmd.addAll(GitLongPaths.options(windows));
         cmd.addAll(lead);
         cmd.addAll(args);
         return cmd;

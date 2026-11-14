@@ -20,6 +20,7 @@ import cc.jumpkick.giter8.ShippedTemplates;
 import cc.jumpkick.giter8.TemplateAnswers;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.GitLongPaths;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
@@ -625,6 +626,7 @@ public final class NewProjectOps {
         if (Files.exists(staging)) PathUtil.deleteRecursivelyOrThrow(staging);
         List<String> args = new ArrayList<>();
         args.add("git");
+        args.addAll(GitLongPaths.options());
         args.add("clone");
         args.add("--depth");
         args.add("1");
