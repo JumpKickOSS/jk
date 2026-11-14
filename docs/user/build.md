@@ -415,14 +415,16 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   shell running `jk` over the engine's own ([Config § Network](config.md#network)) — a worker
   that downloads goes through the proxy this command's terminal names, and so does a test JVM,
   a credential in the proxy URL included
-- the display variables `DISPLAY` / `WAYLAND_DISPLAY` / `XAUTHORITY`, again the
+- the display variables `DISPLAY` / `WAYLAND_DISPLAY` / `XAUTHORITY` / `XDG_RUNTIME_DIR` (where
+  the Wayland socket lives), again the
   shell running `jk` over the engine's own — a JavaFX or Swing suite opens the display of the
   terminal that ran `jk test`, and `xvfb-run jk test` hands a headless host a virtual one
   ([Test](test.md#a-suite-that-needs-a-display))
 - the container runtime's variables `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`,
   `DOCKER_CERT_PATH`, `DOCKER_TLS_VERIFY` and Testcontainers' `TESTCONTAINERS_HOST_OVERRIDE`,
   `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`, `TESTCONTAINERS_RYUK_DISABLED`,
-  `TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED`, the shell running `jk` over the engine's own — a
+  `TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED`, `TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX` (a registry
+  mirror) and Podman's `CONTAINER_HOST`, the shell running `jk` over the engine's own — a
   Testcontainers suite and `jk image` reach the Docker, Podman or remote daemon that terminal names
 - on Windows also `USERPROFILE`, `SystemRoot`, `SystemDrive`, `windir`, `PATHEXT`, `COMSPEC`,
   `NUMBER_OF_PROCESSORS`

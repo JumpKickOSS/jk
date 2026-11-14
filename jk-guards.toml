@@ -479,6 +479,18 @@ instead  = "resolve paths through cc.jumpkick.host.JkDirs (JK_HOME, plus JK_STOR
 why      = "JumpKick has one home; a layout it does not have, named anywhere, misleads the reader"
 
 [[guards.single-home-root.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/BuildEnv.java"
+reason = "forwards XDG_RUNTIME_DIR, the session's runtime dir a Wayland socket name is relative to; it lays out no jk directory"
+
+[[guards.single-home-root.allow]]
+in     = "server/engine/src/test/java/cc/jumpkick/engine/plugin/WorkerEnvTest.java"
+reason = "asserts XDG_RUNTIME_DIR, the session's runtime dir, reaches a worker beside WAYLAND_DISPLAY"
+
+[[guards.single-home-root.allow]]
+in     = "docs/user/build.md"
+reason = "lists XDG_RUNTIME_DIR among the display variables a worker inherits; it names the desktop session's dir, no jk layout"
+
+[[guards.single-home-root.allow]]
 in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
 reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
 

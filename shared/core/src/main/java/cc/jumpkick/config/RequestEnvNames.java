@@ -62,6 +62,7 @@ public final class RequestEnvNames {
             "COMSPEC",
             "NUMBER_OF_PROCESSORS",
             "ProgramFiles",
+            "ProgramFiles(x86)",
             "ProgramData");
 
     /**
@@ -158,9 +159,10 @@ public final class RequestEnvNames {
     }
 
     /** The names {@link BuildEnv} forwards by exact name: the request's shell, the machine and the JDK root. */
-    private static final Set<String> FORWARDED = Set.copyOf(Stream.of(BuildEnv.SHELL, BuildEnv.MACHINE, BuildEnv.JDK_ROOT)
-            .flatMap(List::stream)
-            .toList());
+    private static final Set<String> FORWARDED =
+            Set.copyOf(Stream.of(BuildEnv.SHELL, BuildEnv.MACHINE, BuildEnv.JDK_ROOT)
+                    .flatMap(List::stream)
+                    .toList());
 
     private static final Set<String> FORWARDED_UPPER = Set.copyOf(upper(FORWARDED.stream()));
 

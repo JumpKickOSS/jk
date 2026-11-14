@@ -21,10 +21,20 @@ class RequestEnvNamesCaseTest {
     }
 
     @Test
+    void the_windows_program_roots_ride_both_of_them() {
+        assertThat(RequestEnvNames.engineReads("ProgramFiles", true)).isTrue();
+        assertThat(RequestEnvNames.engineReads("ProgramFiles(x86)", true)).isTrue();
+        assertThat(RequestEnvNames.engineReads("CONTAINER_HOST", false)).isTrue();
+    }
+
+    @Test
     void names_are_exact_where_the_platform_is() {
         assertThat(RequestEnvNames.engineReads("Http_Proxy", false)).isFalse();
-        assertThat(BuildEnv.nameSet(List.of("MY_TOKEN"), false).contains("My_Token")).isFalse();
-        assertThat(BuildEnv.nameSet(List.of("MY_TOKEN"), true).contains("My_Token")).isTrue();
-        assertThat(BuildEnv.nameSet(List.of("MY_TOKEN"), true).contains("my_token")).isTrue();
+        assertThat(BuildEnv.nameSet(List.of("MY_TOKEN"), false).contains("My_Token"))
+                .isFalse();
+        assertThat(BuildEnv.nameSet(List.of("MY_TOKEN"), true).contains("My_Token"))
+                .isTrue();
+        assertThat(BuildEnv.nameSet(List.of("MY_TOKEN"), true).contains("my_token"))
+                .isTrue();
     }
 }

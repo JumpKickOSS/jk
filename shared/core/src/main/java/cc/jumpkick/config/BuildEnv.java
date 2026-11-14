@@ -88,7 +88,7 @@ public final class BuildEnv {
      * action key. jk sets no {@code java.awt.headless}; Surefire does not either, and a JavaFX
      * toolkit does not read it.
      */
-    public static final List<String> DISPLAY = List.of("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY");
+    public static final List<String> DISPLAY = List.of("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR");
 
     /**
      * The variables that name the container runtime this machine talks to — Docker's client
@@ -107,7 +107,9 @@ public final class BuildEnv {
             "TESTCONTAINERS_HOST_OVERRIDE",
             "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE",
             "TESTCONTAINERS_RYUK_DISABLED",
-            "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED");
+            "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED",
+            "TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX",
+            "CONTAINER_HOST");
 
     /**
      * Every variable that rides each request by exact name to the workers it forks, the request's

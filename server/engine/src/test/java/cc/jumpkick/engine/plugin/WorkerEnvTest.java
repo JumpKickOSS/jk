@@ -123,6 +123,9 @@ class WorkerEnvTest {
                 .as("with nothing on the request the engine's own value passes")
                 .containsEntry("DISPLAY", ":0");
         assertThat(WorkerEnv.allowed("XAUTHORITY", false)).isTrue();
+        assertThat(WorkerEnv.allowed("XDG_RUNTIME_DIR", false))
+                .as("WAYLAND_DISPLAY names a socket under it")
+                .isTrue();
     }
 
     @Test
@@ -143,6 +146,12 @@ class WorkerEnvTest {
         assertThat(WorkerEnv.compose(engine, Map.of(), false, Map.of(), false))
                 .as("with nothing on the request the engine's own value passes")
                 .containsEntry("DOCKER_HOST", "unix:///var/run/docker.sock");
+        assertThat(WorkerEnv.allowed("TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX", false))
+                .as("a corporate registry mirror")
+                .isTrue();
+        assertThat(WorkerEnv.allowed("CONTAINER_HOST", false))
+                .as("Podman's daemon")
+                .isTrue();
     }
 
     @Test
