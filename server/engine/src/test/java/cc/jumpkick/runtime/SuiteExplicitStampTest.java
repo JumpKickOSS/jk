@@ -64,8 +64,8 @@ class SuiteExplicitStampTest {
     private static Run run(Path dir, String explicitLine, TestSelection sel, Path src, Path lock) throws Exception {
         Path manifest = Files.writeString(dir.resolve("jk.toml"), MANIFEST.formatted(explicitLine));
         JkBuild project = JkBuildParser.parseLocal(manifest);
-        var resolved = TestStampInputs.resolveSuites(
-                sel, dir, null, false, project.build().runSuites());
+        var resolved =
+                TestStampInputs.resolveSuites(sel, dir, false, project.build().runSuites());
         List<String> compiled = TestSuites.compiled(
                 dir, false, resolved.suites(), project.build().runSuites());
         BuildLayout layout = BuildLayout.of(dir, project);

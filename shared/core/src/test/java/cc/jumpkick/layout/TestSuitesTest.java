@@ -202,8 +202,8 @@ class TestSuitesTest {
     /** The guard's suites run where a module has them: a module without {@code src/e2e} runs the rest. */
     @Test
     void a_guard_suite_a_module_lacks_is_left_out_not_an_error() {
-        TestSelection guard =
-                TestSelection.of(List.of("test", "integration", "e2e"), false, List.of(), List.of(), true, false, false);
+        TestSelection guard = TestSelection.of(
+                List.of("test", "integration", "e2e"), false, List.of(), List.of(), true, false, false);
         TestSelection.Resolved resolved = guard.resolve(List.of("test", "integration"));
         assertThat(resolved.ok()).isTrue();
         assertThat(resolved.suites()).containsExactly("test", "integration");
