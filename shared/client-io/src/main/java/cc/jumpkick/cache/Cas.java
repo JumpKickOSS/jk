@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -176,6 +177,27 @@ public final class Cas {
      * and the existing entry returned.
      */
     public Stored putStream(InputStream in) throws IOException {
+        return stream(in, null);
+    }
+
+    /**
+     * As {@link #putStream}, for bytes another machine sent under {@code expectedHex}: stored only
+     * when they hash to it. Bytes that hash to anything else are discarded and refused with {@link
+     * DigestMismatch}, leaving nothing in the CAS; the caller's digest is never trusted.
+     */
+    public Stored putVerified(InputStream in, String expectedHex) throws IOException {
+        if (!Hashing.isHex(expectedHex, 64)) throw new IllegalArgumentException("not a sha256: " + expectedHex);
+        return stream(in, expectedHex.toLowerCase(Locale.ROOT));
+    }
+
+    /** Bytes that hash to another digest than the one they were stored under. */
+    public static final class DigestMismatch extends IOException {
+        public DigestMismatch(String expected, String actual, long size) {
+            super("blob refused: " + size + " bytes sent as " + expected + " hash to " + actual);
+        }
+    }
+
+    private Stored stream(InputStream in, @Nullable String expected) throws IOException {
         // Staged under sha256/, not the CAS root: that is the tree the temp sweep reads, and the
         // final move stays within one directory tree.
         Path shaRoot = root.resolve("sha256");
@@ -194,6 +216,7 @@ public final class Cas {
                 }
             }
             String hex = Hashing.hex(digest.digest());
+            if (expected != null && !expected.equals(hex)) throw new DigestMismatch(expected, hex, size);
             Path target = pathFor(hex);
             if (reused(target)) {
                 Files.deleteIfExists(tmp);

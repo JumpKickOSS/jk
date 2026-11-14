@@ -22,6 +22,7 @@ import java.net.http.HttpResponse.BodyHandler;
 import java.net.http.HttpResponse.BodySubscribers;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -662,6 +663,24 @@ public final class Http {
     }
 
     /**
+     * As {@link #put}, the body streamed from {@code file} with its size as {@code Content-Length},
+     * so an upload holds a fixed buffer and never the file: the upload primitive for blobs too large
+     * for the heap (a fat jar, a native image). A retry reads the file again from its start.
+     */
+    public HttpResponse<byte[]> putFile(URI uri, Path file, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        checkOffline(uri);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.ofFile(file))
+                .timeout(Duration.ofMinutes(15));
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            builder.header(e.getKey(), e.getValue());
+        }
+        HttpRequest request = withProxyAuthorization(builder, uri).build();
+        return sendWithRetry("PUT", uri, request, cappedBytes(uri), null);
+    }
+
+    /**
      * A callback invoked on a response whose body is abandoned before another request goes out — a
      * retried 5xx, a followed redirect — used by {@link #getStream} to drain the streamed body so the
      * connection can be reused. May throw {@link IOException} (unlike {@link
@@ -690,7 +709,7 @@ public final class Http {
 
     /**
      * The one send-with-retry loop shared by {@link #get}, {@link #getStream}, {@link #postForm},
-     * and {@link #put}: retry on connect failures and 5xx (never on 4xx), {@code backoffs.length + 1}
+     * {@link #put} and {@link #putFile}: retry on connect failures and 5xx (never on 4xx), {@code backoffs.length + 1}
      * attempts with jittered backoff, then throw a verb-tagged {@link IOException}. {@code drain}
      * (nullable) runs on each retried 5xx and each followed redirect before the next request.
      */
