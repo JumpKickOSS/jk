@@ -800,9 +800,12 @@ is the bridge staying a relay. Everything else belongs in the engine. The bridge
 Every other method, field, result and notification passes through byte for byte, apart from line
 breaks between JSON tokens (`McpBridgeTest#an_unknown_method_and_unknown_fields_pass_through_untouched`).
 A bridge re-finds the engine through `McpCommand.endpoint`, which uses the newer engine the install
-names as it is rather than taking it over. After a renewal answers with a different
-`serverInfo.version`, it sends its client `notifications/tools/list_changed`, and the engine
-declares `tools.listChanged`. A new MCP feature that needs the bridge to understand more breaks
+names as it is rather than taking it over, and when that engine is stopped or draining has the
+installed client start it (`bin/jk engine start`) rather than start its own older one. An engine
+answers a stored session only when an engine of its own version stored it; a session another
+version stored is a **404**, so the bridge renews, and after a renewal answers with a different
+`serverInfo.version` it sends its client `notifications/tools/list_changed`; the engine declares
+`tools.listChanged`. A new MCP feature that needs the bridge to understand more breaks
 every bridge already running until it restarts: put it in the engine instead.
 
 MCP `new` climbs from form mode to URL mode (`McpNewForm`): with only URL mode declared, it opens an

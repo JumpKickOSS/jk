@@ -100,6 +100,7 @@ public final class Jk {
         int code;
         try {
             code = execute(args);
+            code = SupersededClient.handOffAfterCommand(args).orElse(code);
             SelfUpdatePrompt.afterCommand(commandName(args), List.of(args), code);
             NerdFontHint.afterCommand(commandName(args), List.of(args), code);
         } catch (JkDirs.InvalidOverrideException e) {

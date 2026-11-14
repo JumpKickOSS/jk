@@ -20,6 +20,7 @@ import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.mcp.McpRevision;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -182,15 +183,27 @@ public final class McpHandler {
         ctx.sessions(sessions);
         McpConnections connections = ctx.connections();
         sessions.whenConnectionEnds(connections::close);
+        String engine = ctx.version();
         ctx.connections().store(new McpConnections.Store() {
             @Override
             public void save(McpConnection connection) {
-                sessions.saveConnection(ORIGIN, connection.label(), connection.toMap());
+                Map<String, Object> stored = new LinkedHashMap<>(connection.toMap());
+                stored.put(ENGINE_KEY, engine);
+                sessions.saveConnection(ORIGIN, connection.label(), stored);
             }
 
+            /**
+             * A connection an engine of another version stored is not answered: its client listed
+             * that engine's tools, so the {@code 404} sends it to {@code initialize} again, and a
+             * {@code jk mcp} bridge that renews on another {@code serverInfo.version} tells its
+             * client the tool list changed.
+             */
             @Override
             public @Nullable McpConnection load(String id) {
-                return sessions.connection(id).map(McpConnection::of).orElse(null);
+                return sessions.connection(id)
+                        .filter(stored -> engine.equals(stored.get(ENGINE_KEY)))
+                        .map(McpConnection::of)
+                        .orElse(null);
             }
 
             @Override
@@ -199,6 +212,9 @@ public final class McpHandler {
             }
         });
     }
+
+    /** The version of the engine that stored a connection, beside the connection's own fields. */
+    static final String ENGINE_KEY = "engine";
 
     /** Forget a connection ({@code DELETE /mcp}); its session ends. */
     public boolean closeConnection(@Nullable String sessionId) {

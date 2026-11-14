@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.engine.ClientUpdate;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.GlobalConfig;
@@ -172,6 +173,7 @@ final class StackWatchLoop {
                 Optional<SourceWatch.Changes> maybe = m.watch().pollChange(slice, TimeUnit.MILLISECONDS);
                 if (maybe.isEmpty()) continue;
                 SourceWatch.Changes changes = maybe.get();
+                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
                 AppWatchLoop.Pass pass = AppWatchLoop.Pass.of(changes);
                 if (!loop.pass(pass, m.dir, cache)) {
                     CliOutput.err(

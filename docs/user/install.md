@@ -114,10 +114,12 @@ update until a plain `jk self update` (or any update to the same or a newer rele
 hold. `jk engine status` shows the hold, the last check, and a download waiting to install.
 
 A command started by the release that was just replaced hands itself to the new one. A running
-`jk mcp` keeps serving its agent across the update: it reconnects to the new engine and tells the
-agent's host to read the tool list again. (A `jk mcp` started by a release before 0.51.0 predates this
-and stops once, asking to be started again.) Other long-running clients from before the update (a
-watch) stop and ask to be started again rather than displace the newer engine.
+`jk mcp` keeps serving its agent across the update: it reconnects to the new engine (starting it
+when it is not running) and tells the agent's host to read the tool list again. (A `jk mcp` started
+by a release before 0.51.0 predates this and stops once, asking to be started again.) `jk watch` and
+`jk dev` notice the update at the next change they see: they stop, say so, and start again on the new
+release with the same arguments (`jk dev` restarts the app). `jk bsp` answers the next request from
+the IDE with an error saying JumpKick was updated and exits, so the IDE starts the new build server.
 
 An MCP client whose host shows elicitations is asked once per session, before its next tool call:
 "A new version of JumpKick (X) is downloaded. Update now?" Accept installs it (that call still

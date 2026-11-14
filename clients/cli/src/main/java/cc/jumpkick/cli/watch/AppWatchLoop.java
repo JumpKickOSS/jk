@@ -3,6 +3,7 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.ClientUpdate;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.JsonlShape;
@@ -231,6 +232,7 @@ public final class AppWatchLoop {
                     continue;
                 }
                 SourceWatch.Changes changes = maybe.get();
+                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
                 if (changes.manifest()) {
                     CliOutput.err(logPrefix + ": jk.toml changed; rebuilding and restarting");
                     if (build(projectDir, cache)) {
@@ -303,6 +305,7 @@ public final class AppWatchLoop {
         try (SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
             while (true) {
                 SourceWatch.Changes changes = watch.awaitChange();
+                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
                 if (changes.manifest()) {
                     CliOutput.err(logPrefix + ": jk.toml changed; rebuilding and redeploying");
                 }

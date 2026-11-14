@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
+import cc.jumpkick.cli.engine.ClientUpdate;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.run.DebugAttach;
@@ -29,11 +30,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -69,17 +72,31 @@ public final class BspServer {
     private volatile @Nullable IdeWireModel cachedModel;
     private volatile @Nullable ProjectInfo cachedInfo;
 
+    /** The newer release jk updated itself to while this server ran; empty while it is current. */
+    private final Supplier<Optional<String>> newerInstall;
+
     public BspServer(IdeEngineClient ide, InputStream in, OutputStream out) {
+        this(ide, in, out, ClientUpdate::newerInstall);
+    }
+
+    BspServer(IdeEngineClient ide, InputStream in, OutputStream out, Supplier<Optional<String>> newerInstall) {
         this.ide = ide;
         this.in = new BufferedInputStream(in);
         this.out = out;
+        this.newerInstall = newerInstall;
     }
 
+    /**
+     * Serve until the IDE exits or closes the stream, or until jk updates itself to a newer
+     * release: this client cannot drive the newer engine, so the request that finds the update is
+     * answered with an error saying so and the server ends, for the IDE to start the new one.
+     */
     public void serve() throws IOException {
         try {
             while (true) {
                 String msg = readMessage();
                 if (msg == null) return;
+                if (superseded(msg)) return;
                 handle(msg);
             }
         } catch (IOException e) {
@@ -88,6 +105,21 @@ public final class BspServer {
             awaitJobs();
             worker.shutdownNow();
         }
+    }
+
+    /** True when jk updated itself: {@code json}'s request, if it is one, is answered with the reason. */
+    private boolean superseded(String json) throws IOException {
+        Optional<String> newer = newerInstall.get();
+        if (newer.isEmpty()) return false;
+        String reason = "jk was updated to " + newer.get() + "; restart the build server to use it";
+        System.err.println("jk bsp: " + reason);
+        try {
+            String id = requestId(MiniJson.parse(json));
+            if (id != null) error(id, -32000, reason);
+        } catch (RuntimeException notJson) {
+            // Nothing to answer.
+        }
+        return true;
     }
 
     private void handle(String json) throws IOException {

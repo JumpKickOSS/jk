@@ -130,10 +130,59 @@ class McpBridgeEngineReplacementTest {
         assertThat(successor.thread().isAlive()).isTrue();
     }
 
+    /**
+     * jk updated itself: the successor is a newer release, whose tools may differ. It does not
+     * answer the session the older engine stored, so the bridge opens a new one and tells its
+     * client the tool list changed before it answers the call.
+     */
+    @Test
+    void a_newer_successor_tells_the_client_its_tools_changed() throws Exception {
+        EnginePaths.Paths paths = EnginePaths.resolve(tempDirs.create());
+        Path web = tempDirs.create();
+        Path project = tempDirs.create();
+        Engine first = start(paths, web, "aaaaaaaaaaaa", "1.0.0-SNAPSHOT");
+        await(() -> mcpUrl(paths) != null);
+
+        PipedOutputStream client = new PipedOutputStream();
+        PipedInputStream stdin = new PipedInputStream(client, 1 << 16);
+        BlockingQueue<String> stdout = new LinkedBlockingQueue<>();
+        McpBridge bridge = new McpBridge(() -> endpoint(paths), project.toString());
+        CompletableFuture<Void> served = CompletableFuture.runAsync(() -> {
+            try {
+                bridge.serve(stdin, new PrintStream(new Lines(stdout), true, StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        send(
+                client,
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\","
+                        + "\"capabilities\":{},\"clientInfo\":{\"name\":\"claude-code\",\"version\":\"1\"}}}");
+        assertThat(next(stdout)).contains("\"version\":\"1.0.0-SNAPSHOT\"");
+        send(client, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+        send(client, query(2));
+        assertThat(next(stdout)).contains("\"id\":2");
+
+        start(paths, web, "bbbbbbbbbbbb", "1.1.0-SNAPSHOT");
+        assertThat(first.thread().join(WAIT))
+                .as("the first engine was displaced and exited")
+                .isTrue();
+        await(() -> mcpUrl(paths) != null);
+
+        send(client, query(3));
+        assertThat(next(stdout)).isEqualTo(McpBridge.TOOLS_CHANGED);
+        assertThat(next(stdout)).contains("\"id\":3");
+        client.close();
+        served.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+    }
+
     private Engine start(EnginePaths.Paths paths, Path web, String buildId) {
+        return start(paths, web, buildId, "1.0.0-SNAPSHOT");
+    }
+
+    private Engine start(EnginePaths.Paths paths, Path web, String buildId, String version) {
         JkHttpConfig httpConfig = new JkHttpConfig("127.0.0.1", 0, 16, 16, web.toString(), JkHttpConfig.Mcp.DEFAULTS);
-        EngineServer server =
-                new EngineServer(paths, JkEngineConfig.DEFAULTS, httpConfig, "1.0.0-SNAPSHOT", buildId, null);
+        EngineServer server = new EngineServer(paths, JkEngineConfig.DEFAULTS, httpConfig, version, buildId, null);
         Thread t = new Thread(
                 () -> {
                     try {

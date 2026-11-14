@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
-import cc.jumpkick.cli.engine.ReleasedClient;
-import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.engine.ClientUpdate;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.function.Supplier;
 
 /**
  * A released client older than the version the install now names: jk updated itself while this
  * process was starting or a shell still held the old binary. Spawning its own engine would displace
  * the newer one, whose client would displace it back on the next command. Instead the installed
  * {@code bin/jk} runs the same arguments and this process exits with its code.
+ *
+ * <p>A long-lived command ({@code jk watch}, {@code jk dev}) that finds the update between passes
+ * ({@link ClientUpdate#updatedBetweenPasses}) stops its loop and returns, and the entry point hands
+ * its arguments to the installed client the same way, which starts the loop over on the new release.
  */
 final class SupersededClient {
 
@@ -32,21 +32,26 @@ final class SupersededClient {
 
     private SupersededClient() {}
 
-    /** The installed version when it is newer than {@code running}; empty for a development client. */
-    static Optional<String> newerInstall(String running, boolean releasedClient, Supplier<Optional<String>> installed) {
-        if (!ReleasedClient.applicable(running, releasedClient, false)) return Optional.empty();
-        return installed.get().filter(v -> Versions.compare(v, running) > 0);
+    /**
+     * The exit code of {@code args} on the installed client when a long-lived command stopped for
+     * an update ({@link ClientUpdate#updatedBetweenPasses}); empty when none did, or the installed
+     * client could not be run.
+     */
+    static OptionalInt handOffAfterCommand(String[] args) {
+        if (ClientUpdate.takeHandOff().isEmpty()) return OptionalInt.empty();
+        return runInstalled(args);
     }
 
     /** Run {@code args} on the installed client when this one is superseded; the child's exit code. */
     static OptionalInt handOff(String[] args) {
         if (System.getenv(ENV) != null) return OptionalInt.empty();
+        if (ClientUpdate.newerInstall().isEmpty()) return OptionalInt.empty();
+        return runInstalled(args);
+    }
+
+    /** {@code args} on the installed {@code bin/jk}, this process's terminal handed to it; the child's exit code. */
+    private static OptionalInt runInstalled(String[] args) {
         try {
-            Optional<String> newer =
-                    newerInstall(JkVersion.VERSION, ReleasedClient.current(), () -> EngineInstall.current()
-                            .currentInstall()
-                            .map(EngineInstall.Materialized::version));
-            if (newer.isEmpty()) return OptionalInt.empty();
             Path jk = EngineInstall.pathClient(JkDirs.binDir());
             if (!Files.isRegularFile(jk)) return OptionalInt.empty();
             List<String> command = new ArrayList<>(List.of(jk.toString()));

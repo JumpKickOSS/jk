@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectContext;
+import cc.jumpkick.cli.engine.ClientUpdate;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.watch.AppWatchLoop;
 import cc.jumpkick.cli.watch.SourceWatch;
@@ -188,6 +189,7 @@ public final class WatchCommand implements CliCommand {
         try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs, nodeOutput(projectDir))) {
             while (true) {
                 watch.awaitChange();
+                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
                 CommandWedge.printWorking("Watch", "change detected, running " + verb);
                 code = runVerb(verb, in);
                 if (code != 0) {
