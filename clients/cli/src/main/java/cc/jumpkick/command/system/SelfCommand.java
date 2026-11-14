@@ -189,19 +189,42 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) {
-            EngineInstall install = EngineInstall.current();
             try {
-                EngineFleet.stopAll(false);
-                EngineInstall.RolledBack back =
-                        install.rollback(JkStores.storeCas(), ClientPlacement.at(JkDirs.binDir()));
+                EngineInstall.RolledBack back = rollback(
+                        EngineInstall.current(), JkStores.storeCas(), JkDirs.binDir(), () -> EngineFleet.stopAll(false));
                 CommandWedge.printOk(
                         "Rollback",
                         "jk-engine " + back.version() + " (" + back.engineJar().getFileName() + ")"
                                 + (back.client() == null ? "; the client is unchanged" : " and its client"));
+                CliOutput.out("auto-update is held at " + back.version() + "; `jk self update` resumes it");
                 return Exit.SUCCESS;
             } catch (IOException e) {
                 CommandWedge.printFail("Rollback", e.getMessage());
                 return Exit.FAILURE;
+            }
+        }
+
+        /**
+         * Roll back as one install: the host install lock held exclusively (other sessions' runs
+         * finish first and new ones wait), the home's update lock held so a scheduled update cannot
+         * install between the steps, the engines stopped by {@code stopEngines}, and auto-update
+         * held at the release put back, as an explicit downgrade holds it. Without the hold the
+         * engine's own updater installs the release the person just left once the home is quiet.
+         * {@code jk self update} releases it.
+         */
+        static EngineInstall.RolledBack rollback(EngineInstall install, Cas cas, Path binDir, Runnable stopEngines)
+                throws IOException {
+            try (InstallLock.Hold hold = InstallLock.exclusive("jk self rollback")) {
+                Files.createDirectories(install.engineHome());
+                return FileLocks.withLock(install.engineHome().resolve(UpdateSub.UPDATE_LOCK), () -> {
+                    String from = install.currentInstall()
+                            .map(EngineInstall.Materialized::version)
+                            .orElseThrow(() -> new IOException("no engine is installed to roll back from"));
+                    stopEngines.run();
+                    EngineInstall.RolledBack back = install.rollback(cas, ClientPlacement.at(binDir));
+                    SelfUpdateState.update(s -> s.withHold(back.version(), from));
+                    return back;
+                });
             }
         }
     }

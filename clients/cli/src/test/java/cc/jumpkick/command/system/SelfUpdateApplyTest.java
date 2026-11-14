@@ -3,11 +3,15 @@ package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.PreparedUpdate;
+import cc.jumpkick.cli.engine.InstallLock;
+import cc.jumpkick.config.SelfUpdatePolicy;
+import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
@@ -182,6 +186,36 @@ class SelfUpdateApplyTest {
         assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
                 .as("the client beside a 0.17.0 pointer")
                 .isEqualTo("client 0.17.0");
+    }
+
+    /**
+     * A rollback holds auto-update at the release it put back, or the engine's updater installs the
+     * release the person just left once the home is quiet; it stops the engines and swaps under
+     * the host install lock, held exclusively.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_rollback_holds_auto_update_at_the_release_it_put_back_and_swaps_under_the_install_lock()
+            throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.18.0"), install, cas, false);
+        List<InstallLock.Holder> duringStop = new ArrayList<>();
+
+        var back = SelfCommand.RollbackSub.rollback(
+                install, cas, JkDirs.binDir(), () -> duringStop.addAll(InstallLock.holders()));
+
+        assertThat(back.version()).isEqualTo("0.17.0");
+        assertThat(duringStop)
+                .extracting(InstallLock.Holder::mode, InstallLock.Holder::purpose)
+                .contains(tuple(InstallLock.Mode.EXCLUSIVE, "jk self rollback"));
+        SelfUpdateState state = SelfUpdateState.read();
+        assertThat(state.held()).isEqualTo("0.17.0");
+        assertThat(state.heldFrom()).isEqualTo("0.18.0");
+        assertThat(SelfUpdatePolicy.decide("0.17.0", null, null, state, false).action())
+                .as("the engine's updater does nothing while held")
+                .isEqualTo(SelfUpdatePolicy.Action.OFF);
     }
 
     /** A JVM client is recorded beside its engine like a native one, and a rollback puts its jar back. */

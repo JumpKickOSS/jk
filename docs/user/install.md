@@ -67,12 +67,14 @@ jk self update --check      # is there a newer release? installs nothing
 jk self update --download   # fetch and verify it now; install later
 jk self update              # install the latest (a download already made is reused)
 jk self update 0.16.2       # go back to a release, and hold there
-jk self rollback            # put back the engine and client the last install replaced
+jk self rollback            # put back the engine and client the last install replaced, and hold there
 ```
 
 `jk self rollback` needs no network and no running engine: the store keeps the engine and client
 the last install replaced, so an install that left a JumpKick that fails every command can still be
-undone. A second rollback undoes the first. Every install records the client it pairs with its
+undone. A second rollback undoes the first. Like `jk self update <older>`, a rollback holds
+auto-update at the release it put back until `jk self update` resumes it, and it waits for other
+sessions' runs and holds new ones off while it swaps, as an install does. Every install records the client it pairs with its
 engine (the installers, `jk self update`, `jk snapshot` and `jk install`), native binary or JVM
 client jar alike, so the client a rollback puts back is always the one that ran with that engine.
 
