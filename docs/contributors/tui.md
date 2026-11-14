@@ -30,9 +30,13 @@ region, chrome rewritten to ASCII. In order:
 3. `TERM=dumb` or `CI`: plain.
 4. Otherwise a stream carries ANSI exactly when it is a terminal.
 
-Each stream is judged on its own device. Rendering follows stdout, where results go; `CliOutput`
-strips a redirected stderr of whatever stdout's decision let in, so `jk build 2> err.log` keeps a
-coloured terminal and a plain log. A build notification goes to the terminal hosting the build
+Each stream is judged on its own device. Chrome is rendered for the stream it goes to: the stderr
+print helpers (`CommandWedge.printFail` and friends, the dispatcher's error lines) render through
+`StreamCaps.renderingFor(ERR, …)`, everything else for stdout, and `CliOutput` strips any stream
+that may not carry ANSI of what slipped through. So `jk build 2> err.log` keeps a coloured terminal
+and a plain log, and `jk build > out.log` keeps coloured failure and warning lines on the terminal.
+A live region draws only on a terminal stdout; with stdout redirected the run settles headless,
+its human lines on stderr, as under `-O json`. A build notification goes to the terminal hosting the build
 (stderr when only stdout is redirected) and never into a redirected log.
 
 ## JkWedge is the look

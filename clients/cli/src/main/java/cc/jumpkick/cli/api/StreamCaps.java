@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Terminals;
 import java.util.concurrent.Callable;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -28,8 +29,12 @@ import org.jspecify.annotations.Nullable;
  * </ol>
  *
  * <p>Each stream is judged on its own device: {@code jk build 2> err.log} keeps a coloured stdout
- * and a plain error log. Rendering decides from stdout ({@link #ansi(Side)} of {@link Side#OUT}),
- * where results go; {@link CliOutput} strips a non-terminal stderr of what stdout's decision let in.
+ * and a plain error log, and {@code jk build > out.log} keeps the terminal's coloured failure and
+ * warning lines on stderr. Chrome is rendered for the stream it goes to ({@link #renderSide}, set by
+ * the stderr print helpers through {@link #renderingFor}); {@link CliOutput} strips any stream that
+ * may not carry ANSI of what slipped through. A live region draws only on a terminal stdout, the
+ * one place live output goes: with stdout redirected the run settles headless, its failure and
+ * warning lines on stderr, as under {@code -O json}.
  */
 public final class StreamCaps {
 
@@ -52,6 +57,9 @@ public final class StreamCaps {
      */
     private static volatile boolean forcedForTests;
 
+    /** The stream the calling thread is rendering for; stdout when nothing is bound. */
+    private static final ScopedValue<Side> RENDERING = ScopedValue.newInstance();
+
     /** A test's stand-in for the device, bound to the calling thread for one body. */
     private static final ScopedValue<boolean[]> PINNED = ScopedValue.newInstance();
 
@@ -59,6 +67,23 @@ public final class StreamCaps {
     public static boolean terminal(Side side) {
         if (PINNED.isBound()) return PINNED.get()[side.ordinal()];
         return side == Side.OUT ? outTty() : errTty();
+    }
+
+    /**
+     * The stream chrome rendered on this thread is meant for: stdout unless the caller is inside
+     * {@link #renderingFor}. The theme decides colour and glyphs for this side.
+     */
+    public static Side renderSide() {
+        return RENDERING.isBound() ? RENDERING.get() : Side.OUT;
+    }
+
+    /**
+     * {@code render}'s result, rendered for {@code side}: the theme asks that stream's device, so a
+     * failure line bound for a terminal stderr keeps its colour while stdout is redirected, and one
+     * bound for a redirected stderr is plain beside a coloured stdout.
+     */
+    public static <T> T renderingFor(Side side, Supplier<T> render) {
+        return ScopedValue.where(RENDERING, side).call(render::get);
     }
 
     /** True when {@code side} may carry colour, attributes, glyph chrome and hyperlinks. */

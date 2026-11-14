@@ -298,7 +298,8 @@ public final class CliOutput {
         if (!StreamCaps.ansi(err ? StreamCaps.Side.ERR : StreamCaps.Side.OUT)) {
             return PlainAscii.rewrite(Width.stripAnsi(line));
         }
-        return PlainAscii.apply(line);
+        // This stream may carry it: whatever the line was rendered for stays as rendered.
+        return line;
     }
 
     /**

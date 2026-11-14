@@ -2,10 +2,12 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
 import java.util.List;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -160,21 +162,21 @@ public final class CommandWedge {
      * {@link #fail}.
      */
     public static void printFail(String command, @Nullable String message) {
-        CliOutput.err(fail(command, message));
+        CliOutput.err(forErr(() -> fail(command, message)));
     }
 
     /**
      * Print a failure settle with "Failed to …" phrasing and a leading stderr blank when first.
      */
     public static void printFailedTo(String command, String tail) {
-        CliOutput.err(failedTo(command, tail));
+        CliOutput.err(forErr(() -> failedTo(command, tail)));
     }
 
     /**
      * Working / play chip on stderr (exec handoff, watch loop) with leading blank when first chrome.
      */
     public static void printWorking(String command, String message) {
-        CliOutput.err(working(command, message));
+        CliOutput.err(forErr(() -> working(command, message)));
     }
 
     /** Generic glyph chip on stdout with envelope. */
@@ -184,7 +186,7 @@ public final class CommandWedge {
 
     /** Generic glyph chip on stderr with envelope. */
     public static void printChipErr(String glyph, String command, String message) {
-        CliOutput.err(chip(glyph, command, message));
+        CliOutput.err(forErr(() -> chip(glyph, command, message)));
     }
 
     /**
@@ -216,6 +218,11 @@ public final class CommandWedge {
      */
     public static void printLine(String wedgeLine) {
         CliOutput.out(wedgeLine);
+    }
+
+    /** {@code render}'s line rendered for stderr's own device. */
+    private static String forErr(Supplier<String> render) {
+        return StreamCaps.renderingFor(StreamCaps.Side.ERR, render);
     }
 
     /**

@@ -299,7 +299,7 @@ public interface Theme {
      * {@code CI} says otherwise. {@link StreamCaps} owns the decision.
      */
     default boolean isAnsi() {
-        return StreamCaps.ansi(StreamCaps.Side.OUT);
+        return StreamCaps.ansi(StreamCaps.renderSide());
     }
 
     /**
@@ -307,7 +307,7 @@ public interface Theme {
      * {@code --color} choice ({@link StreamCaps#color}).
      */
     static boolean colorEnabled() {
-        return StreamCaps.color(StreamCaps.Side.OUT);
+        return StreamCaps.color(StreamCaps.renderSide());
     }
 
     /**

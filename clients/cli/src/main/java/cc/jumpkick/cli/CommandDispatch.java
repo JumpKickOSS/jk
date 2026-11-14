@@ -256,7 +256,7 @@ public final class CommandDispatch {
         String command = all.get(commandAt);
         Abbreviations.Result<CliCommand> r = Abbreviations.resolve(command, BY_NAME);
         if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
-            printAmbiguousCommand(command, r.candidates());
+            onErr(() -> printAmbiguousCommand(command, r.candidates()));
             return Exit.USAGE;
         }
         CliCommand cmd = r.value();
@@ -269,7 +269,7 @@ public final class CommandDispatch {
                     WorkingDirectory.resolve(SessionContext.current().config().dirOr(WorkingDirectory.current()));
             Integer pluginExit = tryPluginCommand(dir, command, all.subList(commandAt + 1, all.size()));
             if (pluginExit != null) return pluginExit;
-            printUnknownCommand(command);
+            onErr(() -> printUnknownCommand(command));
             return Exit.USAGE;
         }
         return dispatch(cmd, "jk " + cmd.name(), split(List.of(), all, commandAt), ansiEnabled());
@@ -471,12 +471,12 @@ public final class CommandDispatch {
             String subName = rest.get(subAt);
             Abbreviations.Result<CliCommand> r = resolveSub(cmd, subName);
             if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
-                printAmbiguousSubcommand(cmd, qualified, subName, r.candidates());
+                onErr(() -> printAmbiguousSubcommand(cmd, qualified, subName, r.candidates()));
                 return Exit.USAGE;
             }
             CliCommand sub = r.value();
             if (sub == null) {
-                printUnknownSubcommand(cmd, qualified, subName);
+                onErr(() -> printUnknownSubcommand(cmd, qualified, subName));
                 return Exit.USAGE;
             }
             return dispatch(sub, qualified + " " + sub.name(), split(args.leading(), rest, subAt), ansi);
@@ -493,7 +493,7 @@ public final class CommandDispatch {
         try {
             in = passthrough ? parsePassthrough(cmd, args) : ArgParser.parse(withGlobals(cmd), args.joined());
         } catch (ParseException e) {
-            printError(qualified, cmd, e);
+            onErr(() -> printError(qualified, cmd, e));
             return Exit.USAGE;
         }
         Integer settled = settleBeforeRun(cmd, qualified, in);
@@ -539,21 +539,22 @@ public final class CommandDispatch {
                 Confirm.clearAssumeYes();
             }
             List<String> jobWarnings = WireStream.takeJobWarnings();
-            if (code == 0) printJobWarnings(jobWarnings);
+            if (code == 0) onErr(() -> printJobWarnings(jobWarnings));
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
-            printWorkerJarError(e);
+            onErr(() -> printWorkerJarError(e));
             code = 1;
         } catch (UserConfigParseException unparsed) {
             // The message is the fix: file:line:col and what TOML said. No stack, a config exit.
             closeActiveLiveRegion();
-            CliOutput.err(
-                    HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " " + unparsed.getMessage());
+            onErr(() -> CliOutput.err(HelpRenderer.paint(
+                            "error:", Theme.active().errorLabel(), errAnsi()) + " " + unparsed.getMessage()));
             code = Exit.CONFIG;
         } catch (Exception e) {
             closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
-            CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " " + msg);
+            onErr(() ->
+                    CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " " + msg));
             // The message alone often names no path ("No such file or directory"); the stack goes to
             // the state log every time, and to the terminal under -v.
             String[] argv = args.joined().toArray(String[]::new);
@@ -739,7 +740,7 @@ public final class CommandDispatch {
         }
         String refusedFormat = refusedOutputFormat(cmd, in);
         if (refusedFormat != null) {
-            printRefusedOutput(qualified, cmd, refusedFormat);
+            onErr(() -> printRefusedOutput(qualified, cmd, refusedFormat));
             return Exit.USAGE;
         }
         GlobalOptions.from(in);
@@ -954,6 +955,14 @@ public final class CommandDispatch {
     /** Whether help and other stdout chrome is coloured ({@link StreamCaps#color} of stdout). */
     static boolean ansiEnabled() {
         return StreamCaps.color(StreamCaps.Side.OUT);
+    }
+
+    /** Run {@code print} rendering for stderr: the theme asks stderr's device, not stdout's. */
+    private static void onErr(Runnable print) {
+        StreamCaps.renderingFor(StreamCaps.Side.ERR, () -> {
+            print.run();
+            return null;
+        });
     }
 
     /** Whether usage errors and other stderr lines are coloured, judged on stderr's own device. */

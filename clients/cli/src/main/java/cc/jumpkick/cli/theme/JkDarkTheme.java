@@ -120,7 +120,7 @@ public final class JkDarkTheme implements Theme {
     public boolean isAnsi() {
         // Not gated on colorEnabled(): NO_COLOR / --color never only disables color; they do not
         // disable Unicode glyphs, animations, or other ANSI sequences.
-        return StreamCaps.ansi(StreamCaps.Side.OUT);
+        return StreamCaps.ansi(StreamCaps.renderSide());
     }
 
     @Override
