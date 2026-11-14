@@ -32,6 +32,7 @@ import cc.jumpkick.wire.protocol.HelloAckFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
@@ -209,7 +210,7 @@ public final class EngineSpawn {
                     /* back off, probe, read again */
                 }
             }
-            sleepQuietly(patience.backoff().toMillis());
+            pause(patience.backoff().toMillis());
             Reachability again = probe(socket, clientVersion, patience.replyTimeoutMillis());
             if (!(again instanceof Reachability.Silent)) return again;
             Optional<SilentPeer.Life> next = SilentPeer.Life.of(pid, clock);
@@ -220,10 +221,11 @@ public final class EngineSpawn {
     }
 
     /** Probe, and give a silent peer {@code patience} before reporting it silent. */
-    static Reachability probePatiently(Path socket, String clientVersion, EngineProbe.Patience patience) {
+    static Reachability probePatiently(Path socket, String clientVersion, EngineProbe.Patience patience)
+            throws InterruptedIOException {
         Reachability reach = probe(socket, clientVersion, patience.replyTimeoutMillis());
         for (int again = 0; again < patience.reprobes() && reach instanceof Reachability.Silent; again++) {
-            sleepQuietly(patience.backoff().toMillis());
+            pause(patience.backoff().toMillis());
             reach = probe(socket, clientVersion, patience.replyTimeoutMillis());
         }
         return reach;
@@ -355,7 +357,7 @@ public final class EngineSpawn {
                 case CHILD_EXITED -> {
                     if (attempt + 1 < attempts) {
                         logReason(paths, "engine exited before serving; retrying after backoff");
-                        sleepQuietly(1_500);
+                        pause(1_500);
                         continue;
                     }
                     throw notStarted(paths);
@@ -845,7 +847,8 @@ public final class EngineSpawn {
      * reported at once.
      */
     static StartResult awaitStartup(
-            EnginePaths.Paths paths, String clientVersion, Duration timeout, @Nullable Process spawned) {
+            EnginePaths.Paths paths, String clientVersion, Duration timeout, @Nullable Process spawned)
+            throws InterruptedIOException {
         long deadline = System.nanoTime() + timeout.toNanos();
         Optional<String> pointer = pointerSha(clientVersion);
         boolean yielded = false;
@@ -856,7 +859,7 @@ public final class EngineSpawn {
                 if (spawned.exitValue() != 0) return StartResult.exited();
                 yielded = true;
             }
-            sleepQuietly(50);
+            pause(50);
         }
         return yielded ? StartResult.exited() : StartResult.timedOut();
     }
@@ -881,11 +884,17 @@ public final class EngineSpawn {
         }
     }
 
-    private static void sleepQuietly(long millis) {
+    /**
+     * Wait {@code millis} between two looks at the engine. An interrupt ends the wait loop it is in:
+     * the interrupt stays set, so every later sleep and every channel this thread opens would fail at
+     * once, and a loop that swallowed it would spin through its whole ceiling at full speed.
+     */
+    private static void pause(long millis) throws InterruptedIOException {
         try {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while waiting for the jk engine");
         }
     }
 

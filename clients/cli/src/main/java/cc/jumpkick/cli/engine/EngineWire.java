@@ -16,6 +16,7 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -291,6 +292,10 @@ public final class EngineWire {
                     break;
                 } catch (IOException queueFull) {
                     if (!retryable(queueFull) || Clock.SYSTEM.nanos() >= deadline) throw queueFull;
+                    // An interrupted thread parks for no time at all: this loop would spin to the deadline.
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedIOException("interrupted while connecting to the jk engine");
+                    }
                     LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50));
                 }
             }
