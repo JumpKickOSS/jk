@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -113,6 +115,19 @@ public final class BuildEnv {
      */
     public static final List<String> SHELL =
             Stream.of(PROXY, DISPLAY, CONTAINER).flatMap(List::stream).toList();
+
+    /**
+     * {@code names} as a set that matches a variable name the way the platform does: whatever its
+     * case when {@code caseInsensitive} (Windows, where {@code My_Token} and {@code MY_TOKEN} are one
+     * variable), exactly otherwise. Every comparison of a variable against declared or forwarded
+     * names goes through one of these.
+     */
+    public static Set<String> nameSet(Collection<String> names, boolean caseInsensitive) {
+        if (!caseInsensitive) return Set.copyOf(names);
+        Set<String> out = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        out.addAll(names);
+        return Collections.unmodifiableSet(out);
+    }
 
     /**
      * The one variable that says where this machine keeps the JDKs jk manages ({@code JK_JDKS_DIR}).

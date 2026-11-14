@@ -10,6 +10,7 @@ import cc.jumpkick.m2.MavenSettings;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -146,9 +147,14 @@ public final class ClientEnvForward {
      * engine reads as unset.
      */
     public static Map<String, String> forwarded(Collection<String> declared) {
-        Set<String> named = new HashSet<>(declared);
-        named.addAll(userRefs().names());
-        boolean windows = Os.isWindows();
+        return forwarded(declared, Os.isWindows());
+    }
+
+    /** {@link #forwarded(Collection)} with names matched whatever their case when {@code windows}. */
+    static Map<String, String> forwarded(Collection<String> declared, boolean windows) {
+        List<String> names = new ArrayList<>(declared);
+        names.addAll(userRefs().names());
+        Set<String> named = BuildEnv.nameSet(names, windows);
         Map<String, String> out = new LinkedHashMap<>();
         wholeShell().forEach((name, value) -> {
             if (named.contains(name) || RequestEnvNames.engineReads(name, windows)) out.put(name, value);

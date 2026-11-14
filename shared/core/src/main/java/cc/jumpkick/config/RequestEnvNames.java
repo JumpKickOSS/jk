@@ -154,8 +154,15 @@ public final class RequestEnvNames {
         for (String prefix : BuildEnv.NODE_PREFIXES) {
             if (key.startsWith(prefix)) return true;
         }
-        return BuildEnv.SHELL.contains(name) || BuildEnv.MACHINE.contains(name) || BuildEnv.JDK_ROOT.contains(name);
+        return caseInsensitive ? FORWARDED_UPPER.contains(key) : FORWARDED.contains(name);
     }
+
+    /** The names {@link BuildEnv} forwards by exact name: the request's shell, the machine and the JDK root. */
+    private static final Set<String> FORWARDED = Set.copyOf(Stream.of(BuildEnv.SHELL, BuildEnv.MACHINE, BuildEnv.JDK_ROOT)
+            .flatMap(List::stream)
+            .toList());
+
+    private static final Set<String> FORWARDED_UPPER = Set.copyOf(upper(FORWARDED.stream()));
 
     private static Set<String> upper(Stream<String> names) {
         return names.map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Os;
@@ -230,10 +231,15 @@ public final class EnvReadReport {
 
     /** Whether {@code name} reaches the test JVM or is the module's to give: declared, set by jk, composed into every JVM, or allow-listed. */
     static boolean reaches(String name, Set<String> declared, WorkerEnv testEnv) {
-        return declared.contains(name)
-                || testEnv.extras().containsKey(name)
+        return reaches(name, declared, testEnv, Os.isWindows());
+    }
+
+    /** {@link #reaches(String, Set, WorkerEnv)} with names compared case-insensitively when {@code windows}. */
+    static boolean reaches(String name, Set<String> declared, WorkerEnv testEnv, boolean windows) {
+        return BuildEnv.nameSet(declared, windows).contains(name)
+                || BuildEnv.nameSet(testEnv.extras().keySet(), windows).contains(name)
                 || WorkerEnv.alwaysComposed(name)
-                || WorkerEnv.allowed(name, Os.isWindows());
+                || WorkerEnv.allowed(name, windows);
     }
 
     /** Every name the module's manifest gives its test JVM, set or not. */
