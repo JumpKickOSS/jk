@@ -93,12 +93,58 @@ class SetupPlanTest {
                 0,
                 List.of(SetupChange.EXECUTION_POLICY));
 
-        assertThat(whole.unanswered(SetupMemo.NONE).changes()).isEqualTo(whole.changes());
-        assertThat(whole.unanswered(declined).changes())
+        assertThat(unanswered(SetupMemo.NONE).changes()).isEqualTo(whole.changes());
+        assertThat(unanswered(declined).changes())
                 .extracting(SetupChange::id)
                 .doesNotContain(SetupChange.EXECUTION_POLICY)
                 .contains(SetupChange.excludeId(HOME.toString()));
         assertThat(plan(declined).changes()).extracting(SetupChange::id).contains(SetupChange.EXECUTION_POLICY);
         assertThat(declined.answered()).isEqualTo("declined on 2025-11-09");
+    }
+
+    @Test
+    void anOfferWhoseExclusionsAreAllAnsweredMeasuresNothing() {
+        SetupMemo answered = new SetupMemo(
+                SetupMemo.Answer.DECLINED,
+                1,
+                0,
+                List.of(),
+                List.of(),
+                List.of(HOME.toString(), "C:\\Users\\ada\\IdeaProjects"),
+                Map.of(),
+                0,
+                0,
+                List.of(SetupChange.excludeId(HOME.toString()), SetupChange.excludeId("C:\\Users\\ada\\IdeaProjects")));
+
+        assertThat(unanswered(answered).isEmpty()).isTrue();
+        assertThat(probed).as("no scan files written into a declined folder").isEmpty();
+
+        SetupMemo oneAnswered = new SetupMemo(
+                SetupMemo.Answer.DECLINED,
+                1,
+                0,
+                List.of(),
+                List.of(),
+                List.of(HOME.toString()),
+                Map.of(),
+                0,
+                0,
+                List.of(SetupChange.excludeId(HOME.toString())));
+        SetupPlan open = unanswered(oneAnswered);
+        assertThat(open.changes()).extracting(SetupChange::path).containsExactly("C:\\Users\\ada\\IdeaProjects");
+        assertThat(probed).containsExactly(Path.of("C:\\Users\\ada\\IdeaProjects"));
+        assertThat(open.measuredIn()).isEqualTo("C:\\Users\\ada\\IdeaProjects");
+    }
+
+    private SetupPlan unanswered(SetupMemo memo) {
+        WindowsHostCheck check = new WindowsHostCheck(host, memo, HOME, null);
+        return SetupPlan.unanswered(
+                check,
+                ROOTS,
+                folder -> {
+                    probed.add(folder);
+                    return 1_900L;
+                },
+                List.of());
     }
 }

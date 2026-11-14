@@ -43,6 +43,11 @@ public final class WindowsSetup {
         return SetupPlan.of(check, discovery(check, known).propose(), ScanCost.LIVE, ENVIRONMENTS);
     }
 
+    /** The rows of {@link #plan} that {@code check}'s memo has no answer for: what an offer shows. */
+    public static SetupPlan unanswered(WindowsHostCheck check, List<Path> known) {
+        return SetupPlan.unanswered(check, discovery(check, known).propose(), ScanCost.LIVE, ENVIRONMENTS);
+    }
+
     static RootDiscovery discovery(WindowsHostCheck check, List<Path> known) {
         HostFacts f = check.facts();
         String profile = f.env("USERPROFILE");

@@ -64,11 +64,13 @@ class DiskGuardTest {
 
     @Test
     void a_probe_is_trusted_for_five_seconds_then_taken_again() {
-        DiskGuard.putProbeForTest(volume, new JkCacheConfig.DiskSpace(100 * GIB, GIB));
+        JkCacheConfig.DiskSpace planted = new JkCacheConfig.DiskSpace(100 * GIB, GIB);
+        DiskGuard.putProbeForTest(volume, planted);
         assertThat(DiskGuard.critical(volume)).isTrue();
         now.addAndGet(DiskGuard.PROBE_MILLIS);
-        // /vol does not exist: the fresh probe answers nothing, which is never critical.
-        assertThat(DiskGuard.critical(volume)).isFalse();
+        assertThat(DiskGuard.space(volume))
+                .as("the planted probe aged out; the volume is read again")
+                .isNotEqualTo(planted);
     }
 
     @Test

@@ -59,6 +59,15 @@ class ProcessesTest {
     }
 
     @Test
+    void bytes_if_ok_keeps_output_that_is_not_utf8() {
+        // "U" in UTF-16LE behind its byte-order mark: FF FE 55 00, which a UTF-8 decode would mangle.
+        assertThat(Processes.bytesIfOk(sh("printf '\\377\\376U\\000'"), Duration.ofSeconds(10)))
+                .containsExactly(0xFF, 0xFE, 0x55, 0x00);
+        assertThat(Processes.bytesIfOk(sh("printf x; exit 1"), Duration.ofSeconds(10)))
+                .isNull();
+    }
+
+    @Test
     void output_larger_than_the_pipe_buffer_is_read_whole() throws IOException {
         Processes.Captured c = Processes.capture(sh("head -c 200000 /dev/zero | tr '\\0' x"), Duration.ofSeconds(10));
         assertThat(c.ok()).isTrue();

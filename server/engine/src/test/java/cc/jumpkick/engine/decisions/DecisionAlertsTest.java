@@ -272,11 +272,11 @@ class DecisionAlertsTest {
 
     @Test
     void only_a_wsl_guest_with_interop_registers_in_the_windows_profile() {
-        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.WSL, "Ubuntu", true)))
+        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.WSL, "Ubuntu", true, "")))
                 .isNotNull();
-        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.WSL, "Ubuntu", false)))
+        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.WSL, "Ubuntu", false, "")))
                 .isNull();
-        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.CONTAINER, "docker", false)))
+        assertThat(DecisionAlerts.wslDesktop(new Guest(Guest.Kind.CONTAINER, "docker", false, "")))
                 .isNull();
         assertThat(DecisionAlerts.wslDesktop(Guest.NONE)).isNull();
     }

@@ -36,8 +36,13 @@ the running build and refuses with its number.
 
 ### Live and queued jobs
 
-`jk engine status` prints the engine's version and, when the engine was installed by
-`jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
+`jk engine status` prints the engine's version and the commit it was built from (`(dirty)` when
+the checkout had uncommitted changes, `unknown` for a build outside a git checkout), a `Client` row
+with the same for the `jk` you ran, marked when the two are not one build (`commit`,
+`clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` and `jk
+doctor` show the same pair). A released native client carries its commit; a snapshot's native
+client does not, so `jk snapshot` and `jk install` record the checkout's commit beside it in
+`jk-engine.toml` and the row says `(recorded at install)`. And, when the engine was installed by `jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
 [install](install.md#on-disk-layout)). Its `Updates` row says what JumpKick's own update does next —
 the mode and why, the last check, a download waiting to install, or a hold (`selfUpdate` in `-O
@@ -161,7 +166,10 @@ holds it exclusively: an install that replaces JumpKick's own engine or client (
 `jk install` of the JumpKick tree, from its copy step
 through the takeover), `jk self update` and `jk engine stop`. So an install waits for the runs in
 progress to finish, a run started during an install waits for it, and no run's steps span two
-builds of the engine. A wait prints one line naming who holds the lock:
+builds of the engine. A run started while an install waits queues behind the install, so sessions
+running builds back to back cannot keep it out; if the runs in progress do not finish for ten
+seconds, the install lets the queued runs in for a moment, so a run that another run waits for (a
+`jk` invoked from a test) is never deadlocked. A wait prints one line naming who holds the lock:
 
 ```
 jk: jk snapshot waits for the jk runs using the engine (install lock held by pid 41877 jk test (shared) in /home/me/jk-wt2 since …)

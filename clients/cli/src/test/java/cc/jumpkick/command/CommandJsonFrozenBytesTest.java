@@ -14,6 +14,7 @@ import cc.jumpkick.command.system.MavenSettingsRows;
 import cc.jumpkick.command.system.RepoStores;
 import cc.jumpkick.command.system.StoredLogins;
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.time.Instant;
@@ -60,7 +61,9 @@ class CommandJsonFrozenBytesTest {
                 List.of());
         assertThat(EngineStatusCommand.runningJson(s, 60, List.of(), "auto"))
                 .isEqualTo(
-                        "{\"running\":true,\"pid\":4242,\"version\":\"0.13.0\",\"startedAt\":1700000000000,"
+                        "{\"running\":true,\"pid\":4242,\"version\":\"0.13.0\",\"commit\":null,\"clientVersion\":\""
+                                + JkVersion.VERSION
+                                + "\",\"clientCommit\":null,\"clientCommitRecorded\":false,\"startedAt\":1700000000000,"
                                 + "\"uptimeSeconds\":60,\"activeRequests\":2,\"draining\":false,\"drainDeadline\":-1,\"idleDropped\":3,\"queuedBuildPlans\":2,\"jobs\":[],\"heapUsedBytes\":100,\"heapCommittedBytes\":200,"
                                 + "\"heapMaxBytes\":300,\"rssBytes\":400,\"cores\":8,\"totalMemoryBytes\":32000,"
                                 + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
@@ -168,6 +171,7 @@ class CommandJsonFrozenBytesTest {
         assertThat(DoctorCommand.reportJson(
                         fail,
                         ok,
+                        ok,
                         warn,
                         ok,
                         fail,
@@ -188,6 +192,7 @@ class CommandJsonFrozenBytesTest {
                         noLogins,
                         List.of()))
                 .isEqualTo("{\"config\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
+                        + "\"client\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
@@ -234,7 +239,7 @@ class CommandJsonFrozenBytesTest {
                 "secret-service",
                 null);
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins,
+                        ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins,
                         List.of()))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
@@ -273,6 +278,7 @@ class CommandJsonFrozenBytesTest {
                         ok,
                         ok,
                         ok,
+                        ok,
                         0,
                         0,
                         0,
@@ -296,6 +302,7 @@ class CommandJsonFrozenBytesTest {
                 new HostRow("smart-app-control", "smart app control", HostRow.Status.WARN, "on", "turn it off"),
                 new HostRow("arch", "arch", HostRow.Status.OK, "AMD64, nothing emulated", null));
         String json = DoctorCommand.reportJson(
+                ok,
                 ok,
                 ok,
                 ok,

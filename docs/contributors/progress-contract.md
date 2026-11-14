@@ -142,7 +142,7 @@ than 1% a second: preflight's band is a tenth of the bar, yet it is about a seco
 build, and a test run's bar read 17% when its estimate came at 1.4 s, then held there for 9.5 s
 while the clock caught up.
 
-**Spread, range and confidence** (JK-R0N5S). Every step's price carries a relative spread σ, one
+**Spread, range and confidence.** Every step's price carries a relative spread σ, one
 sigma of `ln(wall / price)` (`StepCost.spread`, `EtaSpread`):
 
 - **Its layer's**: the rung's default (`REPLAY` 0.05, `MODULE` 0.12, `PROJECT` 0.22, `HOST` 0.32,
@@ -256,7 +256,7 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers; prices and their own spreads |
+| `StepLedger` | Per project, up to 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers, each shape keeping its newest runs; prices and their own spreads |
 | `StepEta` | Prices every step the forecast runs; the step-priced `R0` |
 | `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its spread, step by step |
 | `EtaSpread` / `RungBias` | Spread arithmetic (range, confidence); each layer's learned bias and spread, and the host's correlation |
@@ -316,7 +316,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
   `progress`. A running step past its price keeps a quarter of the time it has run, uncapped: past
   its high bound its price no longer says when it ends. A cold integration run's suite priced at
   54 s from calibration ran 638 s, and capped at what its high bound left, the ETA read 3.3 s and
-  the bar 99% for its last six minutes (JK-ZJ8D9).
+  the bar 99% for its last six minutes.
 
 ## Wire (schema 1, additive fields)
 
@@ -347,15 +347,18 @@ Both stores are one text file of `[section]` headers, each followed by its lines
 and atomically under a lock beside the file. A finished run is folded in once, at its finish: one
 locked rewrite of its project store and one of the host store. Nothing scans the run directories
 to learn; they are kept for the record and reaped to the newest 50 runs, none older than 90 days.
+A store whose bytes no longer decode (a torn write, a foreign editor) is moved aside to
+`<name>.unreadable`, replacing an older one, with one warning in the engine log, and learning
+starts again from nothing.
 
 The project store holds:
 
 | Section | Lines |
 |---------|-------|
-| `runs` | the step ledger: the latest 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, suite curves and suite workers (`StepLedger`) |
+| `runs` | the step ledger: up to 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, the external load it started under (`unknown` off Linux), suite curves and suite workers (`StepLedger`). Past 60 the shape with the most runs gives up its oldest, so a rarely run shape (an integration tier, a forced build) keeps its walls |
 | `means` | `key mean last count seen`: one running mean per measure the estimates read |
 | `classes` | `suiteDir⇥fqcn⇥last⇥mean⇥count⇥seen`: one running mean per test class of a suite, the suite as `<rel-dir><@selection>` |
-| `meta` | `runs N`, the number of runs folded, which `seen` counts in |
+| `meta` | `<section><@selection> N` per group of rows: the runs that folded a row of that section under that test selection (`means`, `classes@integration`), which its rows' `seen` count in |
 
 The measures kept are a module's step walls (`module.<dir>.task.<step>.wall-ms`), a suite's wall
 normalized to one runner (`module.<dir>.task.run-tests*.wall1-ms`), a step kind's wall
@@ -363,9 +366,11 @@ normalized to one runner (`module.<dir>.task.run-tests*.wall1-ms`), a step kind'
 (`invocation.<kind>.wall-ms`, `workspace.wall-ms`). A running mean is a plain mean for
 its first ten samples and then moves a tenth of the way to each new one; from the third sample on,
 a sample is clipped to within 4× of the mean before it is folded, so one stalled run cannot drag
-it. A row no run has refreshed in 200 runs is dropped, and past 4,000 means or 10,000 classes the
-least recently seen go first. A module step is read by its mean; another measure by its last sample
-unless that is a cache-restore blip beside a long mean.
+it. A row is dropped once 200 runs of its own group passed without refreshing it: a class gone from
+a suite that still runs goes, and an integration suite's classes outlive any number of default-tier
+runs. Past 4,000 means or 10,000 classes the stalest within their group go first. A module step is
+read by its mean; another measure by its last sample unless that is a cache-restore blip beside a
+long mean.
 
 The host store holds the calibration probe, the continuous rates, the rung biases and spreads
 (`rung kind log-factor scale runs`, and one `correlation mean-square independent correlated
@@ -421,6 +426,14 @@ step or plugin goal does not replay a first run's walls once a later run measure
 first paid for empty caches. A javac compile reads runs whose worker was in the same state; with
 only the other kind's walls it is carried by the measured warm-up (`CompilerWarmUp`,
 `bench/eta/compile-warmth.sh`).
+
+Each ledger run also records the external load it started under (`HostBusy`): the share of every
+core's time spent outside the engine and its child processes over the last few seconds, children it
+has reaped included. A replayed wall is read as an idle host's by its run's load, then carried to
+the load the estimate sees now. The engine samples `/proc/stat` once a second only while a job runs
+and for 30 s after; the first read after an idle spell waits a quarter second for an interval of
+its own. Load compensation is Linux only: on macOS and Windows a run records `busy: "unknown"` and
+its walls are read as they ran.
 
 ## Measurement
 

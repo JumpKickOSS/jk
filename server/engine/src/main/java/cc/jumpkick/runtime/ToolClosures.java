@@ -127,8 +127,8 @@ final class ToolClosures {
             for (Coordinate coord : pinned.keySet()) {
                 fetches.add(() -> new Fetched(coord, PluginBuild.fetchPinned(repos, coord, lock)));
             }
-            for (Fetched f :
-                    ArtifactFanOut.all(fetches, f -> board.landed(f.coord().toString()))) {
+            for (Fetched f : ArtifactFanOut.all(
+                    fetches, f -> board.claimLanding(f.coord().toString()))) {
                 alias(staging, f.coord(), f.jar());
             }
             writeListing(staging);

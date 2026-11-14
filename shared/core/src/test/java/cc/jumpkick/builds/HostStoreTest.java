@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,6 +38,34 @@ class HostStoreTest {
 
         HostStore.update(file(), HostStore.FETCH, lines -> List.of());
         assertThat(HostStore.sections(file())).containsOnlyKeys(HostStore.BIAS);
+    }
+
+    @Test
+    void a_store_with_an_undecodable_byte_is_set_aside_and_learns_again() throws Exception {
+        HostStore.update(file(), HostStore.FETCH, lines -> List.of("samples 10"));
+        byte[] text = Files.readAllBytes(file());
+        byte[] torn = Arrays.copyOf(text, text.length + 1);
+        torn[text.length] = (byte) 0xC3;
+        Files.write(file(), torn);
+
+        HostStore.update(file(), HostStore.FETCH, lines -> {
+            List<String> out = new ArrayList<>(lines);
+            out.add("samples 20");
+            return out;
+        });
+
+        assertThat(HostStore.section(file(), HostStore.FETCH)).containsExactly("samples 20");
+        Path aside = file().resolveSibling(HostStore.FILE + SectionedFile.UNREADABLE);
+        assertThat(Files.readAllBytes(aside)).isEqualTo(torn);
+
+        Files.write(file(), torn);
+        HostStore.update(file(), HostStore.FETCH, lines -> List.of("samples 30"));
+        assertThat(HostStore.section(file(), HostStore.FETCH)).containsExactly("samples 30");
+        try (var siblings = Files.list(file().getParent())) {
+            assertThat(siblings.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(SectionedFile.UNREADABLE)))
+                    .as("one unreadable copy is kept")
+                    .containsExactly(HostStore.FILE + SectionedFile.UNREADABLE);
+        }
     }
 
     @Test

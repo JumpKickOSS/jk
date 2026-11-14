@@ -87,6 +87,8 @@ args = [
   "-R:MinHeapSize=25165824",
   "--enable-native-access=ALL-UNNAMED",
   "--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8",
+  # Holds the commit the build links in as -Djk.build.commit (jk --version -v, jk doctor).
+  "--initialize-at-build-time=cc.jumpkick.model.BuildStamp",
 ]
 
 [build]

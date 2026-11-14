@@ -76,4 +76,26 @@ class BuildIdentityTest {
     void unit_tests_run_from_a_classes_dir_and_have_no_build_time() {
         assertThat(BuildIdentity.builtAt()).isNull();
     }
+
+    @Test
+    void the_commit_is_the_manifests_attribute_and_reads_short_with_its_dirty_mark() {
+        String sha = "4ee07400a592deadbeef4ee07400a592deadbeef";
+        Manifest stamped = new Manifest();
+        stamped.getMainAttributes()
+                .putValue(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, BuildIdentity.commitStamp(sha, true));
+        assertThat(BuildIdentity.builtFrom(stamped)).isEqualTo(sha + "-dirty");
+        assertThat(BuildIdentity.describeCommit(BuildIdentity.builtFrom(stamped)))
+                .isEqualTo("4ee07400a592 (dirty)");
+        assertThat(BuildIdentity.describeCommit(BuildIdentity.commitStamp(sha, false)))
+                .isEqualTo("4ee07400a592");
+
+        Manifest bare = new Manifest();
+        assertThat(BuildIdentity.builtFrom(bare)).isNull();
+        assertThat(BuildIdentity.describeCommit(null)).isEqualTo("unknown");
+    }
+
+    @Test
+    void unit_tests_run_from_a_classes_dir_and_have_no_commit() {
+        assertThat(BuildIdentity.builtFrom()).isNull();
+    }
 }

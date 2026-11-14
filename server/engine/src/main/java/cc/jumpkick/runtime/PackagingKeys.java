@@ -152,6 +152,25 @@ public final class PackagingKeys {
         return PlannerTails.assemblyAttributes(project, PlannerBuildInfo.worktree(moduleDir));
     }
 
+    /**
+     * The client jk installs as its own binary is linked with its checkout's commit only for a
+     * release build: a version without {@code -SNAPSHOT} from a clean checkout. The arg is part of
+     * the image key, so a snapshot's image, which carries no commit, is not relinked when the commit
+     * moves; its install records the commit beside the client instead. Any other image, and one
+     * built outside a git checkout, gets nothing.
+     */
+    static List<String> nativeCommitArgs(JkBuild project, Path dir) throws IOException {
+        JkBuild.Install install = project.install();
+        if (install == null || install.productBin() == null) return List.of();
+        if (project.project().version().endsWith(SNAPSHOT)) return List.of();
+        return PlannerBuildInfo.worktree(dir)
+                .filter(w -> !w.dirty())
+                .map(w -> List.of("-D" + BuildIdentity.COMMIT_PROPERTY + "=" + w.sha()))
+                .orElse(List.of());
+    }
+
+    private static final String SNAPSHOT = "-SNAPSHOT";
+
     @KeyOwner(step = TaskNames.PACKAGE_ASSEMBLY)
     static Keyed assembly(
             Path assemblyJar,

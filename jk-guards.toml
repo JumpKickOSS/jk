@@ -1944,11 +1944,11 @@ reason = "live registry: each live run's external host load at its start by requ
 
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.runtime.base.HostBusy#SAMPLES"
-reason = "engine-process fact: the host's last five CPU samples, one a second, which the external load is read over"
+reason = "engine-process fact: the host's last five CPU samples, one a second while a job runs and shortly after, which the external load is read over"
 
 [[guards.engine-static-memo.allow]]
-in     = "cc.jumpkick.runtime.base.HostBusy#LAST_CPU"
-reason = "live registry: the CPU time of each live process of the engine's tree at the last sample, replaced whole every second"
+in     = "cc.jumpkick.runtime.base.HostBusy#JOBS"
+reason = "live registry: the request ids of the jobs running now, each removed as its job ends"
 
 [[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.engine.plugin.MemoryHolds#BUILDS"

@@ -117,6 +117,8 @@ public final class TransferBoard {
     private final LongAdder files = new LongAdder();
     private final LongAdder artifacts = new LongAdder();
     private final Set<String> artifactLabels = ConcurrentHashMap.newKeySet();
+    /** Labels that landed and no declared set has counted yet. */
+    private final Set<String> unclaimed = ConcurrentHashMap.newKeySet();
     /** Files the declared sets that closed downloaded; they stay in the run's count. */
     private final AtomicInteger closedItems = new AtomicInteger();
 
@@ -142,9 +144,13 @@ public final class TransferBoard {
         return artifacts.sum();
     }
 
-    /** Whether the artifact {@code label} ({@code g:a:v}) landed this run. */
-    public boolean landed(String label) {
-        return artifactLabels.contains(label);
+    /**
+     * Whether the artifact {@code label} ({@code g:a:v}) came down the wire and no set has counted
+     * it: true once per landing, so a file two declared sets both fetch is one download, counted by
+     * the set that asked first.
+     */
+    public boolean claimLanding(String label) {
+        return unclaimed.remove(label);
     }
 
     /**
@@ -263,6 +269,7 @@ public final class TransferBoard {
             if (artifact) {
                 artifacts.increment();
                 artifactLabels.add(label);
+                unclaimed.add(label);
             }
         }
 

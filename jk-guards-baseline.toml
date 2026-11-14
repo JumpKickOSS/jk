@@ -741,7 +741,7 @@ population = { examined = 4 }
 "server/io" = { classes = 78, sites = 4704 }
 "server/resolver" = { classes = 123, sites = 7334 }
 "server/toolchain" = { classes = 205, sites = 15281 }
-"shared/client-io" = { classes = 106, sites = 5913 }
+"shared/client-io" = { classes = 244, sites = 12965 }
 "shared/core" = { classes = 506, sites = 31724 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 51, sites = 2014 }
@@ -1156,14 +1156,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/resolver"
 at     = "cc.jumpkick.resolver.pubgrub.PubGrubSolver#solve(Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Ljava/util/Map; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.cache.EngineInstall#<init>(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.cache.EngineInstall#<init>(Ljava/nio/file/Path;Ljava/util/function/LongSupplier;)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "shared/client-io"

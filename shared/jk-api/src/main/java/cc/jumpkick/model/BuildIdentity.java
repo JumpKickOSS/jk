@@ -151,6 +151,68 @@ public final class BuildIdentity {
         }
     }
 
+    /**
+     * The manifest attribute the packaging writes beside {@value #BUILD_TIME_ATTRIBUTE}: the commit
+     * the jar was built from, 40 hex digits, with {@value #DIRTY_SUFFIX} when the checkout had
+     * uncommitted changes. Like the time, it is the checkout's, so a clean tag packages the same
+     * bytes on every host.
+     */
+    public static final String BUILD_COMMIT_ATTRIBUTE = "Build-Commit";
+
+    /** The system property a native image of jk's client is linked with to carry the same stamp. */
+    public static final String COMMIT_PROPERTY = "jk.build.commit";
+
+    /** Marks a stamp whose checkout had uncommitted changes. */
+    public static final String DIRTY_SUFFIX = "-dirty";
+
+    /** The stamp for a checkout at {@code sha}, marked when {@code dirty}. */
+    public static String commitStamp(String sha, boolean dirty) {
+        return dirty ? sha + DIRTY_SUFFIX : sha;
+    }
+
+    /**
+     * The commit stamp of the running code: linked into a native image, or the {@value
+     * #BUILD_COMMIT_ATTRIBUTE} of the code archive's manifest; {@code null} for a classes
+     * directory, an archive the packaging did not stamp, or a build outside a git checkout.
+     */
+    public static @Nullable String builtFrom() {
+        return RunningStamp.VALUE;
+    }
+
+    /** Read once: the running code does not change under its process. */
+    private static final class RunningStamp {
+        static final @Nullable String VALUE = readBuiltFrom();
+    }
+
+    private static @Nullable String readBuiltFrom() {
+        if (!BuildStamp.COMMIT.isBlank()) return BuildStamp.COMMIT.strip();
+        Path location = codeArchive();
+        if (location == null) return null;
+        try (JarFile jar = new JarFile(location.toFile())) {
+            Manifest manifest = jar.getManifest();
+            return manifest == null ? null : builtFrom(manifest);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** {@link #builtFrom()} read from {@code manifest}: the attribute, or null when absent or blank. */
+    static @Nullable String builtFrom(Manifest manifest) {
+        String stamp = manifest.getMainAttributes().getValue(BUILD_COMMIT_ATTRIBUTE);
+        return stamp == null || stamp.isBlank() ? null : stamp.strip();
+    }
+
+    /**
+     * A stamp as people read it: 12 hex digits, then {@code (dirty)} when marked; {@code "unknown"}
+     * for no stamp.
+     */
+    public static String describeCommit(@Nullable String stamp) {
+        if (stamp == null || stamp.isBlank()) return "unknown";
+        boolean dirty = stamp.endsWith(DIRTY_SUFFIX);
+        String sha = dirty ? stamp.substring(0, stamp.length() - DIRTY_SUFFIX.length()) : stamp;
+        return (sha.length() > 12 ? sha.substring(0, 12) : sha) + (dirty ? " (dirty)" : "");
+    }
+
     /** The jar the running code was loaded from, or {@code null} for a classes directory or a native image. */
     private static @Nullable Path codeArchive() {
         try {

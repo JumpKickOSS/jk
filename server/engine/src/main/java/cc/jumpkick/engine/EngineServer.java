@@ -164,6 +164,16 @@ public final class EngineServer implements AutoCloseable {
     private final AtomicInteger activeBuildPlans = new AtomicInteger();
     private final AtomicInteger peakActiveBuildPlans = new AtomicInteger();
 
+    /**
+     * Delete the engine jars, parked clients and leftovers no install, rollback or running process
+     * needs. On every maintenance tick: a jar or client a draining predecessor kept mapped (Windows
+     * refuses the delete) goes once it exits.
+     */
+    private void reclaimInstallFiles() {
+        List<Path> removed = EngineInstall.current().gc();
+        if (!removed.isEmpty()) log.accept("jk engine: removed " + removed.size() + " displaced install file(s)");
+    }
+
     private void noteConnectionOpened() {
         activeConnections.incrementAndGet();
         // Combined high-water mark (UDS + SSE surfaces) — same metric the SSE admission hook and
@@ -684,13 +694,14 @@ public final class EngineServer implements AutoCloseable {
         EngineStartup.Started started = new EngineStartup(version, pid, election, http, journal, idle, log).run(won);
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
-        engineMaintenance.onTick(sessionLog::sweep);
+        engineMaintenance.onTick(() -> {
+            sessionLog.sweep();
+            reclaimInstallFiles();
+        });
         diskWatch = DiskWatch.start(idle, log);
         changeNotices.start();
         // The first engine of a freshly installed version says so once, in the bell.
         UpdatedNotice.announce(notices, version, SelfUpdateState.file());
-        // Clients an update parked (jk.exe.old-…) go once nothing runs them any more; off the startup path.
-        Thread.ofVirtual().name("jk-engine-sweep-parked").start(() -> EngineInstall.sweepParked(JkDirs.binDir()));
         // Sessions a previous engine left open carry on here; off the startup path.
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
             int adopted = sessionLog.adopt();

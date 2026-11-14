@@ -46,9 +46,19 @@ class SetupConsentTest {
         SetupMemo answered = new SetupMemo(
                 SetupMemo.Answer.DECLINED, 1, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0, List.of(ROW.id()));
         SetupPlan plan = new SetupPlan(List.of(ROW));
+        FakeHost host =
+                new FakeHost().dword(Registry.Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 0);
+        Path home = Path.of("C:\\Users\\ada\\.jk");
+        SetupPlan unanswered =
+                SetupPlan.unanswered(new WindowsHostCheck(host, answered, home, null), List.of(), f -> 1L, List.of());
+        assertThat(SetupPlan.unanswered(
+                                new WindowsHostCheck(host, SetupMemo.NONE, home, null), List.of(), f -> 1L, List.of())
+                        .changes())
+                .extracting(SetupChange::id)
+                .contains(ROW.id());
 
         for (SetupConsent consent : SetupConsent.values()) {
-            assertThat(SetupOffer.of(consent, plan.unanswered(answered), false)).isEqualTo(SetupOffer.NONE);
+            assertThat(SetupOffer.of(consent, unanswered, false)).isEqualTo(SetupOffer.NONE);
             assertThat(SetupOffer.of(consent, plan, true)).isEqualTo(SetupOffer.NONE);
             assertThat(SetupOffer.of(consent, new SetupPlan(List.of()), false)).isEqualTo(SetupOffer.NONE);
         }

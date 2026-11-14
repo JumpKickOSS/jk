@@ -2,7 +2,6 @@
 package cc.jumpkick.winhost;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -46,6 +45,29 @@ public record SetupPlan(
             List<RootDiscovery.Root> roots,
             ScanCost.Probe probe,
             List<SetupEnvironment> environments) {
+        return build(check, roots, probe, environments, Set.of());
+    }
+
+    /**
+     * The rows of the plan {@code check}'s memo has no answer for: what an offer the person did not
+     * ask for may show. The probe measures the first unanswered exclusion only, so a machine whose
+     * every row is answered writes nothing; {@code jk doctor --fix} shows the whole plan, which is
+     * how a person changes an answer.
+     */
+    public static SetupPlan unanswered(
+            WindowsHostCheck check,
+            List<RootDiscovery.Root> roots,
+            ScanCost.Probe probe,
+            List<SetupEnvironment> environments) {
+        return build(check, roots, probe, environments, Set.copyOf(check.memo().answeredRows()));
+    }
+
+    private static SetupPlan build(
+            WindowsHostCheck check,
+            List<RootDiscovery.Root> roots,
+            ScanCost.Probe probe,
+            List<SetupEnvironment> environments,
+            Set<String> answered) {
         List<SetupChange> out = new ArrayList<>();
         long measured = -1;
         String measuredIn = null;
@@ -53,6 +75,7 @@ public record SetupPlan(
             for (RootDiscovery.Root root : roots) {
                 String path = root.path().toString();
                 if (check.memo().exclusion(path) == SetupMemo.Exclusion.VERIFIED) continue;
+                if (answered.contains(SetupChange.excludeId(path))) continue;
                 if (measuredIn == null) {
                     measuredIn = path;
                     measured = probe.perThousand(root.path());
@@ -95,19 +118,8 @@ public record SetupPlan(
                     null));
         }
         for (SetupEnvironment environment : environments) out.addAll(environment.rows(check));
+        out.removeIf(c -> c.kind() != SetupChange.Kind.EXCLUDE && answered.contains(c.id()));
         return new SetupPlan(out, measured, measuredIn);
-    }
-
-    /**
-     * The rows {@code memo} has no answer for: what an offer the person did not ask for may show. {@code
-     * jk doctor --fix} shows the whole plan, which is how a person changes an answer.
-     */
-    public SetupPlan unanswered(SetupMemo memo) {
-        Set<String> answered = new HashSet<>(memo.answeredRows());
-        List<SetupChange> open =
-                changes.stream().filter(c -> !answered.contains(c.id())).toList();
-        String in = measuredIn != null && open.stream().anyMatch(c -> measuredIn.equals(c.path())) ? measuredIn : null;
-        return new SetupPlan(open, in == null ? -1 : measuredMs, in);
     }
 
     private static String effect(RootDiscovery.Root root, String path, String measuredIn, long measured) {

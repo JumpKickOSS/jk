@@ -109,11 +109,35 @@ public final class Calibration {
      * at 8 s and 40 ms; the 280 ms startup baseline before that left every small suite at a fifth of
      * its wall. Refitted with fourteen unrelated projects' first builds (bench/eta/coldset.sh): their
      * suites of one to six methods ran 0.6 to 4.1 s against 5.4 s priced, and jk's ran 413 s against
-     * 668 s, so both read about twice their wall; the per-rung bias had learned 0.44 for them.
+     * 668 s, so both read about twice their wall; the per-rung bias had learned 0.44 for them. A fixed
+     * 3.3 s still priced the small projects' lone suites at about 2 s for 0.7 s: the JVMs beside a
+     * suite share its cores, so the fixed part grows with the modules the build works on, as a
+     * compile's does, to the power 0.4 ({@link #coldSuiteMs}): 3.3 s beside jk's 61, 0.64 s alone.
      */
-    static final long BASELINE_COLD_SUITE_FIXED_MS = 3_300;
+    static final long BASELINE_COLD_SUITE_FIXED_MS = 640;
+
+    /** How a cold suite's fixed part grows with the modules beside it ({@link #BASELINE_COLD_SUITE_FIXED_MS}). */
+    static final double COLD_SUITE_BESIDE_POWER = 0.4;
+
+    /**
+     * A first run's guard step on the reference host: jk's own first build ran its guards at a
+     * median 113 ms beside every compile, small projects' at about 13 ms. Priced from the weight
+     * fallback, every guard read its 300 ms floor.
+     */
+    static final long BASELINE_COLD_GUARD_MS = 100;
 
     static final long BASELINE_COLD_METHOD_MS = 30;
+
+    /**
+     * A first run's test method in a tier the default run leaves out (a profile that includes tags:
+     * integration, slow, network), on the reference host. Such a tier's tests start processes,
+     * engines or containers: jk's own integration suites ran 0.4 to 3 s a method on a host at the
+     * least scale (jk-cli's 738 in 654 s, jk-engine's 655 in 291 s, six small suites about 0.9 s a
+     * method past their JVM), where the unit tier's rate priced jk-cli's at 60 s and held the bar at
+     * 84% a quarter into a 12-minute run (JK-D3785). Fitted to jk alone: the rung bias corrects it per
+     * host from the first run that measures one.
+     */
+    static final long BASELINE_COLD_SLOW_TIER_METHOD_MS = 1_200;
 
     /**
      * Reference-host cold Graal wall for a typical ~1–1.5 MiB-effective app when size is unknown.
@@ -483,10 +507,22 @@ public final class Calibration {
                 + scaleBaseline(BASELINE_COLD_COMPILE_PER_SOURCE_MS, cpuScale()) * Math.max(1, sources);
     }
 
-    /** A first build's suite of {@code methods} test methods on one JVM ({@link #BASELINE_COLD_SUITE_FIXED_MS}). */
-    public long coldSuiteMs(int methods) {
-        return scaleBaseline(BASELINE_COLD_SUITE_FIXED_MS, forkScale())
-                + scaleBaseline(BASELINE_COLD_METHOD_MS, cpuScale()) * Math.max(0, methods);
+    /**
+     * A first build's suite of {@code methods} test methods on one JVM ({@link
+     * #BASELINE_COLD_SUITE_FIXED_MS}), at the slow tiers' rate when its run includes tags ({@link
+     * #BASELINE_COLD_SLOW_TIER_METHOD_MS}), in a build that works on {@code beside} modules. No
+     * method selected leaves the JVM and discovery.
+     */
+    public long coldSuiteMs(int methods, boolean slowTier, int beside) {
+        long perMethod = slowTier ? BASELINE_COLD_SLOW_TIER_METHOD_MS : BASELINE_COLD_METHOD_MS;
+        return Math.round(scaleBaseline(BASELINE_COLD_SUITE_FIXED_MS, forkScale())
+                        * Math.pow(Math.max(1, beside), COLD_SUITE_BESIDE_POWER))
+                + scaleBaseline(perMethod, cpuScale()) * Math.max(0, methods);
+    }
+
+    /** A first run's guard step ({@link #BASELINE_COLD_GUARD_MS}). */
+    public long coldGuardMs() {
+        return scaleBaseline(BASELINE_COLD_GUARD_MS, cpuScale());
     }
 
     /** Cap cold within-module test parallel for ETA (not runtime). */

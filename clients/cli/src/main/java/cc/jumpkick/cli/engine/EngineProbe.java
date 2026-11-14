@@ -150,7 +150,9 @@ public final class EngineProbe {
             /** The engine's own name for itself ({@code Windows on BocaMiniPC}); null when not reported. */
             @Nullable String engineLabel,
             /** The engine's stable instance id; null when not reported. */
-            @Nullable String engineId) {
+            @Nullable String engineId,
+            /** The commit stamp the engine jar was built from; null or empty when not stamped or not reported. */
+            @Nullable String engineCommit) {
 
         public Status {
             jobs = jobs == null ? List.of() : List.copyOf(jobs);
@@ -231,6 +233,7 @@ public final class EngineProbe {
                     0,
                     -1L,
                     jobs,
+                    null,
                     null,
                     null);
         }
@@ -428,7 +431,8 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "drainDeadline", -1),
                     Job.decodeAll(ack),
                     Jsonl.str(Jsonl.nested(ack, "identity"), "label"),
-                    Jsonl.str(Jsonl.nested(ack, "identity"), "id")));
+                    Jsonl.str(Jsonl.nested(ack, "identity"), "id"),
+                    Jsonl.str(Jsonl.nested(ack, "identity"), "commit")));
         } catch (IOException e) {
             return Optional.empty();
         }

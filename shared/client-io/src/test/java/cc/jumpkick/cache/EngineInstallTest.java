@@ -13,7 +13,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -144,16 +146,24 @@ class EngineInstallTest {
 
         store.materializeFromFiles("0.12.0", cas, good);
         EngineInstall.installBinaries(cas.pathFor(goodClient), bin);
-        store.recordClient(goodClient);
+        store.recordClient(goodClient, "aaaa");
         store.materializeFromFiles("0.13.0", cas, bad);
         EngineInstall.installBinaries(cas.pathFor(badClient), bin);
-        store.recordClient(badClient);
+        store.recordClient(badClient, "bbbb");
         assertThat(store.pinnedEngineShas())
                 .as("the store keeps both engines and both clients")
                 .containsExactlyInAnyOrder(Hashing.sha256Hex(good), Hashing.sha256Hex(bad), goodClient, badClient);
 
+        assertThat(store.recordedClientCommit(badClient)).hasValue("bbbb");
+        assertThat(store.recordedClientCommit(goodClient))
+                .as("not the live client")
+                .isEmpty();
+
         var back = store.rollback(cas, bin);
         assertThat(back.version()).isEqualTo("0.12.0");
+        assertThat(store.recordedClientCommit(goodClient))
+                .as("the commit comes back with its client")
+                .hasValue("aaaa");
         assertThat(store.engineJarPath()).hasContent("engine-good");
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-good");
         assertThat(back.client()).isEqualTo(EngineInstall.pathClient(bin));
@@ -162,6 +172,25 @@ class EngineInstallTest {
         assertThat(again.version()).as("a second rollback undoes the first").isEqualTo("0.13.0");
         assertThat(store.engineJarPath()).hasContent("engine-bad");
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-bad");
+    }
+
+    @Test
+    void the_same_client_installed_again_takes_the_new_commit(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        store.materializeFromFiles("0.12.0", cas, Files.writeString(tmp.resolve("e.jar"), "engine"));
+        store.recordClient("c1", "aaaa-dirty");
+        store.recordClient("c1", "bbbb");
+        assertThat(store.recordedClientCommit("c1")).hasValue("bbbb");
+        assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
+                .as("an unchanged binary is not its own previous client")
+                .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
+        store.recordClient("c2", null);
+        assertThat(store.recordedClientCommit("c2")).isEmpty();
+        assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
+                .containsEntry(EngineInstall.PREVIOUS_CLIENT_SHA, "c1")
+                .containsEntry(EngineInstall.PREVIOUS_CLIENT_COMMIT, "bbbb");
     }
 
     @Test
@@ -442,13 +471,11 @@ class EngineInstallTest {
         Files.writeString(store.engineHome().resolve("jk-engine-0.9.0.jar"), "previous");
         Files.writeString(store.engineHome().resolve("jk-engine-1.0.0.jar.old"), "legacy-park");
 
-        Path state = Files.createDirectories(home.resolve("state"));
-
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path jkOld = Files.writeString(bin.resolve("jk.old"), "old-client");
         Path liveJk = Files.writeString(bin.resolve("jk"), "live-client");
 
-        List<Path> pruned = store.gc(bin, state);
+        List<Path> pruned = store.gc(bin);
 
         assertThat(pruned).isNotEmpty();
         assertThat(store.engineHome().resolve("jk-engine-0.9.0.jar")).doesNotExist();
@@ -460,21 +487,106 @@ class EngineInstallTest {
     }
 
     @Test
-    void gc_after_same_version_rebuild_keeps_only_the_live_sibling(@TempDir Path dir) throws Exception {
+    void gc_after_same_version_rebuilds_keeps_the_live_sibling_and_the_one_rollback_names(@TempDir Path dir)
+            throws Exception {
         Path home = Files.createDirectories(dir.resolve("home"));
         var cas = new Cas(home.resolve("cache"));
         AtomicLong clock = new AtomicLong(1_724_400_000_000L);
         var store = install(home, clock);
         var first = store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("v1.jar"), "v1"));
         var second = store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("v2.jar"), "v2"));
-        assertThat(first.engineJar()).exists();
         assertThat(second.engineJar()).isNotEqualTo(first.engineJar());
 
-        store.gc(null, null);
+        store.gc(null);
 
-        assertThat(first.engineJar()).doesNotExist();
+        assertThat(first.engineJar())
+                .as("the previous engine, which a rollback names")
+                .hasContent("v1");
         assertThat(second.engineJar()).hasContent("v2");
         assertThat(store.currentInstall().orElseThrow().engineJar()).isEqualTo(second.engineJar());
+    }
+
+    /**
+     * An engine running when the next install lands keeps its jar, so the install publishes a
+     * timestamped sibling; the installs after it reclaim every jar no pointer, rollback record or
+     * running process names, so rebuilt snapshots leave two jars, not one per install.
+     */
+    @Test
+    void installs_reclaim_superseded_jars_but_keep_one_a_process_still_runs(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        AtomicLong clock = new AtomicLong(1_724_400_000_000L);
+        Set<Path> runningJars = new HashSet<>();
+        var store = new EngineInstall(home.resolve("lib"), clock::get, runningJars::contains);
+        List<EngineInstall.Materialized> installs = new ArrayList<>();
+        for (int i = 1; i <= 4; i++) {
+            clock.addAndGet(1000);
+            installs.add(store.materializeFromFiles(
+                    "1.0.0-SNAPSHOT", cas, Files.writeString(dir.resolve("v" + i + ".jar"), "v" + i)));
+        }
+        assertThat(jarsIn(store))
+                .as("the live jar and the previous one")
+                .containsExactlyInAnyOrder(
+                        installs.get(3).engineJar(), installs.get(2).engineJar());
+
+        runningJars.add(installs.get(3).engineJar());
+        clock.addAndGet(1000);
+        var fifth = store.materializeFromFiles("1.0.0-SNAPSHOT", cas, Files.writeString(dir.resolve("v5.jar"), "v5"));
+        clock.addAndGet(1000);
+        var sixth = store.materializeFromFiles("1.0.0-SNAPSHOT", cas, Files.writeString(dir.resolve("v6.jar"), "v6"));
+        assertThat(jarsIn(store))
+                .as("a draining engine's jar stays while it runs")
+                .containsExactlyInAnyOrder(installs.get(3).engineJar(), fifth.engineJar(), sixth.engineJar());
+
+        runningJars.clear();
+        assertThat(store.gc(null)).containsExactly(installs.get(3).engineJar());
+        assertThat(jarsIn(store)).containsExactlyInAnyOrder(fifth.engineJar(), sixth.engineJar());
+    }
+
+    @Test
+    void with_no_pointer_nothing_is_retired(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var store = install(home);
+        Files.createDirectories(store.engineHome());
+        Path a = Files.writeString(store.engineHome().resolve("jk-engine-1.0.0.jar"), "a");
+        Path b = Files.writeString(store.engineHome().resolve("jk-engine-1.0.0.1724400000000.jar"), "b");
+        assertThat(store.gc(null)).isEmpty();
+        assertThat(a).exists();
+        assertThat(b).exists();
+    }
+
+    @Test
+    void rollback_still_works_after_installs_reclaimed_the_jars(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        AtomicLong clock = new AtomicLong(1_724_400_000_000L);
+        var store = new EngineInstall(home.resolve("lib"), clock::get, jar -> false);
+        for (int i = 1; i <= 3; i++) {
+            clock.addAndGet(1000);
+            store.materializeFromFiles("1.0." + i, cas, Files.writeString(dir.resolve("v" + i + ".jar"), "v" + i));
+        }
+        store.gc(null);
+
+        var back = store.rollback(cas, home.resolve("bin"));
+        assertThat(back.version()).isEqualTo("1.0.2");
+        assertThat(store.engineJarPath()).hasContent("v2");
+        var again = store.rollback(cas, home.resolve("bin"));
+        assertThat(again.version()).isEqualTo("1.0.3");
+        assertThat(store.engineJarPath()).hasContent("v3");
+        assertThat(jarsIn(store)).hasSize(2);
+    }
+
+    @Test
+    void a_jar_on_a_live_process_command_line_is_running() {
+        assertThat(EngineInstall.runByAProcess(Path.of("/nonexistent/jk-engine-0.0.0.jar")))
+                .isFalse();
+    }
+
+    private static List<Path> jarsIn(EngineInstall store) throws IOException {
+        try (var files = Files.list(store.engineHome())) {
+            return files.filter(p -> p.getFileName().toString().endsWith(".jar"))
+                    .toList();
+        }
     }
 
     @Test

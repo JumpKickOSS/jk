@@ -42,11 +42,15 @@ import org.jspecify.annotations.Nullable;
  * any frontier.
  * A run's {@code forced} flag records a full rebuild, forced or not ({@link #fullRebuild}): a cold
  * first build carries a forced build's work and load. A step seen only under the other load is read
- * at the load ratio the ledger has learned (JK-D3785).
+ * at the load ratio the ledger has learned.
  */
 public final class StepLedger {
 
-    /** Runs kept: enough for every recent edit shape, small enough to read per estimate. */
+    /**
+     * Runs kept: enough for every recent edit shape, small enough to read per estimate. Past it the
+     * oldest run of the shape with the most runs goes ({@link #trim}), so a rarely run shape keeps
+     * its walls however many runs of a common one come after it.
+     */
     static final int MAX_RUNS = 60;
 
     /** Samples a rung's median reads, newest first. */
@@ -54,8 +58,14 @@ public final class StepLedger {
 
     static final int ANY_FRONTIER = 7;
 
-    /** A run that recorded no external load ({@link HostBusy}): one on a host that reports none. */
+    /**
+     * A run whose external load is unknown ({@link HostBusy}): one on a host that reports none, which
+     * is every host but Linux. Its walls are read as they ran, with no load compensation.
+     */
     public static final double UNKNOWN_BUSY = -1;
+
+    /** What a run's line records as its {@code busy} when the load is unknown ({@link #UNKNOWN_BUSY}). */
+    static final String UNKNOWN_BUSY_LINE = "unknown";
 
     /** A run that recorded no compiler warmth (one from before it was recorded). */
     public static final int UNKNOWN_WARMTH = -1;
@@ -65,9 +75,11 @@ public final class StepLedger {
 
     /**
      * The ledgers read, one per project home, each re-read once its store's stamp moves. Eight, as
-     * many as the class-wall memo keeps: jk's own 60-run ledger is 0.52 MB of heap and re-reads in
-     * 7 ms, so the engine's estimates hold at most about 4 MB here however many projects it served,
-     * plus 2.6 MB of class walls and the 8 MiB aggregates (JK-BSRC5).
+     * many as the class-wall memo keeps. jk's own ledger, 27 runs of six shapes, is 0.75 MB of heap;
+     * {@link #MAX_RUNS} copies of its largest run (a forced integration build, 264 steps) are 1.7 MB
+     * and re-read in about 20 ms, the most a ledger of a project jk's size holds whichever shapes
+     * {@link #trim} keeps. So the engine's estimates hold at most about 14 MB here however many
+     * projects it served, plus 2.6 MB of class walls and the 8 MiB aggregates.
      */
     private static final StampedMemo<Path, StatIdentity, StepLedger> MEMO = StampedMemo.bounded(8);
 
@@ -182,8 +194,8 @@ public final class StepLedger {
     }
 
     /**
-     * Record a finished run's steps into the ledger under {@code projectHome}: one line, the
-     * oldest dropped past {@link #MAX_RUNS}. Best effort; a failure is logged and forgotten.
+     * Record a finished run's steps into the ledger under {@code projectHome}: one line, trimmed to
+     * {@link #MAX_RUNS} ({@link #trim}). Best effort; a failure is logged and forgotten.
      */
     public static void append(Path projectHome, RunShapes.Shape shape, List<Sample> samples) {
         append(projectHome, shape, null, samples);
@@ -263,8 +275,8 @@ public final class StepLedger {
     /**
      * The edit of the store's {@link ProjectStore#RUNS} that records a finished run ({@link
      * #append(Path, RunShapes.Shape, Set, Map, Map, int, List)}): its line appended, marked as the
-     * project's first when there was none, the oldest dropped past {@link #MAX_RUNS}. Null when the
-     * run has no step worth recording.
+     * project's first when there was none, trimmed to {@link #MAX_RUNS} ({@link #trim}). Null when
+     * the run has no step worth recording.
      */
     public static @Nullable UnaryOperator<List<String>> entry(
             RunShapes.Shape shape,
@@ -288,7 +300,7 @@ public final class StepLedger {
                         || fullRebuild(compiled.size(), compilableOf(samples).size()));
         line.put("filtered", shape.filtered());
         if (warmth >= 0) line.put("warmth", warmth);
-        if (busy >= 0) line.put("busy", Math.round(busy * 1000) / 1000.0);
+        line.put("busy", busy >= 0 ? Math.round(busy * 1000) / 1000.0 : UNKNOWN_BUSY_LINE);
         line.put("frontier", List.copyOf(new TreeSet<>(frontier == null ? compiled : frontier)));
         List<Object> steps = new ArrayList<>();
         for (Sample s : kept) steps.add(List.of(s.dir(), s.step(), s.status(), s.ms()));
@@ -315,8 +327,54 @@ public final class StepLedger {
             List<String> out = new ArrayList<>(lines);
             if (out.isEmpty()) line.put("first", true);
             out.add(MiniJson.write(line));
-            return out.size() > MAX_RUNS ? new ArrayList<>(out.subList(out.size() - MAX_RUNS, out.size())) : out;
+            return trim(out);
         };
+    }
+
+    /**
+     * {@code lines}, oldest first, cut to {@link #MAX_RUNS}: while over, the oldest run of the shape
+     * with the most runs goes (of two as populous, the one whose oldest run is older), and a line
+     * that does not parse before any. Every shape so keeps its newest runs, as many as the shapes
+     * share the cap evenly at least: 60 forced-free runs no longer push out an integration run, and
+     * the readers, each reading a shape's newest few ({@link #SAME_FRONTIER}, {@link #ANY_FRONTIER},
+     * {@link #MAX_CURVES}), find them. The line count, and so the ledger's memory, stays bounded.
+     */
+    static List<String> trim(List<String> lines) {
+        if (lines.size() <= MAX_RUNS) return lines;
+        List<@Nullable String> shapes = new ArrayList<>(lines.size());
+        for (String l : lines) shapes.add(shapeKey(l));
+        List<String> out = new ArrayList<>(lines);
+        while (out.size() > MAX_RUNS) {
+            int drop = shapes.indexOf(null);
+            if (drop < 0) {
+                Map<String, Integer> counts = new HashMap<>();
+                for (String k : shapes) counts.merge(Objects.requireNonNull(k), 1, Integer::sum);
+                int most = Collections.max(counts.values());
+                for (int i = 0; i < shapes.size(); i++) {
+                    if (counts.getOrDefault(shapes.get(i), 0) == most) {
+                        drop = i;
+                        break;
+                    }
+                }
+            }
+            out.remove(drop);
+            shapes.remove(drop);
+        }
+        return out;
+    }
+
+    /** A ledger line's shape, {@code profile forced filtered}; null when the line does not parse. */
+    private static @Nullable String shapeKey(String line) {
+        try {
+            if (!(MiniJson.parseRelaxed(line) instanceof Map<?, ?> m)) return null;
+            return (m.get("profile") == null ? "" : String.valueOf(m.get("profile")))
+                    + '\n'
+                    + Boolean.TRUE.equals(m.get("forced"))
+                    + '\n'
+                    + Boolean.TRUE.equals(m.get("filtered"));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** The ledger under {@code projectHome}, read once per change of its store. */
@@ -333,7 +391,7 @@ public final class StepLedger {
     private static StepLedger read(List<String> lines) {
         List<Run> runs = new ArrayList<>();
         // Every run names the same modules, steps and statuses, and most share a frontier: one copy
-        // of each per ledger. jk's 60-run ledger held 1.38 MB, most of it these repeated (JK-BSRC5).
+        // of each per ledger. jk's 60-run ledger held 1.38 MB, most of it these repeated.
         Map<String, String> strings = new HashMap<>();
         Map<Set<String>, Set<String>> frontiers = new HashMap<>();
         try {
@@ -442,7 +500,7 @@ public final class StepLedger {
     }
 
     /**
-     * How uncertain {@link #price} is beyond its layer's own error (JK-R0N5S): {@code own} is the
+     * How uncertain {@link #price} is beyond its layer's own error: {@code own} is the
      * samples' run-to-run spread, one sigma on a log scale read from their 20th and 80th
      * percentiles (none under {@link #MIN_SPREAD_SAMPLES} samples); {@code context} how far the
      * samples are from this run: none for runs of this shape and frontier, more for another
@@ -744,7 +802,7 @@ public final class StepLedger {
             // Each wall read as it would have run on an idle host, by the external load its run
             // started under (HostBusy); the estimate prices the lot at the load it sees now. Taken
             // as a median first, a mix of idle and loaded walls was carried to the load as if all
-            // were idle, and S4's runs under load read +52% for +19% (JK-6BJTV).
+            // were idle, and S4's runs under load read +52% for +19%.
             double idle = HostBusy.factor(0, r.run().busy());
             samples.add(Math.round(r.ms() * at * idle));
         }
@@ -822,7 +880,7 @@ public final class StepLedger {
      * #MIN_SUITE_LOAD_PAIRS} suites have. A suite runs the same classes under either load, and the
      * JVMs a light run gives it are priced on their own (StepEta's dispatch share), so the compile
      * ratio would count the load twice: the engine's first-build suite, 101.8 s on 2 JVMs, was read
-     * at it for a light run on 5 and priced at 17.4 s for 70 s (JK-EQVYV).
+     * at it for a light run on 5 and priced at 17.4 s for 70 s.
      */
     double suiteLightOverHeavy() {
         double memo = suiteLightOverHeavy;

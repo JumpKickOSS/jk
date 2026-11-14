@@ -695,8 +695,9 @@ public final class SelfCommand extends GroupCommand {
             }
             EngineInstall.Materialized engine =
                     install.materialize(prepared.version(), cas, prepared.engineSha256(), downgrade);
-            // A native client is named beside its engine, so `jk self rollback` can put both back.
-            if (prepared.client() != PreparedUpdate.Client.JVM) install.recordClient(prepared.clientSha256());
+            // A native client is named beside its engine, so `jk self rollback` can put both back. A
+            // release's client carries its own commit; nothing is recorded for it.
+            if (prepared.client() != PreparedUpdate.Client.JVM) install.recordClient(prepared.clientSha256(), null);
             keepWhatsNew(install);
             PreparedUpdate.delete(install.engineHome());
             StoreCasGc.afterInstall();

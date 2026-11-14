@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.journal.BuildJournal;
@@ -20,8 +19,7 @@ import java.util.function.Consumer;
  *
  * <p>Process-global statics this reaches, by name rather than by pretending they are injected:
  * {@link JkEngineConfig#resolve} and {@link JvmOptions#planAndApply} size the shared worker heap
- * plan once per process; {@link EngineInstall} locates the install's displaced files;
- * {@link BuildJournal} is the one the engine was composed with.
+ * plan once per process; {@link BuildJournal} is the one the engine was composed with.
  */
 final class EngineStartup {
 
@@ -59,7 +57,6 @@ final class EngineStartup {
         log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
         yieldPredecessor(won);
         adoptShelfPins();
-        collectDisplacedInstallFiles();
         sweepForeignWorkerCaches();
         bindHttp();
         abandonStaleJournalRows();
@@ -109,18 +106,6 @@ final class EngineStartup {
             return;
         }
         log.accept("jk engine: " + pins.jars().size() + " shelf jars pinned by the install from " + pins.source());
-    }
-
-    private void collectDisplacedInstallFiles() {
-        try {
-            var gc = EngineInstall.current().gc();
-            if (!gc.isEmpty()) {
-                log.accept("jk engine: removed " + gc.size() + " displaced install file(s)");
-            }
-        } catch (RuntimeException e) {
-            // a predecessor may still have the previous jar mapped — retry on the next cycle
-            Log.debug("collectDisplacedInstallFiles: a predecessor may still have the previous jar mapped", e);
-        }
     }
 
     /**

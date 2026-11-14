@@ -139,6 +139,16 @@ public final class CasPrewriter implements AutoCloseable {
         keys.clear();
     }
 
+    /** Test seam: what a file event naming {@code file} does, without a watch service. */
+    synchronized void observeForTest(Path file) {
+        PathUtil.stat(file).ifPresent(attrs -> offer(file, attrs));
+    }
+
+    /** Test seam: one settle tick; a file seen by two ticks in a row is hashed. */
+    void settleForTest() {
+        settle();
+    }
+
     private void watch(Path dir) {
         WatchKey key = Watcher.register(dir, this);
         if (key != null) keys.add(key);

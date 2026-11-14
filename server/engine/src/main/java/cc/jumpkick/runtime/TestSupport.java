@@ -45,14 +45,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -122,23 +127,71 @@ public final class TestSupport {
     }
 
     static int countTests(Path file) {
+        return facts(file).tests();
+    }
+
+    /**
+     * What one test source holds for an estimate: its {@code @Test}-family annotations, the
+     * {@code @Tag}s on its class (written before its class declaration) and how many {@code @Tag}s of
+     * each name its members carry.
+     */
+    record TestFacts(int tests, Set<String> classTags, Map<String, Integer> memberTags) {
+        static final TestFacts NONE = new TestFacts(0, Set.of(), Map.of());
+
+        /**
+         * The tests a tag filter selects: none from a class carrying an excluded tag, every one from a
+         * class carrying an included tag (or any class when nothing is included), else one per member
+         * tagged with an included tag; less one per member tagged with an excluded tag. A source scan,
+         * so an estimate: a tag on a composed annotation is not seen.
+         */
+        int selected(Collection<String> include, Collection<String> exclude) {
+            if (tests == 0 || !Collections.disjoint(classTags, exclude)) return 0;
+            int dropped = 0;
+            for (String tag : exclude) dropped += memberTags.getOrDefault(tag, 0);
+            if (include.isEmpty() || !Collections.disjoint(classTags, include)) return Math.max(0, tests - dropped);
+            int picked = 0;
+            for (String tag : include) picked += memberTags.getOrDefault(tag, 0);
+            return Math.max(0, Math.min(tests, picked) - dropped);
+        }
+    }
+
+    static TestFacts facts(Path file) {
         Path abs = file.toAbsolutePath().normalize();
         FileStamp stamp = FileStamp.of(abs);
-        if (stamp == null) return 0;
+        if (stamp == null) return TestFacts.NONE;
         return COUNTED.get(abs, stamp, () -> {
             try {
-                return (int) TEST_ANNOTATION_REGEX
-                        .matcher(Files.readString(abs))
-                        .results()
-                        .count();
+                return factsOf(Files.readString(abs));
             } catch (IOException e) {
-                return 0;
+                return TestFacts.NONE;
             }
         });
     }
 
+    static TestFacts factsOf(String source) {
+        int tests = (int) TEST_ANNOTATION_REGEX.matcher(source).results().count();
+        if (tests == 0) return TestFacts.NONE;
+        Matcher decl = CLASS_DECLARATION_REGEX.matcher(source);
+        int classAt = decl.find() ? decl.start() : 0;
+        Set<String> classTags = new TreeSet<>();
+        Map<String, Integer> memberTags = new TreeMap<>();
+        Matcher tag = TAG_REGEX.matcher(source);
+        while (tag.find()) {
+            if (tag.start() < classAt) classTags.add(tag.group(1));
+            else memberTags.merge(tag.group(1), 1, Integer::sum);
+        }
+        return new TestFacts(tests, Set.copyOf(classTags), Map.copyOf(memberTags));
+    }
+
+    /** {@code @Tag("x")}, alone or inside {@code @Tags({...})}, in Java, Kotlin or Groovy. */
+    private static final Pattern TAG_REGEX = Pattern.compile("@Tag\\(\\s*(?:value\\s*=\\s*)?\"([^\"]+)\"\\s*\\)");
+
+    /** The first top-level type declaration: what comes before it annotates the class. */
+    private static final Pattern CLASS_DECLARATION_REGEX = Pattern.compile(
+            "(?m)^[ \\t]*(?:(?:public|protected|private|internal|abstract|final|sealed|open|data|static)\\s+)*(?:class|interface|object|record)\\s+\\w");
+
     /** Bounded: cleared once full, since an estimate's memo needs no eviction order. */
-    private static final StampedMemo<Path, FileStamp, Integer> COUNTED = StampedMemo.bounded(100_000);
+    private static final StampedMemo<Path, FileStamp, TestFacts> COUNTED = StampedMemo.bounded(100_000);
 
     /**
      * Count test methods across every discovered suite, not the default suite only. Dedupes when
@@ -158,9 +211,12 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods for the suites a SELECTION will actually run: sizing the bar/ETA with every
-     * discovered suite makes a plain {@code jk test} under-fill and snap to 100 when an integration
-     * suite exists. A declared suite's tests count only when the selection runs that suite.
+     * Count test methods for the suites a SELECTION will actually run, under its tags: sizing the
+     * bar/ETA with every discovered suite makes a plain {@code jk test} under-fill and snap to 100
+     * when an integration suite exists. A declared suite's tests count only when the selection runs
+     * that suite, and a tagged class only when the selection's tags let it ({@link
+     * TestFacts#selected}): an integration run counted every unit test in jk-core and priced its
+     * empty suite at 50 s.
      */
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
         Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
@@ -191,7 +247,8 @@ public final class TestSupport {
                 .acceptor();
         int total = 0;
         for (Map.Entry<String, Path> source : byClass.entrySet()) {
-            if (runs.test(source.getKey())) total += countTests(source.getValue());
+            if (runs.test(source.getKey()))
+                total += facts(source.getValue()).selected(selection.includeTags(), selection.excludeTags());
         }
         return total;
     }

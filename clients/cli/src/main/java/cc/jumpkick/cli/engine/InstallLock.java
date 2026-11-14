@@ -16,6 +16,7 @@ import java.nio.channels.FileLockInterruptionException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -38,7 +39,12 @@ import org.jspecify.annotations.Nullable;
  * steps span two builds of the engine.
  *
  * <p>The lock is an OS byte-range lock on {@code <state>/engine/install.lock}: the kernel releases it
- * when its process dies, so a crashed holder never wedges the host. Who holds or waits is recorded
+ * when its process dies, so a crashed holder or waiter never wedges the host. A second byte of the
+ * file is a turnstile: every acquirer takes it exclusively before the lock and lets go right after,
+ * and an exclusive acquirer holds it while it waits, so new shared runs queue behind a waiting
+ * install instead of overlapping it forever (neither fcntl nor {@code LockFileEx} favours a waiting
+ * writer). Should the holders not drain for a whole window, the waiting install opens the turnstile
+ * for a moment, so a run that a holder itself waits for (a nested jk) is never deadlocked. Who holds or waits is recorded
  * one file per hold under {@code <state>/engine/install.holders/}; a file whose process is gone is a
  * stale record and is pruned on the next read. Within one JVM, threads queue on a read-write lock in
  * front of the one channel (POSIX drops every lock a process holds on a file when any descriptor to
@@ -55,6 +61,20 @@ public final class InstallLock {
     public static final String ENV = "JK_INSTALL_LOCK";
 
     private static final long LOCK_POSITION = Long.MAX_VALUE - 1;
+
+    /** The turnstile byte: taken exclusively for a moment by every acquirer, and by a waiting install throughout. */
+    private static final long TURNSTILE_POSITION = Long.MAX_VALUE - 2;
+
+    /** How often a waiting install retries the lock. */
+    private static final long POLL_MS = 10;
+
+    /** How long an acquirer retries a busy turnstile before it announces a wait. */
+    private static final long TURNSTILE_SPIN_MS = 20;
+
+    /** How long a waiting install opens the turnstile when no shared hold ended in a whole window. */
+    private static final long OPEN_MS = 200;
+
+    private static volatile Duration turnstileWindow = Duration.ofSeconds(10);
 
     private static final ConcurrentHashMap<Path, State> STATES = new ConcurrentHashMap<>();
 
@@ -239,6 +259,11 @@ public final class InstallLock {
         return List.copyOf(out);
     }
 
+    /** How long a waiting install keeps the turnstile closed while no shared hold ends (tests). */
+    static void turnstileWindow(Duration window) {
+        turnstileWindow = window;
+    }
+
     /** Route wait notices somewhere other than stderr (tests). */
     static void notices(Consumer<String> sink) {
         notices = sink;
@@ -336,10 +361,11 @@ public final class InstallLock {
          * locks leaves the caller unlocked.
          */
         void acquire(boolean shared, String purpose) throws IOException {
+            FileChannel c;
             try {
                 Path parent = file.getParent();
                 if (parent != null) OwnerOnlyFiles.createDirectories(parent);
-                channel = OwnerOnlyFiles.inState(file)
+                c = OwnerOnlyFiles.inState(file)
                         ? OwnerOnlyFiles.channel(
                                 file, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ)
                         : FileChannel.open(
@@ -348,22 +374,120 @@ public final class InstallLock {
                 channel = null;
                 return;
             }
+            channel = c;
+            Wait wait = new Wait(purpose, shared);
             try {
-                os = channel.tryLock(LOCK_POSITION, 1, shared);
-                if (os != null) return;
-                Mode waiting = shared ? Mode.WAITING_SHARED : Mode.WAITING_EXCLUSIVE;
-                announceWait(purpose, shared);
-                Path record = record(file, waiting, purpose);
-                try {
-                    os = channel.lock(LOCK_POSITION, 1, shared);
-                } finally {
-                    deleteQuietly(record);
-                }
+                if (shared) acquireShared(c, wait);
+                else acquireExclusive(c, wait);
             } catch (FileLockInterruptionException | AsynchronousCloseException interrupted) {
                 closeChannel();
                 throw interrupted;
             } catch (IOException noLock) {
                 closeChannel(); // e.g. NFS without lockd
+            } finally {
+                wait.end();
+            }
+        }
+
+        /** Through the turnstile and straight out again, so a waiting install is not overtaken. */
+        private void acquireShared(FileChannel c, Wait wait) throws IOException {
+            FileLock gate = enterTurnstile(c, wait);
+            try {
+                os = c.tryLock(LOCK_POSITION, 1, true);
+                if (os == null) {
+                    wait.begin();
+                    os = c.lock(LOCK_POSITION, 1, true);
+                }
+            } finally {
+                releaseQuietly(gate);
+            }
+        }
+
+        /**
+         * Hold the turnstile while the shared holders drain, polling for the lock. When a whole
+         * window passes in which no shared hold ended, the holders may be waiting on a run that
+         * queued behind the turnstile (a nested jk), so it opens for a moment and closes again.
+         */
+        private void acquireExclusive(FileChannel c, Wait wait) throws IOException {
+            FileLock gate = enterTurnstile(c, wait);
+            try {
+                long closedAt = Clock.SYSTEM.nanos();
+                List<Holder> draining = sharedHolders();
+                while ((os = c.tryLock(LOCK_POSITION, 1, false)) == null) {
+                    wait.begin();
+                    pause(POLL_MS);
+                    if (Clock.SYSTEM.nanos() - closedAt < turnstileWindow.toNanos()) continue;
+                    if (sharedHolders().containsAll(draining)) {
+                        releaseQuietly(gate);
+                        gate = null;
+                        pause(OPEN_MS);
+                        gate = c.lock(TURNSTILE_POSITION, 1, false);
+                    }
+                    closedAt = Clock.SYSTEM.nanos();
+                    draining = sharedHolders();
+                }
+            } finally {
+                releaseQuietly(gate);
+            }
+        }
+
+        /** Take the turnstile, which other acquirers hold only for a moment unless an install waits. */
+        private FileLock enterTurnstile(FileChannel c, Wait wait) throws IOException {
+            long until = Clock.SYSTEM.nanos() + TURNSTILE_SPIN_MS * 1_000_000L;
+            while (true) {
+                FileLock gate = c.tryLock(TURNSTILE_POSITION, 1, false);
+                if (gate != null) return gate;
+                if (Clock.SYSTEM.nanos() >= until) break;
+                pause(1);
+            }
+            wait.begin();
+            return c.lock(TURNSTILE_POSITION, 1, false);
+        }
+
+        private List<Holder> sharedHolders() {
+            return holders(file).stream().filter(h -> h.mode() == Mode.SHARED).toList();
+        }
+
+        private static void pause(long millis) throws FileLockInterruptionException {
+            try {
+                Thread.sleep(millis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new FileLockInterruptionException();
+            }
+        }
+
+        private static void releaseQuietly(@Nullable FileLock lock) {
+            try {
+                if (lock != null && lock.isValid()) lock.release();
+            } catch (IOException ignored) {
+                // closing the channel drops the lock regardless
+            }
+        }
+
+        /** One acquire's wait: announced and recorded the first time it blocks, the record removed after. */
+        private final class Wait {
+            private final String purpose;
+            private final boolean shared;
+            private boolean begun;
+
+            @Nullable
+            private Path record;
+
+            Wait(String purpose, boolean shared) {
+                this.purpose = purpose;
+                this.shared = shared;
+            }
+
+            void begin() {
+                if (begun) return;
+                begun = true;
+                announceWait(purpose, shared);
+                record = record(file, shared ? Mode.WAITING_SHARED : Mode.WAITING_EXCLUSIVE, purpose);
+            }
+
+            void end() {
+                deleteQuietly(record);
             }
         }
 
@@ -378,11 +502,7 @@ public final class InstallLock {
         }
 
         void release() {
-            try {
-                if (os != null && os.isValid()) os.release();
-            } catch (IOException ignored) {
-                // closing the channel drops the lock regardless
-            }
+            releaseQuietly(os);
             os = null;
             closeChannel();
         }
@@ -390,6 +510,7 @@ public final class InstallLock {
         private void closeChannel() {
             FileChannel c = channel;
             channel = null;
+            os = null;
             if (c == null) return;
             try {
                 c.close();

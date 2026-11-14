@@ -39,6 +39,7 @@ class InstallLockTest {
     @AfterEach
     void restoreNotices() {
         InstallLock.notices(line -> {});
+        InstallLock.turnstileWindow(Duration.ofSeconds(10));
     }
 
     @Test
@@ -81,6 +82,64 @@ class InstallLockTest {
             install.release();
             run.awaitHeld();
             run.close();
+        }
+    }
+
+    @Test
+    void a_run_started_while_an_install_waits_queues_behind_the_install() throws Exception {
+        InstallLock.turnstileWindow(Duration.ofMinutes(5));
+        try (var first = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
+            first.awaitHeld();
+            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk snapshot"));
+            awaitWaiting(Mode.WAITING_EXCLUSIVE);
+            try (var second = InstallLockHolderMain.start(lock(), "shared", "jk guard")) {
+                assertThatHolderWaits(second, "WAIT jk guard waits");
+                first.release();
+                install.awaitHeld();
+                assertThat(second.printsWithin(Duration.ofMillis(500)))
+                        .as("queued run went on during the install")
+                        .isFalse();
+                install.close();
+                second.awaitHeld();
+                second.release();
+            }
+        }
+    }
+
+    @Test
+    void a_waiting_install_lets_a_queued_run_in_when_the_holders_do_not_drain() throws Exception {
+        InstallLock.turnstileWindow(Duration.ofSeconds(1));
+        try (var outer = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
+            outer.awaitHeld();
+            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk snapshot"));
+            awaitWaiting(Mode.WAITING_EXCLUSIVE);
+            // Stands in for a jk the outer run waits for: it must get in without the outer run ending.
+            try (var nested = InstallLockHolderMain.start(lock(), "shared", "jk build (nested)")) {
+                nested.awaitHeld();
+                assertThat(install.held()).isFalse();
+                nested.release();
+                outer.release();
+                install.awaitHeld();
+                install.close();
+            }
+        }
+    }
+
+    @Test
+    void a_waiting_install_that_dies_lets_queued_runs_in() throws Exception {
+        InstallLock.turnstileWindow(Duration.ofMinutes(5));
+        try (var first = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
+            first.awaitHeld();
+            try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk snapshot")) {
+                assertThat(install.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk snapshot waits");
+                try (var second = InstallLockHolderMain.start(lock(), "shared", "jk guard")) {
+                    assertThatHolderWaits(second, "WAIT jk guard waits");
+                    install.process().destroyForcibly().waitFor(30, TimeUnit.SECONDS);
+                    second.awaitHeld();
+                    second.release();
+                }
+            }
+            first.release();
         }
     }
 
@@ -133,7 +192,7 @@ class InstallLockTest {
             try (InstallLock.Hold install = InstallLock.exclusive(lock(), "jk snapshot (installing jk)")) {
                 try (var other = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
                     // Another session's run cannot start while this one installs.
-                    assertThatHolderWaits(other);
+                    assertThatHolderWaits(other, "WAIT jk test waits");
                 }
             }
             // Back to shared: another session's run starts alongside.
@@ -144,8 +203,8 @@ class InstallLockTest {
         }
     }
 
-    private static void assertThatHolderWaits(InstallLockHolderMain.Holder other) throws Exception {
-        assertThat(other.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk test waits");
+    private static void assertThatHolderWaits(InstallLockHolderMain.Holder other, String notice) throws Exception {
+        assertThat(other.nextLine(Duration.ofSeconds(60))).startsWith(notice);
         assertThat(other.printsWithin(Duration.ofSeconds(1)))
                 .as("holder went on while the lock was exclusive")
                 .isFalse();

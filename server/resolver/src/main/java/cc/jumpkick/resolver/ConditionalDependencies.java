@@ -209,7 +209,7 @@ public final class ConditionalDependencies {
         }
         for (var hit : ArtifactFanOut.all(
                 fetches,
-                h -> h.getValue().isPresent() && board.landed(h.getKey().toString()))) {
+                h -> h.getValue().isPresent() && board.claimLanding(h.getKey().toString()))) {
             Optional<RepoGroup.RepoFetched> fetched = hit.getValue();
             read.put(
                     hit.getKey(),

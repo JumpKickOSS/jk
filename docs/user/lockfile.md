@@ -782,13 +782,15 @@ so two builds of one version can be told apart and ordered by the source they we
 and a reinstall of the same jar moves neither; a JumpKick running from a classes directory writes
 neither. The stamps are provenance, not pins: they choose no artifact and never make a lock stale.
 
-`Build-Time` belongs to the archive's content, not to the checkout that happened to package it.
-The assembly is keyed by what goes into it — the classes, the bundled jars, the main class, the
-manifest table, the relocations — and the commit time is not part of that key, so a later commit
-that leaves the engine's inputs untouched restores the same archive from the action cache, stamp
-and all. Two commits with identical code are one build, with one identity and one time, and that
-time names the commit whose source last changed the bytes; a fresher stamp on identical bytes
-would give one build identity two times.
+`Build-Time`, and the `Build-Commit` beside it (the commit, with `-dirty` when the checkout had
+uncommitted changes), belong to the checkout that packaged the archive. Only the archives JumpKick
+installs as its own engine and client carry them, and they are part of those archives' keys: each
+commit packages its own engine jar (a repackage of the classes and jars it already has, not a
+rebuild), and one commit packages the same bytes on every host whatever its action cache holds. No
+library jar carries the stamps, so a new commit recompiles and retests nothing on their account.
+The native client carries the commit only when it is a release build (a version without
+`-SNAPSHOT`, from a clean checkout); a snapshot's native client keys on no commit and is not
+relinked when only the commit moved.
 
 A JumpKick **older than the writer relocks only what it can restate whole**. When the manifests move
 and the build, `jk sync` or `jk lock` would rewrite a lock a newer JumpKick wrote — a newer version, or a

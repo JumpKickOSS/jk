@@ -6,6 +6,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -38,8 +40,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Materialize never renames or overwrites an existing jar (Windows cannot move a file {@code
  * java.exe} has memory-mapped). A free canonical name {@code jk-engine-<version>.jar} is used when
  * possible; a collision with different bytes publishes {@code jk-engine-<version>.<epochMillis>.jar}
- * beside the old file. {@link #gc} deletes every engine jar except the live name, plus parked PATH
- * binaries ({@code jk.old} / {@code jk.exe.old}).
+ * beside the old file. {@link #gc} deletes the engine jars nothing needs any more (not the one the
+ * pointer names, not one holding the engine its rollback record names, not one a running process
+ * was started from), plus parked PATH binaries ({@code jk.old} / {@code jk.exe.old}). Every install
+ * sweeps after it writes the pointer, and the engine sweeps on its maintenance tick, so a jar a
+ * draining engine kept mapped goes once that engine exits.
  *
  * <p>{@code jk-shelf.toml} beside the pointer ({@link ShelfManifest}) names the first-party
  * shelf the last install pinned to its engine; it is the install's to write and never swept.
@@ -60,14 +65,20 @@ public final class EngineInstall {
 
     private final Path productLib;
     private final LongSupplier clock;
+    private final Predicate<Path> running;
 
     public EngineInstall(Path productLibDir) {
-        this(productLibDir, System::currentTimeMillis);
+        this(productLibDir, Clock.SYSTEM::millis);
     }
 
     EngineInstall(Path productLibDir, LongSupplier clock) {
+        this(productLibDir, clock, EngineInstall::runByAProcess);
+    }
+
+    EngineInstall(Path productLibDir, LongSupplier clock, Predicate<Path> running) {
         this.productLib = productLibDir;
-        this.clock = clock == null ? System::currentTimeMillis : clock;
+        this.clock = clock == null ? Clock.SYSTEM::millis : clock;
+        this.running = running;
     }
 
     /** Rooted at the product lib, {@code <home>/lib}. */
@@ -114,6 +125,15 @@ public final class EngineInstall {
 
     /** The pointer key naming the PATH client the install before this one put in place. */
     public static final String PREVIOUS_CLIENT_SHA = "previous-client-sha256";
+
+    /**
+     * The pointer key recording the commit the {@link #CLIENT_SHA} client was built from, for a
+     * client that carries none itself (a snapshot's native image); absent when the install knew none.
+     */
+    public static final String CLIENT_COMMIT = "client-commit";
+
+    /** The commit recorded for the {@link #PREVIOUS_CLIENT_SHA} client, which a rollback restores with it. */
+    public static final String PREVIOUS_CLIENT_COMMIT = "previous-client-commit";
 
     /**
      * The engine jars and PATH clients the store must keep for this install: the live ones the
@@ -172,18 +192,28 @@ public final class EngineInstall {
      * binaries. Never throws.
      */
     public List<Path> gc() {
-        List<Path> removed = gc(JkDirs.binDir(), JkDirs.state());
+        List<Path> removed = gc(JkDirs.binDir());
         sweepAbandonedConfig(JkDirs.current().configDir(), removed);
         return removed;
     }
 
     /**
-     * @param binDir PATH install directory ({@code jk.old} / {@code jk.exe.old}); {@code null} skips
-     * @param stateDir engine state; unused, kept so callers name both roots the gc reaches
+     * {@link #gc()} with the PATH install directory ({@code jk.old} / {@code jk.exe.old}) given;
+     * {@code null} skips it. The engine jars are swept only while no install holds the install
+     * dir's lock: an install sweeps them itself once its pointer is written.
      */
-    public List<Path> gc(@Nullable Path binDir, @Nullable Path stateDir) {
+    public List<Path> gc(@Nullable Path binDir) {
         List<Path> removed = new ArrayList<>();
-        sweepRetiredJars(removed);
+        Path home = engineHome();
+        if (Files.isDirectory(home)) {
+            try (FileChannel lockCh = FileChannel.open(
+                            home.resolve(LOCK_NAME), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    FileLock lock = lockCh.tryLock()) {
+                if (lock != null) sweepRetiredJars(removed);
+            } catch (IOException | RuntimeException busy) {
+                // an install in progress sweeps when it is done
+            }
+        }
         sweepParkedClients(binDir, removed);
         return removed;
     }
@@ -460,6 +490,7 @@ public final class EngineInstall {
             Files.deleteIfExists(jarTmp);
         }
         writePointer(version, engineJarSha, dest.getFileName().toString());
+        sweepRetiredJars(new ArrayList<>());
         return currentInstall()
                 .orElseThrow(() -> new IOException("materialization of " + version + " left no engine jar"));
     }
@@ -501,7 +532,7 @@ public final class EngineInstall {
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
         // The clients the pointer names are another install step's to change ({@link #recordClient}).
-        for (String key : List.of(CLIENT_SHA, PREVIOUS_CLIENT_SHA)) {
+        for (String key : List.of(CLIENT_SHA, PREVIOUS_CLIENT_SHA, CLIENT_COMMIT, PREVIOUS_CLIENT_COMMIT)) {
             String sha = before.get(key);
             if (sha != null && !sha.isBlank()) keys.put(key, sha);
         }
@@ -522,18 +553,41 @@ public final class EngineInstall {
     }
 
     /**
-     * Name {@code clientSha} as the PATH client this install put in place, the one named until now
-     * as the previous one, so {@link #rollback} can put it back. A no-op when the pointer is missing
-     * (nothing to roll back with) or already names {@code clientSha}.
+     * Name {@code clientSha} as the PATH client this install put in place, built from {@code commit}
+     * ({@code null}: not known), the one named until now becoming the previous one, so {@link
+     * #rollback} can put it back. The same client installed again keeps its place and takes the new
+     * commit: a snapshot's image is not relinked when only the commit moved. A no-op when the
+     * pointer is missing (nothing to roll back with).
      */
-    public void recordClient(String clientSha) throws IOException {
+    public void recordClient(String clientSha, @Nullable String commit) throws IOException {
         Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
         if (keys.isEmpty()) return;
+        Map<String, String> before = Map.copyOf(keys);
         String live = keys.get(CLIENT_SHA);
-        if (clientSha.equalsIgnoreCase(live)) return;
-        if (live != null && !live.isBlank()) keys.put(PREVIOUS_CLIENT_SHA, live);
-        keys.put(CLIENT_SHA, clientSha);
+        if (!clientSha.equalsIgnoreCase(live)) {
+            keys.remove(PREVIOUS_CLIENT_SHA);
+            keys.remove(PREVIOUS_CLIENT_COMMIT);
+            if (live != null && !live.isBlank()) {
+                keys.put(PREVIOUS_CLIENT_SHA, live);
+                String liveCommit = keys.get(CLIENT_COMMIT);
+                if (liveCommit != null && !liveCommit.isBlank()) keys.put(PREVIOUS_CLIENT_COMMIT, liveCommit);
+            }
+            keys.put(CLIENT_SHA, clientSha);
+        }
+        if (commit == null || commit.isBlank()) keys.remove(CLIENT_COMMIT);
+        else keys.put(CLIENT_COMMIT, commit);
+        if (keys.equals(before)) return;
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /**
+     * The commit the install recorded for the PATH client whose bytes hash to {@code clientSha}, or
+     * empty when the pointer names another client or records no commit for it.
+     */
+    public Optional<String> recordedClientCommit(String clientSha) {
+        Map<String, String> keys = pointerKeys();
+        if (!clientSha.equalsIgnoreCase(keys.get(CLIENT_SHA))) return Optional.empty();
+        return Optional.ofNullable(keys.get(CLIENT_COMMIT)).filter(c -> !c.isBlank());
     }
 
     /** What {@link #rollback} put back: the engine's version and jar, and the client, when one was. */
@@ -561,11 +615,12 @@ public final class EngineInstall {
             throw new IOException("no version for the previous engine in " + configFile());
         }
         String clientSha = keys.get(PREVIOUS_CLIENT_SHA);
+        String clientCommit = keys.get(PREVIOUS_CLIENT_COMMIT);
         Materialized engine = materialize(version, cas, engineSha, true);
         Path installed = null;
         if (clientSha != null && !clientSha.isBlank() && Files.isRegularFile(cas.pathFor(clientSha))) {
             installBinaries(cas.pathFor(clientSha), binDir);
-            recordClient(clientSha);
+            recordClient(clientSha, clientCommit);
             installed = pathClient(binDir);
         }
         return new RolledBack(engine.version(), engine.engineJar(), installed);
@@ -701,24 +756,68 @@ public final class EngineInstall {
         return false;
     }
 
+    /**
+     * Delete the engine jars and leftovers the install no longer needs. Kept: the jar the pointer
+     * names, a jar holding the previous engine the pointer's rollback record names by digest (what
+     * {@link #rollback} puts back), and any jar a running process was started from (a draining
+     * engine, an engine of another store under this home). With no readable pointer nothing is
+     * retired. The caller holds the install dir's lock.
+     */
     private void sweepRetiredJars(List<Path> removed) {
         Path home = engineHome();
         if (!Files.isDirectory(home)) return;
-        String liveName = currentInstall()
-                .map(m -> m.engineJar().getFileName().toString())
-                .orElse(null);
+        Map<String, String> pointer = pointerKeys();
+        String liveName = pointer.get("jar");
+        if (liveName == null || liveName.isBlank()) return;
+        String previous = pointer.getOrDefault(PREVIOUS_ENGINE_SHA, "").strip().toLowerCase(Locale.ROOT);
+        List<Path> jars = new ArrayList<>();
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(home)) {
             for (Path p : entries) {
                 if (!Files.isRegularFile(p)) continue;
                 String name = p.getFileName().toString();
                 if (LOCK_NAME.equals(name) || POINTER_NAME.equals(name) || SHELF_NAME.equals(name)) continue;
-                if (liveName != null && liveName.equals(name)) continue;
-                if (isEngineJarName(name) || name.endsWith(".tmp") || name.endsWith(".old") || name.contains(".old-")) {
+                if (liveName.equals(name)) continue;
+                if (isEngineJarName(name)) jars.add(p);
+                else if (name.endsWith(".tmp") || name.endsWith(".old") || name.contains(".old-"))
                     tryDelete(p, removed);
-                }
             }
         } catch (IOException ignored) {
             // best-effort
+        }
+        for (Path jar : jars) {
+            if (running.test(jar) || (!previous.isEmpty() && previous.equals(digest(jar)))) continue;
+            tryDelete(jar, removed);
+        }
+    }
+
+    private static String digest(Path jar) {
+        try {
+            return Hashing.sha256Hex(jar).toLowerCase(Locale.ROOT);
+        } catch (IOException | RuntimeException unreadable) {
+            return "";
+        }
+    }
+
+    /**
+     * Whether a live process names {@code jar} on its command line, as an engine names the jar it
+     * runs from on its class path. Where the OS does not show other processes' command lines
+     * (Windows), a jar a running engine has mapped refuses the delete instead.
+     */
+    static boolean runByAProcess(Path jar) {
+        Set<String> spellings = new HashSet<>();
+        spellings.add(jar.toAbsolutePath().normalize().toString());
+        try {
+            spellings.add(jar.toRealPath().toString());
+        } catch (IOException | RuntimeException unresolved) {
+            // the absolute spelling is enough
+        }
+        try {
+            return ProcessHandle.allProcesses().anyMatch(p -> p.info()
+                    .commandLine()
+                    .map(cmd -> spellings.stream().anyMatch(cmd::contains))
+                    .orElse(false));
+        } catch (RuntimeException unlisted) {
+            return true;
         }
     }
 

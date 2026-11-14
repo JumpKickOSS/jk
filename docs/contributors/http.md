@@ -35,10 +35,18 @@ port in the band and keeps that one. A guest never takes 8910 because it is free
 `Guest` (`cc.jumpkick.host`) detects a guest from the kernel and the filesystem: WSL by `microsoft` in
 `/proc/sys/kernel/osrelease` (with `WSLInterop` saying whether Windows programs can run), a container
 by `/.dockerenv`, `/run/.containerenv` or `container=`. It never reads `WSL_*` variables for the
-answer, since a daemon or a service often lacks them.
+answer, since a daemon or a service often lacks them. Its `instance` tells one guest from another of
+its kind on the machine: for WSL, `/etc/machine-id` (else `/var/lib/dbus/machine-id`) and the `wwid` of
+the virtual disk the root is mounted from (`/proc/self/mountinfo`'s device, then
+`/sys/dev/block/<maj:min>/device/wwid`), so two installs of one distro image differ, and so does a
+distro cloned by export and import; `WSL_DISTRO_NAME` only when neither reads. For a container, the id
+in the host path its `/etc/hostname` is bound from.
 
 Each engine has an identity (`EngineIdentity`): OS, guest kind and name, hostname, `JK_HOME`, version
-and port, with an `id` hashed from OS, hostname and `JK_HOME`, so it is stable across restarts.
+and port, with an `id` of 12 hex digits hashed from OS, guest kind and instance, hostname and
+`JK_HOME`. Every WSL distro of one Windows host shares its hostname and usually its `JK_HOME` path, so
+the instance is what tells them apart; the id is stable across restarts and reboots, and it seeds a
+guest's first band port.
 `GET /api/identity` answers it **without a token**: it names nothing secret, and a tab whose token an
 engine refuses uses it to tell a rotated token from another engine on the same address. The same
 identity is in `GET /api/status` and the socket status as `identity`, and `jk engine status` prints
