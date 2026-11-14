@@ -184,6 +184,38 @@ public final class BuildEnv {
         return Collections.unmodifiableMap(resolve(SHELL, clientEnv()::get));
     }
 
+    /**
+     * The locale variables a test JVM gets, by name: {@code LANG}, {@code LANGUAGE} and every
+     * {@code LC_*}. They change what a test computes (a date's format, a message's language), so
+     * the suite is keyed on them, and they are the caller's: the session's forwarded values, then
+     * the shell running {@code jk}, and the engine's own only for a name neither carries. What
+     * {@code TestEnv} seeds every test JVM with and {@code SuiteEnvKeys} keys, from this one
+     * resolution, so the key is what the JVM got. Sorted by name. The terminal is not among them:
+     * a test JVM gets a fixed {@code TERM} ({@code TestEnv}), so a suite does not rerun because it
+     * was started from another terminal.
+     */
+    public static Map<String, String> locale() {
+        Map<String, String> client = clientEnv();
+        RequestShell shell = RequestShell.current();
+        Set<String> names = new TreeSet<>();
+        for (String name : client.keySet()) if (localeName(name)) names.add(name);
+        if (shell != null) for (String name : shell.vars().keySet()) if (localeName(name)) names.add(name);
+        for (String name : ProcessEnv.all().keySet()) if (localeName(name)) names.add(name);
+        Map<String, String> out = new TreeMap<>();
+        for (String name : names) {
+            String value = client.get(name);
+            if (value == null && shell != null) value = shell.get(name);
+            if (value == null) value = ProcessEnv.get(name);
+            if (value != null) out.put(name, value);
+        }
+        return Collections.unmodifiableMap(out);
+    }
+
+    /** Whether {@code name} is one of {@link #locale()}'s. */
+    static boolean localeName(String name) {
+        return name.equals("LANG") || name.equals("LANGUAGE") || name.startsWith("LC_");
+    }
+
     /** {@code names} resolved through {@code env}, in listed order, omitting those it does not have. */
     public static Map<String, String> resolve(List<String> names, Function<String, @Nullable String> env) {
         Map<String, String> out = new LinkedHashMap<>();
@@ -283,6 +315,12 @@ public final class BuildEnv {
     private static final Set<String> SESSION_CHURN = Set.of(
             "COLUMNS",
             "LINES",
+            "TERM",
+            "COLORTERM",
+            "NO_COLOR",
+            "FORCE_COLOR",
+            "CLICOLOR",
+            "CLICOLOR_FORCE",
             "ITERM_SESSION_ID",
             "TMUX",
             "TMUX_PANE",

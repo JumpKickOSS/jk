@@ -37,8 +37,10 @@ class WorkerEnvTest {
     void only_the_machine_and_the_workers_own_jk_settings_come_through() {
         Map<String, String> out = WorkerEnv.compose(ENGINE, Map.of(), false, Map.of(), false);
 
+        assertThat(out).containsOnlyKeys("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "JK_HOME", "JK_NONINTERACTIVE");
         assertThat(out)
-                .containsOnlyKeys("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "JK_HOME", "JK_NONINTERACTIVE");
+                .as("the daemon's terminal is no worker's: a test JVM gets a fixed one")
+                .doesNotContainKey("TERM");
         assertThat(out).doesNotContainKeys("FAKE_SECRET", "GITHUB_TOKEN", "SSH_AUTH_SOCK");
         // Credentials and the daemon's toolchain pin live in the JK_ namespace too; a prefix rule
         // would have let every one of them through.

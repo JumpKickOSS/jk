@@ -66,7 +66,6 @@ public final class WorkerEnv {
             "TEMP",
             "LANG",
             "LANGUAGE",
-            "TERM",
             "SystemRoot",
             "SystemDrive",
             "windir",
