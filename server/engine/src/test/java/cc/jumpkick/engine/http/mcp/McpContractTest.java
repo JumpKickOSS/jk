@@ -118,7 +118,7 @@ class McpContractTest {
     void bind_filters_history_without_dir() {
         call("bind", "{\"dir\":\"/ws\"}");
         Map<String, Object> hist = call("history", "{}");
-        assertThat(number(hist, "totalMatched").intValue()).isEqualTo(6);
+        assertThat(number(hist, "count").intValue()).isEqualTo(6);
         List<Map<String, Object>> records = objects(hist, "records");
         assertThat(records).allMatch(r -> "/ws".equals(r.get("dir")));
     }

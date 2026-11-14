@@ -11,7 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** {@code history} — recent runs as budgeted summaries; {@code view=full} is the raw journal. */
+/**
+ * {@code history} — recent runs as summaries, a page at a time. It reads records only until the
+ * page is full; {@code details} and {@code diagnostics} carry what a raw record would.
+ */
 public final class HistoryTool implements McpTool {
 
     @Override
@@ -19,7 +22,8 @@ public final class HistoryTool implements McpTool {
         return new Spec(
                 "history",
                 "Recent runs as summaries (id, success, failed modules, diagnostic count). "
-                        + "Default view=summary. Filters: dir, projectId, success, kind, limit, next.",
+                        + "Filters: dir, projectId, success, kind, limit, next. "
+                        + "details and diagnostics read one run in depth.",
                 McpSchemas.object(Map.of(
                         "limit",
                         McpSchemas.integer("Max rows (default 10, max 200)"),
@@ -32,40 +36,38 @@ public final class HistoryTool implements McpTool {
                         "kind",
                         McpSchemas.string("build | test | lock | …"),
                         "success",
-                        McpSchemas.bool("Only successful or only failed runs"),
-                        "view",
-                        McpSchemas.string("summary (default) or full (raw journal — avoid)"))));
+                        McpSchemas.bool("Only successful or only failed runs"))));
     }
 
     @Override
     public Map<String, Object> call(McpCall in) {
         int limit = in.count("limit", 10, 1, 200);
         int skip = in.count("next", 0, 0, Integer.MAX_VALUE);
-        String view = in.str("view");
-        boolean full = "full".equalsIgnoreCase(view);
         String dir = in.dir();
         String projectId = in.str("projectId");
         String kind = in.str("kind");
         Boolean success = in.tri("success");
 
-        List<Object> matched = new ArrayList<>();
-        for (String raw : in.ctx().history()) {
-            Map<String, Object> rec = McpHistoryViews.parseRecord(raw);
+        List<String> history = in.ctx().history();
+        List<Object> page = new ArrayList<>();
+        int matched = 0;
+        int scanned = 0;
+        for (int i = 0; i < history.size() && page.size() < limit; i++) {
+            scanned++;
+            Map<String, Object> rec = McpHistoryViews.parseRecord(history.get(i));
             if (rec == null) continue;
             if (!McpHistoryViews.matches(rec, dir, projectId, success, kind)) continue;
-            matched.add(full ? rec : McpHistoryViews.summarize(rec));
+            if (matched++ >= skip) page.add(McpHistoryViews.summarize(rec));
         }
-        int total = matched.size();
-        int from = Math.min(skip, total);
-        int to = Math.min(from + limit, total);
-        List<Object> page = new ArrayList<>(matched.subList(from, to));
-        boolean truncated = to < total;
-        Object next = truncated ? Integer.valueOf(to) : null;
+        // More rows are left unread: offer the next page without reading them to count matches.
+        boolean truncated = page.size() >= limit && scanned < history.size();
+        Object next = truncated ? Integer.valueOf(skip + page.size()) : null;
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("records", page);
         fields.put("count", page.size());
-        fields.put("totalMatched", total);
         String hint = truncated ? "history next=" + next : null;
-        return in.ok(McpEnvelope.of("history", fields, truncated, next, hint), page.size() + " of " + total + " runs");
+        return in.ok(
+                McpEnvelope.of("history", fields, truncated, next, hint),
+                page.size() + (truncated ? " runs, more with next" : " runs"));
     }
 }
