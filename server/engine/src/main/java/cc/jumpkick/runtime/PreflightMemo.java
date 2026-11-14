@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
@@ -708,6 +709,10 @@ public final class PreflightMemo {
                 }
             }
             feedNodeBuild(md, moduleDir);
+            // [env] reaches the compilers and plugin steps a -S build runs too, and keys them.
+            if (project != null) {
+                for (String token : WorkerEnv.keyTokens(project.build().env(), moduleDir)) feed(md, token);
+            }
             List<String> found = new ArrayList<>();
             if (!skipTests && project != null) {
                 for (String token : MemoInputs.testInputs(moduleDir, project, found)) feed(md, "test:" + token);

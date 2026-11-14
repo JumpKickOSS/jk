@@ -769,6 +769,7 @@ class ActionKeyTest {
                 List.of(),
                 List.of(new KotlincRequest.Plugin("all-open", pluginV1, List.of())),
                 null,
+                List.of(),
                 List.of());
         var upgraded = new KotlincRequest(
                 List.of(src),
@@ -782,6 +783,7 @@ class ActionKeyTest {
                 List.of(),
                 List.of(new KotlincRequest.Plugin("all-open", pluginV2, List.of())),
                 null,
+                List.of(),
                 List.of());
 
         assertThat(ActionKey.forKotlinc("compile-main", base, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY))

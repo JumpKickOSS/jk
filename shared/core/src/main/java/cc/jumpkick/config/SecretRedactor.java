@@ -209,6 +209,27 @@ public final class SecretRedactor {
     }
 
     /**
+     * {@link #redact} for text a capture clipped with any of {@code markers}: a secret a clip cut
+     * short, which the exact-substring pass cannot match, is masked where it dangles before a
+     * marker too.
+     */
+    public String redactClipped(String text, String... markers) {
+        String out = redact(text);
+        if (out == null || out.isEmpty() || secrets.isEmpty()) return out;
+        for (String marker : markers) {
+            if (!out.contains(marker)) continue;
+            StringBuilder b = new StringBuilder(out.length());
+            int from = 0;
+            for (int at = out.indexOf(marker); at >= 0; at = out.indexOf(marker, from)) {
+                b.append(maskTrailingSecretPrefix(out.substring(from, at))).append(marker);
+                from = at + marker.length();
+            }
+            out = b.append(out, from, out.length()).toString();
+        }
+        return out;
+    }
+
+    /**
      * Redact every element and carry the proof in the type: {@link Redacted} has no other mint.
      *
      * <p>This is the shape a terminal event wants — {@code ProtoEvents.workspaceFinish} takes

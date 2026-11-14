@@ -155,7 +155,8 @@ public final class ModuleOutputs {
                                     moduleDir,
                                     compact,
                                     build.build(),
-                                    SessionContext.current().testSelection()),
+                                    SessionContext.current().testSelection(),
+                                    SessionContext.current().profile()),
                             BuildLayout.of(moduleDir, build),
                             null)
                     .isEmpty();

@@ -2171,7 +2171,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 290, edges = 1059 }
+"server/engine" = { classes = 291, edges = 1064 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
@@ -2220,7 +2220,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestCompileSteps"
-value  = 28
+value  = 27
 reason = "PlannerTest's steps become per-plan TestCompileSteps (compile-test) and TestSteps (run-tests), each body beside its predictor, which removes PlannerTest's entry of 36, PlannerTestForecast's of 18 and the PlannerTest~TestLaunch mutual pair; the two step classes read the test owners PlannerTest and PlannerTestForecast read between them, and CorePlan builds both"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
@@ -2591,6 +2591,10 @@ population = { files = 1920 }
 [test-stamp-extras-owner]
 [test-stamp-extras-owner.populations]
 "server/engine" = { classes = 1745, sites = 124284 }
+
+[test-suites-resolve-owner]
+[test-suites-resolve-owner.populations]
+"server/engine" = { classes = 1828, sites = 129692 }
 
 [test-tier-docs]
 population = { examined = 5 }

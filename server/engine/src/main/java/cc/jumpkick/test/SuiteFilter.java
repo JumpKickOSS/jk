@@ -109,7 +109,7 @@ public final class SuiteFilter {
      * tag claims; without it a tag claim is a possibility the runner settles.
      */
     public SuiteFilter withTags(Function<String, @Nullable ClassTags> lookup) {
-        if (claimedTags().isEmpty()) return this;
+        if (!readsTags()) return this;
         return new SuiteFilter(declared, selected, directoryClasses, groups, part, runs, lookup);
     }
 
@@ -198,10 +198,10 @@ public final class SuiteFilter {
      * The runner's membership rule, one {@code --member} value each: {@code <any tags>|<no tags>|<class
      * regex>}, comma-separated tag lists. A test runs when one holds: its class matches the regex,
      * it carries one of the first tags (when there are any) and none of the second. Empty when no
-     * declared suite claims a tag, as {@link #body} then decides alone.
+     * declared suite claims or excludes a tag ({@link #readsTags}), as {@link #body} then decides alone.
      */
     public List<String> members() {
-        if (claimedTags().isEmpty()) return List.of();
+        if (!readsTags()) return List.of();
         List<String> out = new ArrayList<>();
         for (Clause clause : clauses()) {
             out.add(String.join(",", clause.any()) + "|" + String.join(",", clause.none()) + "|"
@@ -230,7 +230,7 @@ public final class SuiteFilter {
     public Predicate<String> acceptor() {
         List<Clause> clauses = clauses();
         String body = body();
-        if (body == null && claimedTags().isEmpty()) return name -> true;
+        if (body == null && !readsTags()) return name -> true;
         List<Pattern> patterns = new ArrayList<>();
         for (Clause clause : clauses) patterns.add(Pattern.compile("^(?:" + regex(clause.classes()) + ")$"));
         return name -> {
@@ -300,7 +300,7 @@ public final class SuiteFilter {
      */
     public @Nullable String classHint(Path testClasses, List<String> classPatterns) {
         if (declared.isEmpty() || classPatterns.isEmpty() || !Files.isDirectory(testClasses)) return null;
-        SuiteFilter read = claimedTags().isEmpty() ? this : withTags(classTagsIn(testClasses));
+        SuiteFilter read = readsTags() ? withTags(classTagsIn(testClasses)) : this;
         Pattern named = Pattern.compile(JUnitClassFilter.patternRegex(classPatterns));
         Map<String, List<String>> bySuite = new LinkedHashMap<>();
         for (String className : compiledClasses(testClasses)) {
@@ -332,6 +332,17 @@ public final class SuiteFilter {
                 JUnitClassFilter.patternRegex(classPatterns), JUnitClassFilter.excludeBody(excludeClasses), body()));
         return compiledClasses(testClasses, true).stream()
                 .anyMatch(name -> accepted.matcher(name).matches());
+    }
+
+    /**
+     * Whether a test's tags decide which suite runs it: a declared suite claims a tag, or excludes
+     * one, which class names alone cannot settle.
+     */
+    private boolean readsTags() {
+        for (DeclaredSuite suite : declared.values()) {
+            if (!suite.tags().isEmpty() || !suite.excludeTags().isEmpty()) return true;
+        }
+        return false;
     }
 
     /** Every tag a declared suite claims: the tags the default and undeclared directory suites leave out. */
@@ -620,7 +631,7 @@ public final class SuiteFilter {
         return out;
     }
 
-    /** The classes a directory suite's sources declare, by their paths under the suite's roots. */
+    /** The classes a directory suite's sources declare ({@link SourceClassNames}). */
     private static List<String> sourceClasses(Path moduleDir, boolean compact, String suite) {
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
@@ -631,10 +642,7 @@ public final class SuiteFilter {
         try {
             for (Path root : roots) {
                 for (String ext : List.of(".java", ".kt", ".groovy", ".scala")) {
-                    for (Path source : TestSuites.collectExt(root, ext)) {
-                        String rel = root.relativize(source).toString().replace('\\', '/');
-                        out.add(rel.substring(0, rel.length() - ext.length()).replace('/', '.'));
-                    }
+                    for (Path source : TestSuites.collectExt(root, ext)) out.addAll(SourceClassNames.of(root, source));
                 }
             }
         } catch (IOException e) {

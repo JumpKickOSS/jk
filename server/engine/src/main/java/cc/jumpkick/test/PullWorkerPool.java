@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -95,6 +96,7 @@ final class PullWorkerPool {
         var lastClasses = new ArrayList<AtomicReference<String>>();
         var handlerFailures = new ArrayList<AtomicReference<@Nullable RuntimeException>>();
         var commands = new ArrayList<AtomicReference<List<String>>>();
+        SecretRedactor secrets = launcher.secrets();
 
         for (int w = 0; w < actualWorkers; w++) {
             // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
@@ -102,7 +104,7 @@ final class PullWorkerPool {
             final int workerId = workerIdBase + w + 1;
             final int idx = w;
             List<String> args = launcher.pullWorkerArgs(workerId, testClassesDir);
-            var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel);
+            var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel, secrets);
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
             captures.add(crash);
@@ -252,8 +254,7 @@ final class PullWorkerPool {
             AtomicReference<List<String>> command) {
         BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, done, lastClass);
         Consumer<String> passthrough = line -> {
-            crash.add(line);
-            aggregator.userOutput(line);
+            crash.add(aggregator.userOutput(line));
         };
 
         try {

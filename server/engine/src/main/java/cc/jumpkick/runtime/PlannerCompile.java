@@ -221,7 +221,8 @@ public final class PlannerCompile {
                 .extraOptions(javacOpts)
                 .javaHome(in.javaHome())
                 .pinnedJdk(in.pinnedJdk())
-                .processorPath(processorPath);
+                .processorPath(processorPath)
+                .env(in.env());
         if (in.resources() != null && ActionKey.processorsMayRun(processorPath, javacOpts)) {
             req.resourcesDigest(resourcesDigest(in.resources(), in.layout()));
         }
@@ -287,7 +288,8 @@ public final class PlannerCompile {
             ScalaCompile.@Nullable Setup scala,
             @Nullable Path mainClasses,
             boolean discover,
-            boolean pinnedJdk) {
+            boolean pinnedJdk,
+            List<String> env) {
 
         /** A compile-test that discovers classpath processors when it declares none. */
         public TestCompile(
@@ -315,7 +317,8 @@ public final class PlannerCompile {
                     scala,
                     mainClasses,
                     true,
-                    false);
+                    false,
+                    List.of());
         }
     }
 
@@ -353,6 +356,7 @@ public final class PlannerCompile {
                 .extraOptions(ModularCompile.testOptions(testJavacOptions(in), in.mainClasses(), in.sources()))
                 .javaHome(in.javaHome())
                 .pinnedJdk(in.pinnedJdk())
+                .env(in.env())
                 .processorPath(
                         in.discover() || !in.processorPath().isEmpty()
                                 ? effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath)

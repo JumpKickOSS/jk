@@ -37,8 +37,10 @@ class WorkerEnvTest {
     void only_the_machine_and_the_workers_own_jk_settings_come_through() {
         Map<String, String> out = WorkerEnv.compose(ENGINE, Map.of(), false, Map.of(), false);
 
+        assertThat(out).containsOnlyKeys("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "JK_HOME", "JK_NONINTERACTIVE");
         assertThat(out)
-                .containsOnlyKeys("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "JK_HOME", "JK_NONINTERACTIVE");
+                .as("the daemon's terminal is no worker's: a test JVM gets a fixed one")
+                .doesNotContainKey("TERM");
         assertThat(out).doesNotContainKeys("FAKE_SECRET", "GITHUB_TOKEN", "SSH_AUTH_SOCK");
         // Credentials and the daemon's toolchain pin live in the JK_ namespace too; a prefix rule
         // would have let every one of them through.
@@ -121,6 +123,9 @@ class WorkerEnvTest {
                 .as("with nothing on the request the engine's own value passes")
                 .containsEntry("DISPLAY", ":0");
         assertThat(WorkerEnv.allowed("XAUTHORITY", false)).isTrue();
+        assertThat(WorkerEnv.allowed("XDG_RUNTIME_DIR", false))
+                .as("WAYLAND_DISPLAY names a socket under it")
+                .isTrue();
     }
 
     @Test
@@ -141,6 +146,12 @@ class WorkerEnvTest {
         assertThat(WorkerEnv.compose(engine, Map.of(), false, Map.of(), false))
                 .as("with nothing on the request the engine's own value passes")
                 .containsEntry("DOCKER_HOST", "unix:///var/run/docker.sock");
+        assertThat(WorkerEnv.allowed("TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX", false))
+                .as("a corporate registry mirror")
+                .isTrue();
+        assertThat(WorkerEnv.allowed("CONTAINER_HOST", false))
+                .as("Podman's daemon")
+                .isTrue();
     }
 
     @Test

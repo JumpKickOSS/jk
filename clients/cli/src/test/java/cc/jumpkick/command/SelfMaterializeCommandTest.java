@@ -3,10 +3,13 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.system.SelfCommand;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Invocation;
@@ -57,6 +60,27 @@ class SelfMaterializeCommandTest {
         Path cfg = JkDirs.userConfigFile();
         assertThat(cfg).exists();
         assertThat(Files.readString(cfg)).contains("nerd-font = \"auto\"");
+    }
+
+    /**
+     * The installers name the client they just put in place; it is recorded beside the engine, in
+     * the store, so the first {@code jk self update}'s rollback can put it back.
+     */
+    @Test
+    void materialize_records_the_installed_client_beside_its_engine(@TempDir Path tmp) throws Exception {
+        Path jar = tmp.resolve("jk-engine-" + JkVersion.VERSION + ".jar");
+        Files.writeString(jar, "engine-bytes");
+        Path client = tmp.resolve("jk");
+        Files.writeString(client, "installed client");
+
+        int[] exit = {0};
+        Capture.both(() -> exit[0] = materialize(client.toString(), jar.toString()));
+
+        assertThat(exit[0]).isZero();
+        String sha = Hashing.sha256Hex(client);
+        assertThat(EngineInstall.current().liveClient())
+                .hasValueSatisfying(c -> assertThat(c.sha256()).isEqualTo(sha));
+        assertThat(JkStores.storeCas().pathFor(sha)).hasContent("installed client");
     }
 
     @Test

@@ -10,15 +10,12 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
-import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -163,12 +160,20 @@ public final class TestEnv {
         return forModule(project, moduleDir, layout, false);
     }
 
+    /** The {@code TERM} every test JVM gets unless the module declares its own. */
+    static final String TERM = "dumb";
+
     private static WorkerEnv forModule(JkBuild project, Path moduleDir, BuildLayout layout, boolean seed)
             throws IOException {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
         out.putAll(BuildEnv.machine());
+        // The caller's locale, over the engine's: what the suite is keyed on.
+        out.putAll(BuildEnv.locale());
+        // A fixed terminal, keyed by nothing: a suite started from a tmux pane, an IDE or an agent
+        // shell runs the same. A module that needs the caller's declares TERM in [env].
+        out.put("TERM", TERM);
         // Sandbox next so a declared value replaces it. The home and the temp root are outside the
         // project (TestHomes). Prepared here — created and stamped as in use — so anything the
         // build stages into it before the suite launches survives the reaper another module's
@@ -204,9 +209,7 @@ public final class TestEnv {
                 moduleDir,
                 target,
                 new TestEnvValues.Mode.Launch(buildEnv::apply));
-        List<String> forwarded = new ArrayList<>();
-        for (EnvDecl d : project.build().testEnv()) if (d instanceof EnvDecl.Forward f) forwarded.add(f.name());
-        WorkerEnv.fileSecrets(moduleDir, forwarded, testEnv);
+        WorkerEnv.fileSecrets(moduleDir, project.build().testEnv(), testEnv);
         out.putAll(testEnv);
         out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR)));
         return WorkerEnv.policy(policy).with(out);

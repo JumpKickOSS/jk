@@ -2,11 +2,17 @@
 package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cli.engine.InstallLock.Mode;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -200,6 +207,54 @@ class InstallLockTest {
                 other.awaitHeld();
                 other.release();
             }
+        }
+    }
+
+    @Test
+    void a_run_set_aside_for_its_own_install_is_not_listed_as_holding_the_lock_shared() throws Exception {
+        long me = ProcessHandle.current().pid();
+        try (InstallLock.Hold run = InstallLock.shared(lock(), "jk snapshot")) {
+            try (InstallLock.Hold install = InstallLock.exclusive(lock(), "jk snapshot (installing jk)")) {
+                assertThat(InstallLock.holders(lock()))
+                        .extracting(InstallLock.Holder::pid, InstallLock.Holder::mode)
+                        .containsExactly(tuple(me, Mode.EXCLUSIVE));
+            }
+        }
+    }
+
+    /**
+     * When taking back a set-aside run fails (an interrupt while another session holds the lock,
+     * here a conflicting lock in this JVM), the run's own close must not unbalance the count: a
+     * later run in this JVM still has to take the OS lock and hold an install off.
+     */
+    @Test
+    void a_failed_take_back_of_a_set_aside_run_leaves_later_runs_locked() throws Exception {
+        AtomicReference<FileChannel> intruder = new AtomicReference<>();
+        try (var other = InstallLockHolderMain.start(lock(), "shared", "jk guard")) {
+            other.awaitHeld();
+            InstallLock.Hold run = InstallLock.shared(lock(), "jk snapshot");
+            InstallLock.notices(line -> {
+                try {
+                    FileChannel ch = FileChannel.open(lock(), StandardOpenOption.WRITE, StandardOpenOption.READ);
+                    intruder.set(ch);
+                    ch.tryLock(Long.MAX_VALUE - 1, 1, true);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+            assertThatThrownBy(() -> InstallLock.exclusive(lock(), "jk snapshot (installing jk)"))
+                    .isInstanceOf(OverlappingFileLockException.class);
+            InstallLock.notices(line -> {});
+            FileChannel conflicting = intruder.get();
+            if (conflicting != null) conflicting.close();
+            other.release();
+            run.close();
+        }
+        try (InstallLock.Hold later = InstallLock.shared(lock(), "jk test");
+                var install = InstallLockHolderMain.start(lock(), "exclusive", "jk snapshot")) {
+            assertThat(install.nextLine(Duration.ofSeconds(60)))
+                    .as("an install waits for this JVM's run")
+                    .startsWith("WAIT ");
         }
     }
 

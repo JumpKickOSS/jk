@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -54,7 +53,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * configured roots beyond its resources directory.
      */
     static SuiteResources of(Path moduleDir, boolean compact, List<String> compiled, List<Path> defaultExtra) {
-        if (compiled.size() < 2) return NONE;
+        if (!splits(compiled)) return NONE;
         Map<String, List<Path>> out = new LinkedHashMap<>();
         for (String suite : compiled) {
             out.put(suite, new ArrayList<>(ModuleLayout.suiteResourceDirs(moduleDir, compact, List.of(suite))));
@@ -121,6 +120,25 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
         return new CompiledTests(false, sources, keys, suiteResDirs, apart.bySuite());
     }
 
+    /** Whether a run compiling {@code compiled} runs its directory suites apart, mirroring none of their resources. */
+    static boolean splits(List<String> compiled) {
+        return compiled.size() >= 2;
+    }
+
+    /**
+     * Whether {@code testClasses} lacks a suite resource a run compiling {@code compiled} mirrors
+     * into it: the one directory suite's resource roots, none when the suites run apart. The
+     * forecast's question, answered by the mirror's own rule.
+     */
+    static boolean mirroredResourcesOutOfSync(
+            Path moduleDir, boolean compact, List<String> compiled, Path testClasses) {
+        if (splits(compiled)) return false;
+        for (Path root : ModuleLayout.suiteResourceDirs(moduleDir, compact, compiled)) {
+            if (TaskForecaster.resourcesOutOfSync(root, testClasses)) return true;
+        }
+        return false;
+    }
+
     /** Whether the suites run apart, each with its own roots, rather than over the tree's copy. */
     boolean split() {
         return !bySuite.isEmpty();
@@ -136,6 +154,20 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
     }
 
     /**
+     * The launcher of the launch named {@code launch}, whose JVMs get {@code settings}. Asked only
+     * for a launch that starts, right before it starts. The name is stable under one run-tests
+     * stamp: {@link #ONE_LAUNCH} for a run in one launch, else the directory suite and the set of
+     * suites the launch runs, so what a launch left out is answered per launch.
+     */
+    @FunctionalInterface
+    interface Launcher {
+        JUnitLauncher of(String launch, SuiteSettings settings);
+    }
+
+    /** The name of the only launch of a run that starts one. */
+    static final String ONE_LAUNCH = "";
+
+    /**
      * Run the selection: in one launch over {@code runtimeCp} when the tree holds the resources and
      * no selected suite has settings of its own, else one launch per directory suite, its roots
      * first, its classes alone, and within it one per {@link SuiteFilter#launches} set of suites,
@@ -148,14 +180,14 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             List<String> classPatterns,
             List<String> excludeClasses,
             AffectedTestRun.@Nullable Outcome affected,
-            Function<SuiteSettings, JUnitLauncher> launcher,
+            Launcher launcher,
             List<Path> runtimeCp,
             Launch launch)
             throws Exception {
         List<SuiteFilter.Launch> launches = suites.launches();
         if (!split() && launches.size() == 1) {
             SuiteSettings settings = launches.getFirst().settings();
-            return launch.run(launcher.apply(settings).withSuites(suites), runtimeCp, settings);
+            return launch.run(launcher.of(ONE_LAUNCH, settings).withSuites(suites), runtimeCp, settings);
         }
         Map<String, List<Path>> groups = split() ? bySuite : Collections.singletonMap(TestSuites.DEFAULT, List.of());
         TestSummary total = null;
@@ -165,17 +197,19 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             for (SuiteFilter.Launch shared : launches) {
                 SuiteFilter unit = launches.size() == 1 ? part : part.only(shared.suites());
                 if (unit == null) continue;
-                JUnitLauncher one = launcher.apply(shared.settings()).withSuites(unit);
+                List<String> names = null;
                 if (affected != null) {
-                    List<String> names = affected.classNames().stream()
+                    names = affected.classNames().stream()
                             .filter(unit.acceptor())
                             .toList();
                     if (names.isEmpty()) continue;
-                    one.withClassNames(names);
                 } else if (!classPatterns.isEmpty()
                         && !unit.namesCompiledClass(testClasses, classPatterns, excludeClasses)) {
                     continue;
                 }
+                String name = group.getKey() + ":" + String.join(",", new TreeSet<>(shared.suites()));
+                JUnitLauncher one = launcher.of(name, shared.settings()).withSuites(unit);
+                if (names != null) one.withClassNames(names);
                 List<Path> classpath = new ArrayList<>(group.getValue());
                 classpath.addAll(runtimeCp);
                 TestSummary ran = launch.run(one, classpath, shared.settings());

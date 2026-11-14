@@ -3,8 +3,6 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.ResolvedSecrets;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -1111,14 +1109,8 @@ public final class BuildAccumulator {
     static @Nullable String redactEnv(String dir, @Nullable String text) {
         if (text == null || text.isEmpty()) return text;
         try {
-            Path root;
-            if (dir != null && !dir.isBlank()) {
-                root = Path.of(dir);
-            } else {
-                root = SessionContext.current().workingDir();
-            }
-            if (root == null) return text;
-            return ResolvedSecrets.plus(root, BuildEnv.secretsFor(root)).redact(text);
+            return BuildEnv.secretsFor(dir != null && !dir.isBlank() ? Path.of(dir) : null)
+                    .redact(text);
         } catch (RuntimeException e) {
             return text;
         }

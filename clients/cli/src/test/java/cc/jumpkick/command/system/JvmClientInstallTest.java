@@ -8,10 +8,13 @@ import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -52,15 +55,18 @@ class JvmClientInstallTest {
 
     @Test
     void the_windows_launcher_is_ascii_crlf_batch_with_the_same_order() {
+        Path bin = Path.of("C:\\Users\\x\\.jk\\bin");
         Path jar = Path.of("C:\\Users\\x\\.jk\\lib\\jk\\jk-1.2.3.jar");
         Path java = Path.of("C:\\jdk-25\\bin\\java.exe");
-        String script = JvmClientInstall.renderWindows(jar, java);
+        String script = JvmClientInstall.renderWindows(bin, jar, java, Map.of());
         assertThat(script).startsWith("@echo off\r\n");
         assertThat(script.chars().allMatch(c -> c < 128)).as("ASCII only").isTrue();
         assertThat(script.split("\r\n").length).isGreaterThan(5);
         assertThat(script.replace("\r\n", "")).doesNotContain("\n");
         assertThat(script)
                 .contains("-D" + JvmClient.JAR_PROPERTY + "=%JK_JAR%")
+                .contains("for %%I in (\"%~dp0..\") do set \"JK_ROOT=%%~fI\"\r\n")
+                .contains("set \"JK_JAR=%JK_ROOT%\\lib\\jk\\jk-1.2.3.jar\"\r\n")
                 .contains("-Djk.argv0=%~n0")
                 .contains("%JK_CLIENT_OPTS%")
                 .contains("-jar \"%JK_JAR%\" %* & goto :jk_exit\r\n:jk_exit\r\n")
@@ -84,7 +90,7 @@ class JvmClientInstallTest {
                 "@copy /y \"" + replacement + "\" \"" + launcher + ".new\" >nul\r\n"
                         + "@move /y \"" + launcher + ".new\" \"" + launcher + "\" >nul\r\n"
                         + "@exit /b 7\r\n");
-        String original = JvmClientInstall.renderWindows(dir.resolve("a.jar"), dir.resolve("java.exe"))
+        String original = JvmClientInstall.renderWindows(dir, dir.resolve("a.jar"), dir.resolve("java.exe"), Map.of())
                 .replaceFirst(
                         "(?m)^\"%JAVA%\".*? & goto :jk_exit",
                         "call \"" + swap.toString().replace("\\", "\\\\") + "\" & goto :jk_exit");
@@ -213,8 +219,9 @@ class JvmClientInstallTest {
 
     /**
      * Once a native client is installed over the JVM one, nothing of the JVM client is left for
-     * {@code jk} to resolve to: on Windows the launcher and the jkx shim are parked beside the new
-     * {@code jk.exe}; on POSIX the native {@code jk} is left alone. The jars go either way.
+     * {@code jk} to resolve to: on Windows the launcher becomes a forwarder to the new {@code
+     * jk.exe} and the jkx shim is parked; on POSIX the native {@code jk} is left alone. The jars go
+     * either way.
      */
     @Test
     void retire_leaves_only_the_native_client(@TempDir Path tmp) throws Exception {
@@ -233,7 +240,10 @@ class JvmClientInstallTest {
             assertThat(nativeClient).hasBinaryContent(new byte[] {'M', 'Z'});
             assertThat(lib.resolve("jk-1.2.3.jar")).doesNotExist();
             if (windows) {
-                assertThat(bin.resolve("jk.bat")).doesNotExist();
+                assertThat(Files.readString(bin.resolve("jk.bat")))
+                        .as("the launcher forwards to jk.exe under its own name")
+                        .isEqualTo(JvmClientInstall.renderForwarder());
+                assertThat(bin.resolve("jk.bat.old")).doesNotExist();
                 assertThat(bin.resolve("jkx.cmd")).doesNotExist();
             }
         }
@@ -244,5 +254,93 @@ class JvmClientInstallTest {
         assertThat(JvmClientInstall.jarName("0.13.3")).isEqualTo("jk-0.13.3.jar");
         assertThat(JvmClientInstall.launcher(Path.of("/b"), false)).isEqualTo(Path.of("/b/jk"));
         assertThat(JvmClientInstall.launcher(Path.of("/b"), true)).isEqualTo(Path.of("/b/jk.bat"));
+    }
+
+    /** cmd.exe parses a batch file in the console's code page, so the launcher text must be ASCII. */
+    @Test
+    void the_windows_launcher_is_ascii_under_a_non_ascii_home() {
+        Path home = Path.of("/Users/Jos\u00e9/.jk");
+        String bat = JvmClientInstall.renderWindows(
+                home.resolve("bin"),
+                home.resolve("lib/jk/jk-1.0.0.jar"),
+                home.resolve("jdks/temurin-25/bin/java"),
+                Map.of());
+        assertThat(bat.chars().allMatch(c -> c < 128)).as(bat).isTrue();
+        assertThat(bat)
+                .contains("set \"JK_JAR=%JK_ROOT%\\lib\\jk\\jk-1.0.0.jar\"")
+                .contains("if exist \"%JK_ROOT%\\jdks\\temurin-25\\bin\\java\"");
+    }
+
+    /** A JDK in the user's profile, outside the home, is named from the profile's variable. */
+    @Test
+    void a_jdk_in_a_non_ascii_profile_is_named_from_its_environment_variable() {
+        String bat = JvmClientInstall.renderWindows(
+                Path.of("C:\\jk\\bin"),
+                Path.of("C:\\jk\\lib\\jk\\jk-1.0.0.jar"),
+                Path.of("C:\\Users\\Jos\u00e9\\.jdks\\temurin-25\\bin\\java.exe"),
+                Map.of("USERPROFILE", "C:\\Users\\Jos\u00e9"));
+        assertThat(bat.chars().allMatch(c -> c < 128)).as(bat).isTrue();
+        assertThat(bat).contains("if exist \"%USERPROFILE%\\.jdks\\temurin-25\\bin\\java.exe\"");
+        assertThat(JvmClientInstall.batchPath(
+                        "C:\\Users\\Josiah\\x", "C:\\jk", Map.of("USERPROFILE", "C:\\Users\\Jos")))
+                .as("a prefix that is not a whole directory is no match")
+                .isEqualTo("C:\\Users\\Josiah\\x");
+    }
+
+    /** A non-ASCII path no variable names cannot be written into a batch file: refused, not mangled. */
+    @Test
+    void a_non_ascii_jdk_outside_every_known_root_is_refused() {
+        assertThatThrownBy(() -> JvmClientInstall.renderWindows(
+                        Path.of("C:\\jk\\bin"),
+                        Path.of("C:\\jk\\lib\\jk\\jk-1.0.0.jar"),
+                        Path.of("D:\\Entwicklung\\J\u00fcrgen\\jdk\\bin\\java.exe"),
+                        Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("JK_JAVA_HOME");
+    }
+
+    /**
+     * A JVM-to-native update runs inside the JVM launcher it retires: once java exits, cmd re-opens
+     * the launcher by name to run the rest of the java line. Retiring it must leave a file there
+     * that ends the run with the client's exit code.
+     */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void retiring_the_running_launcher_still_exits_with_the_client_s_code(@TempDir Path home) throws Exception {
+        Path bin = Files.createDirectories(home.resolve("bin"));
+        Path lib = Files.createDirectories(home.resolve("lib/jk"));
+        Files.write(lib.resolve("jk-1.0.0.jar"), new byte[] {1});
+        Path launcher = bin.resolve("jk.bat");
+        Path started = home.resolve("started");
+        Path go = home.resolve("go");
+        Path update = home.resolve("update.cmd");
+        Files.writeString(
+                update,
+                "@echo up> \"" + started + "\"\r\n"
+                        + ":wait\r\n"
+                        + "@if not exist \"" + go + "\" (ping -n 1 127.0.0.1 >nul & goto wait)\r\n"
+                        + "@exit /b 7\r\n");
+        Files.writeString(
+                launcher,
+                JvmClientInstall.renderWindows(bin, lib.resolve("jk-1.0.0.jar"), home.resolve("java.exe"), Map.of())
+                        .replaceFirst(
+                                "(?m)^\"%JAVA%\".*? & goto :jk_exit",
+                                "call \"" + update.toString().replace("\\", "\\\\") + "\" & goto :jk_exit"));
+        Path log = home.resolve("run.log");
+        Process run = new ProcessBuilder("cmd.exe", "/c", launcher.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(log.toFile())
+                .start();
+        long deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos();
+        while (!Files.exists(started) && System.nanoTime() < deadline) Thread.sleep(20);
+        assertThat(started).as("the launcher reached its java line").exists();
+
+        JvmClientInstall.retire(bin, lib, true);
+        Files.writeString(go, "go");
+
+        assertThat(run.waitFor(1, TimeUnit.MINUTES)).isTrue();
+        String out = Files.readString(log, StandardCharsets.ISO_8859_1);
+        assertThat(run.exitValue()).as(out).isEqualTo(7);
+        assertThat(out).doesNotContain("cannot be found");
     }
 }

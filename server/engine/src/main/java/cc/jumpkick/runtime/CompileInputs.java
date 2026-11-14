@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
@@ -84,7 +85,8 @@ final class CompileInputs {
             @Nullable Path groovyJar,
             ScalaCompile.@Nullable Setup scala,
             @Nullable ProcessorResources resources,
-            boolean pinnedJdk) {}
+            boolean pinnedJdk,
+            List<String> env) {}
 
     /**
      * compile-java's inputs over {@code sources}, the Java (and Scala) union the compile reads.
@@ -112,7 +114,8 @@ final class CompileInputs {
                 groovyJar,
                 scala,
                 new ProcessorResources(m.dir(), m.project(), m.shape().compact()),
-                m.pinnedJdk());
+                m.pinnedJdk(),
+                WorkerEnv.keyTokens(m.project().build().env(), m.dir()));
     }
 
     /**

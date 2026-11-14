@@ -401,7 +401,8 @@ public final class ForecastScope implements StepForecast.Scope {
         if (t != null) return t;
         Prepared p = prepared();
         var selection = SessionContext.current().testSelection();
-        List<String> selected = TestSupport.selectedSuites(dir, p.parsed().compact(), project.build(), selection);
+        List<String> selected =
+                TestSupport.selectedSuites(dir, p.parsed().compact(), project.build(), selection, knobs.profile());
         try {
             t = collectTests(p, selected);
         } catch (IOException e) {

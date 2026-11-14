@@ -479,6 +479,18 @@ instead  = "resolve paths through cc.jumpkick.host.JkDirs (JK_HOME, plus JK_STOR
 why      = "JumpKick has one home; a layout it does not have, named anywhere, misleads the reader"
 
 [[guards.single-home-root.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/BuildEnv.java"
+reason = "forwards XDG_RUNTIME_DIR, the session's runtime dir a Wayland socket name is relative to; it lays out no jk directory"
+
+[[guards.single-home-root.allow]]
+in     = "server/engine/src/test/java/cc/jumpkick/engine/plugin/WorkerEnvTest.java"
+reason = "asserts XDG_RUNTIME_DIR, the session's runtime dir, reaches a worker beside WAYLAND_DISPLAY"
+
+[[guards.single-home-root.allow]]
+in     = "docs/user/build.md"
+reason = "lists XDG_RUNTIME_DIR among the display variables a worker inherits; it names the desktop session's dir, no jk layout"
+
+[[guards.single-home-root.allow]]
 in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
 reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
 
@@ -961,6 +973,21 @@ reason = "the IDE model lists the provided jars; it keys nothing"
 in     = "cc.jumpkick.engine.http.mcp.tools.IdeTool"
 reason = "the IDE tool lists the provided jars; it keys nothing"
 
+# G146. Which suites a run runs is derived once. TestStampInputs.resolveSuites resolves the
+# effective selection (the active profile's tags and every-suite switch folded in) for compile-test,
+# the suite filter, the run-tests stamp, the forecast and the test-count estimate; a raw
+# TestSuites.resolve is a second answer, and a run that stamps one set of suites and runs another
+# stores a green marker over tests that never ran.
+[guards.test-suites-resolve-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.layout.TestSuites#resolve(**)", "cc.jumpkick.config.TestSelection#resolve(**)"]
+scope      = ["server/engine"]
+source-set = "main"
+owner      = "cc.jumpkick.runtime.TestStampInputs"
+fixture    = "server/engine/guard-fixtures/test-suites-resolve-owner"
+instead    = "TestStampInputs.resolveSuites(selection, dir, profile, compact, declared), or the plan's PlannerTest.resolveSuites"
+why        = "suites resolved apart from the stamp's derivation are suites a green marker vouches for without having run them"
+
 # G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway
 # enforces nullness only where the package says so, and a package that forgets the marker is a
 # package where every finding is silently off. The scope is every module NullMarking.enforcedRoots
@@ -1438,6 +1465,24 @@ scope      = ["server/*", "shared/*"]
 owner      = "cc.jumpkick.host.Log"
 instead    = "cc.jumpkick.host.Log.debug / info / warn / error, with Log.detail(key, value, …) for structure"
 why        = "a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink"
+
+# G147. Text that leaves a jk process is masked by one redactor per module: BuildEnv.secretsFor, the
+# module's .env names plus every value filed for its workspace. A sink that composes its own from
+# part of that (the filed values alone, or the .env names alone) masks less than the wire does,
+# which is how test reports came to print a .env value the terminal masked.
+[guards.redactor-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.config.ResolvedSecrets#plus(**)", "cc.jumpkick.config.SecretRedactor#from(**)"]
+scope      = ["server/*", "shared/*"]
+source-set = "main"
+owner      = "cc.jumpkick.config.BuildEnv"
+fixture    = "server/engine/guard-fixtures/redactor-owner"
+instead    = "BuildEnv.secretsFor(moduleDir), or BuildEnv.secretsFor(null) for work that carries no directory (the session's working directory)"
+why        = "a sink with a redactor of its own masks less than the wire, and a CI job that publishes it leaks what the terminal hid"
+
+[[guards.redactor-owner.allow]]
+in     = "cc.jumpkick.runtime.TestStampInputs"
+reason = "hashes the .env values its own lookup resolved into the run-tests stamp; it writes no text anywhere"
 
 # G97. A catch of Exception, Throwable or RuntimeException whose body is only a comment has written
 # down its intent and dropped its evidence. This rule measures the sites; the ratchet below holds

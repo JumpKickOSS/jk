@@ -30,8 +30,8 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 /**
- * Compiled test classes as the affected-tests ranker sees them: imported production types, JUnit
- * tags, naming heuristic. Read from the guard lane's test facts index when it is current, else by
+ * Compiled test classes as the affected-tests ranker and the suite filter see them: imported
+ * production types, JUnit tags as JUnit resolves them (nested, composed, inherited), naming heuristic. Read from the guard lane's test facts index when it is current, else by
  * one ASM pass over the class files.
  */
 public final class TestClassIndex {
@@ -70,57 +70,147 @@ public final class TestClassIndex {
         }
     }
 
+    /**
+     * One class file as read, before its tags are resolved: its direct {@code @Tag}s and the other
+     * annotations on it and on its members, by binary name, so a composed annotation can be followed.
+     */
+    private record Raw(
+            String name,
+            @Nullable String superName,
+            Set<String> classTags,
+            Set<String> classAnnotations,
+            Set<String> memberTags,
+            Set<String> memberAnnotations,
+            Set<String> refs) {}
+
     /** The entries as the class files would yield them, from the facts index. */
     static List<Entry> fromFacts(FactsIndex facts, Set<String> productionFqcs) {
-        List<Entry> out = new ArrayList<>();
+        List<Raw> raws = new ArrayList<>();
         for (ClassFacts c : facts.classList()) {
-            if (c.isNested() || c.isPackageInfo()) continue;
-            Set<String> imports = new LinkedHashSet<>();
-            for (String ref : c.typeRefs()) {
-                String fqc = Descriptors.binaryName(ref);
-                if (productionFqcs.contains(fqc)) imports.add(fqc);
-            }
+            if (c.isPackageInfo()) continue;
+            Set<String> refs = new LinkedHashSet<>();
+            for (String ref : c.typeRefs()) refs.add(Descriptors.binaryName(ref));
             Set<String> classTags = new LinkedHashSet<>();
-            tagsOf(c.annotations(), classTags);
-            Set<String> tags = new LinkedHashSet<>(classTags);
-            for (FieldFacts f : c.fields()) tagsOf(f.annotations(), tags);
-            for (MethodFacts m : c.methods()) tagsOf(m.annotations(), tags);
-            String name = c.binaryName();
-            out.add(new Entry(
-                    name, Set.copyOf(imports), Set.copyOf(tags), Set.copyOf(classTags), nameMatchSimple(name)));
+            Set<String> classAnnotations = new LinkedHashSet<>();
+            annotationsOf(c.annotations(), classTags, classAnnotations);
+            Set<String> memberTags = new LinkedHashSet<>();
+            Set<String> memberAnnotations = new LinkedHashSet<>();
+            for (FieldFacts f : c.fields()) annotationsOf(f.annotations(), memberTags, memberAnnotations);
+            for (MethodFacts m : c.methods()) annotationsOf(m.annotations(), memberTags, memberAnnotations);
+            raws.add(new Raw(
+                    c.binaryName(),
+                    c.superName() == null ? null : Descriptors.binaryName(c.superName()),
+                    classTags,
+                    classAnnotations,
+                    memberTags,
+                    memberAnnotations,
+                    refs));
         }
-        return List.copyOf(out);
+        return resolve(raws, productionFqcs);
     }
 
-    private static void tagsOf(List<AnnotationFacts> annotations, Set<String> tags) {
+    private static void annotationsOf(List<AnnotationFacts> annotations, Set<String> tags, Set<String> others) {
         for (AnnotationFacts a : annotations) {
-            if (a.desc().equals("Lorg/junit/jupiter/api/Tag;")) tags.addAll(a.value());
+            if (a.desc().equals(TAG)) tags.addAll(a.value());
+            else others.add(a.typeName());
         }
     }
 
     private static List<Entry> readClassFiles(Path testClassesDir, Set<String> productionFqcs) throws IOException {
-        List<Entry> out = new ArrayList<>();
+        List<Raw> raws = new ArrayList<>();
         PathUtil.forEachRegularFile(testClassesDir, (p, attrs) -> {
             if (!p.toString().endsWith(".class")) return;
-            String rel = testClassesDir.relativize(p).toString().replace('\\', '/');
-            if (rel.contains("$")) return;
+            if (p.getFileName().toString().equals("package-info.class")) return;
             byte[] bytes = Files.readAllBytes(p);
             Collector c = new Collector();
             new ClassReader(bytes).accept(c, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-            if (c.className == null || c.className.contains("$")) return;
+            if (c.className == null) return;
+            raws.add(new Raw(
+                    c.className,
+                    c.superName,
+                    c.classTags,
+                    c.classAnnotations,
+                    c.memberTags,
+                    c.memberAnnotations,
+                    c.refs));
+        });
+        return resolve(raws, productionFqcs);
+    }
+
+    /**
+     * Each top-level class's entry with its tags as JUnit reads them: a composed annotation counts
+     * as the tags it is meta-annotated with, a class inherits its superclass's tags and test
+     * methods, and a top-level class holds every tag its nested classes' tests carry. Types outside
+     * the tree (a library's composed annotation or base class) are not followed.
+     */
+    private static List<Entry> resolve(List<Raw> raws, Set<String> productionFqcs) {
+        Map<String, Raw> byName = new LinkedHashMap<>();
+        for (Raw r : raws) byName.put(r.name(), r);
+        Map<String, List<Raw>> nested = new LinkedHashMap<>();
+        for (Raw r : raws) {
+            int dollar = r.name().indexOf('$');
+            if (dollar > 0)
+                nested.computeIfAbsent(r.name().substring(0, dollar), k -> new ArrayList<>())
+                        .add(r);
+        }
+        List<Entry> out = new ArrayList<>();
+        for (Raw r : raws) {
+            if (r.name().indexOf('$') >= 0) continue;
+            Set<String> classTags = classTags(r, byName);
+            Set<String> tags = new LinkedHashSet<>(classTags);
+            tags.addAll(memberTags(r, byName));
+            Set<String> refs = new LinkedHashSet<>(r.refs());
+            for (Raw inner : nested.getOrDefault(r.name(), List.of())) {
+                tags.addAll(classTags(inner, byName));
+                tags.addAll(memberTags(inner, byName));
+                refs.addAll(inner.refs());
+            }
             Set<String> imports = new LinkedHashSet<>();
-            for (String ref : c.refs) {
+            for (String ref : refs) {
                 if (productionFqcs.contains(ref)) imports.add(ref);
             }
             out.add(new Entry(
-                    c.className,
-                    Set.copyOf(imports),
-                    Set.copyOf(c.tags),
-                    Set.copyOf(c.classTags),
-                    nameMatchSimple(c.className)));
-        });
+                    r.name(), Set.copyOf(imports), Set.copyOf(tags), Set.copyOf(classTags), nameMatchSimple(r.name())));
+        }
         return List.copyOf(out);
     }
+
+    /** The tags every test of {@code r} carries: on it, through its composed annotations, and its superclasses'. */
+    private static Set<String> classTags(Raw r, Map<String, Raw> byName) {
+        Set<String> out = new LinkedHashSet<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Raw at = r; at != null && seen.add(at.name()); at = superOf(at, byName)) {
+            out.addAll(at.classTags());
+            for (String a : at.classAnnotations()) out.addAll(metaTags(a, byName, new LinkedHashSet<>()));
+        }
+        return out;
+    }
+
+    /** The tags on {@code r}'s members and its superclasses' members, composed ones followed. */
+    private static Set<String> memberTags(Raw r, Map<String, Raw> byName) {
+        Set<String> out = new LinkedHashSet<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Raw at = r; at != null && seen.add(at.name()); at = superOf(at, byName)) {
+            out.addAll(at.memberTags());
+            for (String a : at.memberAnnotations()) out.addAll(metaTags(a, byName, new LinkedHashSet<>()));
+        }
+        return out;
+    }
+
+    private static @Nullable Raw superOf(Raw r, Map<String, Raw> byName) {
+        return r.superName() == null ? null : byName.get(r.superName());
+    }
+
+    /** The tags annotation type {@code type} stands for: those it is meta-annotated with, followed through its own annotations. */
+    private static Set<String> metaTags(String type, Map<String, Raw> byName, Set<String> seen) {
+        Raw annotation = byName.get(type);
+        if (annotation == null || !seen.add(type)) return Set.of();
+        Set<String> out = new LinkedHashSet<>(annotation.classTags());
+        for (String a : annotation.classAnnotations()) out.addAll(metaTags(a, byName, seen));
+        return out;
+    }
+
+    private static final String TAG = "Lorg/junit/jupiter/api/Tag;";
 
     /** Production simple name this test class name-matches, or empty. */
     public static String nameMatchSimple(String testFqc) {
@@ -154,10 +244,18 @@ public final class TestClassIndex {
         @Nullable
         String className;
 
+        @Nullable
+        String superName;
+
         final Set<String> refs = new LinkedHashSet<>();
-        final Set<String> tags = new LinkedHashSet<>();
         /** The tags on the class itself. */
         final Set<String> classTags = new LinkedHashSet<>();
+        /** The class's other annotations, by binary name. */
+        final Set<String> classAnnotations = new LinkedHashSet<>();
+        /** The tags on its fields and methods. */
+        final Set<String> memberTags = new LinkedHashSet<>();
+        /** Its fields' and methods' other annotations, by binary name. */
+        final Set<String> memberAnnotations = new LinkedHashSet<>();
 
         Collector() {
             super(Opcodes.ASM9);
@@ -167,6 +265,8 @@ public final class TestClassIndex {
         public void visit(
                 int version, int access, String name, String signature, String superName, String[] interfaces) {
             className = Type.getObjectType(name).getClassName();
+            this.superName =
+                    superName == null ? null : Type.getObjectType(superName).getClassName();
             addInternal(superName);
             if (interfaces != null) {
                 for (String i : interfaces) addInternal(i);
@@ -221,13 +321,12 @@ public final class TestClassIndex {
         /** {@code classLevel}: the annotation sits on the class itself, so its tags are inherited by every test. */
         private @Nullable AnnotationVisitor annotation(String descriptor, boolean classLevel) {
             addDesc(descriptor);
-            if ("Lorg/junit/jupiter/api/Tag;".equals(descriptor)) {
+            Set<String> tags = classLevel ? classTags : memberTags;
+            if (TAG.equals(descriptor)) {
                 return new AnnotationVisitor(Opcodes.ASM9) {
                     @Override
                     public void visit(String name, Object value) {
-                        if (value == null) return;
-                        tags.add(value.toString());
-                        if (classLevel) classTags.add(value.toString());
+                        if (value != null) tags.add(value.toString());
                     }
                 };
             }
@@ -243,6 +342,10 @@ public final class TestClassIndex {
                         return annotation(desc, classLevel);
                     }
                 };
+            }
+            if (descriptor.startsWith("L") && descriptor.endsWith(";")) {
+                (classLevel ? classAnnotations : memberAnnotations)
+                        .add(Type.getType(descriptor).getClassName());
             }
             return null;
         }

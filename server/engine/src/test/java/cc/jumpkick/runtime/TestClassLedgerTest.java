@@ -20,6 +20,7 @@ class TestClassLedgerTest {
 
     private static final String STAMP = "a".repeat(64);
     private static final String TASK = "run-tests:/ws/app/target/test-classes";
+    private static final String ONE = SuiteResources.ONE_LAUNCH;
 
     @TempDir
     Path tmp;
@@ -58,7 +59,7 @@ class TestClassLedgerTest {
     @Test
     void a_red_run_leaves_its_green_classes_settled_for_the_next_run_under_the_same_stamp() {
         TestClassLedger first = load();
-        assertThat(first.settledClasses()).as("nothing recorded yet").isEmpty();
+        assertThat(first.settledClasses(ONE)).as("nothing recorded yet").isEmpty();
         List<String> seen = new ArrayList<>();
         TestProgressListener l = first.recording(new TestProgressListener() {
             @Override
@@ -73,9 +74,9 @@ class TestClassLedgerTest {
         assertThat(seen).as("every event still reaches the step's own listener").hasSize(6);
 
         TestClassLedger next = load();
-        assertThat(next.settledClasses()).containsExactly("demo.OkTest");
+        assertThat(next.settledClasses(ONE)).containsExactly("demo.OkTest");
         assertThat(TestClassLedger.load(cache, "b".repeat(64), "g:app", "integration")
-                        .settledClasses())
+                        .settledClasses(ONE))
                 .as("another stamp vouches for nothing")
                 .isEmpty();
     }
@@ -91,7 +92,7 @@ class TestClassLedgerTest {
         run(l, "demo.OnlyNestedTest$Inner", "SUCCESSFUL");
         first.store(cache, TASK, STAMP);
 
-        assertThat(load().settledClasses())
+        assertThat(load().settledClasses(ONE))
                 .as("a failing nested class unsettles its outer class; a nested class alone settles nothing")
                 .containsExactly("demo.OtherTest");
     }
@@ -110,7 +111,7 @@ class TestClassLedgerTest {
         assertThat(second.passedOnRerun()).containsExactly("demo.RedTest");
         second.store(cache, TASK, STAMP);
 
-        assertThat(load().settledClasses()).containsExactly("demo.OkTest", "demo.RedTest");
+        assertThat(load().settledClasses(ONE)).containsExactly("demo.OkTest", "demo.RedTest");
     }
 
     @Test
@@ -123,27 +124,29 @@ class TestClassLedgerTest {
         first.store(cache, TASK, STAMP);
 
         TestClassLedger next = load();
-        List<String> settled = next.settledClasses();
         TestSummary rerun = new TestSummary(1, 1, 0, 0, 1, List.of(), Map.of(), 1);
-        TestSummary whole = next.withSettled(rerun, settled);
+        assertThat(next.withSettled(rerun))
+                .as("no launch has left anything out yet")
+                .isSameAs(rerun);
+        assertThat(next.enter(ONE)).containsExactly("demo.OkTest");
+        TestSummary whole = next.withSettled(rerun);
         assertThat(whole.total()).isEqualTo(5);
         assertThat(whole.succeeded()).isEqualTo(4);
         assertThat(whole.skipped()).isEqualTo(1);
         assertThat(whole.failed()).isZero();
         assertThat(whole.classes()).isEqualTo(2);
-        assertThat(next.withSettled(rerun, List.of())).isSameAs(rerun);
     }
 
     @Test
     void nothing_is_stored_without_a_stamp_or_without_a_finished_class() {
         TestClassLedger ledger = load();
         ledger.store(cache, TASK, STAMP);
-        assertThat(load().settledClasses()).isEmpty();
+        assertThat(load().settledClasses(ONE)).isEmpty();
 
         TestProgressListener l = ledger.recording(TestProgressListener.noop());
         run(l, "demo.OkTest", "SUCCESSFUL");
         ledger.store(cache, TASK, null);
-        assertThat(load().settledClasses())
+        assertThat(load().settledClasses(ONE))
                 .as("a stamp that failed open keys nothing")
                 .isEmpty();
     }
@@ -161,7 +164,7 @@ class TestClassLedgerTest {
         } finally {
             Thread.interrupted();
         }
-        assertThat(load().settledClasses()).containsExactly("demo.OkTest");
+        assertThat(load().settledClasses(ONE)).containsExactly("demo.OkTest");
     }
 
     @Test
@@ -173,7 +176,7 @@ class TestClassLedgerTest {
         // Every class finished green, but a worker exited non-zero after DONE: one failure, no class.
         first.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(4, 3, 1, 0, List.of()));
 
-        assertThat(load().settledClasses())
+        assertThat(load().settledClasses(ONE))
                 .as("the next run under this stamp runs every class again")
                 .isEmpty();
     }
@@ -185,13 +188,13 @@ class TestClassLedgerTest {
         run(l, "demo.OkTest", "SUCCESSFUL");
         run(l, "demo.RedTest", "FAILED", "FAILED");
         first.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(3, 1, 2, 0, List.of()));
-        assertThat(load().settledClasses()).containsExactly("demo.OkTest");
+        assertThat(load().settledClasses(ONE)).containsExactly("demo.OkTest");
 
         // A second failure beyond the red class's two, such as a lost-tests shortfall row, stores nothing new.
         TestClassLedger second = load();
         run(second.recording(TestProgressListener.noop()), "demo.RedTest", "SUCCESSFUL", "SUCCESSFUL");
         second.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(3, 2, 1, 0, List.of()));
-        assertThat(load().settledClasses())
+        assertThat(load().settledClasses(ONE))
                 .as("RedTest stays red until a run vouches for it")
                 .containsExactly("demo.OkTest");
     }

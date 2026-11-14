@@ -3,7 +3,6 @@ package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Redacted;
-import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
@@ -60,7 +59,12 @@ public final class EventRedaction {
             if (dir != null && !dir.isBlank()) warnFailOpen(e);
             return text;
         }
-        return redactTruncationSeam(redactor, redactSafe(redactor, text), marker);
+        try {
+            return redactor.redactClipped(text, marker);
+        } catch (RuntimeException e) {
+            warnFailOpen(e);
+            return text;
+        }
     }
 
     /**
@@ -124,8 +128,7 @@ public final class EventRedaction {
         } else {
             root = SessionContext.current().workingDir();
         }
-        if (root == null) return SecretRedactor.none();
-        return ResolvedSecrets.plus(root, BuildEnv.secretsFor(root));
+        return BuildEnv.secretsFor(root);
     }
 
     /**
@@ -146,12 +149,16 @@ public final class EventRedaction {
     /** {@link #redactFailure(String, TestFailureInfo)} with a hoisted redactor (per-plan callers). */
     public static @Nullable TestFailureInfo redactFailure(SecretRedactor redactor, @Nullable TestFailureInfo f) {
         if (f == null) return null;
-        String message = redactTruncationSeam(
-                redactor, redactSafe(redactor, f.message()), JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
-        String stack = redactTruncationSeam(
-                redactor,
-                redactTruncationSeam(redactor, redactSafe(redactor, f.stack()), FailureClip.LINE_TRUNCATION_MARKER),
-                JUnitLauncher.STACK_TRUNCATION_MARKER);
+        String message;
+        String stack;
+        try {
+            message = redactor.redactClipped(f.message(), JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+            stack = redactor.redactClipped(
+                    f.stack(), FailureClip.LINE_TRUNCATION_MARKER, JUnitLauncher.STACK_TRUNCATION_MARKER);
+        } catch (RuntimeException e) {
+            warnFailOpen(e);
+            return f;
+        }
         if (Objects.equals(message, f.message()) && Objects.equals(stack, f.stack())) {
             return f;
         }
@@ -169,36 +176,5 @@ public final class EventRedaction {
                 f.snippetStart(),
                 f.snippet(),
                 f.suite());
-    }
-
-    /**
-     * Capture-time truncation can cut a secret mid-value, leaving a prefix the exact-substring
-     * pass cannot match. Mask a dangling secret prefix before each {@code marker} in {@code text}.
-     */
-    private static String redactTruncationSeam(SecretRedactor redactor, String text, String marker) {
-        if (text.isEmpty() || !text.contains(marker)) return text;
-        try {
-            StringBuilder out = new StringBuilder(text.length());
-            int from = 0;
-            for (int at = text.indexOf(marker); at >= 0; at = text.indexOf(marker, from)) {
-                out.append(redactor.maskTrailingSecretPrefix(text.substring(from, at)));
-                out.append(marker);
-                from = at + marker.length();
-            }
-            return out.append(text, from, text.length()).toString();
-        } catch (RuntimeException e) {
-            warnFailOpen(e);
-            return text;
-        }
-    }
-
-    private static String redactSafe(SecretRedactor redactor, String text) {
-        if (text.isEmpty()) return text;
-        try {
-            return redactor.redact(text);
-        } catch (RuntimeException e) {
-            warnFailOpen(e);
-            return text;
-        }
     }
 }

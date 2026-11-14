@@ -2,7 +2,9 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -235,6 +237,11 @@ public final class JUnitLauncher {
     public JUnitLauncher withModuleLabel(String moduleLabel) {
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel.trim();
         return this;
+    }
+
+    /** One fork's redactor ({@link BuildEnv#secretsFor}), built as it starts: after its environment filed its credentials. */
+    SecretRedactor secrets() {
+        return BuildEnv.secretsFor(inferredModuleDir);
     }
 
     /** {@code [test] idle-timeout} in milliseconds; 0 when the module sets none ({@link TestWorkerEnv}). */
@@ -729,7 +736,7 @@ public final class JUnitLauncher {
         runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport(keepOutput);
         runMd = md;
-        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel);
+        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel, secrets());
         // Capture the worker's non-protocol output so a hard crash (uncaught
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
@@ -793,10 +800,7 @@ public final class JUnitLauncher {
                 testEnv,
                 workDir(),
                 aggregator::accept,
-                line -> {
-                    crash.add(line);
-                    aggregator.userOutput(line);
-                },
+                line -> crash.add(aggregator.userOutput(line)),
                 TestWorkerEnv.suiteIdleTimeoutMs(idleTimeoutMs),
                 heaps);
     }
@@ -989,7 +993,7 @@ public final class JUnitLauncher {
             XmlTestReport xml = runXml;
             MarkdownTestReport md = Objects.requireNonNull(runMd, "runMd");
             Held held = new Held(md, md.forget(names), xml, xml == null ? null : xml.forget(names));
-            var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel);
+            var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel, secrets());
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
@@ -1170,7 +1174,7 @@ public final class JUnitLauncher {
                     testEnv,
                     workDir(),
                     listing.handler(listener),
-                    crash::add,
+                    line -> crash.add(secrets().redact(line)),
                     0L,
                     heaps);
         } catch (PluginProcess.HandlerFailure e) {

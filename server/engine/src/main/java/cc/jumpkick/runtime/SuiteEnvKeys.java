@@ -5,8 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
@@ -17,10 +16,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,26 +29,15 @@ final class SuiteEnvKeys {
 
     private SuiteEnvKeys() {}
 
-    /** The variables every suite inherits whose values change what a test sees. */
-    private static boolean shapesOutput(String name) {
-        return name.equals("LANG") || name.equals("LANGUAGE") || name.equals("TERM") || name.startsWith("LC_");
-    }
-
     static List<String> tokens(BuildBlock build, Path moduleDir, TestSelection selection) {
         List<String> out = new ArrayList<>();
-        Map<String, String> machine = BuildEnv.machine();
-        Set<String> names = new TreeSet<>(machine.keySet());
-        names.addAll(ProcessEnv.all().keySet());
-        for (String name : names) {
-            if (!shapesOutput(name)) continue;
-            String value = machine.getOrDefault(name, ProcessEnv.get(name));
-            if (value != null) out.add("machine-env:" + name + "=" + value);
-        }
+        // The locale every test JVM is seeded with (TestEnv), the caller's over the engine's. Its
+        // TERM is fixed, so it keys nothing.
+        BuildEnv.locale().forEach((name, value) -> out.add("machine-env:" + name + "=" + value));
         if (build.env().inherit()) {
             // The whole environment reaches the suite: every value keys it, by digest, less what
             // differs between two terminals of one machine.
-            out.add("inherited-env:"
-                    + Hashing.sha256Hex(BuildEnv.inheritedFingerprintEnv().toString()));
+            out.add(WorkerEnv.inheritedKeyToken());
         }
         // The runner that launches the suite and reads its outcome is part of every run.
         try {

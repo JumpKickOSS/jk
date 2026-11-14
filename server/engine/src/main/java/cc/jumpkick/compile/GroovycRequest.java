@@ -29,7 +29,9 @@ public record GroovycRequest(
         int jvmTarget,
         List<Path> workerClasspath,
         @Nullable Path workDir,
-        List<String> extraArgs) {
+        List<String> extraArgs,
+        /** The module's {@code [env]} as key tokens: a global AST transform can read it. Keyed only. */
+        List<String> env) {
 
     public GroovycRequest {
         Objects.requireNonNull(sources, "sources");
@@ -42,6 +44,7 @@ public record GroovycRequest(
         processorPath = processorPath == null ? List.of() : List.copyOf(processorPath);
         workerClasspath = List.copyOf(workerClasspath);
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
+        env = env == null ? List.of() : List.copyOf(env);
         if (jvmTarget < JavaRelease.OLDEST) {
             throw new IllegalArgumentException("jvmTarget must be >= " + JavaRelease.OLDEST + ", got: " + jvmTarget);
         }
@@ -64,5 +67,6 @@ public record GroovycRequest(
         private int jvmTarget = 21;
         private List<Path> workerClasspath = List.of();
         private List<String> extraArgs = List.of();
+        private List<String> env = List.of();
     }
 }

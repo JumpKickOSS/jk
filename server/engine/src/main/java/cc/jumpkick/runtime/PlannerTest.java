@@ -62,10 +62,14 @@ public final class PlannerTest {
         }
     }
 
-    /** The session's suite selection resolved against the suites this module has, directories and class patterns. */
+    /**
+     * The suites this module's run runs: the session's selection under the active profile, resolved
+     * by {@link TestStampInputs#resolveSuites}, the derivation the run-tests stamp keys.
+     */
     static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
         var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
-        return TestSuites.resolve(sel, in.dir(), compact, project.build().runSuites());
+        return TestStampInputs.resolveSuites(
+                sel, in.dir(), in.profileName(), compact, project.build().runSuites());
     }
 
     /** The plugin steps whose output compile-test reads: every test-source generator. */

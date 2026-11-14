@@ -404,19 +404,27 @@ Every worker JumpKick forks for a module — the compiler, each test JVM, a plug
 an allow-list, not from a shell. A token exported in the shell that started the engine does
 not reach a compiler worker or your test code by accident. Workers inherit only:
 
-- `PATH`, `HOME`, `JAVA_HOME`, `TMPDIR` / `TMP` / `TEMP`, `LANG` / `LANGUAGE` / `LC_*`, `TERM`
+- `PATH`, `HOME`, `JAVA_HOME`, `TMPDIR` / `TMP` / `TEMP`, `LANG` / `LANGUAGE` / `LC_*`; a test
+  JVM gets the locale ones of the shell running `jk` over the engine's, and its suite is keyed on
+  them, so `LC_TIME=de_DE.UTF-8 jk test` runs the suite under that locale. A test JVM's `TERM` is
+  always `dumb` and no other terminal variable (`COLORTERM`, `NO_COLOR`, `FORCE_COLOR`,
+  `CLICOLOR*`, `COLUMNS`, `LINES`) reaches it, so a suite runs the same from any terminal; declare
+  `TERM` in `[env]` for the caller's, which then keys the suite like any declared variable. Under
+  `[env] inherit` the caller's other terminal variables are handed on but key nothing
 - the proxy variables `http_proxy` / `https_proxy` / `no_proxy` in either case, the values of the
   shell running `jk` over the engine's own ([Config § Network](config.md#network)) — a worker
   that downloads goes through the proxy this command's terminal names, and so does a test JVM,
   a credential in the proxy URL included
-- the display variables `DISPLAY` / `WAYLAND_DISPLAY` / `XAUTHORITY`, again the
+- the display variables `DISPLAY` / `WAYLAND_DISPLAY` / `XAUTHORITY` / `XDG_RUNTIME_DIR` (where
+  the Wayland socket lives), again the
   shell running `jk` over the engine's own — a JavaFX or Swing suite opens the display of the
   terminal that ran `jk test`, and `xvfb-run jk test` hands a headless host a virtual one
   ([Test](test.md#a-suite-that-needs-a-display))
 - the container runtime's variables `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`,
   `DOCKER_CERT_PATH`, `DOCKER_TLS_VERIFY` and Testcontainers' `TESTCONTAINERS_HOST_OVERRIDE`,
   `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`, `TESTCONTAINERS_RYUK_DISABLED`,
-  `TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED`, the shell running `jk` over the engine's own — a
+  `TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED`, `TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX` (a registry
+  mirror) and Podman's `CONTAINER_HOST`, the shell running `jk` over the engine's own — a
   Testcontainers suite and `jk image` reach the Docker, Podman or remote daemon that terminal names
 - on Windows also `USERPROFILE`, `SystemRoot`, `SystemDrive`, `windir`, `PATHEXT`, `COMSPEC`,
   `NUMBER_OF_PROCESSORS`
@@ -452,13 +460,16 @@ The same line, under the code `env-required` with the variable's name as its key
 not check. A name is declared once: in `require`, `optional`, or as a value in `vars`.
 
 `vars` sets literal values, as tables in the `[test] env` shape; a bare name there is refused with
-the `optional` spelling. A `${…}` reference is refused here, because `vars` reaches the compilers
-too and their keys do not carry the machine's environment; set the value in `[test] env`, or
+the `optional` spelling. A `${…}` reference is refused here; set the value in `[test] env`, or
 declare the name. The `[env]` table reaches every worker of the module; `[test] env` layers on top
-for test JVMs only. The declared names' values and both tables' values are part of the run-tests
-key, so a declared variable that changes between two builds runs the suite again, and one nothing
-declares cannot — [Test](test.md). A value taken from the environment enters the key as its
-SHA-256, never as text, so the key can travel to another machine. A declared name that reads as
+for test JVMs only. Each value keys the work that can read it: `[env]` keys a compile that runs
+annotation processors or a javac plugin, a Kotlin compile with a compiler plugin, every Groovy
+compile (a global AST transform can read it), every KSP round, plugin step and plugin packager,
+a `[jlink]` image that trains a startup cache, and the run-tests key; `[test] env` keys the run-tests
+key alone, so a variable declared for the tests never rebuilds a compile. A declared variable that
+changes between two builds reruns that work, `jk build -S` included, and one nothing declares
+cannot — [Test](test.md). A value taken from the environment enters a key as its SHA-256, never as text,
+so the key can travel to another machine. A declared name that reads as
 a credential — its name says `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
 `CREDENTIAL` — has its value masked as `***` in test output, errors and `jk results`, as a
 repository credential is. `jk run` launches the app from the shell itself and caches nothing, so

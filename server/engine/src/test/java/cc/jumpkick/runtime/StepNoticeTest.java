@@ -18,6 +18,8 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -125,6 +127,45 @@ class StepNoticeTest {
                 .as("the step's own warning, as its run reported it")
                 .containsExactly("quarkus-augment=src/main/java/Shop.java:12:3: unused import")
                 .isEqualTo(ran.ctx.warnings);
+    }
+
+    @Test
+    void a_step_diagnostic_quoting_a_dot_env_value_is_stored_masked(@TempDir Path tmp) throws Exception {
+        String secret = "postgres://u:s3cr3tpass@db/shop";
+        Path module = Files.createDirectories(tmp.resolve("shop"));
+        Files.writeString(module.resolve("jk.toml"), "[project]\nname = \"shop\"\n");
+        Files.writeString(module.resolve(".env"), "DATABASE_URL=" + secret + "\n");
+        Path actions = tmp.resolve("actions");
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), actions);
+        Recording ctx = new Recording();
+
+        inRun(new BuildAccumulator("build", module.toString(), "com.example:shop", "cli"), () -> {
+            StepDiagnostics said = new StepDiagnostics(ctx, module, "shop", "migrate");
+            said.forward(PluginReply.diagnostic("warning", null, 0, 0, "cannot reach " + secret));
+            try {
+                cache.storeVerdict("plugin-migrate", "migrate-key", Map.of(), said.said());
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+
+        String stored;
+        try (var files = Files.walk(actions)) {
+            stored = files.filter(Files::isRegularFile)
+                    .map(f -> {
+                        try {
+                            return Files.readString(f);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    })
+                    .reduce("", String::concat);
+        }
+        assertThat(stored)
+                .as("the record's SAID line")
+                .contains("cannot reach ***")
+                .doesNotContain("s3cr3tpass");
+        assertThat(ctx.warnings).containsExactly("migrate=cannot reach ***");
     }
 
     @Test

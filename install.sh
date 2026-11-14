@@ -285,8 +285,15 @@ main() {
   # ---- resolve source (URL or local file) ------------------------------------
 
   TMPDIR_JK="$(mktemp -d "${TMPDIR:-/tmp}/jk-install.XXXXXX")"
-  cleanup() { rm -rf "$TMPDIR_JK"; }
+  # STAGE_DIR is where the new client is unpacked beside the live one (set at the install step).
+  STAGE_DIR=""
+  cleanup() { rm -rf "$TMPDIR_JK" ${STAGE_DIR:+"$STAGE_DIR"}; }
   trap cleanup EXIT
+  # A Ctrl-C, a hang-up or a kill ends the run through the EXIT trap, so the staged client goes
+  # with it; the live client is never touched before the one rename that replaces it.
+  trap 'exit 130' INT
+  trap 'exit 129' HUP
+  trap 'exit 143' TERM
 
   # Sets decompress() based on the file/URL extension, and CLIENT for a .jar: the JVM client is
   # a jar and nothing else is. Plain binary (no .gz/.zip — the local dist flow) is installed with cp.
@@ -376,6 +383,22 @@ main() {
     [ "$CLIENT" = "jvm" ] && SRC_DIST="$(dirname "$SRC_DIST")"
     SRC_LIB="$SRC_DIST/lib"
     SRC_REPOS="$SRC_DIST/repos"
+    ENGINE_JAR=""
+    for f in "$SRC_LIB"/jk-engine-*.jar; do
+      [ -f "$f" ] && ENGINE_JAR="$f" && break
+    done
+    if [ -z "$ENGINE_JAR" ]; then
+      # Loud, because the quiet version of this is worse than a failure. A local install with no
+      # engine jar beside it leaves the client to self-fetch the RELEASED engine on first spawn:
+      # the binary you just built, paired with an engine you did not, and nothing on screen saying
+      # so. Whoever is installing a local build is installing it to run local changes. Refused
+      # before anything in the home is written.
+      die "no jk-engine-*.jar in $SRC_LIB — a local install needs the engine built beside the" \
+          "client (the ship layout: <dir>/jk and <dir>/lib/jk-engine-<version>.jar)." \
+          "Build one with 'jk build' (it writes target/dist/) and install from" \
+          "that directory. Installing the client alone would silently pair it with the released" \
+          "engine."
+    fi
   fi
 
   # ---- a release over the home's snapshot line -------------------------------
@@ -497,13 +520,6 @@ main() {
   info "Installing JumpKick into $INSTALL_DIR_DISPLAY"
   mkdir -p "$INSTALL_DIR"
 
-  park_if_present() {
-    local f="$1"
-    if [ -e "$f" ] || [ -L "$f" ]; then
-      mv -f "$f" "${f}.old" 2>/dev/null || rm -f "$f"
-    fi
-  }
-
   JK_BIN="$INSTALL_DIR/jk"
   JKX_BIN="$INSTALL_DIR/jkx"
   if [ "$CLIENT" = "jvm" ]; then
@@ -520,33 +536,51 @@ main() {
     JK_JAR="$JK_LIB/jk-$JAR_VERSION.jar"
     mkdir -p "$JK_LIB"
     { decompress "$ARCHIVE_FILE" "$JK_JAR.tmp" && mv -f "$JK_JAR.tmp" "$JK_JAR"; } \
-      || die "failed to install $JK_JAR"
+      || { rm -f "$JK_JAR.tmp"; die "failed to install $JK_JAR"; }
+    # The launcher is rewritten (staged and renamed over the live one by the client) before any
+    # other jar goes: until it names the new jar, the old launcher still runs the old one.
+    "$JAVA" --enable-native-access=ALL-UNNAMED -jar "$JK_JAR" self write-launcher 0<"$TTY_IN" >/dev/null \
+      || die "could not write $JK_BIN (jk self write-launcher failed)"
+    [ -x "$JK_BIN" ] || die "jk self write-launcher wrote no launcher at $JK_BIN"
     # One client jar: a launcher names exactly one, and an older one left beside it is dead weight.
     for f in "$JK_LIB"/jk-*.jar; do
       [ "$f" = "$JK_JAR" ] || rm -f "$f"
     done
-    "$JAVA" --enable-native-access=ALL-UNNAMED -jar "$JK_JAR" self write-launcher 0<"$TTY_IN" >/dev/null \
-      || die "could not write $JK_BIN (jk self write-launcher failed)"
-    [ -x "$JK_BIN" ] || die "jk self write-launcher wrote no launcher at $JK_BIN"
   else
-    # Park a previous client so a still-running `jk` keeps its inode; GC removes .old later.
-    park_if_present "$JK_BIN"
-    decompress "$ARCHIVE_FILE" "$JK_BIN" \
-      || die "failed to install jk"
-    chmod +x "$JK_BIN"
+    # The new client is unpacked into a directory beside the live one (same filesystem, so the
+    # rename below is one atomic step), made executable and asked its version; only a client that
+    # answers replaces the live one. Until that rename the live jk is untouched, so a failed or
+    # interrupted unpack, a full disk or a binary that does not run leaves the previous jk working.
+    # rename(2) over the live name keeps a still-running jk's inode, so nothing is parked. A
+    # stage left by a killed run (its pid gone) is swept first.
+    for d in "$INSTALL_DIR"/.jk-install.*; do
+      [ -d "$d" ] || continue
+      kill -0 "${d##*.}" 2>/dev/null || rm -rf "$d"
+    done
+    STAGE_DIR="$INSTALL_DIR/.jk-install.$$"
+    rm -rf "$STAGE_DIR"
+    mkdir "$STAGE_DIR" || die "could not create $STAGE_DIR"
+    decompress "$ARCHIVE_FILE" "$STAGE_DIR/jk" \
+      || die "failed to unpack $ARCHIVE_FILE; the installed jk is unchanged"
+    chmod +x "$STAGE_DIR/jk" || die "could not make the new jk executable; the installed jk is unchanged"
+    "$STAGE_DIR/jk" --version </dev/null >"$TMPDIR_JK/version.log" 2>&1 || {
+      cat "$TMPDIR_JK/version.log" >&2
+      die "the new jk does not run ('jk --version' failed); the installed jk is unchanged"
+    }
 
     # `jkx` — uvx-style alias for `jk tool run`, shipped as a real executable so
     # `#!/usr/bin/env jkx` shebangs and CI steps work without shell integration.
-    # A hardlink to the jk binary (argv[0] dispatch; zero extra disk); `ln -f`
-    # also refreshes a stale jkx left by a previous install. Falls back to an
-    # exec shim when the filesystem refuses hardlinks.
-    park_if_present "$JKX_BIN"
-    if ! ln -f "$JK_BIN" "$JKX_BIN" 2>/dev/null; then
+    # A hardlink to the jk binary (argv[0] dispatch; zero extra disk), staged beside it.
+    # Falls back to an exec shim when the filesystem refuses hardlinks.
+    if ! ln "$STAGE_DIR/jk" "$STAGE_DIR/jkx" 2>/dev/null; then
       # shellcheck disable=SC2016 # the `"$@"` is the shim's own text, expanded when the shim runs
-      printf '#!/bin/sh\n# jkx — `jk tool run` launcher (generated by jk; do not edit)\nexec "%s" tool run "$@"\n' "$JK_BIN" > "$JKX_BIN" \
-        || die "failed to install jkx"
-      chmod +x "$JKX_BIN"
+      printf '#!/bin/sh\n# jkx — `jk tool run` launcher (generated by jk; do not edit)\nexec "%s" tool run "$@"\n' "$JK_BIN" > "$STAGE_DIR/jkx" \
+        || die "failed to stage jkx; the installed jk is unchanged"
+      chmod +x "$STAGE_DIR/jkx"
     fi
+    mv -f "$STAGE_DIR/jk" "$JK_BIN" || die "could not move the new jk into $JK_BIN; the installed jk is unchanged"
+    mv -f "$STAGE_DIR/jkx" "$JKX_BIN" || note "could not replace $JKX_BIN (jk itself is installed)"
+    rm -rf "$STAGE_DIR"
   fi
 
   # Clear only resident engines positively identified in the superseded platform default.
@@ -566,23 +600,6 @@ main() {
   # (`jk self materialize`), which ingests the jar into the CAS first.
   # Native download installs skip this: the client self-fetches its engine jar on first
   # spawn and materializes then. Best-effort by design.
-  if [ -n "$LOCAL_FILE" ]; then
-    ENGINE_JAR=""
-    for f in "$SRC_LIB"/jk-engine-*.jar; do
-      [ -f "$f" ] && ENGINE_JAR="$f" && break
-    done
-    if [ -z "$ENGINE_JAR" ]; then
-      # Loud, because the quiet version of this is worse than a failure. A local install with no
-      # engine jar beside it leaves the client to self-fetch the RELEASED engine on first spawn:
-      # the binary you just built, paired with an engine you did not, and nothing on screen saying
-      # so. Whoever is installing a local build is installing it to run local changes.
-      die "no jk-engine-*.jar in $SRC_LIB — a local install needs the engine built beside the" \
-          "client (the ship layout: <dir>/jk and <dir>/lib/jk-engine-<version>.jar)." \
-          "Build one with 'jk build' (it writes target/dist/) and install from" \
-          "that directory. Installing the client alone would silently pair it with the released" \
-          "engine."
-    fi
-  fi
   if [ -n "${ENGINE_JAR:-}" ]; then
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
@@ -728,7 +745,9 @@ main() {
   if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
     # Local dogfood reinstalls keep the same version string while replacing the
     # engine jar. A still-running engine would keep serving the old jar until stop.
-    run_jk engine stop --force >/dev/null 2>&1 || true
+    # --now: a graceful stop waits on the host install lock for other sessions' runs, and
+    # with its output discarded that wait would look like a hung installer.
+    run_jk engine stop --now >/dev/null 2>&1 || true
     # The engine calibrates the host on idle (and every 12h).
     # A successful start GCs parked jk.old / engine *.jar.old when the drain is done.
     # The start is what installs the engine's JDK on a machine that has none, and the

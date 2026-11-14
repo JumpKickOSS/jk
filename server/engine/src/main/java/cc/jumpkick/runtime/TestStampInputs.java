@@ -18,6 +18,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
@@ -44,6 +45,8 @@ import org.jspecify.annotations.Nullable;
  * The live run, the forecast and the preflight memo all read them here, so the key a green run is
  * stored under is the key the forecast looks up.
  *
+ * @param suites the suites the run runs, {@link #resolveSuites} over the effective {@code selection}:
+ *     what compile-test collects, the suite filter admits and the stamp keys
  * @param jvmArgs the plugin steps' contributed flags, the module's and the profile's, then the
  *     tier's own: what rides the fork and its stamp alike
  * @param runtimeClasspath the resolved test runtime classpath with the module's fixtures and own
@@ -53,6 +56,7 @@ public record TestStampInputs(
         Facts facts,
         ClasspathFingerprint.EntryIdentity identity,
         TestSelection selection,
+        TestSelection.Resolved suites,
         TestTier tier,
         List<String> jvmArgs,
         List<Path> runtimeClasspath) {
@@ -125,6 +129,13 @@ public record TestStampInputs(
     @KeyOwner(step = TaskNames.RUN_TESTS)
     static TestStampInputs of(Facts facts, ClasspathFingerprint.EntryIdentity identity) throws IOException {
         TestSelection selection = effectiveSelection(facts.sessionSelection(), facts.dir(), facts.profileName());
+        boolean compact = CompileSupport.isSimpleLayout(facts.project().project(), facts.dir());
+        TestSelection.Resolved suites = resolveSuites(
+                selection,
+                facts.dir(),
+                facts.profileName(),
+                compact,
+                facts.project().build().runSuites());
         TestTier tier = TestTier.of(selection, facts.profileName(), fastMethodBudget(facts.project(), facts.dir()));
         List<String> jvmArgs = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(facts.layout(), facts.pluginDecls()));
         jvmArgs.addAll(testJvmArgs(facts.project(), facts.profileName()));
@@ -136,7 +147,13 @@ public record TestStampInputs(
         classpath.addAll(PlannerKsp.pluginTestClasspath(facts.layout(), facts.pluginDecls()));
         classpath.addAll(facts.providedRuntime());
         return new TestStampInputs(
-                facts, identity, selection, tier, List.copyOf(tier.suiteJvmArgs(jvmArgs)), List.copyOf(classpath));
+                facts,
+                identity,
+                selection,
+                suites,
+                tier,
+                List.copyOf(tier.suiteJvmArgs(jvmArgs)),
+                List.copyOf(classpath));
     }
 
     /**
@@ -166,6 +183,7 @@ public record TestStampInputs(
     List<String> extras() throws IOException {
         List<String> extras = new ArrayList<>(testStampExtras(
                 facts.workerJars(), selection, facts.project().build(), jvmArgs, facts.dir(), identity));
+        extras.add(suitesToken(suites));
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
@@ -184,24 +202,19 @@ public record TestStampInputs(
             throws IOException {
         Path dir = facts.dir();
         JkBuild project = facts.project();
-        // Session selection for suite resolution too — --all widens the suite set, and the
+        // The suites the run runs, as the planner resolves them: --all widens the set, and the
         // forecast's source list must cover the same files the live run stamps.
-        var resolved = TestSuites.resolve(
-                SessionContext.current().testSelection(),
-                dir,
-                compact,
-                project.build().runSuites());
-        List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
+        List<String> run = suites.ok() ? suites.suites() : List.of(TestSuites.DEFAULT);
         // The same factory compile-test collects its sources with, so the forecast stamps exactly
         // the files the run stamps: every selected suite's sources in every language, plus the
         // `[test] extra-src` files that belong to the tier and to no suite.
         BuildLayout layout = facts.layout();
-        List<Path> stampSrcs = TestSources.collect(project, dir, compact, suites, layout, facts.pluginDecls())
+        List<Path> stampSrcs = TestSources.collect(project, dir, compact, run, layout, facts.pluginDecls())
                 .all();
         List<Path> stampRt = runtimeClasspath;
         List<String> stampExtras = extras();
         List<String> compiledSuites =
-                TestSuites.compiled(dir, compact, suites, project.build().runSuites());
+                TestSuites.compiled(dir, compact, run, project.build().runSuites());
         // As the live copy: the test KSP round's output roots, then the suites' resources.
         List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
         stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
@@ -233,7 +246,7 @@ public record TestStampInputs(
                     "X",
                     stampExtras,
                     "suites",
-                    suites,
+                    run,
                     "cpFp",
                     ClasspathFingerprint.of(stampRt, identity),
                     "mainFp",
@@ -252,6 +265,39 @@ public record TestStampInputs(
         Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
         if (root == null || root.normalize().equals(moduleDir.normalize())) return 0;
         return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
+    }
+
+    /**
+     * The suites a run of {@code moduleDir} runs under {@code selection}: its {@link
+     * #effectiveSelection} resolved against the module's suites, the built-in {@code integration}
+     * suite always among them ({@link DeclaredSuite#withConvention}, so a caller handing the raw
+     * tables cannot lose it). The one derivation of it: the planner's compile-test and suite filter,
+     * the stamp, the forecast and the test-count estimate all read it here, so the suites a green
+     * marker is stored under are the suites that ran.
+     *
+     * @param declared the module's {@link cc.jumpkick.model.BuildBlock#runSuites}
+     */
+    @KeyOwner(step = TaskNames.RUN_TESTS)
+    public static TestSelection.Resolved resolveSuites(
+            TestSelection selection,
+            Path moduleDir,
+            @Nullable String profileName,
+            boolean compact,
+            Map<String, DeclaredSuite> declared) {
+        return TestSuites.resolve(
+                effectiveSelection(selection, moduleDir, profileName),
+                moduleDir,
+                compact,
+                DeclaredSuite.withConvention(declared));
+    }
+
+    /**
+     * The stamp token of the suites the run runs: a suite's {@code explicit} flag or a profile's
+     * every-suite switch changes the set without changing any source the stamp hashes.
+     */
+    private static String suitesToken(TestSelection.Resolved suites) {
+        return "suites-run:" + String.join(",", suites.suites())
+                + (suites.ok() ? "" : "?missing=" + String.join(",", suites.missing()));
     }
 
     /**

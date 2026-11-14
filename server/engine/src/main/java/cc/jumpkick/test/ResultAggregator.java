@@ -8,9 +8,8 @@ import static cc.jumpkick.test.TestEventFields.methodOf;
 import static cc.jumpkick.test.TestEventFields.progressLabel;
 import static cc.jumpkick.test.TestEventFields.xmlName;
 
-import cc.jumpkick.config.ResolvedSecrets;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
@@ -51,8 +50,16 @@ final class ResultAggregator {
     private final @Nullable MarkdownTestReport mdReport;
     private final String moduleLabel;
 
-    /** The credentials filed for the workspace when the suite launched: what its printed lines must not show. */
-    private final SecretRedactor secrets = filedSecrets();
+    /**
+     * The module's redactor ({@link BuildEnv#secretsFor}, the one the wire uses) as it stood when
+     * the suite launched. Every line the fork sends passes through it before anything reads it, so
+     * the progress listener, the XML and Markdown reports, the failures the journal and the agent
+     * report carry, and the terminal all see the masked text.
+     */
+    private final SecretRedactor secrets;
+
+    /** {@link #secrets} for text inside a JSON string, where a secret appears escaped. */
+    private final SecretRedactor jsonSecrets;
 
     private long succeeded;
     private long failed;
@@ -118,6 +125,18 @@ final class ResultAggregator {
             @Nullable XmlTestReport xmlReport,
             @Nullable MarkdownTestReport mdReport,
             @Nullable String moduleLabel) {
+        this(listener, workerId, xmlReport, mdReport, moduleLabel, BuildEnv.secretsFor(null));
+    }
+
+    ResultAggregator(
+            TestProgressListener listener,
+            int workerId,
+            @Nullable XmlTestReport xmlReport,
+            @Nullable MarkdownTestReport mdReport,
+            @Nullable String moduleLabel,
+            SecretRedactor secrets) {
+        this.secrets = secrets;
+        this.jsonSecrets = secrets.forEscapedJson();
         this.listener = listener;
         this.workerId = workerId;
         this.xmlReport = xmlReport;
@@ -133,30 +152,25 @@ final class ResultAggregator {
             userOutput(json == null ? "" : json);
             return;
         }
-        acceptJson(json);
+        // The runner clips a long message or stack line in the fork, which can cut a secret short.
+        acceptJson(jsonSecrets.redactClipped(
+                json, JUnitLauncher.MESSAGE_TRUNCATION_MARKER, FailureClip.LINE_TRUNCATION_MARKER));
     }
 
     /**
      * A line the test JVM printed outside the protocol: shown to the listener as this worker's
      * output and, when a class is running, kept for that class's {@code system-out} in the XML
-     * report — so a failing test's diagnostic dump survives the temp dir it was printed from. A
-     * credential filed for the workspace is masked first, in every copy.
+     * report — so a failing test's diagnostic dump survives the temp dir it was printed from. Its
+     * secrets are masked first, in every copy; the masked line is returned for the caller's crash
+     * capture.
      */
-    synchronized void userOutput(String raw) {
+    synchronized String userOutput(String raw) {
         String line = secrets.redact(raw);
         listener.onUserOutput(workerId, line);
-        if (runningClass == null) return;
+        if (runningClass == null) return line;
         if (xmlReport != null) xmlReport.recordOutput(runningClass, line);
         if (mdReport != null) mdReport.recordOutput(runningClass, line);
-    }
-
-    /** The redactor over the credentials filed for the request's workspace; none off a request. */
-    private static SecretRedactor filedSecrets() {
-        try {
-            return ResolvedSecrets.plus(SessionContext.current().workingDir(), SecretRedactor.none());
-        } catch (RuntimeException noSession) {
-            return SecretRedactor.none();
-        }
+        return line;
     }
 
     private void acceptJson(String json) {
@@ -332,16 +346,13 @@ final class ResultAggregator {
         long total = succeeded + failed + skipped;
         String why = incomplete(exitCode, total);
         if (why != null) {
-            if (total == 0) {
-                throw TestLauncherFailure.runner(
-                        moduleLabel, exitCode, crashOutput == null ? "" : crashOutput, command);
-            }
+            String crash = crashOutput == null ? "" : crashOutput;
+            if (total == 0) throw TestLauncherFailure.runner(moduleLabel, exitCode, crash, command);
             failed++;
             total++;
             // The fork's own output rides as the row's detail: what it died of — its heap, say —
             // is what decides whether a retry on a bigger heap is due.
-            failures.add(new TestFailureInfo(
-                    moduleLabel, "", "", "(test run)", "", why, crashOutput == null ? "" : crashOutput, 0));
+            failures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, crash, 0));
         }
         return new TestSummary(
                 total,

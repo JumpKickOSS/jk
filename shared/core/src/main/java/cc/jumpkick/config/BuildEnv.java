@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -86,7 +88,7 @@ public final class BuildEnv {
      * action key. jk sets no {@code java.awt.headless}; Surefire does not either, and a JavaFX
      * toolkit does not read it.
      */
-    public static final List<String> DISPLAY = List.of("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY");
+    public static final List<String> DISPLAY = List.of("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR");
 
     /**
      * The variables that name the container runtime this machine talks to — Docker's client
@@ -105,7 +107,9 @@ public final class BuildEnv {
             "TESTCONTAINERS_HOST_OVERRIDE",
             "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE",
             "TESTCONTAINERS_RYUK_DISABLED",
-            "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED");
+            "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED",
+            "TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX",
+            "CONTAINER_HOST");
 
     /**
      * Every variable that rides each request by exact name to the workers it forks, the request's
@@ -113,6 +117,19 @@ public final class BuildEnv {
      */
     public static final List<String> SHELL =
             Stream.of(PROXY, DISPLAY, CONTAINER).flatMap(List::stream).toList();
+
+    /**
+     * {@code names} as a set that matches a variable name the way the platform does: whatever its
+     * case when {@code caseInsensitive} (Windows, where {@code My_Token} and {@code MY_TOKEN} are one
+     * variable), exactly otherwise. Every comparison of a variable against declared or forwarded
+     * names goes through one of these.
+     */
+    public static Set<String> nameSet(Collection<String> names, boolean caseInsensitive) {
+        if (!caseInsensitive) return Set.copyOf(names);
+        Set<String> out = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        out.addAll(names);
+        return Collections.unmodifiableSet(out);
+    }
 
     /**
      * The one variable that says where this machine keeps the JDKs jk manages ({@code JK_JDKS_DIR}).
@@ -167,6 +184,38 @@ public final class BuildEnv {
      */
     public static Map<String, String> fromRequest() {
         return Collections.unmodifiableMap(resolve(SHELL, clientEnv()::get));
+    }
+
+    /**
+     * The locale variables a test JVM gets, by name: {@code LANG}, {@code LANGUAGE} and every
+     * {@code LC_*}. They change what a test computes (a date's format, a message's language), so
+     * the suite is keyed on them, and they are the caller's: the session's forwarded values, then
+     * the shell running {@code jk}, and the engine's own only for a name neither carries. What
+     * {@code TestEnv} seeds every test JVM with and {@code SuiteEnvKeys} keys, from this one
+     * resolution, so the key is what the JVM got. Sorted by name. The terminal is not among them:
+     * a test JVM gets a fixed {@code TERM} ({@code TestEnv}), so a suite does not rerun because it
+     * was started from another terminal.
+     */
+    public static Map<String, String> locale() {
+        Map<String, String> client = clientEnv();
+        RequestShell shell = RequestShell.current();
+        Set<String> names = new TreeSet<>();
+        for (String name : client.keySet()) if (localeName(name)) names.add(name);
+        if (shell != null) for (String name : shell.vars().keySet()) if (localeName(name)) names.add(name);
+        for (String name : ProcessEnv.all().keySet()) if (localeName(name)) names.add(name);
+        Map<String, String> out = new TreeMap<>();
+        for (String name : names) {
+            String value = client.get(name);
+            if (value == null && shell != null) value = shell.get(name);
+            if (value == null) value = ProcessEnv.get(name);
+            if (value != null) out.put(name, value);
+        }
+        return Collections.unmodifiableMap(out);
+    }
+
+    /** Whether {@code name} is one of {@link #locale()}'s. */
+    static boolean localeName(String name) {
+        return name.equals("LANG") || name.equals("LANGUAGE") || name.startsWith("LC_");
     }
 
     /** {@code names} resolved through {@code env}, in listed order, omitting those it does not have. */
@@ -268,6 +317,12 @@ public final class BuildEnv {
     private static final Set<String> SESSION_CHURN = Set.of(
             "COLUMNS",
             "LINES",
+            "TERM",
+            "COLORTERM",
+            "NO_COLOR",
+            "FORCE_COLOR",
+            "CLICOLOR",
+            "CLICOLOR_FORCE",
             "ITERM_SESSION_ID",
             "TMUX",
             "TMUX_PANE",
@@ -322,13 +377,26 @@ public final class BuildEnv {
     }
 
     /**
-     * Redactor for {@code .env}-sourced values at {@code moduleDir}. Use before any
-     * free-form text (wire events, journal, errors) leaves the process, and before a value enters
-     * a cache key.
+     * The one redactor for work at {@code moduleDir}: the effective value of every name a {@code
+     * .env} file declares there, plus every value filed for its workspace ({@link ResolvedSecrets}:
+     * resolved repository credentials, credential-named declared variables). Every sink text leaves
+     * the engine through (the wire, the journal, the test reports, the action cache) builds its
+     * redactor here, so no sink masks less than another; the {@code redactor-owner} guard holds
+     * the line. Build one per batch of lines, not per line: it parses {@code .env} (memoized by
+     * stamp) and merges the filed values. A null {@code moduleDir} is the session's working
+     * directory, for work that carries no directory of its own; off a session, nothing is masked.
      */
-    public static SecretRedactor secretsFor(Path moduleDir) {
-        if (moduleDir == null) return SecretRedactor.none();
-        return SecretRedactor.from(lookupFor(moduleDir));
+    public static SecretRedactor secretsFor(@Nullable Path moduleDir) {
+        Path dir = moduleDir;
+        if (dir == null) {
+            try {
+                dir = SessionContext.current().workingDir();
+            } catch (RuntimeException noSession) {
+                return SecretRedactor.none();
+            }
+        }
+        if (dir == null) return SecretRedactor.none();
+        return ResolvedSecrets.plus(dir, SecretRedactor.from(lookupFor(dir)));
     }
 
     /** The request's {@link #NODE} variables and those under {@code prefixes}; empty outside a request. */

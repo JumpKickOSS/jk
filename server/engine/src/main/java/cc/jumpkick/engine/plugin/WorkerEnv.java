@@ -9,9 +9,12 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -63,7 +66,6 @@ public final class WorkerEnv {
             "TEMP",
             "LANG",
             "LANGUAGE",
-            "TERM",
             "SystemRoot",
             "SystemDrive",
             "windir",
@@ -141,19 +143,63 @@ public final class WorkerEnv {
         Function<String, @Nullable String> env = BuildEnv.forModule(moduleDir);
         Map<String, String> resolved = TestEnvValues.resolve(
                 "[env]", config.decls(), moduleDir, target, new TestEnvValues.Mode.Launch(env::apply));
-        fileSecrets(moduleDir, config.declared(), resolved);
+        fileSecrets(moduleDir, config.decls(), resolved);
         return resolved;
     }
 
     /**
-     * Files the value of every declared name that reads as a credential ({@link
-     * BuildEnv#looksSecret}) with the workspace's redactor, so a test that prints it, an error that
-     * quotes it and the journal show {@code ***} instead.
+     * A module's {@code [env]} table as key tokens: what every worker it forks (the compilers, KSP,
+     * plugin steps and packagers, the test JVM) is handed through {@link #declared} and {@code
+     * inherit}, so each of their keys can move when a value does. One token per entry, {@code
+     * env:<name>=<digest>} of the value the worker gets (a forwarded name the caller lacks has its
+     * own digest, so appearing and disappearing move a key too), and under {@code [env] inherit}
+     * {@link #inheritedKeyToken}. Values enter hashed, never as written: a key may be read on
+     * another machine. Only {@code [env]} reaches those workers; {@code [test] env} and a suite's
+     * environment reach the test JVM alone. A module that declares nothing has no tokens.
      */
-    public static void fileSecrets(Path moduleDir, Iterable<String> declared, Map<String, String> resolved) {
-        for (String name : declared) {
-            String value = resolved.get(name);
-            if (value != null && BuildEnv.looksSecret(name)) ResolvedSecrets.recordFor(moduleDir, value);
+    public static List<String> keyTokens(EnvConfig config, Path moduleDir) {
+        if (config.decls().isEmpty() && !config.inherit()) return List.of();
+        List<String> out = new ArrayList<>();
+        if (!config.decls().isEmpty()) {
+            // The fork's own expansion in its key mode: an unset ${VAR} fails here as it fails at
+            // launch, and ${target}/${module} stay tokens so two checkouts key alike.
+            Map<String, String> resolved = TestEnvValues.resolve(
+                    "[env]",
+                    config.decls(),
+                    null,
+                    null,
+                    new TestEnvValues.Mode.CacheKey(BuildEnv.lookupFor(moduleDir), BuildEnv.secretsFor(moduleDir)));
+            resolved.forEach((name, value) -> out.add("env:" + name + "=" + Hashing.sha256Hex(value)));
+        }
+        if (config.inherit()) out.add(inheritedKeyToken());
+        return List.copyOf(out);
+    }
+
+    /**
+     * The key token of {@code [env] inherit}: the whole inherited environment by digest, less what
+     * differs between two terminals of one machine ({@link BuildEnv#inheritedFingerprintEnv}).
+     */
+    public static String inheritedKeyToken() {
+        return "inherited-env:"
+                + Hashing.sha256Hex(BuildEnv.inheritedFingerprintEnv().toString());
+    }
+
+    /**
+     * Files the resolved value of every entry of {@code decls} that reads as a credential ({@link
+     * BuildEnv#looksSecret}) and came from the environment — a forwarded name, or a set value that
+     * expands a {@code ${…}} — with the workspace's redactor, so a test that prints it, an error that
+     * quotes it and the reports show {@code ***} instead. A literal set value is manifest text,
+     * which is no secret.
+     */
+    public static void fileSecrets(Path moduleDir, List<EnvDecl> decls, Map<String, String> resolved) {
+        for (EnvDecl d : decls) {
+            boolean fromEnv =
+                    switch (d) {
+                        case EnvDecl.Forward f -> true;
+                        case EnvDecl.Set set -> set.value().contains("${");
+                    };
+            String value = resolved.get(d.name());
+            if (fromEnv && value != null && BuildEnv.looksSecret(d.name())) ResolvedSecrets.recordFor(moduleDir, value);
         }
     }
 
@@ -177,7 +223,7 @@ public final class WorkerEnv {
     public WorkerEnv withJavaHome(@Nullable Path javaHome) {
         return javaHome == null
                 ? this
-                : with(Map.of("JAVA_HOME", javaHome.toAbsolutePath().toString()));
+                : with(Map.of(JAVA_HOME, javaHome.toAbsolutePath().toString()));
     }
 
     /** Entries the fork supplies unless {@link #extras()} already carries them. */
@@ -225,6 +271,14 @@ public final class WorkerEnv {
         return env;
     }
 
+    /** The variable every worker's environment carries whatever the policy: {@link #withEngineJvmAsLastResort}. */
+    private static final String JAVA_HOME = "JAVA_HOME";
+
+    /** Whether every worker's environment carries {@code name}, whatever the policy and the module declare. */
+    public static boolean alwaysComposed(String name) {
+        return JAVA_HOME.equals(name);
+    }
+
     /**
      * {@code extras} with {@code JAVA_HOME} defaulted to the JVM this engine is running in.
      *
@@ -239,9 +293,9 @@ public final class WorkerEnv {
      * the one the engine, and therefore the worker, is executing.
      */
     private static Map<String, String> withEngineJvmAsLastResort(Map<String, String> extras) {
-        if (extras.containsKey("JAVA_HOME")) return extras;
+        if (extras.containsKey(JAVA_HOME)) return extras;
         Map<String, String> out = new LinkedHashMap<>(extras);
-        out.put("JAVA_HOME", JavaHomes.runningJavaHome().toAbsolutePath().toString());
+        out.put(JAVA_HOME, JavaHomes.runningJavaHome().toAbsolutePath().toString());
         return Collections.unmodifiableMap(out);
     }
 

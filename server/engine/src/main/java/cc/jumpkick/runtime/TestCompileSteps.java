@@ -19,7 +19,6 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -368,7 +367,9 @@ final class TestCompileSteps {
                         scalaSetup,
                         mainClasses(ctx),
                         classpaths.testProcessorDiscovery(),
-                        CompilerJdk.pinned(ctx.require(MODULE).project(), in.session())),
+                        CompilerJdk.pinned(ctx.require(MODULE).project(), in.session()),
+                        WorkerEnv.keyTokens(
+                                ctx.require(MODULE).project().build().env(), in.dir())),
                 genDir,
                 cas,
                 in.cache(),
@@ -501,7 +502,8 @@ final class TestCompileSteps {
                     testScala,
                     layout.classesDir(),
                     prepared.classpaths().testProcessorDiscovery(),
-                    CompilerJdk.pinned(s.project, SessionContext.current())));
+                    CompilerJdk.pinned(s.project, SessionContext.current()),
+                    WorkerEnv.keyTokens(s.project.build().env(), layout.moduleRoot())));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path stateDir = ActionKey.stateDir(
                     ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(s.cache)),
@@ -550,8 +552,8 @@ final class TestCompileSteps {
                 && !s.testDirty
                 && Files.isDirectory(layout.classesDir())
                 && Files.isDirectory(layout.testClassesDir())
-                && TaskForecaster.resourcesOutOfSync(
-                        ModuleLayout.testResourcesDir(s.dir, prepared.parsed().compact()), layout.testClassesDir())) {
+                && SuiteResources.mirroredResourcesOutOfSync(
+                        s.dir, prepared.parsed().compact(), compiledSuites(s, prepared), layout.testClassesDir())) {
             return new TaskForecast.Task(
                     TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, TaskForecast.TEST_RESOURCES_CHANGED, null);
         }
@@ -636,14 +638,19 @@ final class TestCompileSteps {
                 null);
     }
 
+    /** The suites whose sources compile-test compiles under this session's selection, as the build lists them. */
+    private static List<String> compiledSuites(ForecastScope s, ForecastScope.Prepared prepared) {
+        boolean compact = prepared.parsed().compact();
+        List<String> selected = TestSupport.selectedSuites(
+                s.dir, compact, s.project.build(), SessionContext.current().testSelection(), s.knobs.profile());
+        return TestSuites.compiled(s.dir, compact, selected, s.project.build().runSuites());
+    }
+
     /** The Java test roots a joint Groovy pass sweeps: every compiled suite's, as the build lists them. */
     private static List<Path> groovyJointRoots(ForecastScope s, ForecastScope.Prepared prepared) {
         boolean compact = prepared.parsed().compact();
-        List<String> selected = TestSupport.selectedSuites(
-                s.dir, compact, s.project.build(), SessionContext.current().testSelection());
         List<Path> roots = new ArrayList<>();
-        for (String suite :
-                TestSuites.compiled(s.dir, compact, selected, s.project.build().runSuites())) {
+        for (String suite : compiledSuites(s, prepared)) {
             for (Path root : TestSuites.javaRoots(s.dir, compact, suite)) {
                 if (Files.isDirectory(root)) roots.add(root);
             }

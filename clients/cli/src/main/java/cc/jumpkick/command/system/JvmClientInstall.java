@@ -16,7 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The JVM client's install shape, owned in one place so the installers and {@code jk self update}
@@ -121,7 +123,9 @@ public final class JvmClientInstall {
         Path staged = launcher.resolveSibling("." + launcher.getFileName() + "-new");
         try {
             Files.writeString(
-                    staged, windows ? renderWindows(jar, java) : renderPosix(jar, java), StandardCharsets.UTF_8);
+                    staged,
+                    windows ? renderWindows(binDir, jar, java, System.getenv()) : renderPosix(jar, java),
+                    StandardCharsets.UTF_8);
             if (!windows && !staged.toFile().setExecutable(true, false)) {
                 throw new IOException("could not mark " + staged + " executable");
             }
@@ -156,14 +160,19 @@ public final class JvmClientInstall {
 
     /**
      * Retire the JVM client once a native one is installed over it in {@code binDir}: on Windows
-     * the {@code jk.bat} launcher and {@code jkx.cmd} shim are parked (on POSIX the native
-     * {@code jk} and {@code jkx} already replaced them), and every client jar under {@code libDir}
-     * goes. A jar the running client still maps cannot be deleted on Windows; it is parked as
+     * the {@code jk.bat} launcher is rewritten as a forwarder to {@code jk.exe} and the {@code
+     * jkx.cmd} shim is parked (on POSIX the native {@code jk} and {@code jkx} already replaced
+     * them), and every client jar under {@code libDir} goes. The launcher keeps its name because
+     * it may be the very batch file running this update: {@code cmd} re-opens it by name after
+     * java exits to run the rest of the java line, and a launcher renamed away ends the update
+     * with "The batch file cannot be found." and exit 1. The forwarder carries the label that line
+     * jumps to. A jar the running client still maps cannot be deleted on Windows; it is parked as
      * {@code .old}.
      */
     public static void retire(Path binDir, Path libDir, boolean windows) throws IOException {
         if (windows) {
-            EngineInstall.displaceToOld(binDir.resolve("jk.bat"));
+            Path launcher = launcher(binDir, true);
+            if (Files.isRegularFile(launcher)) AtomicWrites.replace(launcher, renderForwarder());
             EngineInstall.displaceToOld(binDir.resolve("jkx.cmd"));
         }
         if (!Files.isDirectory(libDir)) return;
@@ -207,23 +216,95 @@ public final class JvmClientInstall {
      * file by byte offset after each line, so once {@code jk self update} has replaced this file the
      * old offset lands inside the new text. The java line therefore jumps to a label on the same
      * line: a label is looked up by name, which the replacement carries too.
+     *
+     * <p>{@code cmd} decodes a batch file in the console's code page, so no path is written in as
+     * text: the jar, and the JDK when it lives under the home, are named from {@code %JK_ROOT%},
+     * the home the launcher finds from its own location at run time ({@code %~dp0..}), and a JDK
+     * elsewhere from the environment variable of the profile or program directory it sits under
+     * ({@link #WINDOWS_ROOTS}). A path none of those covers is written as it is when it is ASCII
+     * and refused otherwise.
      */
-    static String renderWindows(Path jar, Path java) {
-        String jarPath = WorkingDirectory.resolve(jar).toString();
+    static String renderWindows(Path binDir, Path jar, Path java, Map<String, String> env) {
+        String bin = windowsAbsolute(binDir);
+        String home = bin.substring(0, Math.max(0, Math.max(bin.lastIndexOf('/'), bin.lastIndexOf('\\'))));
+        String jarPath = batchPath(windowsAbsolute(jar), home, env);
+        String javaPath = batchPath(windowsAbsolute(java), home, env);
         return "@echo off\r\n"
                 + "rem " + JkOwnership.GENERATED_BY + " -- do not edit. The JumpKick client on a JVM;"
                 + " `jk self update` rewrites this file.\r\n"
                 + "setlocal\r\n"
+                + "for %%I in (\"%~dp0..\") do set \"JK_ROOT=%%~fI\"\r\n"
                 + "set \"JK_JAR=" + jarPath + "\"\r\n"
                 + "rem JK_JAVA_HOME, else the JDK this launcher was installed with, else JAVA_HOME, else the PATH.\r\n"
                 + "set \"JAVA=java\"\r\n"
                 + "if defined JK_JAVA_HOME set \"JAVA=%JK_JAVA_HOME%\\bin\\java.exe\"\r\n"
-                + "if not defined JK_JAVA_HOME if exist \"" + java + "\" set \"JAVA=" + java + "\"\r\n"
-                + "if not defined JK_JAVA_HOME if not exist \"" + java
+                + "if not defined JK_JAVA_HOME if exist \"" + javaPath + "\" set \"JAVA=" + javaPath + "\"\r\n"
+                + "if not defined JK_JAVA_HOME if not exist \"" + javaPath
                 + "\" if defined JAVA_HOME set \"JAVA=%JAVA_HOME%\\bin\\java.exe\"\r\n"
                 + "\"%JAVA%\" " + JVM_FLAGS + " %JK_CLIENT_OPTS%"
                 + " \"-D" + JvmClient.JAR_PROPERTY + "=%JK_JAR%\" \"-Djk.argv0=%~n0\" -jar \"%JK_JAR%\" %*"
                 + " & goto :jk_exit\r\n"
+                + ":jk_exit\r\n"
+                + "exit /b %ERRORLEVEL%\r\n";
+    }
+
+    /** {@code p} as an absolute path: a drive-qualified one as written, any other resolved against the working directory. */
+    private static String windowsAbsolute(Path p) {
+        String s = p.toString();
+        boolean drive = s.length() > 2
+                && Character.isLetter(s.charAt(0))
+                && s.charAt(1) == ':'
+                && (s.charAt(2) == '\\' || s.charAt(2) == '/');
+        return drive ? s : WorkingDirectory.resolve(p).toString();
+    }
+
+    /**
+     * The environment variables a Windows launcher may name a JDK outside the home by: the JDK the
+     * installer verified usually sits in the user's profile, whose name is the one most likely to
+     * be outside the console's code page, or under the program directories.
+     */
+    static final List<String> WINDOWS_ROOTS =
+            List.of("USERPROFILE", "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)");
+
+    /**
+     * {@code path} as a batch file names it in ASCII: under {@code home} as {@code %JK_ROOT%\...},
+     * else under one of {@link #WINDOWS_ROOTS} as {@code %VAR%\...}, else as it is.
+     *
+     * @throws IllegalArgumentException when the path is outside all of them and not ASCII
+     */
+    static String batchPath(String path, String home, Map<String, String> env) {
+        String named = underRoot(path, home, "%JK_ROOT%");
+        for (int i = 0; named == null && i < WINDOWS_ROOTS.size(); i++) {
+            String root = env.get(WINDOWS_ROOTS.get(i));
+            if (root != null) named = underRoot(path, root, "%" + WINDOWS_ROOTS.get(i) + "%");
+        }
+        String out = named == null ? path : named;
+        if (!out.chars().allMatch(c -> c >= 0x20 && c < 0x7f)) {
+            throw new IllegalArgumentException(path + " has characters cmd.exe cannot read from a batch file and is"
+                    + " not under the JumpKick home or the user's profile; set JK_JAVA_HOME to it, or install from a JDK"
+                    + " at an ASCII path");
+        }
+        return out;
+    }
+
+    /** {@code path} with {@code root} replaced by {@code name} and backslash separators, or null when not under it. */
+    private static @Nullable String underRoot(String path, String root, String name) {
+        String r = root.endsWith("\\") || root.endsWith("/") ? root.substring(0, root.length() - 1) : root;
+        if (r.isEmpty() || path.length() <= r.length() || !path.regionMatches(true, 0, r, 0, r.length())) return null;
+        char sep = path.charAt(r.length());
+        if (sep != '\\' && sep != '/') return null;
+        return name + path.substring(r.length()).replace('/', '\\');
+    }
+
+    /**
+     * The launcher a native client leaves in place of the JVM one: it runs {@code jk.exe} beside it
+     * and keeps the label a running JVM launcher's java line jumps to.
+     */
+    static String renderForwarder() {
+        return "@echo off\r\n"
+                + "rem " + JkOwnership.GENERATED_BY + " -- do not edit. Runs jk.exe, the native client that"
+                + " replaced the JVM one.\r\n"
+                + "\"%~dp0jk.exe\" %* & goto :jk_exit\r\n"
                 + ":jk_exit\r\n"
                 + "exit /b %ERRORLEVEL%\r\n";
     }

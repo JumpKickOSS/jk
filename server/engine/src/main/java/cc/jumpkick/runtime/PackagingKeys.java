@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -414,6 +415,8 @@ public final class PackagingKeys {
         // The JDK the packager runs against reaches the body as spec.javaHome and decides the
         // bytecode it may rewrite or the launcher it embeds, so it keys the output.
         tokens.add("jdk:" + ActionKey.jdkToken(p.javaHome()));
+        // The packager forks with the module's [env], and its body can read it.
+        tokens.addAll(WorkerEnv.keyTokens(p.project().build().env(), p.moduleDir()));
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
         tokens.add("packaging:" + p.decls().packager().name());
         // The packager's CODE is an input, same as plugin steps (see PlannerPlugin.pluginTask).

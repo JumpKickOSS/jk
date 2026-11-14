@@ -483,6 +483,99 @@ grep -q -- "^self shelve $WORK/dist/repos\$" "$WORK/jk-calls" || {
   cat "$WORK/jk-calls" >&2; echo "the dist's repos tree was not shelved" >&2; exit 1; }
 assert_rc_untouched "native-local"
 
+# ---- a failed or interrupted reinstall keeps the previous jk -----------------------------------
+#
+# The new client is unpacked beside the live one and renamed over it only once it answers
+# --version, so a truncated archive, a binary that does not run, or a run killed mid-unpack (by
+# signal, or outright) leaves the previous jk in place and working, with no parked copy and,
+# except after SIGKILL, no stage behind. The next install sweeps a stage a killed run left.
+seed_prior_client() {
+  rm -rf "$1" && mkdir -p "$1/bin"
+  printf '#!/bin/sh\necho prior-jk\n' >"$1/bin/jk"
+  chmod +x "$1/bin/jk"
+}
+run_local_install() {
+  local home="$1" file="$2"
+  shift 2
+  env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG="$WORK/jk-calls" HOME="$WORK/user-home" \
+    JK_HOME="$home" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 "$@" \
+    bash "$WORK/install.sh" "$file" >"$WORK/last-install.log" 2>&1
+}
+assert_prior_client_runs() {
+  local case_name="$1" home="$2" stage_allowed="${3:-}"
+  [[ "$("$home/bin/jk" 2>&1)" == "prior-jk" ]] || {
+    cat "$WORK/last-install.log" >&2; ls -la "$home/bin" >&2
+    echo "$case_name: the previous jk no longer runs" >&2; exit 1; }
+  [[ ! -e "$home/bin/jk.old" ]] || { echo "$case_name: the previous jk was parked" >&2; exit 1; }
+  if [[ -z "$stage_allowed" ]] && compgen -G "$home/bin/.jk-install.*" >/dev/null; then
+    ls -la "$home/bin" >&2; echo "$case_name: the staged client was left behind" >&2; exit 1
+  fi
+}
+
+# A truncated archive: gunzip fails part-way through.
+if command -v gzip >/dev/null 2>&1; then
+  home="$WORK/home-truncated-archive"
+  seed_prior_client "$home"
+  head -c 200000 /dev/urandom | gzip -c >"$WORK/whole.gz"
+  head -c 5000 "$WORK/whole.gz" >"$WORK/dist/jk-linux-x86_64-0.0.1.gz"
+  rm -f "$WORK/whole.gz"
+  if run_local_install "$home" "$WORK/dist/jk-linux-x86_64-0.0.1.gz"; then
+    cat "$WORK/last-install.log" >&2; echo "a truncated archive installed" >&2; exit 1
+  fi
+  assert_prior_client_runs "truncated-archive" "$home"
+  rm -f "$WORK/dist/jk-linux-x86_64-0.0.1.gz"
+fi
+
+# A binary that unpacks but does not run.
+home="$WORK/home-broken-client"
+seed_prior_client "$home"
+printf '#!/bin/sh\nexit 3\n' >"$WORK/dist/jk-broken"
+chmod +x "$WORK/dist/jk-broken"
+if run_local_install "$home" "$WORK/dist/jk-broken"; then
+  cat "$WORK/last-install.log" >&2; echo "a client that does not run was installed" >&2; exit 1
+fi
+grep -qF -- "the new jk does not run" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "the broken client was refused for another reason" >&2; exit 1; }
+assert_prior_client_runs "broken-client" "$home"
+rm -f "$WORK/dist/jk-broken"
+
+# Killed mid-unpack: a fixture gunzip writes part of the binary, then signals the installer.
+if command -v gzip >/dev/null 2>&1; then
+  gzip -cn "$RELEASE/$ARTIFACT" >"$WORK/dist/jk-linux-x86_64-1.0.0.gz"
+  mkdir -p "$WORK/kill-bin"
+  cat >"$WORK/kill-bin/gunzip" <<'SH'
+#!/usr/bin/env bash
+printf '#!/bin/sh\necho half-written\n'
+kill "-$FIXTURE_KILL_SIGNAL" "$PPID"
+sleep 1
+exit 1
+SH
+  chmod +x "$WORK/kill-bin/gunzip"
+  for sig in INT TERM HUP KILL; do
+    home="$WORK/home-killed-$sig"
+    seed_prior_client "$home"
+    if run_local_install "$home" "$WORK/dist/jk-linux-x86_64-1.0.0.gz" \
+        PATH="$WORK/kill-bin:$WORK/bin:$PATH" FIXTURE_KILL_SIGNAL="$sig"; then
+      cat "$WORK/last-install.log" >&2; echo "an install killed by SIG$sig reported success" >&2; exit 1
+    fi
+    if [[ "$sig" == KILL ]]; then
+      assert_prior_client_runs "killed-$sig" "$home" stage-allowed
+    else
+      assert_prior_client_runs "killed-$sig" "$home"
+    fi
+  done
+  # The stage SIGKILL left is swept by the next install, which succeeds.
+  home="$WORK/home-killed-KILL"
+  compgen -G "$home/bin/.jk-install.*" >/dev/null || { echo "SIGKILL left no stage to sweep (fixture did not run?)" >&2; exit 1; }
+  run_local_install "$home" "$WORK/dist/jk-linux-x86_64-1.0.0.gz" || {
+    cat "$WORK/last-install.log" >&2; echo "the install after a killed one failed" >&2; exit 1; }
+  cmp -s "$RELEASE/$ARTIFACT" "$home/bin/jk" || { echo "the install after a killed one did not install" >&2; exit 1; }
+  if compgen -G "$home/bin/.jk-install.*" >/dev/null; then
+    ls -la "$home/bin" >&2; echo "the killed run's stage was not swept" >&2; exit 1
+  fi
+  rm -rf "$WORK/kill-bin" "$WORK/dist/jk-linux-x86_64-1.0.0.gz"
+fi
+
 # A release-versioned dist into a home whose shelf already holds that version's -SNAPSHOT line is
 # refused before anything is written: the shelved release would hide the snapshot, and every later
 # `jk snapshot` in that home would refuse. The refusal names `jk snapshot` as the way forward.

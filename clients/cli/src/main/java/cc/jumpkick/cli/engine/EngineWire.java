@@ -380,9 +380,20 @@ public final class EngineWire {
      * in {@code ~/.jk/config.toml} runs under it, or the request is an import, whose Gradle or
      * Maven build reads what it likes. Otherwise the variables the engine reads for itself and the
      * names the project and this user's configuration declare ({@link ClientEnvForward#forwarded}).
+     *
+     * <p>The project is the request's own: its {@code dir} is described ({@link ProjectInfos#orNull},
+     * memoized for the run) before the names are read, so no verb has to have asked first. A verb
+     * that never did ({@code jk bsp}, {@code jk verify}, a plugin command) or that dropped the memo
+     * after a lock refresh ({@code jk explain}) would otherwise send a shell without the declared
+     * names, and the engine reads a declared variable the caller exported as unset.
      */
     static Map<String, String> shellFor(String requestLine) {
-        if (IMPORT.equals(EngineProtocol.typeOf(requestLine))
+        String type = EngineProtocol.typeOf(requestLine);
+        if (!EngineProtocol.PROJECT_INFO_REQUEST.equals(type)) {
+            String dir = Jsonl.str(requestLine, "dir");
+            if (dir != null && !dir.isBlank()) ProjectInfos.orNull(Path.of(dir));
+        }
+        if (IMPORT.equals(type)
                 || ProjectInfos.wantsWholeShell()
                 || ClientEnvForward.userRefs().wholeShell()) {
             return ClientEnvForward.wholeShell();

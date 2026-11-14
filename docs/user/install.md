@@ -67,12 +67,16 @@ jk self update --check      # is there a newer release? installs nothing
 jk self update --download   # fetch and verify it now; install later
 jk self update              # install the latest (a download already made is reused)
 jk self update 0.16.2       # go back to a release, and hold there
-jk self rollback            # put back the engine and client the last install replaced
+jk self rollback            # put back the engine and client the last install replaced, and hold there
 ```
 
 `jk self rollback` needs no network and no running engine: the store keeps the engine and client
 the last install replaced, so an install that left a JumpKick that fails every command can still be
-undone. A second rollback undoes the first.
+undone. A second rollback undoes the first. Like `jk self update <older>`, a rollback holds
+auto-update at the release it put back until `jk self update` resumes it, and it waits for other
+sessions' runs and holds new ones off while it swaps, as an install does. Every install records the client it pairs with its
+engine (the installers, `jk self update`, `jk snapshot` and `jk install`), native binary or JVM
+client jar alike, so the client a rollback puts back is always the one that ran with that engine.
 
 `self-update` in `~/.jk/config.toml` (or env `JK_SELF_UPDATE`, which wins) picks the behaviour:
 
@@ -146,7 +150,11 @@ What lands is the jar under `~/.jk/lib/jk/jk-<version>.jar`, the engine under
 (POSIX `sh`) or `%USERPROFILE%\.jk\bin\jk.bat`. `jkx` comes with it. Everything else — `jk
 activate`, the engine, `jk self update` — is the same; the update replaces the jar and rewrites
 the launcher instead of swapping a binary. Once a release lists a native client for the host,
-`jk self update` installs that in place of the JVM client (`JK_CLIENT=jvm` keeps the JVM client).
+`jk self update` installs that in place of the JVM client (`JK_CLIENT=jvm` keeps the JVM client);
+on Windows `jk.bat` stays behind as a forwarder to `jk.exe`. The Windows launcher names its jar
+from its own location rather than spelling the path out, so a profile whose name is outside the
+console's code page (`C:\Users\José`) works; a JDK outside both the JumpKick home and the profile must
+sit at an ASCII path (or be named by `JK_JAVA_HOME`).
 
 **You bring the JDK.** JumpKick downloads JDKs only for hosts the JDK feed covers, and a host on this
 path is by definition one it does not. The installer needs a full JDK (not a JRE) of **25 or

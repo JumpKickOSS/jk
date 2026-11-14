@@ -3,11 +3,15 @@ package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.PreparedUpdate;
+import cc.jumpkick.cli.engine.InstallLock;
+import cc.jumpkick.config.SelfUpdatePolicy;
+import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
@@ -48,6 +52,10 @@ class SelfUpdateApplyTest {
     }
 
     private static PreparedUpdate prepared(Cas cas, String version) throws IOException {
+        return prepared(cas, version, PreparedUpdate.Client.NATIVE);
+    }
+
+    private static PreparedUpdate prepared(Cas cas, String version, PreparedUpdate.Client kind) throws IOException {
         byte[] engine = ("engine " + version).getBytes(StandardCharsets.UTF_8);
         byte[] client = ("client " + version).getBytes(StandardCharsets.UTF_8);
         cas.put(engine, Hashing.sha256Hex(engine));
@@ -56,7 +64,7 @@ class SelfUpdateApplyTest {
                 version,
                 "0.16.2",
                 Hashing.sha256Hex(engine),
-                PreparedUpdate.Client.NATIVE,
+                kind,
                 Hashing.sha256Hex(client),
                 Instant.parse("2026-10-30T12:00:00Z"));
         p.write(EngineInstall.current().engineHome());
@@ -111,6 +119,122 @@ class SelfUpdateApplyTest {
                 .isInstanceOf(IOException.class);
 
         assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.17.0");
+    }
+
+    /** The home the installers leave: the engine materialized, the client copied in and named nowhere. */
+    private static void installedByTheInstaller(EngineInstall install, Cas cas, String version) throws IOException {
+        byte[] engine = ("engine " + version).getBytes(StandardCharsets.UTF_8);
+        cas.put(engine, Hashing.sha256Hex(engine));
+        install.materialize(version, cas, Hashing.sha256Hex(engine));
+        Path bin = Files.createDirectories(JkDirs.binDir());
+        Files.deleteIfExists(bin.resolve("jk"));
+        Files.writeString(bin.resolve("jk"), "client " + version);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void rolling_back_the_first_update_after_an_install_puts_back_the_installed_client() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        installedByTheInstaller(install, cas, "0.16.2");
+
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
+
+        assertThat(back.version()).isEqualTo("0.16.2");
+        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+                .as("the client paired with the engine put back")
+                .isEqualTo("client 0.16.2");
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_rollback_after_an_installer_reinstall_never_pairs_an_engine_with_another_releases_client() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.18.0"), install, cas, false);
+        installedByTheInstaller(install, cas, "0.19.0");
+
+        var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
+
+        assertThat(back.version()).isEqualTo("0.18.0");
+        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+                .as("the client of the engine put back, not the one before it")
+                .isEqualTo("client 0.18.0");
+    }
+
+    /**
+     * A downgrade cut short after the client step (here the engine blob is gone, as a Ctrl-C or a
+     * full disk would stop it) must not leave an older client than the engine the pointer names:
+     * that client refuses to replace the newer engine and hands every command to itself.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_downgrade_cut_short_leaves_no_client_older_than_the_engine_pointer() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        PreparedUpdate older = prepared(cas, "0.16.2");
+        Files.delete(cas.pathFor(older.engineSha256()));
+
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.apply(older, install, cas, true))
+                .isInstanceOf(IOException.class);
+
+        assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.17.0");
+        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+                .as("the client beside a 0.17.0 pointer")
+                .isEqualTo("client 0.17.0");
+    }
+
+    /**
+     * A rollback holds auto-update at the release it put back, or the engine's updater installs the
+     * release the person just left once the home is quiet; it stops the engines and swaps under
+     * the host install lock, held exclusively.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_rollback_holds_auto_update_at_the_release_it_put_back_and_swaps_under_the_install_lock() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.18.0"), install, cas, false);
+        List<InstallLock.Holder> duringStop = new ArrayList<>();
+
+        var back = SelfCommand.RollbackSub.rollback(
+                install, cas, JkDirs.binDir(), () -> duringStop.addAll(InstallLock.holders()));
+
+        assertThat(back.version()).isEqualTo("0.17.0");
+        assertThat(duringStop)
+                .extracting(InstallLock.Holder::mode, InstallLock.Holder::purpose)
+                .contains(tuple(InstallLock.Mode.EXCLUSIVE, "jk self rollback"));
+        SelfUpdateState state = SelfUpdateState.read();
+        assertThat(state.held()).isEqualTo("0.17.0");
+        assertThat(state.heldFrom()).isEqualTo("0.18.0");
+        assertThat(SelfUpdatePolicy.decide("0.17.0", null, null, state, false).action())
+                .as("the engine's updater does nothing while held")
+                .isEqualTo(SelfUpdatePolicy.Action.OFF);
+    }
+
+    /** A JVM client is recorded beside its engine like a native one, and a rollback puts its jar back. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void rolling_back_a_jvm_client_update_puts_back_the_jar_the_engine_ran_with() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0", PreparedUpdate.Client.JVM), install, cas, false);
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.18.0", PreparedUpdate.Client.JVM), install, cas, false);
+
+        var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
+
+        Path lib = JvmClientInstall.libDir();
+        assertThat(back.version()).isEqualTo("0.17.0");
+        assertThat(lib.resolve("jk-0.17.0.jar")).hasContent("client 0.17.0");
+        assertThat(lib.resolve("jk-0.18.0.jar"))
+                .as("the later client's jar is retired")
+                .doesNotExist();
+        assertThat(Files.readString(JvmClientInstall.launcher(JkDirs.binDir(), false)))
+                .contains("jk-0.17.0.jar");
     }
 
     @Test

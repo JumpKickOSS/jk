@@ -68,7 +68,15 @@ final class EngineJarFetcher {
             throw unpublished(e);
         }
         cas.put(jar.bytes(), jar.sha256());
-        Path engineJar = install.materialize(version, cas, jar.sha256()).engineJar();
+        // The client fetching its engine is the one paired with it: a home the native installer set
+        // up gets its engine here, and records its client for a rollback here too.
+        Path engineJar = install.materialize(
+                        version,
+                        cas,
+                        jar.sha256(),
+                        false,
+                        InstalledClients.running(cas, null).orElse(null))
+                .engineJar();
         progress.done(engineJar);
         return engineJar;
     }

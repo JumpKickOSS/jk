@@ -80,7 +80,8 @@ public final class PlannerGuardSuite {
             Path outputDir,
             int release,
             List<String> javacArgs,
-            Path javaHome) {
+            Path javaHome,
+            List<String> env) {
         return CompileRequest.builder()
                 .sources(sources)
                 .classpath(classpath)
@@ -89,6 +90,7 @@ public final class PlannerGuardSuite {
                 .extraOptions(javacArgs)
                 .javaHome(javaHome)
                 .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, contributedProcessors, classpath))
+                .env(env)
                 .build();
     }
 
@@ -148,7 +150,8 @@ public final class PlannerGuardSuite {
                 layout.guardClassesDir(),
                 release,
                 javacArgs,
-                javaHome);
+                javaHome,
+                WorkerEnv.keyTokens(project.build().env(), dir));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GUARD, layout.guardClassesDir());
         Path state = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(cache)),
@@ -217,7 +220,8 @@ public final class PlannerGuardSuite {
                             out,
                             ctx.require(PARSED_BUILD).release(),
                             ctx.require(PARSED_BUILD).javacArgs(),
-                            ctx.require(JAVA_HOME));
+                            ctx.require(JAVA_HOME),
+                            WorkerEnv.keyTokens(project.build().env(), in.dir()));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GUARD, out);
                     Path stateDir = ActionKey.stateDir(
                             ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),

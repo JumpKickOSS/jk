@@ -588,6 +588,8 @@ public final class PlannerKsp {
         parts.add("jdk:" + ActionKey.jdkToken(javaHome));
         parts.add("moduleName:" + project.project().name());
         for (String option : kspOptions(project, moduleDir, lock)) parts.add("option:" + option);
+        // The round forks with the module's [env], and a KSP processor can read it.
+        parts.addAll(WorkerEnv.keyTokens(project.build().env(), moduleDir));
         return FreshnessStamp.optionsDigest(parts);
     }
 

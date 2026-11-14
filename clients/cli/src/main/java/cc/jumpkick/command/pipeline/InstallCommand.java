@@ -981,8 +981,8 @@ public final class InstallCommand {
 
     /**
      * As {@link #installProductBin(Path, Path, Cas)}, naming the client in the engine's install
-     * pointer ({@link EngineInstall#recordClient}), which keeps the one it replaces in the store for
-     * {@code jk self rollback}, with {@code commit}, the checkout the client was built from: a
+     * pointer ({@link EngineInstall#recordClient}) as the one paired with its engine, which keeps it
+     * in the store for {@code jk self rollback}, with {@code commit}, the checkout the client was built from: a
      * snapshot's native client carries no commit of its own, so {@code jk --version -v} reads it there.
      */
     public static Path installProductBin(
@@ -991,7 +991,9 @@ public final class InstallCommand {
         String sha = Hashing.sha256Hex(builtBinary);
         cas.putFile(builtBinary, sha);
         EngineInstall.installBinaries(cas.pathFor(sha), binDir);
-        if (pointer != null) pointer.recordClient(sha, commit);
+        if (pointer != null) {
+            pointer.recordClient(new EngineInstall.InstalledClient(sha, EngineInstall.ClientKind.NATIVE, commit));
+        }
         return binDir.resolve(BuildLayout.nativeExecutableFileName("jk"));
     }
 

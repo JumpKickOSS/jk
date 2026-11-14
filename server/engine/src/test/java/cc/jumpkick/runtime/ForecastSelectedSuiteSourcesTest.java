@@ -103,7 +103,7 @@ class ForecastSelectedSuiteSourcesTest {
                         project,
                         module,
                         false,
-                        TestSupport.selectedSuites(module, false, project.build(), selection),
+                        TestSupport.selectedSuites(module, false, project.build(), selection, null),
                         BuildLayout.of(module, project),
                         null)
                 .all();

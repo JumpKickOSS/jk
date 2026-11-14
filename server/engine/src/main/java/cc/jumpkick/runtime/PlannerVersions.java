@@ -154,7 +154,8 @@ public final class PlannerVersions {
             List<String> javacArgs,
             JavacConfig javac,
             Path javaHome,
-            Path mainClasses) {
+            Path mainClasses,
+            List<String> env) {
         List<String> options = new ArrayList<>(PlannerCompile.javacOptions(javacArgs, javac));
         String module = moduleName(sources);
         if (module != null) {
@@ -169,6 +170,7 @@ public final class PlannerVersions {
                 .extraOptions(List.copyOf(options))
                 .javaHome(javaHome)
                 .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, contributedProcessors, classpath))
+                .env(env)
                 .build();
     }
 
@@ -238,7 +240,8 @@ public final class PlannerVersions {
                     prepared.parsed().javacArgs(),
                     project.javac(),
                     prepared.javaHome(),
-                    layout.classesDir());
+                    layout.classesDir(),
+                    WorkerEnv.keyTokens(project.build().env(), dir));
             var pred = JavaCompile.predict(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_VERSIONS, out),
                     req,
@@ -332,7 +335,8 @@ public final class PlannerVersions {
                 ctx.require(PARSED_BUILD).javacArgs(),
                 project.javac(),
                 ctx.require(JAVA_HOME),
-                mainClasses);
+                mainClasses,
+                WorkerEnv.keyTokens(project.build().env(), in.dir()));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_VERSIONS, out);
         Path stateDir = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),

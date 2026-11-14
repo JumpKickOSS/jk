@@ -40,7 +40,12 @@ public record KotlincRequest(
          * each file's declaration digest ({@link KotlincInputs#javaSources}). Empty for a
          * Kotlin-only module.
          */
-        List<Path> javaSourceRoots) {
+        List<Path> javaSourceRoots,
+        /**
+         * The module's {@code [env]} as key tokens when a compiler plugin runs that can read it;
+         * empty otherwise. Keyed only: the worker gets the environment itself from its fork.
+         */
+        List<String> env) {
 
     /** One compiler plugin: id, jar, and {@code key=value} options. */
     public record Plugin(String id, Path jar, List<String> options) {
@@ -64,6 +69,7 @@ public record KotlincRequest(
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
         plugins = plugins == null ? List.of() : List.copyOf(plugins);
         javaSourceRoots = javaSourceRoots == null ? List.of() : List.copyOf(javaSourceRoots);
+        env = env == null ? List.of() : List.copyOf(env);
         if (jvmTarget < JavaRelease.OLDEST) {
             throw new IllegalArgumentException("jvmTarget must be >= " + JavaRelease.OLDEST + ", got: " + jvmTarget);
         }
@@ -86,6 +92,7 @@ public record KotlincRequest(
         private List<String> extraArgs = List.of();
         private List<Plugin> plugins = List.of();
         private List<Path> javaSourceRoots = List.of();
+        private List<String> env = List.of();
     }
 
     public boolean incremental() {
