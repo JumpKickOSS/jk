@@ -176,8 +176,8 @@ class StampedMemoTest {
                         "JkBuildParser DOC_CACHE",
                         "jk.toml",
                         Stamp.BODY,
-                        m -> "group = \"com.example\"\nname = \"widget\"\nversion = \"1.0.0\"\n"
-                                + "[release]\ntag = \"" + m + "-{version}\"\n",
+                        m -> "group = \"com.example\"\nname = \"widget\"\nversion = \"1.0.0\"\n" + "[release]\ntag = \""
+                                + m + "-{version}\"\n",
                         f -> JkBuildParser.releaseTable(f).tag().replace("-{version}", "")));
     }
 

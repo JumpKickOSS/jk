@@ -67,7 +67,8 @@ public final class PlannerTest {
      */
     static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
         var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
-        return TestStampInputs.resolveSuites(sel, in.dir(), compact, project.build().runSuites());
+        return TestStampInputs.resolveSuites(
+                sel, in.dir(), compact, project.build().runSuites());
     }
 
     /** The plugin steps whose output compile-test reads: every test-source generator. */

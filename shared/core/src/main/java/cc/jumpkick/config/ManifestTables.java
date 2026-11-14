@@ -27,7 +27,6 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.release.ReleaseTable;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.run.TaskNames;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
@@ -587,9 +586,7 @@ public final class ManifestTables {
                     env.put(key, String.valueOf(v));
                 }
             }
-            byName.put(
-                    name,
-                    new Profile(name, inherits, javacArgs, jvmArgs, env));
+            byName.put(name, new Profile(name, inherits, javacArgs, jvmArgs, env));
         }
         return new Profiles(byName);
     }

@@ -129,8 +129,8 @@ public record TestStampInputs(
     static TestStampInputs of(Facts facts, ClasspathFingerprint.EntryIdentity identity) throws IOException {
         TestSelection selection = facts.sessionSelection();
         boolean compact = CompileSupport.isSimpleLayout(facts.project().project(), facts.dir());
-        TestSelection.Resolved suites =
-                resolveSuites(selection, facts.dir(), compact, facts.project().build().runSuites());
+        TestSelection.Resolved suites = resolveSuites(
+                selection, facts.dir(), compact, facts.project().build().runSuites());
         TestTier tier = TestTier.of(selection, facts.profileName(), fastMethodBudget(facts.project(), facts.dir()));
         List<String> jvmArgs = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(facts.layout(), facts.pluginDecls()));
         jvmArgs.addAll(testJvmArgs(facts.project(), facts.profileName()));

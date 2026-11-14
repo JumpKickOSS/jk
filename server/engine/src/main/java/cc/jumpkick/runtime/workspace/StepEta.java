@@ -9,7 +9,6 @@ import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.StepEffort;
 import cc.jumpkick.runtime.TestEffort;
-import cc.jumpkick.runtime.TestStampInputs;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.runtime.base.Perf;

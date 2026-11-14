@@ -42,7 +42,8 @@ class BuildLogicGuardPlanTest {
     @Test
     void gate_selection_adds_the_gate_step_after_tests(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
-        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
+        TestSelection gate =
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, gate));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
@@ -72,7 +73,8 @@ class BuildLogicGuardPlanTest {
     @Test
     void build_gate_skip_tests_requires_package(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
-        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
+        TestSelection gate =
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), true, false, gate));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);

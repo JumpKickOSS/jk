@@ -92,7 +92,8 @@ class SuiteSettingsE2eTest {
 
     @Test
     void a_suites_env_and_properties_reach_its_tests_and_not_the_default_suites() throws Exception {
-        Run run = run(TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false));
+        Run run =
+                run(TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false));
         assertThat(run.result().success()).as("%s", run.tests().failures()).isTrue();
         assertThat(run.tests().total())
                 .as("PlainTest and CartTest, each in its own JVM")

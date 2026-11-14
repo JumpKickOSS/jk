@@ -28,7 +28,8 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class GuardTestClassPopulationTest {
 
-    private static final TestSelection GUARD = TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false);
+    private static final TestSelection GUARD =
+            TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false);
 
     @Test
     void build_guard_and_freeze_agree_on_a_test_class_rules_population(@TempDir Path tmp) throws Exception {

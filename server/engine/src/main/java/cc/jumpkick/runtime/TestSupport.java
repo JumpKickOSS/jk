@@ -218,8 +218,7 @@ public final class TestSupport {
      * TestFacts#selected}): an integration run counted every unit test in jk-core and priced its
      * empty suite at 50 s.
      */
-    public static int estimateSelectedSuiteTestCount(
-            Path moduleDir, boolean compact, TestSelection selection) {
+    public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
         Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
         List<String> discovered = TestSuites.available(moduleDir, compact, declared);
         var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
@@ -315,10 +314,7 @@ public final class TestSupport {
      * uses.
      */
     public static List<String> selectedSuites(
-            Path moduleDir,
-            boolean compact,
-            BuildBlock build,
-            @Nullable TestSelection selection) {
+            Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
         List<String> discovered = TestSuites.available(moduleDir, compact, build.runSuites());
         if (selection != null) {
             var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, build.runSuites());

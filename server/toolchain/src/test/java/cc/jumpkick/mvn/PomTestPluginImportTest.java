@@ -111,7 +111,8 @@ class PomTestPluginImportTest {
                 """);
         JkBuild build = result.jkBuild();
         assertThat(build.build().testJvm().jvmArgs()).containsExactly("-Xmx1g");
-        assertThat(build.build().testSuites()).containsExactly(Map.entry("slow", DeclaredSuite.ofTags(List.of("slow"))));
+        assertThat(build.build().testSuites())
+                .containsExactly(Map.entry("slow", DeclaredSuite.ofTags(List.of("slow"))));
         assertThat(requireNonNull(build.application()).main()).isEqualTo("com.ex.Main");
     }
 

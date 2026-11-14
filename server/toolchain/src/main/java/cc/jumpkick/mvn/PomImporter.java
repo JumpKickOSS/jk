@@ -9,7 +9,6 @@ import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.InFlightRequests;
-import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Coordinate;

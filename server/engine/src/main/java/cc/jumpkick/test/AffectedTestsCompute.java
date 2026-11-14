@@ -5,7 +5,6 @@ import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.PathUtil;
@@ -217,11 +216,7 @@ public final class AffectedTestsCompute {
      * selected suites run, by class and tag.
      */
     static List<TestClassIndex.Entry> testsFor(
-            Path moduleDir,
-            JkBuild build,
-            Path testClassesDir,
-            Set<String> production,
-            TestSelection sel)
+            Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
             throws IOException {
         boolean compact = ModuleLayout.isCompact(moduleDir);
         Map<String, DeclaredSuite> declared = build.build().runSuites();

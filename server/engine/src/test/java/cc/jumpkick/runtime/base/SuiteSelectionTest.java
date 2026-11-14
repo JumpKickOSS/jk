@@ -59,8 +59,8 @@ class SuiteSelectionTest {
     /** jk test, the push gate and one tier keep their own ledger shapes; a profile alone still keys one. */
     @Test
     void each_suite_selection_is_its_own_tier_in_the_ledger() {
-        TestSelection guard =
-                TestSelection.of(List.of("test", "integration", "e2e"), false, List.of(), List.of(), true, false, false);
+        TestSelection guard = TestSelection.of(
+                List.of("test", "integration", "e2e"), false, List.of(), List.of(), true, false, false);
         TestSelection integration = TestSelection.of(List.of("integration"), false, List.of(), List.of());
         assertThat(SuiteSelection.tier(TestSelection.DEFAULT, null)).isEmpty();
         assertThat(SuiteSelection.tier(TestSelection.DEFAULT, "ci")).isEqualTo("ci");
@@ -76,8 +76,8 @@ class SuiteSelectionTest {
                 .isTrue();
         assertThat(SuiteSelection.slowTier(TestSelection.of(List.of(), false, List.of("slow"), List.of())))
                 .isTrue();
-        assertThat(SuiteSelection.slowTier(
-                        TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false)))
+        assertThat(SuiteSelection.slowTier(TestSelection.of(
+                        List.of("test", "integration"), false, List.of(), List.of(), true, false, false)))
                 .isFalse();
         assertThat(SuiteSelection.slowTier(TestSelection.of(List.of(), true, List.of(), List.of())))
                 .isFalse();

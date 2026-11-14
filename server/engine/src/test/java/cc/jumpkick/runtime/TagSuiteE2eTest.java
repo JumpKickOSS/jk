@@ -98,7 +98,8 @@ class TagSuiteE2eTest {
 
     @Test
     void the_gate_runs_the_default_suite_and_integration_once_each() throws Exception {
-        assertThat(total(TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false)))
+        assertThat(total(TestSelection.of(
+                        List.of("test", "integration"), false, List.of(), List.of(), true, false, false)))
                 .isEqualTo(4L);
     }
 

@@ -52,7 +52,8 @@ class ProtoJobsTagArrayTest {
 
     @Test
     void gate_survives_the_round_trip() {
-        TestSelection sent = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
+        TestSelection sent =
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
         assertThat(back.guard()).isTrue();
         assertThat(back.suites()).containsExactly("test", "integration");

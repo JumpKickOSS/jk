@@ -8,8 +8,8 @@ import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.graph.GraphRunner;
@@ -191,8 +191,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 null,
                                 guard
                                         ? TestSelection.of(
-                                                TestSelection.guardSuites(
-                                                        WorkspaceScan.owningRoot(entryDir).orElse(entryDir)),
+                                                TestSelection.guardSuites(WorkspaceScan.owningRoot(entryDir)
+                                                        .orElse(entryDir)),
                                                 false,
                                                 List.of(),
                                                 List.of(),
