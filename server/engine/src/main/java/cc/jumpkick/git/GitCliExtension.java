@@ -7,6 +7,7 @@ import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -507,9 +508,7 @@ public final class GitCliExtension implements GitBackend {
         String agent = BuildEnv.get("SSH_AUTH_SOCK");
         if (agent != null && !agent.isBlank()) layered.put("SSH_AUTH_SOCK", agent);
         layered.putAll(extras);
-        Map<String, String> env = pb.environment();
-        env.clear();
-        env.putAll(WorkerEnv.strict().with(layered).environment());
+        ChildEnv.replace(pb, WorkerEnv.strict().with(layered).environment());
     }
 
     /**

@@ -64,7 +64,7 @@ class PassthroughEnvTest {
         env.put("Path", "C:\\Windows\\System32");
         env.put("Java_Tool_Options", "-Xmx512m");
 
-        PassthroughEnv.apply(env, tempDir);
+        PassthroughEnv.apply(env, tempDir, true);
 
         var pathKeys =
                 env.keySet().stream().filter(k -> k.equalsIgnoreCase("PATH")).toList();

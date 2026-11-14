@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
@@ -124,13 +125,11 @@ public final class TrainRunner {
             pb.directory(moduleDir.toFile());
             // The child's JAVA_HOME is the JDK it runs under, not the one the daemon inherited
             // from the shell that started it. A profile's own [env] still wins, below.
-            pb.environment()
-                    .put(
-                            "JAVA_HOME",
-                            runnableHome(agentJavaHome).toAbsolutePath().toString());
-            for (var e : profile.env().entrySet()) {
-                pb.environment().put(e.getKey(), e.getValue());
-            }
+            ChildEnv.put(
+                    pb,
+                    "JAVA_HOME",
+                    runnableHome(agentJavaHome).toAbsolutePath().toString());
+            ChildEnv.putAll(pb, profile.env());
             Output out = runUntilSettled(pb, log);
             lastRunOutput = out;
             DynamicSurface observed = DynamicSurfaceIo.importAgentDir(agentOut, "train:" + profile.name());
@@ -374,7 +373,7 @@ public final class TrainRunner {
                 List.of(java.toString(), "-XX:AOTMode=record", "-XX:AOTConfiguration=" + conf.toAbsolutePath()));
         record.addAll(launch);
         ProcessBuilder pb = new ProcessBuilder(record).redirectErrorStream(true).directory(moduleDir.toFile());
-        pb.environment().put("JAVA_HOME", home.toAbsolutePath().toString());
+        ChildEnv.put(pb, "JAVA_HOME", home.toAbsolutePath().toString());
         runUntilSettled(pb, log);
         if (!Files.isRegularFile(conf) || Files.size(conf) == 0) {
             log.accept("AOT recording wrote no configuration; skipping the AOT cache");

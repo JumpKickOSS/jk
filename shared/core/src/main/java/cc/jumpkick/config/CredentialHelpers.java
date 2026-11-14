@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -279,9 +280,7 @@ public final class CredentialHelpers {
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(PathUtil.userHome().toFile());
         // The child sees the request's shell and nothing of the engine's own: cleared, then set.
-        Map<String, String> childEnv = pb.environment();
-        childEnv.clear();
-        childEnv.putAll(env);
+        ChildEnv.replace(pb, env);
         Process process;
         try {
             process = pb.start();

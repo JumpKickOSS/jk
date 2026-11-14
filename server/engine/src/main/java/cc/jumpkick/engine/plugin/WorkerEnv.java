@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.TestEnvValues;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
@@ -266,7 +267,7 @@ public final class WorkerEnv {
 
     /** {@link #environment()} for a compiler worker: without {@link #JVM_OPTIONS}. */
     public Map<String, String> compilerEnvironment() {
-        Map<String, String> env = new LinkedHashMap<>(environment());
+        Map<String, String> env = ChildEnv.copyOf(environment());
         env.keySet().removeIf(k -> JVM_OPTIONS.contains(k.toUpperCase(Locale.ROOT)));
         return env;
     }
@@ -326,8 +327,7 @@ public final class WorkerEnv {
             boolean inherit,
             Map<String, String> extras,
             boolean caseInsensitive) {
-        Map<String, String> out =
-                caseInsensitive ? new TreeMap<>(String.CASE_INSENSITIVE_ORDER) : new LinkedHashMap<>();
+        Map<String, String> out = ChildEnv.map(caseInsensitive);
         for (Map.Entry<String, String> e : engine.entrySet()) {
             if (inherit || allowed(e.getKey(), caseInsensitive)) out.put(e.getKey(), e.getValue());
         }

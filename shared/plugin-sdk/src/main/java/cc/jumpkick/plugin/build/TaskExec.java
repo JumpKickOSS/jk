@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.TreeContent;
@@ -312,7 +313,7 @@ public interface TaskExec {
                     .redirectOutput(output)
                     .redirectInput(ProcessBuilder.Redirect.from(new File(Os.isWindows() ? "NUL" : "/dev/null")));
             if (cwd != null) pb.directory(cwd.toFile());
-            pb.environment().putAll(env);
+            ChildEnv.putAll(pb, env);
             if (argFile == null) return pb.start();
             Path written = argFile;
             try {

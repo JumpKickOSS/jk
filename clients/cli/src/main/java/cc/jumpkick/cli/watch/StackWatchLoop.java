@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -210,8 +211,8 @@ final class StackWatchLoop {
         ProcessBuilder pb = new ProcessBuilder(command)
                 .directory(Path.of(m.plan.workingDir()).toFile());
         EnvLookup.layerUnder(pb.environment(), m.plan.appDotEnv());
-        pb.environment().putAll(m.plan.appEnv());
-        pb.environment().putAll(DevUrls.forApp(m.name, exports));
+        ChildEnv.putAll(pb, m.plan.appEnv());
+        ChildEnv.putAll(pb, DevUrls.forApp(m.name, exports));
         Process process = supervisor.startCompanion(pb::start);
         ReadyProbe probe = new ReadyProbe(m.name, m.plan.appReady(), 0, process, Clock.SYSTEM);
         m.run = new Run(process, probe);

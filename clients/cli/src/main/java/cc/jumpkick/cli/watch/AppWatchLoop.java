@@ -8,6 +8,7 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.EnvLookup;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
@@ -437,8 +438,8 @@ public final class AppWatchLoop {
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile());
         EnvLookup.layerUnder(pb.environment(), plan.appDotEnv());
-        pb.environment().putAll(plan.appEnv());
-        pb.environment().putAll(DevUrls.forApp(appName, exports));
+        ChildEnv.putAll(pb, plan.appEnv());
+        ChildEnv.putAll(pb, DevUrls.forApp(appName, exports));
         // Under -O jsonl stdout is a JSONL stream, so the app is piped and its lines ride the
         // stream as events, after its app-started; stdin is still the user's. A pattern probe pipes
         // the app on a terminal too — a probe cannot read a terminal the app owns — and relays each

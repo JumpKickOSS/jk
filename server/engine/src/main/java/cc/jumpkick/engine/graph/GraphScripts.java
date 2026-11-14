@@ -6,10 +6,12 @@ import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.NodePin;
@@ -22,6 +24,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
@@ -116,9 +119,11 @@ final class GraphScripts {
                         .directory(staging.toFile())
                         .redirectErrorStream(true)
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD);
-                pb.environment().put("PATH", home.path(pb.environment().get("PATH")));
-                pb.environment().putAll(NodeCaches.env(home.packageManager(), JkDirs.cache(), JkDirs.store()));
-                pb.environment().put("npm_config_update_notifier", "false");
+                Map<String, String> env = ChildEnv.copyOf(ProcessEnv.all());
+                env.put("PATH", home.path(env.get("PATH")));
+                env.putAll(NodeCaches.env(home.packageManager(), JkDirs.cache(), JkDirs.store()));
+                env.put("npm_config_update_notifier", "false");
+                ChildEnv.replace(pb, env);
                 // Registered with the request, so a cancel stops it; and stopped here on an interrupt.
                 Process p = JobWorkers.start(pb);
                 try {

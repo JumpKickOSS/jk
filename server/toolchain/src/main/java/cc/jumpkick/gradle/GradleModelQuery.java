@@ -9,6 +9,7 @@ import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
@@ -185,8 +186,7 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
             ProcessBuilder pb =
                     new ProcessBuilder(command).directory(buildRoot.toFile()).redirectErrorStream(true);
             // The shell that ran `jk import`, not the engine's: the build reads its credentials there.
-            pb.environment().clear();
-            pb.environment().putAll(BuildEnv.callerEnv());
+            ChildEnv.replace(pb, BuildEnv.callerEnv());
             PassthroughEnv.apply(pb.environment(), launch.javaHome());
             Run run = run(pb, buildRoot, launch.label(), new ProjectCounter(progress));
             if (run.exit() != 0) {

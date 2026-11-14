@@ -230,9 +230,11 @@ public final class AotTraining {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         Path cwd = launcher.cwd();
         if (cwd != null) pb.directory(cwd.toFile());
-        Map<String, String> environment = pb.environment();
-        if (launcher.wholeEnv()) environment.clear();
-        environment.putAll(launcher.env());
+        if (launcher.wholeEnv()) {
+            ChildEnv.replace(pb, launcher.env());
+        } else {
+            ChildEnv.putAll(pb, launcher.env());
+        }
         Process process = launcher.start(pb);
         StringBuilder out = new StringBuilder();
         AtomicLong lastOutput = new AtomicLong(Clock.SYSTEM.nanos());

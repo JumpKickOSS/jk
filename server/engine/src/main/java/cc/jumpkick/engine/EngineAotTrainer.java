@@ -6,6 +6,7 @@ import cc.jumpkick.config.EngineAotCache;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
@@ -292,8 +293,7 @@ final class EngineAotTrainer {
                 .directory(dir.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        pb.environment().clear();
-        pb.environment().putAll(env);
+        ChildEnv.replace(pb, env);
         return pb.start();
     }
 

@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.LockPaths;
@@ -41,7 +42,7 @@ public final class JavaHomes {
      * {@code WorkerEnv}. This one is for a fork that builds its own {@link ProcessBuilder}.
      */
     public static ProcessBuilder underJdk(ProcessBuilder pb, Path javaHome) {
-        pb.environment().put("JAVA_HOME", javaHome.toAbsolutePath().toString());
+        ChildEnv.put(pb, "JAVA_HOME", javaHome.toAbsolutePath().toString());
         return pb;
     }
 

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.time.Duration;
@@ -27,10 +28,9 @@ final class TemplateClone {
     static Result run(List<String> command, Duration timeout) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         // The request's shell and nothing of the engine's own: cleared, then set.
-        Map<String, String> env = pb.environment();
-        env.clear();
-        env.putAll(BuildEnv.callerEnv());
+        Map<String, String> env = ChildEnv.copyOf(BuildEnv.callerEnv());
         env.put("GIT_TERMINAL_PROMPT", "0");
+        ChildEnv.replace(pb, env);
         Processes.Captured c = Processes.capture(JobWorkers.start(pb), timeout);
         if (c.timedOut()) throw new IOException("git clone timed out after " + timeout.toSeconds() + "s");
         return new Result(c.exit(), c.output());

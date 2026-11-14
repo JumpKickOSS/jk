@@ -15,6 +15,7 @@ import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -234,7 +235,7 @@ public final class RunVerb implements BuildVerb {
         ProcessBuilder builder = new ProcessBuilder(command);
         EnvLookup.layerUnder(builder.environment(), plan.appDotEnv());
         if (!plan.appEnv().isEmpty()) {
-            builder.environment().putAll(plan.appEnv());
+            ChildEnv.putAll(builder, plan.appEnv());
             builder.directory(Path.of(plan.workingDir()).toFile());
         }
         return builder;

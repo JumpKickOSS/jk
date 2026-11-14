@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.config.EnvLookup;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -195,7 +196,7 @@ public final class Sidecars implements AutoCloseable {
         ProcessBuilder pb =
                 new ProcessBuilder(spec.command()).directory(Path.of(spec.cwd()).toFile());
         EnvLookup.layerUnder(pb.environment(), spec.dotEnv());
-        pb.environment().putAll(spec.env());
+        ChildEnv.putAll(pb, spec.env());
         Process process;
         try {
             process = pb.start();

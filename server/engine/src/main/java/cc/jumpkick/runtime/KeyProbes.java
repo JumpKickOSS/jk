@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.Hashing;
@@ -60,9 +61,8 @@ final class KeyProbes {
                 List.of(JdkFingerprint.java(javaHome).toString(), "-cp", Classpaths.join(classpath), probe.main()));
         command.addAll(probe.args());
         ProcessBuilder pb = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true);
-        pb.environment().clear();
-        pb.environment().putAll(environment);
-        pb.environment().putAll(probe.env());
+        ChildEnv.replace(pb, environment);
+        ChildEnv.putAll(pb, probe.env());
         Process process = Forks.start(pb);
         List<String> output = new ArrayList<>();
         try (BufferedReader reader =

@@ -1233,40 +1233,22 @@ reason = "the test JVM's environment probe: it stands in for System.getenv in th
 
 # G117. A child process starts from a copy of the daemon's environment, so a read of
 # ProcessBuilder.environment() is a System.getenv by another name and a write that does not clear it
-# first hands the child whichever shell started the engine. The spawners that build a child's
-# environment on purpose are baselined; a new one composes it through WorkerEnv or TaskExec.
+# first hands the child whichever shell started the engine. ChildEnv is the one place that writes it,
+# keeping one entry per name whatever its case on Windows (Path, not Path beside PATH). The spawners
+# that change the inherited copy in place are baselined; a new one composes the map through WorkerEnv
+# or TaskExec and hands it over with ChildEnv.
 [guards.child-env-owner]
 kind       = "forbid"
 scope      = ["server/*", "shared/*", "plugins/*"]
 signatures = ["java.lang.ProcessBuilder#environment(**)"]
-owner      = "cc.jumpkick.plugin.build.TaskExec"
+owner      = "cc.jumpkick.host.ChildEnv"
 baseline   = true
-instead    = "WorkerEnv.strict() / forModule(...).environment() for a worker, TaskExec.ToolRun for a plugin, BuildEnv.callerEnv() for a step that hands on the caller's shell"
+instead    = "WorkerEnv.strict() / forModule(...).environment() for a worker, TaskExec.ToolRun for a plugin, BuildEnv.callerEnv() for a step that hands on the caller's shell; ChildEnv.replace / putAll / put to give it to the ProcessBuilder"
 why        = "a child's environment copied from the daemon is the engine's shell, not the `jk` command being served"
-
-[[guards.child-env-owner.allow]]
-in     = "cc.jumpkick.host.AotTraining"
-reason = "a training run's environment is its launcher's to compose: the engine hands it a WorkerEnv's whole map, the image builder runs inside a worker whose own environment WorkerEnv composed"
 
 [[guards.child-env-owner.allow]]
 in     = "cc.jumpkick.engine.plugin.WorkerCommands"
 reason = "attach adds one variable, the command channel's token, to an environment its spawner already composed through WorkerEnv: kept off the command line, where other users of the host could read it"
-
-[[guards.child-env-owner.allow]]
-in     = "cc.jumpkick.runtime.KeyProbes"
-reason = "a key probe runs under the module's WorkerEnv with its own secrets laid on top, kept off its command line: the inherited map is cleared before it is set"
-
-[[guards.child-env-owner.allow]]
-in     = "cc.jumpkick.config.CredentialHelpers"
-reason = "a ${cmd:} credential helper runs under exactly the request's shell (BuildEnv.callerEnv()): the inherited map is cleared before it is set"
-
-[[guards.child-env-owner.allow]]
-in     = "cc.jumpkick.task.ToolIdentity"
-reason = "a [test] tool's --version runs under the request's shell (BuildEnv.callerEnv()) with the suite's PATH, as the suite would run it: the inherited map is cleared before it is set"
-
-[[guards.child-env-owner.allow]]
-in     = "cc.jumpkick.engine.runtime.TemplateClone"
-reason = "a template clone runs git under the request's shell (BuildEnv.callerEnv()) with prompts off: the inherited map is cleared before it is set"
 
 # G118. A build's JDK and GraalVM install in the engine, inside the run: the ensure-jdk steps install
 # a missing pin, the build verb a GraalVM the client decided on (after its consent prompt), and the

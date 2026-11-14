@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.host.ChildEnv;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import java.nio.file.Path;
 import java.util.List;
@@ -53,28 +55,22 @@ public final class PassthroughEnv {
      * toolchain bin onto PATH, so a second prepend here would double it.
      */
     public static void apply(Map<String, String> env, @Nullable Path javaHome) {
-        for (String name : STRIPPED) {
-            env.remove(keyFor(env, name));
-        }
-        if (javaHome == null) return;
-        env.put(keyFor(env, "JAVA_HOME"), javaHome.toAbsolutePath().toString());
-        String binDir = javaHome.resolve("bin").toAbsolutePath().toString();
-        String pathKey = keyFor(env, "PATH");
-        String existing = env.getOrDefault(pathKey, "");
-        env.put(pathKey, SearchPath.prepend(binDir, existing));
+        apply(env, javaHome, Os.isWindows());
     }
 
     /**
-     * The spelling {@code env} actually uses for {@code name}. Windows env vars are case-insensitive
-     * and {@code PATH} habitually arrives as {@code Path}; writing the canonical spelling into a map
-     * that does not fold case would add a *second* key and leave the old java first on the real one.
-     * Falls back to the canonical name when {@code env} has no such key.
+     * {@link #apply(Map, Path)} for a platform whose names are case-insensitive or not: on Windows
+     * {@code PATH} habitually arrives as {@code Path}, and {@link ChildEnv} writes the existing
+     * spelling rather than a second key that would leave the old java first on the real one.
      */
-    private static String keyFor(Map<String, String> env, String name) {
-        if (env.containsKey(name)) return name;
-        for (String key : env.keySet()) {
-            if (key.equalsIgnoreCase(name)) return key;
+    static void apply(Map<String, String> env, @Nullable Path javaHome, boolean caseInsensitive) {
+        for (String name : STRIPPED) {
+            ChildEnv.remove(env, name, caseInsensitive);
         }
-        return name;
+        if (javaHome == null) return;
+        ChildEnv.put(env, "JAVA_HOME", javaHome.toAbsolutePath().toString(), caseInsensitive);
+        String binDir = javaHome.resolve("bin").toAbsolutePath().toString();
+        String existing = ChildEnv.get(env, "PATH", caseInsensitive);
+        ChildEnv.put(env, "PATH", SearchPath.prepend(binDir, existing == null ? "" : existing), caseInsensitive);
     }
 }

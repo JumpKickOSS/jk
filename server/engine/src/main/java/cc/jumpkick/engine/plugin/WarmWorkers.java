@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
@@ -252,8 +253,7 @@ public final class WarmWorkers {
     private static Worker start(Launch launch, String key) throws IOException {
         WorkerCommands commands = WorkerCommands.open();
         ProcessBuilder pb = new ProcessBuilder(WorkerSession.detached(launch.command())).redirectErrorStream(true);
-        pb.environment().clear();
-        pb.environment().putAll(launch.env().environment());
+        ChildEnv.replace(pb, launch.env().environment());
         commands.attach(pb);
         YieldHook hook = new YieldHook();
         // Bound for the start only: the scope is what files the worker's peak when it exits.

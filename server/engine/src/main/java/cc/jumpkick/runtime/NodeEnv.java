@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.JkBuild;
@@ -43,10 +45,23 @@ final class NodeEnv {
         vars.put("npm_config_update_notifier", "false");
         vars.putAll(NodeNetwork.env(BuildLayout.moduleTargetDir(moduleDir).resolve("node"), home.packageManager()));
         vars.putAll(keyed(project, node, moduleDir, false));
-        Map<String, String> env = new LinkedHashMap<>(
+        return withNode(
                 WorkerEnv.forModule(project.build().env(), moduleDir, BuildLayout.moduleTargetDir(moduleDir))
                         .with(vars)
-                        .environment());
+                        .environment(),
+                home,
+                production,
+                Os.isWindows());
+    }
+
+    /**
+     * {@code worker} with {@code home} first on its search path and, for a {@code production} build,
+     * the {@code NODE_ENV} default. On Windows the search path keeps the spelling it arrived under
+     * ({@code Path}) and Node goes in front of it, rather than a second {@code PATH} of Node alone.
+     */
+    static Map<String, String> withNode(
+            Map<String, String> worker, NodeHome home, boolean production, boolean caseInsensitive) {
+        Map<String, String> env = ChildEnv.copyOf(worker, caseInsensitive);
         if (production) env.putIfAbsent("NODE_ENV", "production");
         env.put("PATH", home.path(env.get("PATH")));
         return env;

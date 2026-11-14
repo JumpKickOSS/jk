@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
@@ -110,10 +111,9 @@ public final class ToolIdentity {
     static Answer probe(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
         ProcessBuilder pb = new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true);
         if (Files.isDirectory(dir)) pb.directory(dir.toFile());
-        Map<String, String> env = pb.environment();
-        env.clear();
-        env.putAll(BuildEnv.callerEnv());
+        Map<String, String> env = ChildEnv.copyOf(BuildEnv.callerEnv());
         if (path != null) env.put("PATH", path);
+        ChildEnv.replace(pb, env);
         try {
             Process p = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(p, null, Duration.ofMillis(timeoutMillis), 4096);

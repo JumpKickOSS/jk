@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.run.TaskContext;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -65,8 +66,7 @@ final class NodeProcess {
         Process proc = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true);
-            pb.environment().clear();
-            pb.environment().putAll(env);
+            ChildEnv.replace(pb, env);
             proc = JobWorkers.start(pb);
             proc.getOutputStream().close();
             Deque<String> tail = new ArrayDeque<>();

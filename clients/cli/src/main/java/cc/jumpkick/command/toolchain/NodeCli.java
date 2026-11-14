@@ -7,6 +7,7 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -167,8 +168,8 @@ public final class NodeCli {
         List<String> command = new ArrayList<>(argv);
         command.set(0, resolve(home, argv.get(0)));
         ProcessBuilder pb = new ProcessBuilder(command).directory(dir.toFile());
-        pb.environment().putAll(env);
-        pb.environment().put("PATH", home.path(System.getenv("PATH")));
+        ChildEnv.putAll(pb, env);
+        ChildEnv.put(pb, "PATH", home.path(System.getenv("PATH")));
         Process p = CliOutput.handOffTerminal(pb);
         CliOutput.skipTrailingBlank();
         return ProcessTrees.awaitExit(p);

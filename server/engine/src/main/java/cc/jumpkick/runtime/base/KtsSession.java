@@ -12,6 +12,7 @@ import cc.jumpkick.engine.plugin.WorkerCommands;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
@@ -395,7 +396,7 @@ final class KtsSession {
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         Path cacheDir = compiledScriptCache();
         Files.createDirectories(cacheDir);
-        pb.environment().put("JK_KTS_CACHE", cacheDir.toString());
+        ChildEnv.put(pb, "JK_KTS_CACHE", cacheDir.toString());
         return pb;
     }
 

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
@@ -12,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -365,10 +365,7 @@ public final class PluginProcess {
      */
     public static ProcessBuilder builder(List<String> command, WorkerEnv env) {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-        Map<String, String> environment = pb.environment();
-        environment.clear();
-        environment.putAll(env.environment());
-        return pb;
+        return ChildEnv.replace(pb, env.environment());
     }
 
     /** Open the conversation's channel, name it in the worker's arguments, and fork the worker. */

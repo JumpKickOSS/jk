@@ -639,43 +639,7 @@ population = { examined = 1930 }
 "shared/wire" = { classes = 246, sites = 12211 }
 [[child-env-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.engine.EngineAotTrainer#start(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;[Ljava/lang/String;)Ljava/lang/Process; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.graph.GraphScripts#install(Lcc/jumpkick/node/NodeHome;Ljava/nio/file/Path;)Z -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginProcess#builder(Ljava/util/List;Lcc/jumpkick/engine/plugin/WorkerEnv;)Ljava/lang/ProcessBuilder; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.WarmWorkers#start(Lcc/jumpkick/engine/plugin/WarmWorkers$Launch;Ljava/lang/String;)Lcc/jumpkick/engine/plugin/WarmWorkers$Worker; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.git.GitCliExtension#replaceEnvironment(Ljava/lang/ProcessBuilder;Ljava/util/Map;)V -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.NodeProcess#run(Lcc/jumpkick/run/TaskContext;Ljava/util/List;Ljava/nio/file/Path;Ljava/util/Map;)Lcc/jumpkick/runtime/NodeProcess$Result; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.SourceProjectBuilder#run(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/List;Z)Lcc/jumpkick/runtime/SourceProjectBuilder$RunResult; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.TrainRunner#run(Ljava/nio/file/Path;Lcc/jumpkick/model/JkBuild;Lcc/jumpkick/layout/BuildLayout;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/config/TrainConfig;Ljava/lang/String;ZLjava/util/function/Consumer;)Lcc/jumpkick/runtime/TrainRunner$Result; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.TrainRunner#writeAotCache(Ljava/util/List;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/function/Consumer;)Z -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.KtsSession#hostProcess()Ljava/lang/ProcessBuilder; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
 reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
 [[child-env-owner.entries]]
 in     = "server/toolchain"
@@ -685,10 +649,6 @@ reason = "the Gradle model fork runs under the caller's shell (BuildEnv.callerEn
 in     = "shared/core"
 at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#runGit(Ljava/util/List;Ljava/lang/String;Ljava/time/Duration;)V -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
 reason = "OfficialTemplatesFreshen#runGit takes the http.proxy it hands git, so its spawn site moved to the three-argument runGit; the same one environment() site"
-[[child-env-owner.entries]]
-in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JavaHomes#underJdk(Ljava/lang/ProcessBuilder;Ljava/nio/file/Path;)Ljava/lang/ProcessBuilder; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
 [[child-env-owner.entries]]
 in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.tool.NativeImageDriver#run(Lcc/jumpkick/tool/NativeImageDriver$Request;Lcc/jumpkick/tool/NativeImageDriver$ProgressListener;Ljava/util/function/Consumer;)I -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
