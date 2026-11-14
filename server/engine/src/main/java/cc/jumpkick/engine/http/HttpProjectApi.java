@@ -5,8 +5,10 @@ import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.engine.verbs.Forecasts;
 import cc.jumpkick.engine.verbs.ManifestEdit;
+import cc.jumpkick.engine.verbs.Updates;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Errors;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -325,6 +328,94 @@ final class HttpProjectApi {
         ManifestEdit.Result result = ManifestEdit.run(req);
         int status = result.error() != null || !result.lockOk() ? 422 : 200;
         HttpResponses.sendJson(exchange, status, MiniJson.write(ManifestEdit.structured(result)));
+    }
+
+    /**
+     * The query parameters of a dependency read, refusing any name outside {@code accepted} (and
+     * the token-in-URL {@code access_token}); {@code dir} is required.
+     */
+    private static Map<String, String> readParams(HttpExchange exchange, List<String> accepted) {
+        Map<String, String> params = HttpQuery.params(exchange.getRequestURI().getRawQuery());
+        params.remove("access_token");
+        for (String key : params.keySet()) {
+            if (!accepted.contains(key)) throw new IllegalArgumentException("unknown field " + key);
+        }
+        String dir = params.get("dir");
+        if (dir == null || dir.isBlank()) throw new IllegalArgumentException("missing \"dir\"");
+        return params;
+    }
+
+    private static boolean flag(Map<String, String> params, String key) {
+        String raw = params.get(key);
+        if (raw == null || raw.isEmpty()) return false;
+        return EnvValues.parseBool(raw).orElseThrow(() -> new IllegalArgumentException(key + " must be true or false"));
+    }
+
+    /**
+     * {@code GET /api/project/outdated?dir=…&all=true} — the declared dependencies an update would
+     * move, the object MCP {@code outdated} returns; {@code all} lists every row checked.
+     */
+    void handleOutdated(HttpExchange exchange) throws IOException {
+        Map<String, String> params;
+        try {
+            params = readParams(exchange, List.of("dir", "all"));
+            flag(params, "all");
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        Map<String, Object> data = McpReads.outdated(Objects.requireNonNull(params.get("dir")), flag(params, "all"));
+        HttpResponses.sendJson(exchange, data.containsKey("error") ? 422 : 200, MiniJson.write(data));
+    }
+
+    /**
+     * {@code GET /api/project/why?dir=…&coord=group:artifact} — the dependency paths and the rule
+     * that picked the version: the report MCP {@code why} renders as its lines.
+     */
+    void handleWhy(HttpExchange exchange) throws IOException {
+        Map<String, String> params;
+        try {
+            params = readParams(exchange, List.of("dir", "coord"));
+            String coord = params.get("coord");
+            if (coord == null || coord.isBlank()) throw new IllegalArgumentException("missing \"coord\"");
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        Map<String, Object> data = McpReads.why(Objects.requireNonNull(params.get("dir")), params.get("coord"));
+        HttpResponses.sendJson(exchange, data.get("error") != null ? 422 : 200, MiniJson.write(data));
+    }
+
+    /**
+     * {@code GET /api/project/update?dir=…&deps=a,b&major=true} — the preview of {@code jk update}:
+     * the moves, the majors left available and the packages each move adds, the object MCP {@code
+     * update} returns. Applying is {@code POST /api/build} with {@code kind=update}.
+     */
+    void handleUpdatePreview(HttpExchange exchange) throws IOException {
+        Map<String, String> params;
+        List<String> deps = new ArrayList<>();
+        try {
+            params = readParams(exchange, List.of("dir", "deps", "major"));
+            String raw = params.get("deps");
+            if (raw != null) {
+                for (String d : raw.split(",", -1)) if (!d.isBlank()) deps.add(d.strip());
+            }
+            flag(params, "major");
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        try {
+            Map<String, Object> data = Updates.structured(
+                    Updates.preview(Objects.requireNonNull(params.get("dir")), deps, flag(params, "major")));
+            HttpResponses.sendJson(exchange, 200, MiniJson.write(data));
+        } catch (Exception e) {
+            HttpResponses.sendJson(
+                    exchange, 422, JsonOut.object().put("error", Errors.text(e)).toString());
+        }
     }
 
     void handleProjectGraph(HttpExchange exchange) throws IOException {
@@ -731,6 +822,11 @@ final class HttpProjectApi {
                                 .put("error", "file changed on disk")
                                 .put("etag", conflict.currentEtag())
                                 .toString());
+            case WorkspaceFileAccess.WriteResult.Refused refused ->
+                HttpResponses.sendJson(
+                        exchange,
+                        422,
+                        JsonOut.object().put("error", refused.error()).toString());
             case WorkspaceFileAccess.WriteResult.Failed failed ->
                 HttpResponses.sendJson(
                         exchange,

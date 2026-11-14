@@ -415,6 +415,7 @@ Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash
 | 409 | `etag` present but file changed on disk (not engine-epoch) |
 | 413 | content larger than 1 MiB (or request body over cap) |
 | 415 | file type is not text-writable (e.g. image) |
+| 422 | a `jk.toml` the project's dependency guard rules refuse: the body's `error` is the rule's card, the file is untouched (the same check every `jk add` and `POST /api/project/deps` edit passes) |
 | 500 | filesystem write failure |
 
 The dashboard `#project/<id>/files/…` pane is the primary consumer (Copy / Preview / Save + Build).
@@ -891,6 +892,20 @@ and a written edit relocks; an add whose new lock trips the deny policy puts `jk
 `{ changed, applied, notes: [...], preview?, detail?, lock?, denyHits?, error? }` — `preview` the
 proposed manifest when it differs, `lock` `lock ok` or the failed relock's lines, `error` why nothing
 was written. A refused edit or a failed lock answers `422`.
+
+## Dependency reads (`GET /api/project/outdated`, `/why`, `/update`)
+
+Each answers the object the MCP tool of the same name returns for the same input (the tool wraps
+it in its envelope), and refuses a query parameter it does not read with a `400`:
+
+| Route | Parameters | Answer |
+|---|---|---|
+| `GET /api/project/outdated` | `dir`, `all` | MCP `outdated`: the declared dependencies an update would move (`all=true`: every row checked) and the `file` it wrote |
+| `GET /api/project/why` | `dir`, `coord` | The dependency paths and the rule that picked the version, the report MCP `why` renders as lines |
+| `GET /api/project/update` | `dir`, `deps` (`a,b`), `major` | The preview of `jk update`, as MCP `update` without `apply`: `rewrites` (each with the packages its relock `adds`), `available` majors |
+
+Applying an update is the `update` job: `POST /api/build` with `kind=update` and the same `deps`
+and `major`. A read that fails (no `jk.toml`, an unreachable repository) is a `422` with `error`.
 
 ## Forecasting a job (`GET /api/explain`)
 

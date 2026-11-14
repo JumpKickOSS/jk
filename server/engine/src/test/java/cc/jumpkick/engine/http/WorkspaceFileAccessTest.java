@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.engine.http.WorkspaceFileAccess.ReadResult;
+import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -541,5 +542,24 @@ class WorkspaceFileAccessTest {
                 name = "%s"
                 version = "1"
                 """.formatted(name));
+    }
+
+    @Test
+    void a_raw_jk_toml_save_a_guard_rule_bans_is_refused_and_the_file_untouched(@TempDir Path root) throws Exception {
+        String before = "name = \"p\"\ngroup = \"g\"\nversion = \"1\"\n\n[dependencies]\n";
+        Files.writeString(root.resolve("jk.toml"), before);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.no-junit4]
+                kind = "depend"
+                ban = ["junit:junit"]
+                instead = "org.junit.jupiter:junit-jupiter"
+                why = "one test framework"
+                """);
+        var refused = WorkspaceFileAccess.write(root, "jk.toml", before + "junit = \"junit:junit:4.13.2\"\n");
+        assertThat(refused).isInstanceOf(WorkspaceFileAccess.WriteResult.Refused.class);
+        assertThat(((WorkspaceFileAccess.WriteResult.Refused) refused).error()).contains("GUARD no-junit4");
+        assertThat(Files.readString(root.resolve("jk.toml"))).isEqualTo(before);
+        assertThat(WorkspaceFileAccess.write(root, "jk.toml", before + "# a comment\n"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
     }
 }

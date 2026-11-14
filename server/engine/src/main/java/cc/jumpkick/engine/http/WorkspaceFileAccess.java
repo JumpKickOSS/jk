@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.guard.eval.MutationCheck;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -205,6 +206,9 @@ final class WorkspaceFileAccess {
         record Conflict(String currentEtag) implements WriteResult {}
 
         record Failed(String error) implements WriteResult {}
+
+        /** A {@code jk.toml} the project's dependency guard rules refuse, with the rule's card. */
+        record Refused(String error) implements WriteResult {}
     }
 
     /** SHA-256 hex of file bytes — the JSON {@code etag} field and PUT concurrency token. */
@@ -594,6 +598,11 @@ final class WorkspaceFileAccess {
         }
         Path dir = file.getParent();
         if (dir == null) return new WriteResult.Failed("no parent directory");
+        if (ManifestPaths.MANIFEST.equals(String.valueOf(file.getFileName()))) {
+            // The guard rules ManifestEdit applies to every jk.toml edit judge a raw save too.
+            String refusal = MutationCheck.check(file, content);
+            if (refusal != null) return new WriteResult.Refused(refusal);
+        }
         try {
             // Was a hand-rolled copy of AtomicWrites.replace — temp sibling, atomic move, cleanup in
             // a finally — and it carried that pattern's permission bug: the JDK creates a
