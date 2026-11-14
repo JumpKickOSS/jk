@@ -631,7 +631,7 @@ public final class SuiteFilter {
         return out;
     }
 
-    /** The classes a directory suite's sources declare, by their paths under the suite's roots. */
+    /** The classes a directory suite's sources declare ({@link SourceClassNames}). */
     private static List<String> sourceClasses(Path moduleDir, boolean compact, String suite) {
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
@@ -642,10 +642,7 @@ public final class SuiteFilter {
         try {
             for (Path root : roots) {
                 for (String ext : List.of(".java", ".kt", ".groovy", ".scala")) {
-                    for (Path source : TestSuites.collectExt(root, ext)) {
-                        String rel = root.relativize(source).toString().replace('\\', '/');
-                        out.add(rel.substring(0, rel.length() - ext.length()).replace('/', '.'));
-                    }
+                    for (Path source : TestSuites.collectExt(root, ext)) out.addAll(SourceClassNames.of(root, source));
                 }
             }
         } catch (IOException e) {

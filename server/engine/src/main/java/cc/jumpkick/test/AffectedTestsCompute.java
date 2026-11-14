@@ -248,7 +248,7 @@ public final class AffectedTestsCompute {
         return List.copyOf(byName.values());
     }
 
-    /** The classes the sources of {@code suites}' directories declare, by path. */
+    /** The classes the sources of {@code suites}' directories declare ({@link SourceClassNames}). */
     static List<TestClassIndex.Entry> scanTestSources(Path moduleDir, boolean compact, List<String> suites)
             throws IOException {
         return scanTestSources(moduleDir, compact, suites, new HashMap<>());
@@ -271,16 +271,18 @@ public final class AffectedTestsCompute {
                     String fn = p.getFileName().toString();
                     if (!(fn.endsWith(".java") || fn.endsWith(".kt") || fn.endsWith(".groovy"))) return;
                     if (fn.equals("package-info.java") || fn.equals("module-info.java")) return;
-                    String rel = root.relativize(p).toString().replace('\\', '/');
-                    int ext = rel.lastIndexOf('.');
-                    if (ext < 0) return;
-                    String fqc = rel.substring(0, ext).replace('/', '.');
-                    if (fqc.isBlank() || fqc.contains("$")) return;
-                    if (!tags.containsKey(fqc)) tags.put(fqc, ClassTags.ofSource(Files.readString(p)));
-                    out.putIfAbsent(
-                            fqc,
-                            new TestClassIndex.Entry(
-                                    fqc, Set.of(), Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc)));
+                    ClassTags inSource = null;
+                    for (String fqc : SourceClassNames.of(root, p)) {
+                        if (fqc.isBlank() || fqc.contains("$")) continue;
+                        if (!tags.containsKey(fqc)) {
+                            if (inSource == null) inSource = ClassTags.ofSource(Files.readString(p));
+                            tags.put(fqc, inSource);
+                        }
+                        out.putIfAbsent(
+                                fqc,
+                                new TestClassIndex.Entry(
+                                        fqc, Set.of(), Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc)));
+                    }
                 });
             }
         }
