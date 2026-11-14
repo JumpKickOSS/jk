@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in the KanArtist `jk` store ([KanArtist/jk](https://github.com/KanArtist/jk)) under `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test -p integration` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test -g` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -135,7 +135,7 @@ one run per cell, fail fast.
 
 Build with the installed jk (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** jk's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 
-**Several sessions on one host share one installed jk and one resident engine.** jk coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of jk itself (`jk snapshot`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk snapshot && jk test -p integration`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
+**Several sessions on one host share one installed jk and one resident engine.** jk coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of jk itself (`jk snapshot`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk snapshot && jk test -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
 
 ## Reinstall from this checkout
 
@@ -171,7 +171,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk snapshot`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk snapshot -p integration` is the push gate, run once before pushing `main` to `origin`.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk snapshot`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk snapshot -g` is the push gate, run once before pushing `main` to `origin`.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -209,9 +209,9 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 
 - **Merge gate** — before every local merge into `main`: `jk guard` (it formats what changed), then
   `jk snapshot` (`jk build` plus the reinstall; never run `jk build` before it).
-- **Push gate** — before every `git push` of `main` to `origin`: `jk snapshot -p integration` on the
+- **Push gate** — before every `git push` of `main` to `origin`: `jk snapshot -g` on the
   local `main` you are about to push (the test classpath and the installed jk must report the same
-  `-SNAPSHOT` version; `jk test -p integration` against a snapshot-installed jk does not). One run covers every branch merged since the last push, so
+  `-SNAPSHOT` version; `jk test -g` against a snapshot-installed jk does not). One run covers every branch merged since the last push, so
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
   A push whose commits since `origin/main` touch nothing jk builds (Markdown, the website under
   `hosting/`, scripts and results under `bench/`) needs no push gate: `jk guard docs` is enough.
@@ -221,8 +221,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 | `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit that touches code, and every local merge |
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
 | `jk snapshot` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
-| `jk snapshot -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
-| `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
+| `jk snapshot -g` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
+| `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
 
@@ -232,7 +232,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
-   - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-p integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration profile per merge.
+   - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-s integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration suite per merge.
    - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
 2. **Reinstall** — done by the merge gate's `jk snapshot`. Never run `jk build` and then `jk snapshot`; the install is the build.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
@@ -240,8 +240,8 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 Record failures on the ticket (`ka comment <ID> --type progress`, or `ka move <ID> blocked`); do not mark done on green unit tests alone if dist/install/dogfood is broken.
 
-**Before pushing `main` to `origin`** (the push gate): green `jk snapshot -p integration` on the exact
-local `main` being pushed, plus `jk test -p slow` when any merged change touches a framework or
+**Before pushing `main` to `origin`** (the push gate): green `jk snapshot -g` on the exact
+local `main` being pushed, plus `jk test -s slow` when any merged change touches a framework or
 language plugin. Never push a red or un-run push gate. When it fails, `main` stops: fix forward on
 `main` (re-running the merge gate), re-run the push gate, then push, and note the regression on the
 ticket that caused it (back to `in-progress` if the fix is not trivial).

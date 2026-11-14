@@ -3,29 +3,46 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.wire.EnginePaths;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The default test tier cannot reach Maven Central or start an engine: its JVMs get {@link
- * Http#DENY_HOSTS_ENV} refusing every remote host and {@link EnginePaths#NO_SPAWN_ENV}, a tagged
- * tier gets neither, and a module's own value stands.
+ * The default test tier cannot reach Maven Central or start an engine: in a module that routes
+ * tiers, the JVMs of a run of the default suite alone get {@link Http#DENY_HOSTS_ENV} refusing every
+ * remote host and {@link EnginePaths#NO_SPAWN_ENV}, any other suite or a tagged run gets neither, and
+ * a module's own value stands.
  */
 class TestLaunchFastTierWallsTest {
 
-    private static TestSelection tier(List<String> include, List<String> exclude) {
-        return TestSelection.of(List.of(), false, include, exclude);
+    private static final JkBuild UNTIERED = JkBuildParser.parse("""
+            group = "t"
+            name = "m"
+            version = "1.0.0"
+            """);
+
+    private static final JkBuild TIERED = JkBuildParser.parse("""
+            group = "t"
+            name = "m"
+            version = "1.0.0"
+
+            [test.suites.slow]
+            tags = ["slow"]
+            """);
+
+    private static TestSelection suites(String... names) {
+        return TestSelection.of(List.of(names), false, List.of(), List.of());
     }
 
     @Test
     void the_default_tier_walls_off_every_remote_host() {
-        WorkerEnv env =
-                TestLaunch.withFastTierWalls(WorkerEnv.strict(), tier(List.of(), List.of("integration", "slow")));
+        WorkerEnv env = TestLaunch.withFastTierWalls(WorkerEnv.strict(), TestSelection.DEFAULT, TIERED);
 
         assertThat(env.extras())
                 .containsEntry(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST)
@@ -33,15 +50,22 @@ class TestLaunchFastTierWallsTest {
     }
 
     @Test
-    void a_tier_that_includes_a_tag_may_fetch() {
-        WorkerEnv env = TestLaunch.withFastTierWalls(WorkerEnv.strict(), tier(List.of("integration"), List.of("slow")));
+    void another_suite_or_the_guard_or_an_included_tag_may_fetch() {
+        for (TestSelection sel : List.of(
+                suites("integration"),
+                suites("test", "integration"),
+                TestSelection.of(List.of(), false, List.of(), List.of(), false, true),
+                TestSelection.of(List.of(), true, List.of(), List.of()),
+                TestSelection.of(List.of(), false, List.of("smoke"), List.of()))) {
+            WorkerEnv env = TestLaunch.withFastTierWalls(WorkerEnv.strict(), sel, TIERED);
 
-        assertThat(env.extras()).doesNotContainKeys(Http.DENY_HOSTS_ENV, EnginePaths.NO_SPAWN_ENV);
+            assertThat(env.extras()).as("%s", sel).doesNotContainKeys(Http.DENY_HOSTS_ENV, EnginePaths.NO_SPAWN_ENV);
+        }
     }
 
     @Test
-    void a_launch_with_no_tag_filter_at_all_is_not_the_default_tier() {
-        WorkerEnv env = TestLaunch.withFastTierWalls(WorkerEnv.strict(), tier(List.of(), List.of()));
+    void a_module_that_routes_no_tier_has_no_default_tier_to_wall() {
+        WorkerEnv env = TestLaunch.withFastTierWalls(WorkerEnv.strict(), TestSelection.DEFAULT, UNTIERED);
 
         assertThat(env.extras()).doesNotContainKey(Http.DENY_HOSTS_ENV);
     }
@@ -50,7 +74,7 @@ class TestLaunchFastTierWallsTest {
     void a_module_that_sets_the_list_itself_keeps_its_value() {
         WorkerEnv declared = WorkerEnv.strict().with(Map.of(Http.DENY_HOSTS_ENV, "", EnginePaths.NO_SPAWN_ENV, "0"));
 
-        WorkerEnv env = TestLaunch.withFastTierWalls(declared, tier(List.of(), List.of("integration")));
+        WorkerEnv env = TestLaunch.withFastTierWalls(declared, TestSelection.DEFAULT, TIERED);
 
         assertThat(env.extras()).containsEntry(Http.DENY_HOSTS_ENV, "").containsEntry(EnginePaths.NO_SPAWN_ENV, "0");
     }

@@ -16,6 +16,7 @@ import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
@@ -206,9 +207,12 @@ final class TestEnvRules {
         return WorkerEnv.allowed(name, false) || WorkerEnv.allowed(name, true) || LAUNCHER.contains(name);
     }
 
+    /** The variables a profile or a suite of {@code build} hands its test JVMs. */
     private static Set<String> profileNames(JkBuild build) {
         Set<String> out = new HashSet<>();
         for (Profile p : build.profiles().byName().values()) out.addAll(p.env().keySet());
+        for (DeclaredSuite s : build.build().testSuites().values())
+            out.addAll(s.settings().env().keySet());
         return out;
     }
 

@@ -159,17 +159,23 @@ class TestClassEventsTest {
     }
 
     @Test
-    void the_tier_is_fast_without_an_include_tag_else_the_profile_or_its_tags() {
-        assertThat(TestTier.name(List.of(), List.of("integration"), false, null))
-                .isEqualTo("fast");
-        assertThat(TestTier.name(List.of(), List.of("integration"), false, "ci"))
-                .isEqualTo("fast");
-        assertThat(TestTier.name(List.of(), List.of(), true, null)).isEqualTo("all");
-        assertThat(TestTier.name(List.of("integration"), List.of("slow"), false, "integration"))
+    void the_tier_is_fast_for_the_default_suite_alone_else_all_the_profile_its_tags_or_its_suites() {
+        assertThat(TestTier.name(List.of(), false, List.of("test"), null)).isEqualTo("fast");
+        assertThat(TestTier.name(List.of(), false, List.of("test"), "ci")).isEqualTo("fast");
+        assertThat(TestTier.name(List.of(), true, List.of(), null)).isEqualTo("all");
+        assertThat(TestTier.name(List.of(), false, List.of("test", "integration", "e2e"), null))
+                .isEqualTo("test+integration+e2e");
+        assertThat(TestTier.name(List.of(), false, List.of("integration"), null))
                 .isEqualTo("integration");
-        assertThat(TestTier.name(List.of("slow", "network"), List.of(), false, null))
+        assertThat(TestTier.name(List.of("integration"), false, List.of("test"), "integration"))
+                .isEqualTo("integration");
+        assertThat(TestTier.name(List.of("slow", "network"), false, List.of("test"), null))
                 .isEqualTo("slow+network");
         assertThat(TestTier.of(TestSelection.DEFAULT, null, 750).budgetMs()).isEqualTo(750);
+        assertThat(TestTier.of(TestSelection.of(List.of("integration"), false, List.of(), List.of()), null, 750)
+                        .budgetMs())
+                .as("the fast budget never reaches another suite's tests")
+                .isZero();
     }
 
     private static TaskContext recording(List<TestClassResult> into) {

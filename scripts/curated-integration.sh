@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The curated integration lane: the classes curated-integration.txt names, run module by module
-# under the integration profile. It is the only integration coverage a pull request gets; the full
-# profile stays nightly.
+# in the integration suite. It is the only integration coverage a pull request gets; the full
+# suite stays nightly.
 #
 # Usage:
 #   scripts/curated-integration.sh            # run the lane
@@ -72,7 +72,7 @@ fi
 failed=0
 for i in "${!MODULES[@]}"; do
   module="${MODULES[$i]}"
-  cmd=("$JK" test -p integration --no-ansi -m "$module")
+  cmd=("$JK" test -s integration --no-ansi -m "$module")
   # shellcheck disable=SC2206 # the value is the space-separated `--class <fqcn>` flags built above
   cmd+=(${CLASSES[$i]})
   if [[ "$MODE" == "--print" ]]; then

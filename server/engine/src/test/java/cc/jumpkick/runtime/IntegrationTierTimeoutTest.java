@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -43,7 +43,7 @@ class IntegrationTierTimeoutTest {
 
     @Test
     void a_hung_integration_test_fails_at_the_tier_timeout_naming_the_test() throws IOException {
-        Map<String, String> tier = junitParameters(integrationProfile().jvmArgs());
+        Map<String, String> tier = junitParameters(integrationSuite().settings().forkArgs());
         assertThat(tier).containsKey(TIMEOUT).containsEntry(THREAD_MODE, "SEPARATE_THREAD");
         Map<String, String> params = new LinkedHashMap<>(tier);
         params.put(TIMEOUT, "1s");
@@ -75,12 +75,12 @@ class IntegrationTierTimeoutTest {
                 .isLessThan(HANG_MS / 2);
     }
 
-    private static Profile integrationProfile() throws IOException {
-        Profile profile = JkBuildParser.parse(RepoRoot.file(IntegrationTierTimeoutTest.class, "jk.toml"))
-                .profiles()
-                .byName()
+    private static DeclaredSuite integrationSuite() throws IOException {
+        DeclaredSuite suite = JkBuildParser.parse(RepoRoot.file(IntegrationTierTimeoutTest.class, "jk.toml"))
+                .build()
+                .testSuites()
                 .get("integration");
-        return Objects.requireNonNull(profile, "the root jk.toml declares no integration profile");
+        return Objects.requireNonNull(suite, "the root jk.toml declares no [test.suites.integration]");
     }
 
     /** The {@code junit.*} system properties among {@code jvmArgs}, as JUnit configuration parameters. */

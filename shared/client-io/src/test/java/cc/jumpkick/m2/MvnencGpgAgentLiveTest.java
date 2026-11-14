@@ -25,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * A Maven 4 {@code gpg-agent:} master source against a real {@code gpg-agent}: a private one, in a
  * scratch {@code GNUPGHOME} this test creates and stops, with the master passphrase preset under
  * Maven's cache id. It starts a process of this machine's GnuPG, so it runs only in the {@code
- * live} tier, whose profile sets {@code JK_TEST_GPG_AGENT=1}: {@code jk test -p live} with GnuPG
+ * live} tier, whose suite sets {@code JK_TEST_GPG_AGENT=1}: {@code jk test -s live} with GnuPG
  * 2.1+ installed. The user's own {@code ~/.gnupg} and agent are never touched.
  *
  * <p>Linux and macOS: the agent listens on a Unix socket. On Windows Gpg4win's agent socket is
@@ -39,7 +39,7 @@ class MvnencGpgAgentLiveTest {
     @Test
     void a_preset_passphrase_in_a_real_agent_decrypts_and_an_empty_cache_is_reported_without_a_prompt(@TempDir Path dir)
             throws Exception {
-        assumeTrue("1".equals(System.getenv("JK_TEST_GPG_AGENT")), "opt-in: jk test -p live");
+        assumeTrue("1".equals(System.getenv("JK_TEST_GPG_AGENT")), "opt-in: jk test -s live");
         assumeTrue(
                 !System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows"),
                 "Gpg4win's agent socket is an emulation file, not a Unix socket");

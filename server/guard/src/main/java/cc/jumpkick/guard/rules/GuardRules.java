@@ -231,7 +231,7 @@ public final class GuardRules {
                         r.id(),
                         "tag `" + n + "` is not in the test-tag vocabulary "
                                 + (vocabulary.isEmpty()
-                                        ? "(no manifest declares [test] include-tags/exclude-tags or a profile's tags)"
+                                        ? "(no root [test.suites.<name>] table claims tests by tag)"
                                         : vocabulary)
                                 + "; a tag no tier owns is a test no build runs"));
             }

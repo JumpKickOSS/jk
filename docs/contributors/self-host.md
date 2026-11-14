@@ -11,20 +11,20 @@ compares JumpKick against.
 ## The gate
 
 Run in this order, in your checkout, with the installed `jk`. The first three are the merge gate,
-green before a change merges into local `main`; the integration profile is the push gate, green on
+green before a change merges into local `main`; `jk test -g` is the push gate, green on
 the local `main` before it is pushed to `origin`:
 
 ```bash
 jk format                        # formats; `jk format -c` is the same verdict without writing
 jk guard                         # every house-rule lane, the tree lane and the fixture proofs included
 jk build                         # every module compiled, packaged and its fast test tier run
-jk test -p integration           # the push gate: engine, e2e and worker suites
+jk test -g                       # the push gate: engine, e2e and worker suites
 ```
 
 `jk build` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the
-file. `jk test -p slow` is due before the push that carries a change to a framework or language plugin; the
-`network` and `bench` profiles are nightly and gate nothing.
+file. `jk test -s slow` is due before the push that carries a change to a framework or language plugin; the
+`network` and `bench` suites are nightly and gate nothing.
 
 The shell fixtures and lints are part of the same bar when a script or a workflow moves:
 `for f in scripts/test-*.sh; do bash "$f"; done`, `scripts/shellcheck.sh` (also the `shellcheck`
@@ -38,7 +38,7 @@ guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workf
 `JK_HOME`, builds the checkout with it, then hands the home to the checkout's own JumpKick
 (`jk install`) and lets that JumpKick run the house-rule gate, the fast test tier, the curated
 integration lane (`scripts/curated-integration.sh` over `curated-integration.txt`, budgeted at
-eight minutes) and the release tier (`jk test -p release`). A guard failure is annotated with the rule that owns it.
+eight minutes) and the release tier (`jk test -s release`). A guard failure is annotated with the rule that owns it.
 
 | Question | Answer |
 |---|---|
@@ -47,11 +47,11 @@ eight minutes) and the release tier (`jk test -p release`). A guard failure is a
 | Where CI installs it | `$GITHUB_WORKSPACE/../jk-home`, beside the checkout so no guard lane walks the store — never the runner's `~/.jk` |
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
 | What audits the graph | `jk audit -s HIGH -O jsonl` over the committed lock, after the drift check, by the checkout's own JumpKick: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
-| What runs nightly | `jk test -p integration`, `-p slow`, `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
+| What runs nightly | `jk test -s integration`, `-s slow`, `-s network`, `-s bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
 | Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
 Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the verbs it
-runs (`jk install`, `jk guard`, `jk test`, `jk test -p release`; the install is the build), its bootstrap through `install.sh` at the
+runs (`jk install`, `jk guard`, `jk test`, `jk test -s release`; the install is the build), its bootstrap through `install.sh` at the
 pinned version, the nightly tiers, the JVM client smoke and the scoreboard in place. It fails on a
 `gradlew` in the self-host job, on a `JK_VERSION=<digits>` literal in any workflow, and on
 `continue-on-error` on any job of `ci.yml`: that flag is how a merge requirement becomes a
@@ -229,7 +229,7 @@ After `jk` is on `PATH`, stay in this checkout:
 jk lock
 jk snapshot                      # builds, runs the fast tier, then installs
 jk test                          # the fast tier, every module
-jk snapshot -p integration       # the push gate
+jk snapshot -g                   # the push gate
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
@@ -281,24 +281,24 @@ is reported, each with its baseline state and the exemption path, and the machin
 
 ## Test tiers
 
-The root manifest's `[test]` table is the fast tier and each `[profiles.*]` table is one slow
-tier:
+The default suite (what no suite claims) is the fast tier and each root `[test.suites.*]` table
+that claims a tag is one slow tier; members inherit them:
 
 ```bash
-jk test                          # fast tier, untagged only
-jk test -p integration           # the push gate
-jk test -p slow                  # framework / language e2e (nightly)
-jk test -p network               # talks to a real remote (nightly)
-jk test -p release               # a real browser (CI on the release tag)
-jk test -p live                  # this machine's OS keychain (on demand, desktop only)
-jk test -p bench                 # microbenchmarks (nightly)
-jk test -A                    # everything, no tag filter
+jk test                          # fast tier: what no suite claims
+jk test -g                       # the push gate
+jk test -s slow                  # framework / language e2e (nightly)
+jk test -s network               # talks to a real remote (nightly)
+jk test -s release               # a real browser (CI on the release tag)
+jk test -s live                  # this machine's OS keychain (on demand, desktop only)
+jk test -s bench                 # microbenchmarks (nightly)
+jk test -A                       # every suite but the explicit ones (live, bench)
 ```
 
-That table is the only copy: the engine's `tiers` validation (G23) re-derives the partition from it
+Those tables are the only copy: the engine's `tiers` validation (G23) re-derives the partition from it
 and proves, over every subset of the tag vocabulary, that each is run by exactly one tier, and G52
-(`test-tier-docs`) renders it into [test-suite-tiers.md](test-suite-tiers.md). A tag excluded from
-the fast tier and included by no profile fails the build rather than silently never running.
+(`test-tier-docs`) renders it into [test-suite-tiers.md](test-suite-tiers.md). A tag claimed by
+two suites, or claimed and excluded by every one, fails the build rather than running twice or never.
 
 ## Install JumpKick with JumpKick
 

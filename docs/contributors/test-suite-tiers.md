@@ -4,38 +4,38 @@
 
 ## Commands
 
-One tier per tag. The table is the root manifest's `[test]` and `[profiles.*]` tables; the
-engine's `tiers` validation (**G23**) re-derives the partition from them and proves, over every
-subset of the tag vocabulary, that each is run by exactly one tier, and **G52** (`test-tier-docs`)
-renders the same tables into the block below, so the two cannot drift
+One tier per tag. The table is the root manifest's `[test.suites.*]` tables (members inherit
+them); the engine's `tiers` validation (**G23**) re-derives the partition from them and proves,
+over every subset of the tag vocabulary, that each is run by exactly one suite, and **G52**
+(`test-tier-docs`) renders the same tables into the block below, so the two cannot drift
 ([self-host](self-host.md#test-tiers)).
 
-`jk build` runs every module's fast tier; `jk install`, which is that same build plus the reinstall,
-gates every local merge into `main`;
-`jk test -p integration` is the push gate, run on the local `main` before it is pushed. The
-house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-rule-gate)).
+`jk build` runs every module's fast tier (the default suite: what no suite claims); `jk install`,
+which is that same build plus the reinstall, gates every local merge into `main`; `jk test -g`
+(`[test] guard-suites = ["test", "integration", "e2e"]`) is the push gate, run on the local `main`
+before it is pushed. The house rules run under `jk build` and `jk guard`
+([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->
-| Command | Includes | Excludes |
-|---------|----------|----------|
-| `jk test` | untagged | `integration`, `slow`, `network`, `release`, `live`, `bench` |
-| `jk test -p integration` | `integration` | `slow`, `network`, `release`, `live`, `bench` |
-| `jk test -p slow` | `slow` | `network`, `release`, `live`, `bench` |
-| `jk test -p network` | `network` | `release`, `live`, `bench` |
-| `jk test -p release` | `release` | `live`, `bench` |
-| `jk test -p live` | `live` | `bench` |
-| `jk test -p bench` | `bench` | — |
+| Command | Claims | Excludes | In `--all` |
+|---------|--------|----------|------------|
+| `jk test` | what no suite claims | — | yes |
+| `jk test -s integration` | `integration` | `slow`, `network`, `release`, `live`, `bench` | yes |
+| `jk test -s slow` | `slow` | `network`, `release`, `live`, `bench` | yes |
+| `jk test -s network` | `network` | `release`, `live`, `bench` | yes |
+| `jk test -s release` | `release` | `live`, `bench` | yes |
+| `jk test -s live` | `live` | `bench` | no |
+| `jk test -s bench` | `bench` | — | no |
 <!-- test-tiers:end -->
 
-**Suites are scope, tags are cost.** Every tier but the fast one sets `all-suites = true`, so it
-runs its tag in every suite a module has: `jk test -p integration` runs `clients/cli`'s `src/e2e`
-suite (`E2eSuiteEngineTest`) beside every `src/test` integration class, and the nightly
-`jk test -p integration` step in `ci-nightly.yml` is that suite's CI run. The ci-cadence guard
-holds `[profiles.integration] all-suites = true`, since dropping it would leave `src/e2e` to `-s e2e`
-and `--all`, which no CI step runs. The fast tier is `src/test` alone, so a test in another suite
-carries a tier's tag. Members carry no `[test] exclude-tags` of their own: the root's table is the
-only routing, and a member's list would shadow it wherever JumpKick falls back to a module's own tags
-(BSP, an MCP run that names none, the `--class` tier hints).
+**Suites are scope, tags are cost.** A suite that claims a tag takes its tests from every test
+source a module has: `jk test -s integration` runs `clients/cli`'s `src/e2e` integration test
+(`E2eSuiteEngineTest`) beside every `src/test` integration class, and the nightly `jk test -s
+integration` step in `ci-nightly.yml` is its CI run. A directory suite keeps what no tag suite
+claims, and `e2e` is in `guard-suites`, so the push gate runs whatever `src/e2e` holds untagged. The
+ci-cadence guard holds that every suite `--all` runs is run by a CI step (`jk test -s <name>`) or by
+the push gate. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
+are the only routing, and a member may only add settings to them (JK-CWJGR).
 
 Tag new heavy tests at class level:
 
@@ -55,15 +55,15 @@ serving it fails at once with `EngineSpawnForbiddenException` instead of startin
 over. Code under test that asks the engine for something (`ProjectInfos`, `EngineClient`) takes that
 lookup as a parameter in a unit test; a test that needs a real engine is an integration test.
 
-**The integration tier is walled off from the release site.** `[profiles.integration] env` hands
+**The integration tier is walled off from the release site.** `[test.suites.integration] env` hands
 its JVMs `JK_HTTP_DENY_HOSTS=jumpkick.build`: the version under test is never published while it
 is being tested, so a test that needs a published release (an engine download, a release
 checksum) is a `network` test. Maven Central stays reachable for now: `jk new` looks up the
 newest stable version of what it scaffolds there, and about twenty integration tests start with
 `jk new`.
 
-**The fast tier is walled off from the network.** The launcher hands every JVM of a launch that
-includes no tag and excludes at least one `JK_HTTP_DENY_HOSTS=*`: `Http` refuses a request to any
+**The fast tier is walled off from the network.** The launcher hands every JVM of a run of the
+default suite alone (no `-s`, `-g`, `--all` or `-I`) in a module that routes tiers `JK_HTTP_DENY_HOSTS=*`: `Http` refuses a request to any
 host but this one (loopback names and addresses) before it leaves the process, redirects and the
 Central failover included, with a `DeniedHostException` that names the host. Loopback stubs
 (`LoopbackHttp`, `MockMavenServer`) still answer. A unit test that needs a real repository or
@@ -84,18 +84,18 @@ from two roots through the production task id. A key factory that hashes a locat
 
 ## The curated integration lane (every release tag)
 
-The fast tier runs no integration class, and the full profile is too slow to gate on, so a wire,
+The fast tier runs no integration class, and the full suite is too slow to gate on, so a wire,
 spawn, worker, workspace, install or lock regression could merge with a deterministic integration
-test — sitting in the nightly profile — that would have caught it.
+test — sitting in the nightly suite run — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
-checkout root and runs one `jk test -p integration -m <module> -S …` per module the
+checkout root and runs one `jk test -s integration -m <module> -S …` per module the
 registry names, as the last step of the self-host job on every pull request. JumpKick fails a run in
 which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
-`@Tag("integration")` and still runs in the nightly profile; nothing is reclassified to make the
-branch gate cheap, and the lane never replaces `jk test -p integration`.
+`@Tag("integration")` and still runs in the nightly suite run; nothing is reclassified to make the
+branch gate cheap, and the lane never replaces `jk test -s integration`.
 
 The registry has one line per class:
 
@@ -111,7 +111,7 @@ Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `
 each with at least one `success` and one `failure` entry. Guard **G63** (`curated-integration`)
 rejects an entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a
 failure path the class does not show; it also fails when a surface loses a path, when the lane
-script or its step in `ci.yml` is gone, or when the nightly stops running the full profile. The
+script or its step in `ci.yml` is gone, or when the nightly stops running the full suite. The
 registry's `integration-floor` line states the smallest `@Tag("integration")` population the
 guard accepts from its scan; under it the guard refuses to judge, because a lane carved out of a
 tier that shrank is not the coverage it claims.
@@ -132,7 +132,7 @@ refuse.
 ### Why `network` is off the merge gate
 
 The gate must not depend on the network. Sonatype enforces a per-IP quota on Maven Central, so a
-gate that needs a remote fails for reasons the change did not cause. `jk test -p network`
+gate that needs a remote fails for reasons the change did not cause. `jk test -s network`
 runs nightly in `ci-nightly.yml`, where a transient failure costs a re-run instead of a blocked
 merge.
 
@@ -200,12 +200,12 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   lane and `jk audit -s HIGH` over the lock), the shell fixtures, the workflow lint and the
   commit-authorship scan. No coverage, no benches.
 - **Release (`ci.yml` on the release tag):** after the curated lane, the self-host job runs
-  `jk test -p release`: the tests a release must pass that are too slow or too heavy for any other
+  `jk test -s release`: the tests a release must pass that are too slow or too heavy for any other
   run, such as the dashboard's new-project wizard in Playwright's Chromium
   (`NewProjectWizardE2eTest`). The tier may fetch (the browser, the dashboard's CDN); a red run
   stops the release.
-- **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
-  `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
+- **Nightly (`ci-nightly.yml`):** `jk test -s integration`, `-s slow`,
+  `-s network`, `-s bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
   the heap guard, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)
   scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
 - **Examples job:** every
@@ -220,14 +220,14 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh ../jk-examples`.
-- Local gate: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk test -p integration`;
+- Local gate: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk test -g`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
-- Never the `network` or `bench` profile as a merge gate.
+- Never the `network` or `bench` suite as a merge gate.
 
 ## Measuring integration wall time
 
 ```bash
-jk test -p integration
+jk test -s integration
 # per-step walls: target/jk-profile.json; per-class times: **/target/surefire-reports/TEST-*.xml
 ```
 
@@ -242,7 +242,7 @@ user has. Run the one class alone on a quiet host:
 
 ```bash
 JK_NIA_OVERLAY=~/src/oss/jk-examples/04-clients/nowinandroid/overlay \
-  jk test -p network -m server/resolver -w 1 \
+  jk test -s network -m server/resolver -w 1 \
     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
 # JVM_CPUS=… HOST_CPUS=… LOADAVG=… names the machine the numbers were taken on
 ```
@@ -256,7 +256,7 @@ Many integration tests start a nested engine that runs a whole build, and each e
 compiler pool, so JumpKick's full integration tier holds far more forked JVMs than any user build: on a
 15 GiB host it peaked at 13.8 GiB, 6.6 GiB of it in 18 compiler workers and 4 GiB in 26 test JVMs.
 Two such runs at once, or one beside another heavy job, can exhaust the host. Run one heavy job
-per machine: `jk test -p integration`, an uncached full `jk build`, or a benchmark
+per machine: `jk test -s integration`, an uncached full `jk build`, or a benchmark
 (`bench/agent-loop`, `bench/wall`, [`bench/memory`](../../bench/memory/README.md), the jk-examples corpus). Benchmarks also need the host otherwise
 idle, because they measure wall time and memory. Editing, narrow `-m` / `--class` runs and
 `jk guard` in parallel worktrees are fine.
@@ -396,10 +396,9 @@ CLI tier leaves no slot per fixture behind. A slot a live launch holds is never 
 |--------|---------|
 | Fast / default | `jk test` (suite `test` only; `[test] exclude-tags`) |
 | Extra suite | `jk test -s integration` or put e2e under `integration/` |
-| Everything | `jk test -A` / `jk build -A` (all suites, config tag excludes cleared) |
+| Everything | `jk test -A` / `jk build -A` (every suite but the explicit ones) |
 | Tag filter | `jk test -E slow` / `--include-tags smoke` |
-| One class | `jk test -m <module> -S <fqcn>` (`-p integration` for a tagged one) |
-| CI profile | `[profiles.ci] exclude-tags = […]` (overrides `[test]`) + `-p ci` (auto on CI) |
+| One class | `jk test -m <module> -S <fqcn>` (`-s integration` for a tagged one) |
 
 Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for
 cross-cutting cost filters inside a suite.

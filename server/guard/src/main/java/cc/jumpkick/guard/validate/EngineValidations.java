@@ -18,7 +18,7 @@ public final class EngineValidations {
     public static final List<Info> ALL = List.of(new Info(
             TierPartition.CODE,
             "model, module",
-            "the test-tag tier table ([test] + [profiles.*]) partitions its vocabulary, and every compiled @Tag is a tag a tier owns",
+            "the root's tag suites ([test.suites.*]) partition the tag vocabulary, and every compiled @Tag is a tag a tier owns",
             "a tag no tier runs is a test that never executes; a tag no tier owns runs in the fast tier by default"));
 
     /** Reserved codes: a user rule may not take one. */

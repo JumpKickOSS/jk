@@ -55,4 +55,31 @@ class SuiteSelectionTest {
                         List.of(), false, List.of(), List.of(), false, false, false, false, List.of("FooTest"))))
                 .isTrue();
     }
+
+    /** jk test, the push gate and one tier keep their own ledger shapes; a profile alone still keys one. */
+    @Test
+    void each_suite_selection_is_its_own_tier_in_the_ledger() {
+        TestSelection guard =
+                TestSelection.of(List.of("test", "integration", "e2e"), false, List.of(), List.of(), false, true);
+        TestSelection integration = TestSelection.of(List.of("integration"), false, List.of(), List.of());
+        assertThat(SuiteSelection.tier(TestSelection.DEFAULT, null)).isEmpty();
+        assertThat(SuiteSelection.tier(TestSelection.DEFAULT, "ci")).isEqualTo("ci");
+        assertThat(SuiteSelection.tier(guard, null)).isEqualTo("test-integration-e2e");
+        assertThat(SuiteSelection.tier(integration, null)).isEqualTo("integration");
+    }
+
+    /** A run without the default suite is a slow tier; one beside it (-g, --all) is a blend, priced as the default. */
+    @Test
+    void a_slow_tier_is_a_run_without_the_default_suite_or_one_that_includes_tags() {
+        assertThat(SuiteSelection.slowTier(TestSelection.DEFAULT)).isFalse();
+        assertThat(SuiteSelection.slowTier(TestSelection.of(List.of("integration"), false, List.of(), List.of())))
+                .isTrue();
+        assertThat(SuiteSelection.slowTier(TestSelection.of(List.of(), false, List.of("slow"), List.of())))
+                .isTrue();
+        assertThat(SuiteSelection.slowTier(
+                        TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true)))
+                .isFalse();
+        assertThat(SuiteSelection.slowTier(TestSelection.of(List.of(), true, List.of(), List.of())))
+                .isFalse();
+    }
 }

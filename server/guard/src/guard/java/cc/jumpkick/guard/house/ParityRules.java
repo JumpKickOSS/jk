@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -83,17 +84,17 @@ final class ParityRules {
 
     private static final String MANIFEST = "jk.toml";
     private static final String TIERS_DOC = "docs/contributors/test-suite-tiers.md";
-    private static final Pattern TIER_TABLE = Pattern.compile("^\\[(test|profiles\\.([a-z0-9-]+))]$");
-    private static final Pattern TAG_LIST = Pattern.compile("^(include|exclude)-tags\\s*=\\s*\\[([^]]*)]");
+    private static final Pattern TIER_TABLE = Pattern.compile("^\\[(test|test\\.suites\\.([a-z][a-z0-9_-]*))]$");
+    private static final Pattern TAG_LIST = Pattern.compile("^(tags|exclude-tags)\\s*=\\s*\\[([^]]*)]");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]+)\"");
 
-    /** One tier as the root manifest declares it: the command that runs it and its tag filters. */
-    private record Tier(String command, List<String> include, List<String> exclude) {}
+    /** One tier as the root manifest declares it: the command that runs it, its tags, and whether only naming it runs it. */
+    private record Tier(String command, List<String> tags, List<String> exclude, boolean explicit) {}
 
     @Guard(
             id = "test-tier-docs",
             why =
-                    "the documented tier table is read off the root manifest's [test] and [profiles.*] tables, never retyped; the list drifted by hand",
+                    "the documented tier table is read off the root manifest's [test.suites.*] tables, never retyped; the list drifted by hand",
             instead =
                     "replace the marked table in docs/contributors/test-suite-tiers.md with the rendering in the detail")
     void testTierDocs(Text text, Violations v) {
@@ -101,15 +102,17 @@ final class ParityRules {
         if (tiers.size() < 2)
             throw new IllegalStateException("read " + tiers.size() + " tiers from " + MANIFEST + "; the parse broke");
         StringBuilder expected = new StringBuilder("<!-- test-tiers:start -->\n");
-        expected.append("| Command | Includes | Excludes |\n");
-        expected.append("|---------|----------|----------|\n");
+        expected.append("| Command | Claims | Excludes | In `--all` |\n");
+        expected.append("|---------|--------|----------|------------|\n");
         for (Tier t : tiers)
             expected.append("| `")
                     .append(t.command())
                     .append("` | ")
-                    .append(tags(t.include(), "untagged"))
+                    .append(tags(t.tags(), "what no suite claims"))
                     .append(" | ")
                     .append(tags(t.exclude(), "—"))
+                    .append(" | ")
+                    .append(t.explicit() ? "no" : "yes")
                     .append(" |\n");
         expected.append("<!-- test-tiers:end -->");
         List<String> doc = text.lines(TIERS_DOC);
@@ -123,41 +126,43 @@ final class ParityRules {
     }
 
     /**
-     * The tiers in manifest order: {@code [test]} is {@code jk test}, and every {@code [profiles.<name>]}
-     * but {@code ci} (the fast tier under another name, auto-selected on CI) is {@code jk test -p
-     * <name>}. The engine's {@code tiers} validation reads the same tables; this renders them.
+     * The tiers in manifest order: the default suite is {@code jk test}, and every {@code
+     * [test.suites.<name>]} that claims tests by tag is {@code jk test -s <name>}. The engine's
+     * {@code tiers} validation reads the same tables; this renders them.
      */
     private static List<Tier> tiers(List<String> manifest) {
         List<Tier> out = new ArrayList<>();
+        out.add(new Tier("jk test", List.of(), List.of(), false));
         String command = null;
         List<String> include = new ArrayList<>();
         List<String> exclude = new ArrayList<>();
+        boolean explicit = false;
         for (String raw : manifest) {
             int hash = raw.indexOf('#');
             String line = (hash >= 0 ? raw.substring(0, hash) : raw).strip();
             if (line.startsWith("[")) {
-                if (command != null) out.add(new Tier(command, include, exclude));
+                if (command != null && !include.isEmpty()) out.add(new Tier(command, include, exclude, explicit));
                 command = null;
                 Matcher h = TIER_TABLE.matcher(line);
-                if (h.matches()) {
-                    String profile = h.group(2);
-                    if (profile == null) command = "jk test";
-                    else if (!profile.equals("ci")) command = "jk test -p " + profile;
+                if (h.matches() && h.group(2) != null) {
+                    command = "jk test -s " + h.group(2);
                     include = new ArrayList<>();
                     exclude = new ArrayList<>();
+                    explicit = false;
                 }
                 continue;
             }
             if (command == null) continue;
+            if (EXPLICIT_LINE.matcher(line).find()) explicit = true;
             Matcher t = TAG_LIST.matcher(line);
             if (!t.find()) continue;
             List<String> tags = new ArrayList<>();
             Matcher q = QUOTED.matcher(t.group(2));
             while (q.find()) tags.add(q.group(1));
-            if (t.group(1).equals("include")) include = tags;
+            if (t.group(1).equals("tags")) include = tags;
             else exclude = tags;
         }
-        if (command != null) out.add(new Tier(command, include, exclude));
+        if (command != null && !include.isEmpty()) out.add(new Tier(command, include, exclude, explicit));
         return out;
     }
 
@@ -360,20 +365,20 @@ final class ParityRules {
     private static final Pattern COMMIT_SHA = Pattern.compile("[0-9a-f]{40}");
     /** The tiers a nightly run owns: each is one `jk test` invocation the workflow must spell. */
     private static final List<String> NIGHTLY_TIERS = List.of(
-            "jk test -p integration",
-            "jk test -p slow",
-            "jk test -p network",
-            "jk test -p bench",
+            "jk test -s integration",
+            "jk test -s slow",
+            "jk test -s network",
+            "jk test -s bench",
             "jk test --coverage");
 
     /** The tier the release tag's CI run owns: the self-host job must spell it. */
-    private static final String RELEASE_TIER = "jk test -p release";
+    private static final String RELEASE_TIER = "jk test -s release";
 
-    /** The root's integration profile, whose nightly run is the only CI run of every suite but src/test. */
-    private static final Pattern INTEGRATION_PROFILE =
-            Pattern.compile("(?ms)^\\[profiles\\.integration\\][^\\n]*\\n(.*?)(?=^\\[|\\z)");
+    /** A root suite table: its name, then its body up to the next table. */
+    private static final Pattern SUITE_TABLE =
+            Pattern.compile("(?ms)^\\[test\\.suites\\.([a-z][a-z0-9_-]*)\\][^\\n]*\\n(.*?)(?=^\\[|\\z)");
 
-    private static final Pattern ALL_SUITES_ON = Pattern.compile("(?m)^all-suites\\s*=\\s*true\\b");
+    private static final Pattern GUARD_SUITES = Pattern.compile("(?m)^guard-suites\\s*=\\s*\\[([^]]*)]");
 
     private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
     private static final Pattern LITERAL_BOOTSTRAP = Pattern.compile("JK_VERSION=[\"']?\\d");
@@ -382,7 +387,7 @@ final class ParityRules {
     @Guard(
             id = "ci-cadence",
             why =
-                    "nightly CI runs the slow tiers, the integration one over every suite, the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
+                    "nightly CI runs each tier's suite, every other suite is the push gate's (guard-suites), the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
                             + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk, and runs the release tier",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
@@ -415,7 +420,7 @@ final class ParityRules {
                         NIGHTLY
                                 + "'s jvm-client job must run scripts/ci-product-smoke.sh with `JK_BIN=jk-jvm` — a sample built through the installed engine by the JVM client");
         }
-        if (branch.contains("--coverage") || branch.contains("-p bench"))
+        if (branch.contains("--coverage") || branch.contains("-s bench"))
             problems.add(CI + " must not run coverage or benches (they are nightly, non-gating)");
         Map<String, String> jobs = jobs(branch);
         String selfHost = jobs.get("self-host");
@@ -456,10 +461,7 @@ final class ParityRules {
                     + BOOTSTRAP_PIN + " names");
         String pin = textOrNull(text, BOOTSTRAP_PIN);
         String manifest = text(text, "jk.toml");
-        Matcher integration = INTEGRATION_PROFILE.matcher(manifest);
-        if (integration.find() && !ALL_SUITES_ON.matcher(integration.group(1)).find())
-            problems.add("jk.toml's [profiles.integration] must set all-suites = true — the nightly `jk test -p"
-                    + " integration` is the only CI run of a suite beside src/test, such as src/e2e");
+        problems.addAll(suitesRunByNothing(text, manifest));
         Matcher treeVersion = TREE_VERSION.matcher(manifest);
         String reader = textOrNull(text, BOOTSTRAP_READER);
         if (reader != null && !COMMIT_SHA.matcher(reader.strip()).matches())
@@ -484,6 +486,39 @@ final class ParityRules {
         for (String p : problems) v.add(new TextSite(site(p), 0, p), p);
         v.population(4);
     }
+
+    /**
+     * Each root {@code [test.suites.<name>]} that {@code --all} runs, named by no workflow's {@code jk
+     * test -s <name>} and absent from {@code [test] guard-suites} (the push gate, {@code jk test -g}):
+     * a suite nothing runs is a tier whose tests never execute. An {@code explicit} suite runs on
+     * demand, so it needs neither.
+     */
+    private static List<String> suitesRunByNothing(Text text, String manifest) {
+        Set<String> gate = new LinkedHashSet<>();
+        Matcher g = GUARD_SUITES.matcher(manifest);
+        if (g.find()) {
+            Matcher q = QUOTED.matcher(g.group(1));
+            while (q.find()) gate.add(q.group(1));
+        }
+        StringBuilder workflows = new StringBuilder();
+        for (String wf : text.files(".github/workflows/*.yml"))
+            workflows.append(HouseRules.owner(text, wf)).append('\n');
+        List<String> out = new ArrayList<>();
+        Matcher m = SUITE_TABLE.matcher(manifest);
+        while (m.find()) {
+            String name = m.group(1);
+            if (EXPLICIT_LINE.matcher(m.group(2)).find() || gate.contains(name)) continue;
+            if (!Pattern.compile("jk test -s " + name + "\\b")
+                    .matcher(workflows)
+                    .find())
+                out.add("jk.toml's [test.suites." + name + "] is run by no CI step (`jk test -s " + name
+                        + "`) and is not in [test] guard-suites — a suite nothing runs is a tier whose tests"
+                        + " never execute");
+        }
+        return out;
+    }
+
+    private static final Pattern EXPLICIT_LINE = Pattern.compile("(?m)^explicit\\s*=\\s*true\\b");
 
     /** Where a ci-cadence problem is reported: the file it names first, else the branch workflow. */
     private static String site(String problem) {
@@ -1112,7 +1147,7 @@ final class ParityRules {
             if (!body.contains("@Tag(\"integration\")"))
                 v.add(
                         new TextSite(rel, 0, "untagged"),
-                        entry.fqcn() + ": not @Tag(\"integration\"), so the profile's filters never select it");
+                        entry.fqcn() + ": not @Tag(\"integration\"), so the integration suite never claims it");
             for (String d : DISQUALIFYING)
                 if (body.contains("@Tag(\"" + d + "\")"))
                     v.add(
@@ -1154,19 +1189,19 @@ final class ParityRules {
         }
         String lane = textOrNull(text, LANE);
         if (lane == null) v.add(new TextSite(LANE, 0, "missing"), LANE + " is missing — the registry has no runner");
-        else if (!lane.contains(REGISTRY) || !lane.contains("-p integration"))
+        else if (!lane.contains(REGISTRY) || !lane.contains("-s integration"))
             v.add(
                     new TextSite(LANE, 0, "registry"),
-                    LANE + " must read " + REGISTRY + " and run its classes under `jk test -p integration`");
+                    LANE + " must read " + REGISTRY + " and run its classes under `jk test -s integration`");
         if (!HouseRules.owner(text, CI).contains(LANE))
             v.add(
                     new TextSite(CI, 0, LANE),
                     CI + " must run " + LANE + " — a registry no pull request executes is documentation, not a gate");
-        if (!HouseRules.owner(text, NIGHTLY).contains("jk test -p integration"))
+        if (!HouseRules.owner(text, NIGHTLY).contains("jk test -s integration"))
             v.add(
                     new TextSite(NIGHTLY, 0, "integration"),
                     NIGHTLY
-                            + " must still run the full `jk test -p integration`; the curated lane is a subset, never a replacement");
+                            + " must still run the full `jk test -s integration`; the curated lane is a subset, never a replacement");
         String doc = text(text, TIERS_DOC);
         if (!doc.contains(REGISTRY))
             v.add(new TextSite(TIERS_DOC, 0, "registry"), TIERS_DOC + " must name " + REGISTRY);

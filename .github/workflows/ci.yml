@@ -3,7 +3,7 @@
 # commit and moves jk.toml to the next version, and the tag it pushes starts this workflow. The
 # release workflow (CD) starts only when this one finishes green and re-runs none of it; a red run
 # here is the end of that release. Day-to-day pushes and pull requests start nothing; the merge gate
-# (jk format, jk guard, jk snapshot) and the push gate (jk snapshot -p integration) run on the
+# (jk format, jk guard, jk snapshot) and the push gate (jk snapshot -g) run on the
 # developer's machine. A workflow_dispatch re-runs the gate on any ref; on a release tag, a green
 # dispatch releases it like the tag push would.
 
@@ -244,11 +244,11 @@ jobs:
 
       # The boundary lane: the integration classes curated-integration.txt names, module by module,
       # under the same engine, workers and home the fast tier just ran with. The full integration
-      # profile is nightly; this subset is the only integration coverage a pull request gets, so
+      # suite is nightly; this subset is the only integration coverage a pull request gets, so
       # guard G63 owns the registry's integrity and this step's existence.
       #
       # Budget: 8 minutes wall clock. Over it, drop or split an entry — raising the number turns the
-      # lane back into the full profile the branch gate cannot afford. The elapsed seconds land in
+      # lane back into the full suite the branch gate cannot afford. The elapsed seconds land in
       # the run summary so the budget is checked against a measurement.
       - name: Curated integration lane
         timeout-minutes: 8
@@ -263,7 +263,7 @@ jobs:
       # dashboard's new-project wizard driven through Playwright's Chromium. They may fetch (the
       # browser, the dashboard's CDN), which this job can.
       - name: Release test tier
-        run: jk test -p release --no-ansi
+        run: jk test -s release --no-ansi
 
       # Lockfile is law: jk.toml pins exactly, so a build that rewrites the committed lock means
       # a pin drifted or the lock writer put something non-deterministic in the file.

@@ -34,11 +34,11 @@ class TiersEvaluatorTest {
             version = "0.0.1"
             jdk = 25
 
-            [test]
-            exclude-tags = ["slow", "integration"]
+            [test.suites.slow]
+            tags = ["slow"]
 
-            [profiles.e2e]
-            include-tags = ["e2e"]
+            [test.suites.e2e]
+            tags = ["e2e"]
             """;
 
     /** A JUnit test class in package {@code p} whose one field has type {@code fieldType}, tagged as given. */

@@ -3,7 +3,14 @@ name = "jk"
 version = "1.4.0"
 java = 25
 
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = ["slow"]
-all-suites = true
+[test]
+guard-suites = ["test", "integration", "e2e"]
+
+[test.suites.integration]
+tags = ["integration"]
+exclude-tags = ["live"]
+
+# On demand only: explicit suites need no CI step.
+[test.suites.live]
+tags = ["live"]
+explicit = true

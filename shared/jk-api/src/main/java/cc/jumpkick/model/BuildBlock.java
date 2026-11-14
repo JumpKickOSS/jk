@@ -379,6 +379,14 @@ public record BuildBlock(
         return DeclaredSuite.withConvention(testSuites);
     }
 
+    /**
+     * Whether the module routes test tiers: one of its {@code [test.suites.<name>]} tables (its own
+     * or, once inherited, its workspace root's) claims tests by tag.
+     */
+    public boolean routesTiers() {
+        return testSuites.values().stream().anyMatch(suite -> !suite.tags().isEmpty());
+    }
+
     /** The same block with its {@code [test.suites.<name>]} declared suites set. */
     public BuildBlock withTestSuites(Map<String, DeclaredSuite> suites) {
         return with(f -> f.testSuites = suites);

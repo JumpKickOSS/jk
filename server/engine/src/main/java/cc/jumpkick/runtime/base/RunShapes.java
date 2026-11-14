@@ -24,9 +24,11 @@ public final class RunShapes {
      * One request's shape; the frontier is read from the finished run itself. {@code suite} is the
      * metrics name its {@code run-tests} is kept under ({@link SuiteSelection#step}): the live
      * countdown reads the suite's class walls under it, since the integration tier's classes are
-     * not the default tier's.
+     * not the default tier's. {@code profile} is the run's tier ({@link SuiteSelection#tier}), and
+     * {@code slowTier} whether it runs only tiers the default run leaves out ({@link
+     * SuiteSelection#slowTier}).
      */
-    public record Shape(String profile, boolean forced, boolean filtered, String suite) {
+    public record Shape(String profile, boolean forced, boolean filtered, String suite, boolean slowTier) {
         public static final Shape DEFAULT = new Shape("", false, false);
 
         public Shape {
@@ -35,7 +37,7 @@ public final class RunShapes {
         }
 
         public Shape(String profile, boolean forced, boolean filtered) {
-            this(profile, forced, filtered, TaskNames.RUN_TESTS);
+            this(profile, forced, filtered, TaskNames.RUN_TESTS, false);
         }
     }
 

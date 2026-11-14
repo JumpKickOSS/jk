@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
@@ -44,6 +45,26 @@ public final class SuiteSelection {
             parts.add(named != null ? named : String.join("-", selection.includeTags()));
         }
         return sanitize(String.join("_", parts));
+    }
+
+    /**
+     * The tier a run's step walls are kept under in the step ledger ({@link RunShapes.Shape#profile}):
+     * its {@link #key}, so {@code jk test}, {@code jk test -g} and {@code jk test -s integration}
+     * price off their own runs, else the active profile's name.
+     */
+    public static String tier(TestSelection selection, @Nullable String profile) {
+        String key = key(selection, profile);
+        return key.isEmpty() ? (profile == null ? "" : profile) : key;
+    }
+
+    /**
+     * Whether a run of {@code selection} runs only tiers the default run leaves out: it includes a
+     * tag, or names suites without the default one ({@code -s integration}). {@code -g} and {@code
+     * --all} run the default suite beside them, so they are not.
+     */
+    public static boolean slowTier(TestSelection selection) {
+        if (!selection.includeTags().isEmpty()) return true;
+        return !selection.allSuites() && !selection.wantedSuites().contains(TestSuites.DEFAULT);
     }
 
     /** The metrics name of {@code run-tests} for a run with {@code selection} under {@code profile}. */

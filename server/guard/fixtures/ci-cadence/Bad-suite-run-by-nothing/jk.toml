@@ -1,0 +1,15 @@
+group = "cc.jumpkick"
+name = "jk"
+version = "1.4.0"
+java = 25
+
+[test]
+guard-suites = ["test", "integration"]
+
+[test.suites.integration]
+tags = ["integration"]
+exclude-tags = ["smoke"]
+
+# Neither a CI step nor the push gate runs it.
+[test.suites.smoke]
+tags = ["smoke"]

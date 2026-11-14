@@ -27,11 +27,8 @@ class GuardModelSnapshotTest {
                 [workspace]
                 modules = ["app", "lib"]
 
-                [test]
-                exclude-tags = ["slow"]
-
-                [profiles.slow]
-                include-tags = ["slow"]
+                [test.suites.slow]
+                tags = ["slow"]
 
                 [repositories]
                 corp = { url = "https://corp.example/m2/" }
@@ -62,8 +59,8 @@ class GuardModelSnapshotTest {
         assertThat(MiniJson.str(main.get(1), "coordinate")).isEqualTo("com.google.guava:guava");
         assertThat(MiniJson.str(main.get(1), "version")).isEqualTo("^33");
         List<Object> tiers = (List<Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "tiers"), "tiers"));
-        assertThat(tiers).hasSize(2);
-        assertThat(MiniJson.str(tiers.get(1), "name")).isEqualTo("jk test -p slow");
+        assertThat(tiers).hasSize(3);
+        assertThat(MiniJson.str(tiers.get(1), "name")).isEqualTo("jk test -s slow");
         Map<String, Object> java =
                 (Map<String, Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "toolchain"), "java"));
         assertThat(((Number) Objects.requireNonNull(java.get(""))).intValue()).isEqualTo(21);

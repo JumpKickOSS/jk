@@ -135,9 +135,7 @@ final class TestSteps {
                 SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
         List<Path> testRtCp = stamp.runtimeClasspath();
-        Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());
-        WorkerEnv testEnv = TestLaunch.withFastTierWalls(
-                TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);
+        WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest, effectiveSel);
         TestTier tier = stamp.tier();
         List<String> testJvmArgs = stamp.jvmArgs();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);

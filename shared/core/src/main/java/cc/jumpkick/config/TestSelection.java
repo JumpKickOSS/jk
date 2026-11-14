@@ -186,6 +186,19 @@ public record TestSelection(
         return allSuites ? !explicit : wanted().contains(suite);
     }
 
+    /**
+     * The suites asked for: the named ones, else the guard's list under {@link #guard}, else the
+     * default suite; empty under {@link #allSuites}, which names none.
+     */
+    public List<String> wantedSuites() {
+        return allSuites ? List.of() : wanted();
+    }
+
+    /** Whether this selection runs the default suite alone: plain {@code jk test}, the fast tier's scope. */
+    public boolean defaultSuiteAlone() {
+        return !allSuites && wanted().equals(List.of(TestSuites.DEFAULT));
+    }
+
     /** The suites asked for: the named ones, else the guard's list under {@link #guard}, else the default suite. */
     private List<String> wanted() {
         if (!suites.isEmpty()) return suites;

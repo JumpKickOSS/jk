@@ -26,10 +26,10 @@ env:
   TERM: xterm-256color
 
 jobs:
-  # The whole integration profile. The branch gate runs the curated subset (curated-integration.txt);
+  # The whole integration suite. The branch gate runs the curated subset (curated-integration.txt);
   # this is the complete tier, and the curated lane is never a replacement for it.
   integration:
-    name: Integration profile
+    name: Integration suite
     runs-on: ubuntu-latest
     env:
       JK_HOME: ${{ github.workspace }}/../jk-home
@@ -50,8 +50,8 @@ jobs:
         run: bash scripts/ci-takeover.sh --install-only
 
       # A red class is a verdict about its module; --continue reports every module's.
-      - name: Integration profile
-        run: jk test -p integration --continue --no-ansi
+      - name: Integration suite
+        run: jk test -s integration --continue --no-ansi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -65,7 +65,7 @@ jobs:
   # Groovy, Minified. What it asserts moves when a plugin or a toolchain moves, not when the change
   # under review does, so paying it on every merge bought coverage the change could not affect.
   slow:
-    name: Slow profile (framework and language e2e)
+    name: Slow suite (framework and language e2e)
     runs-on: ubuntu-latest
     env:
       JK_HOME: ${{ github.workspace }}/../jk-home
@@ -85,14 +85,14 @@ jobs:
       - name: The checkout's own jk takes over
         run: bash scripts/ci-takeover.sh --install-only
 
-      - name: Slow profile
-        run: jk test -p slow --continue --no-ansi
+      - name: Slow suite
+        run: jk test -s slow --continue --no-ansi
 
   # @Tag("network") lives here and nowhere else. It is off the branch gate on purpose: Sonatype
   # enforces a per-IP quota on Maven Central, so a gate that needs the network fails for reasons
   # the change did not cause. Nightly, a 429 costs a re-run instead of a blocked merge.
   network:
-    name: Network profile
+    name: Network suite
     runs-on: ubuntu-latest
     env:
       JK_HOME: ${{ github.workspace }}/../jk-home
@@ -112,15 +112,15 @@ jobs:
       - name: The checkout's own jk takes over
         run: bash scripts/ci-takeover.sh --install-only
 
-      - name: Network profile
-        run: jk test -p network --continue --no-ansi
+      - name: Network suite
+        run: jk test -s network --continue --no-ansi
 
   # Microbenchmarks print medians and assert nothing about deltas, so they stay off the merge
   # gate. They still have to run somewhere or they rot. The jar-size bench packages its fixtures
   # with the installed jk, Maven and the fixtures' own Gradle wrappers — those are the products it
   # compares against, provisioned by the fixtures themselves.
   bench:
-    name: Bench profile (microbenchmarks)
+    name: Bench suite (microbenchmarks)
     runs-on: ubuntu-latest
     env:
       JK_HOME: ${{ github.workspace }}/../jk-home
@@ -140,8 +140,8 @@ jobs:
       - name: The checkout's own jk takes over
         run: bash scripts/ci-takeover.sh --install-only
 
-      - name: Bench profile
-        run: jk test -p bench --continue --no-ansi
+      - name: Bench suite
+        run: jk test -s bench --continue --no-ansi
 
   # jk audits itself at every severity, nightly, and reports. The branch gate fails a pull request
   # at HIGH (ci.yml's self-host job); a LOW or MEDIUM advisory arrives here as an annotation and a

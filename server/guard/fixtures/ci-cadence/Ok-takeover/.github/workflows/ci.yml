@@ -34,4 +34,4 @@ jobs:
         run: scripts/curated-integration.sh
 
       - name: Release test tier
-        run: jk test -p release --no-ansi
+        run: jk test -s release --no-ansi

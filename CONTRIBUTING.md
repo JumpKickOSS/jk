@@ -99,7 +99,7 @@ End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-example
 (`target/dist/lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
 jk-managed JDK — never as a native image.
 
-`jk test -p network` talks to Maven Central; keep it off rate-limited environments.
+`jk test -s network` talks to Maven Central; keep it off rate-limited environments.
 
 ### Template catalog (sibling repo)
 
@@ -145,15 +145,15 @@ The client never embeds the engine. Spawning uses
 ```bash
 jk guard                                     # before every commit: formats what changed, then every house-rule lane
 jk build                                     # every module, fast tier included
-jk test -p integration                       # the push gate: before pushing main to origin
+jk test -g                                   # the push gate: before pushing main to origin
 ```
 
-The first three are the merge gate, run before every local merge into `main`. The integration
-profile is the push gate: it runs once on the local `main` about to be pushed, covering every
+The first three are the merge gate, run before every local merge into `main`. `jk test -g`
+(the default suite, `integration` and `e2e`) is the push gate: it runs once on the local `main` about to be pushed, covering every
 branch merged since the last push.
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
-The integration profile is long; run it a module at a time (`-m jk-engine`, `-m jk-cli`, …,
+The push gate is long; run it a module at a time (`-m jk-engine`, `-m jk-cli`, …,
 with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
 usually its stale test sandbox under `~/.jk/test-homes/`: delete that slot and it is reseeded.
 Tests stay portable through `cc.jumpkick.testing`: `Sleepers` for stand-in processes (never a
@@ -165,7 +165,7 @@ paths.
 | Lane | When | What |
 |---|---|---|
 | **Release CI** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
-| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -p integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
+| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -s integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
 Pushes to `main` and pull requests start no workflow: the merge gate and the push gate run on the
 developer's machine ([AGENTS.md](AGENTS.md)). **Cut release** (`cut-release.yml`, manual) runs
@@ -180,15 +180,15 @@ JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 ```bash
 CI=true jk guard                             # the format check and every house-rule lane, as CI runs them
 jk build
-jk test -p integration
+jk test -s integration
 scripts/curated-integration.sh               # what the pull request's boundary lane runs
 scripts/shellcheck.sh                        # CI's shell lint: installers, scripts/, the wrapper (skipped on Windows; skips with a notice when shellcheck is absent)
 for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer, wrapper bootstrap, Maven repo, release version, flatten, example lock drift, curated lane, reinstall chain)
 actionlint .github/workflows/*.yml
-jk test -p slow                                 # nightly framework / language e2e
-jk test -p network                              # nightly, talks to real remotes
-jk test -p live                                 # on demand on a desktop: the real OS keychain
-jk test -p bench                                # nightly microbenchmarks
+jk test -s slow                                 # nightly framework / language e2e
+jk test -s network                              # nightly, talks to real remotes
+jk test -s live                                 # on demand on a desktop: the real OS keychain
+jk test -s bench                                # nightly microbenchmarks
 jk test --coverage && jk guard               # nightly coverage ratchet (G91)
 ./scripts/ci-product-smoke.sh                # nightly macOS smoke (jk on PATH)
 ```
@@ -201,8 +201,8 @@ worker runs the one this build produced. CLI integration tests spawn a real engi
 assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME` — no in-process
 dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
 
-Use `-m` and `--class` mid-ticket (`jk test -m clients/cli -S cc.jumpkick.cli.engine.EngineClientTest -p integration`);
-the push gate is the whole integration profile. Tier model:
+Use `-m` and `--class` mid-ticket (`jk test -m clients/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
+the push gate is the whole of `jk test -g`. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).

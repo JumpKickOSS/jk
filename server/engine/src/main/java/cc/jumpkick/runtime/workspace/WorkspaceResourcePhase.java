@@ -167,14 +167,19 @@ final class WorkspaceResourcePhase {
 
     /**
      * What shapes this build's step walls, for the step ledger its run is recorded into: the test
-     * profile, a forced or rebuild run, and a class filter that narrows the suites.
+     * tier (its suites, tags or profile), a forced or rebuild run, and a class filter that narrows
+     * the suites.
      */
     static RunShapes.Shape shape(WorkspaceRequest request) {
         var session = SessionContext.current();
         boolean forced = session.config().forceOr(false) || session.config().rebuildOr(false);
         boolean filtered = !session.testSelection().classes().isEmpty();
         return new RunShapes.Shape(
-                request.profile() == null ? "" : request.profile(), forced, filtered, SuiteSelection.current());
+                SuiteSelection.tier(session.testSelection(), request.profile()),
+                forced,
+                filtered,
+                SuiteSelection.current(),
+                SuiteSelection.slowTier(session.testSelection()));
     }
 
     /**

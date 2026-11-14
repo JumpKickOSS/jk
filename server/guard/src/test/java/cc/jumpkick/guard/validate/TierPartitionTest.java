@@ -70,68 +70,78 @@ class TierPartitionTest {
     }
 
     @Test
-    void a_well_formed_table_partitions_and_ci_is_the_fast_tier_under_another_name(@TempDir Path root)
-            throws Exception {
+    void a_well_formed_table_partitions_with_the_default_suite_as_the_fast_tier(@TempDir Path root) throws Exception {
         TierPartition.Table t = table(root, """
-                [test]
+                [test.suites.integration]
                 exclude-tags = ["slow", "network"]
 
-                [profiles.ci]
-                exclude-tags = ["slow", "network"]
-
-                [profiles.slow]
-                include-tags = ["slow"]
+                [test.suites.slow]
+                tags = ["slow"]
                 exclude-tags = ["network"]
 
-                [profiles.network]
-                include-tags = ["network"]
+                [test.suites.network]
+                tags = ["network"]
                 """);
         assertThat(t.tiers())
                 .extracting(TierPartition.Tier::name)
-                .containsExactly("jk test", "jk test -p network", "jk test -p slow");
-        assertThat(t.vocabulary()).containsExactly("network", "slow");
+                .containsExactly("jk test", "jk test -s integration", "jk test -s slow", "jk test -s network");
+        assertThat(t.vocabulary()).containsExactly("integration", "network", "slow");
         assertThat(TierPartition.partitionFaults(t)).isEmpty();
     }
 
     @Test
-    void a_tag_excluded_by_test_and_included_by_no_profile_is_a_hole_named_by_subset(@TempDir Path root)
-            throws Exception {
+    void the_built_in_integration_suite_is_a_tier_once_any_table_routes_a_tag(@TempDir Path root) throws Exception {
         TierPartition.Table t = table(root, """
-                [test]
+                [test.suites.slow]
+                tags = ["slow"]
+                """);
+        assertThat(t.tiers())
+                .extracting(TierPartition.Tier::name)
+                .containsExactly("jk test", "jk test -s slow", "jk test -s integration");
+        assertThat(TierPartition.partitionFaults(t)).singleElement().satisfies(f -> assertThat(f.observed())
+                .contains("@Tag[integration, slow] — run by 2 tiers: [jk test -s slow, jk test -s integration]"));
+    }
+
+    @Test
+    void a_tag_every_claiming_suite_excludes_is_a_hole_named_by_subset(@TempDir Path root) throws Exception {
+        TierPartition.Table t = table(root, """
+                [test.suites.integration]
                 exclude-tags = ["slow", "bench"]
 
-                [profiles.slow]
-                include-tags = ["slow"]
+                [test.suites.slow]
+                tags = ["slow", "bench"]
+                exclude-tags = ["bench"]
                 """);
         List<Fault> faults = TierPartition.partitionFaults(t);
         assertThat(faults).singleElement().satisfies(f -> {
             assertThat(f.code()).isEqualTo("tiers");
-            assertThat(f.observed()).contains("@Tag[bench] — no tier runs it").doesNotContain("@Tag[bench, slow]");
-            assertThat(f.instead()).contains("exactly one tier");
+            assertThat(f.observed()).contains("@Tag[bench] — no tier runs it");
+            assertThat(f.instead()).contains("exactly one suite");
         });
     }
 
     @Test
-    void two_profiles_including_the_same_tag_double_charge_it(@TempDir Path root) throws Exception {
+    void two_suites_claiming_the_same_tag_double_charge_it(@TempDir Path root) throws Exception {
         TierPartition.Table t = table(root, """
-                [test]
+                [test.suites.integration]
                 exclude-tags = ["slow"]
 
-                [profiles.a]
-                include-tags = ["slow"]
+                [test.suites.a]
+                tags = ["slow"]
 
-                [profiles.b]
-                include-tags = ["slow"]
+                [test.suites.b]
+                tags = ["slow"]
                 """);
         assertThat(TierPartition.partitionFaults(t)).singleElement().satisfies(f -> assertThat(f.observed())
-                .contains("@Tag[slow] — run by 2 tiers: [jk test -p a, jk test -p b]"));
+                .contains("@Tag[slow] — run by 2 tiers: [jk test -s a, jk test -s b]"));
     }
 
     @Test
-    void no_test_table_or_no_vocabulary_has_nothing_to_partition(@TempDir Path root) throws Exception {
+    void no_table_routing_a_tag_has_nothing_to_partition(@TempDir Path root) throws Exception {
         assertThat(TierPartition.table(root)).isEqualTo(TierPartition.Table.EMPTY);
-        TierPartition.Table t = table(root, "[test]\nworkers = 2\n");
-        assertThat(t.vocabulary()).isEmpty();
+        TierPartition.Table t =
+                table(root, "[test]\nworkers = 2\n\n[test.suites.contract]\nclasses = [\"*Contract\"]\n");
+        assertThat(t).isEqualTo(TierPartition.Table.EMPTY);
         assertThat(TierPartition.partitionFaults(t)).isEmpty();
         assertThat(TierPartition.tagFaults(t, index(tagged("T", new String[] {"whatever"}, Map.of())), "m"))
                 .isEmpty();
@@ -140,15 +150,15 @@ class TierPartitionTest {
     @Test
     void compiled_tags_must_be_owned_and_run_by_one_tier_with_fixtures_allowed(@TempDir Path root) throws Exception {
         TierPartition.Table t = table(root, """
-                [test]
+                [test.suites.integration]
                 exclude-tags = ["slow", "network"]
 
-                [profiles.slow]
-                include-tags = ["slow"]
+                [test.suites.slow]
+                tags = ["slow"]
                 exclude-tags = ["network"]
 
-                [profiles.network]
-                include-tags = ["network"]
+                [test.suites.network]
+                tags = ["network"]
                 exclude-tags = ["slow"]
                 """);
         ClassFacts fine = tagged("FineTest", new String[] {"slow"}, Map.of("a", new String[0]));
@@ -157,7 +167,7 @@ class TierPartitionTest {
         ClassFacts fixture =
                 tagged("LauncherPathTest", new String[0], Map.of("c", new String[] {"[slow]", "brackets"}));
         List<Fault> faults = TierPartition.tagFaults(t, index(fine, typo, method, fixture), "m");
-        // an unowned tag still runs in the fast tier (nothing excludes it), so it is unowned, not orphaned
+        // an unowned tag still runs in the fast tier (no suite claims it), so it is unowned, not orphaned
         assertThat(faults).singleElement().satisfies(f -> assertThat(f.observed())
                 .contains("[nightly, slwo]")
                 .doesNotContain("FineTest")
@@ -178,16 +188,18 @@ class TierPartitionTest {
     void a_declared_scheduling_tag_is_not_a_routing_tag(@TempDir Path root) throws Exception {
         TierPartition.Table t = table(root, """
                 [test]
-                exclude-tags = ["slow"]
                 serial-tags = ["serial"]
 
-                [profiles.slow]
-                include-tags = ["slow"]
+                [test.suites.integration]
+                exclude-tags = ["slow"]
+
+                [test.suites.slow]
+                tags = ["slow"]
                 """);
         assertThat(t.scheduling()).containsExactly("serial");
         assertThat(t.vocabulary())
                 .as("a scheduling tag is not part of the tier vocabulary")
-                .containsExactly("slow");
+                .containsExactly("integration", "slow");
 
         ClassFacts alone = tagged("HogTest", new String[] {"slow", "serial"}, Map.of());
         assertThat(TierPartition.tagFaults(t, index(alone), "m"))

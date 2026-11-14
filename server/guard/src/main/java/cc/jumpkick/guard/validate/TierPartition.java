@@ -8,8 +8,8 @@ import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Profile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,14 +18,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The test-tag tier table and its two invariants. Suites are scope, tags are cost: the root
- * manifest's {@code [test]} is the fast tier and every {@code [profiles.*]} but {@code ci} (the
- * fast tier under another name, auto-selected on CI) is a tier of its own. Every subset of the tag
- * vocabulary must be run by exactly one tier — exhaustive over {@code 2^|vocabulary|}, refused past
+ * The test-tag tier table and its two invariants. Tags are cost: every root
+ * {@code [test.suites.<name>]} that claims tests by tag is a tier of its own ({@code jk test -s
+ * <name>}, the built-in {@code integration} suite among them), and the default suite, which keeps
+ * what no suite claims, is the fast tier ({@code jk test}). Every subset of the tag vocabulary must
+ * be run by exactly one tier: no two suites may run one test unless a suite's {@code exclude-tags}
+ * settles it, and no claimed test may be left to none — exhaustive over {@code 2^|vocabulary|}, refused past
  * sixteen tags rather than enumerated — and every {@code @Tag} a compiled test carries must be a
  * tag some tier owns, or it runs in the fast tier by default, which is how a typo becomes a slow
  * {@code jk test}. Reports under the reserved code {@code tiers}.
@@ -36,6 +37,7 @@ public final class TierPartition {
     static final int MAX_VOCABULARY = 16;
     static final String TAG = "org.junit.jupiter.api.Tag";
     static final String FAST_TIER = "jk test";
+    static final String SUITE_TIER = "jk test -s ";
 
     /** Tags that are deliberately not tier routing, with the reason each is allowed. */
     public static final Map<String, String> FIXTURE_TAGS = Map.of(
@@ -81,7 +83,10 @@ public final class TierPartition {
         }
     }
 
-    /** The tier table the root manifest declares; {@link Table#EMPTY} when there is no manifest or no {@code [test]}. */
+    /**
+     * The tier table the root manifest's suites declare; {@link Table#EMPTY} when there is no
+     * manifest or no table claims tests by tag (a project that routes no tag has no tiers to check).
+     */
     public static Table table(Path root) {
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return Table.EMPTY;
@@ -89,22 +94,21 @@ public final class TierPartition {
         Set<String> vocabulary = new TreeSet<>();
         Set<String> scheduling = new TreeSet<>();
         try {
-            JkBuildParser.TestTomlTags fast = JkBuildParser.parseTestTags(manifest);
-            scheduling.addAll(JkBuildParser.parse(manifest).build().testSerialTags());
-            tiers.add(new Tier(
-                    FAST_TIER, new LinkedHashSet<>(fast.includeTags()), new LinkedHashSet<>(fast.excludeTags())));
             JkBuild build = JkBuildParser.parse(manifest);
-            for (Map.Entry<String, Profile> e : new TreeMap<>(build.profiles().byName()).entrySet()) {
-                if (e.getKey().equals("ci")) {
-                    vocabulary.addAll(e.getValue().includeTags());
-                    vocabulary.addAll(e.getValue().excludeTags());
-                    continue;
-                }
+            if (build.build().testSuites().values().stream()
+                    .allMatch(s -> s.tags().isEmpty())) return Table.EMPTY;
+            scheduling.addAll(build.build().testSerialTags());
+            Set<String> claimed = new LinkedHashSet<>();
+            for (Map.Entry<String, DeclaredSuite> e : build.build().runSuites().entrySet()) {
+                DeclaredSuite suite = e.getValue();
+                if (suite.tags().isEmpty()) continue;
+                claimed.addAll(suite.tags());
                 tiers.add(new Tier(
-                        "jk test -p " + e.getKey(),
-                        new LinkedHashSet<>(e.getValue().includeTags()),
-                        new LinkedHashSet<>(e.getValue().excludeTags())));
+                        SUITE_TIER + e.getKey(),
+                        new LinkedHashSet<>(suite.tags()),
+                        new LinkedHashSet<>(suite.excludeTags())));
             }
+            tiers.addFirst(new Tier(FAST_TIER, Set.of(), claimed));
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
@@ -142,11 +146,12 @@ public final class TierPartition {
             }
         }
         if (!bad.isEmpty()) {
-            faults.add(new Fault(
-                    CODE,
-                    "jk.toml's test profiles do not run each tag combination exactly once " + vocab + ":\n    "
-                            + String.join("\n    ", bad),
-                    "each tag combination runs in exactly one tier; an excluded tag needs a profile that includes it"));
+            faults.add(
+                    new Fault(
+                            CODE,
+                            "jk.toml's test suites do not run each tag combination exactly once " + vocab + ":\n    "
+                                    + String.join("\n    ", bad),
+                            "each tag combination runs in exactly one suite; two suites claiming one tag need an exclude-tags that settles it"));
         }
         return faults;
     }
@@ -175,14 +180,15 @@ public final class TierPartition {
                             CODE,
                             "these @Tag elements are not run by exactly one tier:\n    "
                                     + String.join("\n    ", orphans),
-                            "an excluded tag no profile includes never runs; give it a profile in the root jk.toml, or stop excluding it"));
+                            "a test every claiming suite excludes never runs; give its tag a [test.suites.<name>] in the root jk.toml, or stop excluding it"));
         }
         if (!unowned.isEmpty()) {
-            faults.add(new Fault(
-                    CODE,
-                    "these @Tag values are in neither the tier vocabulary " + table.vocabulary()
-                            + " nor the fixture allowlist: " + unowned,
-                    "an unknown tag runs with the default tests; fix its spelling or give it a profile"));
+            faults.add(
+                    new Fault(
+                            CODE,
+                            "these @Tag values are in neither the tier vocabulary " + table.vocabulary()
+                                    + " nor the fixture allowlist: " + unowned,
+                            "an unknown tag runs with the default tests; fix its spelling or give it a [test.suites.<name>] table"));
         }
         return faults;
     }

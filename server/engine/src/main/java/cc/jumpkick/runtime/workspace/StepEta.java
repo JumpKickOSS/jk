@@ -101,7 +101,7 @@ public final class StepEta {
             fullRebuild = seed.fullRebuild();
         }
         RunShapes.Shape shape = new RunShapes.Shape(
-                profile == null ? "" : profile,
+                SuiteSelection.tier(SessionContext.current().testSelection(), profile),
                 fullRebuild,
                 !SessionContext.current().testSelection().classes().isEmpty());
         StepLedger ledger = StepLedger.load(ProjectBuilds.projectHome(entryDir));
@@ -472,11 +472,13 @@ public final class StepEta {
         return Priced.of((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, StepCost.Rung.HOST);
     }
 
-    /** Whether the module's suite runs a tier the default run leaves out: its selection includes tags. */
+    /**
+     * Whether the module's suite runs only tiers the default run leaves out ({@link
+     * SuiteSelection#slowTier}): {@code -s integration}, or a selection that includes tags.
+     */
     private static boolean slowTier(Path dir, @Nullable String profile) {
-        return !TestStampInputs.effectiveSelection(SessionContext.current().testSelection(), dir, profile)
-                .includeTags()
-                .isEmpty();
+        return SuiteSelection.slowTier(
+                TestStampInputs.effectiveSelection(SessionContext.current().testSelection(), dir, profile));
     }
 
     /**

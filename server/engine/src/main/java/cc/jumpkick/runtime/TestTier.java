@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.SlowestTests;
 import java.util.ArrayList;
@@ -11,32 +12,39 @@ import org.jspecify.annotations.Nullable;
 /**
  * The tier one module's suite runs as, and the fast-tier method budget it is held to.
  *
- * @param name {@link SlowestTests#FAST_TIER} when the run includes no tag, the profile's name when
- *     one selected the included tags, else the tags joined with {@code +}; {@code all} for {@code
- *     --all}; empty when unknown
+ * @param name {@link SlowestTests#FAST_TIER} when the run is the default suite alone with no tag
+ *     included ({@code jk test}, the tier {@code jk build} runs); {@code all} for {@code --all}; the
+ *     profile's name when one selected the included tags, else those tags joined with {@code +};
+ *     else the suites it runs joined with {@code +} ({@code test+integration+e2e} for {@code -g});
+ *     empty when unknown
  * @param budgetMs {@code [test] fast-method-budget} in milliseconds when this is the fast tier, else 0
  */
 record TestTier(String name, long budgetMs) {
 
     static final TestTier UNKNOWN = new TestTier("", 0);
 
-    /** {@code --all}: every suite, no tag filter. */
+    /** {@code --all}: every suite. */
     static final String ALL = "all";
 
     /** The tier {@code sel} runs under {@code profile}, with {@code budgetMs} kept only for the fast tier. */
     static TestTier of(TestSelection sel, @Nullable String profile, long budgetMs) {
-        String name = name(sel.includeTags(), sel.excludeTags(), sel.allSuites(), profile);
+        String name = name(sel.includeTags(), sel.allSuites(), sel.wantedSuites(), profile);
         return new TestTier(name, SlowestTests.FAST_TIER.equals(name) ? budgetMs : 0);
     }
 
-    static String name(
-            List<String> includeTags, List<String> excludeTags, boolean allSuites, @Nullable String profile) {
+    static String name(List<String> includeTags, boolean allSuites, List<String> suites, @Nullable String profile) {
         if (includeTags.isEmpty()) {
-            return allSuites && excludeTags.isEmpty() ? ALL : SlowestTests.FAST_TIER;
+            if (allSuites) return ALL;
+            return isDefaultSuiteAlone(suites) ? SlowestTests.FAST_TIER : String.join("+", suites);
         }
         String named = Profiles.named(profile);
         if (named != null) return named;
         return String.join("+", includeTags);
+    }
+
+    /** Whether {@code suites} is the default suite alone: the fast tier's scope. */
+    static boolean isDefaultSuiteAlone(List<String> suites) {
+        return suites.equals(List.of(TestSuites.DEFAULT));
     }
 
     /**

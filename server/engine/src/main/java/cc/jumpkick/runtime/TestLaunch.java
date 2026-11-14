@@ -229,15 +229,29 @@ final class TestLaunch {
     }
 
     /**
-     * The default tier's walls. A launch that includes no tag and excludes at least one is the
-     * module's plain {@code jk test} tier, the one {@code jk build} runs. Its JVMs find every host
-     * but this one refused by {@link Http} with the host named, and may not start or take over an
-     * engine ({@link EnginePaths#NO_SPAWN_ENV}). A profile that
-     * includes a tag names a tier that may do both, and a module that sets either variable in
-     * {@code [test] env} keeps its value.
+     * The environment {@code project}'s suite JVMs get for {@code sel}: its {@link #testEnvironment},
+     * the active profile's {@code env} on top, then the fast tier's walls ({@link #withFastTierWalls}).
      */
-    static WorkerEnv withFastTierWalls(WorkerEnv testEnv, TestSelection sel) {
-        if (!sel.includeTags().isEmpty() || sel.excludeTags().isEmpty()) return testEnv;
+    static WorkerEnv suiteEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, TestSelection sel)
+            throws Exception {
+        WorkerEnv env = testEnvironment(ctx, in, project).with(profileEnv(project, in.profileName()));
+        return withFastTierWalls(env, sel, project);
+    }
+
+    /**
+     * The default tier's walls. A run of the default suite alone that includes no tag, in a module
+     * that routes tiers ({@link BuildBlock#routesTiers}: a {@code [test.suites.<name>]} table of its
+     * own or its workspace root's claims tests by tag), is the module's plain {@code jk test} tier,
+     * the one {@code jk build} runs. Its JVMs find every host but this one refused by {@link Http}
+     * with the host named, and may not start or take over an engine ({@link
+     * EnginePaths#NO_SPAWN_ENV}). Any other suite ({@code -s integration}, {@code -g}, {@code --all})
+     * or an included tag names a tier that may do both, a project that never sorted its tests keeps
+     * them as they are, and a module that sets either variable in {@code [test] env} keeps its value.
+     */
+    static WorkerEnv withFastTierWalls(WorkerEnv testEnv, TestSelection sel, JkBuild project) {
+        if (!project.build().routesTiers() || !sel.includeTags().isEmpty() || !sel.defaultSuiteAlone()) {
+            return testEnv;
+        }
         Map<String, String> walls = new LinkedHashMap<>();
         if (!testEnv.extras().containsKey(Http.DENY_HOSTS_ENV)) walls.put(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST);
         if (!testEnv.extras().containsKey(EnginePaths.NO_SPAWN_ENV)) walls.put(EnginePaths.NO_SPAWN_ENV, "1");
