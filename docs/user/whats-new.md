@@ -6,36 +6,21 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.51.0
 
-- **No more code-graph files in your repo.** The graph now lives in JumpKick's cache, shared by
-  every clone and worktree on your machine. You can delete `.jk/graph/`, or let the next build
-  remove it.
-- **Ask about code on a fresh clone and get a complete answer.** The first `callers` question
-  compiles whatever hasn't been built yet, and tells you if it couldn't.
-- **`jk status` labels its cache row "Actions + Graph"**, so the count adds up.
 - **Suites pick your tests; profiles no longer do.** `include-tags`, `exclude-tags` and `all-suites`
-  are gone from `[profiles.*]` and `[test]`, and a manifest that still has them says which
-  `[test.suites.<name>] tags = [...]` to write instead. Run a suite with `jk test -s <name>`.
-- **A suite declared at the workspace root runs in every member.** `jk test -s integration` and
-  `jk test -g` find it everywhere, and a member can add settings of its own.
+  are gone from profiles, and a manifest that still has them says which `[test.suites.<name>]` to
+  write. Run one with `jk test -s <name>`; a suite at the workspace root runs in every member.
 - **Say which environment variables a module needs.** `[env] require` and `optional` pass them to
-  its tests, compilers and plugins, and a missing required one stops the build up front with one
-  line. `[env] vars` now takes literal values only: move bare names to `optional`.
-- **JumpKick tells you when a test reads a variable you didn't declare**, with the `[env]` line to
-  add, on every run, a cached one included, and in the agent report.
-- **Tests run the same from any terminal.** A test JVM gets your shell's locale and a fixed
-  `TERM=dumb`, so tmux, an IDE or an agent shell no longer reruns a green suite.
-- **Template ids lose their `none` segment:** `java/app`, `kotlin/ktor-3`. A framework still has
-  its own (`java/spring-boot/webapp`).
-- **Your laptop stays awake while a build runs on mains power**; closing the lid still puts it
-  to sleep. A run the machine slept through anyway says `suspended 4m 34s` instead of looking slow.
-- **See which commit you're running.** `jk --version -v`, `jk engine status` and `jk doctor` show
-  the client's and the engine's build and say when they differ.
-- **An interrupted install leaves your JumpKick working**, and `jk self rollback` puts back the
-  engine and the client that ran with it, then holds auto-update until `jk self update`.
-- **Worker jars are checked against the signed release** wherever they come from. Behind a
-  firewall, point `JK_RELEASES_URL` at your mirror of the releases.
-- **Each WSL distro and container gets its own engine id and dashboard port**, so two guests on one
-  machine no longer share one.
+  its tests, compilers and plugins, and `vars` takes literal values only. A test that reads one you
+  didn't declare gets a warning with the line to add.
+- **This release is a new floor.** A project or lock written by 0.51 needs 0.51 or newer, template
+  ids lose their `none` segment (`java/app`), and an older JumpKick tells you to run
+  `jk self update`.
+- **Installs and updates are safe to interrupt.** An interrupted install leaves your JumpKick
+  working, `jk self rollback` puts back the engine and the client that ran with it, and worker jars
+  are checked against the signed release.
+- **Output in a file or a pipe is plain, and a build knows when it slept.** No colour or escapes
+  off a terminal, and an unknown command now fails. On mains power a build keeps the machine awake;
+  a run it slept through says `suspended 4m 34s`.
 
 ## 0.50.3
 
