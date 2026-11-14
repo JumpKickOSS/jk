@@ -336,11 +336,13 @@ public final class EngineInstall {
     }
 
     /**
-     * Install {@code version}'s engine and {@code client} as one step: the client first, then the
-     * engine, since a newer client installs its own engine when the pointer still names an older
-     * one. A {@code client} whose blob the store no longer holds is not placed, and the pointer
-     * keeps naming the client in place. Refusals ({@link #requireAccepts}) come before anything
-     * moves.
+     * Install {@code version}'s engine and {@code client} as one step, in the order that never
+     * leaves a client older than the engine the pointer names (that client refuses to replace the
+     * newer engine and hands every command back to itself): a move to an older version installs
+     * the engine first and the client after, any other the client first, since a newer client
+     * installs its own engine when the pointer still names an older one. A {@code client} whose
+     * blob the store no longer holds is not placed, and the pointer keeps naming the client in
+     * place. Refusals ({@link #requireAccepts}) come before anything moves.
      */
     public Installed install(
             String version,
@@ -354,7 +356,17 @@ public final class EngineInstall {
         if (client == null || !Files.isRegularFile(cas.pathFor(client.sha256()))) {
             return new Installed(materialize(version, cas, engineJarSha, downgrade, null), null);
         }
-        Path placed = placer.place(client, cas.pathFor(client.sha256()), version);
+        Path blob = cas.pathFor(client.sha256());
+        boolean older = currentInstall()
+                .map(live -> Versions.compare(live.version(), version) > 0)
+                .orElse(false);
+        if (older) {
+            Materialized engine = materialize(version, cas, engineJarSha, downgrade, null);
+            Path placed = placer.place(client, blob, version);
+            recordClient(client);
+            return new Installed(engine, placed);
+        }
+        Path placed = placer.place(client, blob, version);
         return new Installed(materialize(version, cas, engineJarSha, downgrade, client), placed);
     }
 

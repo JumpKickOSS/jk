@@ -161,6 +161,29 @@ class SelfUpdateApplyTest {
                 .isEqualTo("client 0.18.0");
     }
 
+    /**
+     * A downgrade cut short after the client step (here the engine blob is gone, as a Ctrl-C or a
+     * full disk would stop it) must not leave an older client than the engine the pointer names:
+     * that client refuses to replace the newer engine and hands every command to itself.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_downgrade_cut_short_leaves_no_client_older_than_the_engine_pointer() throws Exception {
+        EngineInstall install = EngineInstall.current();
+        Cas cas = JkStores.storeCas();
+        SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
+        PreparedUpdate older = prepared(cas, "0.16.2");
+        Files.delete(cas.pathFor(older.engineSha256()));
+
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.apply(older, install, cas, true))
+                .isInstanceOf(IOException.class);
+
+        assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.17.0");
+        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+                .as("the client beside a 0.17.0 pointer")
+                .isEqualTo("client 0.17.0");
+    }
+
     /** A JVM client is recorded beside its engine like a native one, and a rollback puts its jar back. */
     @Test
     @DisabledOnOs(OS.WINDOWS)
