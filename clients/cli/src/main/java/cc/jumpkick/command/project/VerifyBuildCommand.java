@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
@@ -22,6 +23,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
@@ -90,6 +92,11 @@ public final class VerifyBuildCommand implements CliCommand {
     private static final BuildPlanKey<VerifyPlan> PLAN = BuildPlanKey.scalar("verify-plan", VerifyPlan.class);
     private static final BuildPlanKey<Path> SCRATCH = BuildPlanKey.scalar("scratch", Path.class);
     private static final BuildPlanKey<Report> REPORT = BuildPlanKey.scalar("report", Report.class);
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
 
     @Override
     public int run(Invocation in) throws IOException {
@@ -178,7 +185,14 @@ public final class VerifyBuildCommand implements CliCommand {
 
         Report report = plan.get(REPORT).orElseThrow();
         long mismatches = report.comparisons().stream().filter(c -> !c.match()).count();
-        if (!global.outputIsJson()) {
+        if (global.outputIsJson()) {
+            for (Comparison c : report.comparisons()) {
+                JsonlShape.row("verify-artifact", f -> f.string("artifact", c.artifact())
+                        .bool("match", c.match())
+                        .string("existing", c.existingHash())
+                        .string("rebuilt", c.rebuiltHash()));
+            }
+        } else {
             for (Comparison c : report.comparisons()) {
                 if (c.match()) {
                     CliOutput.out("ok        " + c.artifact() + "  " + c.existingHash());

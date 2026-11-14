@@ -4,13 +4,16 @@ package cc.jumpkick.command.toolchain;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.tool.TrustedPlugins;
@@ -20,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * {@code jk trust} — manage URL prefixes allowed for {@code jk tool run|install} (matched at a
@@ -52,6 +56,21 @@ public final class TrustCommand extends GroupCommand {
                 .hide();
     }
 
+    /**
+     * One {@code trust} row: {@code action} add, remove or import, {@code kind} source or plugin,
+     * and whether the trusted list changed.
+     */
+    static void trustRow(String action, String kind, String value, boolean changed) {
+        JsonlShape.row("trust", trustFields(action, kind, value, changed));
+    }
+
+    public static Consumer<JsonFields> trustFields(String action, String kind, String value, boolean changed) {
+        return f -> f.string("action", action)
+                .string("kind", kind)
+                .string("value", value)
+                .bool("changed", changed);
+    }
+
     static final class AddCmd implements CliCommand {
         @Override
         public String name() {
@@ -74,6 +93,11 @@ public final class TrustCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) throws IOException {
             String prefix;
             try {
@@ -83,7 +107,9 @@ public final class TrustCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             boolean added = TrustedSources.load(stateDir(in)).add(prefix);
-            if (!GlobalOptions.from(in).outputIsJson()) {
+            if (GlobalOptions.from(in).outputIsJson()) {
+                trustRow("add", "source", prefix, added);
+            } else {
                 if (added) CommandWedge.printOk("Trust", "Trusted " + prefix);
                 else CommandWedge.printOk("Trust", prefix + " is already trusted");
             }
@@ -119,6 +145,11 @@ public final class TrustCommand extends GroupCommand {
                 "a path plugin is trusted by its bytes: jk trust plugin sha256:<hex> from its [plugins] row";
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) throws IOException {
             String coordinate = in.positionals().get(0);
             if (coordinate.startsWith("path:")) {
@@ -136,7 +167,9 @@ public final class TrustCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             boolean added = TrustedPlugins.load(stateDir(in)).add(coordinate);
-            if (!GlobalOptions.from(in).outputIsJson()) {
+            if (GlobalOptions.from(in).outputIsJson()) {
+                trustRow("add", "plugin", coordinate, added);
+            } else {
                 CommandWedge.printOk(
                         "Trust",
                         added
@@ -164,9 +197,21 @@ public final class TrustCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) throws IOException {
             List<String> prefixes = TrustedSources.load(stateDir(in)).list();
             List<String> plugins = TrustedPlugins.load(stateDir(in)).list();
+            if (GlobalOptions.from(in).outputIsJson()) {
+                for (String p : prefixes)
+                    JsonlShape.row("trusted", f -> f.string("kind", "source").string("value", p));
+                for (String p : plugins)
+                    JsonlShape.row("trusted", f -> f.string("kind", "plugin").string("value", p));
+                return 0;
+            }
             if (prefixes.isEmpty() && plugins.isEmpty()) {
                 CliOutput.out("No trusted sources. Add one with `jk trust add <url-prefix>`"
                         + " or `jk trust plugin <coordinate>`.");
@@ -200,15 +245,22 @@ public final class TrustCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) throws IOException {
             String prefix = in.positionals().get(0);
-            boolean removed = TrustedSources.load(stateDir(in)).remove(prefix)
-                    || TrustedPlugins.load(stateDir(in)).remove(prefix);
+            boolean source = TrustedSources.load(stateDir(in)).remove(prefix);
+            boolean removed = source || TrustedPlugins.load(stateDir(in)).remove(prefix);
             if (!removed) {
                 CommandWedge.printFail("Trust", "not in the trusted list: " + prefix);
                 return Exit.USAGE;
             }
-            if (!GlobalOptions.from(in).outputIsJson()) {
+            if (GlobalOptions.from(in).outputIsJson()) {
+                trustRow("remove", source ? "source" : "plugin", prefix, true);
+            } else {
                 CommandWedge.printOk("Trust", "Removed " + prefix);
             }
             return 0;
@@ -236,6 +288,11 @@ public final class TrustCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) throws IOException {
             if (!in.isSet("jbang") && in.value("file").isEmpty()) {
                 CommandWedge.printFail("Trust", "pass --jbang to import JBang's trusted sources.");
@@ -252,14 +309,18 @@ public final class TrustCommand extends GroupCommand {
             TrustedSources store = TrustedSources.load(stateDir(in));
             int added = 0;
             List<String> skipped = new ArrayList<>();
+            boolean json = GlobalOptions.from(in).outputIsJson();
             for (String p : imported) {
                 try {
-                    if (store.add(p)) added++;
+                    boolean changed = store.add(p);
+                    if (changed) added++;
+                    if (json) trustRow("import", "source", p, changed);
                 } catch (IllegalArgumentException notAPrefix) {
                     skipped.add(p);
+                    if (json) CliOutput.err("  skipped " + p + ": not a URL prefix");
                 }
             }
-            if (!GlobalOptions.from(in).outputIsJson()) {
+            if (!json) {
                 CommandWedge.printOk(
                         "Trust", "Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
                 for (String p : skipped) CliOutput.err("  skipped " + p + ": not a URL prefix");

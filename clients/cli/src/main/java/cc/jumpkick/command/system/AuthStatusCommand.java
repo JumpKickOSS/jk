@@ -3,6 +3,8 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -10,14 +12,19 @@ import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.forge.ResolvedToken;
 import cc.jumpkick.forge.TokenSource;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk auth status} — report which forges JumpKick is authenticated with. */
 public final class AuthStatusCommand implements CliCommand {
@@ -49,6 +56,11 @@ public final class AuthStatusCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) {
         String provider = in.positionals().isEmpty() ? null : in.positionals().get(0);
         String host = in.value("host").orElse(null);
@@ -59,6 +71,25 @@ public final class AuthStatusCommand implements CliCommand {
         ForgeAuth auth = AuthCommand.authFor(credentialsDir);
         boolean anyAuthenticated = false;
 
+        if (GlobalOptions.outputIsJson(in)) {
+            for (ForgeKind kind : kinds) {
+                if (host == null && kind.defaultHost().isEmpty()) {
+                    JsonlShape.row("auth", fields(kind.id(), null, null));
+                    continue;
+                }
+                String resolvedHost = ForgeAuth.resolveHost(kind, host);
+                Optional<ResolvedToken> token = auth.resolveSilently(kind, resolvedHost);
+                anyAuthenticated |= token.isPresent();
+                JsonlShape.row(
+                        "auth",
+                        fields(
+                                kind.id(),
+                                resolvedHost,
+                                token.map(r -> r.source().name().toLowerCase(Locale.ROOT))
+                                        .orElse(null)));
+            }
+            return anyAuthenticated ? 0 : 1;
+        }
         Theme t = Theme.active();
         // Wedge header + status rows: chrome up top, per-forge lines below.
         CommandWedge.envelopeStart();
@@ -90,6 +121,17 @@ public final class AuthStatusCommand implements CliCommand {
             }
         }
         return anyAuthenticated ? 0 : 1;
+    }
+
+    /**
+     * One {@code auth} row: the provider, the host checked (null when it needs {@code --host}),
+     * whether a token was found, and where from ({@code jk_env}, {@code store}, …; null when none).
+     */
+    public static Consumer<JsonFields> fields(String provider, @Nullable String host, @Nullable String source) {
+        return f -> f.string("provider", provider)
+                .string("host", host)
+                .bool("authenticated", source != null)
+                .string("source", source);
     }
 
     private static String label(ForgeKind kind, Theme t, String detail) {

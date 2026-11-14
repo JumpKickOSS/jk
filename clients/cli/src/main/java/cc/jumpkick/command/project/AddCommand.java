@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -16,6 +17,7 @@ import cc.jumpkick.command.EngineEdits;
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
@@ -26,6 +28,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.tool.JarManifest;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -90,6 +94,11 @@ public final class AddCommand implements CliCommand {
                 "Library short name, name@ver, group:artifact[:ver], or path.\n"
                         + "Without a version the newest stable release is pinned.\n"
                         + "A bare name is a path when that directory exists."));
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -180,6 +189,19 @@ public final class AddCommand implements CliCommand {
                 + Theme.colorize("dependency", Theme.active().cyan())
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan());
+        if (global.outputIsJson()) {
+            JsonlShape.row(
+                    "dependency-added",
+                    added(
+                            requireNonNull(parsed.library()),
+                            requireNonNull(parsed.group()),
+                            requireNonNull(parsed.name()),
+                            version,
+                            parsed.classifier(),
+                            scope.canonical(),
+                            null));
+            return 0;
+        }
         CommandWedge.printOk("Add", msg);
         CliOutput.out();
         CliOutput.out(settleLine(version));
@@ -310,6 +332,10 @@ public final class AddCommand implements CliCommand {
             CommandWedge.printFail("Add", e.getMessage());
             return 1;
         }
+        if (global.outputIsJson()) {
+            JsonlShape.row("dependency-added", added(name, group, artifact, version, null, scope.canonical(), null));
+            return 0;
+        }
         CommandWedge.printOk(
                 "Add",
                 "Added "
@@ -388,6 +414,11 @@ public final class AddCommand implements CliCommand {
             return 1;
         }
 
+        if (global.outputIsJson()) {
+            JsonlShape.row(
+                    "dependency-added", added(library, group, artifact, version, null, scope.canonical(), sha256));
+            return 0;
+        }
         String shortSha = sha256.substring(0, Math.min(12, sha256.length()));
         String msg = "Added "
                 + Coords.shortName(library)
@@ -574,6 +605,12 @@ public final class AddCommand implements CliCommand {
             return 1;
         }
 
+        if (global.outputIsJson()) {
+            JsonlShape.row("dependency-probe", f -> f.string("coordinate", coordStr)
+                    .bool("available", !found.isEmpty())
+                    .string("url", found.isEmpty() ? null : found));
+            return found.isEmpty() ? 1 : 0;
+        }
         if (!found.isEmpty()) {
             CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " " + coordStr + " is available.");
             CliOutput.out(osc8Link(found));
@@ -583,6 +620,30 @@ public final class AddCommand implements CliCommand {
         CliOutput.out(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + coordStr + " is unavailable.");
         CliOutput.out("Failed to find " + coordStr + " in any configured repo.");
         return 1;
+    }
+
+    /**
+     * One {@code dependency-added} row: the alias written, its coordinates, the version the
+     * manifest now names ({@code managed} when a platform manages it), the scope, and the file's
+     * sha256 for a file dependency.
+     */
+    public static Consumer<JsonFields> added(
+            String library,
+            String group,
+            String artifact,
+            String version,
+            @Nullable String classifier,
+            String scope,
+            @Nullable String sha256) {
+        return f -> {
+            f.string("library", library)
+                    .string("group", group)
+                    .string("artifact", artifact)
+                    .string("version", version)
+                    .string("scope", scope);
+            if (classifier != null) f.string("classifier", classifier);
+            if (sha256 != null) f.string("sha256", sha256);
+        };
     }
 
     /** OSC 8 hyperlink: the URL is both the link target and the visible text. */

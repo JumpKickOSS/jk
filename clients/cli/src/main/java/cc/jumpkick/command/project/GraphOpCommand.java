@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -13,6 +14,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
@@ -28,7 +30,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One {@code jk graph} operation. A refresh that takes long enough to notice gets a progress row;
- * {@code build} settles on a summary line, every read prints its answer as plain text.
+ * {@code build} settles on a summary line, every read prints its answer as plain text. Under
+ * {@code -O jsonl} each prints one {@code graph} row instead.
  */
 final class GraphOpCommand implements CliCommand {
 
@@ -68,11 +71,17 @@ final class GraphOpCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         GraphRequest request = request(dir, in, global.rebuild);
-        Row row = new Row(Clock.SYSTEM.millis());
+        boolean json = global.outputIsJson();
+        Row row = new Row(json ? Long.MAX_VALUE : Clock.SYSTEM.millis());
         GraphAck ack;
         try {
             ack = EngineClient.graph(EnginePaths.current(), request, row::update);
@@ -85,12 +94,30 @@ final class GraphOpCommand implements CliCommand {
         }
         String note = ack.note();
         if (note != null) CommandWedge.printChipErr(Glyphs.BANG, "Graph", note);
+        boolean found = !ack.text().startsWith("No ") && !ack.text().startsWith("Not renamed");
+        if (json) {
+            JsonlShape.row("graph", f -> {
+                f.string("op", op);
+                if (op.equals("build")) {
+                    f.number("nodes", ack.nodes())
+                            .number("edges", ack.edges())
+                            .number("files", ack.files())
+                            .number("read", ack.extracted())
+                            .number("classes", ack.classes())
+                            .string("dir", ack.dir())
+                            .number("millis", ack.millis());
+                } else {
+                    f.bool("found", found).string("text", ack.text().stripTrailing());
+                }
+            });
+            return op.equals("build") || found ? 0 : 1;
+        }
         if (op.equals("build")) {
             CommandWedge.printOk("Graph", summary(ack));
             return 0;
         }
         CliOutput.out(ack.text().stripTrailing());
-        return ack.text().startsWith("No ") || ack.text().startsWith("Not renamed") ? 1 : 0;
+        return found ? 0 : 1;
     }
 
     GraphRequest request(Path dir, Invocation in, boolean rebuild) {

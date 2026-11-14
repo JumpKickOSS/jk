@@ -3,15 +3,19 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkInventory.Finding;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * {@code jk jdk verify} — compare JumpKick-managed JDK trees to {@code $JK_STATE_DIR/jk-jdks.toml}.
@@ -36,11 +40,26 @@ public final class JdkVerifyCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws Exception {
         boolean repair = in.isSet("repair");
         Path jdksDir = CommonOpts.jdksDirValue(in);
         JdkInventory inventory = JdkInventory.of(jdksDir != null ? jdksDir : JkDirs.jdks());
         List<Finding> findings = repair ? inventory.repair() : inventory.verify();
+        if (GlobalOptions.outputIsJson(in)) {
+            boolean failed = false;
+            for (Finding f : findings) {
+                failed |= !f.ok() && f.kind() != Finding.Kind.UNHASHED;
+                JsonlShape.row("jdk-verify", fl -> fl.string("id", f.id())
+                        .string("status", f.kind().name().toLowerCase(Locale.ROOT))
+                        .string("detail", f.detail()));
+            }
+            return failed ? 1 : 0;
+        }
         if (findings.isEmpty()) {
             CommandWedge.printOk("JDK", "No managed JDKs to verify.");
             return 0;

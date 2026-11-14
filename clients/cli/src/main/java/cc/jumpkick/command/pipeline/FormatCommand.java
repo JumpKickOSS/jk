@@ -10,6 +10,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -21,10 +22,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.IOException;
@@ -85,6 +88,11 @@ public final class FormatCommand implements CliCommand {
     private record Outcome(BuildPlanResult result, int total, int workerExit) {}
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         long startMs = System.currentTimeMillis();
         GlobalOptions global = GlobalOptions.from(in);
@@ -139,6 +147,17 @@ public final class FormatCommand implements CliCommand {
             Path cache,
             FormatStyles.Resolved styles) {}
 
+    /**
+     * One {@code format-file} row: the file relative to the project, {@code formatted}, {@code
+     * unformatted} (under {@code --check}) or {@code error} with the formatter's message.
+     */
+    private static void fileRow(String path, Path projectDir, String status, @Nullable String message) {
+        JsonlShape.row(EngineProtocol.FORMAT_FILE, f -> {
+            f.string("path", PathDisplay.of(Path.of(path), projectDir)).string("status", status);
+            if (message != null) f.string("message", message);
+        });
+    }
+
     /** Plain path: --check, piped output, CI, --no-progress. */
     private static int runPlain(Run run) throws IOException, InterruptedException {
         long startMs = run.startMs();
@@ -152,7 +171,9 @@ public final class FormatCommand implements CliCommand {
                 CliOutput.err(slowLine(path, projectDir, msg));
             } else if ("changed".equals(status)) {
                 counts[0]++;
-                if (!global.outputIsJson()) {
+                if (global.outputIsJson()) {
+                    fileRow(path, projectDir, check ? "unformatted" : "formatted", null);
+                } else {
                     // Under --check a changed file is a finding, not an accomplishment: the
                     // command is about to exit non-zero *because* of these lines, so they must
                     // not wear the success glyph.
@@ -174,6 +195,7 @@ public final class FormatCommand implements CliCommand {
                 }
             } else if ("error".equals(status)) {
                 counts[2]++;
+                if (global.outputIsJson()) fileRow(path, projectDir, "error", msg);
                 CliOutput.err("  error  " + PathDisplay.of(Path.of(path), projectDir) + ": " + msg);
             } else {
                 counts[1]++;
@@ -201,6 +223,13 @@ public final class FormatCommand implements CliCommand {
                 CommandWedge.printFail("Format", d.message());
             }
             return PLAN_FAILED;
+        }
+        if (global.outputIsJson()) {
+            JsonlShape.row("format", f -> f.bool("check", check)
+                    .number("files", o.total())
+                    .number("changed", counts[0])
+                    .number("clean", counts[1])
+                    .number("errors", counts[2]));
         }
         if (o.total() == 0) {
             if (!global.outputIsJson()) CommandWedge.printOk("Format", "no Java or Kotlin sources found.");

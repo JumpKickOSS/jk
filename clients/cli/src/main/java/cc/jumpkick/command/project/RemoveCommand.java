@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.EngineEdits;
@@ -16,6 +17,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
@@ -59,6 +61,11 @@ public final class RemoveCommand implements CliCommand {
                 Arity.ONE,
                 "Library short name, group:artifact[:ver], name@ver, or path.\n"
                         + "Version is ignored; a path resolves to the module name."));
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -128,6 +135,12 @@ public final class RemoveCommand implements CliCommand {
                 explicitPath || (pathCandidate && removed.equals(candidates.get(candidates.size() - 1)));
         if (removedViaPath) {
             unregisterWorkspaceModule(dir, nameArg);
+        }
+        if (global.outputIsJson()) {
+            String library = removed;
+            JsonlShape.row("dependency-removed", f -> f.string("library", library)
+                    .string("scope", scope.canonical())
+                    .bool("module", removedViaPath));
         }
         return 0;
     }

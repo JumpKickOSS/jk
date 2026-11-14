@@ -146,9 +146,14 @@ public final class JsonlShape {
      * {@code type}), then what {@code fields} adds. The one shape every command's own rows take.
      */
     public static void row(String type, Consumer<JsonFields> fields) {
-        JsonFields line = JsonlEnvelope.open(nowMillis(), type);
+        emitEvent(line(nowMillis(), type, fields), true);
+    }
+
+    /** The bytes {@link #row} prints for {@code type} at {@code ts}: one envelope object. */
+    public static String line(long ts, String type, Consumer<JsonFields> fields) {
+        JsonFields line = JsonlEnvelope.open(ts, type);
         fields.accept(line);
-        emitEvent(line.finish(), true);
+        return line.finish();
     }
 
     /**

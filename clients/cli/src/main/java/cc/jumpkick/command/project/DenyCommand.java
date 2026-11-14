@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.JkDirs;
@@ -15,6 +16,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
@@ -42,6 +44,11 @@ public final class DenyCommand implements CliCommand {
     }
 
     private static final BuildPlanKey<DenyReport> REPORT = BuildPlanKey.scalar("deny-report", DenyReport.class);
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
 
     @Override
     public int run(Invocation in) throws IOException {
@@ -80,11 +87,24 @@ public final class DenyCommand implements CliCommand {
         if (!result.success()) return 1;
 
         DenyReport report = plan.get(REPORT).orElseThrow();
+        if (global.outputIsJson()) {
+            for (int i = 0; i < report.violationCount(); i++) {
+                String module = report.modules().get(i);
+                String version = report.versions().get(i);
+                String reason = report.reasons().get(i);
+                JsonlShape.row("deny-violation", f -> f.string("module", module)
+                        .string("version", version)
+                        .string("reason", reason));
+            }
+            JsonlShape.row(
+                    "deny", f -> f.number("checked", report.checked()).number("violations", report.violationCount()));
+        }
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
                 CommandWedge.printOk("Deny", report.checked() + " package(s) checked, no violations");
             return 0;
         }
+        if (global.outputIsJson()) return 1;
         CommandWedge.printFail("Deny", report.violationCount() + " violation(s):");
         for (int i = 0; i < report.violationCount(); i++) {
             CliOutput.err("  "

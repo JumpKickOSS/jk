@@ -19,6 +19,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.BuildPlanResult;
@@ -71,6 +72,11 @@ public final class ImportCommand implements CliCommand {
     @Override
     public List<Param> parameters() {
         return List.of(Param.of("file", Arity.ZERO_OR_ONE, "The build file to import (auto-detected if omitted)."));
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -20,6 +21,7 @@ import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.FileHolders;
 import cc.jumpkick.util.TestHomes;
@@ -56,6 +58,11 @@ public final class CleanCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(Opt.flag("Delete only target/ intermediates; keep artifacts.", "-A", "--keep-artifacts"));
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -126,6 +133,13 @@ public final class CleanCommand implements CliCommand {
             CommandWedge.printFail(
                     "Clean", "removed " + stats + " from the root only; run jk clean again once the engine starts");
             return 1;
+        }
+        if (GlobalOptions.outputIsJson(in)) {
+            JsonlShape.row("clean", f -> f.number("files", files)
+                    .number("bytes", tally.bytes())
+                    .number("millis", elapsedMs)
+                    .bool("keepArtifacts", keepArtifacts));
+            return 0;
         }
         if (files == 0) {
             CommandWedge.printOk("Clean", "Nothing to remove");

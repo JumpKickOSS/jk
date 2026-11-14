@@ -359,6 +359,11 @@ public final class StorageCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) {
             boolean dryRun = in.isSet("dry-run");
             GlobalOptions global = GlobalOptions.from(in);

@@ -3,15 +3,19 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.EnginePaths;
@@ -59,6 +63,11 @@ public final class LibraryUpdateCommand implements CliCommand {
     private @Nullable Path cacheFileOverride;
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.source = in.value("source").map(URI::create).orElse(null);
         this.cacheFileOverride = in.value("cache-file").map(CliPaths::abs).orElse(null);
@@ -91,6 +100,14 @@ public final class LibraryUpdateCommand implements CliCommand {
             Files.deleteIfExists(previousBackup);
         }
         Diff diff = Diff.compute(before, after);
+        if (GlobalOptions.outputIsJson(in)) {
+            JsonlShape.row("library-update", f -> f.number("libraries", after.size())
+                    .bool("fetched", fetched)
+                    .token("added", MiniJson.write(diff.added()))
+                    .token("removed", MiniJson.write(diff.removed()))
+                    .token("changed", MiniJson.write(diff.changed())));
+            return 0;
+        }
         printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos), fetched);
         return 0;
     }

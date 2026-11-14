@@ -39,10 +39,10 @@ class MachineOutputDispatchTest {
 
     @Test
     void a_command_with_no_machine_output_refuses_jsonl_and_says_what_it_prints() throws Exception {
-        Run refused = run("trust", "list", "-O", "jsonl");
+        Run refused = run("decide", "-O", "jsonl");
         assertThat(refused.exit()).isEqualTo(Exit.USAGE);
         assertThat(refused.streams().out()).isEmpty();
-        assertThat(refused.streams().err()).contains("jk trust list has no -O jsonl output; it prints text only");
+        assertThat(refused.streams().err()).contains("jk decide has no -O jsonl output; it prints text only");
     }
 
     /** The VS Code extension finds the engine with {@code jk web -O jsonl}. */

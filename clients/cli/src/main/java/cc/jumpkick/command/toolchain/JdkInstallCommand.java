@@ -34,6 +34,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.BuildPlan;
@@ -126,6 +127,11 @@ public final class JdkInstallCommand implements CliCommand {
 
     /** True when the interactive wizard ran — it already settled the default decision. */
     private static final BuildPlanKey<Boolean> WIZARD_RAN = BuildPlanKey.scalar("wizard-ran", Boolean.class);
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
 
     @Override
     public int run(Invocation in) throws Exception {

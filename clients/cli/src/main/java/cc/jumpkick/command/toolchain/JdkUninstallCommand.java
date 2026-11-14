@@ -31,6 +31,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.BuildPlan;
@@ -113,6 +114,11 @@ public final class JdkUninstallCommand implements CliCommand {
     GlobalOptions global;
 
     private static final BuildPlanKey<List<JdkHit>> VICTIMS = BuildPlanKey.list("victims", JdkHit.class);
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
 
     @Override
     public int run(Invocation in) throws Exception {

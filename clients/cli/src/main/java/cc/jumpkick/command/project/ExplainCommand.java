@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DurationText;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
@@ -31,9 +32,12 @@ import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskForecast;
@@ -47,8 +51,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -107,6 +113,11 @@ public final class ExplainCommand implements CliCommand {
     public boolean scriptMode(Invocation in) {
         // With --graph-out the graph lands in a file and stdout carries only the human settle.
         return graphFormat(in) != null && graphOut(in).isEmpty();
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -231,6 +242,10 @@ public final class ExplainCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
+        if (global.outputIsJson()) {
+            planRows(plan, etaMillis, fullEtaMillis, criticalPath);
+            return 0;
+        }
         renderPlan(
                 plan,
                 in.isSet("verbose"),
@@ -242,6 +257,34 @@ public final class ExplainCommand implements CliCommand {
                 criticalPath,
                 scopeLabel(modulesSpec, affectedSince, affectedWip));
         return 0;
+    }
+
+    /**
+     * The forecast under {@code -O jsonl}: one {@code explain-step} row per step of every module,
+     * then one {@code explain} row with the module counts, the ETA and the critical path.
+     */
+    static void planRows(ExplainPlan plan, long etaMillis, long fullEtaMillis, List<String> criticalPath) {
+        int dirty = 0;
+        for (TaskForecast.Module m : plan.modules()) {
+            if (m.dirty()) dirty++;
+            String module = m.coord().isEmpty() ? m.dir().toString() : m.coord();
+            for (TaskForecast.Task step : m.steps()) JsonlShape.row("explain-step", stepFields(module, step));
+        }
+        int dirtyModules = dirty;
+        JsonlShape.row("explain", f -> f.number("modules", plan.modules().size())
+                .number("dirty", dirtyModules)
+                .number("etaMillis", etaMillis)
+                .number("fullEtaMillis", fullEtaMillis)
+                .token("criticalPath", MiniJson.write(criticalPath)));
+    }
+
+    /** One {@code explain-step} row: the module, the step, its forecast status, detail and key. */
+    public static Consumer<JsonFields> stepFields(String module, TaskForecast.Task step) {
+        return f -> f.string("module", module)
+                .string("step", step.name())
+                .string("status", step.status().name().toLowerCase(Locale.ROOT))
+                .string("detail", step.text())
+                .string("key", step.key());
     }
 
     /**

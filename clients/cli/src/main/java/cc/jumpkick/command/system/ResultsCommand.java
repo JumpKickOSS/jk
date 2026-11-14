@@ -13,6 +13,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
@@ -27,7 +28,9 @@ import org.jspecify.annotations.Nullable;
  * {@code jk results} — print the latest run's {@code jk-results.md} (journal copy under the state
  * dir, with a {@code target/jk-results.md} fallback). {@code --all} prints every problem in the
  * agent format, {@code --details} that run's {@code details.jsonl}. No engine round-trip: the
- * files are already on disk. MCP: {@code run} / {@code diagnostics} / {@code details}.
+ * files are already on disk. Under {@code -O jsonl} it prints the transcript too: its lines are
+ * the envelope rows the run's own {@code -O jsonl} streamed. MCP: {@code run} / {@code diagnostics}
+ * / {@code details}.
  */
 public final class ResultsCommand implements CliCommand {
 
@@ -49,9 +52,14 @@ public final class ResultsCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
-        boolean details = in.isSet("details");
+        boolean details = in.isSet("details") || GlobalOptions.outputIsJson(in);
         Path root = projectRoot(global.workingDir());
         boolean all = in.isSet("all");
         if ((global.agent || all) && !details) {

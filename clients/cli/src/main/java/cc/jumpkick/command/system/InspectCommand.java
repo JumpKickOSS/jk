@@ -9,6 +9,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.nio.file.Path;
@@ -42,6 +43,11 @@ public final class InspectCommand implements CliCommand {
     @Override
     public List<Param> parameters() {
         return List.of(Param.of("task", Arity.ONE, "Task name (compile-java, package-jar, …)"));
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

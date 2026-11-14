@@ -4,16 +4,20 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /** {@code jk library list} — print every library known to the catalog. */
@@ -47,6 +51,11 @@ public final class LibraryListCommand implements CliCommand {
     private boolean groupByLayer;
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) {
         this.layerFilter = in.value("layer").orElse(null);
         this.showLayer = in.isSet("show-layer");
@@ -67,11 +76,23 @@ public final class LibraryListCommand implements CliCommand {
             return 1;
         }
         List<CatalogReadAck.Entry> entries = ack.entries();
+        if (global.outputIsJson()) {
+            for (CatalogReadAck.Entry e : entries) {
+                if (layerFilter == null || e.layer().equals(layerFilter)) JsonlShape.row("library", fields(e));
+            }
+            return 0;
+        }
         if (entries.isEmpty()) {
             CliOutput.out("(no libraries registered)");
             return 0;
         }
         return groupByLayer ? listGrouped(ack.layerNames(), entries) : listFlat(entries);
+    }
+
+    /** One {@code library} row: the alias, its {@code group:artifact} and the layer that defines it. */
+    public static Consumer<JsonFields> fields(CatalogReadAck.Entry e) {
+        return f ->
+                f.string("name", e.name()).string("coordinates", e.moduleKey()).string("layer", e.layer());
     }
 
     private int listFlat(List<CatalogReadAck.Entry> entries) {

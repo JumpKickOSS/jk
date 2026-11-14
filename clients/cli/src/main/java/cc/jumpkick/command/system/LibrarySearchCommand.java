@@ -5,12 +5,14 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
@@ -58,6 +60,11 @@ public final class LibrarySearchCommand implements CliCommand {
     private boolean showLayer, groupByLayer;
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) {
         List<String> terms = in.positionals();
         Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
@@ -88,6 +95,11 @@ public final class LibrarySearchCommand implements CliCommand {
         }
 
         List<CatalogReadAck.Entry> hits = ack.entries();
+        if (global.outputIsJson()) {
+            int cap = limit != null && limit > 0 ? Math.min(limit, hits.size()) : hits.size();
+            for (CatalogReadAck.Entry e : hits.subList(0, cap)) JsonlShape.row("library", LibraryListCommand.fields(e));
+            return hits.isEmpty() ? 1 : 0;
+        }
         if (hits.isEmpty()) {
             CliOutput.out(
                     "No matches" + (global.offline ? " (cached locally)" : "") + " for: " + String.join(" ", terms));

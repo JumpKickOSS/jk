@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jdk.JdkHit;
@@ -12,6 +13,7 @@ import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
@@ -51,6 +53,11 @@ public final class JdkPinCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws IOException {
         String spec = in.positionals().get(0);
         Path jdksDir = CommonOpts.jdksDirValue(in);
@@ -71,6 +78,11 @@ public final class JdkPinCommand implements CliCommand {
             return 1;
         }
         Files.writeString(projectDir.resolve(".jdk-version"), pin + "\n", StandardCharsets.UTF_8);
+        if (GlobalOptions.outputIsJson(in)) {
+            Path file = projectDir.resolve(".jdk-version");
+            JsonlShape.row("jdk-pinned", f -> f.string("pin", pin).string("file", file.toString()));
+            return 0;
+        }
         Theme t = Theme.active();
         CommandWedge.printOk("Pin", "Pinned project to " + Theme.colorize(pin, t.focused()));
         return 0;

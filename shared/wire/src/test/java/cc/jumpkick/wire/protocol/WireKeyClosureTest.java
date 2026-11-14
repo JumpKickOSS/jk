@@ -65,7 +65,6 @@ class WireKeyClosureTest {
 
     private static final Map<String, String> EXEMPT = Map.ofEntries(
             // jbang-catalog.json is somebody else's document format. jk reads it and never writes one.
-            Map.entry("aliases", "foreign format: jbang-catalog.json, read by JBangCatalog"),
             Map.entry("java-options", "foreign format: jbang-catalog.json"),
             Map.entry("script-ref", "foreign format: jbang-catalog.json"),
             // A POST /api/build body field an HTTP client sets; the engine only ever reads it.

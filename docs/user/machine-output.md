@@ -168,7 +168,11 @@ export JK_OUTPUT=jsonl     # the same for every command that has machine output
   `image`, `sync`, `assemble`, `javadoc`, `run`, `install`, `snapshot`, `release`, `publish`,
   `watch`, `dev`), `lock`, `update`, `audit`, `guard` (also `-O sarif`), `outdated`, `doctor`,
   `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`,
-  `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`.
+  `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`, and the
+  commands in [Command rows](#command-rows): `results`, `explain`, the `graph` family, `tasks`,
+  `inspect`, `add`, `remove`, `format`, `deny`, `verify`, `clean`, `cache clean`, `storage clean`,
+  `library list|search|update`, `auth status`, the `trust` family, `import`, `jdk install`,
+  `jdk uninstall`, `jdk pin` and `jdk verify`.
 - One JSON object per line, flushed promptly, each with the envelope below; a command's own
   rows (`doctor`, `engine-status`, `outdated`, `env`, `job`, …) carry its fields after it. Human
   lines such a command still prints go to stderr, so every stdout line parses.
@@ -239,6 +243,47 @@ There is no separate toolchain plan ahead of the build:
 `jk jdk install -O jsonl` streams its own **`jdk-install`** plan in the same shape
 (`fetch-catalog`, `select`, `install`, `set-default` tasks; the `install` task carries the same
 `downloading …` / `installing …` labels).
+
+### Command rows
+
+These commands print their own rows, one envelope object each, and nothing else on stdout.
+`jk results -O jsonl` prints the latest run's `details.jsonl`, the lines that run's own
+`-O jsonl` streamed. `jk import`, `jk jdk install`, `jk jdk uninstall`, `jk cache clean` and
+`jk storage clean` stream their plan events (`plan-start`, `task-start`, `task-finish`,
+`plan-finish`) and add no rows.
+
+| `type` | Command | Fields |
+|---|---|---|
+| `explain-step` | `explain` | `module`, `step`, `status` (`cached`, `full`, `partial`, `run`), `detail`, `key` |
+| `explain` | `explain` | `modules`, `dirty`, `etaMillis`, `fullEtaMillis`, `criticalPath` (step names) |
+| `graph` | `graph build` | `op`, `nodes`, `edges`, `files`, `read`, `classes`, `dir`, `millis` |
+| `graph` | every other `graph` read | `op`, `found`, `text` (the answer as the engine wrote it) |
+| `task` | `tasks` | `module`, `name`, `stage`, `description` |
+| `task-output` | `tasks show` | `task`, `module`, `moduleDir`, `output`, `onDisk` |
+| `task-inspect` | `inspect`, `tasks inspect` | the `task-output` fields, then `stage`, `description`, `aliases`, `cache` |
+| `dependency-added` | `add` | `library`, `group`, `artifact`, `version` (`managed` under a platform), `scope`, `classifier` and `sha256` when set |
+| `dependency-probe` | `add --ping` | `coordinate`, `available`, `url` |
+| `dependency-removed` | `remove` | `library`, `scope`, `module` (a path form that also left the workspace) |
+| `format-file` | `format` | `path`, `status` (`formatted`, `unformatted` under `--check`, `error`), `message` on an error |
+| `format` | `format` | `check`, `files`, `changed`, `clean`, `errors` |
+| `deny-violation` | `deny` | `module`, `version`, `reason` |
+| `deny` | `deny` | `checked`, `violations` |
+| `verify-artifact` | `verify` | `artifact`, `match`, `existing`, `rebuilt` (sha256, null when absent) |
+| `clean` | `clean` | `files`, `bytes`, `millis`, `keepArtifacts` |
+| `library` | `library list`, `library search` | `name`, `coordinates`, `layer` |
+| `library-update` | `library update` | `libraries`, `fetched`, `added`, `removed`, `changed` |
+| `auth` | `auth status` | `provider`, `host` (null when it needs `--host`), `authenticated`, `source` |
+| `trusted` | `trust list` | `kind` (`source`, `plugin`), `value` |
+| `trust` | `trust add`, `plugin`, `remove`, `import` | `action`, `kind`, `value`, `changed` |
+| `jdk-pinned` | `jdk pin` | `pin`, `file` |
+| `jdk-verify` | `jdk verify` | `id`, `status` (`ok`, `unhashed`, `untracked`, `missing`, `tampered`), `detail` |
+
+```json
+{"schema":1,"ts":1721664000123,"type":"dependency-added","library":"guava","group":"com.google.guava","artifact":"guava","version":"33.5.0-jre","scope":"compile"}
+```
+
+The exit code is the human run's: `graph` reads that find nothing, `deny` with a violation and
+`library search` with no match exit 1.
 
 ### `jk node`
 

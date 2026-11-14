@@ -9,15 +9,19 @@ import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.TaskForecast;
@@ -32,6 +36,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -107,6 +112,11 @@ public final class TasksCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         Path startDir = global.workingDir();
@@ -143,6 +153,20 @@ public final class TasksCommand implements CliCommand {
             CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
         }
+        if (GlobalOptions.outputIsJson(in)) {
+            for (var e : modules.entrySet()) {
+                String coord = e.getValue().coord();
+                for (TaskCatalog.TaskDef t : TaskCatalog.buildTasks()) {
+                    JsonlShape.row("task", taskFields(coord, t.name(), t.stage(), t.description()));
+                }
+                for (String name : BuildLogicTaskScan.discoverNames(e.getKey())) {
+                    JsonlShape.row(
+                            "task",
+                            taskFields(coord, "build-logic:" + name, "logic", "Project build-logic stem script"));
+                }
+            }
+            return 0;
+        }
         boolean multi = modules.size() > 1;
         boolean first = true;
         for (var e : modules.entrySet()) {
@@ -168,6 +192,15 @@ public final class TasksCommand implements CliCommand {
         // Table is the wedge substitute; tip is post-table detail.
         CliOutput.err("tip: jk show package-jar · jk inspect compile-java · jk tasks show <task>");
         return 0;
+    }
+
+    /** One {@code task} row of {@code jk tasks}: the module's coordinate and the task's catalog entry. */
+    public static Consumer<JsonFields> taskFields(
+            String module, String name, String stage, @Nullable String description) {
+        return f -> f.string("module", module)
+                .string("name", name)
+                .string("stage", stage)
+                .string("description", description);
     }
 
     static int showOrInspect(String action, String stepName, Invocation in, Path startDir, Path buildFile)
@@ -196,6 +229,23 @@ public final class TasksCommand implements CliCommand {
             Optional<Path> out = TaskCatalog.output(task, info);
             boolean exists = out.isPresent() && Files.exists(out.get());
 
+            if (global.outputIsJson()) {
+                String cacheState = inspect ? cacheLine(forecast, modDir, task.name()) : null;
+                JsonlShape.row(inspect ? "task-inspect" : "task-output", f -> {
+                    f.string("task", task.name())
+                            .string("module", coord)
+                            .string("moduleDir", modDir.toString())
+                            .string("output", out.map(Path::toString).orElse(null))
+                            .bool("onDisk", exists);
+                    if (inspect) {
+                        f.string("stage", task.stage())
+                                .string("description", task.description())
+                                .token("aliases", MiniJson.write(task.aliases()))
+                                .string("cache", cacheState);
+                    }
+                });
+                continue;
+            }
             if (inspect) {
                 CliOutput.out("task:        " + task.name());
                 if (!task.aliases().isEmpty()) {

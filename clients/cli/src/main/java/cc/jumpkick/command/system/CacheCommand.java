@@ -714,6 +714,11 @@ public final class CacheCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public int run(Invocation in) throws IOException {
             Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
             boolean dryRun = in.isSet("dry-run");
