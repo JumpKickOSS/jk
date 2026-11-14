@@ -47,7 +47,7 @@ class GreenReplayEnvWarningTest {
                 new Recording(),
                 in,
                 cache,
-                "run-tests:m",
+                "run-tests@m",
                 "stamp",
                 new TestSummary(1, 1, 0, 0, List.of()),
                 true,
