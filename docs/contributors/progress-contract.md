@@ -142,7 +142,7 @@ than 1% a second: preflight's band is a tenth of the bar, yet it is about a seco
 build, and a test run's bar read 17% when its estimate came at 1.4 s, then held there for 9.5 s
 while the clock caught up.
 
-**Spread, range and confidence** (JK-R0N5S). Every step's price carries a relative spread σ, one
+**Spread, range and confidence.** Every step's price carries a relative spread σ, one
 sigma of `ln(wall / price)` (`StepCost.spread`, `EtaSpread`):
 
 - **Its layer's**: the rung's default (`REPLAY` 0.05, `MODULE` 0.12, `PROJECT` 0.22, `HOST` 0.32,
@@ -256,7 +256,7 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `StepLedger` | Per project, the latest 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers; prices and their own spreads |
+| `StepLedger` | Per project, up to 60 successful runs' step walls with each run's shape, work set, suite curves and suite workers, each shape keeping its newest runs; prices and their own spreads |
 | `StepEta` | Prices every step the forecast runs; the step-priced `R0` |
 | `WorkSchedule` / `RemainingWork` | Schedule of module costs; the residual `R(t)` and its spread, step by step |
 | `EtaSpread` / `RungBias` | Spread arithmetic (range, confidence); each layer's learned bias and spread, and the host's correlation |
@@ -316,7 +316,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
   `progress`. A running step past its price keeps a quarter of the time it has run, uncapped: past
   its high bound its price no longer says when it ends. A cold integration run's suite priced at
   54 s from calibration ran 638 s, and capped at what its high bound left, the ETA read 3.3 s and
-  the bar 99% for its last six minutes (JK-ZJ8D9).
+  the bar 99% for its last six minutes.
 
 ## Wire (schema 1, additive fields)
 
@@ -355,7 +355,7 @@ The project store holds:
 
 | Section | Lines |
 |---------|-------|
-| `runs` | the step ledger: the latest 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, suite curves and suite workers (`StepLedger`) |
+| `runs` | the step ledger: up to 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, suite curves and suite workers (`StepLedger`). Past 60 the shape with the most runs gives up its oldest, so a rarely run shape (an integration tier, a forced build) keeps its walls |
 | `means` | `key mean last count seen`: one running mean per measure the estimates read |
 | `classes` | `suiteDir⇥fqcn⇥last⇥mean⇥count⇥seen`: one running mean per test class of a suite, the suite as `<rel-dir><@selection>` |
 | `meta` | `<section><@selection> N` per group of rows: the runs that folded a row of that section under that test selection (`means`, `classes@integration`), which its rows' `seen` count in |
