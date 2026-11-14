@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.command.pipeline.GuardCommand;
+import cc.jumpkick.command.system.WebCommand;
 import cc.jumpkick.command.toolchain.TrustCommand;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.MiniJson;
@@ -42,6 +43,13 @@ class MachineOutputDispatchTest {
         assertThat(refused.exit()).isEqualTo(Exit.USAGE);
         assertThat(refused.streams().out()).isEmpty();
         assertThat(refused.streams().err()).contains("jk trust list has no -O jsonl output; it prints text only");
+    }
+
+    /** The VS Code extension finds the engine with {@code jk web -O jsonl}. */
+    @Test
+    void web_prints_its_connect_line_as_jsonl() {
+        Invocation jsonl = Invocation.builder().putValue("output", "jsonl").build();
+        assertThat(CommandDispatch.refusedOutputFormat(new WebCommand(), jsonl)).isNull();
     }
 
     @Test

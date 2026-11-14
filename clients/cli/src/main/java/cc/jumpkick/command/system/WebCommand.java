@@ -16,6 +16,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.EnginePaths;
@@ -46,6 +47,12 @@ public final class WebCommand implements CliCommand {
         return "Open the engine dashboard in a browser";
     }
 
+    /** {@code -O jsonl}: the connect line the VS Code extension reads. */
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
     @Override
     public List<Opt> options() {
         return List.of(Opt.flag("Print the URL only; do not open a browser", "-n", "--no-open"));
@@ -74,7 +81,7 @@ public final class WebCommand implements CliCommand {
             return fail(json, why, Exit.FAILURE);
         }
         if (json) {
-            CliOutput.out(connectJson(status.httpUrl(), token(paths), status.engineId()));
+            CliOutput.machine(connectJson(status.httpUrl(), token(paths), status.engineId()));
             return Exit.SUCCESS;
         }
 
@@ -102,7 +109,7 @@ public final class WebCommand implements CliCommand {
     }
 
     private static int fail(boolean json, @Nullable String why, int exit) {
-        if (json) CliOutput.out(JsonFields.object().string("error", why, "").finish());
+        if (json) CliOutput.machine(JsonFields.object().string("error", why, "").finish());
         else CommandWedge.printFail("Web", why);
         return exit;
     }
