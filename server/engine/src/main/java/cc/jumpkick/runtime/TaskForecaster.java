@@ -227,12 +227,37 @@ public final class TaskForecaster {
             one.accept(u);
             if (seeds.contains(u.dir())) dirty.add(u.dir());
         }
+        // Of two members whose tests read each other the walk's order keeps one test edge, so one
+        // may have been priced before the other turned dirty. A test edge seeds no compile
+        // consumer, so pricing that member once more is enough.
+        Map<Path, Set<Path>> order = graph.readOrder();
+        if (!order.equals(reads)) {
+            for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+                if ((only == null || only.contains(u.dir())) && pricedBeforeATestPrereq(reads, order, u.dir(), dirty))
+                    one.accept(u);
+            }
+        }
         List<TaskForecast.Module> out = new ArrayList<>(graph.topoOrder().size());
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             TaskForecast.Module m = forecast.get(u.dir());
             if (m != null) out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Whether {@code dir} reads a dirty sibling over a test edge the walk's {@code order} dropped
+     * from {@code reads}: of two members whose tests read each other, {@link
+     * BuildGraph.Result#readOrder} keeps one edge, so the other member may have been priced before
+     * that sibling turned dirty and its suite read as cached against the sibling's old classes.
+     */
+    static boolean pricedBeforeATestPrereq(
+            Map<Path, Set<Path>> reads, Map<Path, Set<Path>> order, Path dir, Set<Path> dirty) {
+        Set<Path> walkedAfter = order.getOrDefault(dir, Set.of());
+        for (Path prereq : reads.getOrDefault(dir, Set.of())) {
+            if (!walkedAfter.contains(prereq) && dirty.contains(prereq)) return true;
+        }
+        return false;
     }
 
     /**

@@ -336,15 +336,16 @@ public final class BuildForecasting {
     }
 
     /**
-     * {@code changed} and every module downstream of one of them, by the graph's read order (test
-     * edges included), as the graph spells module directories.
+     * {@code changed} and every module downstream of one of them over every edge the graph reads
+     * (test edges included, both of two members whose tests read each other), as the graph spells
+     * module directories.
      */
     static Set<Path> downstreamCone(BuildGraph.Result graph, Set<Path> changed) {
         Map<Path, Path> byNormalized = new HashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder())
             byNormalized.put(u.dir().toAbsolutePath().normalize(), u.dir());
         Map<Path, List<Path>> dependents = new HashMap<>();
-        for (Map.Entry<Path, Set<Path>> e : graph.readOrder().entrySet()) {
+        for (Map.Entry<Path, Set<Path>> e : graph.reads().entrySet()) {
             for (Path prereq : e.getValue())
                 dependents.computeIfAbsent(prereq, k -> new ArrayList<>()).add(e.getKey());
         }
