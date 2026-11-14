@@ -4,12 +4,14 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
@@ -199,7 +201,9 @@ public final class WorkspaceLoader {
         // these members and one rebuilt from its memo carry one shape: a profile declared only at
         // the root resolves for every member either way.
         JkBuild member = inheritImage(
-                inheritPublish(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root), root, moduleDir);
+                inheritPublish(inheritSuites(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root), root),
+                root,
+                moduleDir);
         member = JkBuildParser.reapplyPlatformContributions(moduleDir, member);
         NodeShape.check(member, moduleDir);
         PluginJavaFloor.check(member, moduleDir);
@@ -297,6 +301,69 @@ public final class WorkspaceLoader {
                 fromRoot.excludeTagsSet(),
                 env,
                 fromRoot.allSuites());
+    }
+
+    /**
+     * {@code module} carrying the workspace root's {@code [test.suites.<name>]} tables: which tier a
+     * test belongs to is a workspace fact, so a suite the root declares is a suite of every member,
+     * and a member holding none of its tests simply runs none. A member adds suites of its own
+     * beside them. Where a member's table names a suite the root declares, the member may add to
+     * its settings and nothing else:
+     *
+     * <ul>
+     *   <li>{@code classes}, {@code tags}, {@code exclude-classes}, {@code exclude-tags},
+     *       {@code explicit}: the root's. A member setting one is a config error naming the root's
+     *       table, since a suite that claims different tests in each member is no tier at all.
+     *   <li>{@code env}, {@code system-properties}: additive; a name both set takes the root's value.
+     *   <li>{@code jvm-args}: additive, the root's after the member's, so a flag both set takes the
+     *       root's value.
+     *   <li>{@code timeout}: the root's when it sets one, else the member's.
+     * </ul>
+     *
+     * The rules {@link #inheritProfiles} applies to a profile's {@code env} and {@code jvm-args}.
+     */
+    public static JkBuild inheritSuites(JkBuild module, JkBuild root) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(root, "root");
+        Map<String, DeclaredSuite> fromRoot = root.build().testSuites();
+        if (fromRoot.isEmpty()) return module;
+        Map<String, DeclaredSuite> merged = new LinkedHashMap<>(fromRoot);
+        module.build().testSuites().forEach((name, own) -> {
+            DeclaredSuite inherited = fromRoot.get(name);
+            merged.put(name, inherited == null ? own : mergeSuite(module, name, inherited, own));
+        });
+        return module.withBuild(module.build().withTestSuites(merged));
+    }
+
+    /** {@code [test.suites.<name>]} as the root and a member both declare it, by the rules on {@link #inheritSuites}. */
+    static DeclaredSuite mergeSuite(JkBuild module, String name, DeclaredSuite fromRoot, DeclaredSuite fromMember) {
+        List<String> claims = new ArrayList<>();
+        if (!fromMember.classes().isEmpty()) claims.add("classes");
+        if (!fromMember.tags().isEmpty()) claims.add("tags");
+        if (!fromMember.excludeClasses().isEmpty()) claims.add("exclude-classes");
+        if (!fromMember.excludeTags().isEmpty()) claims.add("exclude-tags");
+        if (fromMember.explicit() && !fromRoot.explicit()) claims.add("explicit");
+        if (!claims.isEmpty()) {
+            throw new JkBuildParseException("module `" + module.project().name() + "`: [test.suites." + name
+                    + "] is the workspace root's table; a member may add env, jvm-args, system-properties"
+                    + " or timeout to it, not " + String.join(", ", claims) + " (change the root's table)");
+        }
+        SuiteSettings root = fromRoot.settings();
+        SuiteSettings member = fromMember.settings();
+        Map<String, String> env = new LinkedHashMap<>(member.env());
+        env.putAll(root.env());
+        List<String> jvmArgs = new ArrayList<>(member.jvmArgs());
+        jvmArgs.addAll(root.jvmArgs());
+        Map<String, String> properties = new LinkedHashMap<>(member.systemProperties());
+        properties.putAll(root.systemProperties());
+        Long timeout = root.timeoutMs() != null ? root.timeoutMs() : member.timeoutMs();
+        return new DeclaredSuite(
+                fromRoot.classes(),
+                fromRoot.tags(),
+                fromRoot.excludeClasses(),
+                fromRoot.excludeTags(),
+                new SuiteSettings(env, jvmArgs, properties, timeout),
+                fromRoot.explicit());
     }
 
     /**
