@@ -7,8 +7,13 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class GuestTest {
+
+    /** A guest's block devices are named major:minor, which a Windows path refuses; jk reads them only inside a guest. */
+    private static final String LINUX_PATHS = "a /sys/dev/block/<major:minor> path is Linux-only";
 
     private static Guest detect(Set<Path> present, Map<Path, String> files, Map<String, String> env) {
         return Guest.detect(present::contains, files::get, env::get);
@@ -45,6 +50,7 @@ class GuestTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = LINUX_PATHS)
     void twoInstallsOfOneDistroImageAreToldApartWithoutTheirWslVariables() {
         Map<Path, String> first =
                 distro("8be22fc4f5024a67ab9f16b3f31480b6", "8:80", "naa.60022480e0952abfdb4c9819122a93b6");
@@ -65,6 +71,7 @@ class GuestTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = LINUX_PATHS)
     void aDistroClonedByExportAndImportKeepsItsMachineIdAndGetsAnotherDisk() {
         String machineId = "8be22fc4f5024a67ab9f16b3f31480b6";
         Guest original = detect(Set.of(), distro(machineId, "8:80", "naa.6002248000000000000000000000000a"), Map.of());
@@ -74,6 +81,7 @@ class GuestTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = LINUX_PATHS)
     void theDiskIsNamedByItsIdWhicheverDeviceItIsAttachedAs() {
         String wwid = "naa.60022480e0952abfdb4c9819122a93b6";
         String machineId = "8be22fc4f5024a67ab9f16b3f31480b6";
