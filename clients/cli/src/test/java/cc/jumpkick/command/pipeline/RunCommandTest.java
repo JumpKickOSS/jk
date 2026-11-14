@@ -337,12 +337,14 @@ class RunCommandTest {
                 public final class Main {
                     public static void main(String[] args) {
                         boolean fromFile = "jdbc:h2:file:./target/envdb".equals(System.getenv("JDBC_URL"));
-                        boolean shellWins = !"/from/dot/env".equals(System.getenv("HOME"));
+                        boolean shellWins = !"/from/dot/env".equals(System.getenv("PATH"));
                         System.exit(fromFile && shellWins ? 7 : 1);
                     }
                 }
                 """);
-        Files.writeString(tempDir.resolve(".env"), "JDBC_URL=jdbc:h2:file:./target/envdb\nHOME=/from/dot/env\n");
+        // PATH: set in every shell on every OS (HOME is not on Windows); there spelled Path, so the
+        // file's PATH must land under it, not beside it.
+        Files.writeString(tempDir.resolve(".env"), "JDBC_URL=jdbc:h2:file:./target/envdb\nPATH=/from/dot/env\n");
 
         int exit = run(
                 "run",

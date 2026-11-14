@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ChildEnv;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -127,10 +129,20 @@ public final class EnvLookup {
     /**
      * Lay {@code fileValues} under {@code processEnv}, a child process's environment already holding
      * the real one: each name is set only where {@code processEnv} lacks it, so the real environment
-     * wins.
+     * wins. On Windows a name is matched whatever its case, so a file's {@code PATH} is under the
+     * real {@code Path} rather than a second entry beside it.
      */
     public static void layerUnder(Map<String, String> processEnv, Map<String, String> fileValues) {
-        fileValues.forEach(processEnv::putIfAbsent);
+        layerUnder(processEnv, fileValues, Os.isWindows());
+    }
+
+    /** {@link #layerUnder(Map, Map)} for a platform whose names are case-insensitive or not. */
+    static void layerUnder(Map<String, String> processEnv, Map<String, String> fileValues, boolean caseInsensitive) {
+        fileValues.forEach((name, value) -> {
+            if (ChildEnv.get(processEnv, name, caseInsensitive) == null) {
+                ChildEnv.put(processEnv, name, value, caseInsensitive);
+            }
+        });
     }
 
     /**

@@ -191,4 +191,16 @@ class EnvLookupTest {
         EnvLookup.layerUnder(processEnv, Map.of("SHELL_SET", "file", "FILE_ONLY", "file"));
         assertThat(processEnv).containsEntry("SHELL_SET", "shell").containsEntry("FILE_ONLY", "file");
     }
+
+    @Test
+    void on_windows_a_file_name_in_another_case_is_under_the_real_one_not_beside_it() {
+        // ProcessBuilder.environment() on Windows: case-sensitive, the system path spelled Path.
+        Map<String, String> processEnv = new HashMap<>(Map.of("Path", "C:\\Windows\\System32"));
+        EnvLookup.layerUnder(processEnv, Map.of("PATH", "/from/dot/env", "Temp", "C:\\t"), true);
+        assertThat(processEnv).containsOnlyKeys("Path", "Temp").containsEntry("Path", "C:\\Windows\\System32");
+
+        Map<String, String> posix = new HashMap<>(Map.of("Path", "a"));
+        EnvLookup.layerUnder(posix, Map.of("PATH", "b"), false);
+        assertThat(posix).as("elsewhere it is another variable").containsEntry("PATH", "b");
+    }
 }
