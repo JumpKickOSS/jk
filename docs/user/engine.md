@@ -38,11 +38,13 @@ the running build and refuses with its number.
 
 `jk engine status` prints the engine's version and the commit it was built from (`(dirty)` when
 the checkout had uncommitted changes, `unknown` for a build outside a git checkout), a `Client` row
-with the same for the `jk` you ran, marked when the two are not one build (`commit`,
-`clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` and `jk
-doctor` show the same pair). A released native client carries its commit; a snapshot's native
-client does not, so `jk snapshot` and `jk install` record the checkout's commit beside it in
-`jk-engine.toml` and the row says `(recorded at install)`. And, when the engine was installed by `jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
+with the same for the `jk` you ran, marked `(not the engine's build)` when the two commits differ (`commit`,
+`clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` prints the pair
+without starting an engine, `engine  not running` when none is up, and `jk doctor`'s `engine` row
+turns WARN with `not the client's build`). A side with no commit is never called a mismatch. A released native client carries its commit; a snapshot's native
+client does not, so `jk snapshot` records the checkout's commit beside it in `jk-engine.toml` and
+the row says `(recorded at install)`, shown only while the client on disk is the one that install
+wrote. And, when the engine was installed from a checkout (`jk snapshot`), a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
 [install](install.md#on-disk-layout)). Its `Updates` row says what JumpKick's own update does next —
 the mode and why, the last check, a download waiting to install, or a hold (`selfUpdate` in `-O
@@ -772,8 +774,9 @@ from one engine. The same holds for `JK_REPO_*` credentials and host bindings
 While a job runs, the engine keeps the machine from idle sleep, from the first job's start to the
 last job's end and never while it idles after that. Under the default `keep-awake = "ac"` it does
 so only on mains power: when the machine changes to battery mid-build the hold is dropped, and taken
-again on the way back; `"always"` holds on battery too, `"never"` never holds. Closing the lid is
-never blocked.
+again on the way back; `"always"` holds on battery too, `"never"` never holds. Set it as `[engine]
+keep-awake` in `~/.jk/config.toml` or with `JK_KEEP_AWAKE`; each job reads it as it starts. Closing
+the lid is never blocked: that is your call, and a laptop building in a bag runs hot.
 
 | OS | Power source | Hold |
 |----|--------------|------|
@@ -781,10 +784,14 @@ never blocked.
 | macOS | `pmset -g batt` | `caffeinate -i -s -w <engine pid>`; `pmset -g assertions` shows it |
 | Windows | `GetSystemPowerStatus` | a system-required power request; `powercfg /requests` lists it under SYSTEM |
 
-In a WSL guest, a container, or with `CI` set, the engine holds nothing. A run the machine slept
-through anyway, or whose engine was stopped, says so: its summary reads `took 3m 37s, suspended 4m
-34s`, its countdown carries on from where it stood, and the steps that ran across the gap teach the
-estimates nothing ([machine output](machine-output.md): the `suspended` event).
+In a WSL guest, a container, with `CI` set, or on an OS it does not know, the engine holds nothing
+and its log says once that it cannot. A run the machine slept through anyway, or whose engine was
+stopped, says so: the plain view prints `JumpKick build suspended 4m 34s - the machine slept or
+JumpKick was stopped` when it wakes, the summary reads `took 3m 37s, suspended 4m 34s`, and `jk
+history`, `jk-results.md` and MCP's status carry the same time away. Its countdown carries on from
+where it stood, the time away does not count against a job's time limit or a worker's idle
+timeout, and the steps that ran across the gap teach the estimates nothing
+([machine output](machine-output.md): the `suspended` event).
 
 ### Signals
 
