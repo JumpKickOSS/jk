@@ -83,8 +83,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # On macOS, under the /bin/bash 3.2 that `curl | bash` gets there, with nothing newer on PATH.
       - name: Shell installer verification fixtures
-        run: bash scripts/test-installer-verification.sh
+        run: ${{ matrix.os == 'macos-latest' && 'env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash' || 'bash' }} scripts/test-installer-verification.sh
 
       - name: Wrapper bootstrap fixtures
         run: bash scripts/test-wrapper-bootstrap.sh
@@ -97,6 +98,15 @@ jobs:
 
       - name: Release-flatten fixtures
         run: bash scripts/test-flatten-release.sh
+
+      - name: Release-assembly fixtures
+        run: bash scripts/test-assemble-release-dir.sh
+
+      - name: Bootstrap fixtures
+        run: bash scripts/test-ci-bootstrap.sh
+
+      - name: Manual release merge and publish fixtures
+        run: bash scripts/test-release-publish.sh
 
       - name: Release-notes fixtures
         run: bash scripts/test-release-notes.sh

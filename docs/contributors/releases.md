@@ -181,9 +181,13 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
   with the same key, over the exact first two lines of `latest/LATEST`.
 - Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI), with the same
   modulus/exponent embedded in the stock PowerShell verifier.
-- Private key: GitHub Actions secret **`JK_RELEASE_RSA_SIGNING_KEY`** (base64 PKCS#8 DER).
-- Local sign: `scripts/sign-release.sh path/to/SHA256SUMS /owner-only/path/release-key.pem`
-- Pointer: `scripts/sign-latest-pointer.sh <version> <out-dir> /owner-only/path/release-key.pem`
+- Private key: a PEM file on one signing machine, owner-only (a Linux or WSL home), and the same
+  key as the `JK_RELEASE_RSA_SIGNING_KEY` secret (base64 PKCS#8 DER) for the CD workflow. No build
+  machine holds it.
+- Sign a tree: `scripts/release-publish.sh sign <out> <release-key.pem>` (wraps
+  `scripts/sign-release.sh`, refusing a key the installers do not trust)
+- Pointer: `scripts/release-publish.sh pointer <out> <release-key.pem>` (wraps
+  `scripts/sign-latest-pointer.sh <version> <out-dir> <release-key.pem>`)
   writes `LATEST` (the three-line object) and `VERSION` (fixtures:
   `scripts/test-installer-verification.sh` and `.ps1` cover an unsigned, a tampered, a rolled-back
   and a malformed pointer).
@@ -201,31 +205,25 @@ path, network-free, against a fixture release signed with a throwaway key.
 
 ## Cutting a release
 
-A release starts with `jk release`, by hand (`jk release --push`) or from the **Cut release**
-workflow (`cut-release.yml`, run from the Actions tab; `next` picks the segment that moves after the
-release). It builds and tests the version `jk.toml` declares, installs it, tags the commit with the
-`[release] tag` template, and commits the next version to `jk.toml`, the lock and the workspace
-members before pushing the branch and the tag. Local development then continues on the next
-version; `jk snapshot` is the inner loop for it.
+A release starts with `jk release` on the release commit: it checks the version `jk.toml` declares,
+tags the commit with the `[release] tag` template (`v<version>`, annotated), and commits the next
+version to `jk.toml`, the lock, the workspace members and the `[release] files` (the installers'
+floors). Local development then continues on the next version; `jk snapshot` is the inner loop
+for it. `jk release --dry-run` says what it would do.
 
-CI and CD are two workflows. The pushed tag starts **CI** (`ci.yml`), which runs every test and
-gate once and fails fast: a red run is the end of that release. A green CI run on a release tag
-starts **CD** (`release.yml`), which builds, signs and publishes and re-runs none of the tests. A
-push made with a workflow's `GITHUB_TOKEN` starts nothing, so the Cut release workflow (which skips
-the tests: CI owns them) dispatches CI on the new tag itself. CI runs on no push to a branch and on
-no pull request.
-
-The `jk release` that Cut release runs is the pinned bootstrap release
-([self-host](self-host.md#the-bootstrap-pin)), so a `jk release` feature, and a `jk.toml` key that
-only a newer JumpKick reads, takes effect for CI one release after it ships.
+Releases are cut **by hand**: each platform is built on a machine of that platform, the trees are
+merged and signed on the one machine that holds the release key, and the same machine uploads
+([Cutting a release by hand](#cutting-a-release-by-hand)). The CI and CD workflows below describe
+the same sequence in the cloud; while they are not the publisher, the `Release` workflow is
+disabled for the length of a manual release, so a pushed tag cannot publish by itself.
 
 ## CI and CD (started by the release tag)
 
 Workflows: [`ci.yml`](../../.github/workflows/ci.yml) (CI) and
 [`release.yml`](../../.github/workflows/release.yml) (CD).
 
-Nothing reaches the bucket, the pointer, the installers or the release page from a developer
-machine.
+When CD publishes, nothing reaches the bucket, the pointer, the installers or the release page from
+a developer machine. A manual release is the other way round, and the two never run together.
 
 ```bash
 jk release --patch --push        # tests, tags vX.Y.Z, commits "Start X.Y.Z+1", pushes both
@@ -266,9 +264,10 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
    the client archive(s), the engine jar, the JVM client jar, the Maven spy jar,
    `jk-whats-new-<version>.md` and `jk-repo-<version>.sha256` (the digests of the dist's shelf,
-   which the engine holds every worker it fetches to) — + `SHA256SUMS`. The linux-x86_64 lane then
-   checks that every jar and POM it staged for `repo/` is the one that file lists, and the flatten
-   keeps that lane's copy alone.
+   which the engine holds every worker it fetches to, plus, on linux-x86_64, whatever else it
+   staged for `repo/`: `JK_REPO_STAGE_DIR`) — + `SHA256SUMS`. The linux-x86_64 lane then checks
+   that every jar and POM it staged for `repo/` is the one that file lists, and the flatten keeps
+   that lane's copy alone.
 4. The merge job first writes the release notes (`scripts/release-notes.sh <version>`: the
    version's entry in [What's new](../user/whats-new.md), then the commits since the previous tag)
    and refuses a version with no entry, or one that breaks the [writing rules](#writing-an-entry),
@@ -276,9 +275,8 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 5. It flattens every tree into one (`scripts/flatten-release.sh`; `JK_RELEASE_PLATFORMS` names the
    four platforms, and a tree short of one, or a platform-neutral file whose bytes differ
    between platforms, is refused) and takes the CycloneDX SBOM the linux-x86_64 build wrote of the
-   engine (`jk publish -S -U` in `server/engine`, which leaves
-   `server/engine/target/sbom/jk-engine-<version>.cdx.json` — the document the engine jar embeds
-   under `META-INF/sbom/`, derived from `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` —
+   engine (`scripts/release-sbom.sh`, which takes the document the engine jar embeds under
+   `META-INF/sbom/`, derived from `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` —
    beside the tree, so the signed `SHA256SUMS` the installers verify is untouched.
 6. The publish job signs the combined `SHA256SUMS` with the release key (the key must be the one
    the installers trust: `scripts/release-key-matches.sh`), builds the plugin SDK's Central bundles
@@ -366,61 +364,80 @@ is a release that ships the new public half, signed by the old key, before the s
 Central refuses unsigned artifacts, so the GPG key and passphrase belong to the same environment as
 the release key: the signature is made wherever the SDK is published from.
 
-### Manual upload (ops)
+### Cutting a release by hand
 
-The workflow is the publisher; this is the same sequence by hand, for a release cut on a machine
-when CI cannot run. Order matters: the version tree, then the pointer, then the website — a
-freshly deployed `install.sh` carries the new floor and refuses the old pointer until step 2 is
-done. The pointer publish is one copy.
+The sequence the owner runs, start to finish. Steps marked **outward** change what users see.
 
-Before any of it, the tree is built and installed in the order the CI lane keeps: the
-**previous** release's client and engine — the ones the home names before the bump — run
-`jk install -S` on the new tree. That pass shelves the new version's workers, installs
-the new engine and client into the home, and re-shelves under the new engine (the fixed point);
-only then can the new engine compile anything, because it looks for workers of its own version
-and the repository does not serve them yet. (`install.sh target/dist/jk` shelves the dist's
-`repos/jk-local/` too, so a dist install is never an engine without workers; the release is still
-cut from the `jk install` pass, whose shelf the new engine packaged.) Assemble
-`target/release/<version>/` from the `target/dist` that pass leaves, so the released bytes are the
-installed ones; stage the first-party repository from the shelf afterwards (`JK_MAVEN_STAGE_ONLY=1
-JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh`) and upload it beside the
-version tree. The stage holds the version being released (`JK_VERSION`, by default the tree's)
-and nothing else, so the older versions a developer's shelf still holds never reach the bucket or
-its worker-POM check; `JK_MAVEN_STAGE_ALL=1` stages every version the shelf holds instead.
+| Step | Where | What |
+|------|-------|------|
+| 1 | release commit | Gates green (`jk guard`, `jk snapshot`, `jk snapshot -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
+| 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
+| 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
+| 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag |
+| 5 | the signing machine | copy every lane's `out/` over, `scripts/release-merge.sh <staging> <out>` |
+| 6 | the signing machine | `scripts/release-publish.sh sign <out> <release-key.pem>` |
+| 7 **outward** | the signing machine, gcloud | `scripts/release-publish.sh upload <out>`, then `pointer <out> <release-key.pem>` (live here), then `verify <out> <public-key.pem>` |
+| 8 **outward** | the signing machine, firebase | `scripts/release-publish.sh hosting` |
+| 9 **outward** | jk-templates checkout | fast-forward the catalogue's `main` to the branch synced for this release, push |
+| 10 **outward** | the signing machine, `gh` | `scripts/release-publish.sh github <out>` |
+| 11 | any | `scripts/release-publish.sh install-check`, then the post-publish matrix below |
+| 12 **outward** | any | once the CI run on the tag has finished (or is cancelled), `gh workflow enable Release`; commit the bootstrap pin and push `main` |
 
-```bash
-# 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
-gsutil -m rsync -r -d target/release/0.13.6/ gs://$BUCKET/releases/0.13.6/
+**Lanes** (`scripts/release-lane.sh`). One per platform: linux-x86_64 and windows-x86_64 on
+machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
+same Mac (`container machine run`), one heavy lane per machine at a time. Each clones the tag into
+`<work-dir>/src`, bootstraps a home of its own (`<work-dir>/home`) from the pinned release with
+`scripts/ci-bootstrap.sh`, lets the tree's own jk take it over with `scripts/ci-takeover.sh`, builds
+the dist and assembles `out/release-<version>-<os>-<arch>/`. The engine jar's `Build-Commit` must be
+the tag's commit — the bridge a bootstrap builds reports the release's version too, so the version
+alone does not prove which jk packaged the dist. The linux-x86_64 lane is canonical: it also stages
+`out/repo/` and lists it in `jk-repo-<version>.sha256`. Every lane uses the same pinned bootstrap,
+which is what makes the platform-neutral jars byte-identical. On Windows the lane runs in Git Bash;
+the bootstrap installs through `install.ps1`, which runs under Windows PowerShell 5.1 when there is
+no PowerShell 7. Put `TMPDIR` on a disk, not a RAM-backed `/tmp`: the bridge checkout goes there.
 
-# 2. The signed pointer: one copy of LATEST. VERSION is an unsigned convenience.
-scripts/sign-latest-pointer.sh 0.13.6 target/release/latest /owner-only/path/release-key.pem
-gsutil -h "Cache-Control:no-cache,max-age=0" cp target/release/latest/LATEST \
-  "gs://$BUCKET/releases/latest/LATEST"
-gsutil -h "Cache-Control:no-cache,max-age=0" cp target/release/latest/VERSION \
-  "gs://$BUCKET/releases/latest/VERSION"
-gsutil rm "gs://$BUCKET/releases/latest/LATEST.sig" || true
+**Merge** (`scripts/release-merge.sh`). Each lane's `SHA256SUMS` proves its copy arrived whole (Git
+Bash's ` *name` lines are normalized first); `scripts/flatten-release.sh` then makes one version
+directory with one `SHA256SUMS` over every platform, refusing a missing platform or a
+platform-neutral file whose bytes differ between lanes. The merge also checks the staged `repo/`
+against `jk-repo-<version>.sha256`, takes the SBOM out of the engine jar and writes the release
+notes.
 
-# 3. Verify through the public edge the installers use, with the baked-in public key.
-# The signature covers the first two lines, not the signature line.
-curl -fsSL https://jumpkick.build/releases/latest/LATEST -o LATEST
-head -n 2 LATEST >LATEST.body
-awk 'NR==3 { sub(/^signature /,""); print }' LATEST | openssl base64 -d -A >LATEST.sig.bin
-openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST.body   # "Verified OK"
-head -n 2 LATEST                                                                        # version 0.13.6 / issued …
+**Signing** happens on the one machine that holds the release key: a PEM file, owner-only, never
+copied by tooling. It needs `openssl`, `bash` and a checkout of the tag (the trusted public key is
+read from its `install.sh`). Two byte strings are signed: `SHA256SUMS` (→ `SHA256SUMS.sig`) and the
+first two lines of `latest/LATEST` (→ its third line).
 
-# 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
+**Upload order.** The version tree (`rsync -d`), then `repo/` (additive), then the pointer — one
+`gsutil cp` of `LATEST` with `Cache-Control: no-cache,max-age=0`, `VERSION` beside it, any old
+`LATEST.sig` removed. The release is live once the pointer lands.
 
-# 5. The GitHub Release, from the same tree: the highlights entry must exist (step 4 of the CI
-#    flow refuses without it); the tag must be pushed, and GH_TOKEN must be able to write
-#    releases. The script creates the release.
-scripts/release-notes.sh 0.13.6 > RELEASE_NOTES.md
-(cd server/engine && jk publish -S -U)   # prints the path it wrote, under the root's target/
-cp server/engine/target/sbom/jk-engine-0.13.6.cdx.json jk-0.13.6.cdx.json
-scripts/publish-github-release.sh 0.13.6 RELEASE_NOTES.md target/release/0.13.6/* jk-0.13.6.cdx.json
-```
+**Hosting only from the tag.** The installers carry a floor and refuse any pointer older than it.
+Deployed from the "Start <next>" commit, they would refuse the release just published; deployed
+before the pointer, they would refuse the previous one. `release-publish.sh hosting` therefore
+refuses unless HEAD is the release tag with `install.sh`, `install.ps1` and `hosting/` unchanged,
+and unless the pointer jumpkick.build serves is at least the installers' floor.
 
-`release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in
-`-----BEGIN PUBLIC KEY-----` / `-----END PUBLIC KEY-----` at 64 columns.
+**Templates.** When `templates/` changed in a way the released jk needs, the published catalogue
+(JumpKickOSS/jk-templates) carries those changes on a branch (`scripts/templates-sync.sh`, checked
+with `--check`). Fast-forward its `main` to that branch right after the pointer, not before (older
+releases cannot read it) and not long after (a new install scaffolds from the catalogue).
+
+**The `Release` workflow.** A green CI run on a pushed tag starts CD, which can publish on its own.
+Disable it before pushing the tag, check that it is disabled, and re-enable it only after the CI run
+on the tag has finished or been cancelled: a run still going would otherwise publish its own tree
+over the manual one.
+
+**After publishing.** `scripts/release-publish.sh install-check` installs from jumpkick.build into a
+clean home and requires the new version. Then, on Linux, macOS, Windows and WSL, from clean homes:
+`jk --version -v` (the tag's commit), `jk new <name> -l java && jk build && jk test` (workers fetched
+from `repo/` and held to `jk-repo-<version>.sha256`), an update from the previous release with
+`jk self update` and back with `jk self rollback`, and a reinstall killed mid-unpack that leaves the
+previous jk working. Finally bump `.jk/ci/ci-bootstrap-version` to the release.
+
+Every publishing step takes `JK_RELEASE_DRY_RUN=1`, which prints the `gsutil`, `firebase` and `gh`
+commands instead of running them; `scripts/test-release-publish.sh` runs the merge and every step
+that way against a throwaway key.
 
 ### Maven Central
 
@@ -475,11 +492,16 @@ it, for a look before the first real upload.
 ## Local dry-run
 
 ```bash
-jk build -S    # target/dist/jk + lib/jk-engine-<ver>.jar + lib/jk-<ver>.jar + lib/jk-maven-spy-<ver>.jar
-export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
-DIST_DIR=target/dist scripts/assemble-release-dir.sh
-# inspect target/release/0.13.6/
+scripts/release-lane.sh /var/tmp/lane      # from a checkout of the tag: this host's platform tree
+# inspect /var/tmp/lane/out/release-<version>-<os>-<arch>/ (unsigned)
 ```
+
+To install that tree the way users will, serve it (and `out/repo/`) from a local web server with
+`SHA256SUMS` and `latest/LATEST` signed by a throwaway key, run a copy of `install.sh` whose
+`RELEASE_RSA_SPKI` is the throwaway key with `JK_RELEASES_URL` pointing at the server, and give that
+home `[release] trusted-keys = "<throwaway SPKI>"` and a `[repositories.<id>]` table with
+`mirror-of = ["jumpkick"]` at the server's `repo/`. `JK_TEMPLATES=<checkout of the catalogue
+branch>` makes `jk new` scaffold from templates that are not published yet.
 
 ## Rotation
 
