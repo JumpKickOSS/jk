@@ -58,8 +58,14 @@ public final class StepLedger {
 
     static final int ANY_FRONTIER = 7;
 
-    /** A run that recorded no external load ({@link HostBusy}): one on a host that reports none. */
+    /**
+     * A run whose external load is unknown ({@link HostBusy}): one on a host that reports none, which
+     * is every host but Linux. Its walls are read as they ran, with no load compensation.
+     */
     public static final double UNKNOWN_BUSY = -1;
+
+    /** What a run's line records as its {@code busy} when the load is unknown ({@link #UNKNOWN_BUSY}). */
+    static final String UNKNOWN_BUSY_LINE = "unknown";
 
     /** A run that recorded no compiler warmth (one from before it was recorded). */
     public static final int UNKNOWN_WARMTH = -1;
@@ -294,7 +300,7 @@ public final class StepLedger {
                         || fullRebuild(compiled.size(), compilableOf(samples).size()));
         line.put("filtered", shape.filtered());
         if (warmth >= 0) line.put("warmth", warmth);
-        if (busy >= 0) line.put("busy", Math.round(busy * 1000) / 1000.0);
+        line.put("busy", busy >= 0 ? Math.round(busy * 1000) / 1000.0 : UNKNOWN_BUSY_LINE);
         line.put("frontier", List.copyOf(new TreeSet<>(frontier == null ? compiled : frontier)));
         List<Object> steps = new ArrayList<>();
         for (Sample s : kept) steps.add(List.of(s.dir(), s.step(), s.status(), s.ms()));

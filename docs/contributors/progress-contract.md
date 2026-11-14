@@ -355,7 +355,7 @@ The project store holds:
 
 | Section | Lines |
 |---------|-------|
-| `runs` | the step ledger: up to 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, suite curves and suite workers (`StepLedger`). Past 60 the shape with the most runs gives up its oldest, so a rarely run shape (an integration tier, a forced build) keeps its walls |
+| `runs` | the step ledger: up to 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, the external load it started under (`unknown` off Linux), suite curves and suite workers (`StepLedger`). Past 60 the shape with the most runs gives up its oldest, so a rarely run shape (an integration tier, a forced build) keeps its walls |
 | `means` | `key mean last count seen`: one running mean per measure the estimates read |
 | `classes` | `suiteDir⇥fqcn⇥last⇥mean⇥count⇥seen`: one running mean per test class of a suite, the suite as `<rel-dir><@selection>` |
 | `meta` | `<section><@selection> N` per group of rows: the runs that folded a row of that section under that test selection (`means`, `classes@integration`), which its rows' `seen` count in |
@@ -426,6 +426,14 @@ step or plugin goal does not replay a first run's walls once a later run measure
 first paid for empty caches. A javac compile reads runs whose worker was in the same state; with
 only the other kind's walls it is carried by the measured warm-up (`CompilerWarmUp`,
 `bench/eta/compile-warmth.sh`).
+
+Each ledger run also records the external load it started under (`HostBusy`): the share of every
+core's time spent outside the engine and its child processes over the last few seconds, children it
+has reaped included. A replayed wall is read as an idle host's by its run's load, then carried to
+the load the estimate sees now. The engine samples `/proc/stat` once a second only while a job runs
+and for 30 s after; the first read after an idle spell waits a quarter second for an interval of
+its own. Load compensation is Linux only: on macOS and Windows a run records `busy: "unknown"` and
+its walls are read as they ran.
 
 ## Measurement
 

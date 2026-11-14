@@ -20,6 +20,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.SettledReads;
+import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunMeasures;
@@ -526,6 +527,8 @@ public final class JobEnvelope {
         // when their open never happened.
         if (a.plan()) host.cacheGate().readLock().lock();
         try {
+            // The host's load is sampled while any job runs.
+            HostBusy.jobStarted(eventRequestId);
             // One binding for the job: its id, ledger, shell, keychain, results sink, actor, worker
             // scope, measures, settled suite reads, live-unit count and heap plan reach every pool task and every
             // thread it starts.
@@ -545,6 +548,7 @@ public final class JobEnvelope {
             // line, no wire terminal, and a client that reads EOF and blames a crash.
             reportDeadJob(eventRequestId, eventDir, a.writer(), t);
         } finally {
+            HostBusy.jobEnded(eventRequestId);
             RequestScope.release(io);
             // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
             // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
