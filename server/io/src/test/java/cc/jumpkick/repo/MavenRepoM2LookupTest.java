@@ -186,6 +186,11 @@ class MavenRepoM2LookupTest {
                 .hasMessageContaining("JumpKick did not write it");
         assertThat(Files.readAllBytes(tmp.resolve("m2").resolve(REL)))
                 .isEqualTo("a hand-built impostor".getBytes(StandardCharsets.UTF_8));
+        try (var walk = Files.walk(tmp.resolve("store"))) {
+            assertThat(walk.map(p -> p.getFileName().toString()).filter(n -> n.startsWith(".put-")))
+                    .as("the refused download leaves no temp in the store")
+                    .isEmpty();
+        }
     }
 
     @Test

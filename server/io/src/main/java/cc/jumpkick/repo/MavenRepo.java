@@ -836,15 +836,16 @@ public final class MavenRepo {
             misses.forget(uri);
             Path placed = stored.path();
             if (mirror) {
-                placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
-                verified.put(relativePath, stored.sha256());
-                if (!placed.equals(stored.path())) {
-                    try {
-                        Files.deleteIfExists(stored.path());
-                    } catch (IOException ignored) {
-                        // temp
-                    }
+                // The download temp goes whether the placement copies it or refuses it (a slot in
+                // the local repository holding bytes JumpKick did not write).
+                try {
+                    placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
+                } catch (IOException | RuntimeException refused) {
+                    deleteTemp(stored.path());
+                    throw refused;
                 }
+                if (!placed.equals(stored.path())) deleteTemp(stored.path());
+                verified.put(relativePath, stored.sha256());
             }
             return new Fetched(uri, placed, stored.sha256(), stored.size());
         } catch (ArtifactNotFoundException missing) {
@@ -855,6 +856,14 @@ public final class MavenRepo {
             throw aborted;
         } catch (IOException transport) {
             throw unreachableOr(transport);
+        }
+    }
+
+    private static void deleteTemp(Path temp) {
+        try {
+            Files.deleteIfExists(temp);
+        } catch (IOException ignored) {
+            // a temp the store sweep takes later
         }
     }
 
