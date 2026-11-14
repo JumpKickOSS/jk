@@ -104,6 +104,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.terminal.Ansi;
@@ -120,6 +121,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -497,11 +499,18 @@ public final class CommandDispatch {
             System.out.println("jk " + Jk.VERSION);
             return 0;
         }
+        String refusedFormat = refusedOutputFormat(cmd, in);
+        if (refusedFormat != null) {
+            printRefusedOutput(qualified, cmd, refusedFormat);
+            return Exit.USAGE;
+        }
         // The one fold of this command's parsed globals into the session, before anything renders:
         // -u, -a, -x, -B and the rest reach every command wherever they sit on the line.
         GlobalOptions.from(in);
         boolean agent = AgentMode.requested(in);
-        boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in) || agent;
+        // JK_OUTPUT=json names a preference; a command with no machine output prints its text.
+        boolean json = GlobalOptions.outputIsJson(in) && cmd.machineOutput() == MachineOutput.JSONL;
+        boolean script = json || cmd.scriptMode(in) || agent;
         boolean capture = agent && AgentMode.capturesOutput(cmd.name());
         // Machine output is never preceded by chrome; a human command names itself as the phase.
         if (script) StartupPulse.release();
@@ -522,10 +531,10 @@ public final class CommandDispatch {
             // trailing blank after the last — including after the error line below. Machine stdout
             // (JSON/JSONL, a script-mode command, or agent mode) opts out of both and of the ASCII
             // rewrite.
-            CliOutput.beginCommand(script);
+            CliOutput.beginCommand(script, json);
             // A JSON command shows the run's downloads as sparse JSONL; a terminal shows them in
             // its region, which takes precedence whenever one is on screen.
-            if (GlobalOptions.outputIsJson(in)) {
+            if (json) {
                 jsonlDownloads = new JsonlDownloads(() -> System.out, Clock.SYSTEM);
                 DownloadsView.fallback(jsonlDownloads);
             }
@@ -720,6 +729,32 @@ public final class CommandDispatch {
                     default -> e.getMessage();
                 };
         System.err.println(label + " " + message);
+        System.err.println();
+        System.err.println(usageLine(cmd, qualified, ansi));
+        System.err.println();
+        System.err.println(helpHint(ansi));
+    }
+
+    /**
+     * The {@code -O} value {@code in} gives that {@code cmd} does not print, lower-case, or null
+     * when there is none or {@code cmd} prints it.
+     */
+    static @Nullable String refusedOutputFormat(CliCommand cmd, Invocation in) {
+        String format = in.value("output").map(v -> v.trim().toLowerCase(Locale.ROOT)).orElse(null);
+        if (format == null || format.isEmpty()) return null;
+        return cmd.outputFormats().contains(format) ? null : format;
+    }
+
+    private static void printRefusedOutput(String qualified, CliCommand cmd, String format) {
+        boolean ansi = errAnsi();
+        List<String> formats = cmd.outputFormats();
+        String prints = formats.size() == 1
+                ? formats.getFirst() + " only"
+                : String.join(", ", formats.subList(0, formats.size() - 1)) + " or " + formats.getLast();
+        System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
+                + " " + qualified + " has no "
+                + HelpRenderer.paint("-O " + format, Theme.active().highlight(), ansi)
+                + " output; it prints " + prints);
         System.err.println();
         System.err.println(usageLine(cmd, qualified, ansi));
         System.err.println();

@@ -15,6 +15,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -47,6 +48,11 @@ public final class WatchCommand implements CliCommand {
     @Override
     public String description() {
         return "Re-run a verb when sources change (jk dev = watch run)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

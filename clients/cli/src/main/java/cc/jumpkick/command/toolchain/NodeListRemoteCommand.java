@@ -3,11 +3,13 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.node.NodeRelease;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -38,6 +40,11 @@ public final class NodeListRemoteCommand implements CliCommand {
     @Override
     public String description() {
         return "List Node.js releases available to install";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -73,7 +80,7 @@ public final class NodeListRemoteCommand implements CliCommand {
         List<NodeRelease> shown = select(releases, lts, major, all);
         if (GlobalOptions.outputIsJson(in)) {
             for (NodeRelease r : shown) {
-                NodeCli.row(EngineProtocol.NODE_REMOTE, f -> f.string("version", r.version())
+                JsonlShape.row(EngineProtocol.NODE_REMOTE, f -> f.string("version", r.version())
                         .optionalString("lts", r.lts())
                         .optionalString("npm", r.npm())
                         .bool("security", r.security()));

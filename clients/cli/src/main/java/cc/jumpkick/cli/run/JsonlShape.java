@@ -5,7 +5,9 @@ import cc.jumpkick.cli.run.jsonl.JobLine;
 import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
 import cc.jumpkick.cli.run.jsonl.SlowestTestsLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.SlowestTests;
@@ -47,8 +49,10 @@ import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -135,6 +139,33 @@ public final class JsonlShape {
      */
     public static String withProgress(String line) {
         return withProgress(line, LiveProgress.get().percent());
+    }
+
+    /**
+     * One {@code -O jsonl} row of {@code type} on stdout: the envelope ({@code schema}, {@code ts},
+     * {@code type}), then what {@code fields} adds. The one shape every command's own rows take.
+     */
+    public static void row(String type, Consumer<JsonFields> fields) {
+        JsonFields line = JsonlEnvelope.open(nowMillis(), type);
+        fields.accept(line);
+        emitEvent(line.finish(), true);
+    }
+
+    /**
+     * {@code object} (one JSON object, an engine reply such as a history entry) as a row of {@code
+     * type}: the envelope first, then the object's own fields, its {@code schema}, {@code ts} and
+     * {@code type} replaced by the envelope's.
+     */
+    public static void rowOf(String type, String object) {
+        row(type, line -> {
+            if (MiniJson.parse(object) instanceof Map<?, ?> fields) {
+                for (Map.Entry<?, ?> e : fields.entrySet()) {
+                    String name = String.valueOf(e.getKey());
+                    if (name.equals("schema") || name.equals("ts") || name.equals("type")) continue;
+                    line.token(name, MiniJson.write(e.getValue()));
+                }
+            }
+        });
     }
 
     /**

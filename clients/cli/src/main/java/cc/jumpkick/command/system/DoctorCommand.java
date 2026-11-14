@@ -35,6 +35,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.M2Integrity;
@@ -76,6 +77,11 @@ public final class DoctorCommand implements CliCommand {
     @Override
     public String description() {
         return "Check host health (engine, cache, JDKs, lock, shell, workers)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -151,7 +157,7 @@ public final class DoctorCommand implements CliCommand {
                 || lock.status == Status.FAIL; // tools alone (including a scan error) never fails
 
         if (global.outputIsJson()) {
-            CliOutput.out(reportJson(
+            CliOutput.machine(reportJson(
                     config,
                     client,
                     engine,

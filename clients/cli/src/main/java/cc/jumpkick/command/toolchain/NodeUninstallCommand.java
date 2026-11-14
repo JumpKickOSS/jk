@@ -5,6 +5,7 @@ import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
@@ -14,6 +15,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
@@ -34,6 +36,11 @@ public final class NodeUninstallCommand implements CliCommand {
     @Override
     public String description() {
         return "Remove a Node.js version jk installed";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -65,7 +72,7 @@ public final class NodeUninstallCommand implements CliCommand {
                 "removed Node.js " + version,
                 "deleted " + installed.get().home());
         if (GlobalOptions.outputIsJson(in)) {
-            NodeCli.row(EngineProtocol.NODE_UNINSTALLED, f -> f.string("version", version)
+            JsonlShape.row(EngineProtocol.NODE_UNINSTALLED, f -> f.string("version", version)
                     .string("home", installed.get().home().toString()));
             return 0;
         }

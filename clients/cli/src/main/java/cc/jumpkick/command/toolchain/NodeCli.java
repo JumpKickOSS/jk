@@ -3,7 +3,6 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
@@ -11,8 +10,6 @@ import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeCatalog;
 import cc.jumpkick.node.NodeHome;
@@ -22,7 +19,6 @@ import cc.jumpkick.node.NodeSpec;
 import cc.jumpkick.node.PackageManagerSpec;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.HostedEvents;
-import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -184,12 +179,5 @@ public final class NodeCli {
             }
         }
         return program;
-    }
-
-    /** One {@code -O jsonl} row of {@code type}: the envelope, then what {@code fields} adds. */
-    static void row(String type, Consumer<JsonFields> fields) {
-        JsonFields line = JsonlEnvelope.open(Clock.SYSTEM.millis(), type);
-        fields.accept(line);
-        JsonlShape.emitEvent(line.finish(), true);
     }
 }

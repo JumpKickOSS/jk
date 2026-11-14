@@ -25,6 +25,7 @@ import cc.jumpkick.model.GroupInitials;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.EnginePaths;
@@ -67,6 +68,11 @@ public final class OutdatedCommand implements CliCommand {
     @Override
     public String description() {
         return "Report dependencies an update would move";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -121,7 +127,7 @@ public final class OutdatedCommand implements CliCommand {
         int checked = report.rows().size();
         List<OutdatedReport.Row> rows = all ? report.rows() : report.movable();
         if (global.outputIsJson()) {
-            CliOutput.outRaw(toJson(rows));
+            CliOutput.machine(toJson(rows).strip());
             return Exit.SUCCESS;
         }
         if (global.offline) {

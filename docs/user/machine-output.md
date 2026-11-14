@@ -158,10 +158,19 @@ renders the same comparison as the run's iteration strip ([Web dashboard](web.md
 
 ```bash
 jk build -O jsonl
-export JK_OUTPUT=jsonl     # the same for every command
+export JK_OUTPUT=jsonl     # the same for every command that has machine output
 ```
 
-- One JSON object per line, flushed promptly.
+- `json` and `jsonl` name the same stream. A command with no machine output refuses `-O json`
+  with a usage error that says what it prints; any other `-O` value it does not print (`-O xml`)
+  is refused the same way. `JK_OUTPUT` is a preference: such a command prints its text.
+- Commands with machine output: the build verbs (`build`, `compile`, `test`, `native`, `train`,
+  `image`, `sync`, `assemble`, `javadoc`, `run`, `install`, `snapshot`, `release`, `publish`,
+  `watch`, `dev`), `lock`, `update`, `audit`, `guard` (also `-O sarif`), `outdated`, `doctor`,
+  `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`,
+  `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`.
+- One JSON object per line, flushed promptly. Human lines such a command still prints go to
+  stderr, so every stdout line parses.
 - Every object: `schema` (int, **always 1** until JumpKick 1.0), `ts` (epoch ms), `type` (string).
 - Most lines also carry **`progress`**: aggregate percent **0–100** or `null`, computed
   **in the engine**. Do not re-sum per-task `numerator`/`denominator` for the job bar.

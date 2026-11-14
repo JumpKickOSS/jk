@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineCancel;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.WorkspaceScan;
@@ -12,6 +14,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CancelAckFrame;
@@ -43,6 +46,11 @@ public final class CancelCommand implements CliCommand {
     @Override
     public String description() {
         return "Cancel a running engine job (by jid, or all for this project)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -94,6 +102,11 @@ public final class CancelCommand implements CliCommand {
         String note = frame.note();
         // An absent jid is "no job" (-1) here, where the record reads 0.
         long jid = Jsonl.has(line, "jid") ? frame.jid() : -1;
+        if (CliOutput.jsonMode()) {
+            JsonlShape.row("cancel", f -> f.bool("cancelled", cancelled)
+                    .optionalNumber("jid", jid, 0)
+                    .optionalNonBlankString("note", note));
+        }
         if (cancelled) {
             String msg = jid > 0 ? cancelledJobMessage(jid) : "Cancelled project build jobs";
             if (note != null && !note.isBlank() && jid <= 0) msg = msg + " (" + note + ")";

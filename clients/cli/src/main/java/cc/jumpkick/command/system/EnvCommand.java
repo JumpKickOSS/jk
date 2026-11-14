@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
@@ -15,6 +17,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -40,6 +43,11 @@ public final class EnvCommand implements CliCommand {
     @Override
     public String description() {
         return "Print resolved environment values and their sources";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -207,30 +215,22 @@ public final class EnvCommand implements CliCommand {
     }
 
     private static void emitJson(List<Row> rows, boolean verbose) {
-        CliOutput.outRaw(toJson(rows, verbose));
+        long ts = Clock.SYSTEM.millis();
+        for (Row r : rows) CliOutput.machine(toJson(r, verbose, ts));
     }
 
-    /** One row per line, two-space indented, inside a bracket pair — the shape `jk env -O jsonl` has always had. */
-    public static String toJson(List<Row> rows, boolean verbose) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[\n");
-        for (int i = 0; i < rows.size(); i++) {
-            Row r = rows.get(i);
-            JsonFields row = JsonFields.object()
-                    .string("name", r.name)
-                    .string("value", displayValue(r))
-                    .string("source", r.source)
-                    .bool("secret", r.secret);
-            if (verbose && r.shadowed != null) {
-                String sv = r.shadowed.length() >= SecretRedactor.MIN_SECRET_LENGTH ? SecretRedactor.MASK : r.shadowed;
-                row.string("shadowed", sv);
-            }
-            sb.append("  ").append(row.finish());
-            if (i + 1 < rows.size()) sb.append(',');
-            sb.append('\n');
+    /** One {@code env} row of {@code jk env -O jsonl}: the envelope, then the variable. */
+    public static String toJson(Row r, boolean verbose, long ts) {
+        JsonFields row = JsonlEnvelope.open(ts, "env")
+                .string("name", r.name)
+                .string("value", displayValue(r))
+                .string("source", r.source)
+                .bool("secret", r.secret);
+        if (verbose && r.shadowed != null) {
+            String sv = r.shadowed.length() >= SecretRedactor.MIN_SECRET_LENGTH ? SecretRedactor.MASK : r.shadowed;
+            row.string("shadowed", sv);
         }
-        sb.append("]\n");
-        return sb.toString();
+        return row.finish();
     }
 
     private static String displayValue(Row r) {

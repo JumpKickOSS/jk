@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.NodePinEdit;
@@ -18,6 +19,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.node.NodeInstalls;
@@ -47,6 +49,11 @@ public final class NodePinCommand implements CliCommand {
     @Override
     public String description() {
         return "Pin the project to a Node.js version and relock";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -120,7 +127,7 @@ public final class NodePinCommand implements CliCommand {
         boolean json = GlobalOptions.outputIsJson(in);
         int exit = in.isSet("no-lock") ? 0 : relock(LockPaths.lockOwnerDir(target.get()));
         if (json) {
-            NodeCli.row(EngineProtocol.NODE_PINNED, f -> f.string("manifest", manifest.toString())
+            JsonlShape.row(EngineProtocol.NODE_PINNED, f -> f.string("manifest", manifest.toString())
                     .string("spec", plain)
                     .optionalString("from", why)
                     .bool("locked", !in.isSet("no-lock") && exit == 0));

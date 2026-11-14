@@ -21,6 +21,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.repo.RepoCredentialResolver;
@@ -60,6 +61,11 @@ public final class PublishCommand implements CliCommand {
     @Override
     public String description() {
         return "Publish artifacts to a package repository";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -337,7 +343,7 @@ public final class PublishCommand implements CliCommand {
             }
         } else {
             for (String written : published.written()) {
-                CliOutput.out(JsonlShape.output(
+                CliOutput.machine(JsonlShape.output(
                         "publish", "wrote " + displayPath(Path.of(written), workspaceRoot, projectDir)));
             }
         }

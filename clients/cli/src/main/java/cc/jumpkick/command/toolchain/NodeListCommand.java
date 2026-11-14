@@ -3,10 +3,12 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
@@ -33,6 +35,11 @@ public final class NodeListCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws IOException {
         boolean json = GlobalOptions.outputIsJson(in);
         List<NodeInstalls.Install> installs = NodeCli.installs().all();
@@ -44,7 +51,7 @@ public final class NodeListCommand implements CliCommand {
         if (json) {
             for (NodeInstalls.Install i : installs) {
                 boolean mark = current.isPresent() && current.get().equals(i);
-                NodeCli.row(EngineProtocol.NODE_LIST, f -> f.string("version", i.version())
+                JsonlShape.row(EngineProtocol.NODE_LIST, f -> f.string("version", i.version())
                         .string("source", i.source())
                         .string("home", i.home().toString())
                         .bool("current", mark));

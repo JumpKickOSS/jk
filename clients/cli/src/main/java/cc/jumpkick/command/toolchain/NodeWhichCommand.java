@@ -4,10 +4,12 @@ package cc.jumpkick.command.toolchain;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -38,6 +40,11 @@ public final class NodeWhichCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public boolean scriptMode(Invocation in) {
         return true;
     }
@@ -62,7 +69,7 @@ public final class NodeWhichCommand implements CliCommand {
         NodeInstalls.Install i = install.get();
         Path node = new NodeHome(i.home(), i.version(), i.source(), null).node();
         if (GlobalOptions.outputIsJson(in)) {
-            NodeCli.row(EngineProtocol.NODE_WHICH, f -> f.string("version", i.version())
+            JsonlShape.row(EngineProtocol.NODE_WHICH, f -> f.string("version", i.version())
                     .string("node", node.toString())
                     .string("home", i.home().toString())
                     .string("source", i.source()));

@@ -257,7 +257,7 @@ public final class GlobalOptions {
         return List.of(
                 Opt.flag("Redo work and re-fetch deps (bypass caches)", "-F", "--force"),
                 Opt.flag("Redo work without re-fetching deps", "-r", "--redo").alias("--rebuild"),
-                Opt.value("<FORMAT>", "Output format: text (default), or jsonl", "-O", "--output"),
+                Opt.value("<FORMAT>", "Output format: text (default), json or jsonl", "-O", "--output"),
                 Opt.flag("Terse run report; no progress", "-a", "--agent"),
                 Opt.flag("Suppress informational output", "-q", "--quiet"),
                 Opt.flag("Print additional diagnostic output", "-v", "--verbose"),
@@ -339,9 +339,8 @@ public final class GlobalOptions {
                 ? JkConfig.NotifyChoice.NEVER
                 : in.isSet("notify") ? JkConfig.NotifyChoice.ALWAYS : null;
         return JkConfig.empty()
-                .withColor(in.value("color")
-                        .flatMap(JkConfig.ColorChoice::parse)
-                        .orElse(null))
+                .withColor(
+                        in.value("color").flatMap(JkConfig.ColorChoice::parse).orElse(null))
                 .withOffline(flag(in.isSet("offline")))
                 .withRebuild(flag(in.isSet("redo")))
                 .withNoProgress(flag(in.isSet("no-progress") || agent))

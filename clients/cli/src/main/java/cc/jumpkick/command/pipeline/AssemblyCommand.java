@@ -12,6 +12,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -40,6 +41,11 @@ public final class AssemblyCommand implements CliCommand {
     @Override
     public String description() {
         return "Build a fat or minified jar (see --fat / --minified)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

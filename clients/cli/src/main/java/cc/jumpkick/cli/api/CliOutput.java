@@ -76,6 +76,13 @@ public final class CliOutput {
     private static final AtomicBoolean SCRIPT_MODE = new AtomicBoolean(false);
 
     /**
+     * When true, stdout carries only JSON lines ({@code -O json|jsonl}): every human line written
+     * through {@link #out}, {@link #outRaw} or {@link #stdout()} goes to stderr instead, and the
+     * JSON goes out through {@link #machine} or the JSONL emitters.
+     */
+    private static final AtomicBoolean JSON_MODE = new AtomicBoolean(false);
+
+    /**
      * The side the most recent chrome write went to. The trailing blank follows it, so the gap
      * lands after the last visible line rather than on a stream the user redirected away.
      */
@@ -100,12 +107,32 @@ public final class CliOutput {
      * else.
      */
     public static void beginCommand(boolean scriptMode) {
+        beginCommand(scriptMode, false);
+    }
+
+    /**
+     * As {@link #beginCommand(boolean)}, and {@code json} marks stdout as the JSON stream of {@code
+     * -O json|jsonl}: human lines move to stderr so every stdout line parses.
+     */
+    public static void beginCommand(boolean scriptMode, boolean json) {
         ENVELOPE_STARTED.set(false);
         ENVELOPE_CLOSED.set(false);
         LAST_WRITE_ON_ERR.set(false);
         TRAILING_BLANK_SKIPPED.set(false);
-        SCRIPT_MODE.set(scriptMode);
+        SCRIPT_MODE.set(scriptMode || json);
+        JSON_MODE.set(json);
         VERDICTS.clear();
+    }
+
+    /** True when this invocation's stdout is the JSON stream of {@code -O json|jsonl}. */
+    public static boolean jsonMode() {
+        return JSON_MODE.get();
+    }
+
+    /** One machine line (a JSON object) to stdout, byte-exact: no envelope, no rewrite. */
+    public static void machine(String line) {
+        System.out.println(line);
+        System.out.flush();
     }
 
     /**
@@ -138,6 +165,7 @@ public final class CliOutput {
      */
     record State(
             boolean scriptMode,
+            boolean jsonMode,
             boolean envelopeStarted,
             boolean envelopeClosed,
             boolean lastWriteOnErr,
@@ -147,6 +175,7 @@ public final class CliOutput {
     static State captureState() {
         return new State(
                 SCRIPT_MODE.get(),
+                JSON_MODE.get(),
                 ENVELOPE_STARTED.get(),
                 ENVELOPE_CLOSED.get(),
                 LAST_WRITE_ON_ERR.get(),
@@ -156,6 +185,7 @@ public final class CliOutput {
     /** Put back whatever {@link #captureState()} returned. */
     static void restoreState(State state) {
         SCRIPT_MODE.set(state.scriptMode());
+        JSON_MODE.set(state.jsonMode());
         ENVELOPE_STARTED.set(state.envelopeStarted());
         ENVELOPE_CLOSED.set(state.envelopeClosed());
         LAST_WRITE_ON_ERR.set(state.lastWriteOnErr());
@@ -304,6 +334,10 @@ public final class CliOutput {
 
     /** Print a line to stdout (result output). */
     public static void out(@Nullable String line) {
+        if (JSON_MODE.get()) {
+            err(line);
+            return;
+        }
         if (line == null || line.isEmpty()) {
             out();
             return;
@@ -314,12 +348,20 @@ public final class CliOutput {
 
     /** Print a blank line to stdout. The first blank of a command <em>is</em> the envelope. */
     public static void out() {
+        if (JSON_MODE.get()) {
+            err();
+            return;
+        }
         if (openEnvelope(System.out, false)) return;
         System.out.println();
     }
 
     /** Print to stdout with no trailing newline. */
     public static void outRaw(String s) {
+        if (JSON_MODE.get()) {
+            errRaw(s);
+            return;
+        }
         openEnvelope(System.out, false);
         System.out.print(render(s, false));
     }
@@ -349,10 +391,10 @@ public final class CliOutput {
     /**
      * Stdout for APIs that need a {@link PrintStream} (JkManager, Spinner, renderers). The first
      * write opens the envelope; string writes are ASCII-rewritten under plain mode unless stdout is
-     * machine-consumed.
+     * machine-consumed. Under {@code -O json|jsonl} this is stderr: stdout holds only JSON.
      */
     public static PrintStream stdout() {
-        return EnvelopeStream.open(false);
+        return EnvelopeStream.open(JSON_MODE.get());
     }
 
     /**

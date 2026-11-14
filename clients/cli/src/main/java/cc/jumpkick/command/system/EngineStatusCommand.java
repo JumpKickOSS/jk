@@ -22,6 +22,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -57,6 +58,11 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public List<Opt> options() {
         return List.of();
     }
@@ -75,7 +81,7 @@ public final class EngineStatusCommand implements CliCommand {
             long stray = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
             List<EngineFleet.Member> others = EngineFleet.list();
             if (global.outputIsJson()) {
-                CliOutput.out(notRunningJson(stray, others, InstallLock.holders()));
+                CliOutput.machine(notRunningJson(stray, others, InstallLock.holders()));
             } else {
                 CommandWedge.envelopeStart();
                 String headline;
@@ -98,7 +104,7 @@ public final class EngineStatusCommand implements CliCommand {
         long now = System.currentTimeMillis();
         long uptimeSeconds = Math.max(0, (now - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
-            CliOutput.out(runningJson(
+            CliOutput.machine(runningJson(
                     s, uptimeSeconds, EngineFleet.list(), SelfUpdateStatus.describe(), InstallLock.holders()));
             return Exit.SUCCESS;
         }

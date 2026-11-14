@@ -4,6 +4,7 @@ package cc.jumpkick.command.toolchain;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.host.JkDirs;
@@ -11,6 +12,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
@@ -34,6 +36,11 @@ public final class NodeInstallCommand implements CliCommand {
     @Override
     public String description() {
         return "Install a Node.js version";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -61,7 +68,7 @@ public final class NodeInstallCommand implements CliCommand {
         String version = Objects.requireNonNullElse(p.version(), spec);
         String home = Objects.requireNonNullElse(p.bin(), "");
         if (GlobalOptions.outputIsJson(in)) {
-            NodeCli.row(EngineProtocol.NODE_INSTALLED, f -> f.string("version", version)
+            JsonlShape.row(EngineProtocol.NODE_INSTALLED, f -> f.string("version", version)
                     .string("home", home)
                     .string("source", source.toLowerCase(Locale.ROOT))
                     .optionalNonBlankString("verification", p.verification()));

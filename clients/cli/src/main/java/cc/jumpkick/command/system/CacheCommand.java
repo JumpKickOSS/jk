@@ -13,6 +13,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
@@ -33,6 +34,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.BuildPlanResult;
@@ -44,8 +46,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -545,6 +549,11 @@ public final class CacheCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public List<Opt> options() {
             return List.of(
                     CommonOpts.cacheDir(),
@@ -575,6 +584,10 @@ public final class CacheCommand extends GroupCommand {
                 return 1;
             }
             CacheUsageStats s = cacheUsageFromAck(ack);
+            if (CliOutput.jsonMode()) {
+                emitUsageJson(root, s);
+                return 0;
+            }
             var cfg = JkCacheConfig.resolve();
             String lastCleaned = lastPrunedLabel(root);
             CommandWedge.envelopeStart();
@@ -586,6 +599,26 @@ public final class CacheCommand extends GroupCommand {
             }
             return 0;
         }
+    }
+
+    /** One {@code cache-usage} row per kind of cached output, then the {@code total}. */
+    static void emitUsageJson(Path root, CacheUsageStats s) {
+        Map<String, Stats> kinds = new LinkedHashMap<>();
+        kinds.put("class-files", s.classFiles());
+        kinds.put("test-results", s.testResults());
+        kinds.put("jars", s.normalJars());
+        kinds.put("shadow-jars", s.shadowJars());
+        kinds.put("minified-jars", s.minifiedJars());
+        kinds.put("native-binaries", s.nativeBins());
+        kinds.put("oci-images", s.ociImages());
+        kinds.put("incremental", s.incremental());
+        kinds.put("stamps", s.stamps());
+        kinds.put("derived", s.derived());
+        kinds.put("total", s.total());
+        kinds.forEach((kind, st) -> JsonlShape.row("cache-usage", f -> f.string("root", root.toString())
+                .string("kind", kind)
+                .number("files", st.files())
+                .number("bytes", st.bytes())));
     }
 
     /**

@@ -13,6 +13,7 @@ import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -42,6 +43,11 @@ public final class SnapshotCommand implements CliCommand {
     @Override
     public String description() {
         return "Install a -SNAPSHOT of this project (inner loop)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

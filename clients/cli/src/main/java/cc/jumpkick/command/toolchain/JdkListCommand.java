@@ -4,6 +4,7 @@ package cc.jumpkick.command.toolchain;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -28,6 +29,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import java.io.IOException;
@@ -73,6 +75,11 @@ public final class JdkListCommand implements CliCommand {
     @Override
     public String description() {
         return "List installed JDKs (--all adds available ones)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -177,6 +184,16 @@ public final class JdkListCommand implements CliCommand {
         if (!all) {
             // Default list: installed only (with outdated! when the feed is newer).
             rows = rows.stream().filter(r -> r.status() != Status.AVAILABLE).toList();
+        }
+        if (CliOutput.jsonMode()) {
+            for (Row r : rows) {
+                JsonlShape.row("jdk", f -> f.number("major", r.major())
+                        .string("vendor", r.vendor())
+                        .string("spec", r.spec())
+                        .string("status", r.statusLabel())
+                        .string("location", r.location()));
+            }
+            return 0;
         }
         if (rows.isEmpty()) {
             String suffix = all ? ", no remote JDKs found" : "";

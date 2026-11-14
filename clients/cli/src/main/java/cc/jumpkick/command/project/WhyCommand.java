@@ -5,16 +5,19 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
@@ -38,6 +41,11 @@ public final class WhyCommand implements CliCommand {
     @Override
     public String description() {
         return "Explain why an item is in the dependency graph";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -77,6 +85,10 @@ public final class WhyCommand implements CliCommand {
         if (report.error() != null) {
             CommandWedge.printFail("Why", report.error());
             return Exit.CONFIG;
+        }
+        if (CliOutput.jsonMode()) {
+            JsonlShape.rowOf("why", MiniJson.write(report.toStructured()));
+            return report.matchNames().isEmpty() && report.exclusions().isEmpty() && report.sibling() == null ? 1 : 0;
         }
         if (report.matchNames().isEmpty() && report.exclusions().isEmpty()) {
             if (report.sibling() != null) {

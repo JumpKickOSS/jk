@@ -19,6 +19,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.wire.EnginePaths;
@@ -48,6 +49,11 @@ public final class AuditCommand implements CliCommand {
     @Override
     public String description() {
         return "Check the locked dependencies for known vulnerabilities";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -115,7 +121,7 @@ public final class AuditCommand implements CliCommand {
         AuditReport report = new AuditReport(findings);
         if (global.outputIsJson()) {
             for (AuditReport.Finding f : report.findings()) {
-                CliOutput.out(findingJson(Clock.SYSTEM.millis(), f));
+                CliOutput.machine(findingJson(Clock.SYSTEM.millis(), f));
             }
         } else {
             CliOutput.out(report.renderMarkdown());

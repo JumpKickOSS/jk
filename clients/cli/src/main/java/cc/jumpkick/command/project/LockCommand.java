@@ -26,6 +26,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -76,6 +77,11 @@ public final class LockCommand implements CliCommand {
     @Override
     public String description() {
         return "Resolve dependencies into jk-lock.toml, keeping pinned versions";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
@@ -30,6 +31,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.resolver.DependencyTreeStyle;
@@ -63,6 +65,11 @@ public final class TreeCommand implements CliCommand {
     @Override
     public String description() {
         return "Print the resolved dependency tree";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -135,6 +142,14 @@ public final class TreeCommand implements CliCommand {
         } catch (IOException | RuntimeException e) {
             CommandWedge.printFail("Tree", e.getMessage());
             return Exit.CONFIG;
+        }
+        if (CliOutput.jsonMode()) {
+            // One row per rendered line, unstyled: the engine renders the tree as text.
+            String plain = DependencyTreeStyle.applyStyling(tagged, DependencyTreeStyle.Styling.plain());
+            for (String line : plain.split("\n", -1)) {
+                if (!line.isBlank()) JsonlShape.row("tree-line", f -> f.string("line", line));
+            }
+            return 0;
         }
         String rendered = DependencyTreeStyle.applyStyling(tagged, styling(nerdFont.pill(), ansi));
         buildTree(rendered, scopeNames).print();

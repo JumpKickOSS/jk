@@ -24,6 +24,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TestSummary;
@@ -60,6 +61,11 @@ public final class StatusCommand implements CliCommand {
     @Override
     public String description() {
         return "Show project, build, and cache status";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -100,7 +106,7 @@ public final class StatusCommand implements CliCommand {
                     .toList();
 
             if (global.outputIsJson()) {
-                CliOutput.out("[" + String.join(",", rows) + "]");
+                CliOutput.machine("[" + String.join(",", rows) + "]");
                 return 0;
             }
 

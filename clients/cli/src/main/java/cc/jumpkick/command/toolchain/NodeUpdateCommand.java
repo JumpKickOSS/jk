@@ -2,10 +2,12 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.node.NodeDiscovery;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.node.NodeRelease;
@@ -32,6 +34,11 @@ public final class NodeUpdateCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws Exception {
         List<NodeRelease> releases;
         try {
@@ -44,7 +51,7 @@ public final class NodeUpdateCommand implements CliCommand {
                 NodeInstalls.project(GlobalOptions.from(in).workingDir());
         boolean json = GlobalOptions.outputIsJson(in);
         if (project.isEmpty()) {
-            if (json) NodeCli.row(EngineProtocol.NODE_UPDATE, f -> f.number("releases", releases.size()));
+            if (json) JsonlShape.row(EngineProtocol.NODE_UPDATE, f -> f.number("releases", releases.size()));
             else CommandWedge.printOk(NodeCli.WEDGE, "Catalog refreshed: " + releases.size() + " releases.");
             return 0;
         }
@@ -60,7 +67,7 @@ public final class NodeUpdateCommand implements CliCommand {
                                 .compareTo(NodeDiscovery.VersionKey.of(p.locked()))
                         > 0;
         if (json) {
-            NodeCli.row(EngineProtocol.NODE_UPDATE, f -> f.number("releases", releases.size())
+            JsonlShape.row(EngineProtocol.NODE_UPDATE, f -> f.number("releases", releases.size())
                     .string("current", current)
                     .optionalString("newest", newest.map(NodeRelease::version).orElse(null))
                     .bool("behind", behind));

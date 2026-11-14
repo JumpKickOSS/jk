@@ -83,6 +83,23 @@ public interface CliCommand extends Command {
     }
 
     /**
+     * What this command prints under {@code -O json} / {@code -O jsonl}; {@link MachineOutput#NONE}
+     * makes the dispatcher refuse those formats with a usage error that names what it prints.
+     */
+    default MachineOutput machineOutput() {
+        return MachineOutput.NONE;
+    }
+
+    /**
+     * The {@code -O} values this command accepts, lower-case; the dispatcher refuses any other.
+     * {@code text} always, plus {@code json} and {@code jsonl} for a {@link MachineOutput#JSONL}
+     * command. A command with a document format of its own ({@code jk guard -O sarif}) adds it.
+     */
+    default List<String> outputFormats() {
+        return machineOutput() == MachineOutput.JSONL ? List.of("text", "json", "jsonl") : List.of("text");
+    }
+
+    /**
      * Help that depends on this invocation's arguments, printed after the command's own help (the
      * questions a chosen template adds, say); empty for none. Runs only for {@code --help}, and may
      * ask the engine.

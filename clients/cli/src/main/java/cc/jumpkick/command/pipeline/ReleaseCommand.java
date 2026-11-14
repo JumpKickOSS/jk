@@ -21,6 +21,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.repo.RemoteClaim;
@@ -66,6 +67,11 @@ public final class ReleaseCommand implements CliCommand {
     @Override
     public String description() {
         return "Tag the declared version and move jk.toml to the next one";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

@@ -190,7 +190,7 @@ final class TestVerb implements BuildVerb {
             return Exit.SOFTWARE;
         }
         if (run.global().outputIsJson()) {
-            CliOutput.outRaw(report.encode());
+            CliOutput.machine(report.encode());
             return report.refused() ? Exit.CONFIG : Exit.SUCCESS;
         }
         if (report.refused()) {

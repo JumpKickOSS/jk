@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.compat.BuildTool;
@@ -12,6 +13,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,6 +34,11 @@ public final class ToolListCommand implements CliCommand {
     @Override
     public String description() {
         return "List installed CLI tools";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override
@@ -56,6 +63,10 @@ public final class ToolListCommand implements CliCommand {
             try (var stream = Files.list(envsRoot)) {
                 stream.filter(Files::isDirectory).forEach(envs::add);
             }
+        }
+        if (CliOutput.jsonMode()) {
+            emitJson(buildTools, envs, binDir);
+            return 0;
         }
         if (envs.isEmpty() && buildTools.isEmpty()) {
             CliOutput.out("No tools installed. Try `jk tool install <coord>` or `jk tool install "
@@ -89,6 +100,27 @@ public final class ToolListCommand implements CliCommand {
             CliOutput.out(line);
         }
         return 0;
+    }
+
+    /** One {@code build-tool} row per provisioned distribution, then one {@code tool} row per installed tool. */
+    private static void emitJson(List<List<String>> buildTools, List<Path> envs, Path binDir) {
+        for (List<String> row : buildTools) {
+            JsonlShape.row("build-tool", f -> f.string("tool", row.get(0))
+                    .string("version", row.get(1))
+                    .string("home", row.get(2)));
+        }
+        List<Path> sorted = new ArrayList<>(envs);
+        sorted.sort(Comparator.comparing(p -> p.getFileName().toString()));
+        for (Path envDir : sorted) {
+            String bin = envDir.getFileName().toString();
+            Path envJson = envDir.resolve("env.json");
+            Path launcher = binDir.resolve(bin);
+            JsonlShape.row("tool", f -> f.string("tool", bin)
+                    .optionalString("coordinates", readField(envJson, "primary").orElse(null))
+                    .optionalString("kind", readField(envJson, "kind").orElse(null))
+                    .optionalString("spec", readField(envJson, "spec").orElse(null))
+                    .optionalString("launcher", Files.exists(launcher) ? launcher.toString() : null));
+        }
     }
 
     /**

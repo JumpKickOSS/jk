@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineJournalReads;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Pill;
@@ -10,6 +12,7 @@ import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -54,6 +57,11 @@ public final class ActivityCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public List<Opt> options() {
         return List.of(
                 Opt.value("<N>", "Maximum number of runs to show (default: " + DEFAULT_LIMIT + ").", "-n", "--limit"));
@@ -66,6 +74,10 @@ public final class ActivityCommand implements CliCommand {
         List<String> entries = lines.stream()
                 .filter(l -> EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(l)))
                 .toList();
+        if (CliOutput.jsonMode()) {
+            for (String entry : entries) JsonlShape.rowOf("job", entry);
+            return 0;
+        }
         Tree tree = new Tree("Build Jobs").gap(Tree.Gap.EACH);
         if (entries.isEmpty()) {
             tree.child(Tree.node("No jobs yet"));

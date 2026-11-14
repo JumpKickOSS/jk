@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import java.util.List;
 
@@ -25,6 +26,11 @@ public final class JavadocCommand implements CliCommand {
     @Override
     public String description() {
         return "Build the javadoc jar of every library (no tests)";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

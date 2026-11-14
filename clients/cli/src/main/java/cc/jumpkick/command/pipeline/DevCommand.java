@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.util.List;
@@ -29,6 +30,11 @@ public final class DevCommand implements CliCommand {
     @Override
     public String description() {
         return "Alias for `jk watch run` — app + rebuild on change";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
     }
 
     @Override

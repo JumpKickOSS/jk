@@ -143,17 +143,18 @@ class CommandJsonFrozenBytesTest {
     }
 
     @Test
-    void env_rows_are_one_per_line_inside_a_bracket_pair() {
+    void env_rows_are_one_envelope_line_per_variable() {
         var plain = new EnvCommand.Row("HOME", "/h", "shell", false, null);
         var secret = new EnvCommand.Row("TOKEN", "abcdefghijklmnopqrstuvwxyz", ".env", true, "short");
-        assertThat(EnvCommand.toJson(List.of(plain, secret), false))
-                .isEqualTo("[\n  {\"name\":\"HOME\",\"value\":\"/h\",\"source\":\"shell\",\"secret\":false},\n"
-                        + "  {\"name\":\"TOKEN\",\"value\":\"" + SecretRedactor.MASK
-                        + "\",\"source\":\".env\",\"secret\":true}\n]\n");
-        assertThat(EnvCommand.toJson(List.of(secret), true))
-                .isEqualTo("[\n  {\"name\":\"TOKEN\",\"value\":\"" + SecretRedactor.MASK
-                        + "\",\"source\":\".env\",\"secret\":true,\"shadowed\":\"short\"}\n]\n");
-        assertThat(EnvCommand.toJson(List.of(), false)).isEqualTo("[\n]\n");
+        assertThat(EnvCommand.toJson(plain, false, 7))
+                .isEqualTo("{\"schema\":1,\"ts\":7,\"type\":\"env\",\"name\":\"HOME\",\"value\":\"/h\","
+                        + "\"source\":\"shell\",\"secret\":false}");
+        assertThat(EnvCommand.toJson(secret, false, 7))
+                .isEqualTo("{\"schema\":1,\"ts\":7,\"type\":\"env\",\"name\":\"TOKEN\",\"value\":\""
+                        + SecretRedactor.MASK + "\",\"source\":\".env\",\"secret\":true}");
+        assertThat(EnvCommand.toJson(secret, true, 7))
+                .isEqualTo("{\"schema\":1,\"ts\":7,\"type\":\"env\",\"name\":\"TOKEN\",\"value\":\""
+                        + SecretRedactor.MASK + "\",\"source\":\".env\",\"secret\":true,\"shadowed\":\"short\"}");
     }
 
     @Test

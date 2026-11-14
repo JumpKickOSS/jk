@@ -3,6 +3,7 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineJournalReads;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
@@ -12,6 +13,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.TestSummary;
@@ -172,6 +174,11 @@ public final class HistoryCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public List<Opt> options() {
             return List.of(Opt.value("<N>", "Maximum number of runs to show (default: 50).", "-n", "--limit"));
         }
@@ -183,6 +190,10 @@ public final class HistoryCommand extends GroupCommand {
             List<String> entries = lines.stream()
                     .filter(l -> EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();
+            if (CliOutput.jsonMode()) {
+                for (String e : entries) JsonlShape.rowOf(EngineProtocol.HISTORY_ENTRY, e);
+                return 0;
+            }
             if (entries.isEmpty()) {
                 CliOutput.out("No build history yet");
                 return 0;
@@ -253,6 +264,11 @@ public final class HistoryCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public List<Param> parameters() {
             return List.of(Param.of("id", Arity.ONE, "The build id (from `jk history list`)."));
         }
@@ -272,6 +288,10 @@ public final class HistoryCommand extends GroupCommand {
             if (record == null) {
                 CliOutput.err("No such build: " + id);
                 return 1;
+            }
+            if (CliOutput.jsonMode()) {
+                JsonlShape.rowOf(EngineProtocol.HISTORY_RECORD, record);
+                return 0;
             }
             boolean success = Jsonl.bool(record, "success", false);
             boolean cancelled = Jsonl.bool(record, "cancelled", false);

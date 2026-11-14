@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
@@ -23,6 +24,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.tool.OrphanedToolEnvs;
@@ -32,7 +34,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
@@ -262,6 +266,11 @@ public final class StorageCommand extends GroupCommand {
         }
 
         @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
         public List<Opt> options() {
             return List.of();
         }
@@ -288,6 +297,10 @@ public final class StorageCommand extends GroupCommand {
                 return 1;
             }
             CacheCommand.StoreUsageStats s = CacheCommand.storeUsageFromAck(ack);
+            if (CliOutput.jsonMode()) {
+                emitUsageJson(storeRoot, s);
+                return 0;
+            }
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
             CommandWedge.envelopeStart();
             for (String line : CacheCommand.renderStoreUsageTable(s, lastPruned)) {
@@ -305,6 +318,26 @@ public final class StorageCommand extends GroupCommand {
             }
             return 0;
         }
+    }
+
+    /** One {@code storage-usage} row per kind of stored content. */
+    static void emitUsageJson(Path root, CacheCommand.StoreUsageStats s) {
+        Map<String, CacheCommand.Stats> kinds = new LinkedHashMap<>();
+        kinds.put("jars", s.jars());
+        kinds.put("executables", s.executables());
+        kinds.put("oci", s.oci());
+        kinds.put("workers", s.workers());
+        kinds.put("maven-local", s.mavenLocal());
+        kinds.put("test-homes", s.testHomes());
+        kinds.put("tools", s.tools());
+        kinds.put("scratch", s.scratch());
+        kinds.put("test-pool", s.testPool());
+        kinds.put("reclaimable", s.reclaimable());
+        kinds.put("shared", s.shared());
+        kinds.forEach((kind, st) -> JsonlShape.row("storage-usage", f -> f.string("root", root.toString())
+                .string("kind", kind)
+                .number("files", st.files())
+                .number("bytes", st.bytes())));
     }
 
     public static final class StorageCleanCommand implements CliCommand {

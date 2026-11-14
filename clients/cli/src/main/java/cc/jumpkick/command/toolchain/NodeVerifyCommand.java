@@ -3,11 +3,13 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -35,6 +37,11 @@ public final class NodeVerifyCommand implements CliCommand {
     }
 
     @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
     public int run(Invocation in) throws Exception {
         boolean json = GlobalOptions.outputIsJson(in);
         List<NodeInstalls.Install> managed = NodeCli.installs().managed();
@@ -48,7 +55,7 @@ public final class NodeVerifyCommand implements CliCommand {
             String problem = check(new NodeHome(i.home(), i.version(), i.source(), null));
             failed |= problem != null;
             if (json) {
-                NodeCli.row(EngineProtocol.NODE_VERIFY, f -> f.string("version", i.version())
+                JsonlShape.row(EngineProtocol.NODE_VERIFY, f -> f.string("version", i.version())
                         .string("home", i.home().toString())
                         .bool("ok", problem == null)
                         .optionalString("detail", problem));

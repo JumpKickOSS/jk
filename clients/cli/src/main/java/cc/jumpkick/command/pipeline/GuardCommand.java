@@ -16,6 +16,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.GuardBaselineMarker;
@@ -58,6 +59,16 @@ public final class GuardCommand implements CliCommand {
     @Override
     public String description() {
         return "Run the house-rule guards; explain or freeze a rule";
+    }
+
+    @Override
+    public MachineOutput machineOutput() {
+        return MachineOutput.JSONL;
+    }
+
+    @Override
+    public List<String> outputFormats() {
+        return List.of("text", "json", "jsonl", "sarif");
     }
 
     @Override
@@ -152,7 +163,7 @@ public final class GuardCommand implements CliCommand {
             Path rows = target.resolve(JSONL_FILE);
             if (Files.isRegularFile(rows)) {
                 for (String line : Files.readAllLines(rows, StandardCharsets.UTF_8)) {
-                    if (!line.isBlank()) CliOutput.out(JsonlShape.guard(line));
+                    if (!line.isBlank()) CliOutput.machine(JsonlShape.guard(line));
                 }
             }
         } else {
@@ -244,7 +255,8 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail("Guard", ack.error());
             return 1;
         }
-        CliOutput.out(global.outputIsJson() ? ack.json() : ack.text().stripTrailing());
+        if (global.outputIsJson()) CliOutput.machine(ack.json());
+        else CliOutput.out(ack.text().stripTrailing());
         return 0;
     }
 
