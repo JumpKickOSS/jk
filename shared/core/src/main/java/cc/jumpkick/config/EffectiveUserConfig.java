@@ -135,6 +135,7 @@ public final class EffectiveUserConfig {
         add(out, "engine.auto-warmup", d.autoWarmup(), e.autoWarmup());
         add(out, "engine.log-max-mb", d.logMaxMb(), e.logMaxMb());
         add(out, "engine.log-level", d.logLevel(), e.logLevel());
+        add(out, "engine.keep-awake", d.keepAwake().spelling(), e.keepAwake().spelling());
         add(
                 out,
                 "engine.detached-deadline-ms",

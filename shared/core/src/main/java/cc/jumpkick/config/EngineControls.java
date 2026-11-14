@@ -82,6 +82,12 @@ public final class EngineControls {
                     ENGINE_START,
                     "How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound."),
             control(
+                    "keep-awake",
+                    "JK_KEEP_AWAKE",
+                    "ac",
+                    "each job",
+                    "Keep the machine from idle sleep while a job runs: ac (on mains power), always or never. A closed lid always sleeps."),
+            control(
                     "drain-deadline-ms",
                     "JK_ENGINE_DRAIN_DEADLINE_MS",
                     "3600000",

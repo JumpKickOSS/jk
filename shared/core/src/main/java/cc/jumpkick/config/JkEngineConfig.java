@@ -33,7 +33,8 @@ public record JkEngineConfig(
         boolean autoWarmup,
         JobLimits jobLimits,
         int logMaxMb,
-        String logLevel) {
+        String logLevel,
+        KeepAwake keepAwake) {
 
     /** Default engine-process heap ceiling ({@code -Xmx}) when not on CI. */
     public static final int DEFAULT_MAX_HEAP_MB = 256;
@@ -59,7 +60,7 @@ public record JkEngineConfig(
 
     /**
      * Logical non-CI defaults (256 MiB heap, fail-fast, 32 MiB VFS, warmup on, default job limits,
-     * 16 MiB log cap, info log level). Prefer {@link #resolve()} for effective policy.
+     * 16 MiB log cap, info log level, kept awake on mains power). Prefer {@link #resolve()} for effective policy.
      */
     public static final JkEngineConfig DEFAULTS = new JkEngineConfig(
             DEFAULT_MAX_HEAP_MB,
@@ -69,7 +70,8 @@ public record JkEngineConfig(
             true,
             JobLimits.DEFAULTS,
             DEFAULT_LOG_MAX_MB,
-            DEFAULT_LOG_LEVEL);
+            DEFAULT_LOG_LEVEL,
+            KeepAwake.AC);
 
     /** {@code max-heap-mb} / {@code JK_ENGINE_MAX_HEAP_MB}: negatives are not a heap, 0 = uncapped. */
     private static final MachineConfig<Integer> MAX_HEAP_MB =
@@ -94,6 +96,9 @@ public record JkEngineConfig(
     private static final MachineConfig<String> LOG_LEVEL =
             MachineConfig.of(DEFAULT_LOG_LEVEL, v -> Log.level(v).isPresent());
 
+    /** {@code keep-awake} / {@code JK_KEEP_AWAKE}: the built-in holds the machine awake on mains power. */
+    private static final MachineConfig<KeepAwake> KEEP_AWAKE = MachineConfig.of(KeepAwake.AC);
+
     /** Heap-only config; everything else at its default. */
     public JkEngineConfig(int maxHeapMb) {
         this(
@@ -104,7 +109,8 @@ public record JkEngineConfig(
                 true,
                 JobLimits.DEFAULTS,
                 DEFAULT_LOG_MAX_MB,
-                DEFAULT_LOG_LEVEL);
+                DEFAULT_LOG_LEVEL,
+                KeepAwake.AC);
     }
 
     /** Heap + jobs + continue; everything else at its default. */
@@ -117,17 +123,28 @@ public record JkEngineConfig(
                 true,
                 JobLimits.DEFAULTS,
                 DEFAULT_LOG_MAX_MB,
-                DEFAULT_LOG_LEVEL);
+                DEFAULT_LOG_LEVEL,
+                KeepAwake.AC);
     }
 
     /** Heap + jobs + continue + VFS; everything else at its default. */
     public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing, int vfsMaxMb) {
-        this(maxHeapMb, jobs, keepGoing, vfsMaxMb, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB, DEFAULT_LOG_LEVEL);
+        this(
+                maxHeapMb,
+                jobs,
+                keepGoing,
+                vfsMaxMb,
+                true,
+                JobLimits.DEFAULTS,
+                DEFAULT_LOG_MAX_MB,
+                DEFAULT_LOG_LEVEL,
+                KeepAwake.AC);
     }
 
     /** This config with different job limits — how a test gives a live engine a millisecond deadline. */
     public JkEngineConfig withJobLimits(JobLimits limits) {
-        return new JkEngineConfig(maxHeapMb, jobs, keepGoing, vfsMaxMb, autoWarmup, limits, logMaxMb, logLevel);
+        return new JkEngineConfig(
+                maxHeapMb, jobs, keepGoing, vfsMaxMb, autoWarmup, limits, logMaxMb, logLevel, keepAwake);
     }
 
     /** Effective machine config: user-global file + {@code JK_ENGINE_MAX_HEAP_MB} / {@code JK_JOBS}. */
@@ -164,7 +181,11 @@ public record JkEngineConfig(
                 LOG_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_LOG_MAX_MB").orElse(null),
                         scanInt(scan, "engine.log-max-mb")),
-                LOG_LEVEL.layer(EnvValues.string(env, "JK_LOG_LEVEL").orElse(null), scan.get("engine.log-level")));
+                LOG_LEVEL.layer(EnvValues.string(env, "JK_LOG_LEVEL").orElse(null), scan.get("engine.log-level")),
+                KEEP_AWAKE.layer(
+                        KeepAwake.parse(EnvValues.string(env, "JK_KEEP_AWAKE").orElse(null))
+                                .orElse(null),
+                        KeepAwake.parse(scan.get("engine.keep-awake")).orElse(null)));
     }
 
     /** Machine defaults only (CI-aware heap and continue, no file/env override). */
@@ -177,7 +198,8 @@ public record JkEngineConfig(
                 true,
                 JobLimits.DEFAULTS,
                 DEFAULT_LOG_MAX_MB,
-                DEFAULT_LOG_LEVEL);
+                DEFAULT_LOG_LEVEL,
+                KeepAwake.AC);
     }
 
     /** Unset heap default: 512 MiB on CI, else 256 MiB. */
@@ -208,7 +230,8 @@ public record JkEngineConfig(
                         scanLong(scan, "engine.queue-wait-ms"),
                         scanLong(scan, "engine.drain-deadline-ms")),
                 LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")),
-                LOG_LEVEL.layer(scan.get("engine.log-level")));
+                LOG_LEVEL.layer(scan.get("engine.log-level")),
+                KEEP_AWAKE.layer(KeepAwake.parse(scan.get("engine.keep-awake")).orElse(null)));
     }
 
     private static TomlScan scan(Path file) {

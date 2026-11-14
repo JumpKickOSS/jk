@@ -16,6 +16,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerScope;
+import cc.jumpkick.engine.power.Awake;
 import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
@@ -528,9 +529,11 @@ public final class JobEnvelope {
         // when their open never happened.
         if (a.plan()) host.cacheGate().readLock().lock();
         try {
-            // The host's load is sampled, and the clocks watched for a suspend, while any job runs.
+            // While any job runs the host's load is sampled, the clocks are watched for a suspend
+            // and the machine is kept from idle sleep.
             HostBusy.jobStarted(eventRequestId);
             Suspensions.system().jobStarted(eventRequestId);
+            Awake.system().jobStarted(eventRequestId);
             // One binding for the job: its id, ledger, shell, keychain, results sink, actor, worker
             // scope, measures, settled suite reads, live-unit count and heap plan reach every pool task and every
             // thread it starts.
@@ -552,6 +555,7 @@ public final class JobEnvelope {
         } finally {
             HostBusy.jobEnded(eventRequestId);
             Suspensions.system().jobEnded(eventRequestId);
+            Awake.system().jobEnded(eventRequestId);
             RequestScope.release(io);
             // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
             // its io thread is blocked in readLine and never sees end()'s POISON, so end() would

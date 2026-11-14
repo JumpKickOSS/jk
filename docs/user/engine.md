@@ -280,6 +280,7 @@ and `auto-warmup` do not follow CI.
 | `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
 | `detached-deadline-ms` | `JK_ENGINE_DETACHED_DEADLINE_MS` | 3600000 | engine start | Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off. |
 | `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound. |
+| `keep-awake` | `JK_KEEP_AWAKE` | ac | each job | Keep the machine from idle sleep while a job runs: ac (on mains power), always or never. A closed lid always sleeps. |
 | `drain-deadline-ms` | `JK_ENGINE_DRAIN_DEADLINE_MS` | 3600000 | engine start | How long a stopping engine lets its in-flight jobs finish before it cancels them, kills its workers and exits, in ms. 0 = no bound. |
 <!-- engine-config:end -->
 
@@ -765,6 +766,25 @@ are the shell spellings of `--jvm-arg` / `--ram-percent`, read by the client per
 sent with the request, so two terminals exporting different values get their own worker-JVM flags
 from one engine. The same holds for `JK_REPO_*` credentials and host bindings
 ([Repositories](repositories.md)).
+
+### Sleep
+
+While a job runs, the engine keeps the machine from idle sleep, from the first job's start to the
+last job's end and never while it idles after that. Under the default `keep-awake = "ac"` it does
+so only on mains power: when the machine changes to battery mid-build the hold is dropped, and taken
+again on the way back; `"always"` holds on battery too, `"never"` never holds. Closing the lid is
+never blocked.
+
+| OS | Power source | Hold |
+|----|--------------|------|
+| Linux | `/sys/class/power_supply` (no system battery is mains power) | an idle and sleep inhibitor held by a `systemd-inhibit` child; `systemd-inhibit --list` shows `JumpKick` while it is held |
+| macOS | `pmset -g batt` | `caffeinate -i -s -w <engine pid>`; `pmset -g assertions` shows it |
+| Windows | `GetSystemPowerStatus` | a system-required power request; `powercfg /requests` lists it under SYSTEM |
+
+In a WSL guest, a container, or with `CI` set, the engine holds nothing. A run the machine slept
+through anyway, or whose engine was stopped, says so: its summary reads `took 3m 37s, suspended 4m
+34s`, its countdown carries on from where it stood, and the steps that ran across the gap teach the
+estimates nothing ([machine output](machine-output.md): the `suspended` event).
 
 ### Signals
 

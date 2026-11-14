@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.UserPluginPins;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.engine.power.Awake;
 import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -119,6 +120,8 @@ public final class EngineMain {
                     Log::info,
                     JkDirs.userConfigFile());
             if (logSink != null) server.logSink(logSink);
+            // The engine process, and no test that runs jobs in-process, keeps the machine awake.
+            Awake.system().enable(Log::info);
             OwnerWatchdog.start(server::close, Log::info);
             server.run();
             return 0;
