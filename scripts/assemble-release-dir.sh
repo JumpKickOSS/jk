@@ -18,6 +18,8 @@
 # jk-maven-spy-<version>.jar (the Maven core extension `jk mvn` attaches; a client self-fetches it)
 # jk-whats-new-<version>.md (the release's highlights and the four before it, from
 #   docs/user/whats-new.md; a self-update downloads it and shows what is new since the version it replaced)
+# jk-repo-<version>.sha256 (the digest of every first-party jar and POM published on repo/ at this
+#   version; the engine holds a worker it fetches to it)
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
 # The ../latest/ pointer (LATEST, the one signed object, and VERSION) is the caller's job:
@@ -132,6 +134,28 @@ cp "$spy_jar" "$OUT/jk-maven-spy-${VERSION}.jar"
 # The highlights a self-update shows. Required: release-notes.sh refuses a version with no entry,
 # or one that breaks the writing rules, so a release cannot ship without them.
 bash "$ROOT/scripts/release-notes.sh" --whats-new "$VERSION" >"$OUT/jk-whats-new-${VERSION}.md"
+
+# The digest of every first-party jar and POM on repo/ at this version, from the shelf the dist
+# carries (the jars the engine beside it was built with): `<sha256>  <Maven-layout path>`. The engine
+# refuses a worker the official repository or a mirror serves unless it hashes to its line here, and
+# SHA256SUMS lists this file, so the release signature covers every worker.
+shelf="$DIST/repos/jk-local"
+repo_sums="$OUT/jk-repo-${VERSION}.sha256"
+if [[ ! -d "$shelf" ]]; then
+  echo "assemble-release-dir: no shelf at $shelf (jk build writes it beside the engine)" >&2
+  exit 2
+fi
+(
+  cd "$shelf"
+  find . -type f \( -name "*-${VERSION}.jar" -o -name "*-${VERSION}.pom" \) | sed 's|^\./||' | LC_ALL=C sort |
+    while IFS= read -r f; do
+      if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$f"; else shasum -a 256 -- "$f"; fi
+    done
+) >"$repo_sums"
+if ! grep -q "/jk-test-runner-${VERSION}\.jar$" "$repo_sums"; then
+  echo "assemble-release-dir: $shelf holds no jk-test-runner at $VERSION; the workers' digests would be missing" >&2
+  exit 2
+fi
 
 # SHA256SUMS (coreutils format: hash two spaces name). The file list is fixed before the manifest
 # exists, so the manifest never names itself.

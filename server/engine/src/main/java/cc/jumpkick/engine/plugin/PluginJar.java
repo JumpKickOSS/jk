@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
@@ -11,13 +12,15 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.AuthHeaders;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.ReleaseArtifacts;
+import cc.jumpkick.repo.ReleaseRepoDigests;
+import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -31,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
  * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then the
  * first-party stores ({@code repos/jk-local}, the official repository's, Central's), then a
- * one-shot fetch from the official JumpKick Maven repository into that repository's store.
+ * one-shot fetch from the official JumpKick Maven repository into that repository's store, held to
+ * the digests the signed release lists.
  */
 public enum PluginJar {
     TEST_RUNNER("jk-test-runner", "jk.test.runner.jar"),
@@ -156,13 +160,17 @@ public enum PluginJar {
     }
 
     /**
-     * Download {@code relPath} and its sibling {@code .pom} (+ optional {@code .sha256}) from the
-     * official Maven repo into that repository's store. Returns the local jar path, {@code null} if
-     * the jar 404s, or throws if the jar exists without a POM.
+     * Download {@code relPath} and its sibling {@code .pom} from the official Maven repo into that
+     * repository's store. Returns the local jar path, {@code null} if the jar 404s, or throws if
+     * the jar exists without a POM.
      *
      * <p>The requests go where a resolve of the {@code jumpkick} repository's go: through the
      * mirror that stands in for it ({@code mirror-of}, or a {@code settings.xml} {@code <mirror>}),
      * with the mirror's credential, and never around it. The store keeps the official origin.
+     *
+     * <p>Whatever serves them, the jar and the POM must hash to what the release of their version
+     * lists ({@link ReleaseRepoDigests}), under the signature the engine itself was installed
+     * with; nothing the repository serves beside them is trusted.
      */
     public static @Nullable Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
         if (!relPath.endsWith(".jar")) {
@@ -200,25 +208,9 @@ public enum PluginJar {
             throw new IOException("official repo POM for " + relPath + " is empty");
         }
         byte[] bytes = jarResp.body();
-        String sha = Hashing.sha256Hex(bytes);
-        Optional<String> published = Optional.empty();
-        try {
-            HttpResponse<byte[]> sumResp = http.documents().get(URI.create(jarUri + ".sha256"), auth);
-            if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
-                published = Hashing.checksumFromSidecar(new String(sumResp.body(), StandardCharsets.UTF_8), 64);
-            }
-        } catch (IOException ignored) {
-            // The .sha256 sidecar is optional — an absent or unreachable sidecar keeps the hash
-            // we computed. The mismatch check below must stay OUTSIDE this catch: swallowing it
-            // installed jars whose published checksum disagreed.
-        }
-        if (published.isPresent()) {
-            if (!published.get().equals(sha)) {
-                throw new IOException(
-                        "checksum mismatch for " + jarUri + " (expected " + published.get() + ", got " + sha + ")");
-            }
-            sha = published.get();
-        }
+        ReleaseRepoDigests signed = signedDigests(versionOf(relPath));
+        String sha = vouched(signed, relPath, jarUri, bytes);
+        String pomSha = vouched(signed, pomRel, pomUri, pomBody);
         RepoArtifactStore store = RepoArtifactStore.forRepository(cas.root(), RepositorySpec.JUMPKICK_NAME, base);
         Files.createDirectories(cas.root());
         Path tmpJar = Files.createTempFile(cas.root(), ".worker-", ".jar");
@@ -226,7 +218,6 @@ public enum PluginJar {
         try {
             Files.write(tmpJar, bytes);
             store.materialize(relPath, tmpJar, sha);
-            String pomSha = Hashing.sha256Hex(pomBody);
             Files.write(tmpPom, pomBody);
             store.materialize(pomRel, tmpPom, pomSha);
         } finally {
@@ -238,6 +229,47 @@ public enum PluginJar {
                         + "; check disk space and permissions"));
         fetchOfficialClosure(cas, http, base, localJar);
         return localJar;
+    }
+
+    /**
+     * The digests {@code version}'s release lists for the official repository, its {@code
+     * SHA256SUMS} verified against the release key and any {@code [release] trusted-keys}. Asked
+     * on every cold fetch: a worker is fetched once per store. The release root is {@code
+     * JK_RELEASES_URL}'s when set, so a host behind a mirror points it at the mirror of {@code
+     * releases/}.
+     */
+    private static ReleaseRepoDigests signedDigests(String version) throws IOException {
+        URI releases = ReleaseArtifacts.releasesBase();
+        try {
+            return ReleaseRepoDigests.fetch(
+                    releases, version, ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()));
+        } catch (ReleaseArtifacts.NotPublished e) {
+            throw new IOException(
+                    "no signed jk " + version + " release at " + releases
+                            + " lists its workers; refusing the official repository's copy",
+                    e);
+        }
+    }
+
+    /** The sha256 of {@code bytes}, once it is the one {@code signed} lists for {@code relPath}. */
+    static String vouched(ReleaseRepoDigests signed, String relPath, URI from, byte[] bytes) throws IOException {
+        String name = relPath.substring(relPath.lastIndexOf('/') + 1);
+        String expected = signed.sha256(relPath)
+                .orElseThrow(() -> new IOException(
+                        "the signed jk " + signed.version() + " release lists no " + name + "; refusing " + from));
+        String actual = Hashing.sha256Hex(bytes);
+        if (!actual.equals(expected)) {
+            throw new IOException(name + " from " + from + " has sha256 " + actual + ", but the signed jk "
+                    + signed.version() + " release lists " + expected + "; refusing it");
+        }
+        return actual;
+    }
+
+    /** The version segment of a Maven-layout path ({@code …/<artifact>/<version>/<file>}). */
+    private static String versionOf(String relPath) throws IOException {
+        String[] segments = relPath.split("/");
+        if (segments.length < 3) throw new IOException("not a Maven-layout path: " + relPath);
+        return segments[segments.length - 2];
     }
 
     /**

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.repo.ReleaseVerifier;
 import java.io.IOException;
 import java.net.URI;

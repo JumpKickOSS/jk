@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.engine;
+package cc.jumpkick.repo;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.version.Versions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -20,9 +19,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * The verified download path from a release directory ({@code releases/<version>/}): the signed
  * {@code SHA256SUMS} first ({@link Manifest}), then each artifact, whose bytes must hash to the
- * manifest's entry. The engine jar ({@link EngineJarFetcher}), the Maven spy jar and {@code jk
- * self update}'s engine and client are fetched through here and nowhere else, so all are held to
- * the same evidence; {@link #latestVersion} reads the signed latest-release pointer the same way.
+ * manifest's entry. The engine jar, the Maven spy jar, {@code jk self update}'s engine and client
+ * and the engine's digests of the first-party repository ({@link ReleaseRepoDigests}) are fetched
+ * through here and nowhere else, so all are held to the same evidence; {@link #latestVersion}
+ * reads the signed latest-release pointer the same way.
  */
 public final class ReleaseArtifacts {
 
@@ -125,20 +125,6 @@ public final class ReleaseArtifacts {
     }
 
     /**
-     * Fetch only for a released client — the native image, or the JVM client an installer laid
-     * out ({@link JvmClient}) — online, and never for a {@code -SNAPSHOT}. A JVM started from a
-     * checkout or a test is not a release and does not reach for one.
-     */
-    public static boolean applicable(String version, boolean releasedClient, boolean offline) {
-        return releasedClient && !offline && !version.endsWith("-SNAPSHOT");
-    }
-
-    /** Whether this process is a released client: the native image or the installed JVM client. */
-    public static boolean releasedClient() {
-        return EngineSpawn.isNativeImage() || JvmClient.installed();
-    }
-
-    /**
      * The verified manifest of {@code releasesBase/version/}: {@code SHA256SUMS} and its signature
      * fetched, the signature checked against {@code verifier}. Every artifact of that release is
      * then fetched through {@link Manifest#fetch}. A 404 on the checksums is {@link NotPublished}.
@@ -184,7 +170,7 @@ public final class ReleaseArtifacts {
     }
 
     /** {@link #latestVersion(URI, ReleaseVerifier, String)} over the pointer object already fetched. */
-    static String latestVersion(ReleaseVerifier verifier, byte[] object, String running) throws IOException {
+    public static String latestVersion(ReleaseVerifier verifier, byte[] object, String running) throws IOException {
         String latest = pointerVersion(verifier, object);
         if (Versions.compare(latest, running) < 0) {
             throw new IOException("refusing latest release " + latest + ": older than this jk " + running

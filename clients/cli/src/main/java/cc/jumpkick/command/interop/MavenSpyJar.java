@@ -2,8 +2,8 @@
 package cc.jumpkick.command.interop;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
+import cc.jumpkick.cli.engine.ReleasedClient;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.AtomicWrites;
@@ -11,6 +11,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -89,9 +90,9 @@ public final class MavenSpyJar {
         Release release = new Release(
                 ReleaseArtifacts.releasesBase(),
                 ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()),
-                ReleaseArtifacts.applicable(
+                ReleasedClient.applicable(
                         version,
-                        ReleaseArtifacts.releasedClient(),
+                        ReleasedClient.current(),
                         SessionContext.current().offline()));
         return new MavenSpyJar(
                 property == null || property.isBlank() ? null : Path.of(property),

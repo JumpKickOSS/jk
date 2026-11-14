@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import java.io.IOException;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

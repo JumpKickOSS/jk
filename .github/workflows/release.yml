@@ -255,6 +255,23 @@ jobs:
           scripts/assemble-release-dir.sh "$OUT"
           ls -la "$OUT"
 
+      # The engine refuses a worker from repo/ that does not hash to its line in the signed
+      # jk-repo-<version>.sha256, which lists the dist's shelf; the stage comes from the home's
+      # shelf. Every staged jar and POM must be the one listed, or the release ships workers its
+      # own engine refuses.
+      - name: Check the staged repository against the release's digests
+        if: matrix.arch_label == 'linux-x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sums="$PWD/target/release/${JK_VERSION}-${{ matrix.arch_label }}/jk-repo-${JK_VERSION}.sha256"
+          cd target/release/repo
+          find . -type f \( -name "*-${JK_VERSION}.jar" -o -name "*-${JK_VERSION}.pom" \) | sed 's|^\./||' | LC_ALL=C sort >"$RUNNER_TEMP/staged.txt"
+          awk '{print $2}' "$sums" | LC_ALL=C sort >"$RUNNER_TEMP/listed.txt"
+          comm -23 "$RUNNER_TEMP/staged.txt" "$RUNNER_TEMP/listed.txt" | sed 's/^/::error::staged but not listed: /' | tee "$RUNNER_TEMP/unlisted.txt"
+          [[ ! -s "$RUNNER_TEMP/unlisted.txt" ]]
+          sha256sum --check --strict --quiet --ignore-missing "$sums"
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

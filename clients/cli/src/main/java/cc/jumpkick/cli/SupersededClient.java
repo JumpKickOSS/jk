@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.engine.ReleasedClient;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -33,7 +34,7 @@ final class SupersededClient {
 
     /** The installed version when it is newer than {@code running}; empty for a development client. */
     static Optional<String> newerInstall(String running, boolean releasedClient, Supplier<Optional<String>> installed) {
-        if (!ReleaseArtifacts.applicable(running, releasedClient, false)) return Optional.empty();
+        if (!ReleasedClient.applicable(running, releasedClient, false)) return Optional.empty();
         return installed.get().filter(v -> Versions.compare(v, running) > 0);
     }
 
@@ -42,7 +43,7 @@ final class SupersededClient {
         if (System.getenv(ENV) != null) return OptionalInt.empty();
         try {
             Optional<String> newer =
-                    newerInstall(JkVersion.VERSION, ReleaseArtifacts.releasedClient(), () -> EngineInstall.current()
+                    newerInstall(JkVersion.VERSION, ReleasedClient.current(), () -> EngineInstall.current()
                             .currentInstall()
                             .map(EngineInstall.Materialized::version));
             if (newer.isEmpty()) return OptionalInt.empty();

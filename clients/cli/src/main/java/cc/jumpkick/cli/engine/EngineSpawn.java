@@ -24,6 +24,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -85,7 +86,7 @@ public final class EngineSpawn {
      */
     static boolean supersededBy(
             EngineProbe.Handshake hs, String clientVersion, boolean releasedClient, Optional<String> installed) {
-        if (hs.draining() || !ReleaseArtifacts.applicable(clientVersion, releasedClient, false)) return false;
+        if (hs.draining() || !ReleasedClient.applicable(clientVersion, releasedClient, false)) return false;
         if (Versions.compare(hs.version(), clientVersion) <= 0) return false;
         return installed.filter(v -> v.equals(hs.version())).isPresent();
     }
@@ -125,7 +126,7 @@ public final class EngineSpawn {
             if (serves(hs, clientVersion, pointer)) {
                 return hs;
             }
-            if (supersededBy(hs, clientVersion, ReleaseArtifacts.releasedClient(), installedVersion())) {
+            if (supersededBy(hs, clientVersion, ReleasedClient.current(), installedVersion())) {
                 // jk updated itself while this process ran: taking the newer engine over would hand
                 // the next command's client an engine older than itself, and it would take it back.
                 throw new IOException("jk was updated to " + hs.version() + " while this " + clientVersion
@@ -458,9 +459,9 @@ public final class EngineSpawn {
         Optional<EngineArtifact> resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
         if (resolved.isEmpty()
-                && ReleaseArtifacts.applicable(
+                && ReleasedClient.applicable(
                         clientVersion,
-                        ReleaseArtifacts.releasedClient(),
+                        ReleasedClient.current(),
                         SessionContext.current().offline())) {
             // The same bar, phase lines and done line `jk jdk install` renders, under an Engine
             // chip: the user is watching this download as they watch a JDK's.

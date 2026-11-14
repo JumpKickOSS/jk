@@ -6,7 +6,8 @@
 # <staging> holds one directory per platform, `release-<version>-<os>-<arch>/`, each written by
 # scripts/assemble-release-dir.sh. <out> receives every platform's client plus the platform-neutral
 # files — the engine jar, the JVM client jar, the Maven spy jar and the what's-new highlights a
-# self-update shows — from linux-x86_64 alone: every platform builds the same bytes, and one whose
+# self-update shows — from linux-x86_64 alone, and that tree's jk-repo-<version>.sha256 (the digests
+# of the repository it stages for repo/; the other trees' copies are dropped): every platform builds the same bytes, and one whose
 # bytes differ is a build to explain, not a copy to overwrite — and a fresh SHA256SUMS over the result. The per-platform
 # SHA256SUMS and .sig are dropped; the combined manifest is signed by the caller.
 #
@@ -31,6 +32,7 @@ ENGINE="jk-engine-${VER}.jar"
 CLIENT_JAR="jk-${VER}.jar"
 SPY_JAR="jk-maven-spy-${VER}.jar"
 WHATS_NEW="jk-whats-new-${VER}.md"
+REPO_SUMS="jk-repo-${VER}.sha256"
 
 if [[ ! -d "$STAGING" ]]; then
   echo "flatten-release: staging directory not found: $STAGING" >&2
@@ -43,6 +45,7 @@ canonical_engine="$canonical_dir/$ENGINE"
 canonical_client="$canonical_dir/$CLIENT_JAR"
 canonical_spy="$canonical_dir/$SPY_JAR"
 canonical_whats_new="$canonical_dir/$WHATS_NEW"
+canonical_repo_sums="$canonical_dir/$REPO_SUMS"
 if [[ ! -f "$canonical_engine" ]]; then
   echo "missing $canonical_engine — the linux-x86_64 build did not produce the engine jar" >&2
   exit 1
@@ -59,6 +62,10 @@ engine_sha="$(sha256sum "$canonical_engine" | awk '{print $1}')"
 client_sha="$(sha256sum "$canonical_client" | awk '{print $1}')"
 if [[ ! -f "$canonical_whats_new" ]]; then
   echo "missing $canonical_whats_new — the linux-x86_64 build did not write the what's-new highlights" >&2
+  exit 1
+fi
+if [[ ! -f "$canonical_repo_sums" ]]; then
+  echo "missing $canonical_repo_sums — the linux-x86_64 build did not list the first-party repository's digests" >&2
   exit 1
 fi
 spy_sha="$(sha256sum "$canonical_spy" | awk '{print $1}')"
@@ -79,6 +86,8 @@ while IFS= read -r -d '' f; do
   base="$(basename "$f")"
   case "$base" in
     SHA256SUMS|SHA256SUMS.sig) continue ;;
+    # The digests of the repository linux-x86_64 stages for repo/: that tree's copy and no other.
+    "$REPO_SUMS") [[ "$f" == "$canonical_repo_sums" ]] || continue ;;
     "$ENGINE") same_as_canonical "$f" "$canonical_engine" "$engine_sha" "engines" || continue ;;
     "$CLIENT_JAR") same_as_canonical "$f" "$canonical_client" "$client_sha" "JVM clients" || continue ;;
     "$SPY_JAR") same_as_canonical "$f" "$canonical_spy" "$spy_sha" "Maven spies" || continue ;;

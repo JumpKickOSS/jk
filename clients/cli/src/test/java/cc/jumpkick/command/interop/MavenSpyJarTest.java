@@ -4,10 +4,10 @@ package cc.jumpkick.command.interop;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.StubReleaseDirectory;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

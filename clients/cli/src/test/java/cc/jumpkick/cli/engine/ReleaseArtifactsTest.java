@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.repo.ReleaseVerifier;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

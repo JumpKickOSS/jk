@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -114,10 +115,10 @@ class EngineJarFetcherTest {
     /** The gate that keeps this out of the JVM dist, offline runs, and dev/CI snapshot builds. */
     @Test
     void applicable_only_for_online_native_release_clients() {
-        assertThat(ReleaseArtifacts.applicable("1.2.3", true, false)).isTrue();
-        assertThat(ReleaseArtifacts.applicable("1.2.3-SNAPSHOT", true, false)).isFalse();
-        assertThat(ReleaseArtifacts.applicable("1.2.3", false, false)).isFalse();
-        assertThat(ReleaseArtifacts.applicable("1.2.3", true, true)).isFalse();
+        assertThat(ReleasedClient.applicable("1.2.3", true, false)).isTrue();
+        assertThat(ReleasedClient.applicable("1.2.3-SNAPSHOT", true, false)).isFalse();
+        assertThat(ReleasedClient.applicable("1.2.3", false, false)).isFalse();
+        assertThat(ReleasedClient.applicable("1.2.3", true, true)).isFalse();
     }
 
     /** The rendering seam: what the view is told, in order, with the byte counts the bar shows. */

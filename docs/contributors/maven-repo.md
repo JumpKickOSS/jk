@@ -40,8 +40,12 @@ Same bucket as **releases** (`releases/<ver>/jk`, `jk-engine-…jar`); only the 
    probed (no 404-then-fallthrough on first-party CDN for third-party GAVs).
 3. **Plugin workers** (`PluginJar`): look in `repos/jk-local`, then the official repository's
    store (`repos/jumpkick` at the product URL; a `JK_OFFICIAL_REPO_URL` mirror gets its own
-   origin-keyed tree), then `repos/central`; on miss, **HTTP-fetch** from the official repo into
-   its store.
+   origin-keyed tree), then `repos/central`; on miss, **HTTP-fetch** from the official repo (or
+   the mirror that stands in for it) into its store. The jar and its POM must hash to their lines in
+   the release's `jk-repo-<version>.sha256`, which the signed `SHA256SUMS` of
+   `releases/<version>/` lists; the `.sha256` sidecars beside them are not read. A corporate
+   mirror serving the same bytes passes; a host that cannot reach jumpkick.build points
+   `JK_RELEASES_URL` at its mirror of `releases/`.
 4. **Path / git remotes** prepended for a project must **preserve exclusive group bindings**
    from the base remote set (otherwise a path overlay can drop JumpKick exclusivity and cause
    a 404 storm against the CDN for third-party coordinates).

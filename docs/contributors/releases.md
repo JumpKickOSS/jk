@@ -120,6 +120,8 @@ releases/
                                    # client for (installers and wrappers fall back to it)
     jk-maven-spy-0.13.6.jar        # the Maven core extension `jk mvn` attaches; a client fetches
                                    # its own version's on the first `jk mvn` (native and JVM alike)
+    jk-repo-0.13.6.sha256          # <hex>  <path> of every first-party jar and POM on repo/ at this
+                                   # version; the engine refuses a worker that is not listed here
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
 ```
@@ -262,8 +264,11 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
    own.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
-   the client archive(s), the engine jar, the JVM client jar, the Maven spy jar and
-   `jk-whats-new-<version>.md` — + `SHA256SUMS`.
+   the client archive(s), the engine jar, the JVM client jar, the Maven spy jar,
+   `jk-whats-new-<version>.md` and `jk-repo-<version>.sha256` (the digests of the dist's shelf,
+   which the engine holds every worker it fetches to) — + `SHA256SUMS`. The linux-x86_64 lane then
+   checks that every jar and POM it staged for `repo/` is the one that file lists, and the flatten
+   keeps that lane's copy alone.
 4. The merge job first writes the release notes (`scripts/release-notes.sh <version>`: the
    version's entry in [What's new](../user/whats-new.md), then the commits since the previous tag)
    and refuses a version with no entry, or one that breaks the [writing rules](#writing-an-entry),

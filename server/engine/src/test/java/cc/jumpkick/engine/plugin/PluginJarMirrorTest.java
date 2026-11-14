@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -26,7 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A worker jar missing from the store is fetched where a resolve of the {@code jumpkick}
  * repository is: through the {@code mirror-of} table of the user's {@code config.toml}, with the
- * mirror's credential, and never from the official repository's own URL.
+ * mirror's credential, and never from the official repository's own URL; what it serves must hash to
+ * what the signed release lists, which a corporate mirror serving the same bytes does.
  */
 class PluginJarMirrorTest {
 
@@ -42,15 +44,17 @@ class PluginJarMirrorTest {
     Path tmp;
 
     private final Map<String, @Nullable String> saved = new HashMap<>();
+    private Path home = Path.of("home");
     private Path config = Path.of("config.toml");
 
     @BeforeEach
     void isolate() throws Exception {
         EffectivePomBuilder.clearProcessCache();
         RepoGroup.clearProcessFetchCache();
-        Path home = Files.createDirectories(tmp.resolve("home"));
+        home = Files.createDirectories(tmp.resolve("home"));
         config = home.resolve("config.toml");
-        System.setProperty("jk.env.JK_HOME", home.toString());
+        set("jk.env.JK_HOME", home.toString());
+        set("jk.env.JK_RELEASES_URL", SignedRelease.releasesUrl(mirror));
         System.setProperty(
                 MavenSettings.SETTINGS_PROPERTY,
                 tmp.resolve("absent-settings.xml").toString());
@@ -84,7 +88,8 @@ class PluginJarMirrorTest {
                   <version>%s</version>
                 </project>
                 """.formatted(JkVersion.VERSION));
-        Files.writeString(config, """
+        SignedRelease.publishServed(mirror, JkVersion.VERSION);
+        SignedRelease.trust(home, """
                 [repositories.corp]
                 url = "%s"
                 mirror-of = ["*"]
@@ -117,6 +122,33 @@ class PluginJarMirrorTest {
         assertThat(official.requested())
                 .as("nothing falls back to the official URL")
                 .isEmpty();
+    }
+
+    /** The mirror serves other bytes than the release signed: refused, naming both digests. */
+    @Test
+    void a_mirror_serving_other_bytes_than_the_release_signed_is_refused() throws Exception {
+        String rel = PluginJar.PUBLISHER.relativePath();
+        serve(mirror, "/" + rel, "genuine-worker");
+        serve(mirror, "/" + rel.substring(0, rel.length() - 4) + ".pom", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                </project>
+                """.formatted(JkVersion.VERSION));
+        SignedRelease.publishServed(mirror, JkVersion.VERSION);
+        serve(mirror, "/" + rel, "planted-worker");
+        SignedRelease.trust(home, """
+                [repositories.corp]
+                url = "%s"
+                mirror-of = ["*"]
+                """.formatted(mirror.baseUrl()));
+
+        assertThatThrownBy(() -> PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("store"))))
+                .isInstanceOf(PluginJarNotFoundException.class)
+                .hasMessageContaining(Hashing.sha256Hex("planted-worker".getBytes(StandardCharsets.UTF_8)))
+                .hasMessageContaining(Hashing.sha256Hex("genuine-worker".getBytes(StandardCharsets.UTF_8)));
     }
 
     private static void serve(LoopbackHttp http, String path, String body) {

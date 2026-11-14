@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.repo.ReleaseArtifacts;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
