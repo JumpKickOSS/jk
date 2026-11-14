@@ -2,9 +2,13 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.JavaCompile;
+import java.time.Duration;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -31,12 +35,21 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@link #close()} ends it before the build reports completion: an estimate still being priced
  * is cancelled and never published, so the listener never hears of a work model after the build
- * finished.
+ * finished, and a pricing already running is interrupted and waited for, so nothing reads the
+ * workspace once the build has returned (on Windows an open file keeps its directory from being
+ * deleted).
  */
 @NullMarked
 final class BackgroundEta {
 
+    /** How long {@link #close()} waits for a running pricing to stop before leaving it behind. */
+    private static final Duration STOP_WAIT = Duration.ofSeconds(10);
+
     private final Object lock = new Object();
+
+    /** The threads pricing or re-pricing right now; guarded by {@link #lock}. */
+    private final Set<Thread> running = new HashSet<>();
+
     private final Consumer<BuildService.EtaModel> publish;
     private volatile @Nullable Future<BuildService.EtaModel> pricing;
     private boolean open = true;
@@ -82,10 +95,15 @@ final class BackgroundEta {
         BackgroundEta eta = this;
         Supplier<BuildService.EtaModel> priced = what;
         eta.pricing = JkThreads.platform().submit(() -> {
-            BuildService.EtaModel model = ScopedValue.where(JavaCompile.PLAN_WORKERS, JavaCompile.PlanWorkers.NONE)
-                    .call(priced::get);
-            eta.publish(model);
-            return model;
+            if (!eta.enter()) throw new CancellationException("the build ended before its estimate was priced");
+            try {
+                BuildService.EtaModel model = ScopedValue.where(JavaCompile.PLAN_WORKERS, JavaCompile.PlanWorkers.NONE)
+                        .call(priced::get);
+                eta.publish(model);
+                return model;
+            } finally {
+                eta.leave();
+            }
         });
     }
 
@@ -125,8 +143,7 @@ final class BackgroundEta {
 
     /**
      * Re-price on {@link #reprice} with {@code repricer}, handing each revision to {@code revise}:
-     * a module the estimate guessed at has compiled and what its dependents run is a lookup now
-     * (JK-0PDBN).
+     * a module the estimate guessed at has compiled and what its dependents run is a lookup now.
      */
     BackgroundEta repricing(
             Function<BuildService.EtaModel, BuildService.EtaModel> repricer,
@@ -161,6 +178,20 @@ final class BackgroundEta {
     }
 
     private void repriceLoop() {
+        if (!enter()) {
+            synchronized (lock) {
+                repricingNow = false;
+            }
+            return;
+        }
+        try {
+            repricePasses();
+        } finally {
+            leave();
+        }
+    }
+
+    private void repricePasses() {
         while (true) {
             BuildService.EtaModel from;
             Function<BuildService.EtaModel, BuildService.EtaModel> how;
@@ -207,9 +238,8 @@ final class BackgroundEta {
     }
 
     /**
-     * Stop publishing and cancel a pricing that has not published. Returns the published estimate,
-     * or one that settled unpublished. A published pricing is not cancelled: its task may still be
-     * returning the estimate it has already handed out.
+     * Stop publishing, cancel a pricing that has not published, and wait for every running pricing
+     * to return. Returns the published estimate, or one that settled unpublished.
      */
     Optional<BuildService.EtaModel> close() {
         BuildService.EtaModel shown;
@@ -217,9 +247,55 @@ final class BackgroundEta {
             open = false;
             shown = published ? seed : null;
         }
-        if (shown != null) return Optional.of(shown);
         Future<BuildService.EtaModel> f = pricing;
-        if (f != null && !f.isDone()) f.cancel(true);
-        return settled();
+        if (shown == null && f != null && !f.isDone()) f.cancel(false);
+        awaitStopped();
+        return shown != null ? Optional.of(shown) : settled();
+    }
+
+    /** Registers the calling thread as pricing; false once the build has closed. */
+    private boolean enter() {
+        synchronized (lock) {
+            if (!open) return false;
+            running.add(Thread.currentThread());
+            return true;
+        }
+    }
+
+    /** Ends the calling thread's pricing; an interrupt {@link #close()} sent it ends here too. */
+    private void leave() {
+        synchronized (lock) {
+            running.remove(Thread.currentThread());
+            Thread.interrupted();
+            lock.notifyAll();
+        }
+    }
+
+    /**
+     * Interrupts every running pricing and waits for it to return; its result is dropped once
+     * closed. Gives up after {@link #STOP_WAIT}.
+     */
+    private void awaitStopped() {
+        long deadline = Clock.SYSTEM.nanos() + STOP_WAIT.toNanos();
+        Thread self = Thread.currentThread();
+        synchronized (lock) {
+            for (Thread t : running) {
+                if (t != self) t.interrupt();
+            }
+            // A listener that closes from the pricing thread does not wait for itself.
+            while (!running.isEmpty() && !(running.size() == 1 && running.contains(self))) {
+                long left = deadline - Clock.SYSTEM.nanos();
+                if (left <= 0) {
+                    Log.debug("eta pricing still running " + STOP_WAIT.toSeconds() + "s after the build ended");
+                    return;
+                }
+                try {
+                    lock.wait(Math.max(1, left / 1_000_000));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
     }
 }

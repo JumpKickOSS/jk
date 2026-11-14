@@ -111,6 +111,53 @@ class BackgroundEtaTest {
         assertThat(revisions).isEmpty();
     }
 
+    /** A pricing still reading the workspace when the build ends would keep its files open after it. */
+    @Test
+    void a_build_that_ends_returns_only_once_a_running_re_pricing_has_stopped() throws Exception {
+        CountDownLatch repricing = new CountDownLatch(1);
+        AtomicInteger stopped = new AtomicInteger();
+        BackgroundEta eta = BackgroundEta.of(model(100), m -> {})
+                .repricing(
+                        seed -> {
+                            repricing.countDown();
+                            try {
+                                Thread.sleep(60_000);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            } finally {
+                                stopped.incrementAndGet();
+                            }
+                            return seed;
+                        },
+                        (m, n) -> {});
+        eta.reprice();
+        assertThat(repricing.await(10, TimeUnit.SECONDS)).isTrue();
+        eta.close();
+        assertThat(stopped).as("the re-pricing returned before close did").hasValue(1);
+    }
+
+    @Test
+    void a_build_that_ends_returns_only_once_its_unpublished_pricing_has_stopped() throws Exception {
+        CountDownLatch pricing = new CountDownLatch(1);
+        AtomicInteger stopped = new AtomicInteger();
+        BackgroundEta eta = BackgroundEta.start(
+                () -> {
+                    pricing.countDown();
+                    try {
+                        Thread.sleep(60_000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        stopped.incrementAndGet();
+                    }
+                    return model(1);
+                },
+                m -> {});
+        assertThat(pricing.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(eta.close()).isEmpty();
+        assertThat(stopped).as("the pricing returned before close did").hasValue(1);
+    }
+
     @Test
     void an_estimate_in_hand_is_published_at_once() {
         List<BuildService.EtaModel> heard = new CopyOnWriteArrayList<>();
