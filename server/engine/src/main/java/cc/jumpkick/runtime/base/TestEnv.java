@@ -10,15 +10,12 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
-import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -204,9 +201,7 @@ public final class TestEnv {
                 moduleDir,
                 target,
                 new TestEnvValues.Mode.Launch(buildEnv::apply));
-        List<String> forwarded = new ArrayList<>();
-        for (EnvDecl d : project.build().testEnv()) if (d instanceof EnvDecl.Forward f) forwarded.add(f.name());
-        WorkerEnv.fileSecrets(moduleDir, forwarded, testEnv);
+        WorkerEnv.fileSecrets(moduleDir, project.build().testEnv(), testEnv);
         out.putAll(testEnv);
         out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR)));
         return WorkerEnv.policy(policy).with(out);

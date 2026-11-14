@@ -9,9 +9,11 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -141,19 +143,25 @@ public final class WorkerEnv {
         Function<String, @Nullable String> env = BuildEnv.forModule(moduleDir);
         Map<String, String> resolved = TestEnvValues.resolve(
                 "[env]", config.decls(), moduleDir, target, new TestEnvValues.Mode.Launch(env::apply));
-        fileSecrets(moduleDir, config.declared(), resolved);
+        fileSecrets(moduleDir, config.decls(), resolved);
         return resolved;
     }
 
     /**
-     * Files the value of every declared name that reads as a credential ({@link
-     * BuildEnv#looksSecret}) with the workspace's redactor, so a test that prints it, an error that
-     * quotes it and the journal show {@code ***} instead.
+     * Files the resolved value of every entry of {@code decls} that reads as a credential ({@link
+     * BuildEnv#looksSecret}) and came from the environment — a forwarded name, or a set value that
+     * expands a {@code ${…}} — with the workspace's redactor, so a test that prints it, an error that
+     * quotes it and the reports show {@code ***} instead. A literal set value is manifest text,
+     * which is no secret.
      */
-    public static void fileSecrets(Path moduleDir, Iterable<String> declared, Map<String, String> resolved) {
-        for (String name : declared) {
-            String value = resolved.get(name);
-            if (value != null && BuildEnv.looksSecret(name)) ResolvedSecrets.recordFor(moduleDir, value);
+    public static void fileSecrets(Path moduleDir, List<EnvDecl> decls, Map<String, String> resolved) {
+        for (EnvDecl d : decls) {
+            boolean fromEnv = switch (d) {
+                case EnvDecl.Forward f -> true;
+                case EnvDecl.Set set -> set.value().contains("${");
+            };
+            String value = resolved.get(d.name());
+            if (fromEnv && value != null && BuildEnv.looksSecret(d.name())) ResolvedSecrets.recordFor(moduleDir, value);
         }
     }
 
