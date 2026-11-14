@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.plugin.MemoryHolds;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.StepEffort;
 import cc.jumpkick.runtime.base.RunShapes;
 import cc.jumpkick.runtime.base.RungBias;
@@ -70,12 +72,22 @@ final class RunStepLedger {
      */
     static List<RungBias.Pair> pricedPairs(long requestId, List<StepLedger.Sample> samples) {
         List<RungBias.Pair> pairs = new ArrayList<>();
+        String profile = RunShapes.of(requestId).profile();
         for (StepLedger.Sample s : samples) {
             if (!"SUCCESS".equals(s.status())) continue;
             StepCost c = EtaModels.priced(requestId, s.dir(), s.step());
             if (c == null) continue;
+            // A suite of a tier the default run leaves out teaches its own kind (RungBias.biasStep).
+            boolean slowTier = TaskNames.isRunTests(s.step())
+                    && !TierTags.of(Path.of(s.dir()), profile.isEmpty() ? null : profile)
+                            .includeTags()
+                            .isEmpty();
             pairs.add(new RungBias.Pair(
-                    c.rung(), s.step(), (long) c.weight() * WorkModel.MS_PER_WEIGHT, s.ms(), c.spread()));
+                    c.rung(),
+                    RungBias.biasStep(s.step(), slowTier),
+                    (long) c.weight() * WorkModel.MS_PER_WEIGHT,
+                    s.ms(),
+                    c.spread()));
         }
         return pairs;
     }

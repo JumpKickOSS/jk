@@ -169,10 +169,23 @@ public final class RungBias {
     }
 
     /**
-     * The kind of work a step is, which a rung's bias is kept per: compile, suite, package, guard or
-     * other. {@code bench/eta/score.py} reports its rung attribution under the same kinds.
+     * A suite whose run includes tags (integration, slow, network), as the bias names it: its own
+     * kind, since its cold price is its own rate. Learned under the unit tier's suites, the bias
+     * scaled jk's first integration run after a first build by 1.4 and read it 38% long (JK-D3785).
+     */
+    public static final String SLOW_TIER_SUITE = TaskNames.RUN_TESTS + TaskNames.SUITE_SEPARATOR + "slow-tier";
+
+    /** The step a suite's bias is kept under: {@link #SLOW_TIER_SUITE} when its run includes tags. */
+    public static String biasStep(String step, boolean slowTier) {
+        return slowTier && TaskNames.isRunTests(step) ? SLOW_TIER_SUITE : step;
+    }
+
+    /**
+     * The kind of work a step is, which a rung's bias is kept per: compile, suite, slow-tier suite,
+     * package, guard or other. {@code bench/eta/score.py} reports its rung attribution under the same kinds.
      */
     public static String kindOf(String step) {
+        if (SLOW_TIER_SUITE.equals(step)) return "slow-suite";
         if (step.startsWith(TaskNames.COMPILE_GUARD) || step.startsWith(TaskNames.GUARD)) return "guard";
         if (step.startsWith("compile-")) return "compile";
         if (TaskNames.isRunTests(step)) return "suite";

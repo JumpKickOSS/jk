@@ -45,6 +45,24 @@ class RungBiasTest {
                 .isEqualTo(1.0);
     }
 
+    /** A unit tier's suites run long cold; that says nothing of an integration tier's own rate (JK-D3785). */
+    @Test
+    void a_slow_tier_s_suites_keep_their_own_bias() {
+        RungBias.learn(
+                file(),
+                List.of(
+                        new RungBias.Pair(Rung.CALIBRATION, "run-tests", 2_000, 3_000),
+                        new RungBias.Pair(Rung.CALIBRATION, "run-tests", 4_000, 6_000)));
+
+        RungBias bias = RungBias.load(file());
+        assertThat(bias.factor(Rung.CALIBRATION, "run-tests")).isCloseTo(1.5, within(1e-3));
+        assertThat(bias.factor(Rung.CALIBRATION, RungBias.biasStep("run-tests", true)))
+                .as("a suite whose run includes tags reads its own kind")
+                .isEqualTo(1.0);
+        assertThat(RungBias.biasStep("run-tests", false)).isEqualTo("run-tests");
+        assertThat(RungBias.biasStep("compile-java", true)).isEqualTo("compile-java");
+    }
+
     @Test
     void later_runs_move_the_bias_by_their_residual_so_recent_runs_dominate() {
         RungBias.learn(file(), List.of(new RungBias.Pair(Rung.HOST, "run-tests", 10_000, 20_000)));

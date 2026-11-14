@@ -228,6 +228,18 @@ class CalibrationTest {
         assertThat(fast.coldCompileMs(12, 4))
                 .as("a small project's compile, beside its three other modules")
                 .isEqualTo(598 + 23 * 12);
-        assertThat(fast.coldSuiteMs(4_444)).isEqualTo(2_145 + 20 * 4_444);
+        // 640 ms x 0.65 = 416 ms fixed, x 61^0.4 beside jk's other modules: 2.15 s, as the 3.3 s did
+        long besideJk = Math.round(416 * Math.pow(61, 0.4));
+        assertThat(besideJk).isEqualTo(2_154);
+        assertThat(fast.coldSuiteMs(4_444, false, 61)).isEqualTo(besideJk + 20 * 4_444);
+        // jk-cli's 738 integration methods: 1.2 s a method at the least scale is 780 ms
+        assertThat(fast.coldSuiteMs(738, true, 61)).isEqualTo(besideJk + 780 * 738);
+        assertThat(fast.coldSuiteMs(0, true, 61))
+                .as("no method selected: the JVM and discovery")
+                .isEqualTo(besideJk);
+        assertThat(fast.coldSuiteMs(3, false, 1))
+                .as("a small project's lone suite")
+                .isEqualTo(416 + 20 * 3);
+        assertThat(fast.coldGuardMs()).isEqualTo(65);
     }
 }

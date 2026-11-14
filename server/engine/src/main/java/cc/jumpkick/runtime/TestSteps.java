@@ -560,7 +560,12 @@ final class TestSteps {
         ForecastScope.Prepared prepared = s.prepared();
         boolean compact = prepared.parsed().compact();
         BuildLayout layout = prepared.parsed().layout();
-        int estimated = TestSupport.estimateAllSuiteTestCount(s.dir, compact);
+        // The tests this run selects, under the tags the runner will apply (effectiveSelection): an
+        // integration run is priced by its integration tests, not every unit test beside them.
+        int estimated = TestSupport.estimateSelectedSuiteTestCount(
+                s.dir,
+                compact,
+                TestStampInputs.effectiveSelection(SessionContext.current().testSelection(), s.dir, s.knobs.profile()));
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
         // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never

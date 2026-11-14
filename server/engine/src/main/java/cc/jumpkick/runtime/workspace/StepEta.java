@@ -9,6 +9,7 @@ import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.StepEffort;
 import cc.jumpkick.runtime.TestEffort;
+import cc.jumpkick.runtime.TestStampInputs;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.runtime.base.Perf;
@@ -141,8 +142,11 @@ public final class StepEta {
                         m,
                         calibration,
                         effort,
-                        freshCompiler);
-                priced = priced.corrected(bias.factor(priced.rung(), t.name()));
+                        freshCompiler,
+                        profile);
+                // A slow tier's suites keep their own bias: the unit tier's would scale another rate.
+                String biasStep = RungBias.biasStep(t.name(), TaskNames.isRunTests(t.name()) && slowTier(dir, profile));
+                priced = priced.corrected(bias.factor(priced.rung(), biasStep));
                 // Every price is an idle host's (the ledger reads each wall at the load its run
                 // started under), carried to the load other work puts on the host now.
                 priced = priced.corrected(HostBusy.factor(busyNow, 0));
@@ -159,7 +163,7 @@ public final class StepEta {
                         t.name(),
                         weightOf(priced.ms()),
                         kind,
-                        priced.spread(bias.spread(priced.rung(), t.name())),
+                        priced.spread(bias.spread(priced.rung(), biasStep)),
                         suiteWorkers,
                         priced.rung()));
             }
@@ -378,7 +382,8 @@ public final class StepEta {
             TaskForecast.Module m,
             Calibration calibration,
             StepEffort effort,
-            boolean freshCompiler) {
+            boolean freshCompiler,
+            @Nullable String profile) {
         String name = t.name();
         if (TaskNames.ORDER_CHECK.equals(name)
                 || TaskNames.DEPENDENCY_CHECK.equals(name)
@@ -400,6 +405,14 @@ public final class StepEta {
         if (own.isPresent()) {
             StepLedger.Spread spread = ledger.spread(dir.toString(), name, status, shape, frontier, freshCompiler)
                     .orElse(new StepLedger.Spread(0, 0));
+            // A suite whose run includes tags, with walls only from the default profile, ran other
+            // tests there: its tagged tests at a slow tier's rate are the better guess. After a first
+            // build, jk's integration run read jk-cli's unit suite and priced its 654 s at 20 s.
+            if (TaskNames.RUN_TESTS.equals(name)
+                    && spread.context() == EtaSpread.PROFILE_BORROWED
+                    && slowTier(dir, profile)) {
+                return Priced.cold(calibration.coldSuiteMs(m.testCount(), true, frontier.size()));
+            }
             return new Priced(own.getAsLong(), false, StepCost.Rung.REPLAY, spread.own(), spread.context());
         }
         if (!runs) return Priced.of(0, StepCost.Rung.TOKEN);
@@ -430,8 +443,22 @@ public final class StepEta {
             // Beside the build's other modules: its frontier, which a re-pricing keeps from the seed.
             return Priced.cold(calibration.coldCompileMs(sources, frontier.size()));
         }
-        if (TaskNames.RUN_TESTS.equals(name) && m.testCount() > 0) {
-            return Priced.cold(calibration.coldSuiteMs(m.testCount()));
+        if (TaskNames.RUN_TESTS.equals(name)) {
+            // The tests its tags select (the forecast's count), at a slow tier's rate when the run
+            // includes tags; none selected still starts the JVM and discovers.
+            return Priced.cold(calibration.coldSuiteMs(m.testCount(), slowTier(dir, profile), frontier.size()));
+        }
+        // Packaging and guards with no history, from the host's calibration: through the weight
+        // fallback each read its 300 ms floor, a jar of 0.1 s and a guard of 13 ms alike.
+        switch (name) {
+            case TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, TaskNames.NATIVE_IMAGE, TaskNames.WRITE_IMAGE -> {
+                long ms = calibration.coldStepWallMs(name, 1);
+                if (ms > 0) return Priced.cold(ms);
+            }
+            default -> {
+                if (name.equals(TaskNames.GUARD) || name.startsWith(TaskNames.GUARD + "-"))
+                    return Priced.cold(calibration.coldGuardMs());
+            }
         }
         Map<String, Integer> counts = new HashMap<>();
         if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
@@ -443,6 +470,13 @@ public final class StepEta {
         EffortWeights.ModuleCost alone = EffortWeights.costFromRunningSteps(
                 dir, prereqs, List.of(metricsName), metrics, timings, projectDirs, counts);
         return Priced.of((long) alone.weight() * EffortWeights.MS_PER_WEIGHT, StepCost.Rung.HOST);
+    }
+
+    /** Whether the module's suite runs a tier the default run leaves out: its selection includes tags. */
+    private static boolean slowTier(Path dir, @Nullable String profile) {
+        return !TestStampInputs.effectiveSelection(SessionContext.current().testSelection(), dir, profile)
+                .includeTags()
+                .isEmpty();
     }
 
     /**
