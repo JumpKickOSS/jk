@@ -986,7 +986,7 @@ in     = "cc.jumpkick.engine.http.mcp.tools.IdeTool"
 reason = "the IDE tool lists the provided jars; it keys nothing"
 
 # G146. Which suites a run runs is derived once. TestStampInputs.resolveSuites resolves the
-# effective selection (the active profile's tags and every-suite switch folded in) for compile-test,
+# selection against the module's suites, the built-in integration suite among them, for compile-test,
 # the suite filter, the run-tests stamp, the forecast and the test-count estimate; a raw
 # TestSuites.resolve is a second answer, and a run that stamps one set of suites and runs another
 # stores a green marker over tests that never ran.

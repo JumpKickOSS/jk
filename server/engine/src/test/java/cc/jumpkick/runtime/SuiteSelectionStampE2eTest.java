@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -21,7 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The suites a run stamps are the suites it runs. A green marker stored while a suite was left out
  * must not replay once that suite would run: flipping a suite's {@code explicit} under {@code
- * --all} runs the failing test the suite claims.
+ * --all}, or a request naming a suite the way an MCP or HTTP job or a BSP run does ({@link
+ * cc.jumpkick.engine.jobs.JobSelect#testSelection}) after a green run of the default suite, runs the
+ * failing test the suite claims.
  */
 // Out of the unit tier: network resolve + real forked test JVMs.
 @Tag("integration")
@@ -53,6 +56,24 @@ class SuiteSelectionStampE2eTest {
                 .as("-A now runs the live suite, whose test fails; a replayed green marker would pass")
                 .isFalse();
         assertThat(second.tests().failed()).isEqualTo(1L);
+    }
+
+    @Test
+    void a_job_naming_a_suite_runs_it_after_a_green_run_of_the_default_suite() throws Exception {
+        Path project = project(tmp, """
+                [test.suites.live]
+                tags = ["live"]
+                """);
+        Run unit = run(project, JobSelect.testSelection(List.of(), List.of(), List.of(), List.of()));
+        assertThat(unit.result().success())
+                .as("the default suite leaves the live test out")
+                .isTrue();
+
+        Run live = run(project, JobSelect.testSelection(List.of(), List.of(), List.of("live"), List.of()));
+        assertThat(live.result().success())
+                .as("the job's live suite runs its failing test; the default run's green marker must not replay")
+                .isFalse();
+        assertThat(live.tests().failed()).isEqualTo(1L);
     }
 
     private record Run(BuildPlan plan, BuildPlanResult result) {
