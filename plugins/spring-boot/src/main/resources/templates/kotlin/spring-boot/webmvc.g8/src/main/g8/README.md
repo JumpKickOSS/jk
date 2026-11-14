@@ -1,7 +1,7 @@
 # $name$
 
 Multi-module Spring Boot WebMVC app (Kotlin, Java $java$ bytecode, virtual threads, JOOQ).
-Scaffolded from the jk `spring-boot` plugin kind `webmvc`.
+Scaffolded from the JumpKick `kotlin/spring-boot/webmvc` template.
 
 ```text
 data/     JOOQ repositories, Flyway migrations, H2

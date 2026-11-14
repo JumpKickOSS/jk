@@ -1,7 +1,7 @@
 # $name$
 
 Spring Boot MCP server — exposes `@Tool` methods to MCP clients (IDEs, agents, and similar)
-over the WebMVC SSE transport. Scaffolded from the jk `spring-boot-mcp` template —
+over the WebMVC SSE transport. Scaffolded from the JumpKick `java/spring-boot/mcp` template —
 Spring Boot and Spring AI (`"latest"`; first `jk lock` pins the current stables).
 
 ```bash

@@ -1,7 +1,7 @@
 # $name$
 
-Micronaut HTTP service (compile-time DI, Netty server). Scaffolded from the jk
-`micronaut` template. First `jk lock` pins the current Micronaut platform from
+Micronaut HTTP service (compile-time DI, Netty server). Scaffolded from the JumpKick
+`java/micronaut/hello` template. First `jk lock` pins the current Micronaut platform from
 `[micronaut] version = "latest"`.
 
 ```bash

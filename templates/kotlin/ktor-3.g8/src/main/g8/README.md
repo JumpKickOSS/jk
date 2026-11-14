@@ -1,7 +1,7 @@
 # $name$
 
 Ktor 3 service with Koin dependency injection and Exposed (H2 in-memory) persistence.
-Scaffolded from the jk `ktor-3` template.
+Scaffolded from the JumpKick `kotlin/ktor-3` template.
 
 ```bash
 jk build

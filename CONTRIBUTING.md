@@ -135,7 +135,7 @@ The repo is a JumpKick **workspace** (root `jk.toml` + per-module manifests unde
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
-no `[application]` table). `jk install` shelves every module and takes the home over.
+no `[application]` table). `jk snapshot` shelves every module and takes the home over.
 
 The client never embeds the engine. Spawning uses
 `~/.jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.

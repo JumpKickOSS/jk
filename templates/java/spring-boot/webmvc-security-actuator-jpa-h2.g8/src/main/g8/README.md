@@ -1,7 +1,7 @@
 # $name$
 
 Spring Boot WebMVC service (JPA/Hibernate + H2, validation, Actuator). Scaffolded from
-the jk `spring-boot-webmvc` template. First `jk lock` pins the current Spring Boot
+the JumpKick `java/spring-boot/webmvc-security-actuator-jpa-h2` template. First `jk lock` pins the current Spring Boot
 line from `[spring-boot] version = "latest"`.
 
 ```bash

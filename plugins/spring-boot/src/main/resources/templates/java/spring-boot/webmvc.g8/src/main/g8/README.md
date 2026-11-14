@@ -1,7 +1,7 @@
 # $name$
 
 Multi-module Spring Boot WebMVC app (Java $java$, virtual threads). Scaffolded from the
-jk `spring-boot` plugin kind `webmvc`.
+JumpKick `java/spring-boot/webmvc` template.
 
 ```text
 data/     entities, Spring Data JPA, Flyway migrations, H2
