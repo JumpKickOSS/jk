@@ -8,7 +8,7 @@
 #   JK_CLIENT   passed through to the installer (`jvm` where the release serves no native client)
 # The bridge is a checkout of its own beside the runner's temp dir. The pinned release relocks it in
 # the format that release reads (`jk lock -F`: the bridge is a throwaway checkout, never
-# committed) and builds it; the bridge's own jk then takes the home over, and every later step of
+# committed) and builds it; the bridge's own jk (installed as a snapshot) then takes the home over, and every later step of
 # the job builds this tree with it. Each workflow calls this script; no workflow spells a version.
 set -euo pipefail
 
@@ -23,7 +23,11 @@ if ((windows)); then JK_HOME="$(cygpath -u "$JK_HOME")"; export JK_HOME; fi
 version="$(tr -d '[:space:]' < "$ROOT/.jk/ci/ci-bootstrap-version")"
 echo "bootstrapping jk $version from https://jumpkick.build"
 if ((windows)); then
-  JK_VERSION="$version" pwsh -NoProfile -Command 'Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression'
+  # install.ps1 runs under Windows PowerShell 5.1 as well as PowerShell 7; a host without pwsh uses
+  # the powershell.exe every Windows ships.
+  ps=pwsh
+  command -v pwsh >/dev/null 2>&1 || ps=powershell.exe
+  JK_VERSION="$version" "$ps" -NoProfile -ExecutionPolicy Bypass -Command 'Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression'
 else
   curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
 fi
@@ -88,13 +92,16 @@ while ! (cd "$bridge" && jk lock -F --no-ansi -O jsonl) >"$bridge.lock.log" 2>&1
 done
 cat "$bridge.lock.log"
 
+# The bridge installs as a snapshot. It usually carries the version of the tree it bootstraps, and a
+# release is installed once: a bridge installed as that release would hold the shelf slots the
+# tree's own install then refuses to overwrite ("already installed … with other contents").
 (
   cd "$bridge"
   jk build --skip-tests --no-ansi
   # The release's client stops after packaging the shelf; the bridge's own client, which the first
   # pass installs, completes the second.
-  jk install --skip-tests --no-ansi || echo "first install pass incomplete; the bridge's client completes it"
-  jk install --skip-tests --no-ansi
+  jk snapshot --skip-tests --no-ansi || echo "first snapshot pass incomplete; the bridge's client completes it"
+  jk snapshot --skip-tests --no-ansi
 )
 jk --version
 jk engine status --no-ansi
