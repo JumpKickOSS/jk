@@ -20,9 +20,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The suites a run stamps are the suites it runs: a request that names no tags under a profile
- * whose {@code all-suites} is on (an MCP or HTTP build, a BSP run) runs the failing test the
- * profile's every suite brings in.
+ * The suites a run stamps are the suites it runs. A green marker stored while a suite was left out
+ * must not replay once that suite would run: flipping a suite's {@code explicit} under {@code
+ * --all}, or a request that names no tags under a profile whose {@code all-suites} is on (an MCP or
+ * HTTP build, a BSP run), runs the failing test the suite claims.
  */
 // Out of the unit tier: network resolve + real forked test JVMs.
 @Tag("integration")
@@ -30,6 +31,31 @@ class SuiteSelectionStampE2eTest {
 
     @TempDir
     Path tmp;
+
+    @Test
+    void flipping_a_suites_explicit_flag_reruns_all_and_runs_the_suite_it_left_out() throws Exception {
+        Path project = project(tmp, """
+                [test.suites.live]
+                tags = ["live"]
+                explicit = true
+                """);
+        TestSelection all = TestSelection.of(List.of(), true, List.of(), List.of());
+        Run first = run(project, all, null);
+        assertThat(first.result().success())
+                .as("-A leaves the explicit live suite out")
+                .isTrue();
+        assertThat(first.tests().total()).isEqualTo(1L);
+
+        Files.writeString(project.resolve("jk.toml"), manifest("""
+                [test.suites.live]
+                tags = ["live"]
+                """));
+        Run second = run(project, all, null);
+        assertThat(second.result().success())
+                .as("-A now runs the live suite, whose test fails; a replayed green marker would pass")
+                .isFalse();
+        assertThat(second.tests().failed()).isEqualTo(1L);
+    }
 
     @Test
     void a_profiles_all_suites_runs_every_suite_for_a_request_that_names_none() throws Exception {

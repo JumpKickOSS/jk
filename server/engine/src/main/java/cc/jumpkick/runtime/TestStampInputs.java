@@ -183,6 +183,7 @@ public record TestStampInputs(
     List<String> extras() throws IOException {
         List<String> extras = new ArrayList<>(testStampExtras(
                 facts.workerJars(), selection, facts.project().build(), jvmArgs, facts.dir(), identity));
+        extras.add(suitesToken(suites));
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
@@ -288,6 +289,15 @@ public record TestStampInputs(
                 moduleDir,
                 compact,
                 DeclaredSuite.withConvention(declared));
+    }
+
+    /**
+     * The stamp token of the suites the run runs: a suite's {@code explicit} flag or a profile's
+     * every-suite switch changes the set without changing any source the stamp hashes.
+     */
+    private static String suitesToken(TestSelection.Resolved suites) {
+        return "suites-run:" + String.join(",", suites.suites())
+                + (suites.ok() ? "" : "?missing=" + String.join(",", suites.missing()));
     }
 
     /**
