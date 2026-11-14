@@ -380,7 +380,7 @@ public final class BuildJournal {
             if (append(never.running, Snapshot.NONE, never.transcriptHeader()) == null) return false;
         }
         if (never != null) pending.written(finished.requestId());
-        Path target = resolveForComplete(locator, finished).orElse(null);
+        Path target = never != null ? never.planned : runDir(locator, finished).orElse(null);
         if (target == null || !Files.isDirectory(target)) return false;
         Path parent = Objects.requireNonNull(target.getParent(), "journal entry has no parent");
         String dirName = target.getFileName().toString();
@@ -1008,22 +1008,38 @@ public final class BuildJournal {
         return result;
     }
 
-    private Optional<Path> resolveForComplete(String locator, BuildRecord finished) {
-        return runDir(locator, finished);
-    }
-
     /**
      * The run directory {@code record} was written to under {@code locator}. Build numbers are
-     * per project, so a numbered locator is resolved under the record's own project home; the
-     * unscoped lookup is for the locators that name no project (a {@code j-…} job dir, a record
-     * id), and for a record that carries no project.
+     * per project, so a numbered locator is resolved under the record's own project home, or in
+     * another home only when that run's record names the same checkout (a symlinked spelling);
+     * never another project's run of that number. The unscoped lookup is for the locators that
+     * name no project (a {@code j-…} job dir, a record id), and for a record that carries no
+     * project.
      */
     public Optional<Path> runDir(String locator, @Nullable BuildRecord record) {
-        if (record != null && record.buildNumber() > 0 && record.dir() != null) {
+        if (record != null
+                && record.buildNumber() > 0
+                && record.dir() != null
+                && !record.dir().isBlank()) {
             Optional<Path> scoped = runDir(record.coord(), record.dir(), record.buildNumber());
             if (scoped.isPresent()) return scoped;
+            if (kindOf(locator) == LocatorKind.RUN_NUMBER) return sameCheckoutRun(record.dir(), record.buildNumber());
         }
         return findRunDir(locator);
+    }
+
+    /** {@code runs/<buildNumber>} in any project home whose record names {@code projectDir}'s checkout. */
+    private Optional<Path> sameCheckoutRun(String projectDir, long buildNumber) {
+        Path checkout = Path.of(projectDir);
+        for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
+            Path candidate = ProjectBuilds.runDir(home, buildNumber);
+            if (!Files.isDirectory(candidate)) continue;
+            String dir = readHead(candidate).map(h -> h.record().dir()).orElse(null);
+            if (dir != null && !dir.isBlank() && ProjectBuilds.sameCheckout(Path.of(dir), checkout)) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
     }
 
     /**

@@ -81,6 +81,9 @@ final class PendingRuns {
      */
     private final ConcurrentHashMap<Long, Entry> unwritten = new ConcurrentHashMap<>();
 
+    /** Past this many, the oldest request's entry goes first: request ids only grow. */
+    static final int MAX_UNWRITTEN = 1_024;
+
     private final BiPredicate<BuildRecord, @Nullable String> begin;
 
     /**
@@ -128,7 +131,9 @@ final class PendingRuns {
         if (requestId <= 0) return null;
         Entry entry = pending.remove(requestId);
         if (entry != null && entry.settle()) {
-            if (unwritten.size() >= 1_024) unwritten.clear();
+            if (unwritten.size() >= MAX_UNWRITTEN) {
+                unwritten.keySet().stream().min(Long::compare).ifPresent(unwritten::remove);
+            }
             unwritten.put(requestId, entry);
         }
         return unwritten.get(requestId);
