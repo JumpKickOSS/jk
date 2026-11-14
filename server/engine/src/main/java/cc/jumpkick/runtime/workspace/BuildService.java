@@ -175,21 +175,11 @@ public final class BuildService {
             int workers,
             @Nullable Path jdksDir,
             @Nullable String profile,
-            boolean skipTests,
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
         return BuildEta.estimateEtaMillis(
-                plan,
-                entryDir,
-                cache,
-                workers,
-                jdksDir,
-                profile,
-                skipTests,
-                verbose,
-                parallelTests,
-                maxModuleConcurrency);
+                plan, entryDir, cache, workers, jdksDir, profile, verbose, parallelTests, maxModuleConcurrency);
     }
 
     /**
@@ -267,21 +257,11 @@ public final class BuildService {
             int workers,
             @Nullable Path jdksDir,
             @Nullable String profile,
-            boolean skipTests,
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
         return BuildEta.estimateEtaModel(
-                plan,
-                entryDir,
-                cache,
-                workers,
-                jdksDir,
-                profile,
-                skipTests,
-                verbose,
-                parallelTests,
-                maxModuleConcurrency);
+                plan, entryDir, cache, workers, jdksDir, profile, verbose, parallelTests, maxModuleConcurrency);
     }
 
     /**

@@ -72,7 +72,6 @@ public record ExplainReport(
                         session.requestedTestWorkers(),
                         session.jdksDir(),
                         knobs.profile(),
-                        knobs.skipTests(),
                         session.verbose(),
                         session.parallelTests(),
                         maxModuleConcurrency));
@@ -96,7 +95,6 @@ public record ExplainReport(
                             session.requestedTestWorkers(),
                             session.jdksDir(),
                             knobs.profile(),
-                            knobs.skipTests(),
                             session.verbose(),
                             session.parallelTests(),
                             maxModuleConcurrency));

@@ -200,7 +200,6 @@ final class WorkspaceResourcePhase {
                 incoming.workers(),
                 request.jdksDir(),
                 request.profile(),
-                request.skipTests(),
                 request.verbose(),
                 parallelTests,
                 request.maxModuleConcurrency(),

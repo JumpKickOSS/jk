@@ -82,7 +82,7 @@ class ExplainBuildEtaParityTest {
         for (JavaCompile.PlanWorkers rule : JavaCompile.PlanWorkers.values()) {
             etas.add(ScopedValue.where(JavaCompile.PLAN_WORKERS, rule)
                     .call(() -> BuildService.estimateEtaMillis(
-                            plan, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8)));
+                            plan, tmp, tmp.resolve("c"), 0, null, null, false, true, 8)));
         }
         assertThat(etas.getFirst()).isPositive();
         assertThat(etas).containsOnly(etas.getFirst());
@@ -109,8 +109,8 @@ class ExplainBuildEtaParityTest {
     @Test
     void estimate_eta_is_deterministic_for_identical_inputs(@TempDir Path tmp) {
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
-        long a = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8);
-        long b = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8);
+        long a = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, true, 8);
+        long b = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, true, 8);
         assertThat(a).isEqualTo(b).isZero();
     }
 
@@ -139,7 +139,7 @@ class ExplainBuildEtaParityTest {
         ExplainPlan plan = BuildService.fullyCachedExplainPlan(graph);
         assertThat(plan.modules()).isNotEmpty();
         assertThat(plan.modules()).allMatch(m -> !m.dirty());
-        assertThat(BuildService.estimateEtaMillis(plan, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8))
+        assertThat(BuildService.estimateEtaMillis(plan, tmp, tmp.resolve("c"), 0, null, null, false, true, 8))
                 .isZero();
     }
 }

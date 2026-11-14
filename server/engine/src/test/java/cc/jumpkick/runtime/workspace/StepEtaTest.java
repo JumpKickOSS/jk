@@ -68,7 +68,7 @@ class StepEtaTest {
 
         BuildService.EtaModel model = SessionContext.where(
                 Session.defaults(),
-                () -> BuildEta.estimateEtaModel(plan, ws, ws.resolve("cache"), 1, null, null, false, false, false, 0));
+                () -> BuildEta.estimateEtaModel(plan, ws, ws.resolve("cache"), 1, null, null, false, false, 0));
 
         assertThat(model.steps()).containsOnlyKeys(app);
         assertThat(model.steps().get(app))

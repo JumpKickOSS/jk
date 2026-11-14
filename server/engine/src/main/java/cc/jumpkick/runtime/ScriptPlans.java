@@ -196,8 +196,7 @@ public final class ScriptPlans {
             unpaired = "a script's compile, planned outside any module: nothing forecasts it")
     private static CompileResult compileJava(Path script, ScriptHeader header, Path classesDir, List<Path> classpath)
             throws IOException {
-        int release =
-                header.release() != null ? header.release() : Runtime.version().feature();
+        int release = ScriptCacheKey.release(header);
         CompileRequest request = CompileRequest.builder()
                 .sources(withDeclaredSources(script, header))
                 .classpath(classpath)

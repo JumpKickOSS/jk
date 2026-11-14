@@ -72,7 +72,7 @@ class ExplainSelectionConeTest {
             assertThat(m.steps()).isEqualTo(wholeSteps.get(BuildGraph.canonicalPath(m.dir())));
         }
         assertThat(cone.maxReadyWidth()).isEqualTo(whole.maxReadyWidth());
-        assertThat(BuildService.estimateEtaMillis(cone, ws, cache, 0, null, null, false, false, true, 8))
+        assertThat(BuildService.estimateEtaMillis(cone, ws, cache, 0, null, null, false, true, 8))
                 .isEqualTo(BuildService.estimateEtaMillis(
                         BuildService.restrictToSelection(whole, Set.of(b, c)),
                         ws,
@@ -80,7 +80,6 @@ class ExplainSelectionConeTest {
                         0,
                         null,
                         null,
-                        false,
                         false,
                         true,
                         8));

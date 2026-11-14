@@ -57,6 +57,15 @@ class ScriptCacheKeyTest {
     }
 
     @Test
+    void the_release_keyed_is_the_one_the_script_compiles_for() {
+        assertThat(ScriptCacheKey.release(ScriptHeaderParser.parse("//JAVA 17\nclass Main {}")))
+                .as("a //JAVA line names the release, whatever the engine runs on")
+                .isEqualTo(17);
+        assertThat(ScriptCacheKey.release(ScriptHeaderParser.parse("class Main {}")))
+                .isEqualTo(Runtime.version().feature());
+    }
+
+    @Test
     void a_run_stamps_its_entry_as_used(@TempDir Path dir) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("key/classes"));
         Path used = dir.resolve("key").resolve(ScriptCacheKey.USED);

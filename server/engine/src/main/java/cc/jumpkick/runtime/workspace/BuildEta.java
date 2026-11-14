@@ -45,21 +45,11 @@ public final class BuildEta {
             int workers,
             @Nullable Path jdksDir,
             @Nullable String profile,
-            boolean skipTests,
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
         return estimateEtaModel(
-                        plan,
-                        entryDir,
-                        cache,
-                        workers,
-                        jdksDir,
-                        profile,
-                        skipTests,
-                        verbose,
-                        parallelTests,
-                        maxModuleConcurrency)
+                        plan, entryDir, cache, workers, jdksDir, profile, verbose, parallelTests, maxModuleConcurrency)
                 .etaMs();
     }
 
@@ -70,22 +60,11 @@ public final class BuildEta {
             int workers,
             @Nullable Path jdksDir,
             @Nullable String profile,
-            boolean skipTests,
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
         return estimateEtaModel(
-                plan,
-                entryDir,
-                cache,
-                workers,
-                jdksDir,
-                profile,
-                skipTests,
-                verbose,
-                parallelTests,
-                maxModuleConcurrency,
-                null);
+                plan, entryDir, cache, workers, jdksDir, profile, verbose, parallelTests, maxModuleConcurrency, null);
     }
 
     /** As above; a re-pricing passes the build's {@code seed}, whose work set and shape it keeps. */
@@ -96,7 +75,6 @@ public final class BuildEta {
             int workers,
             @Nullable Path jdksDir,
             @Nullable String profile,
-            boolean skipTests,
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency,
@@ -112,7 +90,6 @@ public final class BuildEta {
                     workers,
                     jdksDir,
                     profile,
-                    skipTests,
                     verbose,
                     parallelTests,
                     maxModuleConcurrency,

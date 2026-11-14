@@ -69,7 +69,6 @@ public final class StepEta {
             int workers,
             @Nullable Path jdksDir,
             @Nullable String profile,
-            boolean skipTests,
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency,

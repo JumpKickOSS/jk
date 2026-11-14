@@ -46,13 +46,17 @@ final class ScriptCacheKey {
             if (dep.classifier() != null) key.append(':').append(dep.classifier());
             key.append('\n');
         }
-        // The JDK the compile forks on, and the engine's own feature release, which a script that
-        // names no //JAVA release compiles for.
+        // The JDK the compile forks on, and the release it compiles for.
         key.append("jdk:")
                 .append(ActionKey.jdkToken(JavaHomes.resolveJavaHome(dir)))
                 .append('\n');
-        key.append("release:").append(Runtime.version().feature()).append('\n');
+        key.append("release:").append(release(header)).append('\n');
         return Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** The release a script compiles for: its {@code //JAVA} line's, else the engine's own feature release. */
+    static int release(ScriptHeader header) {
+        return header.release() != null ? header.release() : Runtime.version().feature();
     }
 
     /** Stamp the entry holding {@code classesDir} as used now, so a script run every day is kept. */
