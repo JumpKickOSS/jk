@@ -5,8 +5,8 @@
 #
 # Usage (from a checkout of the release tag; its jk.toml names the version):
 #   scripts/release-publish.sh sign     <out> <private-key.pem>   SHA256SUMS.sig, checked with the key the installers trust
-#   scripts/release-publish.sh upload   <out>                     releases/<version>/ (rsync -d), then repo/ (additive)
-#   scripts/release-publish.sh pointer  <out> <private-key.pem>   sign latest/LATEST now and copy it (no-cache); VERSION beside it
+#   scripts/release-publish.sh upload   <out>                     releases/<version>/ (rsync -d), then repo/ (additive); checks the object count
+#   scripts/release-publish.sh pointer  <out> <private-key.pem>   once every file is served as signed: sign latest/LATEST now, copy it (no-cache), VERSION beside it
 #   scripts/release-publish.sh verify   <out> <public-key.pem>    the pointer and SHA256SUMS as jumpkick.build serves them
 #   scripts/release-publish.sh hosting                            firebase deploy of hosting/public, from the tag only
 #   scripts/release-publish.sh github   <out>                     the GitHub Release, with the tree, the SBOM and the notes
@@ -71,10 +71,31 @@ case "$STEP" in
     for art in jk-host jk-plugin-sdk jk-test-runner jk-java-compiler; do
       run gsutil -q stat "gs://$BUCKET/repo/cc/jumpkick/$art/$VER/$art-$VER.pom"
     done
+    want="$(find "$OUT/$VER" -maxdepth 1 -type f | wc -l | tr -d ' ')"
+    if [[ "${JK_RELEASE_DRY_RUN:-}" == 1 ]]; then
+      echo "dry-run: expect $want objects under gs://$BUCKET/releases/$VER/"
+    else
+      got="$(gsutil ls "gs://$BUCKET/releases/$VER/" | wc -l | tr -d ' ')"
+      [[ "$got" == "$want" ]] || die "gs://$BUCKET/releases/$VER/ holds $got objects, the tree $want"
+      echo "release-publish: gs://$BUCKET/releases/$VER/ holds the tree's $want objects"
+    fi
     ;;
   pointer)
     OUT="${1:?usage: release-publish.sh pointer <out> <private-key.pem>}"; KEY="${2:?private key}"
+    need_tree "$OUT"
     bash "$ROOT/scripts/release-key-matches.sh" "$KEY" PEM
+    # The pointer is what makes the release live, so it moves only once jumpkick.build serves every
+    # file of the version directory, and the sums and their signature byte for byte.
+    t="$(mktemp -d)"; trap 'rm -rf "$t"' EXIT
+    for f in "$OUT/$VER"/*; do
+      name="$(basename "$f")"
+      curl -fsSL "$RELEASES/$VER/$name" -o "$t/$name" || die "$RELEASES/$VER/$name is not served: not moving the pointer"
+    done
+    for name in SHA256SUMS SHA256SUMS.sig; do
+      cmp -s "$t/$name" "$OUT/$VER/$name" || die "the served $name is not this tree's: not moving the pointer"
+    done
+    (cd "$t" && if command -v sha256sum >/dev/null 2>&1; then sha256sum --check --strict --quiet SHA256SUMS; else shasum -a 256 --check --strict --quiet SHA256SUMS; fi) || die "a served file does not match SHA256SUMS: not moving the pointer"
+    echo "release-publish: jumpkick.build serves all $(find "$OUT/$VER" -maxdepth 1 -type f | wc -l | tr -d ' ') files of $VER, as signed"
     rm -rf "$OUT/latest"
     bash "$ROOT/scripts/sign-latest-pointer.sh" "$VER" "$OUT/latest" "$KEY"
     run gsutil -h "Cache-Control:no-cache,max-age=0" cp "$OUT/latest/LATEST" "gs://$BUCKET/releases/latest/LATEST"
@@ -117,10 +138,26 @@ case "$STEP" in
     need_tree "$OUT"
     git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || die "$TAG is not pushed"
     [[ -f "$OUT/$VER/SHA256SUMS.sig" ]] || die "$OUT/$VER is unsigned"
+    # GitHub refuses a release body over 125000 characters. Notes longer than that keep their
+    # highlights and link the full change list instead of folding it in.
+    notes="$OUT/RELEASE_NOTES.md"
+    chars="$(python3 -I -c 'import sys; print(len(open(sys.argv[1], encoding="utf-8").read()))' "$notes")"
+    if [[ "$chars" -gt 120000 ]]; then
+      since="$(sed -n 's/.*Every change since \(v[^ ]*\) (\([0-9]*\) commits).*/\1 \2/p' "$notes" | head -1)"
+      notes="$OUT/RELEASE_NOTES.github.md"
+      {
+        sed -n '/^<details>/q;p' "$OUT/RELEASE_NOTES.md"
+        if [[ -n "$since" ]]; then
+          printf 'Every change since %s (%s commits): https://github.com/%s/compare/%s...%s\n' \
+            "${since% *}" "${since#* }" "$REPO_NAME" "${since% *}" "$TAG"
+        fi
+      } >"$notes"
+      echo "release-publish: RELEASE_NOTES.md has $chars characters, over GitHub's limit; the release body is $notes"
+    fi
     if [[ "${JK_RELEASE_DRY_RUN:-}" == 1 ]]; then
-      echo "dry-run: GITHUB_REPOSITORY=$REPO_NAME scripts/publish-github-release.sh $VER $OUT/RELEASE_NOTES.md $OUT/$VER/* $OUT/sbom/jk-$VER.cdx.json"
+      echo "dry-run: GITHUB_REPOSITORY=$REPO_NAME scripts/publish-github-release.sh $VER $notes $OUT/$VER/* $OUT/sbom/jk-$VER.cdx.json"
     else
-      GITHUB_REPOSITORY="$REPO_NAME" bash "$ROOT/scripts/publish-github-release.sh" "$VER" "$OUT/RELEASE_NOTES.md" \
+      GITHUB_REPOSITORY="$REPO_NAME" bash "$ROOT/scripts/publish-github-release.sh" "$VER" "$notes" \
         "$OUT/$VER"/* "$OUT/sbom/jk-$VER.cdx.json"
     fi
     ;;

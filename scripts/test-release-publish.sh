@@ -108,18 +108,7 @@ pub sign "$OUT" "$WORK/trusted.pem" || fail "the trusted key did not sign"
 grep -q "Verified OK" "$WORK/out.log" || fail "the signature was not verified"
 ok "sign refuses an untrusted key and signs with the trusted one"
 
-# upload and pointer: the tree before repo/, the pointer with no-cache.
-pub upload "$OUT" || fail "the upload dry run failed"
-tree_line="$(grep -n "rsync -r -d $OUT/$V/ gs://jumpkick/releases/$V/" "$WORK/out.log" | cut -d: -f1)"
-repo_line="$(grep -n "rsync -r $OUT/repo/ gs://jumpkick/repo/" "$WORK/out.log" | cut -d: -f1)"
-[[ -n "$tree_line" && -n "$repo_line" && "$tree_line" -lt "$repo_line" ]] || fail "upload does not copy the tree, then repo/"
-pub pointer "$OUT" "$WORK/trusted.pem" || fail "the pointer dry run failed"
-grep -q "Cache-Control:no-cache,max-age=0 cp $OUT/latest/LATEST gs://jumpkick/releases/latest/LATEST" "$WORK/out.log" \
-  || fail "the pointer is not copied with no-cache"
-[[ "$(sed -n 1p "$OUT/latest/LATEST")" == "version $V" ]] || fail "the pointer does not name $V"
-ok "upload copies the tree before repo/; the pointer goes up signed with no-cache"
-
-# hosting: the fixture site serves a pointer; curl answers from it.
+# The fixture jumpkick.build: curl answers from $WORK/site.
 mkdir -p "$WORK/bin" "$WORK/site/releases/latest"
 cat >"$WORK/bin/curl" <<'SH'
 #!/usr/bin/env bash
@@ -131,6 +120,31 @@ src="$FIXTURE_ROOT$path"
 if [[ -n "$out" ]]; then cp "$src" "$out"; else cat "$src"; fi
 SH
 chmod +x "$WORK/bin/curl"
+
+# upload and pointer: the tree before repo/, the pointer with no-cache.
+pub upload "$OUT" || fail "the upload dry run failed"
+tree_line="$(grep -n "rsync -r -d $OUT/$V/ gs://jumpkick/releases/$V/" "$WORK/out.log" | cut -d: -f1)"
+repo_line="$(grep -n "rsync -r $OUT/repo/ gs://jumpkick/repo/" "$WORK/out.log" | cut -d: -f1)"
+[[ -n "$tree_line" && -n "$repo_line" && "$tree_line" -lt "$repo_line" ]] || fail "upload does not copy the tree, then repo/"
+grep -q "expect 15 objects under gs://jumpkick/releases/$V/" "$WORK/out.log" || fail "upload does not derive the object count from the tree"
+# The pointer waits until every file of the version directory is served as signed.
+mkdir -p "$WORK/site/releases/$V"
+cp "$OUT/$V"/* "$WORK/site/releases/$V/"
+rm "$WORK/site/releases/$V/jk-macos-aarch64-$V.gz"
+if pub pointer "$OUT" "$WORK/trusted.pem"; then fail "the pointer moved while a file of the version was not served"; fi
+grep -q "releases/$V/jk-macos-aarch64-$V.gz is not served: not moving the pointer" "$WORK/out.log" || fail "the unserved file was not named"
+cp "$OUT/$V/jk-macos-aarch64-$V.gz" "$WORK/site/releases/$V/"
+printf 'other' >"$WORK/site/releases/$V/jk-windows-x86_64-$V.zip"
+if pub pointer "$OUT" "$WORK/trusted.pem"; then fail "the pointer moved while a served file did not match the sums"; fi
+grep -q "a served file does not match SHA256SUMS" "$WORK/out.log" || fail "the mismatching file was not refused"
+cp "$OUT/$V/jk-windows-x86_64-$V.zip" "$WORK/site/releases/$V/"
+pub pointer "$OUT" "$WORK/trusted.pem" || fail "the pointer dry run failed"
+grep -q "serves all 15 files of $V, as signed" "$WORK/out.log" || fail "the pointer did not confirm the served tree"
+grep -q "Cache-Control:no-cache,max-age=0 cp $OUT/latest/LATEST gs://jumpkick/releases/latest/LATEST" "$WORK/out.log" \
+  || fail "the pointer is not copied with no-cache"
+[[ "$(sed -n 1p "$OUT/latest/LATEST")" == "version $V" ]] || fail "the pointer does not name $V"
+ok "upload copies the tree before repo/ and counts it; the pointer waits for the served tree, then goes up signed with no-cache"
+
 printf 'version 9.8.6\nissued 1\nsignature x\n' >"$WORK/site/releases/latest/LATEST"
 g checkout -q main
 if pub hosting; then fail "hosting deployed from a commit that is not the tag"; fi
@@ -142,5 +156,20 @@ cp "$OUT/latest/LATEST" "$WORK/site/releases/latest/LATEST"
 pub hosting || fail "hosting was refused from the tag with the pointer at the floor"
 grep -q "dry-run:.*firebase-tools@15.30.2 deploy --only hosting --project jkbuild" "$WORK/out.log" || fail "the deploy was not the firebase deploy"
 ok "hosting deploys only from the tag, after the pointer reaches the installers' floor"
+
+# github: notes over GitHub's 125000-character body limit keep their highlights and link the rest.
+g remote add origin "$REPO"
+{
+  printf '## Highlights\n\n- **A highlight users read first.** It stays in the release body.\n\n<details>\n<summary>Every change since v9.8.6 (3000 commits)</summary>\n\n'
+  for i in $(seq 1 3000); do printf -- '- a long commit subject that says what changed and why, at length, number %s\n' "$i"; done
+  printf '\n</details>\n'
+} >"$OUT/RELEASE_NOTES.md"
+pub github "$OUT" || fail "the github dry run failed"
+grep -q "publish-github-release.sh $V $OUT/RELEASE_NOTES.github.md " "$WORK/out.log" || fail "the release body is not the shortened notes"
+grep -q "A highlight users read first" "$OUT/RELEASE_NOTES.github.md" || fail "the shortened notes lost the highlights"
+grep -q "Every change since v9.8.6 (3000 commits): https://github.com/JumpKickOSS/jk/compare/v9.8.6...v$V" "$OUT/RELEASE_NOTES.github.md" \
+  || fail "the shortened notes do not link the full change list"
+if grep -q '<details>' "$OUT/RELEASE_NOTES.github.md"; then fail "the shortened notes still fold the commit list"; fi
+ok "github shortens notes over GitHub's body limit to the highlights and a compare link"
 
 echo "test-release-publish: ok"
