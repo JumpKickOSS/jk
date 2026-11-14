@@ -83,7 +83,6 @@ class WorkerBudgetJobsTest {
         Files.createFile(release);
         assertThat(first.get(10, TimeUnit.SECONDS)).isZero();
         assertThat(second.get(10, TimeUnit.SECONDS)).isZero();
-        assertThat(ledger.waitedNanos(1L) + ledger.waitedNanos(2L)).isPositive();
         awaitReleased(ledger);
         assertThat(ledger.queued()).isZero();
     }

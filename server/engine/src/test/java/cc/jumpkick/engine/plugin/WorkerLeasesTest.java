@@ -397,7 +397,6 @@ class WorkerLeasesTest {
             awaitState(states, "memory");
             held.close();
             waiting.get(5, TimeUnit.SECONDS).close();
-            assertThat(ledger.waitedNanos(3L)).isPositive();
             assertThat(states).containsExactly("memory", "running");
             assertThat(output).as("a short wait writes no line").isEmpty();
             assertThat(label.get())

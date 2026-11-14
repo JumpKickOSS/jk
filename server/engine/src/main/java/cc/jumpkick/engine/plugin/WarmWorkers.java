@@ -177,6 +177,20 @@ public final class WarmWorkers {
         }
     }
 
+    /** Test seam: workers the engine still holds, dead or alive. */
+    static int liveCount() {
+        return LIVE.size();
+    }
+
+    /** Test seam: live workers whose command channel is still open. */
+    static int openCommandChannels() {
+        int n = 0;
+        for (Worker w : LIVE) {
+            if (w.commands.isOpen()) n++;
+        }
+        return n;
+    }
+
     /** Test seam: the pids of every live worker. */
     static List<Long> livePids() {
         List<Long> pids = new ArrayList<>();
@@ -191,19 +205,24 @@ public final class WarmWorkers {
      * that names no heap takes only a worker that names none.
      */
     private static @Nullable Worker takeIdle(String key, long heap) {
+        List<Worker> dead = new ArrayList<>();
+        Worker best = null;
         synchronized (IDLE) {
             Deque<Worker> idle = IDLE.get(key);
             if (idle == null) return null;
-            idle.removeIf(w -> !w.process.isAlive());
-            Worker best = null;
+            for (Worker w : idle) {
+                if (!w.process.isAlive()) dead.add(w);
+            }
+            idle.removeAll(dead);
             for (Worker w : idle) {
                 if (!fits(w.heap, heap)) continue;
                 if (best == null || w.heap < best.heap) best = w;
             }
             if (best != null) idle.remove(best);
             if (idle.isEmpty()) IDLE.remove(key);
-            return best;
         }
+        for (Worker w : dead) w.abandonDead();
+        return best;
     }
 
     /** Whether a worker started with {@code have} can serve a run that asks for {@code want}. */
@@ -541,6 +560,13 @@ public final class WarmWorkers {
                 LockSupport.parkNanos(this, wait);
                 if (Thread.currentThread().isInterrupted()) return;
             }
+            if (unlistIdle(this)) abandonDead();
+        }
+
+        /** Forget a worker that died while idle (killed from outside): off the live set, channel closed. */
+        void abandonDead() {
+            LIVE.remove(this);
+            commands.close();
         }
 
         /** Has the reaper measure the linger again now rather than when its sleep ends. */

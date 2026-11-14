@@ -197,6 +197,12 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
         return true;
     }
 
+    /** Whether {@link #close} has not run yet. */
+    boolean isOpen() {
+        Socket s = socket;
+        return s != null ? !s.isClosed() : !listener.isClosed();
+    }
+
     /** Close the channel: the worker reads end-of-input, as at {@code DONE}. */
     @Override
     public void closeInput() {

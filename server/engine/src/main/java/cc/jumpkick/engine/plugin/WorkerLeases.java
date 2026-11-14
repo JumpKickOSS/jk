@@ -19,9 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
@@ -240,7 +238,6 @@ public final class WorkerLeases {
         private final Object lock = new Object();
         private final ArrayDeque<Waiter> queue = new ArrayDeque<>();
         private final LinkedHashSet<Waiter> held = new LinkedHashSet<>();
-        private final ConcurrentHashMap<Long, AtomicLong> waited = new ConcurrentHashMap<>();
         private final Set<TaskContext> warnedSteps = Collections.newSetFromMap(new WeakHashMap<>());
         private long leased;
         /** Sum over held workers of what each may grow to; at most twice the budget. */
@@ -440,12 +437,6 @@ public final class WorkerLeases {
             }
         }
 
-        /** Nanoseconds request {@code requestId} has spent waiting for a lease. */
-        public long waitedNanos(long requestId) {
-            AtomicLong n = waited.get(requestId);
-            return n == null ? 0 : n.get();
-        }
-
         /**
          * Block until {@code command}'s lease fits, classifying the heap with {@link
          * JvmOptions.HeapChoice#inspect}. A planned JVM lease larger than the budget is clamped
@@ -577,9 +568,6 @@ public final class WorkerLeases {
          * on hold.
          */
         private Grant finish(Waiter waiter, long waitedNanos, long memoryNanos, long heldNanos) {
-            if (waiter.requestId != null && waitedNanos > 0) {
-                waited.computeIfAbsent(waiter.requestId, id -> new AtomicLong()).addAndGet(waitedNanos);
-            }
             boolean run;
             synchronized (lock) {
                 run = waiter.counted = waiter.resident == null && !waiter.released;

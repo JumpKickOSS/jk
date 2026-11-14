@@ -105,6 +105,21 @@ class WarmWorkersTest {
     }
 
     @Test
+    void an_idle_worker_killed_from_outside_is_forgotten_when_the_next_run_takes_a_worker() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        long dead = run(launch("a"), "ok", out).pid;
+        ProcessHandle handle = ProcessHandle.of(dead).orElseThrow();
+        handle.destroyForcibly();
+        handle.onExit().get(10, TimeUnit.SECONDS);
+
+        long next = run(launch("a"), "ok", out).pid;
+
+        assertThat(next).isNotEqualTo(dead);
+        assertThat(WarmWorkers.liveCount()).as("only the new worker is live").isEqualTo(1);
+        assertThat(WarmWorkers.openCommandChannels()).isEqualTo(1);
+    }
+
+    @Test
     void a_run_that_maps_a_startup_cache_shares_the_worker_that_started_without_one() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         long cold = run(launch("a"), "ok", out).pid;
