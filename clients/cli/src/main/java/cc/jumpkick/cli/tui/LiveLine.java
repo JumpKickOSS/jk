@@ -3,11 +3,11 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.Osc;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.RegionPainter;
-import cc.jumpkick.terminal.Terminals;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.function.Supplier;
@@ -89,14 +89,13 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Whether {@code out} reaches a terminal. ANSI colour can be on for a stream that is a pipe or
-     * a file ({@code jk clean > log}, {@code jk outdated | less}); frames, cursor hides and OSC
-     * progress written there are noise in the file, so such a region prints its plain lines.
+     * Whether {@code out} reaches a terminal that may carry a live region. Colour can be forced on
+     * for a pipe or a file ({@code jk clean --color always > log}); frames, cursor hides and OSC
+     * progress written there are noise in the file, so such a region prints its plain lines. A
+     * stream {@link CliOutput} does not know (a test's own capture) keeps the theme's say.
      */
     static boolean drawsOnTerminal(PrintStream out) {
-        if (out == System.err) return Terminals.stderrIsTty() && !Interactivity.forcedNonInteractive();
-        if (out == System.out) return Interactivity.stdoutIsTty();
-        return true; // a caller's own stream (a test's capture) keeps the theme's say
+        return CliOutput.sideOf(out).map(StreamCaps::live).orElse(true);
     }
 
     /** Describe a region over one row of {@code out}; {@link Builder#open()} takes the row. */

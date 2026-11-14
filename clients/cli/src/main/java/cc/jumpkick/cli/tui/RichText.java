@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Width;
 import java.util.ArrayList;
@@ -121,7 +121,7 @@ public final class RichText {
         Style style = span.style.toAttributed(ctx.theme());
         String painted = Theme.paint(text, style);
         if (span.linkUrl != null && !span.linkUrl.isBlank()) {
-            return Ansi.hyperlink(span.linkUrl, painted);
+            return Osc.hyperlink(span.linkUrl, painted);
         }
         return painted;
     }

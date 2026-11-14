@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.Osc;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
@@ -19,7 +22,10 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code never} / {@code false} — never notify
  * </ul>
  *
- * <p>{@code --no-progress}, {@code --no-osc}, and JSONL output also suppress notifications.
+ * <p>{@code --no-progress}, {@code --no-osc}, and JSONL output also suppress notifications. A
+ * notification is written only to a terminal: to the build's own stream when that is one, else to
+ * stderr when stdout is redirected and stderr is still the terminal, else nowhere, so a redirected
+ * log never collects one.
  */
 public final class BuildNotify {
 
@@ -49,7 +55,7 @@ public final class BuildNotify {
         // Suppress when progress chrome is off, OSC is off, or stdout is JSONL (OSC would corrupt
         // the machine stream).
         if (global.noProgress || global.noOsc || global.outputIsJson()) return false;
-        if (!Osc.oscEnabled()) return false;
+        if (SessionContext.current().config().noOscOr(false)) return false;
         JkConfig.NotifyChoice policy = global.notify == null ? JkConfig.NotifyChoice.AUTO : global.notify;
         return switch (policy) {
             case NEVER -> false;
@@ -95,8 +101,8 @@ public final class BuildNotify {
     }
 
     /**
-     * Emit OSC&nbsp;99 when {@link #shouldNotify} is true. Writes to {@code out} (typically stdout so
-     * the terminal hosting the build sees it). No-op when suppressed.
+     * Emit OSC&nbsp;99 when {@link #shouldNotify} is true, on the terminal hosting the build ({@link
+     * #terminalFor}). No-op when suppressed or when no stream is a terminal.
      */
     public static void maybeNotify(
             PrintStream out,
@@ -106,9 +112,21 @@ public final class BuildNotify {
             long estimateMs,
             long elapsedMs) {
         if (out == null || !shouldNotify(global, estimateMs, elapsedMs)) return;
-        String seq = Osc.desktopNotify(TITLE, message(outcome, groupArtifact, elapsedMs));
-        if (seq.isEmpty()) return;
-        out.print(seq);
-        out.flush();
+        PrintStream terminal = terminalFor(out);
+        if (terminal == null) return;
+        // The terminal check already asked whether that stream may carry ANSI.
+        terminal.print(Ansi.desktopNotify(TITLE, message(outcome, groupArtifact, elapsedMs)));
+        terminal.flush();
+    }
+
+    /**
+     * The stream a notification for a build drawn on {@code out} goes to: {@code out} when it may
+     * carry terminal OSC ({@link StreamCaps#live}), else stderr when that may, else null. A stream
+     * {@link CliOutput} does not know (a test's capture) is taken as the caller meant it.
+     */
+    static @Nullable PrintStream terminalFor(PrintStream out) {
+        var side = CliOutput.sideOf(out);
+        if (side.isEmpty() || StreamCaps.live(side.get())) return out;
+        return side.get() == StreamCaps.Side.OUT && StreamCaps.live(StreamCaps.Side.ERR) ? System.err : null;
     }
 }

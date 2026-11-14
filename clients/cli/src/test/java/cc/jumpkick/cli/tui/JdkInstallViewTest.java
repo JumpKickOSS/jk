@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import org.junit.jupiter.api.extension.ExtendWith;
-import cc.jumpkick.cli.testing.ForcedAnsi;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.jdk.InstalledJdk;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(ForcedAnsi.class)
 class JdkInstallViewTest {
@@ -63,16 +65,21 @@ class JdkInstallViewTest {
 
     @Test
     void a_warning_during_a_live_bar_settles_above_it_and_the_bar_repaints_intact() throws Exception {
-        String out = NoAnsi.forcedAnsi(() -> Capture.stdout(() -> {
-            CliOutput.beginCommand(false);
-            try (JdkInstallView view = new JdkInstallView(null)) {
-                view.onDownloadStart("Temurin 21", 1_000);
-                view.onDownloadProgress(500, 1_000);
-                view.warn("the feed is unreachable; using the cached index");
-                view.onDownloadProgress(1_000, 1_000);
-                view.onInstalled(new InstalledJdk("temurin-21.0.12", HOME));
-            }
-        }));
+        assumeFalse(StreamCaps.forcedNonInteractive(), "CI or TERM=dumb turns every live bar off");
+        // A live bar draws only on a terminal: stand one in for the captured stdout.
+        String out = StreamCaps.asTerminal(
+                true,
+                false,
+                () -> NoAnsi.forcedAnsi(() -> Capture.stdout(() -> {
+                    CliOutput.beginCommand(false);
+                    try (JdkInstallView view = new JdkInstallView(null)) {
+                        view.onDownloadStart("Temurin 21", 1_000);
+                        view.onDownloadProgress(500, 1_000);
+                        view.warn("the feed is unreachable; using the cached index");
+                        view.onDownloadProgress(1_000, 1_000);
+                        view.onInstalled(new InstalledJdk("temurin-21.0.12", HOME));
+                    }
+                })));
         // Rows are what the newline separates; frames repaint one row with \r and never end it.
         List<String> rows = List.of(out.split("\\n"));
         int warning = -1;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.BuildStamps;
@@ -22,7 +23,6 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -164,7 +164,7 @@ public final class EngineStatusCommand implements CliCommand {
         String http = describeHttp(s, paths);
         // OSC-8 hyperlink; visible text is white to match other status values.
         String webUi = s.httpUrl() != null
-                ? Ansi.hyperlink(http, Theme.paint(http, Theme.active().brightWhite()))
+                ? Osc.hyperlink(http, Theme.paint(http, Theme.active().brightWhite()))
                 : http;
         detail("Web UI", webUi);
         if (s.mcpUrl() != null) {

@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Coords;
@@ -27,7 +28,6 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
@@ -588,6 +588,6 @@ public final class AddCommand implements CliCommand {
     /** OSC 8 hyperlink: the URL is both the link target and the visible text. */
     private static String osc8Link(String url) {
         String coloredUrl = Theme.paint(url, Theme.active().activeStep());
-        return Ansi.hyperlink(url, coloredUrl);
+        return Osc.hyperlink(url, coloredUrl);
     }
 }

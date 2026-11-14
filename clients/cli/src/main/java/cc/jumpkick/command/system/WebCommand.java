@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.OpenBrowser;
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
@@ -16,7 +17,6 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -86,7 +86,7 @@ public final class WebCommand implements CliCommand {
         CliOutput.out(Theme.paint("  Open the URL below if a browser did not launch:", Style.EMPTY.italic()));
         // OSC-8 hyperlink + path color — same treatment as `jk engine status` Web UI line.
         String visible = Theme.paint(url, t.path());
-        CliOutput.out("  " + Ansi.hyperlink(url, visible));
+        CliOutput.out("  " + Osc.hyperlink(url, visible));
 
         if (!noOpen) {
             boolean opened = OpenBrowser.open(url);
