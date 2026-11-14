@@ -35,6 +35,11 @@ print helpers (`CommandWedge.printFail` and friends, the dispatcher's error line
 `StreamCaps.renderingFor(ERR, …)`, everything else for stdout, and `CliOutput` strips any stream
 that may not carry ANSI of what slipped through. So `jk build 2> err.log` keeps a coloured terminal
 and a plain log, and `jk build > out.log` keeps coloured failure and warning lines on the terminal.
+Only those helpers render for stderr: any other `CliOutput.err` line is composed for stdout's
+device, so with stdout redirected it is plain on a terminal stderr too. That is the rule, not a
+gap: the redirected run is headless and its narrative is the headless text, the same bytes a
+`2>&1` capture gets; colour stays on the lines a person must not miss (failure, warning, cancel).
+`StreamCapsPerStreamTest` pins it.
 A live region draws only on a terminal stdout; with stdout redirected the run settles headless,
 its human lines on stderr, as under `-O json`. A build notification goes to the terminal hosting the build
 (stderr when only stdout is redirected) and never into a redirected log.

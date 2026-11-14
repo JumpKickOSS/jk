@@ -53,9 +53,11 @@ terminal: with stdout redirected it goes to stderr when that is the terminal, an
 **Plain output:** a stream that is not a terminal is plain, whether it goes to a file or a pipe:
 no colour, no escape sequences (links, progress, notifications), no live progress, and ASCII in
 place of Unicode chrome. stdout and stderr are judged separately, so `jk build 2> err.log`
-keeps the terminal's colour and writes a plain log. `--color always` or `force-ansi` keeps colour,
-chrome and links in a file or pipe (for `less -R`); live progress and notifications still need a
-terminal.
+keeps the terminal's colour and writes a plain log. With only stdout redirected
+(`jk build > out.log`), failure, warning and cancelled lines keep their colour on the terminal;
+the rest of what reaches stderr, the run's narrative, is plain, as a headless run prints it.
+`--color always` or `force-ansi` keeps colour, chrome and links in a file or pipe (for
+`less -R`); live progress and notifications still need a terminal.
 
 **`force-ansi`:** ANSI is otherwise suppressed by a redirect, `TERM=dumb` or a truthy `CI`,
 whichever applies. `force-ansi` (like `--color always`) outranks them, so output can be pinned to
