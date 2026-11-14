@@ -207,6 +207,9 @@ final class HttpNewProjectApi {
         return MiniJson.write(out);
     }
 
+    /** How many of the newest runs the parent-directory guess reads. */
+    static final int HISTORY_GUESS_RUNS = 200;
+
     /**
      * This machine's values for the form's derived defaults: the group from the git email, as
      * {@code jk new} guesses it, and the parent directory from build history and well-known roots.
@@ -214,8 +217,9 @@ final class HttpNewProjectApi {
     private Map<String, String> derived() {
         List<Path> historyDirs = new ArrayList<>();
         try {
-            for (var rec : journal.list()) {
-                if (rec != null && rec.dir() != null && !rec.dir().isBlank()) historyDirs.add(Path.of(rec.dir()));
+            for (var head : journal.heads(HISTORY_GUESS_RUNS)) {
+                var rec = head.record();
+                if (rec.dir() != null && !rec.dir().isBlank()) historyDirs.add(Path.of(rec.dir()));
             }
         } catch (RuntimeException e) {
             // An empty or unreadable journal: the guess works without history.

@@ -342,7 +342,8 @@ final class HttpHistoryApi {
 
     /**
      * {@code GET /api/history/artifact?id=…&name=…} — a snapshot file served as plain text.
-     * {@code name} is whitelisted by the journal.
+     * {@code name} is whitelisted by the journal; one over {@link HttpCoverageReport#MAX_FILE_BYTES} is
+     * refused (413) rather than read whole.
      */
     void handleHistoryArtifact(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
@@ -354,6 +355,10 @@ final class HttpHistoryApi {
                     exchange,
                     404,
                     JsonOut.object().put("error", "no such artifact").toString());
+            return;
+        }
+        if (Files.size(artifact.get()) > HttpCoverageReport.MAX_FILE_BYTES) {
+            HttpResponses.sendText(exchange, 413, "artifact too large to serve\n");
             return;
         }
         HttpResponses.sendText(exchange, 200, Files.readString(artifact.get(), StandardCharsets.UTF_8));

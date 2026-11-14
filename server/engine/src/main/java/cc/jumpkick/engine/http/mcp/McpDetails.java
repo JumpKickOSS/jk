@@ -4,10 +4,12 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -36,6 +38,26 @@ public final class McpDetails {
     static final int MAX_CHARS = 24_000;
 
     private McpDetails() {}
+
+    /** The newest {@code keep} lines of a transcript whose type is wanted, and how many matched in all. */
+    record Matching(List<String> lines, int total) {}
+
+    /** Read {@code file} once, holding at most {@code keep} matching lines. */
+    static Matching lastMatching(Path file, Set<String> wanted, int keep) throws IOException {
+        ArrayDeque<String> ring = new ArrayDeque<>(Math.min(keep, 1_024));
+        int total = 0;
+        try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            for (String line; (line = in.readLine()) != null; ) {
+                if (line.isBlank()) continue;
+                String type = Jsonl.str(line, "type");
+                if (type == null || !wanted.contains(type)) continue;
+                total++;
+                if (ring.size() == keep) ring.removeFirst();
+                ring.addLast(line);
+            }
+        }
+        return new Matching(List.copyOf(ring), total);
+    }
 
     /**
      * @param rec resolved journal record (from {@code McpDiagnostics.findRun})
@@ -68,23 +90,22 @@ public final class McpDetails {
         Set<String> wanted = new LinkedHashSet<>(types == null || types.isEmpty() ? DEFAULT_TYPES : types);
         m.put("types", new ArrayList<>(wanted));
 
-        List<String> matching = new ArrayList<>();
+        int want = Math.max(1, Math.min(tail <= 0 ? DEFAULT_TAIL : tail, MAX_TAIL));
+        int skipNewest = Math.min(Math.max(0, next), Integer.MAX_VALUE - MAX_TAIL);
+        Matching kept;
         try {
-            for (String line : Files.readAllLines(file.get(), StandardCharsets.UTF_8)) {
-                if (line.isBlank()) continue;
-                String type = Jsonl.str(line, "type");
-                if (type != null && wanted.contains(type)) matching.add(line);
-            }
+            kept = lastMatching(file.get(), wanted, want + skipNewest);
         } catch (IOException e) {
             m.put("error", "reading " + file.get() + ": " + e.getMessage());
             return m;
         }
-        int total = matching.size();
+        List<String> matching = kept.lines();
+        int total = kept.total();
         m.put("count", total);
 
-        int want = Math.max(1, Math.min(tail <= 0 ? DEFAULT_TAIL : tail, MAX_TAIL));
-        int skipNewest = Math.max(0, next);
-        int end = Math.max(0, total - skipNewest);
+        // Indices below are into the kept lines, the newest want + next of the total.
+        int dropped = total - matching.size();
+        int end = Math.max(0, matching.size() - skipNewest);
         int start = Math.max(0, end - want);
         // Enforce the byte budget from the newest edge of the window backward.
         int chars = 0;
@@ -103,7 +124,7 @@ public final class McpDetails {
             }
         }
         m.put("events", events);
-        boolean truncated = first > 0;
+        boolean truncated = dropped + first > 0;
         m.put("truncatedTail", truncated);
         if (truncated) m.put("nextCursor", skipNewest + events.size());
         return m;
