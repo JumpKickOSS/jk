@@ -411,15 +411,90 @@ if ($VerifyOnlyDirectory) {
     }
 }
 
+# Rename $Path aside as $Path.old (a running jk.exe can be renamed but not deleted) and return the
+# parked name, or $null when there is nothing at $Path. A .old a still-running client maps cannot
+# be removed either, so the next free .old-<n> takes its place. Throws when the rename fails.
+function Move-ToOld([string] $Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    $parked = "$Path.old"
+    if (Test-Path -LiteralPath $parked) { Remove-Item -LiteralPath $parked -Force -ErrorAction SilentlyContinue }
+    $n = 1
+    while (Test-Path -LiteralPath $parked) { $parked = "$Path.old-$n"; $n++ }
+    Move-Item -LiteralPath $Path -Destination $parked -Force
+    return $parked
+}
+
 function Park-IfPresent([string] $Path) {
-    if (Test-Path -LiteralPath $Path) {
-        $parked = "$Path.old"
-        try {
-            Move-Item -LiteralPath $Path -Destination $parked -Force
-        } catch {
-            Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-        }
+    try {
+        Move-ToOld $Path | Out-Null
+    } catch {
+        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     }
+}
+
+# Install the native client from $Archive as $InstallDir\$DestName without ever leaving the bin
+# with no working jk. The client is unpacked into a stage directory beside the live one and asked
+# its version; only then is the live client (and a leftover of the other kind, which PATHEXT would
+# prefer) renamed aside and the staged one renamed in. Any failure or a Ctrl-C before the swap
+# completes puts the parked clients back; the stage always goes. A stage a killed run left (its
+# process gone) is swept first. Throws with the reason; returns the installed path.
+function Install-NativeClient {
+    param(
+        [Parameter(Mandatory = $true)][string] $Archive,
+        [Parameter(Mandatory = $true)][string] $InstallDir,
+        [Parameter(Mandatory = $true)][string] $DestName
+    )
+    Get-ChildItem -LiteralPath $InstallDir -Directory -Force -Filter ".jk-install.*" -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $owner = 0
+            $alive = [int]::TryParse($_.Name.Substring(".jk-install.".Length), [ref] $owner) -and
+                $owner -ne $PID -and [bool](Get-Process -Id $owner -ErrorAction SilentlyContinue)
+            if (-not $alive) { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    $stage = Join-Path $InstallDir ".jk-install.$PID"
+    $dest = Join-Path $InstallDir $DestName
+    $others = @()
+    if ($DestName -eq "jk.exe") { $others = @(Join-Path $InstallDir "jk.bat") }
+    elseif ($DestName -eq "jk.bat") { $others = @(Join-Path $InstallDir "jk.exe") }
+    $parked = New-Object System.Collections.ArrayList
+    $swapped = $false
+    try {
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        $staged = Join-Path $stage $DestName
+        try {
+            Expand-JkArchive -Archive $Archive -Destination $staged
+        } catch {
+            throw "failed to unpack ${Archive}: $($_.Exception.Message); the installed jk is unchanged"
+        }
+        if (-not (Test-Path -LiteralPath $staged -PathType Leaf)) {
+            throw "failed to unpack ${Archive}; the installed jk is unchanged"
+        }
+        # A launcher script names paths relative to the bin it runs from, so only an executable is
+        # asked its version from the stage.
+        if ($DestName -eq "jk.exe") {
+            $answer = Invoke-NativeLines $staged @("--version")
+            if ($LASTEXITCODE -ne 0) {
+                throw "the new jk does not run ('jk --version' exited $LASTEXITCODE`: $(($answer | Select-Object -First 3) -join ' ')); the installed jk is unchanged"
+            }
+        }
+        foreach ($live in @($dest) + $others) {
+            $old = Move-ToOld $live
+            if ($old) { [void] $parked.Add(@($live, $old)) }
+        }
+        Move-Item -LiteralPath $staged -Destination $dest
+        $swapped = $true
+    } finally {
+        if (-not $swapped) {
+            for ($i = $parked.Count - 1; $i -ge 0; $i--) {
+                $live = $parked[$i][0]
+                if (-not (Test-Path -LiteralPath $live)) {
+                    Move-Item -LiteralPath $parked[$i][1] -Destination $live -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    return $dest
 }
 
 function Expand-JkArchive {
@@ -750,6 +825,17 @@ if ($LocalPath) {
             "would refuse. In jk's checkout run 'jk snapshot' to install the tree into this home, or install the dist " +
             "into a private home (`$env:JK_HOME = 'C:\some\scratch\home'; .\install.cmd $LocalPath).")
     }
+
+    $localEngineJar = Get-ChildItem -LiteralPath $srcLib -Filter "jk-engine-*.jar" -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not $localEngineJar) {
+        # Loud: without it the client self-fetches the RELEASED engine on first spawn, pairing
+        # the binary just built with an engine that was not, and nothing on screen says so.
+        # Refused before anything in the home is written.
+        Die ("no jk-engine-*.jar in $srcLib - a local install needs the engine built beside the " +
+            "client (the ship layout: <dir>\jk.exe and <dir>\lib\jk-engine-<version>.jar). Build one " +
+            "with 'jk build' (it writes target\dist\) and install from that directory.")
+    }
 }
 
 if ($IsRemote) {
@@ -867,15 +953,8 @@ try {
         } catch {
             Die "failed to install ${jkJar}: $($_.Exception.Message)"
         }
-        # One client jar: a launcher names exactly one. A jar a running client still maps cannot
-        # be deleted; it is parked and swept by the next install.
-        Get-ChildItem -Path $jkLib -Filter "jk-*.jar.old" -File -ErrorAction SilentlyContinue |
-            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
-        Get-ChildItem -Path $jkLib -Filter "jk-*.jar" -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -ne $jkJar } |
-            ForEach-Object {
-                try { Remove-Item -LiteralPath $_.FullName -Force } catch { Park-IfPresent $_.FullName }
-            }
+        # The launcher is rewritten first (the client stages it and swaps it in, restoring the old
+        # one on failure): until it names the new jar, the old launcher still runs the old one.
         try {
             Invoke-NativeLines $script:Java @("--enable-native-access=ALL-UNNAMED", "-jar", $jkJar, "self", "write-launcher") | Out-Null
             $wrote = ($LASTEXITCODE -eq 0)
@@ -885,6 +964,15 @@ try {
         if (-not $wrote -or -not (Test-Path -LiteralPath $script:JkBin -PathType Leaf)) {
             Die "could not write $($script:JkBin) (jk self write-launcher failed)"
         }
+        # One client jar: a launcher names exactly one. A jar a running client still maps cannot
+        # be deleted; it is parked and swept by the next install.
+        Get-ChildItem -Path $jkLib -Filter "jk-*.jar.old*" -File -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        Get-ChildItem -Path $jkLib -Filter "jk-*.jar" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $jkJar } |
+            ForEach-Object {
+                try { Remove-Item -LiteralPath $_.FullName -Force } catch { Park-IfPresent $_.FullName }
+            }
     } else {
         # Destination name: jk.exe for a native client; a JVM launcher keeps its jk.bat name.
         $leaf = Split-Path -Leaf $ArchiveFile
@@ -897,17 +985,9 @@ try {
             $destName = "jk.exe"
         }
 
-        $script:JkBin = Join-Path $InstallDir $destName
-        Park-IfPresent $script:JkBin
-        # PATHEXT prefers .exe over .bat. Installing the thin client must park a leftover
-        # unsigned jk.exe or `jk` still launches the blocked PE.
-        if ($destName -eq "jk.bat") {
-            Park-IfPresent (Join-Path $InstallDir "jk.exe")
-        } elseif ($destName -eq "jk.exe") {
-            Park-IfPresent (Join-Path $InstallDir "jk.bat")
-        }
+        # PATHEXT prefers .exe over .bat, so a leftover of the other kind is parked with the swap.
         try {
-            Expand-JkArchive -Archive $ArchiveFile -Destination $script:JkBin
+            $script:JkBin = Install-NativeClient -Archive $ArchiveFile -InstallDir $InstallDir -DestName $destName
         } catch {
             Die "failed to install jk: $($_.Exception.Message)"
         }
@@ -958,16 +1038,8 @@ REM jkx - jk tool run launcher (generated by jk; do not edit)
         $engineJar = $remoteEngineJar
     }
     if ($LocalPath) {
-        # $srcDist, $srcLib and $srcRepos name the local dist, resolved before anything was installed.
-        $engineJar = Get-ChildItem -LiteralPath $srcLib -Filter "jk-engine-*.jar" -ErrorAction SilentlyContinue |
-            Select-Object -First 1 -ExpandProperty FullName
-        if (-not $engineJar) {
-            # Loud: without it the client self-fetches the RELEASED engine on first spawn, pairing
-            # the binary just built with an engine that was not, and nothing on screen says so.
-            Die ("no jk-engine-*.jar in $srcLib - a local install needs the engine built beside the " +
-                "client (the ship layout: <dir>\jk.exe and <dir>\lib\jk-engine-<version>.jar). Build one " +
-                "with 'jk build' (it writes target\dist\) and install from that directory.")
-        }
+        # $localEngineJar names the local dist's engine, found before anything was installed.
+        $engineJar = $localEngineJar
     }
     if ($engineJar) {
         if ($LocalPath -or $UseJvm) {
@@ -1168,7 +1240,11 @@ REM jkx - jk tool run launcher (generated by jk; do not edit)
         }
     }
 
-    Remove-Item -LiteralPath "$($script:JkBin).old" -Force -ErrorAction SilentlyContinue
+    # Parked clients a running jk no longer maps; one still mapped stays for the next install.
+    foreach ($leaf in @("jk.exe", "jk.bat")) {
+        Get-ChildItem -LiteralPath $InstallDir -Filter "$leaf.old*" -File -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+    }
     Remove-Item -LiteralPath "$jkxExe.old" -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$jkxCmd.old" -Force -ErrorAction SilentlyContinue
 

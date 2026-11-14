@@ -392,6 +392,149 @@ try {
     $homeEntries = @(Get-ChildItem -LiteralPath $snapshotHome -Recurse -Force | ForEach-Object { $_.FullName.Substring($snapshotHome.Length + 1) })
     if (($homeEntries -join ",") -cne (@("bin", (Join-Path "bin" "jk.exe")) -join ",")) { throw "the snapshot-line refusal wrote into the home: $($homeEntries -join ', ')" }
 
+    # ---- a failed or interrupted reinstall keeps the previous jk ---------------------------------
+    # The client is unpacked beside the live one, asked its version, and only then swapped in; a
+    # failure before the swap completes puts the parked client back. Real executables stand in for
+    # the clients (compiled here), so the --version probe and a running, mapped jk.exe are real.
+    if ($env:OS -eq "Windows_NT") {
+        Import-InstallerFunction "Move-ToOld"
+        Import-InstallerFunction "Expand-JkArchive"
+        Import-InstallerFunction "Install-NativeClient"
+        $fixtures = Join-Path $work "fixture-exes"
+        New-Item -ItemType Directory -Force -Path $fixtures | Out-Null
+        function New-FixtureExe([string] $Name, [string] $Says, [int] $Code) {
+            $path = Join-Path $fixtures "$Name.exe"
+            $class = "JkFixture" + [guid]::NewGuid().ToString("N")
+            Add-Type -OutputType ConsoleApplication -OutputAssembly $path -TypeDefinition @"
+public static class $class {
+    public static int Main(string[] args) {
+        if (args.Length > 1 && args[0] == "--hold") {
+            System.IO.File.WriteAllText(args[1], "up");
+            System.Threading.Thread.Sleep(60000);
+            return 0;
+        }
+        System.Console.WriteLine("$Says");
+        return $Code;
+    }
+}
+"@
+            return $path
+        }
+        $goodExe = New-FixtureExe "good" "jk-good" 0
+        $priorExe = New-FixtureExe "prior" "prior-jk" 0
+        $brokenExe = New-FixtureExe "broken" "broken" 3
+        function New-PriorBin([string] $Case) {
+            $bin = Join-Path $work "bin-$Case"
+            New-Item -ItemType Directory -Force -Path $bin | Out-Null
+            Copy-Item -LiteralPath $priorExe -Destination (Join-Path $bin "jk.exe")
+            return $bin
+        }
+        # A held client is running (its image mapped and its runtime up) once it writes its ready file.
+        function Start-Held([string] $Exe) {
+            $ready = Join-Path $work ("ready-" + [guid]::NewGuid().ToString("N"))
+            $p = Start-Process -FilePath $Exe -ArgumentList @("--hold", $ready) -PassThru -WindowStyle Hidden
+            $deadline = [DateTime]::UtcNow.AddSeconds(30)
+            while (-not (Test-Path -LiteralPath $ready)) {
+                if ([DateTime]::UtcNow -gt $deadline) { throw "the held client $Exe never started" }
+                Start-Sleep -Milliseconds 20
+            }
+            return $p
+        }
+        function Assert-PriorRuns([string] $Case, [string] $Bin) {
+            $said = (& (Join-Path $Bin "jk.exe")) -join ""
+            if ($said -cne "prior-jk") { throw "${Case}: the previous jk no longer runs (said '$said')" }
+            $left = @(Get-ChildItem -LiteralPath $Bin -Force | Where-Object { $_.Name -ne "jk.exe" } | ForEach-Object { $_.Name })
+            if ($left.Count -ne 0) { throw "${Case}: left $($left -join ', ') beside the previous jk" }
+        }
+
+        # Over a running client: the mapped jk.exe is renamed aside and the new one runs.
+        $bin = New-PriorBin "running"
+        $held = Start-Held (Join-Path $bin "jk.exe")
+        try {
+            $installed = Install-NativeClient -Archive $goodExe -InstallDir $bin -DestName "jk.exe"
+            if (((& $installed) -join "") -cne "jk-good") { throw "the new client was not installed over a running one" }
+            if (-not (Test-Path -LiteralPath (Join-Path $bin "jk.exe.old"))) { throw "the running client was not parked as jk.exe.old" }
+            # A second install while both jk.exe.old and the new jk.exe are mapped parks as .old-1.
+            $held2 = Start-Held (Join-Path $bin "jk.exe")
+            try {
+                Install-NativeClient -Archive $goodExe -InstallDir $bin -DestName "jk.exe" | Out-Null
+                if (-not (Test-Path -LiteralPath (Join-Path $bin "jk.exe.old-1"))) { throw "a second park beside a mapped jk.exe.old did not take jk.exe.old-1: $((Get-ChildItem -LiteralPath $bin -Force | ForEach-Object { $_.Name }) -join ', ')" }
+                if (((& (Join-Path $bin "jk.exe")) -join "") -cne "jk-good") { throw "the second install over two mapped clients failed" }
+            } finally {
+                Stop-Process -Id $held2.Id -Force -ErrorAction SilentlyContinue
+            }
+        } finally {
+            Stop-Process -Id $held.Id -Force -ErrorAction SilentlyContinue
+        }
+        if (@(Get-ChildItem -LiteralPath $bin -Directory -Force -Filter ".jk-install.*").Count -ne 0) { throw "a successful install left its stage" }
+
+        # A client that does not run is refused; the previous one stays, unparked.
+        $bin = New-PriorBin "broken"
+        try {
+            Install-NativeClient -Archive $brokenExe -InstallDir $bin -DestName "jk.exe" | Out-Null
+            throw "a client that does not run was installed"
+        } catch {
+            if ($_.Exception.Message -notmatch "the new jk does not run") { throw }
+        }
+        Assert-PriorRuns "broken client" $bin
+
+        # An archive with no client in it (the expand fails part-way).
+        $bin = New-PriorBin "empty-zip"
+        $emptyZip = Join-Path $work "empty.zip"
+        $readme = Join-Path $work "README.txt"
+        [IO.File]::WriteAllText($readme, "no client here")
+        Compress-Archive -LiteralPath $readme -DestinationPath $emptyZip -Force
+        try {
+            Install-NativeClient -Archive $emptyZip -InstallDir $bin -DestName "jk.exe" | Out-Null
+            throw "an archive with no client was installed"
+        } catch {
+            if ($_.Exception.Message -notmatch "did not contain jk.exe") { throw }
+        }
+        Assert-PriorRuns "empty archive" $bin
+
+        # The swap itself fails after the live client was parked: the parked client is put back.
+        $bin = New-PriorBin "swap-fails"
+        $failInto = Join-Path $bin "jk.exe"
+        function script:Move-Item {
+            param([string] $LiteralPath, [string] $Destination, [switch] $Force, $ErrorAction)
+            if ($Destination -eq $failInto -and $LiteralPath -like "*.jk-install.*") { throw "fixture: the rename failed" }
+            Microsoft.PowerShell.Management\Move-Item -LiteralPath $LiteralPath -Destination $Destination -Force:$Force
+        }
+        try {
+            Install-NativeClient -Archive $goodExe -InstallDir $bin -DestName "jk.exe" | Out-Null
+            throw "a failed swap reported success"
+        } catch {
+            if ($_.Exception.Message -notmatch "fixture: the rename failed") { throw }
+        } finally {
+            Remove-Item -Path Function:\Move-Item
+        }
+        Assert-PriorRuns "failed swap" $bin
+
+        # Killed outright mid-unpack (no finally runs): the live client was never touched. The next
+        # install sweeps the stage the dead run left.
+        $bin = New-PriorBin "killed"
+        $child = Join-Path $work "killed-install.ps1"
+        $functions = @("Move-ToOld", "Invoke-NativeLines", "Install-NativeClient") | ForEach-Object {
+            $n = $_
+            $installerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $n }.GetNewClosure(), $true).Extent.Text
+        }
+        $killer = @'
+function Expand-JkArchive([string] $Archive, [string] $Destination) {
+    [IO.File]::WriteAllText($Destination, "half-written")
+    Stop-Process -Id $PID -Force
+}
+'@
+        [IO.File]::WriteAllText($child, (($functions + $killer) -join "`r`n") + "`r`nInstall-NativeClient -Archive '$goodExe' -InstallDir '$bin' -DestName 'jk.exe'`r`n")
+        & $powershell -NoProfile -ExecutionPolicy Bypass -File $child 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { throw "an install killed mid-unpack exited 0" }
+        $said = (& (Join-Path $bin "jk.exe")) -join ""
+        if ($said -cne "prior-jk") { throw "an install killed mid-unpack broke the previous jk (said '$said')" }
+        if (@(Get-ChildItem -LiteralPath $bin -Directory -Force -Filter ".jk-install.*").Count -ne 1) { throw "the killed run left no stage (the fixture did not run?)" }
+        Install-NativeClient -Archive $goodExe -InstallDir $bin -DestName "jk.exe" | Out-Null
+        if (((& (Join-Path $bin "jk.exe")) -join "") -cne "jk-good") { throw "the install after a killed one failed" }
+        if (@(Get-ChildItem -LiteralPath $bin -Directory -Force -Filter ".jk-install.*").Count -ne 0) { throw "the killed run's stage was not swept" }
+    }
+
     Write-Host "PowerShell installer verification fixtures passed."
 } finally {
     $rsa.Dispose()

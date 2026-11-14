@@ -57,9 +57,9 @@ class InstallerCopyTest {
         String powershell = Files.readString(repo.resolve("install.ps1"));
 
         assertThat(shell.indexOf("openssl dgst -sha256 -verify"))
-                .isLessThan(shell.indexOf("park_if_present \"$JK_BIN\""));
+                .isLessThan(shell.indexOf("mkdir \"$STAGE_DIR\""));
         assertThat(powershell.lastIndexOf("Test-ReleaseEvidence"))
-                .isLessThan(powershell.indexOf("Park-IfPresent $script:JkBin"));
+                .isLessThan(powershell.indexOf("Install-NativeClient -Archive $ArchiveFile"));
     }
 
     @Test

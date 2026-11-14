@@ -190,7 +190,10 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
 Remote installers, wrappers, self-update, and engine materialization all require the signatures.
 They verify the pointer signature and its floor first, then the manifest signature, require one
 strict exact artifact entry, then verify the artifact hash before extracting, parking an existing
-binary, writing, or executing downloaded bytes. Local file installs remain an explicit unsigned
+binary, writing, or executing downloaded bytes. The installers unpack the client into a stage
+beside the live one, run its `--version`, and only then rename it over the live client, so a
+failed, interrupted or killed (re)install leaves the previous `jk` working (fixtures in
+`scripts/test-installer-verification.sh` and `.ps1`). Local file installs remain an explicit unsigned
 development path. `scripts/test-wrapper-bootstrap.sh` drives the POSIX wrapper through that whole
 path, network-free, against a fixture release signed with a throwaway key.
 
