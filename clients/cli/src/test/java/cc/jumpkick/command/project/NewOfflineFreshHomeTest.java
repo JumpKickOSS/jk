@@ -33,7 +33,9 @@ import org.junit.jupiter.api.io.TempDir;
  * pool, which may be cold, so the class first builds the same template once in the tier's own home,
  * with the network, and so puts what the app's build needs into them.
  */
-@Tag("integration")
+// A network test: the warm build fetches the template's guard pack (cc.jumpkick.guards:library at
+// jk's own version) from jumpkick.build, which the integration suite's JVMs refuse.
+@Tag("network")
 class NewOfflineFreshHomeTest {
 
     @RegisterExtension
