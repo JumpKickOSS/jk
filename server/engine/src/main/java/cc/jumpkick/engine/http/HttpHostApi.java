@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.host.Os;
+import cc.jumpkick.engine.verbs.DoctorReport;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.winhost.HostRow;
-import cc.jumpkick.winhost.WindowsSetup;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,7 +23,7 @@ final class HttpHostApi {
     private final Supplier<List<HostRow>> rows;
 
     HttpHostApi() {
-        this(() -> Os.isWindows() ? WindowsSetup.check(null).rows() : List.of());
+        this(() -> DoctorReport.windowsRows(null));
     }
 
     HttpHostApi(Supplier<List<HostRow>> rows) {
@@ -32,6 +32,23 @@ final class HttpHostApi {
 
     void handle(HttpExchange exchange) throws IOException {
         HttpResponses.sendJson(exchange, 200, json());
+    }
+
+    /**
+     * {@code GET /api/doctor?dir=…}: the health report MCP {@code doctor} returns, {@code {ok,
+     * rows:[{id, label, status, detail, fix?}]}}, the client's own rows marked {@code unavailable}.
+     * {@code dir} names the project whose lock is checked.
+     */
+    static void handleDoctor(HttpExchange exchange) throws IOException {
+        String dir;
+        try {
+            dir = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(exchange, 400, MiniJson.write(Map.of("error", String.valueOf(e.getMessage()))));
+            return;
+        }
+        HttpResponses.sendJson(
+                exchange, 200, MiniJson.write(DoctorReport.structured(DoctorReport.rows(dir, JkVersion.VERSION))));
     }
 
     /** The warning rows as notes. */

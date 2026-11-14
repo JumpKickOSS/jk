@@ -54,6 +54,7 @@ final class WindowsSection {
                         case OK -> Theme.colorize("ok:      ", t.completedStep());
                         case WARN -> Theme.colorize("warn:    ", t.warning());
                         case FAIL -> Theme.colorize("fail:    ", t.error());
+                        case UNAVAILABLE -> Theme.colorize("n/a:     ", t.darkGray());
                     };
             String fix = row.fix() == null || row.status() == HostRow.Status.OK ? "" : " — " + row.fix();
             out.add(prefix + Theme.colorize(row.label(), t.cyan()) + " — " + row.detail() + fix);

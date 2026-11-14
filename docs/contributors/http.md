@@ -893,6 +893,16 @@ and a written edit relocks; an add whose new lock trips the deny policy puts `jk
 proposed manifest when it differs, `lock` `lock ok` or the failed relock's lines, `error` why nothing
 was written. A refused edit or a failed lock answers `422`.
 
+## Health (`GET /api/doctor`)
+
+`GET /api/doctor?dir=<path>` answers the object MCP `doctor` returns: `{ ok, rows: [{ id, label,
+status, detail, fix? }] }`, `status` one of `ok`, `warn`, `fail`, `unavailable`. The rows are the
+ones `jk doctor` prints, from the same checks (`DoctorChecks`): `config`, `dirs`, `state`, `jdk`,
+`lock` and `m2` for `dir` (`unavailable` when no `dir` is named), the engine's own row, the
+client's own rows (`client`, `shell`, `mvn`, `logins`, `tools`) as `unavailable`, and on Windows
+the host rows with their fixes. `ok` is false when any row failed. `GET /api/host` keeps serving
+the Status view's quiet Windows notes, a filter of the same Windows rows.
+
 ## Dependency reads (`GET /api/project/outdated`, `/why`, `/update`)
 
 Each answers the object the MCP tool of the same name returns for the same input (the tool wraps

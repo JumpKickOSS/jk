@@ -7,12 +7,12 @@ import cc.jumpkick.engine.decisions.MachineSetupDecisions;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
-import cc.jumpkick.engine.http.mcp.McpMachine;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.verbs.DoctorReport;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.winhost.HostRow;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupChange;
 import cc.jumpkick.winhost.SetupConsent;
@@ -21,12 +21,10 @@ import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /**
  * {@code doctor} — host health, off the same memoized cache walk as {@code disk}; on Windows also
@@ -42,24 +40,20 @@ public final class DoctorTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "doctor",
-                "Host health snapshot (config + disk; on Windows the host rows and their fixes). fix=true asks"
+                "Health rows jk doctor prints (config, dirs, state, jdk, lock, m2; the client's own unavailable; on Windows the host rows with fixes). fix=true asks"
                         + " the user to approve the recommended Windows changes, then shows one Windows (UAC) prompt.",
-                McpSchemas.object(Map.of("fix", McpSchemas.bool("Apply the recommended Windows host changes"))));
+                McpSchemas.object(Map.of(
+                        "dir",
+                        McpSchemas.string(McpSchemas.BOUND_ROOT),
+                        "fix",
+                        McpSchemas.bool("Apply the recommended Windows host changes"))));
     }
 
     @Override
     public Map<String, Object> call(McpCall in) {
         if (in.flag("fix")) return fix(in);
-        Map<String, Object> body =
-                new LinkedHashMap<>(McpMachine.doctor(in.ctx().cacheSnapshot()));
-        body.put("windows", windowsRows(in.dir()).stream().map(HostRow::toMap).toList());
+        Map<String, Object> body = DoctorReport.structured(DoctorReport.rows(in.dir(), JkVersion.VERSION));
         return in.ok(McpEnvelope.of("doctor", body), "doctor");
-    }
-
-    /** The Windows rows for the project at {@code dir}; empty off Windows. */
-    static List<HostRow> windowsRows(@Nullable String dir) {
-        if (!Os.isWindows()) return List.of();
-        return WindowsSetup.check(MachineSetupDecisions.project(dir)).rows();
     }
 
     private Map<String, Object> fix(McpCall in) {

@@ -38,7 +38,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
-/** Config, disk, and doctor snapshots for MCP. */
+/** Config and disk snapshots for MCP. */
 public final class McpMachine {
 
     private static final Pattern HEAP_LINE = Pattern.compile("(?m)^([ \\t]*)max-heap-mb[ \\t]*=[ \\t]*\\d+[ \\t]*$");
@@ -150,7 +150,7 @@ public final class McpMachine {
     }
 
     /**
-     * Cache-tier vs artifact-store bytes for {@code disk} / {@code doctor} / {@code
+     * Cache-tier vs artifact-store bytes for {@code disk} / {@code
      * jk://disk}. Reads the shared {@link CacheSnapshot} supplier (memoized single-flight walk,
      * same exclusive CAS-first accounting as {@code GET /api/cache}); a fresh capture only when
      * no supplier is wired.
@@ -440,13 +440,6 @@ public final class McpMachine {
         } catch (Exception e) {
             m.put("error", Errors.text(e));
         }
-        return m;
-    }
-
-    public static Map<String, Object> doctor(@Nullable Supplier<CacheSnapshot> cache) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("config", configGet());
-        m.put("disk", diskUsage(cache));
         return m;
     }
 

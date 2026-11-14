@@ -102,12 +102,8 @@ class McpDiskTest {
         assertThat(walks).hasValue(1);
         mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"disk\",\"arguments\":{}}}");
-        Map<String, Object> doctor = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":3,"
-                + "\"method\":\"tools/call\",\"params\":{\"name\":\"doctor\",\"arguments\":{}}}"));
-        Map<String, Object> doctorDisk = object(doctor, "disk");
-        assertThat(number(doctorDisk, "storeBytes").longValue()).isEqualTo(snap.artifactStorageBytes());
         mcp.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\"," + "\"params\":{\"uri\":\"jk://disk\"}}");
-        assertThat(walks).hasValue(1); // one walk serves disk, doctor, and jk://disk
+        assertThat(walks).hasValue(1); // one walk serves disk and jk://disk
     }
 }

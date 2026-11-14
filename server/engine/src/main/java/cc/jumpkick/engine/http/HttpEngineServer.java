@@ -329,6 +329,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/metrics", readApi::handleMetrics);
         api.register("GET", "/api/cache", readApi::handleCache);
         api.register("GET", "/api/host", new HttpHostApi()::handle);
+        api.register("GET", "/api/doctor", HttpHostApi::handleDoctor);
         api.register("GET", "/api/changes", new HttpChangesApi()::handle);
         api.register("GET", "/api/project", projectApi::handleProject);
         api.register("GET", "/api/project/graph", projectApi::handleProjectGraph);

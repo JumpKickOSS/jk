@@ -21,7 +21,9 @@ public record HostRow(
     public enum Status {
         OK,
         WARN,
-        FAIL;
+        FAIL,
+        /** A check this process cannot answer; another one does (the client's own rows on the engine). */
+        UNAVAILABLE;
 
         public String wire() {
             return name().toLowerCase(Locale.ROOT);

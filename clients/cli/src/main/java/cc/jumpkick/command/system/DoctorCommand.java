@@ -21,25 +21,21 @@ import cc.jumpkick.command.toolchain.ShellInstallerBlock;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
-import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
+import cc.jumpkick.doctor.DoctorChecks;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.JsonFields;
-import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.repo.M2Integrity;
 import cc.jumpkick.terminal.posix.PosixPasswd;
 import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.wire.EnginePaths;
@@ -47,17 +43,13 @@ import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -504,29 +496,20 @@ public final class DoctorCommand implements CliCommand {
         }
     }
 
-    /**
-     * Whether {@code ~/.jk/config.toml} parses. A file that does not fails every command that
-     * resolves, fetches or authenticates, so it is a failure here too, with the position to fix;
-     * doctor itself keeps running so the rest of the report still helps.
-     */
+    /** {@link DoctorChecks#config}: whether {@code ~/.jk/config.toml} parses. */
     static Check checkConfig(Path file, String version) {
-        if (!Files.exists(file)) return new Check(Status.OK, "config", "no " + file + " (defaults)");
-        return GlobalConfig.userConfigProblem(file)
-                .map(e -> new Check(Status.FAIL, "config", Objects.toString(e.getMessage(), file.toString())))
-                .orElseGet(() -> parsedConfig(file, version));
+        return check(DoctorChecks.config(file, version));
     }
 
-    /**
-     * A config that parses is a warning when it names an {@code [http] web-overlay} this engine will
-     * not serve: a developer whose edits do not show up is told why, here as in the engine log.
-     */
-    private static Check parsedConfig(Path file, String version) {
-        String ignored = JkHttpConfig.fromToml(file)
-                .flatMap(http -> http.webOverlayIgnored(version))
-                .orElse(null);
-        return ignored == null
-                ? new Check(Status.OK, "config", file + " parses")
-                : new Check(Status.WARN, "config", file + " parses · " + ignored);
+    /** A shared doctor row as this command's check: the fix, when the row names one, after the detail. */
+    static Check check(HostRow row) {
+        Status status =
+                switch (row.status()) {
+                    case OK, UNAVAILABLE -> Status.OK;
+                    case WARN -> Status.WARN;
+                    case FAIL -> Status.FAIL;
+                };
+        return new Check(status, row.id(), row.fix() == null ? row.detail() : row.detail() + "; " + row.fix());
     }
 
     /** The client row: this jk's version and the commit it was built from. */
@@ -616,79 +599,22 @@ public final class DoctorCommand implements CliCommand {
                                 + " to fetch it"));
     }
 
-    /**
-     * The cache directory is created by the first command that resolves something, so a fresh
-     * install has none and that is healthy — the row says so instead of failing a cold runner
-     * before its first {@code jk sync}. A cache path that exists but is not a readable directory
-     * is a real fault, as is a missing parent of the store or state directories.
-     */
+    /** {@link DoctorChecks#dirs}: the cache, store and state directories. */
     static Check checkDirs(Path cache, Path store, Path state, JkCacheConfig cfg) {
-        List<String> problems = new ArrayList<>();
-        boolean cacheAbsent = !Files.exists(cache);
-        if (!cacheAbsent && !Files.isDirectory(cache)) problems.add("cache is not a directory: " + cache);
-        if (!cacheAbsent && Files.isDirectory(cache) && !Files.isReadable(cache)) {
-            problems.add("cache is not readable: " + cache);
-        }
-        Path storeParent = store.getParent();
-        Path stateParent = state.getParent();
-        if (storeParent == null || !Files.isDirectory(storeParent)) problems.add("store parent missing");
-        if (stateParent == null || !Files.isDirectory(stateParent)) problems.add("state parent missing");
-        if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
-        String cacheWord = cacheAbsent ? "cache " + cache + " not created yet" : "cache " + cache;
-        String detail = cacheWord + " · store " + store + " · " + JkCacheConfig.formatGb(cfg.maxCacheSizeGb())
-                + "G cache budget · store unbudgeted";
-        return new Check(Status.OK, "dirs", detail);
+        return check(DoctorChecks.dirs(cache, store, state, cfg));
     }
 
     private static Check checkStateMode() {
         return checkStateMode(JkDirs.state());
     }
 
-    /**
-     * The engine socket under {@code <state>/engine} is trusted on directory permissions alone, so
-     * a state or engine directory that lets group or others in is a finding, with the chmod that
-     * closes it. Non-POSIX filesystems (Windows, where the loopback token gates the engine) are OK.
-     */
+    /** {@link DoctorChecks#stateMode}: the state and engine directories are owner-only. */
     static Check checkStateMode(Path state) {
-        Path engine = state.resolve("engine");
-        List<String> loose = new ArrayList<>();
-        for (Path dir : List.of(state, engine)) {
-            if (!Files.isDirectory(dir)) continue;
-            try {
-                Set<PosixFilePermission> mode = Files.getPosixFilePermissions(dir);
-                if (!OWNER_ONLY_DIR.equals(mode)) loose.add(dir + " is " + PosixFilePermissions.toString(mode));
-            } catch (UnsupportedOperationException notPosix) {
-                return new Check(Status.OK, "state", "no POSIX modes on this filesystem");
-            } catch (IOException e) {
-                return new Check(Status.WARN, "state", "could not read: " + e.getMessage());
-            }
-        }
-        if (loose.isEmpty()) return new Check(Status.OK, "state", state + " owner-only");
-        return new Check(
-                Status.FAIL,
-                "state",
-                String.join(", ", loose) + "; other users can reach the engine; run chmod 700 " + state + " " + engine);
+        return check(DoctorChecks.stateMode(state));
     }
 
-    private static final Set<PosixFilePermission> OWNER_ONLY_DIR = PosixFilePermissions.fromString("rwx------");
-
     private static Check checkJdk() {
-        try {
-            Path jdksDir = JkDirs.jdks();
-            long count = 0;
-            if (Files.isDirectory(jdksDir)) {
-                // Closed, not left to the collector: the stream holds a directory handle, and on
-                // Windows an open one refuses that directory its own delete.
-                try (Stream<Path> installs = Files.list(jdksDir)) {
-                    count = installs.count();
-                }
-            }
-            String javaHome = System.getenv("JAVA_HOME");
-            String detail = count + " installs under " + jdksDir + (javaHome != null ? " · JAVA_HOME=" + javaHome : "");
-            return new Check(Status.OK, "jdk", detail);
-        } catch (IOException e) {
-            return new Check(Status.WARN, "jdk", "probe failed: " + e.getMessage());
-        }
+        return check(DoctorChecks.jdk(JkDirs.jdks(), ProcessEnv.get("JAVA_HOME")));
     }
 
     public static Check checkShell() {
@@ -772,50 +698,17 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static Check checkLock() {
-        try {
-            Path cwd = WorkingDirectory.current();
-            Path lock = LockPaths.lockFile(cwd);
-            Path proj = lock.getParent();
-            if (!Files.isRegularFile(lock))
-                return new Check(Status.WARN, "lock", "no jk-lock.toml at " + proj + " (run jk lock)");
-            String text = Files.readString(lock);
-            if (!text.contains("version = 1")) return new Check(Status.WARN, "lock", "unexpected lock version");
-            long artifacts = text.lines()
-                    .filter(l -> l.trim().startsWith("[[artifact]]"))
-                    .count();
-            return new Check(Status.OK, "lock", artifacts + " artifacts · " + lock);
-        } catch (IOException e) {
-            return new Check(Status.WARN, "lock", "check failed: " + e.getMessage());
-        }
+        return check(DoctorChecks.lock(WorkingDirectory.current()));
     }
 
     /** The Maven local repository's copies of this project's locked POMs and jars, checked against their {@code .sha1}. */
     private static Check checkM2() {
-        try {
-            Path lock = LockPaths.lockFile(WorkingDirectory.current());
-            if (!Files.isRegularFile(lock)) return new Check(Status.OK, "m2", "no jk-lock.toml to check against");
-            return checkM2(M2Dirs.localRepository(), M2Integrity.lockPaths(LockfileReader.read(lock)));
-        } catch (IOException | RuntimeException e) {
-            return new Check(Status.WARN, "m2", "check failed: " + e.getMessage());
-        }
+        return check(DoctorChecks.m2(WorkingDirectory.current()));
     }
 
-    /**
-     * {@code WARN} naming the files under {@code m2} whose bytes do not match their {@code .sha1}:
-     * something rewrote them after Maven verified them, and every build that reads one fails.
-     */
+    /** {@link DoctorChecks#m2(Path, List)}: the files whose bytes do not match their {@code .sha1}. */
     static Check checkM2(Path m2, List<String> relativePaths) {
-        List<Path> bad = M2Integrity.mismatched(m2, relativePaths);
-        if (bad.isEmpty())
-            return new Check(Status.OK, "m2", relativePaths.size() + " locked files match their .sha1 under " + m2);
-        List<String> shown = new ArrayList<>();
-        for (Path p : bad.subList(0, Math.min(3, bad.size()))) shown.add(p.toString());
-        return new Check(
-                Status.WARN,
-                "m2",
-                bad.size() + (bad.size() == 1 ? " file does" : " files do") + " not match its .sha1: "
-                        + String.join(", ", shown) + (bad.size() > 3 ? ", …" : "")
-                        + "; delete to fetch again");
+        return check(DoctorChecks.m2(m2, relativePaths));
     }
 
     /**
