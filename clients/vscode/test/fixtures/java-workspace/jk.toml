@@ -1,0 +1,6 @@
+group = "dev.example"
+name = "ws"
+version = "0.1.0"
+
+[workspace]
+modules = ["lib", "app"]

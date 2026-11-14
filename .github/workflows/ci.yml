@@ -341,11 +341,20 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install from the lockfile
         run: npm ci
 
       - name: Type-check and bundle
         run: npm run build
+
+      - name: Java language server bundle and its tests
+        run: npm run test:jdtls
 
       - name: Unit tests
         run: npm run test:unit

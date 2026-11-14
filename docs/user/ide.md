@@ -162,7 +162,14 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   **JumpKick** output channel shows each job's output and diagnostics. When a job ends, its compile
   errors and warnings, a `jk.toml` that does not parse or validate, and a dependency the resolver
   refuses appear in the **Problems** panel at their file and line (the dependency at its line in
-  `jk.toml`), and the next green run clears them.
+  `jk.toml`), and the next green run clears them. The extension installs **Language Support for
+  Java by Red Hat** with it and hands that language server the engine's model: one Java project
+  per module, with its source roots, sibling modules, libraries and their sources, and its Java
+  level, so imports resolve and navigation reaches library sources with no command run. A
+  `jk.toml` or `jk-lock.toml` change (an edit, `jk add` in a terminal) relocks after two quiet
+  seconds and the new classpath reaches the language server without a reload. The projects live in
+  the language server's own storage: nothing like `.project` or `.classpath` is written into your
+  tree (`jk ide -i` still writes those files for an editor that wants them).
 
 Both are **wire-only**: they never load engine jars. The IntelliJ plugin runs the `jk` CLI; the VS
 Code extension runs `jk` only to find the engine and otherwise speaks the engine's HTTP API.

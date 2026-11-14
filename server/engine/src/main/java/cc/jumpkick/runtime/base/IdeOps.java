@@ -58,8 +58,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The dependency <em>sync</em> is not here: {@code jk ide} runs one hosted {@code jk sync}
  * (client-rendered) before requesting the model; a caller with no hosted sync in front of it (a
- * test, the MCP tool) passes {@code fetchMissing} for the in-line fetch, so both paths build the
- * same model.
+ * test, the MCP tool, the HTTP model) passes {@code fetchMissing} for the in-line fetch of jars and
+ * their sources, so both paths build the same model.
  *
  * <p>{@link StableJdkPointer#ensure} writes under the jk home — the engine and client share it, so
  * pointer maintenance is equally correct here at model-build time.
@@ -440,7 +440,10 @@ public final class IdeOps {
 
         if (fetchMissing) {
             try {
-                new CacheSync(cas, new Http()).sync(lock, CacheSync.ProgressObserver.NOOP);
+                CacheSync sync = new CacheSync(cas, new Http());
+                sync.sync(lock, CacheSync.ProgressObserver.NOOP);
+                // Source attachments too, as jk ide's pre-model sync -s fetches them.
+                sync.syncSources(lock, CacheSync.ProgressObserver.NOOP);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {

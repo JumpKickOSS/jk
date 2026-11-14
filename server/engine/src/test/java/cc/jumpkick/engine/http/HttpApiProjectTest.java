@@ -96,6 +96,51 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                 .contains("\"kind\":\"declared\"");
     }
 
+    @Test
+    void api_project_model_serves_one_jdt_project_per_module() throws Exception {
+        Path ws = stateDir.resolve("model-ws");
+        Files.createDirectories(ws.resolve("lib/src/main/java"));
+        Files.createDirectories(ws.resolve("app/src/main/java"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Files.writeString(ws.resolve("lib/jk.toml"), """
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        Files.writeString(ws.resolve("app/jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { workspace = true }
+                """);
+        String auth = "Bearer " + token();
+
+        assertThat(get("/api/project/model", "Authorization", auth).statusCode())
+                .isEqualTo(400);
+        HttpResponse<String> resp = get("/api/project/model?dir=" + encDir(ws), "Authorization", auth);
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.body())
+                .contains("\"workspace\":true")
+                .contains("\"name\":\"lib\"")
+                .contains("\"name\":\"app\"")
+                .contains("{\"kind\":\"project\",\"name\":\"lib\",\"test\":false}")
+                .contains("\"kind\":\"container\"");
+
+        Path empty = Files.createDirectories(stateDir.resolve("no-manifest"));
+        HttpResponse<String> none = get("/api/project/model?dir=" + encDir(empty), "Authorization", auth);
+        assertThat(none.statusCode()).isEqualTo(422);
+        assertThat(none.body()).contains("no jk.toml");
+    }
+
     /**
      * The SPA sends encodeURIComponent, which spells `,` as %2C. Reading the parameter raw turned
      * every multi-scope selection into one unknown token and silently fell back to main, with both

@@ -978,12 +978,8 @@ in     = "cc.jumpkick.runtime.base.IdeOps"
 reason = "the IDE model lists a module's sibling edges; it keys nothing"
 
 [[guards.module-classpath-owner.allow]]
-in     = "cc.jumpkick.engine.verbs.IdeModelVerb"
+in     = "cc.jumpkick.runtime.IdeModels"
 reason = "the IDE model lists the provided jars; it keys nothing"
-
-[[guards.module-classpath-owner.allow]]
-in     = "cc.jumpkick.engine.http.mcp.tools.IdeTool"
-reason = "the IDE tool lists the provided jars; it keys nothing"
 
 # G146. Which suites a run runs is derived once. TestStampInputs.resolveSuites resolves the
 # selection against the module's suites, the built-in integration suite among them, for compile-test,

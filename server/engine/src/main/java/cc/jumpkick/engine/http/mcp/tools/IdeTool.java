@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp.tools;
 
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpError;
@@ -11,7 +10,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.ide.IdeGeneration;
 import cc.jumpkick.ide.IdeTarget;
-import cc.jumpkick.runtime.ProvidedClasspath;
+import cc.jumpkick.runtime.IdeModels;
 import cc.jumpkick.runtime.base.IdeFilesOps;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -50,13 +49,7 @@ public final class IdeTool implements McpTool {
         String kind = kind(in.str("kind"));
         boolean preview = in.flag("preview");
         IdeFilesOps.Result result = IdeFilesOps.generate(
-                root,
-                JkDirs.cache(),
-                null,
-                null,
-                targets(kind),
-                preview,
-                ProvidedClasspath.providedJars(JkStores.storeCas()));
+                root, JkDirs.cache(), null, null, targets(kind), preview, IdeModels.providedJars());
 
         Map<String, Object> m = new LinkedHashMap<>();
         if (result.error() != null) {

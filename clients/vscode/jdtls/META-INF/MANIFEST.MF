@@ -1,0 +1,13 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: JumpKick importer for the Java language server
+Bundle-Vendor: JumpKick
+Bundle-SymbolicName: cc.jumpkick.jdtls;singleton:=true
+Bundle-Version: 0.10.0
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Bundle-ActivationPolicy: lazy
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ org.eclipse.jdt.core,
+ org.eclipse.jdt.ls.core,
+ com.google.gson

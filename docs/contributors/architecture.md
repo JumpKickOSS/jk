@@ -697,7 +697,14 @@ MCP `ide` runs in-process. `wire` cannot host them (it is the frozen protocol co
 generators need `toolchain-jdk`); `core` cannot see the wire record at all.
 
 - **VS Code:** `clients/vscode/` — a TypeScript VSIX; commands and the status bar speak the
-  engine's `/api` and event stream, with the address and token from `jk web -O jsonl`.
+  engine's `/api` and event stream, with the address and token from `jk web -O jsonl`. The Java
+  language server (redhat.java, a declared dependency) loads the VSIX's `server/jk-jdtls.jar`
+  through `javaExtensions`: an OSGi bundle (`clients/vscode/jdtls/`, built by `npm run build:jdtls`
+  against the pinned redhat.java's own Eclipse jars, never by JumpKick) whose importer claims a `jk.toml`
+  folder and whose `jk.jdtls.applyModel` command applies `GET /api/project/model`. That body is
+  `IdeModels.hosted` (the one model `jk ide`, the IntelliJ plugin and `jk bsp` read) rendered as
+  `JdtProjects`, the same entries `jk ide -i` writes to `.classpath`. The extension relocks
+  (`POST /api/build` `kind=lock`) and reapplies after a manifest change and a 2 s quiet window.
 - **IntelliJ:** `clients/intellij/` — install-from-disk zip. **Sync project**
   uses `jk ide -p` (structured model) + `jk ide -i` (shared generator apply) +
   `jk bsp install` (dual-path with JetBrains BSP). Open-project activity offers/auto Sync when

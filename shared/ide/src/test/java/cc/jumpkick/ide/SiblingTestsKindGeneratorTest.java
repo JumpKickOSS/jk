@@ -118,7 +118,11 @@ class SiblingTestsKindGeneratorTest {
                 List.of(),
                 null);
 
-        String classpath = VscodeIdeGenerator.dotClasspath(IdeOutput.preview(), model, appDir, app, 25);
+        JdtProjects.Project appProject = JdtProjects.of(model).stream()
+                .filter(p -> p.dir().equals(appDir))
+                .findFirst()
+                .orElseThrow();
+        String classpath = VscodeIdeGenerator.dotClasspath(IdeOutput.preview(), appProject);
 
         // Exactly one project src entry — JDT rejects "Build path contains duplicate entry" —
         // main-scoped (no test attribute on the src entry), plus the test-classes lib.

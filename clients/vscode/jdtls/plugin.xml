@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<plugin>
+   <!-- Below Gradle (300) and Maven (400): a folder with a jk.toml is JumpKick's. -->
+   <extension id="importers" point="org.eclipse.jdt.ls.core.importers">
+      <importer id="jumpkickProjectImporter" order="200" class="cc.jumpkick.jdtls.JkProjectImporter"/>
+   </extension>
+   <extension id="buildSupport" point="org.eclipse.jdt.ls.core.buildSupport">
+      <buildSupport id="jumpkickBuildSupport" order="200" class="cc.jumpkick.jdtls.JkBuildSupport"/>
+   </extension>
+   <extension point="org.eclipse.jdt.ls.core.delegateCommandHandler">
+      <delegateCommandHandler class="cc.jumpkick.jdtls.ApplyModelHandler">
+         <command id="jk.jdtls.applyModel"/>
+      </delegateCommandHandler>
+   </extension>
+   <extension id="nature" point="org.eclipse.core.resources.natures">
+      <runtime>
+         <run class="cc.jumpkick.jdtls.JkNature"/>
+      </runtime>
+   </extension>
+</plugin>

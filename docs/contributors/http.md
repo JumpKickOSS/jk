@@ -274,6 +274,30 @@ The default scope set is defined once — `DependencyTreeStyle.defaultScopeOrder
 `runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
 both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
+### `GET /api/project/model`
+
+The checkout's modules as Eclipse JDT projects, for the VS Code extension's Java language server
+importer: `GET /api/project/model?dir=<path>`. It is the model `jk ide`, the IntelliJ plugin and
+`jk bsp` read (`IdeOps.ideModel`), read the way `jk ide -s` writes `.classpath` files
+(`JdtProjects`), so every surface sees the same modules, roots and classpaths.
+
+`{ root, name, workspace, projects: [{ name, dir, compliance, jdkHome, output, entries }] }`
+
+`entries` is the project's raw classpath in order, every path absolute:
+
+| `kind` | Fields | Meaning |
+| --- | --- | --- |
+| `source` | `path`, `output`, `test`, `generated` | A source root on disk; `generated` is annotation-processor output that may not exist yet |
+| `project` | `name`, `test` | Another module's project |
+| `library` | `path`, `sources`, `test` | A jar or class folder; `sources` is its `-sources.jar` or `null` |
+| `container` | `path` | The JRE container for the module's `JavaSE-<n>` |
+
+`test` puts the entry on the test classpath only. The lockfile is read as it stands; jars it names
+that the store lacks are fetched first. Relocking is the caller's: `POST /api/build` with
+`kind=lock`, which the extension runs after a `jk.toml` or `jk-lock.toml` change and a 2 s quiet
+window. A missing `dir` is a **400**; a checkout with no model (no `jk.toml`, a manifest that does
+not parse) is a **422** with `{ error }`. Token-gated like `/api/project`.
+
 ### `GET /api/project/dir`
 
 `GET /api/project/dir?project=<id>[&dir=<abs-path>][&path=<rel>][&cursor=<c>][&limit=<n>]`

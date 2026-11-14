@@ -215,6 +215,32 @@ final class HttpProjectApi {
     }
 
     /**
+     * {@code GET /api/project/model?dir=…} — the checkout's modules as JDT projects with their raw
+     * classpaths ({@link ProjectModelJson}), for the VS Code extension's Java language server
+     * importer. Reads the lockfile as it stands and fetches jars it names that the store lacks;
+     * relocking is the caller's {@code POST /api/build} {@code kind=lock}. 422 when no model.
+     */
+    void handleProjectModel(HttpExchange exchange) throws IOException {
+        String dir;
+        try {
+            dir = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (dir == null || dir.isBlank()) {
+            HttpResponses.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"dir\"").toString());
+            return;
+        }
+        Map<String, Object> body = ProjectModelJson.forDir(Path.of(dir));
+        HttpResponses.sendJson(exchange, body.containsKey("error") ? 422 : 200, MiniJson.write(body));
+    }
+
+    /**
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
      * for the Project page ECharts panel.
      */

@@ -60,8 +60,16 @@ final class TextFiles {
         }
     }
 
-    private static final Set<String> SKIP_DIRS =
-            Set.of(BuildLayout.TARGET, ".git", ".gradle", ".idea", ".kotlin", "node_modules", ".board", ".firebase");
+    private static final Set<String> SKIP_DIRS = Set.of(
+            BuildLayout.TARGET,
+            ".git",
+            ".gradle",
+            ".idea",
+            ".kotlin",
+            "node_modules",
+            ".vscode-test",
+            ".board",
+            ".firebase");
     private static final List<String> BINARY_EXT = List.of(
             ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".jar", ".zip", ".xz", ".gz", ".tar", ".class", ".aot",
             ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe", ".dll", ".bin", ".idx", ".lock");

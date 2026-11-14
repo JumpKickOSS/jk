@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { JumpKickApi } from "../../../src/extension";
 
-const real = process.env["JK_TEST_REAL"] === "1";
+const real = process.env["JK_TEST_REAL"] === "1" && (process.env["JK_TEST_JAVA"] ?? "") === "";
 const workspace = process.env["JK_TEST_WORKSPACE"] ?? "";
 
 async function until(what: string, cond: () => boolean, ms: number): Promise<void> {

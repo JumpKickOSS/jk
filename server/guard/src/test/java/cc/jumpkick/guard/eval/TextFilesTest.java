@@ -37,6 +37,19 @@ class TextFilesTest {
         assertThat(TextFiles.corpus(root)).extracting(TextFiles.Entry::rel).containsExactly("src/Small.java");
     }
 
+    /** VS Code's test cache holds downloaded editors and extensions, never this tree's source. */
+    @Test
+    void the_vscode_test_cache_is_outside_the_corpus(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("clients/vscode/.vscode-test/run/extensions/x"));
+        Files.writeString(
+                root.resolve("clients/vscode/.vscode-test/run/extensions/x/readme.md"), "a downloaded extension\n");
+        Files.createDirectories(root.resolve("clients/vscode/src"));
+        Files.writeString(root.resolve("clients/vscode/src/extension.ts"), "export {};\n");
+        assertThat(TextFiles.corpus(root))
+                .extracting(TextFiles.Entry::rel)
+                .containsExactly("clients/vscode/src/extension.ts");
+    }
+
     @Test
     void a_nul_byte_marks_a_file_binary_before_it_is_decoded(@TempDir Path root) throws IOException {
         Path text = root.resolve("Ok.java");

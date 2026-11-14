@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { EngineSession, type SessionState } from "./engine/session";
 import { runJk, stopAll } from "./engine/jkProcess";
 import type { EngineEvent } from "./engine/stream";
+import { APPLY_COMMAND, isManifest, ModelSync, QUIET_MS, QuietWindow, type SyncOutcome } from "./javaModel";
 import { ProblemsPanel } from "./problemsPanel";
 import { RunTracker, type Run } from "./runs";
 
@@ -14,6 +15,16 @@ export interface JumpKickApi {
   readonly runs: RunTracker;
   /** Start a job in the window's jk.toml folder; resolves with the finished run. */
   run(kind: string): Promise<Run | undefined>;
+  /** Relock and hand the model to the Java language server now; resolves with what it did. */
+  syncJavaModel(): Promise<SyncOutcome>;
+  /** Called with every finished model sync, the watcher's included. */
+  onJavaModelSync(l: (outcome: SyncOutcome) => void): vscode.Disposable;
+}
+
+/** What redhat.java's extension API offers that the model sync uses. */
+interface JavaExtensionApi {
+  /** Resolves when the standard (full) language server is ready; never in LightWeight mode. */
+  serverReady?: () => Promise<boolean>;
 }
 
 let session: EngineSession | undefined;
@@ -146,10 +157,71 @@ export function activate(context: vscode.ExtensionContext): JumpKickApi {
     }),
   );
 
+  // The Java language server's projects follow the engine's model: once the standard server is
+  // up, and again after a manifest or lockfile change has been quiet for QUIET_MS.
+  const syncListeners = new Set<(outcome: SyncOutcome) => void>();
+  const modelSync = new ModelSync({
+    relock: async () => (await startJob("lock"))?.success === true,
+    fetchModel: async () => {
+      const dir = projectDir();
+      if (!dir) throw new Error("no folder with a jk.toml is open");
+      return (await s.connect()).get("/api/project/model", { dir });
+    },
+    apply: async (json) => vscode.commands.executeCommand("java.execute.workspaceCommand", APPLY_COMMAND, json),
+  });
+  const syncNow = async (): Promise<SyncOutcome> => {
+    const outcome = (await javaServerReady())
+      ? await modelSync.sync()
+      : ({ kind: "failed", reason: "the Java language server is not running" } as const);
+    if (outcome.kind === "applied") output.appendLine(`JumpKick: Java projects updated: ${outcome.projects.join(", ")}`);
+    else if (outcome.kind === "failed") output.appendLine(`JumpKick: could not update the Java projects: ${outcome.reason}`);
+    for (const l of syncListeners) l(outcome);
+    return outcome;
+  };
+  const quiet = new QuietWindow(QUIET_MS, async () => {
+    await syncNow();
+  });
+  const watcher = vscode.workspace.createFileSystemWatcher("**/{jk.toml,jk-lock.toml}");
+  const touched = (uri: vscode.Uri): void => {
+    if (isManifest(uri.fsPath)) quiet.touch();
+  };
+  context.subscriptions.push(
+    watcher,
+    watcher.onDidChange(touched),
+    watcher.onDidCreate(touched),
+    watcher.onDidDelete(touched),
+    { dispose: () => quiet.dispose() },
+    s.onEngine(() => modelSync.invalidate()),
+  );
+
   void s.connect().catch((e: unknown) => {
     output.appendLine(`JumpKick: ${e instanceof Error ? e.message : String(e)}`);
   });
-  return { session: s, runs, run: startJob };
+  if (projectDir() && vscode.workspace.isTrusted) {
+    void javaServerReady().then((ready) => (ready ? quiet.now() : undefined));
+  }
+  return {
+    session: s,
+    runs,
+    run: startJob,
+    syncJavaModel: async () => {
+      let outcome: SyncOutcome = { kind: "unchanged" };
+      const sub = (o: SyncOutcome): void => {
+        outcome = o;
+      };
+      syncListeners.add(sub);
+      try {
+        await quiet.now();
+      } finally {
+        syncListeners.delete(sub);
+      }
+      return outcome;
+    },
+    onJavaModelSync: (l) => {
+      syncListeners.add(l);
+      return new vscode.Disposable(() => syncListeners.delete(l));
+    },
+  };
 }
 
 export function deactivate(): void {
@@ -203,6 +275,19 @@ function echo(output: vscode.OutputChannel, runs: RunTracker, event: EngineEvent
   else if (event.type === "request-finish") {
     const verdict = d["success"] === true ? "✔ succeeded" : d["cancelled"] === true ? "◼ cancelled" : "✘ failed";
     output.appendLine(`${verdict} · jk ${run.kind}`);
+  }
+}
+
+/** Waits for redhat.java's standard server; false when the extension is missing or fails. */
+async function javaServerReady(): Promise<boolean> {
+  const ext = vscode.extensions.getExtension<JavaExtensionApi>("redhat.java");
+  if (!ext) return false;
+  try {
+    const api = ext.isActive ? ext.exports : await ext.activate();
+    if (typeof api?.serverReady !== "function") return false;
+    return (await api.serverReady()) !== false;
+  } catch {
+    return false;
   }
 }
 

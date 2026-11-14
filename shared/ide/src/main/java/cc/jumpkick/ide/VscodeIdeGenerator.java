@@ -3,11 +3,8 @@ package cc.jumpkick.ide;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
-import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,14 +30,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class VscodeIdeGenerator implements IdeGenerator {
 
-    /** Eclipse JRE container VM type — JDT-LS binds the {@code JavaSE-<n>} EE to a configured runtime. */
-    private static final String STANDARD_VM_TYPE = "org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType";
-
-    private static final String JRE_CONTAINER = "org.eclipse.jdt.launching.JRE_CONTAINER";
-
-    /** Highest Java execution-environment name we assume JDT-LS knows; newer levels clamp to this. */
-    private static final int MAX_KNOWN_EE = 25;
-
     @Override
     public IdeTarget target() {
         return IdeTarget.VSCODE;
@@ -52,8 +41,8 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         // reject duplicates rather than emit a silently-broken classpath.
         assertUniqueNames(model);
 
-        for (Map.Entry<Path, IdeModule> me : model.allModules().entrySet()) {
-            writeModule(out, model, me.getKey(), me.getValue());
+        for (JdtProjects.Project project : JdtProjects.of(model)) {
+            writeModule(out, project);
         }
 
         Path vscodeDir = model.wsRoot().resolve(".vscode");
@@ -71,17 +60,12 @@ public final class VscodeIdeGenerator implements IdeGenerator {
     // Per-module Eclipse metadata
     // =========================================================================
 
-    private static void writeModule(IdeOutput out, IdeModel model, Path moduleDir, IdeModule module)
-            throws IOException {
-        String name = module.name();
-        SdkRef sdk = model.sdkRefs().get(moduleDir);
-        int level = sdk != null ? sdk.languageLevel() : module.javaRelease();
-        if (level <= 0) level = MAX_KNOWN_EE;
-
-        out.file(moduleDir.resolve(".project"), dotProject(name));
-        out.file(moduleDir.resolve(".classpath"), dotClasspath(out, model, moduleDir, module, level));
+    private static void writeModule(IdeOutput out, JdtProjects.Project project) throws IOException {
+        Path moduleDir = project.dir();
+        out.file(moduleDir.resolve(".project"), dotProject(project.name()));
+        out.file(moduleDir.resolve(".classpath"), dotClasspath(out, project));
         Path settings = moduleDir.resolve(".settings");
-        out.file(settings.resolve("org.eclipse.jdt.core.prefs"), corePrefs(level));
+        out.file(settings.resolve("org.eclipse.jdt.core.prefs"), corePrefs(project.compliance()));
     }
 
     private static String dotProject(String name) {
@@ -103,117 +87,76 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         return sb.toString();
     }
 
-    static String dotClasspath(IdeOutput out, IdeModel model, Path moduleDir, IdeModule module, int level) {
-        String outMain = rel(moduleDir, module.jdtClassesDir());
-        String outTest = rel(moduleDir, module.jdtTestClassesDir());
-
+    /** The project's {@code .classpath}: its entries, module-relative inside it, absolute outside. */
+    static String dotClasspath(IdeOutput out, JdtProjects.Project project) {
+        Path moduleDir = project.dir();
         StringBuilder sb = xmlHeader();
         sb.append("<classpath>\n");
-
-        // all TestSuites roots as test sources (shared with IntelliJ generator).
-        for (IdeSourceRoots.Root root : IdeSourceRoots.of(moduleDir)) {
-            srcEntry(sb, moduleDir, root.relative(), root.test(), root.test() ? outTest : outMain);
-        }
-
-        // Annotation-processor output roots (created so JDT's classpath stays valid), emitted when
-        // this module declares processors or the dir already exists — mirrors the IntelliJ generator.
-        List<Path> procs = model.processorJars().getOrDefault(moduleDir, List.of());
-        Path gen = module.generatedSourcesDir();
-        Path genTest = module.generatedTestSourcesDir();
-        if (!procs.isEmpty() || Files.isDirectory(gen)) {
-            try {
-                out.directory(gen);
-                out.directory(genTest);
-            } catch (IOException ignored) {
-                // best-effort; JDT tolerates a missing dir with a warning
-            }
-            srcEntryRaw(sb, rel(moduleDir, gen), false, outMain);
-            srcEntryRaw(sb, rel(moduleDir, genTest), true, outTest);
-        }
-
-        // Live cross-module source dependencies.
-        Map<String, IdeModule> byName = new LinkedHashMap<>();
-        for (IdeModule m : model.allModules().values()) byName.put(m.name(), m);
-        for (ModuleRef mr : model.siblingRefs().getOrDefault(moduleDir, List.of())) {
-            boolean testScope =
-                    IdeWireModel.SCOPE_TEST.equals(mr.scope()) || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
-            boolean attachTests = IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope())
-                    || IdeWireModel.SCOPE_COMPILE_TEST_KIND.equals(mr.scope());
-            sb.append("  <classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/")
-                    .append(esc(mr.name()))
-                    .append("\"");
-            if (testScope) sb.append(" ").append(testAttr());
-            sb.append("/>\n");
-            // kind=tests: sibling test classes on the test classpath (Maven test-jar parity).
-            // COMPILE+TEST_KIND keeps the single src entry above (main classpath) and only adds
-            // the test-classes lib — JDT rejects duplicate classpath entries for one project.
-            if (attachTests) {
-                IdeModule sib = byName.get(mr.name());
-                if (sib != null) {
-                    String abs = abs(sib.testClassesDir());
+        for (JdtProjects.Entry entry : project.entries()) {
+            switch (entry) {
+                case JdtProjects.Source src -> {
+                    if (src.generated()) {
+                        try {
+                            out.directory(src.path());
+                        } catch (IOException ignored) {
+                            // best-effort; JDT tolerates a missing dir with a warning
+                        }
+                    }
+                    sb.append("  <classpathentry kind=\"src\" path=\"")
+                            .append(esc(rel(moduleDir, src.path())))
+                            .append("\"");
+                    sb.append(" output=\"")
+                            .append(esc(rel(moduleDir, src.output())))
+                            .append("\"");
+                    if (src.test()) sb.append(" ").append(testAttr());
+                    sb.append("/>\n");
+                }
+                case JdtProjects.ProjectRef ref -> {
+                    sb.append("  <classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/")
+                            .append(esc(ref.name()))
+                            .append("\"");
+                    if (ref.test()) sb.append(" ").append(testAttr());
+                    sb.append("/>\n");
+                }
+                case JdtProjects.SiblingTests tests ->
                     sb.append("  <classpathentry kind=\"lib\" path=\"")
-                            .append(esc(abs))
+                            .append(esc(abs(tests.classes())))
                             .append("\" ")
                             .append(testAttr())
                             .append("/>\n");
+                case JdtProjects.Container con ->
+                    sb.append("  <classpathentry kind=\"con\" path=\"")
+                            .append(esc(con.path()))
+                            .append("\"/>\n");
+                case JdtProjects.Library lib -> {
+                    sb.append("  <classpathentry kind=\"lib\" path=\"")
+                            .append(esc(abs(lib.path())))
+                            .append("\"");
+                    Path sources = lib.sources();
+                    if (sources != null)
+                        sb.append(" sourcepath=\"").append(esc(abs(sources))).append("\"");
+                    if (lib.test()) {
+                        sb.append(">\n    <attributes>\n      <attribute name=\"test\" value=\"true\"/>\n")
+                                .append("    </attributes>\n  </classpathentry>\n");
+                    } else {
+                        sb.append("/>\n");
+                    }
                 }
             }
         }
-
-        // JRE container bound to the module's execution environment.
-        sb.append("  <classpathentry kind=\"con\" path=\"")
-                .append(JRE_CONTAINER)
-                .append("/")
-                .append(STANDARD_VM_TYPE)
-                .append("/")
-                .append(eeName(level))
-                .append("\"/>\n");
-
-        // External libraries (absolute paths — the repo lives outside the workspace).
-        for (LibEntry entry : model.libEntries().getOrDefault(moduleDir, List.of())) {
-            LibDef def = model.allLibs().get(entry.libName());
-            if (def == null || def.jarPath() == null) continue;
-            String jar = abs(def.jarPath());
-            boolean test = isTestOnly(entry.scopes());
-            sb.append("  <classpathentry kind=\"lib\" path=\"").append(esc(jar)).append("\"");
-            if (def.sourcesPath() != null) {
-                sb.append(" sourcepath=\"").append(esc(abs(def.sourcesPath()))).append("\"");
-            }
-            if (test) {
-                sb.append(">\n    <attributes>\n      <attribute name=\"test\" value=\"true\"/>\n")
-                        .append("    </attributes>\n  </classpathentry>\n");
-            } else {
-                sb.append("/>\n");
-            }
-        }
-
-        // Default output.
         sb.append("  <classpathentry kind=\"output\" path=\"")
-                .append(esc(outMain))
+                .append(esc(rel(moduleDir, project.output())))
                 .append("\"/>\n");
         sb.append("</classpath>\n");
         return sb.toString();
     }
 
-    private static String corePrefs(int level) {
-        String v = eeLevelString(level);
+    private static String corePrefs(String v) {
         return "eclipse.preferences.version=1\n"
                 + "org.eclipse.jdt.core.compiler.codegen.targetPlatform=" + v + "\n"
                 + "org.eclipse.jdt.core.compiler.compliance=" + v + "\n"
                 + "org.eclipse.jdt.core.compiler.release=enabled\n"
                 + "org.eclipse.jdt.core.compiler.source=" + v + "\n";
-    }
-
-    private static void srcEntry(StringBuilder sb, Path moduleDir, String relative, boolean test, String output) {
-        if (!Files.isDirectory(moduleDir.resolve(relative))) return;
-        srcEntryRaw(sb, relative, test, output);
-    }
-
-    private static void srcEntryRaw(StringBuilder sb, String path, boolean test, String output) {
-        sb.append("  <classpathentry kind=\"src\" path=\"").append(esc(path)).append("\"");
-        sb.append(" output=\"").append(esc(output)).append("\"");
-        if (test) sb.append(" ").append(testAttr());
-        sb.append("/>\n");
     }
 
     private static String testAttr() {
@@ -349,22 +292,13 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         }
     }
 
-    /** True when TEST is the only classpath-relevant scope (map to Eclipse's {@code test} attribute). */
-    private static boolean isTestOnly(List<Scope> scopes) {
-        if (!scopes.contains(Scope.TEST)) return false;
-        for (Scope s : scopes) {
-            if (s == Scope.MAIN || s == Scope.EXPORT || s == Scope.PROVIDED || s == Scope.RUNTIME) return false;
-        }
-        return true;
-    }
-
     /** Eclipse execution-environment name for a Java level (e.g. {@code JavaSE-25}, {@code JavaSE-1.8}). */
     private static String eeName(int level) {
         return "JavaSE-" + eeLevelString(level);
     }
 
     private static String eeLevelString(int level) {
-        int l = Math.min(level, MAX_KNOWN_EE);
+        int l = Math.min(level, JdtProjects.MAX_KNOWN_EE);
         return l <= 8 ? "1." + l : String.valueOf(l);
     }
 

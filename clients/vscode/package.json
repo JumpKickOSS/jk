@@ -43,8 +43,14 @@
       ]
     }
   },
+  "extensionDependencies": [
+    "redhat.java"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
+    "javaExtensions": [
+      "./server/jk-jdtls.jar"
+    ],
     "commands": [
       {
         "command": "jk.build",
@@ -126,9 +132,11 @@
     "build": "npm run typecheck && npm run bundle",
     "compile-tests": "tsc -p tsconfig.test.json",
     "test:unit": "npm run compile-tests && node test/run-unit.mjs",
-    "test:integration": "npm run bundle && npm run compile-tests && node out/test/integration/runTest.js",
-    "test": "npm run build && npm run test:unit && npm run test:integration",
-    "package": "npm run build && vsce package --no-dependencies"
+    "test:integration": "npm run bundle && npm run build:jdtls && npm run compile-tests && node out/test/integration/runTest.js",
+    "test": "npm run build && npm run test:unit && npm run test:jdtls && npm run test:integration",
+    "package": "npm run build && npm run build:jdtls && vsce package --no-dependencies",
+    "build:jdtls": "node jdtls/build.mjs",
+    "test:jdtls": "node jdtls/build.mjs --test"
   },
   "devDependencies": {
     "@types/mocha": "10.0.10",

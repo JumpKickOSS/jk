@@ -1,0 +1,267 @@
+{
+  "root": "${ROOT}",
+  "name": "ws",
+  "workspace": true,
+  "projects": [
+    {
+      "name": "lib",
+      "dir": "${ROOT}/lib",
+      "compliance": "25",
+      "jdkHome": "/home/dev/.jk/jdks/temurin-25",
+      "output": "${ROOT}/lib/target/jdt/classes/main",
+      "entries": [
+        {
+          "kind": "source",
+          "path": "${ROOT}/lib/src/main/java",
+          "output": "${ROOT}/lib/target/jdt/classes/main",
+          "test": false,
+          "generated": false
+        },
+        {
+          "kind": "source",
+          "path": "${ROOT}/lib/target/generated-sources/annotations",
+          "output": "${ROOT}/lib/target/jdt/classes/main",
+          "test": false,
+          "generated": true
+        },
+        {
+          "kind": "source",
+          "path": "${ROOT}/lib/target/generated-test-sources/test-annotations",
+          "output": "${ROOT}/lib/target/jdt/classes/test",
+          "test": true,
+          "generated": true
+        },
+        {
+          "kind": "container",
+          "path": "org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-25"
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar",
+          "sources": "/home/dev/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar",
+          "sources": "/home/dev/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/guava/guava/33.5.0-jre/guava-33.5.0-jre.jar",
+          "sources": "/home/dev/.m2/repository/com/google/guava/guava/33.5.0-jre/guava-33.5.0-jre-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
+          "sources": null,
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1.jar",
+          "sources": "/home/dev/.m2/repository/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar",
+          "sources": "/home/dev/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
+          "sources": "/home/dev/.m2/repository/org/jspecify/jspecify/1.0.0/jspecify-1.0.0-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.1.3/junit-jupiter-api-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.1.3/junit-jupiter-api-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.1.3/junit-jupiter-params-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.1.3/junit-jupiter-params-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter/6.1.3/junit-jupiter-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter/6.1.3/junit-jupiter-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/platform/junit-platform-commons/6.1.3/junit-platform-commons-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/platform/junit-platform-commons/6.1.3/junit-platform-commons-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/platform/junit-platform-engine/6.1.3/junit-platform-engine-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/platform/junit-platform-engine/6.1.3/junit-platform-engine-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/platform/junit-platform-launcher/6.1.3/junit-platform-launcher-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/platform/junit-platform-launcher/6.1.3/junit-platform-launcher-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar",
+          "sources": "/home/dev/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0-sources.jar",
+          "test": true
+        }
+      ]
+    },
+    {
+      "name": "app",
+      "dir": "${ROOT}/app",
+      "compliance": "25",
+      "jdkHome": "/home/dev/.jk/jdks/temurin-25",
+      "output": "${ROOT}/app/target/jdt/classes/main",
+      "entries": [
+        {
+          "kind": "source",
+          "path": "${ROOT}/app/src/main/java",
+          "output": "${ROOT}/app/target/jdt/classes/main",
+          "test": false,
+          "generated": false
+        },
+        {
+          "kind": "source",
+          "path": "${ROOT}/app/src/test/java",
+          "output": "${ROOT}/app/target/jdt/classes/test",
+          "test": true,
+          "generated": false
+        },
+        {
+          "kind": "source",
+          "path": "${ROOT}/app/target/generated-sources/annotations",
+          "output": "${ROOT}/app/target/jdt/classes/main",
+          "test": false,
+          "generated": true
+        },
+        {
+          "kind": "source",
+          "path": "${ROOT}/app/target/generated-test-sources/test-annotations",
+          "output": "${ROOT}/app/target/jdt/classes/test",
+          "test": true,
+          "generated": true
+        },
+        {
+          "kind": "project",
+          "name": "lib",
+          "test": false
+        },
+        {
+          "kind": "container",
+          "path": "org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-25"
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0.jar",
+          "sources": "/home/dev/.m2/repository/com/google/errorprone/error_prone_annotations/2.41.0/error_prone_annotations-2.41.0-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar",
+          "sources": "/home/dev/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/guava/guava/33.5.0-jre/guava-33.5.0-jre.jar",
+          "sources": "/home/dev/.m2/repository/com/google/guava/guava/33.5.0-jre/guava-33.5.0-jre-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
+          "sources": null,
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1.jar",
+          "sources": "/home/dev/.m2/repository/com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar",
+          "sources": "/home/dev/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
+          "sources": "/home/dev/.m2/repository/org/jspecify/jspecify/1.0.0/jspecify-1.0.0-sources.jar",
+          "test": false
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.1.3/junit-jupiter-api-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.1.3/junit-jupiter-api-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.1.3/junit-jupiter-params-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.1.3/junit-jupiter-params-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter/6.1.3/junit-jupiter-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/jupiter/junit-jupiter/6.1.3/junit-jupiter-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/platform/junit-platform-commons/6.1.3/junit-platform-commons-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/platform/junit-platform-commons/6.1.3/junit-platform-commons-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/platform/junit-platform-engine/6.1.3/junit-platform-engine-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/platform/junit-platform-engine/6.1.3/junit-platform-engine-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/junit/platform/junit-platform-launcher/6.1.3/junit-platform-launcher-6.1.3.jar",
+          "sources": "/home/dev/.m2/repository/org/junit/platform/junit-platform-launcher/6.1.3/junit-platform-launcher-6.1.3-sources.jar",
+          "test": true
+        },
+        {
+          "kind": "library",
+          "path": "/home/dev/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar",
+          "sources": "/home/dev/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0-sources.jar",
+          "test": true
+        }
+      ]
+    }
+  ]
+}

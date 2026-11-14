@@ -1,0 +1,7 @@
+group = "dev.example"
+name = "single"
+version = "0.1.0"
+java = 25
+
+[dependencies]
+guava = { group = "com.google.guava", version = "33.8.0-jre" }
