@@ -45,6 +45,12 @@ class ForeignDowncallsMetadataTest {
                         "jint|void*, void*, jint, void*|");
     }
 
+    /** GetConsoleWindow, IsWindowVisible and GetClassNameW: whether a person can type into the console. */
+    @Test
+    void windowsConsoleWindowDowncallsAreRegistered() throws IOException {
+        assertThat(keys(readMetadata())).contains("void*||", "jint|void*|", "jint|void*, void*, jint|");
+    }
+
     private static String readMetadata() throws IOException {
         String path = "/META-INF/native-image/cc.jumpkick/cli-terminal/reachability-metadata.json";
         try (InputStream in = ForeignDowncallsMetadataTest.class.getResourceAsStream(path)) {

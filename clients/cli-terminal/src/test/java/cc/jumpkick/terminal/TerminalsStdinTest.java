@@ -65,15 +65,39 @@ class TerminalsStdinTest {
     @Test
     void on_windows_a_console_nobody_types_into_is_no_controlling_terminal() {
         // An ssh session or `jk update < NUL`: the console is live, stdin is not it.
-        assertThat(Terminals.controllingIsTty(true, () -> true, () -> false)).isFalse();
-        assertThat(Terminals.controllingIsTty(true, () -> true, () -> true)).isTrue();
-        assertThat(Terminals.controllingIsTty(true, () -> false, () -> true)).isFalse();
+        assertThat(Terminals.controllingIsTty(true, () -> true, () -> false, () -> true))
+                .isFalse();
+        assertThat(Terminals.controllingIsTty(true, () -> true, () -> true, () -> true))
+                .isTrue();
+        assertThat(Terminals.controllingIsTty(true, () -> false, () -> true, () -> true))
+                .isFalse();
+    }
+
+    @Test
+    void on_windows_a_console_stdin_nobody_can_see_is_no_controlling_terminal() {
+        // A process started by WMI or a scheduled task: stdin is its console, whose window no one sees.
+        assertThat(Terminals.controllingIsTty(true, () -> true, () -> true, () -> false))
+                .isFalse();
+    }
+
+    @Test
+    void a_pseudoconsole_or_a_visible_console_window_has_a_person_at_it() {
+        // Windows Terminal, ssh -t, an IDE terminal: the pseudoconsole's window is never visible.
+        assertThat(Terminals.attended(Terminals.PSEUDO_CONSOLE_WINDOW, false)).isTrue();
+        // A classic conhost window on the desktop.
+        assertThat(Terminals.attended("ConsoleWindowClass", true)).isTrue();
+        // The same window on the invisible window station WMI's processes get (seen on Windows 11).
+        assertThat(Terminals.attended("ConsoleWindowClass", false)).isFalse();
+        // CREATE_NO_WINDOW: a console with no window at all.
+        assertThat(Terminals.attended(null, false)).isFalse();
     }
 
     @Test
     void on_posix_the_controlling_terminal_answers_even_with_stdin_redirected() {
-        assertThat(Terminals.controllingIsTty(false, () -> true, () -> false)).isTrue();
-        assertThat(Terminals.controllingIsTty(false, () -> false, () -> true)).isFalse();
+        assertThat(Terminals.controllingIsTty(false, () -> true, () -> false, () -> false))
+                .isTrue();
+        assertThat(Terminals.controllingIsTty(false, () -> false, () -> true, () -> true))
+                .isFalse();
     }
 
     @Test

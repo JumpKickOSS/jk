@@ -64,17 +64,48 @@ public final class Terminals {
 
     /**
      * Input axis. POSIX {@code isatty} on a private {@code /dev/tty} fd; Windows {@code GetConsoleMode}
-     * on {@code CONIN$}, and only when stdin is that console: a Windows process nearly always has a
-     * console (an ssh session, Git Bash, a redirected cmd) whether or not a person types into it.
-     * Does not emit bytes.
+     * on {@code CONIN$}, and only when stdin is that console and a person can type into it ({@link
+     * #windowsConsoleAttended()}): a Windows process nearly always has a console (an ssh session, Git
+     * Bash, a redirected cmd, a process WMI or a scheduled task started) whether or not anyone is at
+     * it. Does not emit bytes.
      */
     public static boolean controllingIsTty() {
-        return controllingIsTty(Os.isWindows(), () -> controlling().isLive(), Terminals::stdinIsTty);
+        return controllingIsTty(
+                Os.isWindows(), () -> controlling().isLive(), Terminals::stdinIsTty, Terminals::windowsConsoleAttended);
     }
 
-    /** {@link #controllingIsTty()} with the live-terminal and stdin checks as seams. */
-    static boolean controllingIsTty(boolean windows, BooleanSupplier live, BooleanSupplier stdin) {
-        return live.getAsBoolean() && (!windows || stdin.getAsBoolean());
+    /** {@link #controllingIsTty()} with the live-terminal, stdin and attended-console checks as seams. */
+    static boolean controllingIsTty(
+            boolean windows, BooleanSupplier live, BooleanSupplier stdin, BooleanSupplier attended) {
+        return live.getAsBoolean() && (!windows || (stdin.getAsBoolean() && attended.getAsBoolean()));
+    }
+
+    /** The window class of a pseudoconsole's window: Windows Terminal, {@code ssh -t}, an IDE's terminal. */
+    static final String PSEUDO_CONSOLE_WINDOW = "PseudoConsoleWindow";
+
+    /**
+     * Windows: whether a person can type into this process's console. A pseudoconsole's is always
+     * someone's terminal (its window is never visible); a classic console window must be visible.
+     * The console that a process started by WMI ({@code Invoke-CimMethod Win32_Process Create}), a
+     * scheduled task or a service is given has a window on a window station nobody sees, and the
+     * console {@code CREATE_NO_WINDOW} gives has none: stdin is that console, yet a prompt there
+     * waits forever. When the check cannot run the console counts as attended, as before it existed.
+     */
+    public static boolean windowsConsoleAttended() {
+        try {
+            return attended(WindowsConsoleWindow.className(), WindowsConsoleWindow.visible());
+        } catch (Throwable unavailable) {
+            return true;
+        }
+    }
+
+    /**
+     * {@link #windowsConsoleAttended()} from the console window's class ({@code null}: the console
+     * has no window) and whether that window is visible.
+     */
+    static boolean attended(@Nullable String windowClass, boolean visible) {
+        if (windowClass == null) return false;
+        return PSEUDO_CONSOLE_WINDOW.equals(windowClass) || visible;
     }
 
     /**
