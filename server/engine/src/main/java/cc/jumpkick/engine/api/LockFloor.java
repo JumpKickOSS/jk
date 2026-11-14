@@ -36,10 +36,15 @@ public final class LockFloor {
             if (!Files.isRegularFile(lock)) return null;
             String floor = LockfileReader.read(lock).jkMin();
             if (floor == null || floor.isBlank()) return null;
-            return Versions.compare(floor, running) > 0 ? floor : null;
+            return Versions.compare(floor, release(running)) > 0 ? floor : null;
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    /** A snapshot is a build on the way to its release and meets that release's floor. */
+    private static String release(String running) {
+        return running.endsWith("-SNAPSHOT") ? running.substring(0, running.length() - "-SNAPSHOT".length()) : running;
     }
 
     /** The upgrade error, phrased the same on every surface. */

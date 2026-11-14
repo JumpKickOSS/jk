@@ -36,6 +36,15 @@ class LockFloorTest {
     }
 
     @Test
+    void a_snapshot_meets_its_release_floor_and_not_a_later_one(@TempDir Path dir) throws IOException {
+        writeLock(dir, "jk-min = \"0.51.0\"");
+        assertThat(LockFloor.requiredNewer(dir, "0.51.0-SNAPSHOT")).isNull();
+        assertThat(LockFloor.requiredNewer(dir, "0.51.1-SNAPSHOT")).isNull();
+        assertThat(LockFloor.requiredNewer(dir, "0.50.3")).isEqualTo("0.51.0");
+        assertThat(LockFloor.requiredNewer(dir, "0.50.9-SNAPSHOT")).isEqualTo("0.51.0");
+    }
+
+    @Test
     void reads_and_unguarded_kinds_pass_regardless(@TempDir Path dir) throws IOException {
         writeLock(dir, "jk-min = \"9.9.9\"");
         // lock/tree/why stay served — re-locking with a current jk is how a checkout moves on.

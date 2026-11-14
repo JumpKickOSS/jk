@@ -112,12 +112,13 @@ public final class LockfileWriter {
     }
 
     /**
-     * The floor stamped into locks that have none: the oldest jk whose reader understands this
-     * writer's output. Bumped by hand only when the lock format actually requires a newer
-     * reader — never auto-bumped to the writing jk's own version, or an old CI binary dies
-     * because someone ran a newer laptop.
+     * The floor stamped into locks that have none (every new project's): the oldest jk that reads
+     * this writer's output and the manifests it locks, so an older jk refuses the project with "run
+     * jk self update" instead of misreading it. 0.51.0: test tiers are [test.suites.*] tables, which
+     * older releases do not read. Bumped by hand only when the format or the manifest shape needs a
+     * newer reader, never to the writing jk's own version.
      */
-    static final String FORMAT_FLOOR = "0.12.0";
+    static final String FORMAT_FLOOR = "0.51.0";
 
     public static String render(Lockfile lockfile) {
         StringBuilder out = new StringBuilder(256);
