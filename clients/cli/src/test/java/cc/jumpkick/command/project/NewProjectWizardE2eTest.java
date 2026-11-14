@@ -148,7 +148,7 @@ class NewProjectWizardE2eTest {
 
     @Test
     void a_cli_project_made_in_the_wizard_is_the_one_its_command_makes() throws Exception {
-        Path made = create("cli", "none/cli", CLI, "tool", "traditional");
+        Path made = create("cli", "java/cli", CLI, "tool", "traditional");
         assertThat(made.resolve("jk.toml")).content().contains("main = \"org.example.e2e.Main\"");
     }
 
