@@ -745,7 +745,9 @@ main() {
   if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
     # Local dogfood reinstalls keep the same version string while replacing the
     # engine jar. A still-running engine would keep serving the old jar until stop.
-    run_jk engine stop --force >/dev/null 2>&1 || true
+    # --now: a graceful stop waits on the host install lock for other sessions' runs, and
+    # with its output discarded that wait would look like a hung installer.
+    run_jk engine stop --now >/dev/null 2>&1 || true
     # The engine calibrates the host on idle (and every 12h).
     # A successful start GCs parked jk.old / engine *.jar.old when the drain is done.
     # The start is what installs the engine's JDK on a machine that has none, and the
