@@ -37,6 +37,7 @@ import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestLauncherFailure;
+import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -217,6 +218,8 @@ final class TestSteps {
             // A run stopped part way keeps the classes it got through, under the stamp it started with.
             if (result == null) ledger.store(actionCache, testTaskId, stampKey);
         }
+        // Green once every launch has run: the sandbox has nothing left to show. Red keeps it for a look.
+        if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         result = ledger.finish(ctx, actionCache, testTaskId, stampKey, result);
