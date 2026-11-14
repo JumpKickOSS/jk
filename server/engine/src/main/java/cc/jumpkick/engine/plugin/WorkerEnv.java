@@ -177,7 +177,7 @@ public final class WorkerEnv {
     public WorkerEnv withJavaHome(@Nullable Path javaHome) {
         return javaHome == null
                 ? this
-                : with(Map.of("JAVA_HOME", javaHome.toAbsolutePath().toString()));
+                : with(Map.of(JAVA_HOME, javaHome.toAbsolutePath().toString()));
     }
 
     /** Entries the fork supplies unless {@link #extras()} already carries them. */
@@ -225,6 +225,14 @@ public final class WorkerEnv {
         return env;
     }
 
+    /** The variable every worker's environment carries whatever the policy: {@link #withEngineJvmAsLastResort}. */
+    private static final String JAVA_HOME = "JAVA_HOME";
+
+    /** Whether every worker's environment carries {@code name}, whatever the policy and the module declare. */
+    public static boolean alwaysComposed(String name) {
+        return JAVA_HOME.equals(name);
+    }
+
     /**
      * {@code extras} with {@code JAVA_HOME} defaulted to the JVM this engine is running in.
      *
@@ -239,9 +247,9 @@ public final class WorkerEnv {
      * the one the engine, and therefore the worker, is executing.
      */
     private static Map<String, String> withEngineJvmAsLastResort(Map<String, String> extras) {
-        if (extras.containsKey("JAVA_HOME")) return extras;
+        if (extras.containsKey(JAVA_HOME)) return extras;
         Map<String, String> out = new LinkedHashMap<>(extras);
-        out.put("JAVA_HOME", JavaHomes.runningJavaHome().toAbsolutePath().toString());
+        out.put(JAVA_HOME, JavaHomes.runningJavaHome().toAbsolutePath().toString());
         return Collections.unmodifiableMap(out);
     }
 

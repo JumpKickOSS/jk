@@ -228,9 +228,12 @@ public final class EnvReadReport {
         }
     }
 
-    /** Whether {@code name} reaches the test JVM or is the module's to give: declared, set by jk, or allow-listed. */
+    /** Whether {@code name} reaches the test JVM or is the module's to give: declared, set by jk, composed into every JVM, or allow-listed. */
     static boolean reaches(String name, Set<String> declared, WorkerEnv testEnv) {
-        return declared.contains(name) || testEnv.extras().containsKey(name) || WorkerEnv.allowed(name, Os.isWindows());
+        return declared.contains(name)
+                || testEnv.extras().containsKey(name)
+                || WorkerEnv.alwaysComposed(name)
+                || WorkerEnv.allowed(name, Os.isWindows());
     }
 
     /** Every name the module's manifest gives its test JVM, set or not. */
@@ -238,6 +241,10 @@ public final class EnvReadReport {
         Set<String> out = new LinkedHashSet<>(project.build().env().declared());
         for (EnvDecl d : project.build().testEnvDecls()) out.add(d.name());
         project.profiles().byName().values().forEach(p -> out.addAll(p.env().keySet()));
+        project.build()
+                .testSuites()
+                .values()
+                .forEach(s -> out.addAll(s.settings().env().keySet()));
         return out;
     }
 
@@ -283,7 +290,9 @@ public final class EnvReadReport {
             boolean failed) {
         Map<String, String> out = new TreeMap<>();
         for (Lookup l : lookups) {
-            if (l.name().equals(WHOLE_MAP) || reaches(l.name(), declared, testEnv)) continue;
+            // A variable the JVM had a value for reached it, whoever put it there (a suite's env,
+            // the JAVA_HOME every test JVM is composed with): there is nothing to declare.
+            if (l.set() || l.name().equals(WHOLE_MAP) || reaches(l.name(), declared, testEnv)) continue;
             if (!failed && !testClass.test(l.caller()) && !l.caller().startsWith(JUNIT)) continue;
             out.putIfAbsent(l.name(), l.test().isEmpty() ? l.caller() : l.test());
         }
