@@ -3,10 +3,10 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.GitCommand;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -55,8 +55,7 @@ class DirtyPathsTest {
     }
 
     private static void git(Path dir, String... args) throws Exception {
-        List<String> cmd = new ArrayList<>();
-        cmd.add("git");
+        List<String> cmd = GitCommand.of();
         Collections.addAll(cmd, args);
         Process p = new ProcessBuilder(cmd).directory(dir.toFile()).inheritIO().start();
         assertThat(p.waitFor()).isZero();

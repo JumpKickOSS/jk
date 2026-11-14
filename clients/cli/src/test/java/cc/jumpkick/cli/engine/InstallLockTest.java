@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cli.engine.InstallLock.Mode;
+import cc.jumpkick.testing.Sleepers;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
@@ -183,7 +184,7 @@ class InstallLockTest {
     void a_record_left_by_a_gone_process_is_not_a_holder() throws Exception {
         Path records = lock().resolveSibling("install.holders");
         Files.createDirectories(records);
-        Process gone = new ProcessBuilder("true").start();
+        Process gone = new ProcessBuilder(Sleepers.exits(0)).start();
         gone.waitFor();
         Path stale = records.resolve(gone.pid() + "-1.hold");
         Files.writeString(

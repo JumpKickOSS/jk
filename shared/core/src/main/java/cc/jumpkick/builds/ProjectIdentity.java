@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.Processes;
@@ -388,10 +389,7 @@ public record ProjectIdentity(
     }
 
     private static @Nullable String git(Path cwd, String... args) {
-        List<String> command = new ArrayList<>(args.length + 1);
-        command.add("git");
-        command.addAll(List.of(args));
-        return run(cwd, GIT_TIMEOUT, command);
+        return run(cwd, GIT_TIMEOUT, GitCommand.of(args));
     }
 
     /** How long one git probe may take before the identity falls back to the path tier. */

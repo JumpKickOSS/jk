@@ -25,10 +25,6 @@ public record SetupChange(
     public enum Kind {
         /** A Defender folder exclusion. */
         EXCLUDE(true),
-        /** Windows' {@code LongPathsEnabled}. */
-        LONG_PATHS(true),
-        /** git's {@code core.longpaths} for this user. */
-        GIT_LONG_PATHS(false),
         /** CurrentUser's PowerShell execution policy. */
         EXECUTION_POLICY(false),
         /** JumpKick installed into another environment, run by the {@link SetupEnvironment} that proposed it. */
@@ -45,8 +41,6 @@ public record SetupChange(
         }
     }
 
-    public static final String LONG_PATHS = "long-paths";
-    public static final String GIT_LONG_PATHS = "git-long-paths";
     public static final String EXECUTION_POLICY = "powershell-policy";
 
     /** The id of the exclusion of {@code path}: the same for every spelling of one folder. */

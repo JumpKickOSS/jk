@@ -3,12 +3,12 @@ package cc.jumpkick.engine.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -51,8 +51,7 @@ class ModuleGraphOpsTest {
     }
 
     private static void git(Path dir, String... args) throws Exception {
-        var cmd = new ArrayList<String>();
-        cmd.add("git");
+        List<String> cmd = GitCommand.of();
         cmd.addAll(List.of(args));
         Processes.Captured run = Processes.capture(
                 new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));

@@ -343,7 +343,6 @@ warning names its fix; `jk doctor -O jsonl` and the MCP `doctor` tool carry the 
 | `powershell` | A new Windows PowerShell or `pwsh` would refuse the JumpKick profile block (`Restricted`, `AllSigned`), naming Group Policy when that is who set it |
 | `defender` | Defender scans `JK_HOME` or this project: a check found it not excluded, or you declined the exclusion. A standard user cannot read Defender's exclusions, so before any check the row only says they are unchecked |
 | `folders` | `JK_HOME` or the project is under OneDrive, or under a folder Controlled Folder Access guards |
-| `long paths` | Windows' `LongPathsEnabled` or git's `core.longpaths` is off |
 | `volumes` | The project and `JK_HOME` are on different volumes, so the cache copies files instead of linking them; the row also names the filesystem (NTFS, ReFS) |
 | `arch` | An x64 `jk` or JDK runs under ARM64 emulation |
 | `wsl` | Never: it lists your WSL distros, which is the default, which run, and which JumpKick each running one has. It reads the list from the registry and starts no stopped distro; the ones Docker Desktop, Rancher Desktop and Podman keep for themselves are left out |
@@ -353,9 +352,10 @@ warning names its fix; `jk doctor -O jsonl` and the MCP `doctor` tool carry the 
 `jk doctor --fix` puts the recommended changes to you as one decision. Each change is a row with
 its own checkbox, ticked to start, saying what it does, why, and its effect: Defender exclusions for
 the folders where you keep code (with what the scan costs there, measured by writing and reading
-back a batch of build-sized files), Windows and git long paths, and the PowerShell policy the
-profile block needs. Approve once, and Windows shows one UAC prompt for the changes that need an
-administrator. Afterwards the same probe runs again, and `jk doctor` shows the before and after.
+back a batch of build-sized files) and the PowerShell policy the profile block needs. Approve
+once, and Windows shows one UAC prompt for the exclusions, the only changes that need an
+administrator. Long paths need no setting: every git command JumpKick runs turns on git's long-path
+support for itself, and the JDK handles long paths on its own. Afterwards the same probe runs again, and `jk doctor` shows the before and after.
 `-y` takes every change without asking.
 
 JumpKick finds the folders itself: `JK_HOME`, the projects it has built, IntelliJ's and VS Code's

@@ -1010,6 +1010,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G145 | a `WorkspaceClasspath.resolve`, `ClasspathResolver.classpathFor` / `testRuntimeClasspathFor` or `ProvidedClasspath` derivation in server/engine outside `ModuleClasspaths` and the classpath step around it (`SetupSteps` and `SiblingWaits`: sibling requires, processor errors, the provided fetch) | ban; the forecast's provided fetch and subsystems that key nothing (exec, IDE, plugin closures, guard fixtures, build-logic, the headless builder) are allow entries | `module-classpath-owner` (forbid) |
 | G146 | a `TestSuites.resolve` or `TestSelection.resolve` in server/engine outside `TestStampInputs.resolveSuites`: suites resolved from the raw selection are suites a run stamps and does not run, or runs and does not stamp | ban, no allowlist | `test-suites-resolve-owner` (forbid) |
 | G147 | a `ResolvedSecrets.plus` or `SecretRedactor.from` in server or shared main outside `BuildEnv`: a sink composing its own redactor masks less than the wire (the test reports once masked only filed credentials, not `.env` names) | ban; the run-tests stamp's value hashing is an allow entry | `redactor-owner` (forbid) |
+| G148 | a git command line spelled by hand (`List.of("git", …)`, `new ProcessBuilder("git", …)`, `.add("git")`) outside `cc.jumpkick.host.GitCommand`, in main, test or fixture code: it runs without the options git needs on every host, and on Windows fails once a path passes 260 characters | text over every Java source set, comment-blind, owner `GitCommand` | `git-command-owner` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1059,6 +1060,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | engine-static-memo | statics | a static memo in the resident engine outlives every build that filled it and goes stale or grows for days |
 | executors-through-jkthreads | forbid | a pool of one's own carries no request onto its tasks unless each is wrapped by hand |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
+| git-command-owner | text | a git command spelled by hand runs without long paths, and fails on Windows once a path passes 260 characters |
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |

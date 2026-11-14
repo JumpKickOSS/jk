@@ -30,8 +30,7 @@ class ElevatedLiveTest {
         Path scratch = Files.createDirectories(tmp.resolve("ex"));
         Path result = tmp.resolve("result.txt");
         Forbidden rules = Forbidden.of(HostFacts.live(), System.getProperty("user.home") + "\\.jk");
-        String script =
-                ElevatedScript.renderUnchecked(List.of(scratch.toString(), "C:\\"), false, result.toString(), rules);
+        String script = ElevatedScript.renderUnchecked(List.of(scratch.toString(), "C:\\"), result.toString(), rules);
         try {
             Elevator.Outcome outcome = Elevator.live().run(script, Duration.ofMinutes(2));
             assertThat(outcome).isInstanceOf(Elevator.Outcome.Ran.class);

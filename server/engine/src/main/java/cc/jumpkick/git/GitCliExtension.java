@@ -7,6 +7,7 @@ import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
@@ -428,9 +429,7 @@ public final class GitCliExtension implements GitBackend {
         Map<String, String> credEnv = new HashMap<>();
         if (remoteUrl != null) prepareCredentials(remoteUrl, lead, credEnv);
 
-        List<String> cmd = new ArrayList<>();
-        cmd.add(git.exe());
-        cmd.addAll(lead);
+        List<String> cmd = GitCommand.of(git.exe(), lead);
         cmd.addAll(args);
 
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);

@@ -9,8 +9,7 @@ import java.util.stream.Collectors;
 
 /**
  * The Windows PowerShell script that runs elevated, behind the one UAC prompt: it adds each root to
- * Defender's folder exclusions as a literal path (no process exclusions), sets {@code
- * LongPathsEnabled} when asked, then checks every root with {@code MpCmdRun -CheckExclusion} (for up
+ * Defender's folder exclusions as a literal path (no process exclusions), then checks every root with {@code MpCmdRun -CheckExclusion} (for up
  * to ten seconds, since Defender takes a moment to apply a new exclusion) and
  * writes one tab-separated line per outcome to the result file:
  *
@@ -19,7 +18,6 @@ import java.util.stream.Collectors;
  * missing   &lt;root&gt;  &lt;why&gt;     (added, but Defender still scans it: a policy wins)
  * refused   &lt;root&gt;  &lt;why&gt;     (a forbidden folder, never added)
  * failed    &lt;root&gt;  &lt;error&gt;
- * longpaths ok|failed  &lt;error&gt;
  * </pre>
  *
  * The {@link Forbidden} rules are part of the script, so a root that reaches it without passing the
@@ -34,16 +32,16 @@ public final class ElevatedScript {
     private ElevatedScript() {}
 
     /** The script for {@code roots}, each already checked against {@code rules}. */
-    public static String render(List<String> roots, boolean longPaths, String resultFile, Forbidden rules) {
+    public static String render(List<String> roots, String resultFile, Forbidden rules) {
         for (String root : roots) {
             String why = rules.reason(root);
             if (why != null) throw new IllegalArgumentException(root + " may not be excluded: " + why);
         }
-        return renderUnchecked(roots, longPaths, resultFile, rules);
+        return renderUnchecked(roots, resultFile, rules);
     }
 
     /** {@link #render} without the check in this process, so a test can show the script's own refusal. */
-    static String renderUnchecked(List<String> roots, boolean longPaths, String resultFile, Forbidden rules) {
+    static String renderUnchecked(List<String> roots, String resultFile, Forbidden rules) {
         String programs =
                 rules.programFolders().stream().map(ElevatedScript::quote).collect(Collectors.joining(","));
         StringBuilder s = new StringBuilder();
@@ -56,7 +54,6 @@ public final class ElevatedScript {
         s.append("$roots = @(")
                 .append(roots.stream().map(ElevatedScript::quote).collect(Collectors.joining(",")))
                 .append(")\n");
-        s.append("$longPaths = ").append(longPaths ? "$true" : "$false").append('\n');
         String programFiles = rules.programFolders().isEmpty()
                 ? "C:\\Program Files"
                 : rules.programFolders().getFirst();
@@ -82,12 +79,9 @@ public final class ElevatedScript {
     }
 
     /** The commands a person runs in an admin PowerShell when no prompt can be shown. */
-    public static List<String> manual(List<String> roots, boolean longPaths) {
+    public static List<String> manual(List<String> roots) {
         List<String> out = new ArrayList<>();
         for (String root : roots) out.add("Add-MpPreference -ExclusionPath " + quote(root));
-        if (longPaths) {
-            out.add("Set-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem LongPathsEnabled 1");
-        }
         return out;
     }
 
@@ -128,12 +122,6 @@ public final class ElevatedScript {
                 if ($why) { $out.Add("refused`t$r`t$why"); continue }
                 try { Add-MpPreference -ExclusionPath $r -ErrorAction Stop; $added.Add($r) }
                 catch { $out.Add("failed`t$r`t" + $_.Exception.Message.Replace("`r", ' ').Replace("`n", ' ')) }
-              }
-              if ($longPaths) {
-                try {
-                  Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name LongPathsEnabled -Value 1 -Type DWord
-                  $out.Add("longpaths`tok")
-                } catch { $out.Add("longpaths`tfailed`t" + $_.Exception.Message.Replace("`r", ' ').Replace("`n", ' ')) }
               }
               foreach ($r in $added) {
                 $excluded = $false

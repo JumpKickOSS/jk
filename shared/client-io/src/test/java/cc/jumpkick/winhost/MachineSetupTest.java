@@ -39,31 +39,30 @@ class MachineSetupTest {
     };
 
     private final List<String> scripts = new ArrayList<>();
-    private boolean gitCalled;
+    private boolean policyCalled;
 
     private static SetupChange exclude(String path) {
         return new SetupChange(
                 SetupChange.excludeId(path), "Exclude " + path, "why", "effect", SetupChange.Kind.EXCLUDE, path);
     }
 
-    private static final SetupChange GIT =
-            new SetupChange(SetupChange.GIT_LONG_PATHS, "git", "why", "effect", SetupChange.Kind.GIT_LONG_PATHS, null);
+    private static final SetupChange POLICY = new SetupChange(
+            SetupChange.EXECUTION_POLICY, "policy", "why", "effect", SetupChange.Kind.EXECUTION_POLICY, null);
 
     private final SetupPlan plan = new SetupPlan(
-            List.of(exclude("C:\\Users\\ada\\.jk"), exclude("C:\\Users\\ada\\IdeaProjects"), exclude("D:\\src"), GIT),
+            List.of(
+                    exclude("C:\\Users\\ada\\.jk"),
+                    exclude("C:\\Users\\ada\\IdeaProjects"),
+                    exclude("D:\\src"),
+                    POLICY),
             1_900L,
             "C:\\Users\\ada\\.jk");
 
     private MachineSetup setup(Elevator elevator) {
         UserCommands user = new UserCommands() {
             @Override
-            public boolean gitLongPaths() {
-                gitCalled = true;
-                return true;
-            }
-
-            @Override
             public boolean executionPolicy() {
+                policyCalled = true;
                 return true;
             }
         };
@@ -141,17 +140,17 @@ class MachineSetupTest {
 
     @Test
     void anEnvironmentRowRunsWithoutElevationReportsItsStepsAndEachRowIsRememberedOnItsOwn() throws Exception {
-        SetupPlan withEnvironments = new SetupPlan(List.of(GIT, row("alpha"), row("beta")));
+        SetupPlan withEnvironments = new SetupPlan(List.of(POLICY, row("alpha"), row("beta")));
 
         MachineSetup.Applied applied =
-                setup(writing()).apply(withEnvironments, Set.of(SetupChange.GIT_LONG_PATHS, "fake:alpha"));
+                setup(writing()).apply(withEnvironments, Set.of(SetupChange.EXECUTION_POLICY, "fake:alpha"));
 
         assertThat(scripts).as("no UAC prompt for per-user rows").isEmpty();
         assertThat(installed).containsExactly("fake:alpha");
         assertThat(applied.lines()).contains("installed into fake:alpha (fetched; unpacked)");
         SetupMemo memo = SetupMemo.read(SetupMemo.file(state));
         assertThat(memo.answeredRows())
-                .containsExactlyInAnyOrder(SetupChange.GIT_LONG_PATHS, "fake:alpha", "fake:beta");
+                .containsExactlyInAnyOrder(SetupChange.EXECUTION_POLICY, "fake:alpha", "fake:beta");
         WindowsHostCheck check = new WindowsHostCheck(new FakeHost(), memo, Path.of("C:\\Users\\ada\\.jk"), null);
         assertThat(SetupPlan.unanswered(check, List.of(), folder -> 1L, List.of(environment))
                         .isEmpty())
@@ -177,19 +176,19 @@ class MachineSetupTest {
                         Set.of(
                                 SetupChange.excludeId("C:\\Users\\ada\\.jk"),
                                 SetupChange.excludeId("C:\\Users\\ada\\IdeaProjects"),
-                                SetupChange.GIT_LONG_PATHS));
+                                SetupChange.EXECUTION_POLICY));
         assertThat(scripts).hasSize(1);
         assertThat(scripts.getFirst())
                 .contains("'C:\\Users\\ada\\.jk','C:\\Users\\ada\\IdeaProjects'")
                 .doesNotContain("D:\\src");
-        assertThat(gitCalled).isTrue();
+        assertThat(policyCalled).isTrue();
         assertThat(applied.results())
                 .extracting(MachineSetup.Result::change, MachineSetup.Result::ok)
                 .containsExactly(
                         tuple(SetupChange.excludeId("C:\\Users\\ada\\.jk"), true),
                         tuple(SetupChange.excludeId("C:\\Users\\ada\\IdeaProjects"), false),
                         tuple(SetupChange.excludeId("C:\\Users\\ada\\.jk"), true),
-                        tuple(SetupChange.GIT_LONG_PATHS, true));
+                        tuple(SetupChange.EXECUTION_POLICY, true));
         assertThat(applied.lines())
                 .contains("build files in C:\\Users\\ada\\.jk: 1.9 s -> 900 ms per 1,000 with the exclusion");
         SetupMemo memo = SetupMemo.read(SetupMemo.file(state));
@@ -231,9 +230,9 @@ class MachineSetupTest {
     @Test
     void decliningThePromptChangesNothingAndRecordsTheDecline() throws Exception {
         MachineSetup.Applied applied = setup((s, t) -> new Elevator.Outcome.Declined())
-                .apply(plan, Set.of(SetupChange.excludeId("D:\\src"), SetupChange.GIT_LONG_PATHS));
+                .apply(plan, Set.of(SetupChange.excludeId("D:\\src"), SetupChange.EXECUTION_POLICY));
         assertThat(applied.declined()).isTrue();
-        assertThat(gitCalled).isFalse();
+        assertThat(policyCalled).isFalse();
         SetupMemo memo = SetupMemo.read(SetupMemo.file(state));
         assertThat(memo.answer()).isEqualTo(SetupMemo.Answer.DECLINED);
         assertThat(memo.declined()).hasSize(3);
@@ -261,8 +260,8 @@ class MachineSetupTest {
         setup((s, t) -> {
                     throw new AssertionError("no prompt expected");
                 })
-                .apply(plan, Set.of(SetupChange.GIT_LONG_PATHS));
-        assertThat(gitCalled).isTrue();
+                .apply(plan, Set.of(SetupChange.EXECUTION_POLICY));
+        assertThat(policyCalled).isTrue();
     }
 
     @Test

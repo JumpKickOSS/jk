@@ -78,7 +78,6 @@ public record MachineSetup(
     public Applied apply(SetupPlan plan, Set<String> chosen) throws IOException {
         List<SetupChange> picked = plan.chosen(chosen);
         List<String> roots = SetupPlan.roots(picked);
-        boolean longPaths = picked.stream().anyMatch(c -> c.kind() == SetupChange.Kind.LONG_PATHS);
         List<Result> lines = new ArrayList<>();
         Map<String, String> idOf = new LinkedHashMap<>();
         for (SetupChange c : picked) if (c.path() != null) idOf.put(c.path(), c.id());
@@ -89,9 +88,9 @@ public record MachineSetup(
         long checked = before.checkedAt();
         long beforeMs = before.beforeMs();
         long afterMs = before.afterMs();
-        if (!roots.isEmpty() || longPaths) {
+        if (!roots.isEmpty()) {
             Files.deleteIfExists(resultFile);
-            String script = ElevatedScript.render(roots, longPaths, resultFile.toString(), rules);
+            String script = ElevatedScript.render(roots, resultFile.toString(), rules);
             Elevator.Outcome outcome = elevator.run(script, WAIT);
             switch (outcome) {
                 case Elevator.Outcome.Declined d -> {
@@ -100,7 +99,7 @@ public record MachineSetup(
                 case Elevator.Outcome.Failed f -> {
                     lines.add(new Result("", false, "could not elevate: " + f.message() + "; nothing changed"));
                     lines.add(new Result("", false, "run these in an admin PowerShell instead:"));
-                    for (String command : ElevatedScript.manual(roots, longPaths)) {
+                    for (String command : ElevatedScript.manual(roots)) {
                         lines.add(new Result("", false, "  " + command));
                     }
                     return new Applied(lines, before, false);
@@ -138,11 +137,6 @@ public record MachineSetup(
         }
         for (SetupChange c : picked) {
             switch (c.kind()) {
-                case GIT_LONG_PATHS -> {
-                    boolean ok = user.gitLongPaths();
-                    lines.add(new Result(
-                            c.id(), ok, ok ? "turned on long paths in git" : "could not set git core.longpaths"));
-                }
                 case EXECUTION_POLICY -> {
                     boolean ok = user.executionPolicy();
                     lines.add(new Result(
@@ -260,11 +254,6 @@ public record MachineSetup(
                     refused.put(subject, why);
                     lines.add(new Result(id, false, what + " " + subject + ": " + why));
                 }
-                case "longpaths" ->
-                    lines.add(new Result(
-                            SetupChange.LONG_PATHS,
-                            subject.equals("ok"),
-                            subject.equals("ok") ? "turned on long paths in Windows" : "long paths: " + why));
                 default -> {}
             }
         }

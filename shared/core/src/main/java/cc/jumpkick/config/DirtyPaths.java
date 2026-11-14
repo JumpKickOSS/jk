@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.BufferedReader;
@@ -98,10 +99,7 @@ public final class DirtyPaths {
      */
     static @Nullable List<String> gitLines(Path root, String... gitArgs) {
         try {
-            List<String> cmd = new ArrayList<>();
-            cmd.add("git");
-            for (String a : gitArgs) cmd.add(a);
-            Process p = new ProcessBuilder(cmd)
+            Process p = new ProcessBuilder(GitCommand.of(gitArgs))
                     .directory(root.toFile())
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();

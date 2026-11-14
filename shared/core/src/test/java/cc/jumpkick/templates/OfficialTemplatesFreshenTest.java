@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.Settled;
@@ -18,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
@@ -442,7 +442,7 @@ class OfficialTemplatesFreshenTest {
     }
 
     private static String gitOut(Path dir, String... args) throws Exception {
-        List<String> cmd = new ArrayList<>(List.of("git", "-C", dir.toString()));
+        List<String> cmd = GitCommand.of("-C", dir.toString());
         cmd.addAll(List.of(args));
         Processes.Captured run = Processes.capture(cmd, Duration.ofMinutes(1));
         if (!run.ok()) throw new IOException("git " + String.join(" ", args) + " failed: " + run.output());

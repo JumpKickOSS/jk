@@ -4,11 +4,11 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -89,7 +89,7 @@ class GitHeadTest {
 
     /** {@code git args} in {@code dir}: its stdout, or null when git is missing or fails. */
     private static @Nullable String git(Path dir, String... args) throws Exception {
-        List<String> command = new ArrayList<>(List.of("git", "-C", dir.toString()));
+        List<String> command = GitCommand.of("-C", dir.toString());
         command.addAll(List.of(args));
         return Processes.outputIfOk(command, Duration.ofSeconds(30));
     }

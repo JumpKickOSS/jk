@@ -29,8 +29,8 @@ class SetupConsentTest {
         assertThat(read("[windows]\nfix = \"sometimes\"\n")).isEqualTo(SetupConsent.ASK);
     }
 
-    private static final SetupChange ROW =
-            new SetupChange(SetupChange.LONG_PATHS, "Long paths", "why", "effect", SetupChange.Kind.LONG_PATHS, null);
+    private static final SetupChange ROW = new SetupChange(
+            SetupChange.EXECUTION_POLICY, "Policy", "why", "effect", SetupChange.Kind.EXECUTION_POLICY, null);
 
     @Test
     void applyAndNeverSettleTheOfferWithoutAsking() {
@@ -46,8 +46,8 @@ class SetupConsentTest {
         SetupMemo answered = new SetupMemo(
                 SetupMemo.Answer.DECLINED, 1, 0, List.of(), List.of(), List.of(), Map.of(), 0, 0, List.of(ROW.id()));
         SetupPlan plan = new SetupPlan(List.of(ROW));
-        FakeHost host =
-                new FakeHost().dword(Registry.Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 0);
+        FakeHost host = new FakeHost();
+        host.strings.clear();
         Path home = Path.of("C:\\Users\\ada\\.jk");
         SetupPlan unanswered =
                 SetupPlan.unanswered(new WindowsHostCheck(host, answered, home, null), List.of(), f -> 1L, List.of());

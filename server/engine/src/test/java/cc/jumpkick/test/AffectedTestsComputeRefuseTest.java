@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -14,7 +15,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -90,8 +90,7 @@ class AffectedTestsComputeRefuseTest {
     }
 
     private static void git(Path dir, String... args) throws Exception {
-        List<String> cmd = new ArrayList<>();
-        cmd.add("git");
+        List<String> cmd = GitCommand.of();
         Collections.addAll(cmd, args);
         Processes.Captured run = Processes.capture(
                 new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));

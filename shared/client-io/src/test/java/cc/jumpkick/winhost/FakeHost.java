@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/** A Windows host made of maps: registry values, environment, volumes, files and git's answer. */
+/** A Windows host made of maps: registry values, environment, volumes and files. */
 final class FakeHost implements HostFacts, Registry {
 
     final Map<String, Integer> dwords = new HashMap<>();
@@ -17,9 +17,6 @@ final class FakeHost implements HostFacts, Registry {
     final Map<String, Volume> volumes = new HashMap<>();
     final Map<String, String> files = new HashMap<>();
     final Set<String> existing = new HashSet<>();
-
-    @Nullable
-    Boolean git = true;
 
     String arch = "amd64";
 
@@ -34,7 +31,6 @@ final class FakeHost implements HostFacts, Registry {
         dword(Hive.LOCAL_MACHINE, WindowsHostCheck.DEFENDER_KEY, "IsServiceRunning", 1);
         dword(Hive.LOCAL_MACHINE, WindowsHostCheck.DEFENDER_KEY, "DisableAntiVirus", 0);
         dword(Hive.LOCAL_MACHINE, WindowsHostCheck.SAC_KEY, "VerifiedAndReputablePolicyState", 0);
-        dword(Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 1);
         string(Hive.CURRENT_USER, WindowsHostCheck.PS_KEY, "ExecutionPolicy", "RemoteSigned");
         string(Hive.LOCAL_MACHINE, WindowsHostCheck.ENV_KEY, "PROCESSOR_ARCHITECTURE", "AMD64");
         volumes.put(WinPaths.key("C:\\Users\\ada\\.jk"), new Volume("C:\\", "NTFS"));
@@ -85,11 +81,6 @@ final class FakeHost implements HostFacts, Registry {
     @Override
     public @Nullable Volume volume(Path path) {
         return volumes.get(WinPaths.key(path));
-    }
-
-    @Override
-    public @Nullable Boolean gitLongPaths() {
-        return git;
     }
 
     @Override

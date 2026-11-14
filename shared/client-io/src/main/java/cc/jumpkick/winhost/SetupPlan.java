@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The host changes recommended for this machine now, in the order a person reads them: the Defender
- * exclusions first, then long paths, then the per-user settings, then the environments JumpKick can
+ * exclusions first, then the per-user settings, then the environments JumpKick can
  * be installed into. Each is one row with its own
  * checkbox, so a later kind of change joins the same list. A change already in place is left out,
  * so a set-up machine has an empty plan.
@@ -88,24 +88,6 @@ public record SetupPlan(
                         SetupChange.Kind.EXCLUDE,
                         path));
             }
-        }
-        if (!check.longPathsEnabled()) {
-            out.add(new SetupChange(
-                    SetupChange.LONG_PATHS,
-                    "Turn on long paths in Windows",
-                    "Windows stops paths at 260 characters.",
-                    "Deep build outputs and dependency trees stop failing.",
-                    SetupChange.Kind.LONG_PATHS,
-                    null));
-        }
-        if (Boolean.FALSE.equals(check.facts().gitLongPaths())) {
-            out.add(new SetupChange(
-                    SetupChange.GIT_LONG_PATHS,
-                    "Turn on long paths in git",
-                    "git refuses to check out a path past 260 characters.",
-                    "Clones and checkouts with deep paths work.",
-                    SetupChange.Kind.GIT_LONG_PATHS,
-                    null));
         }
         WindowsHostCheck.Policy desktop = check.desktopPolicy();
         if (!desktop.loadsProfile() && !desktop.byGroupPolicy()) {

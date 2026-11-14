@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.testing.TestCaches;
@@ -16,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
@@ -677,16 +677,8 @@ class ToolRunCommandTest {
 
     /** Drive the system git for local-repo fixtures (identity + signing pinned for hermeticity). */
     private static void git(Path dir, String... args) throws Exception {
-        List<String> cmd = new ArrayList<>(List.of(
-                "git",
-                "-C",
-                dir.toString(),
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "-c",
-                "commit.gpgsign=false"));
+        List<String> cmd = GitCommand.of(
+                "-C", dir.toString(), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false");
         cmd.addAll(List.of(args));
         Processes.Captured run = Processes.capture(cmd, Duration.ofMinutes(1));
         if (!run.ok()) throw new IllegalStateException("git " + String.join(" ", args) + " failed:\n" + run.output());

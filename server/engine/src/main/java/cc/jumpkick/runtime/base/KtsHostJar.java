@@ -13,6 +13,8 @@ import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -156,7 +158,12 @@ final class KtsHostJar {
             }
             // A racing call that finished first left the same bytes; its jar is as good as this one.
             if (!(Files.isRegularFile(jar) && Files.size(jar) > 0)) {
-                Files.move(staging, jar, StandardCopyOption.REPLACE_EXISTING);
+                try {
+                    Files.move(staging, jar, StandardCopyOption.REPLACE_EXISTING);
+                } catch (FileAlreadyExistsException | AccessDeniedException raced) {
+                    // Windows will not replace a jar the racing call just moved in or still holds.
+                    if (!(Files.isRegularFile(jar) && Files.size(jar) > 0)) throw raced;
+                }
             }
             return jar;
         } finally {

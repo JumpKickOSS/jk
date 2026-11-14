@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.http.mcp.McpReads;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -13,7 +14,6 @@ import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -191,8 +191,7 @@ class AffectedTestsComputeConeTest {
     }
 
     private static void git(Path dir, String... args) throws Exception {
-        List<String> cmd = new ArrayList<>();
-        cmd.add("git");
+        List<String> cmd = GitCommand.of();
         Collections.addAll(cmd, args);
         Processes.Captured run = Processes.capture(
                 new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));
