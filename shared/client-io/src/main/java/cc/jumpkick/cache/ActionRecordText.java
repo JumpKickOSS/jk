@@ -31,6 +31,12 @@ import org.jspecify.annotations.Nullable;
  * <p>A reader skips a line it does not know before {@code END}, so a kind of line added later
  * leaves an older reader reading the rest. A change of what a record holds is therefore no change of
  * what any key hashes.
+ *
+ * <p>A record is read as untrusted input, since it may come from a restored CI cache or another
+ * machine: {@link #parse} refuses ({@link Refused}) one whose {@code KEY} is not the key it was
+ * looked up under, whose {@code OUTPUT} or {@code EXEC} path is not a plain relative path ({@link
+ * #isSafeRelative}), or whose {@code OUTPUT} value is neither a sha256 nor a marker scalar ({@link
+ * #isOutputValue}). Every reader takes a refusal as a miss.
  */
 public final class ActionRecordText {
 
@@ -125,13 +131,21 @@ public final class ActionRecordText {
         return sb.toString();
     }
 
+    /** A record that is whole but not safe to trust: the reason says which line is wrong. */
+    public static final class Refused extends IllegalArgumentException {
+        Refused(String reason) {
+            super(reason);
+        }
+    }
+
     /**
-     * The record {@code content} holds.
+     * The record {@code content} holds, stored under {@code expectedKey}.
      *
+     * @throws Refused when its {@code KEY} is not {@code expectedKey} or a path or value is unsafe
      * @throws RuntimeException when it is cut short: no {@code TASK} or {@code KEY}, a line without
      *     its value, or no {@code END} line last that counts its outputs
      */
-    public static Parsed parse(String content) {
+    public static Parsed parse(String content, String expectedKey) {
         @Nullable String taskId = null;
         @Nullable String actionKey = null;
         Map<String, String> inputs = new LinkedHashMap<>();
@@ -166,13 +180,63 @@ public final class ActionRecordText {
             throw new IllegalArgumentException(
                     "record cut short: END " + declaredOutputs + " for " + outputs.size() + " outputs");
         }
-        return new Parsed(
-                Objects.requireNonNull(taskId, "taskId in record"),
-                Objects.requireNonNull(actionKey, "actionKey in record"),
-                inputs,
-                outputs,
-                executables,
-                List.copyOf(said));
+        Objects.requireNonNull(taskId, "taskId in record");
+        Objects.requireNonNull(actionKey, "actionKey in record");
+        if (!actionKey.equals(expectedKey)) {
+            throw new Refused("record under " + expectedKey + " names key " + actionKey);
+        }
+        for (Map.Entry<String, String> e : outputs.entrySet()) {
+            if (!isSafeRelative(e.getKey()))
+                throw new Refused("OUTPUT path is not a plain relative path: " + e.getKey());
+            if (!isOutputValue(e.getValue())) throw new Refused("OUTPUT value is not a digest: " + e.getValue());
+        }
+        for (String rel : executables) {
+            if (!isSafeRelative(rel)) throw new Refused("EXEC path is not a plain relative path: " + rel);
+        }
+        return new Parsed(taskId, actionKey, inputs, outputs, executables, List.copyOf(said));
+    }
+
+    /**
+     * True when {@code rel} is a path a restore may resolve under its directory: non-empty, {@code
+     * /}-separated, not absolute (no leading {@code /}, no drive letter), no backslash or control
+     * character, and no empty, {@code .} or {@code ..} segment.
+     */
+    public static boolean isSafeRelative(@Nullable String rel) {
+        if (rel == null || rel.isEmpty() || rel.charAt(0) == '/') return false;
+        if (rel.length() >= 2 && rel.charAt(1) == ':' && Character.isLetter(rel.charAt(0))) return false;
+        for (int i = 0; i < rel.length(); i++) {
+            char c = rel.charAt(i);
+            if (c == '\\' || Character.isISOControl(c)) return false;
+        }
+        for (String segment : rel.split("/", -1)) {
+            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) return false;
+        }
+        return true;
+    }
+
+    /** True for 64 hex digits: the shape a blob is keyed by in {@link Cas}. */
+    public static boolean isSha256(@Nullable String value) {
+        if (value == null || value.length() != 64) return false;
+        for (int i = 0; i < 64; i++) {
+            if (Character.digit(value.charAt(i), 16) < 0) return false;
+        }
+        return true;
+    }
+
+    /**
+     * True for an {@code OUTPUT} value a record may hold: a blob's sha256, or a marker scalar (a
+     * test count, a short status) that names no path: no {@code /}, backslash or control
+     * character, and not {@code .} or {@code ..}. A restore lays down only sha256 values.
+     */
+    public static boolean isOutputValue(@Nullable String value) {
+        if (value == null || value.isEmpty()) return false;
+        if (isSha256(value)) return true;
+        if (value.equals(".") || value.equals("..")) return false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '/' || c == '\\' || Character.isISOControl(c)) return false;
+        }
+        return true;
     }
 
     /**

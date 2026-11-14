@@ -101,7 +101,8 @@ class ActionCacheTest {
         assertThat(cache.lookup("old").orElseThrow().said()).isEmpty();
         // A line break in a line would cut the record; it is folded instead.
         assertThat(ActionRecordText.parse(
-                                ActionRecordText.render("t", "k", Map.of(), Map.of(), Set.of(), List.of("one\ntwo")))
+                                ActionRecordText.render("t", "k", Map.of(), Map.of(), Set.of(), List.of("one\ntwo")),
+                                "k")
                         .said())
                 .containsExactly("one two");
     }

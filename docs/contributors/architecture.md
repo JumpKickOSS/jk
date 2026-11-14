@@ -547,7 +547,11 @@ and exclusions stay GA-scoped.
    the same way (`PortablePath.key`: module-relative under a project — a `jk.toml` or a `pom.xml`
    dir — and the whole path only under none, so two inputs never share an entry), so `jk explain`
    reads a neighbour checkout's record correctly.
-3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A javac
+3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A key
+   record is read as untrusted (`ActionRecordText.parse`): one whose `KEY` is not the key it was
+   looked up under, whose output or executable path is not a plain relative path, or whose output
+   value is neither a sha256 nor a path-free marker is a miss, logged and deleted; a restore also
+   refuses any path that resolves outside its directory before it writes or prunes. A javac
    miss hands the worker the Zinc analyses of the jk-built entries on its classpath
    (`ProducerAnalyses`, found from the entry alone because a compile's state is keyed by its
    output directory), so the consumer's dependencies on a sibling are per-class external

@@ -75,7 +75,7 @@ public final class GraphCacheKeys {
     public static OptionalInt heldClasses(Path cacheRoot, String key) {
         try {
             ActionRecordText.Parsed record =
-                    ActionRecordText.parse(Files.readString(record(cacheRoot, key), StandardCharsets.UTF_8));
+                    ActionRecordText.parse(Files.readString(record(cacheRoot, key), StandardCharsets.UTF_8), key);
             String sha = record.outputs().get(OUTPUT);
             String count = record.inputs().get(CLASS_COUNT);
             if (sha == null || count == null || !JkStores.cacheCas(cacheRoot).contains(sha)) {

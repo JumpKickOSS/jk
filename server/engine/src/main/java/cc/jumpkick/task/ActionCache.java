@@ -104,6 +104,7 @@ public final class ActionCache {
         Map<String, Blob> blobs = new HashMap<>();
         for (String sha : outputs.values()) {
             if (blobs.containsKey(sha)) continue;
+            if (!isSha256Hex(sha)) return Optional.empty(); // a marker record restores nothing
             Blob b = blob(sha);
             if (b == null) return Optional.empty();
             blobs.put(sha, b);
@@ -187,7 +188,13 @@ public final class ActionCache {
         }
         ActionRecord record;
         try {
-            record = parse(content);
+            record = parse(content, actionKey);
+        } catch (ActionRecordText.Refused refused) {
+            // Whole but not this engine's to trust (a restored or imported cache): a miss, said
+            // once, since the record goes with it.
+            Log.warn("jk: action record refused; rebuilding", "key", actionKey, "cause", refused.getMessage());
+            Files.deleteIfExists(key);
+            return Optional.empty();
         } catch (RuntimeException torn) {
             // A record cut short — an engine killed mid-write, a full disk — is a miss, not a
             // failure of every step that consults this key on every build until --rebuild. The
@@ -544,6 +551,7 @@ public final class ActionCache {
             }
             outputs = kept;
         }
+        if (!inside(outputDir, outputs.keySet())) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(outputs);
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
@@ -697,6 +705,7 @@ public final class ActionCache {
 
     private boolean copyArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
         if (record.outputs().isEmpty()) return false;
+        if (!inside(baseDir, record.outputs().keySet())) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
@@ -752,6 +761,22 @@ public final class ActionCache {
             }
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());
+        }
+        return true;
+    }
+
+    /**
+     * True when every path of {@code rels} is a plain relative path ({@link
+     * ActionRecordText#isSafeRelative}) that resolves inside {@code dir}. A parsed record already
+     * holds only such paths; this also holds a record built in memory to it before a restore writes
+     * or prunes anything.
+     */
+    static boolean inside(Path dir, Set<String> rels) {
+        Path root = dir.toAbsolutePath().normalize();
+        for (String rel : rels) {
+            if (!ActionRecordText.isSafeRelative(rel)) return false;
+            Path target = root.resolve(rel).normalize();
+            if (!target.startsWith(root) || target.equals(root)) return false;
         }
         return true;
     }
@@ -969,8 +994,8 @@ public final class ActionCache {
                 record.said());
     }
 
-    private static ActionRecord parse(String content) {
-        ActionRecordText.Parsed p = ActionRecordText.parse(content);
+    private static ActionRecord parse(String content, String actionKey) {
+        ActionRecordText.Parsed p = ActionRecordText.parse(content, actionKey);
         return new ActionRecord(p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables(), p.said());
     }
 

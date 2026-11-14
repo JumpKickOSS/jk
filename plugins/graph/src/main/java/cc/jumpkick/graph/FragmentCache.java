@@ -151,7 +151,7 @@ final class FragmentCache {
         if (keys == null || cas == null) return null;
         try {
             String record = Files.readString(keys.resolve(key), StandardCharsets.UTF_8);
-            String sha = ActionRecordText.parse(record).outputs().get(GraphCacheKeys.OUTPUT);
+            String sha = ActionRecordText.parse(record, key).outputs().get(GraphCacheKeys.OUTPUT);
             if (sha == null) return null;
             Object tree = MiniJson.parse(new String(cas.read(sha), StandardCharsets.UTF_8));
             markRead(key);
