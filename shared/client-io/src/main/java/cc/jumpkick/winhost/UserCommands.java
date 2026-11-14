@@ -8,20 +8,12 @@ import java.util.concurrent.TimeUnit;
 /** The setup changes a standard user makes alone, without the elevated script. */
 public interface UserCommands {
 
-    /** {@code git config --global core.longpaths true}; true when it worked. */
-    boolean gitLongPaths();
-
     /** CurrentUser's execution policy set to {@code RemoteSigned}; true when it worked. */
     boolean executionPolicy();
 
-    /** This machine's git and Windows PowerShell. */
+    /** This machine's Windows PowerShell. */
     static UserCommands live() {
         return new UserCommands() {
-            @Override
-            public boolean gitLongPaths() {
-                return run(List.of("git", "config", "--global", "core.longpaths", "true"));
-            }
-
             @Override
             public boolean executionPolicy() {
                 return run(List.of(

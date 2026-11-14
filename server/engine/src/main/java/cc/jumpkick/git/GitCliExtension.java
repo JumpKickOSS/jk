@@ -7,7 +7,7 @@ import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
-import cc.jumpkick.host.GitLongPaths;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
@@ -423,23 +423,14 @@ public final class GitCliExtension implements GitBackend {
      * process tree: {@code git-remote-https} and {@code ssh} are children that would otherwise
      * keep the transfer, and the stdout pipe, going.
      */
-    /** The git command line, long paths on under Windows ({@link GitLongPaths}). */
-    static List<String> command(String exe, List<String> lead, List<String> args, boolean windows) {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(exe);
-        cmd.addAll(GitLongPaths.options(windows));
-        cmd.addAll(lead);
-        cmd.addAll(args);
-        return cmd;
-    }
-
     private ProcResult exec(@Nullable Path cwd, @Nullable String remoteUrl, List<String> args, long timeoutSec)
             throws IOException {
         List<String> lead = new ArrayList<>();
         Map<String, String> credEnv = new HashMap<>();
         if (remoteUrl != null) prepareCredentials(remoteUrl, lead, credEnv);
 
-        List<String> cmd = command(git.exe(), lead, args, Os.isWindows());
+        List<String> cmd = GitCommand.of(git.exe(), lead);
+        cmd.addAll(args);
 
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
         if (cwd != null) pb.directory(cwd.toFile());

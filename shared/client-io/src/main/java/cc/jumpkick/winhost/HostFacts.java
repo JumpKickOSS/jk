@@ -20,10 +20,6 @@ public interface HostFacts {
     @Nullable
     Volume volume(Path path);
 
-    /** git's {@code core.longpaths} in any scope, false when unset; null when git is missing or slow. */
-    @Nullable
-    Boolean gitLongPaths();
-
     /** This process's {@code os.arch}. */
     String processArch();
 

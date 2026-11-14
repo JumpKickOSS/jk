@@ -4,11 +4,11 @@ package cc.jumpkick.testing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.host.GitCommand;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -100,7 +100,7 @@ class CheckoutUntouchedTest {
     }
 
     private static int git(Path dir, String... args) throws IOException, InterruptedException {
-        var command = new ArrayList<>(List.of("git", "-C", dir.toString()));
+        var command = GitCommand.of("-C", dir.toString());
         command.addAll(List.of(args));
         Process process;
         try {

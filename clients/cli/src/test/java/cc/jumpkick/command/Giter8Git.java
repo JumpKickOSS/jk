@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
@@ -205,8 +206,7 @@ public final class Giter8Git {
 
     record Parsed(String url, @Nullable String rev, String cacheKey) {
         List<String> cloneArgs(Path dest) {
-            List<String> args = new ArrayList<>();
-            args.add("git");
+            List<String> args = GitCommand.of();
             args.add("clone");
             args.add("--depth");
             args.add("1");

@@ -9,6 +9,7 @@ import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -563,8 +564,9 @@ public final class JournalWriter {
         if (head.known()) return head.commit();
         try {
             Processes.Captured c = Processes.capture(
-                    JobWorkers.startDetached(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
-                            .redirectError(ProcessBuilder.Redirect.DISCARD)),
+                    JobWorkers.startDetached(
+                            new ProcessBuilder(GitCommand.of("-C", dir, "rev-parse", "--short", "HEAD"))
+                                    .redirectError(ProcessBuilder.Redirect.DISCARD)),
                     GIT_COMMIT_WAIT);
             String out = c.output().trim();
             return c.ok() && !out.isEmpty() ? out : null;

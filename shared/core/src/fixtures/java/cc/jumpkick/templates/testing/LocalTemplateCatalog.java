@@ -2,6 +2,7 @@
 package cc.jumpkick.templates.testing;
 
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
@@ -14,8 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -137,14 +136,9 @@ public final class LocalTemplateCatalog {
         }
     }
 
-    /**
-     * {@code git args} in {@code cwd}, with long paths on: under a test sandbox the copied templates
-     * nest past Windows' 260 characters (git reads the setting only there).
-     */
+    /** {@code git args} in {@code cwd}. */
     private static void git(Path cwd, String... args) throws IOException {
-        List<String> command = new ArrayList<>(List.of("git", "-c", "core.longpaths=true"));
-        command.addAll(List.of(args));
-        ProcessBuilder pb = new ProcessBuilder(command)
+        ProcessBuilder pb = new ProcessBuilder(GitCommand.of(args))
                 .directory(cwd.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD);

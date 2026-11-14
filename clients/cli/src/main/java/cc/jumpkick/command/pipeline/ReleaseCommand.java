@@ -13,6 +13,7 @@ import cc.jumpkick.config.ReleaseVersion.Segment;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockPaths;
@@ -396,8 +397,7 @@ public final class ReleaseCommand implements CliCommand {
         }
 
         private SecretCommand.Result exec(String... args) {
-            List<String> command = new ArrayList<>(args.length + 3);
-            command.addAll(List.of("git", "-C", dir.toString()));
+            List<String> command = GitCommand.of("-C", dir.toString());
             command.addAll(List.of(args));
             boolean hooks = args.length > 0 && (args[0].equals("commit") || args[0].equals("push"));
             try {

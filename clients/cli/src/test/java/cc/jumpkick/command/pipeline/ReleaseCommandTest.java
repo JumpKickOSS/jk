@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -50,7 +51,7 @@ class ReleaseCommandTest {
     }
 
     private static String git(Path dir, String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>(List.of("git"));
+        List<String> command = GitCommand.of();
         command.addAll(List.of(args));
         Processes.Captured run = Processes.capture(
                 new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true), Duration.ofMinutes(1));

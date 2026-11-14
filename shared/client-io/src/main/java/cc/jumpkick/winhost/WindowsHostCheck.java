@@ -45,7 +45,6 @@ public record WindowsHostCheck(
     static final String CFA_POLICY_KEY =
             "SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\Controlled Folder Access";
     static final String SAC_KEY = "SYSTEM\\CurrentControlSet\\Control\\CI\\Policy";
-    static final String FS_KEY = "SYSTEM\\CurrentControlSet\\Control\\FileSystem";
     static final String ENV_KEY = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
     static final String PS_KEY = "SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell";
     static final String PS_POLICY_KEY = "SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell";
@@ -53,9 +52,6 @@ public record WindowsHostCheck(
 
     /** The command that applies the recommended changes. */
     public static final String FIX = "jk doctor --fix";
-
-    /** The command that turns on git's long-path support for this user. */
-    static final String GIT_LONG_PATHS_FIX = "git config --global core.longpaths true";
 
     /** Every row, in the order doctor prints them. */
     public List<HostRow> rows() {
@@ -68,7 +64,6 @@ public record WindowsHostCheck(
                 this::powerShell,
                 this::defender,
                 this::folders,
-                this::longPaths,
                 this::volumes,
                 this::arch,
                 this::wsl);
@@ -77,7 +72,6 @@ public record WindowsHostCheck(
                 "powershell:powershell",
                 "defender:defender",
                 "folders:folders",
-                "long-paths:long paths",
                 "volumes:volumes",
                 "arch:arch",
                 "wsl:wsl");
@@ -370,30 +364,6 @@ public record WindowsHostCheck(
         for (String name : names) out.add(WinPaths.join(profile(), name));
         for (String drive : oneDrives()) for (String name : names) out.add(WinPaths.join(drive, name));
         return out;
-    }
-
-    // ---- long paths ----
-
-    /** Whether Windows' {@code LongPathsEnabled} is set. */
-    public boolean longPathsEnabled() {
-        Integer windows = facts.registry().dword(Hive.LOCAL_MACHINE, FS_KEY, "LongPathsEnabled");
-        return windows != null && windows == 1;
-    }
-
-    HostRow longPaths() {
-        String id = "long-paths", label = "long paths";
-        Boolean git = facts.gitLongPaths();
-        boolean windowsOn = longPathsEnabled();
-        boolean gitOff = Boolean.FALSE.equals(git);
-        List<String> off = new ArrayList<>();
-        if (!windowsOn) off.add("Windows limits paths to 260 characters");
-        if (gitOff) off.add("git's core.longpaths is off");
-        if (off.isEmpty())
-            return HostRow.ok(id, label, git == null ? "enabled in Windows" : "enabled in Windows and git");
-        List<String> fixes = new ArrayList<>();
-        if (!windowsOn) fixes.add(FIX);
-        if (gitOff) fixes.add(GIT_LONG_PATHS_FIX);
-        return HostRow.warn(id, label, String.join("; ", off), String.join("; ", fixes));
     }
 
     // ---- volumes ----

@@ -30,15 +30,7 @@ class WindowsHostCheckTest {
         List<HostRow> rows = check().rows();
         assertThat(rows)
                 .extracting(HostRow::id)
-                .containsExactly(
-                        "smart-app-control",
-                        "powershell",
-                        "defender",
-                        "folders",
-                        "long-paths",
-                        "volumes",
-                        "arch",
-                        "wsl");
+                .containsExactly("smart-app-control", "powershell", "defender", "folders", "volumes", "arch", "wsl");
         assertThat(rows).allMatch(r -> r.status() == HostRow.Status.OK);
     }
 
@@ -167,20 +159,6 @@ class WindowsHostCheckTest {
         HostRow row = new WindowsHostCheck(host, SetupMemo.NONE, HOME, docs).folders();
         assertThat(row.status()).isEqualTo(HostRow.Status.WARN);
         assertThat(row.detail()).contains("Controlled Folder Access").contains("Documents");
-    }
-
-    @Test
-    void longPathsOffInWindowsOrGitNamesBothFixes() {
-        host.dword(Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 0);
-        host.git = false;
-        HostRow row = check().longPaths();
-        assertThat(row.status()).isEqualTo(HostRow.Status.WARN);
-        assertThat(row.detail()).contains("260 characters").contains("core.longpaths is off");
-        assertThat(row.fix()).contains("jk doctor --fix").contains("git config --global core.longpaths true");
-
-        host.git = null;
-        host.dword(Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 1);
-        assertThat(check().longPaths().detail()).isEqualTo("enabled in Windows");
     }
 
     @Test

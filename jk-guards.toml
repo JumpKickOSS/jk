@@ -1454,6 +1454,20 @@ owner      = "cc.jumpkick.http.Http"
 instead    = "Http's verbs (get / getStream / post / postForm / put), or Http.proxiedClientBuilder() paired with Http.proxiedRequest(uri) for a request shape they do not fit"
 why        = "a client built outside Http goes direct behind the proxy every other request honours"
 
+# Every git command line, in jk and in its tests, is spelled by GitCommand, which starts it with the
+# options git needs on every host (on Windows, long paths). A hand-spelled one ran without them and
+# failed past 260 characters on a stock Windows host while every fixed site passed.
+[guards.git-command-owner]
+kind     = "text"
+files    = ["**/src/*/java/**/*.java"]
+blank    = "comments"
+pattern  = '(?:List\.of|Arrays\.asList|Stream\.of|ProcessBuilder|\.add|\.addAll)\(\s*"git"\s*[,)]'
+owner    = ["shared/host/src/main/java/cc/jumpkick/host/GitCommand.java"]
+hit      = 'new ProcessBuilder("git", "rev-parse", "HEAD")'
+miss     = 'new ProcessBuilder(GitCommand.of("rev-parse", "HEAD"))'
+instead  = "GitCommand.of(args), or GitCommand.of(exe, args) for a git binary the user or the engine chose"
+why      = "a git command spelled by hand runs without long paths, and fails on Windows once a path passes 260 characters"
+
 # G96. A jk process writes its diagnostics through one leveled logger. A print has no level to
 # filter on, misses the size cap the engine log rolls at, and skips the redaction every logged line
 # passes through; Log is the one class that binds the stream. The CLI's presentation is out of

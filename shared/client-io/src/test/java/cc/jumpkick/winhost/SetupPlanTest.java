@@ -64,15 +64,16 @@ class SetupPlanTest {
         assertThat(plan(SetupMemo.NONE).isEmpty()).isTrue();
     }
 
+    /** jk passes git its long-path option itself, so Windows' long-path setting is never asked for. */
     @Test
-    void longPathsGitAndThePolicyJoinTheSameList() {
-        host.dword(Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 0);
-        host.git = false;
+    void thePolicyJoinsTheListAndLongPathsOffInWindowsProposesNothing() {
+        host.dword(Hive.LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\FileSystem", "LongPathsEnabled", 0);
         host.strings.clear();
         SetupPlan plan = plan(SetupMemo.NONE);
         assertThat(plan.changes())
                 .extracting(SetupChange::id)
-                .endsWith(SetupChange.LONG_PATHS, SetupChange.GIT_LONG_PATHS, SetupChange.EXECUTION_POLICY);
+                .endsWith(SetupChange.EXECUTION_POLICY)
+                .doesNotContain("long-paths", "git-long-paths");
         assertThat(plan.change(SetupChange.EXECUTION_POLICY).orElseThrow().why())
                 .contains("Restricted");
     }

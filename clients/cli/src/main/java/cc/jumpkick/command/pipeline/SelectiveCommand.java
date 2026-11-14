@@ -10,6 +10,7 @@ import cc.jumpkick.cli.api.Reentry;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
@@ -416,7 +417,7 @@ public final class SelectiveCommand implements CliCommand {
 
     private static @Nullable String gitRevParse(Path root) {
         String out = Processes.outputIfOk(
-                new ProcessBuilder("git", "rev-parse", "HEAD")
+                new ProcessBuilder(GitCommand.of("rev-parse", "HEAD"))
                         .directory(root.toFile())
                         .redirectErrorStream(true),
                 Duration.ofSeconds(30));
