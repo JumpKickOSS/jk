@@ -13,6 +13,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JavacConfig;
@@ -428,15 +429,11 @@ public final class PomImporter {
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
         if (!sourceTree.testExtraSrc().isEmpty()) build = build.withTestExtraSrc(sourceTree.testExtraSrc());
         if (!sourceTree.resources().isEmpty()) build = build.withResources(sourceTree.resources());
-        if (!tests.includeTags().isEmpty() || !tests.excludeTags().isEmpty()) {
-            build = build.withTestTags(tests.includeTags(), tests.excludeTags());
-        }
         if (!tests.excludeClasses().isEmpty()) build = build.withTestExcludeClasses(tests.excludeClasses());
         if (!tests.excludeDependencies().isEmpty())
             build = build.withTestExcludeDependencies(tests.excludeDependencies());
-        if (tests.integration() != null) {
-            build = build.withTestSuites(Map.of(TestSuites.INTEGRATION, tests.integration()));
-        }
+        Map<String, DeclaredSuite> suites = TestPlugins.suites(tests, report);
+        if (!suites.isEmpty()) build = build.withTestSuites(suites);
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
         if (!tests.env().isEmpty()) build = build.withTestEnv(tests.env());
         List<String> testExcludes = PluginFacts.compilerSourceGlobs(model, "testExcludes", true);

@@ -120,7 +120,7 @@ class JkBuildWorkspaceTest {
                 modules = ["libs/a"]
 
                 [profiles.integration]
-                include-tags = ["integration"]
+                env = { MODE = "integration" }
                 """);
         Files.createDirectories(tempDir.resolve("libs/a"));
         Files.writeString(tempDir.resolve("libs/a/jk.toml"), "name = \"a\"\n");

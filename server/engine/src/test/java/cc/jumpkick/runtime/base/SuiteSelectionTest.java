@@ -20,7 +20,7 @@ class SuiteSelectionTest {
 
     @Test
     void a_profile_that_selects_tags_names_the_suite_by_the_profile() {
-        TestSelection integration = TestSelection.of(List.of(), false, List.of("integration"), List.of(), true);
+        TestSelection integration = TestSelection.of(List.of(), false, List.of("integration"), List.of());
         assertThat(SuiteSelection.step(integration, "integration")).isEqualTo("run-tests@integration");
         assertThat(SuiteSelection.step(integration, null))
                 .as("the same tags without the profile are the same tier")
@@ -52,7 +52,7 @@ class SuiteSelectionTest {
         assertThat(SuiteSelection.partial(TestSelection.of(List.of(), false, List.of("integration"), List.of())))
                 .isFalse();
         assertThat(SuiteSelection.partial(TestSelection.of(
-                        List.of(), false, List.of(), List.of(), false, false, false, false, List.of("FooTest"))))
+                        List.of(), false, List.of(), List.of(), false, false, false, List.of("FooTest"))))
                 .isTrue();
     }
 
@@ -60,7 +60,7 @@ class SuiteSelectionTest {
     @Test
     void each_suite_selection_is_its_own_tier_in_the_ledger() {
         TestSelection guard =
-                TestSelection.of(List.of("test", "integration", "e2e"), false, List.of(), List.of(), false, true);
+                TestSelection.of(List.of("test", "integration", "e2e"), false, List.of(), List.of(), true, false, false);
         TestSelection integration = TestSelection.of(List.of("integration"), false, List.of(), List.of());
         assertThat(SuiteSelection.tier(TestSelection.DEFAULT, null)).isEmpty();
         assertThat(SuiteSelection.tier(TestSelection.DEFAULT, "ci")).isEqualTo("ci");
@@ -77,7 +77,7 @@ class SuiteSelectionTest {
         assertThat(SuiteSelection.slowTier(TestSelection.of(List.of(), false, List.of("slow"), List.of())))
                 .isTrue();
         assertThat(SuiteSelection.slowTier(
-                        TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true)))
+                        TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false)))
                 .isFalse();
         assertThat(SuiteSelection.slowTier(TestSelection.of(List.of(), true, List.of(), List.of())))
                 .isFalse();

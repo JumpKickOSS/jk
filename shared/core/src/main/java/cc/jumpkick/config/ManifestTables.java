@@ -564,20 +564,13 @@ public final class ManifestTables {
             String inherits = body.getString("inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
             List<String> jvmArgs = jvmArgsList(body, "profiles." + name);
-            boolean includeTagsSet = body.contains("include-tags");
-            boolean excludeTagsSet = body.contains("exclude-tags");
-            List<String> includeTags = includeTagsSet
-                    ? optionalStringList(body, "include-tags", "profiles." + name + ".include-tags")
-                    : List.of();
-            List<String> excludeTags = excludeTagsSet
-                    ? optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags")
-                    : List.of();
-            boolean allSuites = false;
-            if (body.contains("all-suites")) {
-                if (!body.isBoolean("all-suites")) {
-                    throw new JkBuildParseException("profiles." + name + ".all-suites must be true or false");
+            for (String key : List.of("include-tags", "exclude-tags", "all-suites")) {
+                if (body.contains(key)) {
+                    throw new JkBuildParseException("[profiles." + name + "] has no key " + key + ": suites choose"
+                            + " tests. A tier is [test.suites.<name>] tags = [...] (exclude-tags = [...] settles a"
+                            + " test two suites claim), run with jk test -s <name>, or jk test -g for the suites in"
+                            + " [test] guard-suites");
                 }
-                allSuites = Boolean.TRUE.equals(body.getBoolean("all-suites"));
             }
             Map<String, String> env = new LinkedHashMap<>();
             if (body.contains("env")) {
@@ -596,32 +589,26 @@ public final class ManifestTables {
             }
             byName.put(
                     name,
-                    new Profile(
-                            name,
-                            inherits,
-                            javacArgs,
-                            jvmArgs,
-                            includeTags,
-                            excludeTags,
-                            includeTagsSet,
-                            excludeTagsSet,
-                            env,
-                            allSuites));
+                    new Profile(name, inherits, javacArgs, jvmArgs, env));
         }
         return new Profiles(byName);
     }
 
     /**
-     * {@code [test] include-tags} / {@code exclude-tags} — baseline tag filters when no profile or
-     * CLI overrides apply. Empty lists when the table/key is absent. Reached through
-     * {@link JkBuildParser#parseTestTags(Path)}, which owns the read.
+     * {@code [test]} has no tag filter: the default suite runs what no {@code [test.suites.<name>]}
+     * claims. A manifest naming {@code include-tags} or {@code exclude-tags} there is refused with the
+     * suite table to write.
      */
-    static JkBuildParser.TestTomlTags parseTestTags(TomlTable root) {
+    static void refuseTestTags(TomlTable root) {
         TomlTable test = root.getTable("test");
-        if (test == null) return JkBuildParser.TestTomlTags.EMPTY;
-        return new JkBuildParser.TestTomlTags(
-                optionalStringList(test, "include-tags", "test.include-tags"),
-                optionalStringList(test, "exclude-tags", "test.exclude-tags"));
+        if (test == null) return;
+        for (String key : List.of("include-tags", "exclude-tags")) {
+            if (test.contains(key)) {
+                throw new JkBuildParseException("[test] has no key " + key + ": the default suite runs what no"
+                        + " suite claims. A tier is [test.suites.<name>] tags = [...], run with jk test -s"
+                        + " <name>; -I / -E narrow one run");
+            }
+        }
     }
 
     static Features parseFeatures(TomlTable root) {

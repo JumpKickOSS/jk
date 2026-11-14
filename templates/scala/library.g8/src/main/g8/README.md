@@ -13,5 +13,5 @@ jk publish       # dry-run by default; see `jk skill`
 The javadoc jar is scaladoc's site, built by the scaladoc release that matches the Scala
 compiler, so the two move together; the sources jar holds the `.scala` files.
 
-`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
-tests tagged with that cost.
+`jk test` is the fast tier; `jk test -s integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost, and `jk test -g` runs the fast tier and `integration` together.

@@ -72,11 +72,7 @@ public final class JobSelect {
         return ModuleHints.withPrereqs(entryDir, entry, selected);
     }
 
-    /**
-     * Tag/suite filter. An explicit tag list means the tags are final ({@code tagsResolved=true});
-     * naming only suites or classes leaves them to the engine, which takes the workspace's tiers
-     * as {@code jk test --suite} does.
-     */
+    /** The suites a job names, its one-run tag filter, and its classes. */
     public static TestSelection testSelection(
             List<String> includeTags, List<String> excludeTags, List<String> suites, List<String> classes) {
         List<String> inc = includeTags == null ? List.of() : includeTags;
@@ -84,7 +80,7 @@ public final class JobSelect {
         List<String> su = suites == null ? List.of() : suites;
         TestSelection base = inc.isEmpty() && exc.isEmpty() && su.isEmpty()
                 ? TestSelection.DEFAULT
-                : TestSelection.of(su, false, inc, exc, !inc.isEmpty() || !exc.isEmpty());
+                : TestSelection.of(su, false, inc, exc);
         return classes == null || classes.isEmpty() ? base : base.withClasses(classes);
     }
 }

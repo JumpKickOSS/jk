@@ -31,16 +31,13 @@ class ForecastSelectionStampTest {
                 group = "t"
                 version = "0.0.1"
                 java = 25
-
-                [test]
-                exclude-tags = ["integration", "slow"]
                 """);
         JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
 
         List<String> unit = SessionContext.where(Session.defaults(), () -> TestStampInputs.of(
                         TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
                 .extras());
-        TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
+        TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of());
         List<String> all = SessionContext.where(Session.defaults().withTestSelection(widened), () -> TestStampInputs.of(
                         TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
                 .extras());
@@ -50,8 +47,6 @@ class ForecastSelectionStampTest {
         String allSel =
                 all.stream().filter(e -> e.startsWith("sel:")).findFirst().orElseThrow();
         assertThat(allSel).isNotEqualTo(unitSel);
-        // And the default-session extras still fold the module's own [test] excludes.
-        assertThat(unitSel).contains("integration");
     }
 
     /** A {@code --class} run's green marker must never be the one a whole-module run replays. */

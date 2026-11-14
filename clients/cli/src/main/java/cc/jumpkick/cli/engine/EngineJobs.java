@@ -70,9 +70,8 @@ final class EngineJobs {
     /**
      * The build-request body for {@code req} as the engine sees it (before the session envelope).
      * Session-owned facts ride from {@code session}: parallel-tests, offline/force, and the
-     * resolved test selection — {@code --all}/{@code --include-tags}/{@code --exclude-tags} must
-     * ride the wire or the engine falls back to each module's {@code [test]} excludes and a
-     * widened tier is silently served from the unit-tier stamp.
+     * resolved test selection — {@code --suite}/{@code --guard}/{@code --all} and the one-run tag
+     * filters must ride the wire, or a widened run is silently served from the unit-tier stamp.
      */
     /** The session's {@code --test-failures} override as the wire spells it; null for the modules' own. */
     private static @Nullable String testFailures(Session session) {

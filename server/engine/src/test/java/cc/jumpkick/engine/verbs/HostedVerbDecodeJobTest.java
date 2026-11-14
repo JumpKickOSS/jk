@@ -96,7 +96,6 @@ class HostedVerbDecodeJobTest {
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.classes()).containsExactly("RangeTest");
         assertThat(sel.excludeTags()).containsExactly("slow");
-        assertThat(sel.tagsResolved()).isTrue();
     }
 
     @Test

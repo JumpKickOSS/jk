@@ -319,7 +319,8 @@ describes the vocabulary they are written in. A template without a framework pac
 ships a small `jk-guards.toml` of its own — a file-size ratchet and one ban with a fixture under
 `guard-fixtures/` — so the guard loop is there from the first build.
 
-Every template also declares test tiers (`[test] exclude-tags` with one profile per tag), a
+Every template also declares test tiers (a `[test.suites.<name>]` per cost tag beside the built-in
+`integration` suite), a
 `[format]` style, and, for a runnable app on the JVM, an `[image]` table (`cli-native` has none: its
 native binary ships as itself). Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
 and marks each package it generates `@NullMarked`, so NullAway checks the project from the first

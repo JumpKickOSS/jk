@@ -30,7 +30,8 @@ import org.junit.jupiter.api.io.TempDir;
 class TagExcludedSuiteE2eTest {
 
     @Test
-    void a_profile_that_excludes_every_test_reports_one_plain_line_and_no_warning(@TempDir Path tmp) throws Exception {
+    void a_tag_filter_that_excludes_every_test_reports_one_plain_line_and_no_warning(@TempDir Path tmp)
+            throws Exception {
         Path project = tmp.resolve("tiered");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), """
@@ -41,9 +42,6 @@ class TagExcludedSuiteE2eTest {
 
                 [test-dependencies]
                 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
-
-                [profiles.nightly]
-                include-tags = ["nightly"]
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
@@ -88,23 +86,22 @@ class TagExcludedSuiteE2eTest {
                 .as("a tag-emptied tier is the expected outcome, not a discovery warning")
                 .noneMatch(d -> "no-tests-discovered".equals(d.code()))
                 .noneMatch(d -> d.message() != null && d.message().contains("discovery found 0 tests"));
-        assertThat(outputs).contains("run-tests: 0 tests (all excluded by profile nightly)");
+        assertThat(outputs).contains("run-tests: 0 tests (all excluded by --include-tags nightly)");
         TestSummary tests = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElseThrow();
         assertThat(tests.total()).isZero();
         assertThat(tests.failed()).isZero();
     }
 
-    /** The plan of {@code jk test -p nightly}: the profile's tags resolved onto the session. */
+    /** The plan of {@code jk test -I nightly}. */
     private static BuildPlan lockAndPlan(Path project) throws Exception {
         Path cache = TestCaches.dir("tag-excluded-suite-cache");
         BuildPlan lock =
                 LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
-        TestSelection nightly = TestSelection.of(List.of(), false, List.of("nightly"), List.of(), true);
+        TestSelection nightly = TestSelection.of(List.of(), false, List.of("nightly"), List.of());
         BuildPlanner.Inputs in = TestInputs.of(
                         project, cache, SessionContext.current().withTestSelection(nightly))
-                .withEstimatedTestCount(1)
-                .withProfileName("nightly");
+                .withEstimatedTestCount(1);
         return BuildPlanner.fullPlan(in);
     }
 }

@@ -41,7 +41,6 @@ final class BuildFields {
     Integer testWorkers;
 
     List<String> testSerialTags;
-    List<String> testIncludeTags, testExcludeTags;
     List<String> testExcludeClasses, testExcludeSrc, testExcludeDependencies;
     Map<String, DeclaredSuite> testSuites;
     boolean testAssertions;
@@ -98,8 +97,6 @@ final class BuildFields {
         fixtures = b.fixtures();
         testWorkers = b.testWorkers();
         testSerialTags = b.testSerialTags();
-        testIncludeTags = b.testIncludeTags();
-        testExcludeTags = b.testExcludeTags();
         testExcludeClasses = b.testExcludeClasses();
         testExcludeSrc = b.testExcludeSrc();
         testExcludeDependencies = b.testExcludeDependencies();
@@ -147,8 +144,6 @@ final class BuildFields {
                 fixtures,
                 testWorkers,
                 testSerialTags,
-                testIncludeTags,
-                testExcludeTags,
                 testExcludeClasses,
                 testExcludeSrc,
                 testExcludeDependencies,

@@ -150,8 +150,6 @@ class InstallProductBinTest {
                 base.kotlinClassesDir(),
                 base.groovyClassesDir(),
                 base.testResultsDir(),
-                base.testIncludeTags(),
-                base.testExcludeTags(),
                 base.lockStale(),
                 base.scala(),
                 base.scalaVersion(),

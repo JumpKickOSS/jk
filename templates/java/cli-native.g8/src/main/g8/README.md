@@ -40,7 +40,7 @@ rather than inside a container image.
 Every package is `@NullMarked` and `[nullness]` checks it with NullAway at compile time: a type is
 non-null unless it says `@Nullable`.
 
-`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
-tests tagged with that cost. No framework pack fits a plain CLI, so `jk-guards.toml` is a small house
+`jk test` is the fast tier; `jk test -s integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost, and `jk test -g` runs the fast tier and `integration` together. No framework pack fits a plain CLI, so `jk-guards.toml` is a small house
 baseline: a `file-size` cap, and a `forbid` that proves it bites against
 `guard-fixtures/no-soft-reference/` (`jk guard explain` lists both).

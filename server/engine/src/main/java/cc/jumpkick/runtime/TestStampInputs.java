@@ -8,7 +8,6 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -128,14 +127,10 @@ public record TestStampInputs(
     /** The stamp inputs of {@code facts}, with the worker jars read through {@code identity}. */
     @KeyOwner(step = TaskNames.RUN_TESTS)
     static TestStampInputs of(Facts facts, ClasspathFingerprint.EntryIdentity identity) throws IOException {
-        TestSelection selection = effectiveSelection(facts.sessionSelection(), facts.dir(), facts.profileName());
+        TestSelection selection = facts.sessionSelection();
         boolean compact = CompileSupport.isSimpleLayout(facts.project().project(), facts.dir());
-        TestSelection.Resolved suites = resolveSuites(
-                selection,
-                facts.dir(),
-                facts.profileName(),
-                compact,
-                facts.project().build().runSuites());
+        TestSelection.Resolved suites =
+                resolveSuites(selection, facts.dir(), compact, facts.project().build().runSuites());
         TestTier tier = TestTier.of(selection, facts.profileName(), fastMethodBudget(facts.project(), facts.dir()));
         List<String> jvmArgs = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(facts.layout(), facts.pluginDecls()));
         jvmArgs.addAll(testJvmArgs(facts.project(), facts.profileName()));
@@ -268,65 +263,28 @@ public record TestStampInputs(
     }
 
     /**
-     * The suites a run of {@code moduleDir} runs under {@code selection}: its {@link
-     * #effectiveSelection} resolved against the module's suites, the built-in {@code integration}
-     * suite always among them ({@link DeclaredSuite#withConvention}, so a caller handing the raw
-     * tables cannot lose it). The one derivation of it: the planner's compile-test and suite filter,
-     * the stamp, the forecast and the test-count estimate all read it here, so the suites a green
-     * marker is stored under are the suites that ran.
+     * The suites a run of {@code moduleDir} runs under {@code selection}, resolved against the
+     * module's suites, the built-in {@code integration} suite always among them ({@link
+     * DeclaredSuite#withConvention}, so a caller handing the raw tables cannot lose it). The one
+     * derivation of it: the planner's compile-test and suite filter, the stamp, the forecast and the
+     * test-count estimate all read it here, so the suites a green marker is stored under are the
+     * suites that ran.
      *
      * @param declared the module's {@link cc.jumpkick.model.BuildBlock#runSuites}
      */
     @KeyOwner(step = TaskNames.RUN_TESTS)
     public static TestSelection.Resolved resolveSuites(
-            TestSelection selection,
-            Path moduleDir,
-            @Nullable String profileName,
-            boolean compact,
-            Map<String, DeclaredSuite> declared) {
-        return TestSuites.resolve(
-                effectiveSelection(selection, moduleDir, profileName),
-                moduleDir,
-                compact,
-                DeclaredSuite.withConvention(declared));
+            TestSelection selection, Path moduleDir, boolean compact, Map<String, DeclaredSuite> declared) {
+        return TestSuites.resolve(selection, moduleDir, compact, DeclaredSuite.withConvention(declared));
     }
 
     /**
-     * The stamp token of the suites the run runs: a suite's {@code explicit} flag or a profile's
-     * every-suite switch changes the set without changing any source the stamp hashes.
+     * The stamp token of the suites the run runs: a suite's {@code explicit} flag changes the set
+     * without changing any source the stamp hashes.
      */
     private static String suitesToken(TestSelection.Resolved suites) {
         return "suites-run:" + String.join(",", suites.suites())
                 + (suites.ok() ? "" : "?missing=" + String.join(",", suites.missing()));
-    }
-
-    /**
-     * The selection the runner actually executes: the session's, or, when it carries no resolved
-     * tags (jk build, BSP, an MCP run naming none), the tags and every-suite switch {@link TierTags}
-     * gives this module under the active profile: the workspace root's, so an MCP {@code
-     * run(only=member)} runs what {@code jk test -m member} runs. {@code jk test} resolves through
-     * the same {@link TierTags} CLI-side and its selection already carries them.
-     */
-    public static TestSelection effectiveSelection(TestSelection sel, Path moduleDir, @Nullable String profileName) {
-        // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
-        // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
-        if (sel.tagsResolved()) return sel;
-        if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        TierTags tiers = TierTags.of(moduleDir, CompileSupport.activeProfileName(profileName));
-        boolean allSuites =
-                sel.allSuites() || (tiers.allSuites() && sel.suites().isEmpty() && !sel.guard());
-        if (!tiers.spoke() && allSuites == sel.allSuites()) return sel;
-        return TestSelection.of(
-                        sel.suites(),
-                        allSuites,
-                        tiers.includeTags(),
-                        tiers.excludeTags(),
-                        false,
-                        sel.guard(),
-                        sel.scriptsOnly(),
-                        sel.noScripts(),
-                        sel.classes())
-                .withOnlyModules(sel.onlyModules());
     }
 
     /**

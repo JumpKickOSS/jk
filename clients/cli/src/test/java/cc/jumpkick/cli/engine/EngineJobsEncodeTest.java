@@ -30,7 +30,7 @@ class EngineJobsEncodeTest {
 
     @Test
     void the_session_test_selection_rides_the_workspace_request() {
-        TestSelection widened = TestSelection.of(List.of(), true, List.of("integration"), List.of("bench"), true);
+        TestSelection widened = TestSelection.of(List.of(), true, List.of("integration"), List.of("bench"));
         Session session = Session.defaults().withTestSelection(widened);
 
         String json = EngineJobs.encodeWorkspaceRequest(request(), session);

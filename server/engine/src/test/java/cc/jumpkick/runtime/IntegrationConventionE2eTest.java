@@ -80,7 +80,7 @@ class IntegrationConventionE2eTest {
 
     @Test
     void the_guard_runs_both() throws Exception {
-        assertThat(total(TestSelection.of(List.of(), false, List.of(), List.of(), false, true)))
+        assertThat(total(TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false)))
                 .isEqualTo(5L);
     }
 

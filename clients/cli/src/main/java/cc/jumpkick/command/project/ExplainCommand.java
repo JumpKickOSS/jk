@@ -141,10 +141,8 @@ public final class ExplainCommand implements CliCommand {
         }
 
         // Resolve the test selection through the same resolver `jk build` uses and put it on the
-        // session, which is what the engine request carries it from. The baseline `exclude-tags`
-        // live in the root manifest, so a session left at TestSelection.DEFAULT stamps every
-        // module's run-tests with an empty tag list — a key no build ever stores. That is how a
-        // two-module incremental came to be reported as "30 modules are dirty".
+        // session, which is what the engine request carries it from, so the explained run-tests
+        // stamps are the ones the build would key (its --suite, --guard and --all included).
         BuildFlags flags;
         try {
             flags = BuildFlags.from(in);

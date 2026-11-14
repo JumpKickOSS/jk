@@ -47,10 +47,9 @@ class JobSelectTest {
     }
 
     @Test
-    void tags_are_final_when_set() {
+    void a_job_names_its_suites_tags_and_classes() {
         TestSelection sel = JobSelect.testSelection(List.of("network"), List.of(), List.of(), List.of());
         assertThat(sel.includeTags()).containsExactly("network");
-        assertThat(sel.tagsResolved()).isTrue();
         assertThat(JobSelect.testSelection(List.of(), List.of(), List.of(), List.of()))
                 .isEqualTo(TestSelection.DEFAULT);
         assertThat(JobSelect.testSelection(List.of(), List.of(), List.of(), List.of("RangeTest"))
@@ -58,9 +57,7 @@ class JobSelectTest {
                 .containsExactly("RangeTest");
         TestSelection suiteOnly = JobSelect.testSelection(List.of(), List.of(), List.of("integration"), List.of());
         assertThat(suiteOnly.suites()).containsExactly("integration");
-        assertThat(suiteOnly.tagsResolved())
-                .as("naming a suite leaves the tags to the workspace")
-                .isFalse();
+        assertThat(suiteOnly.includeTags()).isEmpty();
     }
 
     private static void writeWorkspace(Path root) throws Exception {

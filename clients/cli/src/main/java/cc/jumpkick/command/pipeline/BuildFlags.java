@@ -13,13 +13,8 @@ import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.config.TierTags;
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -70,9 +65,8 @@ public record BuildFlags(
     /** The shared options of a verb whose goal runs tests as {@code tests} says, before its own. */
     public static List<Opt> options(WorkspaceTarget.Tests tests, Affected affected) {
         List<Opt> opts = new ArrayList<>();
-        opts.add(Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"));
+        opts.add(Opt.value("<name>", "Build profile", "-p", "--profile"));
         if (tests != WorkspaceTarget.Tests.NOT_RUN) {
-            opts.add(Opt.flag("Apply no profile, not even CI's", "-n", "--no-profile"));
             opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
             if (tests == WorkspaceTarget.Tests.UNLESS_SKIPPED) opts.add(CommonOpts.skipTests());
             opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
@@ -140,13 +134,8 @@ public record BuildFlags(
                 affectedWip);
     }
 
-    /**
-     * The profile the engine applies: {@link Profiles#NO_PROFILE} under {@code --no-profile}, so
-     * neither {@code -p} nor the CI-selected profile reaches its {@code env}, {@code jvm-args} or
-     * {@code javac}; else {@code -p}, or null for automatic selection.
-     */
+    /** The profile the engine applies: {@code -p}, or null for none. */
     static @Nullable String profileChoice(Invocation in) {
-        if (in.isSet("no-profile")) return Profiles.NO_PROFILE;
         return in.value("profile").orElse(null);
     }
 
@@ -275,24 +264,12 @@ public record BuildFlags(
     }
 
     /**
-     * CLI + {@code [test]} / profile tags → {@link TestSelection}. Throws if {@code --all} and
-     * {@code --suite} / {@code --guard} are combined.
-     *
-     * <p>Precedence (each layer replaces the previous for a given list when it speaks); the first two
-     * are the workspace root's, read by {@link TierTags} exactly as the engine reads them:
-     *
-     * <ol>
-     *   <li>{@code [test] include-tags} / {@code exclude-tags} — baseline
-     *   <li>Active profile, through its {@code inherits} chain — replaces a list only when that key
-     *       is present (empty list clears)
-     *   <li>CLI {@code --include-tags} / {@code --exclude-tags} — replace that list for the run
-     * </ol>
-     *
-     * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
-     * by profile filters. {@code --guard} select {@code test} +
-     * {@code integration} (or {@code [test] guard-suites}); {@code --suite} wins over {@code --guard}.
-     * A profile's {@code all-suites = true} runs every suite under the profile's tags, unless
-     * {@code --suite} or {@code --guard} names the suites.
+     * The CLI's suites, tags and classes → {@link TestSelection}. Suites choose tests: the default
+     * suite, {@code --suite} names, {@code --guard}'s list ({@code [test] guard-suites} at the
+     * workspace root, else {@code test} + {@code integration}; {@code --suite} wins over it), or
+     * {@code --all}. {@code --include-tags} / {@code --exclude-tags} narrow one run of them; no
+     * manifest or profile adds tags. Throws if {@code --all} is combined with {@code --suite} or
+     * {@code --guard}.
      */
     public static TestSelection testSelection(Invocation in) {
         boolean all = in.isSet("all");
@@ -303,8 +280,6 @@ public record BuildFlags(
             throw new IllegalArgumentException(SCRIPTS_FLAGS_CONFLICT);
         }
         List<String> suites = new ArrayList<>(in.values("suite"));
-        boolean cliInclude = in.has("include-tags");
-        boolean cliExclude = in.has("exclude-tags");
         if (all && !suites.isEmpty()) {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
         }
@@ -312,64 +287,16 @@ public record BuildFlags(
             throw new IllegalArgumentException("--all and --guard cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
-        // Tags, guard suites and profiles are workspace facts: from a member directory the root's
-        // manifest is the baseline layer, exactly as when invoked at the root.
+        // Guard suites are a workspace fact: from a member directory the root's manifest answers,
+        // exactly as when invoked at the root.
         Path root = WorkspaceScan.owningRoot(wd).orElse(wd);
         if (scriptsOnly && !BuildLogicToml.hasStem(root, "guard")) {
             throw new IllegalArgumentException(BuildLogicToml.NO_GUARD_SCRIPTS);
         }
-        String explicit = in.value("profile").orElse(null);
-        boolean explicitProfile = explicit != null && !explicit.isBlank();
-        String profileName = explicitProfile ? explicit : Profiles.autoSelect(System::getenv);
-        boolean cliTags = cliInclude || cliExclude;
-        boolean noProfile = in.isSet("no-profile");
-        boolean applyProfile = !noProfile && profileName != null && (explicitProfile || !cliTags);
-        TierTags tiers = TierTags.ofRoot(root, applyProfile ? profileName : null);
-        List<String> include = new ArrayList<>(tiers.includeTags());
-        List<String> exclude = new ArrayList<>(tiers.excludeTags());
-        // Only a layer that explicitly resolved the tag lists makes the selection final
-        // (tagsResolved); otherwise the engine resolves per module through the same TierTags,
-        // which may fall back to a member's own [test] lists. Under --no-profile the engine is
-        // sent no profile (profileChoice), so it resolves those lists without one too.
-        boolean spoke = tiers.spoke();
-        boolean profileAllSuites = tiers.allSuites();
-        if (cliInclude) {
-            include = new ArrayList<>(in.values("include-tags"));
-            // An explicit --include-tags overrides a baseline/profile exclude of the same tag:
-            // JUnit include ∧ exclude of one tag selects nothing. An explicit --exclude-tags below
-            // still wins over the include (it replaces the exclude list after this).
-            List<String> included = include.stream().map(String::trim).toList();
-            exclude.removeIf(e -> included.contains(e.trim()));
-            spoke = true;
-        }
-        if (cliExclude) {
-            // `--exclude-tags ""` is the explicit CLI clear: blank values normalize away, the
-            // spoke flag keeps the empty result authoritative.
-            exclude = new ArrayList<>(in.values("exclude-tags"));
-            spoke = true;
-        }
-        // --all is every suite and no baseline/profile tag exclude; explicit CLI tag flags still
-        // compose on top, so `--all --exclude-tags slow` widens but keeps slow out.
-        if (all) {
-            if (!cliInclude) include = new ArrayList<>();
-            if (!cliExclude) exclude = new ArrayList<>();
-            spoke = true;
-        }
+        List<String> include = in.values("include-tags");
+        List<String> exclude = in.values("exclude-tags");
         boolean applyGuard = guard && suites.isEmpty();
-        if (applyGuard) {
-            var scan = TomlScan.scan(ManifestPaths.manifestIn(root), "test.guard-suites");
-            if (scan.hasKey("test.guard-suites")) {
-                suites = new ArrayList<>(scan.stringArray("test.guard-suites"));
-                if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
-                for (String name : suites) {
-                    if (!TestSuites.isSuiteName(name)) {
-                        throw new IllegalArgumentException("unknown test suite '" + name + "' in [test] guard-suites");
-                    }
-                }
-            } else {
-                suites = new ArrayList<>(TestSuites.GUARD_SUITES);
-            }
-        }
+        if (applyGuard) suites = new ArrayList<>(TestSelection.guardSuites(root));
         List<String> classes = in.values("class");
         for (String pattern : classes) {
             if (pattern.trim().endsWith("#")) {
@@ -377,9 +304,6 @@ public record BuildFlags(
                         + " names no method after '#'; write Class#method or the class alone");
             }
         }
-        // The profile's every-suite switch keeps its tags: unlike --all, it widens scope, not cost.
-        boolean allSuites = all || (profileAllSuites && suites.isEmpty());
-        return TestSelection.of(
-                suites, allSuites, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, classes);
+        return TestSelection.of(suites, all, include, exclude, applyGuard, scriptsOnly, noScripts, classes);
     }
 }

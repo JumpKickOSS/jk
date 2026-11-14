@@ -244,8 +244,8 @@ class PreflightMemoTest {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        TestSelection fastTier = TestSelection.of(List.of(), false, List.of(), List.of("slow"), true);
-        TestSelection widened = TestSelection.of(List.of(), false, List.of("slow"), List.of(), true);
+        TestSelection fastTier = TestSelection.of(List.of(), false, List.of(), List.of("slow"));
+        TestSelection widened = TestSelection.of(List.of(), false, List.of("slow"), List.of());
 
         SessionContext.runWhere(Session.defaults().withTestSelection(fastTier), () -> {
             Map<Path, String> fps =

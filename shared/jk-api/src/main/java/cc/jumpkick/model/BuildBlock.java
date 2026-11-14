@@ -54,10 +54,6 @@ public record BuildBlock(
          * tier while its nested-engine/integration classes stay serial.
          */
         List<String> testSerialTags,
-        /** {@code [test] include-tags}: the baseline tags a bare {@code jk test} runs; empty means every tag. */
-        List<String> testIncludeTags,
-        /** {@code [test] exclude-tags}: the baseline tags a bare {@code jk test} leaves out. */
-        List<String> testExcludeTags,
         /**
          * {@code [test] exclude-classes}: class patterns, in {@code --class} syntax, that no suite
          * runs; an excluded class takes its nested classes with it.
@@ -231,8 +227,6 @@ public record BuildBlock(
             List.of(),
             List.of(),
             List.of(),
-            List.of(),
-            List.of(),
             Map.of(),
             true,
             false,
@@ -277,8 +271,6 @@ public record BuildBlock(
         if (fixtures != null && fixtures.isBlank()) fixtures = null;
         if (testWorkers != null && testWorkers < 0) testWorkers = 0;
         testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
-        testIncludeTags = testIncludeTags == null ? List.of() : List.copyOf(testIncludeTags);
-        testExcludeTags = testExcludeTags == null ? List.of() : List.copyOf(testExcludeTags);
         testExcludeClasses = testExcludeClasses == null ? List.of() : List.copyOf(testExcludeClasses);
         testExcludeSrc = testExcludeSrc == null ? List.of() : List.copyOf(testExcludeSrc);
         testExcludeDependencies = testExcludeDependencies == null ? List.of() : List.copyOf(testExcludeDependencies);
@@ -339,14 +331,6 @@ public record BuildBlock(
     /** The same block with {@code [[kotlin-plugins]]} set. */
     public BuildBlock withKotlinPlugins(List<KotlinPluginDecl> plugins) {
         return with(f -> f.kotlinPlugins = plugins);
-    }
-
-    /** The same block with {@code [test] include-tags} / {@code exclude-tags} set. */
-    public BuildBlock withTestTags(List<String> includeTags, List<String> excludeTags) {
-        return with(f -> {
-            f.testIncludeTags = includeTags;
-            f.testExcludeTags = excludeTags;
-        });
     }
 
     /** The same block with {@code [test] fixtures} set to {@code root}; {@code null} declares none. */

@@ -642,7 +642,7 @@ final class TestCompileSteps {
     private static List<String> compiledSuites(ForecastScope s, ForecastScope.Prepared prepared) {
         boolean compact = prepared.parsed().compact();
         List<String> selected = TestSupport.selectedSuites(
-                s.dir, compact, s.project.build(), SessionContext.current().testSelection(), s.knobs.profile());
+                s.dir, compact, s.project.build(), SessionContext.current().testSelection());
         return TestSuites.compiled(s.dir, compact, selected, s.project.build().runSuites());
     }
 

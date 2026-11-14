@@ -41,8 +41,7 @@ class ProtoJobsTagArrayTest {
         // MCP and hand-written requests are not compact. A reader that only accepts `"k":[`
         // returns empty for `"k": [`, which reads as "the caller passed no tags".
         String pretty = "{\n  \"suites\": [],\n  \"allSuites\": false,\n"
-                + "  \"includeTags\": [\"fast\"],\n  \"excludeTags\": [\"slow\"],\n"
-                + "  \"tagsResolved\": false\n}";
+                + "  \"includeTags\": [\"fast\"],\n  \"excludeTags\": [\"slow\"]\n}";
 
         TestSelection back = ProtoJobs.testSelectionOf(pretty);
 
@@ -53,7 +52,7 @@ class ProtoJobsTagArrayTest {
 
     @Test
     void gate_survives_the_round_trip() {
-        TestSelection sent = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, true);
+        TestSelection sent = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
         assertThat(back.guard()).isTrue();
         assertThat(back.suites()).containsExactly("test", "integration");
@@ -73,14 +72,14 @@ class ProtoJobsTagArrayTest {
 
     @Test
     void scripts_flags_survive_the_round_trip() {
-        TestSelection sent = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
+        TestSelection sent = TestSelection.of(List.of(), false, List.of(), List.of(), false, true, false);
         TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
         assertThat(back.scriptsOnly()).isTrue();
         assertThat(back.noScripts()).isFalse();
         assertThat(back.runGuardScripts()).isTrue();
 
         TestSelection skip =
-                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true, false, true);
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, true);
         TestSelection skipBack = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(skip) + "}");
         assertThat(skipBack.guard()).isTrue();
         assertThat(skipBack.noScripts()).isTrue();

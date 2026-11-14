@@ -182,16 +182,15 @@ javac = ["-Werror"]                 # appended to the compiler argv
 inherits = "strict"                 # parent first, then this table
 jvm-args = ["-Dprobe=1", "-Xmx1g"]  # every forked test JVM (jk test, and the test step of jk build)
 env = { PROBE = "1" }               # every forked test JVM's environment, over [test] env
-exclude-tags = ["slow"]             # replaces the [test] list when present
 ```
 
 `jvm-args` and `env` are test inputs: `-p probe` re-runs a suite a plain run left green, and `jk
 explain` keys the step the same way. A child profile's `env` entries replace its parent's of the
 same name. They do not reach `jk run` — an application's JVM flags are
-its own, not a profile's. `--no-profile` applies none, not even CI's `ci`. In a workspace a
-member's same-named profile can add `env` and `jvm-args` but not change the root's
-([Test § Workspace scope](test.md#workspace-scope-tag-filters-come-from-the-root)). Tag precedence
-and the `ci` auto-profile: [Test](test.md#tag-filters).
+its own, not a profile's. A profile applies when `-p` names it. Suites choose tests
+([Test](test.md#declared-suites-testsuitesname)), not profiles. In a
+workspace a member's same-named profile can add `env` and `jvm-args` but not change the root's
+([Test § Workspace scope](test.md#workspace-scope-suites-and-profiles-come-from-the-root)).
 
 ```toml
 [dependencies]

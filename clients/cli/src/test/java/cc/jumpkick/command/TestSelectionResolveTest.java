@@ -9,7 +9,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
-import cc.jumpkick.model.Profiles;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -21,10 +21,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link BuildFlags#testSelection}: the resolved selection is final ({@code tagsResolved})
- * exactly when a layer spoke — baseline tags, a present profile key (including {@code = []} to
- * clear), or a CLI flag. Silent runs stay unresolved so the engine can still fold
- * per-module {@code [test]} tags for workspace members.
+ * {@link BuildFlags#testSelection}: suites choose the tests (the default suite, {@code --suite},
+ * {@code --guard}'s list, {@code --all}); {@code -I}/{@code -E} narrow one run; no manifest key or
+ * profile adds tags.
  */
 class TestSelectionResolveTest {
 
@@ -63,233 +62,61 @@ class TestSelectionResolveTest {
     }
 
     @Test
-    void profile_empty_list_clears_and_is_final(@TempDir Path dir) throws Exception {
+    void a_profile_chooses_no_tests(@TempDir Path dir) throws Exception {
         writeToml(dir, """
-                [test]
-                exclude-tags = ["slow", "integration"]
-
                 [profiles.ci]
-                exclude-tags = []
+                javac = ["-Werror"]
                 """);
         var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "ci"));
-        assertThat(sel.excludeTags()).isEmpty();
-        assertThat(sel.tagsResolved()).isTrue();
+        assertThat(sel).isEqualTo(TestSelection.DEFAULT);
     }
 
     @Test
-    void explicit_include_overrides_a_baseline_exclude_of_the_same_tag(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["integration", "slow", "bench"]
-                """);
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--include-tags", "slow"));
-        assertThat(sel.includeTags()).containsExactly("slow");
-        assertThat(sel.excludeTags())
-                .as("include ∧ exclude of one tag selects nothing — the explicit include wins")
-                .containsExactly("integration", "bench");
-    }
-
-    @Test
-    void explicit_exclude_still_beats_an_explicit_include(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["slow"]
-                """);
+    void cli_tags_narrow_one_run_and_an_explicit_exclude_wins(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
         var sel = BuildFlags.testSelection(
-                parse("-C", dir.toString(), "--include-tags", "slow", "--exclude-tags", "slow"));
+                parse("-C", dir.toString(), "--include-tags", "smoke,slow", "--exclude-tags", "slow"));
+        assertThat(sel.includeTags()).containsExactly("smoke", "slow");
         assertThat(sel.excludeTags()).containsExactly("slow");
     }
 
-    /** From inside a member directory the root's tags are still the baseline layer, whatever the member lists. */
     @Test
-    void member_directory_reads_the_workspace_roots_tags(@TempDir Path dir) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), """
-                name = "ws"
-                group = "t"
-                version = "0.0.1"
-                java = 25
-
-                [workspace]
-                modules = ["member"]
-
-                [test]
-                exclude-tags = ["slow"]
-                guard-suites = ["test", "integration"]
-                """);
-        Path member = Files.createDirectories(dir.resolve("member"));
-        writeToml(member, """
-                [test]
-                exclude-tags = ["bench"]
-                include-tags = ["unit"]
-                """);
-
-        var sel = BuildFlags.testSelection(parse("-C", member.toString()));
-        assertThat(sel.excludeTags()).containsExactly("slow");
-        assertThat(sel.includeTags()).isEmpty();
-        assertThat(sel.tagsResolved()).isTrue();
-
-        var gate = BuildFlags.testSelection(parse("-C", member.toString(), "--guard"));
-        assertThat(gate.suites()).containsExactly("test", "integration");
-    }
-
-    @Test
-    void baseline_tags_are_final(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["slow"]
-                """);
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString()));
-        assertThat(sel.excludeTags()).containsExactly("slow");
-        assertThat(sel.tagsResolved()).isTrue();
-    }
-
-    @Test
-    void cli_blank_value_clears_and_is_final(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["slow"]
-                """);
+    void a_blank_cli_value_is_no_filter(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
         var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--exclude-tags", ""));
         assertThat(sel.excludeTags()).isEmpty();
-        assertThat(sel.tagsResolved()).isTrue();
     }
 
     @Test
-    void all_clears_baseline_tags_and_is_final(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["slow", "integration"]
-                """);
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--all"));
-        assertThat(sel.allSuites()).isTrue();
-        assertThat(sel.includeTags()).isEmpty();
-        assertThat(sel.excludeTags()).isEmpty();
-        assertThat(sel.tagsResolved()).isTrue();
-    }
-
-    @Test
-    void all_composes_with_explicit_cli_tags(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["slow", "integration"]
-                """);
+    void all_runs_every_suite_and_composes_with_cli_tags(@TempDir Path dir) throws Exception {
+        writeToml(dir, "");
         var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--all", "--exclude-tags", "bench"));
         assertThat(sel.allSuites()).isTrue();
         assertThat(sel.excludeTags()).containsExactly("bench");
-        assertThat(sel.tagsResolved()).isTrue();
     }
 
     @Test
-    void a_profiles_all_suites_widens_the_suites_and_keeps_its_tags(@TempDir Path dir) throws Exception {
+    void a_member_directory_reads_the_workspace_roots_guard_suites(@TempDir Path dir) throws Exception {
         writeToml(dir, """
+                [workspace]
+                modules = ["m"]
+
                 [test]
-                exclude-tags = ["integration"]
-
-                [profiles.integration]
-                include-tags = ["integration"]
-                exclude-tags = []
-                all-suites = true
+                guard-suites = ["test", "integration", "e2e"]
                 """);
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration"));
-        assertThat(sel.allSuites()).isTrue();
-        assertThat(sel.includeTags()).containsExactly("integration");
-        assertThat(sel.excludeTags()).isEmpty();
-
-        var fast = BuildFlags.testSelection(parse("-C", dir.toString()));
-        assertThat(fast.allSuites()).as("the switch is the profile's alone").isFalse();
+        Path member = Files.createDirectories(dir.resolve("m"));
+        Files.writeString(member.resolve("jk.toml"), "name = \"m\"\n");
+        var sel = BuildFlags.testSelection(parse("-C", member.toString(), "--guard"));
+        assertThat(sel.suites()).containsExactly("test", "integration", "e2e");
     }
 
     @Test
-    void a_named_suite_or_the_gate_wins_over_a_profiles_all_suites(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [profiles.integration]
-                include-tags = ["integration"]
-                all-suites = true
-                """);
-        var named = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "-s", "e2e"));
-        assertThat(named.allSuites()).isFalse();
-        assertThat(named.suites()).containsExactly("e2e");
-
-        var gate = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "--guard"));
-        assertThat(gate.allSuites()).isFalse();
-        assertThat(gate.suites()).containsExactly("test", "integration");
-    }
-
-    @Test
-    void a_profiles_all_suites_must_be_a_boolean(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [profiles.integration]
-                all-suites = "yes"
-                """);
-        assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("profiles.integration.all-suites must be true or false");
-    }
-
-    @Test
-    void an_inheriting_profile_gets_its_parents_tags_and_all_suites(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["integration"]
-
-                [profiles.integration]
-                include-tags = ["integration"]
-                exclude-tags = []
-                all-suites = true
-
-                [profiles.nightly]
-                inherits = "integration"
-                """);
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "nightly"));
-        assertThat(sel.includeTags()).containsExactly("integration");
-        assertThat(sel.excludeTags()).isEmpty();
-        assertThat(sel.allSuites()).isTrue();
-        assertThat(sel.tagsResolved()).isTrue();
-    }
-
-    /**
-     * {@code --no-profile} reaches the engine as the no-profile marker, so the engine applies none of
-     * the profile ({@code env}, {@code jvm-args}, {@code javac}) and resolves tags without it, which
-     * leaves the selection itself unresolved.
-     */
-    @Test
-    void no_profile_sends_the_engine_no_profile(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [profiles.integration]
-                include-tags = ["integration"]
-                env = { ONLY_HERE = "1" }
-                """);
-        var flags = BuildFlags.from(parse("-C", dir.toString(), "-p", "integration", "-n"));
-        assertThat(flags.profile()).isEqualTo(Profiles.NO_PROFILE);
-        assertThat(flags.testSelection().includeTags()).isEmpty();
-        assertThat(flags.testSelection().tagsResolved()).isFalse();
-        assertThat(BuildFlags.from(parse("-C", dir.toString(), "-n")).profile())
-                .as("not even the CI-selected profile")
-                .isEqualTo(Profiles.NO_PROFILE);
-        assertThat(BuildFlags.from(parse("-C", dir.toString(), "-p", "integration"))
-                        .profile())
-                .isEqualTo("integration");
-    }
-
-    @Test
-    void silent_run_stays_unresolved(@TempDir Path dir) throws Exception {
+    void the_gate_runs_the_unit_and_integration_suites(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString()));
-        assertThat(sel.includeTags()).isEmpty();
-        assertThat(sel.excludeTags()).isEmpty();
-        assertThat(sel.tagsResolved()).isFalse();
-    }
-
-    @Test
-    void gate_and_pre_merge_are_the_same_selection(@TempDir Path dir) throws Exception {
-        writeToml(dir, """
-                [test]
-                exclude-tags = ["slow", "network", "bench"]
-                """);
         var guard = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard"));
         assertThat(guard.guard()).isTrue();
         assertThat(guard.suites()).containsExactly("test", "integration");
-        assertThat(guard.excludeTags()).containsExactly("slow", "network", "bench");
+        assertThat(guard.excludeTags()).isEmpty();
         assertThat(guard.allSuites()).isFalse();
     }
 

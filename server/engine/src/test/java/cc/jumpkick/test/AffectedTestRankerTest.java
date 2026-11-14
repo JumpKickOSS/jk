@@ -74,7 +74,7 @@ class AffectedTestRankerTest {
                 Path.of("/ws/api"),
                 "com.acme:api",
                 Path.of("/ws"),
-                TestSelection.of(List.of(), false, List.of(), List.of("slow"), true),
+                TestSelection.of(List.of(), false, List.of(), List.of("slow")),
                 List.of("api/src/main/java/com/acme/Foo.java"),
                 Map.of("com.acme.Foo", foo),
                 Map.of("com.acme.Foo", fooNow),

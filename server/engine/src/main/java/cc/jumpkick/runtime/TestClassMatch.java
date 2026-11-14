@@ -3,9 +3,6 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.config.TierTags;
-import cc.jumpkick.model.Profile;
-import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
@@ -13,11 +10,6 @@ import cc.jumpkick.task.TestRun;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -34,15 +26,6 @@ public final class TestClassMatch {
     /** The diagnostic code of a selection that matched no test: a usage error, never a red test. */
     public static final String NO_TESTS_MATCHED = "no-tests-matched";
 
-    /** A dropped class's tag list in the runner's {@code tag-excluded} warning: {@code a.FooIT [integration, slow]}. */
-    private static final Pattern TAG_LIST = Pattern.compile("\\[([^\\]]+)]");
-
-    /** The dropped classes in the runner's {@code tag-excluded} warning, before its advice. */
-    private static final Pattern DROPPED = Pattern.compile("the tag filter excluded: ([^;]+);");
-
-    /** The {@code [test]} tag lists a run uses without {@code -p}. */
-    public record Tier(List<String> include, List<String> exclude) {}
-
     private TestClassMatch() {}
 
     /**
@@ -56,80 +39,6 @@ public final class TestClassMatch {
                     int hash = p.indexOf('#');
                     return (hash < 0 ? p : p.substring(0, hash)).indexOf('*') >= 0;
                 });
-    }
-
-    /**
-     * The runner's {@code tag-excluded} warning with the tier that runs what it dropped. Under an
-     * {@code active} profile whose classes the default tier runs: the dropped classes and {@code it
-     * runs in the default tier (drop -p <active>)}. Otherwise the warning with the other profiles
-     * whose tag lists run every tag it names: {@code ; -p integration runs it}. Unchanged when no
-     * tier does.
-     */
-    public static @Nullable String explainTagExcluded(
-            @Nullable String tagExcluded, Profiles profiles, @Nullable String active, Tier defaultTier) {
-        return explainTagExcluded(
-                tagExcluded,
-                profiles.byName().keySet(),
-                name -> {
-                    Profile p = profiles.resolve(name);
-                    return new TierTags(
-                            p.includeTags(), p.excludeTags(), p.includeTagsSet(), p.excludeTagsSet(), p.allSuites());
-                },
-                active,
-                defaultTier);
-    }
-
-    /** As above, each of {@code names} resolved to its tag lists by {@code profile}: the workspace root's, for a run. */
-    public static @Nullable String explainTagExcluded(
-            @Nullable String tagExcluded,
-            Collection<String> names,
-            Function<String, TierTags> profile,
-            @Nullable String requested,
-            Tier defaultTier) {
-        String active = Profiles.named(requested);
-        if (tagExcluded == null || tagExcluded.isBlank()) return tagExcluded;
-        Set<String> tags = new TreeSet<>();
-        Matcher m = TAG_LIST.matcher(tagExcluded);
-        while (m.find()) {
-            for (String tag : m.group(1).split(",")) {
-                if (!tag.isBlank()) tags.add(tag.trim());
-            }
-        }
-        boolean one = !tagExcluded.contains("to run them");
-        Matcher dropped = DROPPED.matcher(tagExcluded);
-        boolean untagged = tagExcluded.contains("(untagged)");
-        if (active != null && dropped.find() && admits(defaultTier, tags, untagged)) {
-            return "the tag filter excluded " + dropped.group(1).strip() + "; " + (one ? "it runs" : "they run")
-                    + " in the default tier (drop -p " + active + ")";
-        }
-        if (tags.isEmpty()) return tagExcluded;
-        List<String> running = new ArrayList<>();
-        for (String name : new TreeSet<>(names)) {
-            if (name.equals(active)) continue;
-            if (runs(profile.apply(name), tags)) running.add("-p " + name);
-        }
-        if (running.isEmpty()) return tagExcluded;
-        return tagExcluded + "; " + String.join(" or ", running) + " runs " + (one ? "it" : "them");
-    }
-
-    /** Whether {@code tier} admits classes carrying {@code tags}, and untagged ones when {@code untagged}. */
-    private static boolean admits(Tier tier, Set<String> tags, boolean untagged) {
-        if (untagged && !tier.include().isEmpty()) return false;
-        if (tier.exclude().stream().map(String::trim).anyMatch(tags::contains)) return false;
-        return tags.isEmpty()
-                || tier.include().isEmpty()
-                || tier.include().stream().map(String::trim).anyMatch(tags::contains);
-    }
-
-    /**
-     * Whether {@code profile} admits a class carrying {@code tags}: it sets its own exclude list
-     * and that list names none of them, and its include list, when it has one, names one.
-     */
-    private static boolean runs(TierTags profile, Set<String> tags) {
-        if (!profile.excludeSet()) return false;
-        if (profile.excludeTags().stream().map(String::trim).anyMatch(tags::contains)) return false;
-        List<String> include = profile.includeTags();
-        return include.isEmpty() || include.stream().map(String::trim).anyMatch(tags::contains);
     }
 
     /**
@@ -172,29 +81,21 @@ public final class TestClassMatch {
     }
 
     /**
-     * The failure line. It opens with the patterns, and the active {@code profile} when the run has
-     * one. When the patterns name classes a suite the run did not select owns, {@code suiteHint}
-     * naming that suite follows, then any {@code tag-excluded} warning. Otherwise the
-     * {@code tag-excluded} warning when the tag filter dropped what the patterns named, since it
-     * names each class, its tags and the tier that runs it; without a profile that warning alone.
+     * The failure line. It opens with the patterns; when they name classes a suite the run did not
+     * select owns, {@code suiteHint} naming that suite follows, then any {@code tag-excluded}
+     * warning. Otherwise the {@code tag-excluded} warning alone when the {@code -I}/{@code -E}
+     * filter dropped what the patterns named, since it names each class, its tags and the flag to
+     * drop.
      */
     public static String noMatchMessage(
-            TestSelection selection,
-            @Nullable String requested,
-            @Nullable String tagExcluded,
-            @Nullable String suiteHint) {
-        String profile = Profiles.named(requested);
-        boolean named = profile != null;
-        String head = named
-                ? "no test in profile " + profile + " matches --class " + String.join(", ", selection.classes())
-                : noMatchMessage(selection.classes());
+            TestSelection selection, @Nullable String tagExcluded, @Nullable String suiteHint) {
+        String head = noMatchMessage(selection.classes());
         String tagged = tagExcluded == null || tagExcluded.isBlank() ? null : tagExcluded;
         if (suiteHint != null && !suiteHint.isBlank()) {
             String line = head + ": " + suiteHint;
             return tagged != null ? line + "; " + tagged : line;
         }
-        if (tagged == null) return head;
-        return named ? head + ": " + tagged : tagged;
+        return tagged == null ? head : tagged;
     }
 
     /**
@@ -222,7 +123,6 @@ public final class TestClassMatch {
         }
         return noMatchMessage(
                 selection,
-                session.profile(),
                 excluded.isEmpty() ? null : String.join("; ", excluded),
                 hints.isEmpty() ? null : String.join("; ", hints));
     }

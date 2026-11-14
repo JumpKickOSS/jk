@@ -219,11 +219,10 @@ public final class TestSupport {
      * empty suite at 50 s.
      */
     public static int estimateSelectedSuiteTestCount(
-            Path moduleDir, boolean compact, TestSelection sessionSelection, @Nullable String profileName) {
-        TestSelection selection = TestStampInputs.effectiveSelection(sessionSelection, moduleDir, profileName);
+            Path moduleDir, boolean compact, TestSelection selection) {
         Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
         List<String> discovered = TestSuites.available(moduleDir, compact, declared);
-        var resolved = TestStampInputs.resolveSuites(selection, moduleDir, profileName, compact, declared);
+        var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : discovered;
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (String suite : TestSuites.compiled(moduleDir, compact, suites, declared)) {
@@ -319,11 +318,10 @@ public final class TestSupport {
             Path moduleDir,
             boolean compact,
             BuildBlock build,
-            @Nullable TestSelection selection,
-            @Nullable String profileName) {
+            @Nullable TestSelection selection) {
         List<String> discovered = TestSuites.available(moduleDir, compact, build.runSuites());
         if (selection != null) {
-            var resolved = TestStampInputs.resolveSuites(selection, moduleDir, profileName, compact, build.runSuites());
+            var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, build.runSuites());
             if (resolved.ok()) return resolved.suites();
         }
         return discovered;

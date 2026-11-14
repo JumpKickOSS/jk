@@ -93,8 +93,6 @@ public record ProjectInfo(
         String kotlinClassesDir,
         String groovyClassesDir,
         String testResultsDir,
-        List<String> testIncludeTags,
-        List<String> testExcludeTags,
         boolean lockStale,
         boolean scala,
         String scalaVersion,
@@ -202,8 +200,6 @@ public record ProjectInfo(
                 "",
                 "",
                 "",
-                List.of(),
-                List.of(),
                 false,
                 false,
                 "",
@@ -267,8 +263,6 @@ public record ProjectInfo(
                 .string("kotlinClassesDir", kotlinClassesDir)
                 .string("groovyClassesDir", groovyClassesDir)
                 .string("testResultsDir", testResultsDir)
-                .array("testIncludeTags", testIncludeTags)
-                .array("testExcludeTags", testExcludeTags)
                 .bool("lockStale", lockStale)
                 .bool("scala", scala)
                 .string("scalaVersion", scalaVersion)
@@ -335,8 +329,6 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "kotlinClassesDir")),
                 orEmpty(Jsonl.str(line, "groovyClassesDir")),
                 orEmpty(Jsonl.str(line, "testResultsDir")),
-                Jsonl.strArray(line, "testIncludeTags"),
-                Jsonl.strArray(line, "testExcludeTags"),
                 Jsonl.bool(line, "lockStale", false),
                 Jsonl.bool(line, "scala", false),
                 orEmpty(Jsonl.str(line, "scalaVersion")),

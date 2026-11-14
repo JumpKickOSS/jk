@@ -139,8 +139,6 @@ public final class JkBuildRenderer {
     private static void renderTest(StringBuilder sb, BuildBlock build) {
         if (build.testExtraSrc().isEmpty()
                 && build.fixtures() == null
-                && build.testIncludeTags().isEmpty()
-                && build.testExcludeTags().isEmpty()
                 && build.testExcludeClasses().isEmpty()
                 && build.testExcludeSrc().isEmpty()
                 && build.testExcludeDependencies().isEmpty()
@@ -164,10 +162,6 @@ public final class JkBuildRenderer {
             sb.append("extra-src = ").append(list(build.testExtraSrc())).append('\n');
         if (!build.testExcludeSrc().isEmpty())
             sb.append("exclude-src = ").append(list(build.testExcludeSrc())).append('\n');
-        if (!build.testIncludeTags().isEmpty())
-            sb.append("include-tags = ").append(list(build.testIncludeTags())).append('\n');
-        if (!build.testExcludeTags().isEmpty())
-            sb.append("exclude-tags = ").append(list(build.testExcludeTags())).append('\n');
         if (!build.testExcludeClasses().isEmpty())
             sb.append("exclude-classes = ")
                     .append(list(build.testExcludeClasses()))
@@ -403,7 +397,7 @@ public final class JkBuildRenderer {
         });
     }
 
-    /** One {@code [profiles.<name>]} per profile: {@code javac}, {@code jvm-args}, tag filters when set, {@code all-suites}. */
+    /** One {@code [profiles.<name>]} per profile: {@code inherits}, {@code javac}, {@code jvm-args}. */
     private static void renderProfiles(StringBuilder sb, JkBuild jkBuild) {
         for (Profile p : jkBuild.profiles().byName().values()) {
             sb.append("\n[profiles.").append(safeKey(p.name())).append("]\n");
@@ -413,11 +407,6 @@ public final class JkBuildRenderer {
                 sb.append("javac = ").append(list(p.javacArgs())).append('\n');
             if (!p.jvmArgs().isEmpty())
                 sb.append("jvm-args = ").append(list(p.jvmArgs())).append('\n');
-            if (p.includeTagsSet())
-                sb.append("include-tags = ").append(list(p.includeTags())).append('\n');
-            if (p.excludeTagsSet())
-                sb.append("exclude-tags = ").append(list(p.excludeTags())).append('\n');
-            if (p.allSuites()) sb.append("all-suites = true\n");
         }
     }
 

@@ -117,7 +117,7 @@ class LauncherPathTest {
             assertThat(w.get("code")).isEqualTo("tag-excluded");
             assertThat(String.valueOf(w.get("message")))
                     .contains(TagExcludedFixture.class.getName() + " [slow]")
-                    .contains("pass --include-tags slow");
+                    .contains("drop --exclude-tags slow");
         });
     }
 
@@ -155,7 +155,7 @@ class LauncherPathTest {
     @Test
     void the_message_names_an_untagged_class_an_include_filter_dropped() {
         String msg = LauncherPath.tagExcludedMessage(Map.of("a.Plain", Set.of()), List.of("integration"), List.of());
-        assertThat(msg).contains("a.Plain (untagged)").contains("drop --include-tags integration or pass --no-profile");
+        assertThat(msg).contains("a.Plain (untagged)").contains("drop --include-tags integration to run");
     }
 
     /** What {@code --class} names: a fresh request for exactly {@code c} on every call. */

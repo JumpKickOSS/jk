@@ -2,17 +2,14 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerTest.defaultTier;
 import static cc.jumpkick.runtime.PlannerTest.resolveBeforeGate;
 import static cc.jumpkick.runtime.PlannerTest.runTestsRequires;
 import static cc.jumpkick.runtime.PlannerTest.suiteFilter;
-import static cc.jumpkick.runtime.TestStampInputs.effectiveSelection;
 import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.config.TierTags;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -107,7 +104,7 @@ final class TestSteps {
         TestFailureSource.Cache snippets = new TestFailureSource.Cache();
         // jk build / BSP / MCP: when the session selection carries no tags, resolve the
         // workspace's here as the CLI does for `jk test`. It feeds BOTH the stamp and the runner.
-        var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir(), in.profileName());
+        var effectiveSel = in.session().testSelection();
         SuiteFilter suites = suiteFilter(in, shape.compact(), projectUnderTest, testClasses);
         AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
         if (affected != null && affected.classNames().isEmpty()) return; // nothing affected — no stamp store
@@ -404,7 +401,7 @@ final class TestSteps {
         if (judged == null) return;
         TestSummary ran = judged.result();
         if (ran != null) {
-            TagExcludedSuite.note(ctx, sel, in.profileName(), exactClassList, ran);
+            TagExcludedSuite.note(ctx, sel, exactClassList, ran);
             ctx.put(TEST_RUN, TestRun.of(ran));
         }
         if (judged.noMatch() != null) {
@@ -486,22 +483,13 @@ final class TestSteps {
             @Nullable String tagExcluded,
             TestSummary result)
             throws IOException {
-        if (tagExcluded != null) {
-            JkBuild project = ctx.require(MODULE).project();
-            tagExcluded = TestClassMatch.explainTagExcluded(
-                    tagExcluded,
-                    project.profiles().byName().keySet(),
-                    name -> TierTags.profile(TierTags.rootOf(in.dir()), name),
-                    in.profileName(),
-                    defaultTier(in.dir()));
-        }
         String suiteHint = exactClassList
                 ? null
                 : suites.classHint(ctx.require(PARSED_BUILD).testClassesDir(), sel.classes());
         boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
         if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
             return nothing
-                    ? new Judged(null, TestClassMatch.noMatchMessage(sel, in.profileName(), tagExcluded, suiteHint))
+                    ? new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint))
                     : new Judged(result, tagExcluded);
         }
         if (!nothing) {
@@ -514,7 +502,7 @@ final class TestSteps {
             TestClassMatch.skip(ctx, sel, tagExcluded, suiteHint);
             return null;
         }
-        return new Judged(null, TestClassMatch.noMatchMessage(sel, in.profileName(), tagExcluded, suiteHint));
+        return new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint));
     }
 
     /** The affected-test selection when the session asked for one; null otherwise. */
@@ -554,10 +542,10 @@ final class TestSteps {
         ForecastScope.Prepared prepared = s.prepared();
         boolean compact = prepared.parsed().compact();
         BuildLayout layout = prepared.parsed().layout();
-        // The tests this run selects, under the tags the runner will apply (effectiveSelection): an
-        // integration run is priced by its integration tests, not every unit test beside them.
+        // The tests this run selects: an integration run is priced by its integration tests, not
+        // every unit test beside them.
         int estimated = TestSupport.estimateSelectedSuiteTestCount(
-                s.dir, compact, SessionContext.current().testSelection(), s.knobs.profile());
+                s.dir, compact, SessionContext.current().testSelection());
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
         // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never

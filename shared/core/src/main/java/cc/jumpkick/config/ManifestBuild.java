@@ -328,8 +328,6 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     List.of(),
-                    List.of(),
-                    List.of(),
                     Map.of(),
                     true,
                     false,
@@ -359,7 +357,7 @@ public final class ManifestBuild {
                     true);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
-        JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
+        ManifestTables.refuseTestTags(root);
         return new BuildBlock(
                 s.orderAfter,
                 s.testPluginJars,
@@ -374,8 +372,6 @@ public final class ManifestBuild {
                 s.fixtures,
                 s.testWorkers,
                 s.testSerialTags,
-                tags.includeTags(),
-                tags.excludeTags(),
                 s.testExcludeClasses,
                 s.testExcludeSrc,
                 s.testExcludeDependencies,

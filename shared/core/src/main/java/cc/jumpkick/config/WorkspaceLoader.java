@@ -258,8 +258,6 @@ public final class WorkspaceLoader {
      * root wins unless the key is additive per member:
      *
      * <ul>
-     *   <li>{@code include-tags}, {@code exclude-tags}, {@code all-suites}: the root's. They pick
-     *       the tier, and a workspace has one tier table ({@link TierTags} reads them off the root).
      *   <li>{@code env}: additive. A member adds the variables only its tests need (its own
      *       database, its own port); a variable both set takes the root's value.
      *   <li>{@code jvm-args}: additive. A member adds flags only its test JVMs need; the root's
@@ -295,12 +293,7 @@ public final class WorkspaceLoader {
                 fromRoot.inherits() != null ? fromRoot.inherits() : fromMember.inherits(),
                 fromRoot.javacArgs().isEmpty() ? fromMember.javacArgs() : fromRoot.javacArgs(),
                 jvmArgs,
-                fromRoot.includeTags(),
-                fromRoot.excludeTags(),
-                fromRoot.includeTagsSet(),
-                fromRoot.excludeTagsSet(),
-                env,
-                fromRoot.allSuites());
+                env);
     }
 
     /**

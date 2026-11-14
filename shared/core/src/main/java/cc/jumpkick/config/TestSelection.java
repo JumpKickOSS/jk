@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.lock.ManifestPaths;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,16 +22,10 @@ public record TestSelection(
         List<String> suites,
         /** When true, run every discovered suite (ignores {@link #suites} for selection). */
         boolean allSuites,
+        /** {@code --include-tags}: a one-run filter on the selected suites' tests; empty means none. */
         List<String> includeTags,
+        /** {@code --exclude-tags}: a one-run filter on the selected suites' tests; empty means none. */
         List<String> excludeTags,
-        /**
-         * When true, {@link #includeTags}/{@link #excludeTags} are final — some layer (module
-         * {@code [test]} baseline, a profile key, or a CLI flag) explicitly resolved them, so the
-         * engine must not fold per-module {@code [test]} tags back in even when both lists are
-         * empty. An explicitly cleared filter ({@code exclude-tags = []} in a profile, or
-         * {@code --exclude-tags ""}) is only representable through this flag.
-         */
-        boolean tagsResolved,
         /**
          * {@code --guard}: {@link TestSuites#INTEGRATION} in {@link #suites}
          * is optional (skip if the directory is absent) instead of an unknown-suite error.
@@ -52,7 +48,7 @@ public record TestSelection(
         List<String> onlyModules) {
 
     public static final TestSelection DEFAULT =
-            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, false, List.of(), List.of());
+            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, List.of(), List.of());
 
     public TestSelection {
         suites = normalizeNames(suites);
@@ -64,7 +60,7 @@ public record TestSelection(
 
     public static TestSelection of(
             List<String> suites, boolean allSuites, List<String> includeTags, List<String> excludeTags) {
-        return of(suites, allSuites, includeTags, excludeTags, false, false);
+        return of(suites, allSuites, includeTags, excludeTags, false, false, false);
     }
 
     public static TestSelection of(
@@ -72,30 +68,10 @@ public record TestSelection(
             boolean allSuites,
             List<String> includeTags,
             List<String> excludeTags,
-            boolean tagsResolved) {
-        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, false);
-    }
-
-    public static TestSelection of(
-            List<String> suites,
-            boolean allSuites,
-            List<String> includeTags,
-            List<String> excludeTags,
-            boolean tagsResolved,
-            boolean guard) {
-        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, guard, false, false);
-    }
-
-    public static TestSelection of(
-            List<String> suites,
-            boolean allSuites,
-            List<String> includeTags,
-            List<String> excludeTags,
-            boolean tagsResolved,
             boolean guard,
             boolean scriptsOnly,
             boolean noScripts) {
-        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, guard, scriptsOnly, noScripts, List.of());
+        return of(suites, allSuites, includeTags, excludeTags, guard, scriptsOnly, noScripts, List.of());
     }
 
     public static TestSelection of(
@@ -103,7 +79,6 @@ public record TestSelection(
             boolean allSuites,
             List<String> includeTags,
             List<String> excludeTags,
-            boolean tagsResolved,
             boolean guard,
             boolean scriptsOnly,
             boolean noScripts,
@@ -113,12 +88,29 @@ public record TestSelection(
                 allSuites,
                 includeTags == null ? List.of() : includeTags,
                 excludeTags == null ? List.of() : excludeTags,
-                tagsResolved,
                 guard,
                 scriptsOnly,
                 noScripts,
                 classes == null ? List.of() : classes,
                 List.of());
+    }
+
+    /**
+     * The suites {@code --guard} runs in the workspace whose root is {@code root}: its {@code [test]
+     * guard-suites} ({@link TestSuites#DEFAULT} when that list is empty), else {@link
+     * TestSuites#GUARD_SUITES}. A name that is no suite name is refused.
+     */
+    public static List<String> guardSuites(Path root) {
+        var scan = TomlScan.scan(ManifestPaths.manifestIn(root), "test.guard-suites");
+        if (!scan.hasKey("test.guard-suites")) return TestSuites.GUARD_SUITES;
+        List<String> suites = new ArrayList<>(scan.stringArray("test.guard-suites"));
+        if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
+        for (String name : suites) {
+            if (!TestSuites.isSuiteName(name)) {
+                throw new IllegalArgumentException("unknown test suite '" + name + "' in [test] guard-suites");
+            }
+        }
+        return List.copyOf(suites);
     }
 
     /** True when {@code --exclusive} limits the run's suites to {@link #onlyModules}. */
@@ -211,7 +203,6 @@ public record TestSelection(
                 allSuites,
                 includeTags,
                 excludeTags,
-                tagsResolved,
                 guard,
                 scriptsOnly,
                 noScripts,
@@ -225,7 +216,6 @@ public record TestSelection(
                 allSuites,
                 includeTags,
                 excludeTags,
-                tagsResolved,
                 guard,
                 scriptsOnly,
                 noScripts,
@@ -242,7 +232,6 @@ public record TestSelection(
                 allSuites,
                 includeTags,
                 List.copyOf(merged),
-                tagsResolved,
                 guard,
                 scriptsOnly,
                 noScripts,
@@ -259,7 +248,6 @@ public record TestSelection(
                 allSuites,
                 List.copyOf(merged),
                 excludeTags,
-                tagsResolved,
                 guard,
                 scriptsOnly,
                 noScripts,

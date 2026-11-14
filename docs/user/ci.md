@@ -114,8 +114,8 @@ jk test -m 'api,worker'
 ```
 
 Do **not** make the PR job `jk test -A`. That is the nightly / release job.
-Do **not** clear `[test] exclude-tags` on CI just because `CI` is set — that pulls
-`slow` / `network` / `bench` into a gate that should stay cheap and deterministic.
+CI runs `jk test` exactly as a developer does: the default suite is what no tier suite claims, so
+`slow` / `network` / `bench` stay out of a gate that should stay cheap and deterministic.
 [Test](test.md) · [Why](why.md#test-rungs).
 
 Nightly:

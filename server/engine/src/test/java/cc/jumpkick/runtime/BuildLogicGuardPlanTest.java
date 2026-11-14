@@ -42,7 +42,7 @@ class BuildLogicGuardPlanTest {
     @Test
     void gate_selection_adds_the_gate_step_after_tests(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
-        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, gate));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
@@ -52,7 +52,7 @@ class BuildLogicGuardPlanTest {
     @Test
     void scripts_only_skips_junit_and_runs_gate(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
-        TestSelection sel = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
+        TestSelection sel = TestSelection.of(List.of(), false, List.of(), List.of(), false, true, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, sel));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
@@ -63,7 +63,7 @@ class BuildLogicGuardPlanTest {
     void no_scripts_keeps_tests_without_gate(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
         TestSelection sel =
-                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true, false, true);
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, sel));
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
         assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GUARD);
@@ -72,7 +72,7 @@ class BuildLogicGuardPlanTest {
     @Test
     void build_gate_skip_tests_requires_package(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
-        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), true, false, gate));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
@@ -82,7 +82,7 @@ class BuildLogicGuardPlanTest {
     @Test
     void scripts_only_without_a_stem_is_a_config_error(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, false);
-        TestSelection sel = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
+        TestSelection sel = TestSelection.of(List.of(), false, List.of(), List.of(), false, true, false);
         assertThatThrownBy(() -> plan(project, dir.resolve("cache"), false, true, sel))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(BuildLogicToml.NO_GUARD_SCRIPTS);

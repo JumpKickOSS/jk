@@ -69,7 +69,7 @@ class GuardLanePlanTest {
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
         assertThat(byName).as("the model lane still runs").containsKey(TaskNames.GUARD_MODEL);
         assertThat(byName).as("the module lane waits for the gate").doesNotContainKey(TaskNames.GUARD);
-        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         Map<String, Task> gated = index(plan(project, dir.resolve("cache"), gate));
         assertThat(gated).containsKeys(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
     }
@@ -145,7 +145,7 @@ class GuardLanePlanTest {
     @Test
     void the_gate_adds_the_tree_lane(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
-        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), gate));
         assertThat(byName).containsKey(TaskNames.GUARD_TREE);
         assertThat(task(byName, TaskNames.GUARD_TREE).requires()).contains(TaskNames.GUARD_MODEL, TaskNames.GUARD);

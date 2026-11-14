@@ -14,7 +14,6 @@ class ManifestProfileEnvTest {
     void a_profile_reads_its_env_table() {
         var profiles = ManifestTables.parseProfiles(Toml.parse("""
                 [profiles.integration]
-                include-tags = ["integration"]
                 env = { JK_HTTP_DENY_HOSTS = "repo.maven.apache.org", RETRIES = 3 }
                 """));
         assertThat(profiles.resolve("integration").env())

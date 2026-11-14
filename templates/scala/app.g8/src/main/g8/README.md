@@ -15,5 +15,5 @@ jk image         # a container image with a JRE and an AOT cache
 $endif$
 ```
 
-`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
-tests tagged with that cost. `jk add <library>` adds a dependency at its newest stable release.
+`jk test` is the fast tier; `jk test -s integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost, and `jk test -g` runs the fast tier and `integration` together. `jk add <library>` adds a dependency at its newest stable release.

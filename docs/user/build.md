@@ -489,7 +489,7 @@ reason beside it. `[env]` is per module and is not inherited from a workspace ro
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
 through `[env]` or `[test] env`. What JumpKick itself decides reads the shell running `jk`: `CI`,
-repository credentials, the git agent, the CI profile, colour. So `CI=true jk guard` checks rather
+repository credentials, the git agent, colour. So `CI=true jk guard` checks rather
 than writes, whichever shell started the engine. The client sends the engine only what it reads
 and what is declared, not the whole shell ([Engine § Process environment](engine.md#process-environment)). A
 request from MCP or the HTTP API has no shell of its own, and those decisions read the engine's.

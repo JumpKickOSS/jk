@@ -477,8 +477,7 @@ public final class StepEta {
      * SuiteSelection#slowTier}): {@code -s integration}, or a selection that includes tags.
      */
     private static boolean slowTier(Path dir, @Nullable String profile) {
-        return SuiteSelection.slowTier(
-                TestStampInputs.effectiveSelection(SessionContext.current().testSelection(), dir, profile));
+        return SuiteSelection.slowTier(SessionContext.current().testSelection());
     }
 
     /**

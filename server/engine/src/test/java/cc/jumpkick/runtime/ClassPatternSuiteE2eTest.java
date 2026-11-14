@@ -85,7 +85,7 @@ class ClassPatternSuiteE2eTest {
 
     @Test
     void the_guard_runs_both_suites() throws Exception {
-        Run run = run(TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true));
+        Run run = run(TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false));
         assertThat(run.result().success()).isTrue();
         assertThat(run.tests().total()).isEqualTo(3L);
     }

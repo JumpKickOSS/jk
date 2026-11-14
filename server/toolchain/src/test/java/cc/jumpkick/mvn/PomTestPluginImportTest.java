@@ -17,20 +17,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Where Surefire, Failsafe, JaCoCo and the compiler's test source globs land: groups in {@code
- * [test]} tag filters, excludes in {@code exclude-classes} / {@code exclude-src}, everything jk has
+ * Where Surefire, Failsafe, JaCoCo and the compiler's test source globs land: excluded groups in
+ * suites that claim them, groups in a row, excludes in {@code exclude-classes} / {@code exclude-src}, everything jk has
  * no key for in a row that names the setting and its landing place.
  */
 class PomTestPluginImportTest {
 
     @Test
-    void surefire_groups_become_tag_filters_and_the_rest_is_rows(@TempDir Path tempDir) throws Exception {
+    void surefire_excluded_groups_become_suites_and_the_rest_is_rows(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "test-plugins-pom.xml");
         JkBuild build = result.jkBuild();
         List<String> messages = TestImporters.messages(result);
 
-        assertThat(build.build().testIncludeTags()).containsExactly("fast", "smoke");
-        assertThat(build.build().testExcludeTags()).containsExactly("slow");
+        assertThat(messages)
+                .as("an include list has no suite to land in")
+                .anyMatch(m -> m.startsWith("maven-surefire-plugin <groups> fast, smoke: not imported"));
 
         assertThat(build.build().testJvm().jvmArgs())
                 .as("the argLine minus the ${argLine} placeholder and the JaCoCo agent")
@@ -44,8 +45,10 @@ class PomTestPluginImportTest {
                 .containsExactly("*Slow*");
         assertThat(messages).noneMatch(m -> m.startsWith("maven-surefire-plugin <excludes>"));
         assertThat(build.build().testSuites())
-                .as("failsafe's default patterns are the integration suite's classes")
-                .containsExactly(Map.entry("integration", DeclaredSuite.ofClasses(List.of("IT*", "*IT", "*ITCase"))));
+                .as("failsafe's default patterns are the integration suite's classes; an excluded group is a suite")
+                .containsExactly(
+                        Map.entry("integration", DeclaredSuite.ofClasses(List.of("IT*", "*IT", "*ITCase"))),
+                        Map.entry("slow", DeclaredSuite.ofTags(List.of("slow"))));
         assertThat(messages).noneMatch(m -> m.startsWith("maven-failsafe-plugin runs"));
         assertThat(messages).noneMatch(m -> m.contains("src/integration/java"));
         assertThat(messages)
@@ -60,20 +63,15 @@ class PomTestPluginImportTest {
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
-                .contains("[test]\ninclude-tags = [\"fast\", \"smoke\"]\nexclude-tags = [\"slow\"]\n"
-                        + "exclude-classes = [\"*Slow*\"]\n"
+                .contains("[test]\nexclude-classes = [\"*Slow*\"]\n"
                         + "jvm-args = [\"-Xmx1g\", \"-Dfile.encoding=UTF-8\"]\n"
                         + "system-properties = { \"spring.profiles.active\" = \"test\", \"java.awt.headless\" = \"true\" }\n"
-                        + "\n[test.suites.integration]\nclasses = [\"IT*\", \"*IT\", \"*ITCase\"]\n");
+                        + "\n[test.suites.integration]\nclasses = [\"IT*\", \"*IT\", \"*ITCase\"]\n"
+                        + "\n[test.suites.slow]\ntags = [\"slow\"]\n");
         JkBuild reparsed = JkBuildParser.parse(rendered);
-        assertThat(reparsed.build().testIncludeTags()).containsExactly("fast", "smoke");
-        assertThat(reparsed.build().testExcludeTags()).containsExactly("slow");
         assertThat(reparsed.build().testExcludeClasses()).containsExactly("*Slow*");
         assertThat(reparsed.build().testJvm()).isEqualTo(build.build().testJvm());
         assertThat(reparsed.build().testSuites()).isEqualTo(build.build().testSuites());
-        assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
-                .as("the engine's root-scoped reader sees the same filters")
-                .containsExactly("slow");
     }
 
     /**
@@ -113,7 +111,7 @@ class PomTestPluginImportTest {
                 """);
         JkBuild build = result.jkBuild();
         assertThat(build.build().testJvm().jvmArgs()).containsExactly("-Xmx1g");
-        assertThat(build.build().testExcludeTags()).containsExactly("slow");
+        assertThat(build.build().testSuites()).containsExactly(Map.entry("slow", DeclaredSuite.ofTags(List.of("slow"))));
         assertThat(requireNonNull(build.application()).main()).isEqualTo("com.ex.Main");
     }
 
@@ -135,7 +133,6 @@ class PomTestPluginImportTest {
                 </project>
                 """);
         List<String> messages = TestImporters.messages(result);
-        assertThat(result.jkBuild().build().testIncludeTags()).isEmpty();
         assertThat(messages)
                 .anyMatch(
                         m -> m.startsWith("maven-surefire-plugin <groups> fast & !flaky: tag expression not imported"));
@@ -540,11 +537,4 @@ class PomTestPluginImportTest {
               </profiles>
             </project>
             """;
-
-    private static Path writeManifest(Path tempDir, String rendered) throws Exception {
-        Path manifest = tempDir.resolve("rendered").resolve("jk.toml");
-        Files.createDirectories(manifest.getParent());
-        Files.writeString(manifest, rendered);
-        return manifest;
-    }
 }

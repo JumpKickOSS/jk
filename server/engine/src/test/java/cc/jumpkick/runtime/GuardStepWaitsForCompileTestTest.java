@@ -80,7 +80,7 @@ class GuardStepWaitsForCompileTestTest {
                 .isTrue();
     }
 
-    private static final TestSelection GUARD = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+    private static final TestSelection GUARD = TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false);
 
     private static BuildPlanner.Inputs inputs(Path dir, boolean skipTests, boolean testOnly, boolean compileOnly) {
         return inputs(dir, skipTests, testOnly, compileOnly, TestSelection.DEFAULT);

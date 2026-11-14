@@ -437,47 +437,7 @@ class JkBuildParserWorkspaceTest {
                 .isEqualTo("dev");
     }
 
-    @Test
-    void profiles_tag_keys_record_presence_including_empty_lists() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT + """
-                [profiles.local]
-                exclude-tags = ["slow", "bench"]
-
-                [profiles.ci]
-                exclude-tags = []
-                include-tags = ["smoke"]
-                """);
-        assertThat(parsed.profiles().byName()).containsKeys("local", "ci");
-        var local = Objects.requireNonNull(parsed.profiles().byName().get("local"));
-        assertThat(local.excludeTagsSet()).isTrue();
-        assertThat(local.includeTagsSet()).isFalse();
-        assertThat(local.excludeTags()).containsExactly("slow", "bench");
-
-        var ci = Objects.requireNonNull(parsed.profiles().byName().get("ci"));
-        assertThat(ci.excludeTagsSet()).isTrue();
-        assertThat(ci.excludeTags()).isEmpty();
-        assertThat(ci.includeTagsSet()).isTrue();
-        assertThat(ci.includeTags()).containsExactly("smoke");
-    }
-
-    @Test
-    void parse_test_tags_reads_include_and_exclude(@TempDir Path dir) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), PROJECT + """
-                        [test]
-                        include-tags = ["unit"]
-                        exclude-tags = ["slow", "bench"]
-                        """);
-        var tags = JkBuildParser.parseTestTags(dir.resolve("jk.toml"));
-        assertThat(tags.includeTags()).containsExactly("unit");
-        assertThat(tags.excludeTags()).containsExactly("slow", "bench");
-    }
-
-    /**
-     * `jk test -p integration` is the documented push-gate command, and it died on the
-     * first member that did not declare the profile itself — against a root whose jk.toml does.
-     * The tag half of the rule was already right (the CLI rehomes to the root before scanning
-     * profile tags); the table a member carries was not.
-     */
+    /** A profile the root declares applies in a member that does not declare it. */
     @Test
     void a_member_carries_the_workspace_roots_profiles(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
@@ -489,7 +449,7 @@ class JkBuildParserWorkspaceTest {
                 modules = ["lib"]
 
                 [profiles.integration]
-                include-tags = ["integration"]
+                env = { MODE = "integration" }
                 """);
         Path lib = Files.createDirectories(dir.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
@@ -498,7 +458,7 @@ class JkBuildParserWorkspaceTest {
 
         var member = JkBuildParser.parse(lib.resolve("jk.toml"));
         assertThat(member.profiles().byName().keySet()).contains("integration");
-        assertThat(member.profiles().resolve("integration").includeTags()).containsExactly("integration");
+        assertThat(member.profiles().resolve("integration").env()).containsEntry("MODE", "integration");
     }
 
     /**
@@ -518,21 +478,18 @@ class JkBuildParserWorkspaceTest {
                 modules = ["lib"]
 
                 [profiles.integration]
-                include-tags = ["integration"]
-                all-suites = true
                 env = { SHARED = "root", ROOT_ONLY = "1" }
                 jvm-args = ["-Dshared=root"]
                 javac = ["-Werror"]
 
                 [profiles.slow]
-                include-tags = ["slow"]
+                jvm-args = ["-Xmx2g"]
                 """);
         Path lib = Files.createDirectories(dir.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
                 name = "lib"
 
                 [profiles.integration]
-                include-tags = ["member-only"]
                 env = { SHARED = "member", LIB_DB = "jdbc:h2:mem:lib" }
                 jvm-args = ["-Dshared=member", "-Dlib=1"]
                 javac = ["-Xlint:all"]
@@ -543,8 +500,6 @@ class JkBuildParserWorkspaceTest {
 
         var member = JkBuildParser.parse(lib.resolve("jk.toml"));
         var integration = member.profiles().resolve("integration");
-        assertThat(integration.includeTags()).as("the tier is the root's").containsExactly("integration");
-        assertThat(integration.allSuites()).isTrue();
         assertThat(integration.env())
                 .as("a member adds variables; the root's value wins one both set")
                 .containsExactlyInAnyOrderEntriesOf(
@@ -573,7 +528,7 @@ class JkBuildParserWorkspaceTest {
                 modules = ["lib"]
 
                 [profiles.ci]
-                exclude-tags = ["slow"]
+                jvm-args = ["-Dci=1"]
                 """);
         Path lib = Files.createDirectories(dir.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
@@ -589,35 +544,6 @@ class JkBuildParserWorkspaceTest {
 
         var ci = JkBuildParser.parse(lib.resolve("jk.toml")).profiles().resolve("ci");
         assertThat(ci.javacArgs()).containsExactly("-Xlint:all", "-Werror");
-        assertThat(ci.excludeTags()).containsExactly("slow");
-    }
-
-    @Test
-    void parse_test_tags_is_empty_when_the_manifest_is_absent(@TempDir Path dir) {
-        assertThat(JkBuildParser.parseTestTags(dir.resolve("jk.toml"))).isEqualTo(JkBuildParser.TestTomlTags.EMPTY);
-    }
-
-    /**
-     * A manifest that exists and does not parse is an error. {@code TestTomlTags.EMPTY} means
-     * "this project filters no tags"; a swallowed parse error would silently widen the suite.
-     */
-    @Test
-    void parse_test_tags_refuses_a_malformed_manifest(@TempDir Path dir) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), PROJECT + "[test\n");
-        assertThatThrownBy(() -> JkBuildParser.parseTestTags(dir.resolve("jk.toml")))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("failed to parse jk.toml");
-    }
-
-    /** The owner's interpolation whitelist reaches the test-tag baseline like every other table. */
-    @Test
-    void parse_test_tags_rejects_interpolation_outside_the_whitelist(@TempDir Path dir) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), PROJECT + """
-                        [test]
-                        exclude-tags = ["${SKIP_TAG}"]
-                        """);
-        assertThatThrownBy(() -> JkBuildParser.parseTestTags(dir.resolve("jk.toml")))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("test.exclude-tags");
+        assertThat(ci.jvmArgs()).containsExactly("-Dci=1");
     }
 }

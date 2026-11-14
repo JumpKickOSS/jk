@@ -29,25 +29,19 @@ name      = "demo"
 base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -87,25 +81,19 @@ commons-lang3 = "…"
 commons-io = "…"
 # `jk add <library>` adds another at its newest stable release.
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -145,25 +133,19 @@ aot-cache = true
 commons-lang3 = "…"
 # `jk add <library>` adds another at its newest stable release.
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -201,25 +183,19 @@ guava = "…"
 commons-io = "…"
 # `jk add <library>` adds another at its newest stable release.
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -259,25 +235,19 @@ aot-cache = true
 commons-io = "…"
 # `jk add <library>` adds another at its newest stable release.
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -316,25 +286,19 @@ aot-cache = true
 guava = "…"
 # `jk add <library>` adds another at its newest stable release.
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -367,25 +331,19 @@ main = "com.acme.MainKt"
 # image would wrap it in a runtime it does not need.
 [native]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -424,25 +382,19 @@ aot-cache = true
 commons-lang3 = "…"
 # `jk add <library>` adds another at its newest stable release.
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]

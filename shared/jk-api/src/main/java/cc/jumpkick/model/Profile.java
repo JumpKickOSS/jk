@@ -7,30 +7,17 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Build profile: javac/JVM args, optional test tag filters, and optional {@code inherits}
- * (parent-then-child merge for args; tag lists are last-wins when the child sets the key).
- * Selected via {@code --profile}; {@code ci} auto-selects in CI.
- *
- * <p>{@link #includeTagsSet()} / {@link #excludeTagsSet()} record whether the TOML key was present
- * so an empty list can clear {@code [test]} filters when the profile is applied. {@link #allSuites()}
- * is {@code all-suites = true}: the profile's tags run in every test suite a module has, not the
- * default suite alone.
+ * Build profile: javac and test JVM args, test JVM environment, and an optional {@code inherits}
+ * (parent-then-child merge). Selected with {@code --profile}. A profile chooses how a build runs,
+ * never which tests: suites do that ({@code [test.suites.<name>]}, {@code jk test -s <name>}).
  */
 public record Profile(
         String name,
         @Nullable String inherits,
         List<String> javacArgs,
         List<String> jvmArgs,
-        /** JUnit tags to include when this profile is active (meaningful when {@link #includeTagsSet}). */
-        List<String> includeTags,
-        /** JUnit tags to exclude when this profile is active (meaningful when {@link #excludeTagsSet}). */
-        List<String> excludeTags,
-        boolean includeTagsSet,
-        boolean excludeTagsSet,
         /** Environment for every forked test JVM while this profile is active; wins over {@code [test] env}. */
-        Map<String, String> env,
-        /** {@code all-suites = true}: run every suite a module has, as {@code --all} does, under this profile's tags. */
-        boolean allSuites) {
+        Map<String, String> env) {
 
     public Profile {
         Objects.requireNonNull(name, "name");
@@ -38,55 +25,12 @@ public record Profile(
         Objects.requireNonNull(jvmArgs, "jvmArgs");
         javacArgs = List.copyOf(javacArgs);
         jvmArgs = List.copyOf(jvmArgs);
-        includeTags = includeTags == null ? List.of() : List.copyOf(includeTags);
-        excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
         env = env == null ? Map.of() : Map.copyOf(env);
     }
 
-    /** Runs the default suite alone. */
-    public Profile(
-            String name,
-            @Nullable String inherits,
-            List<String> javacArgs,
-            List<String> jvmArgs,
-            List<String> includeTags,
-            List<String> excludeTags,
-            boolean includeTagsSet,
-            boolean excludeTagsSet,
-            Map<String, String> env) {
-        this(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags, includeTagsSet, excludeTagsSet, env, false);
-    }
-
     /** No test environment of its own. */
-    public Profile(
-            String name,
-            @Nullable String inherits,
-            List<String> javacArgs,
-            List<String> jvmArgs,
-            List<String> includeTags,
-            List<String> excludeTags,
-            boolean includeTagsSet,
-            boolean excludeTagsSet) {
-        this(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags, includeTagsSet, excludeTagsSet, Map.of());
-    }
-
-    /** No tag keys set (profile does not override {@code [test]} tag filters). */
     public Profile(String name, @Nullable String inherits, List<String> javacArgs, List<String> jvmArgs) {
-        this(name, inherits, javacArgs, jvmArgs, List.of(), List.of(), false, false);
-    }
-
-    /**
-     * Both tag keys treated as set (tests / callers that pass explicit lists). Prefer the full
-     * constructor with set-flags when empty must mean “clear filters”.
-     */
-    public Profile(
-            String name,
-            @Nullable String inherits,
-            List<String> javacArgs,
-            List<String> jvmArgs,
-            List<String> includeTags,
-            List<String> excludeTags) {
-        this(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags, true, true);
+        this(name, inherits, javacArgs, jvmArgs, Map.of());
     }
 
     public static Profile of(String name) {

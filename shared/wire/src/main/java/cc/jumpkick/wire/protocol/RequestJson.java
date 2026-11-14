@@ -130,7 +130,6 @@ final class RequestJson {
                 .array("suites", value.suites())
                 .array("includeTags", value.includeTags())
                 .array("excludeTags", value.excludeTags())
-                .bool("tagsResolved", value.tagsResolved())
                 .optionalTrue("guard", value.guard())
                 .optionalTrue("scriptsOnly", value.scriptsOnly())
                 .optionalTrue("noScripts", value.noScripts())

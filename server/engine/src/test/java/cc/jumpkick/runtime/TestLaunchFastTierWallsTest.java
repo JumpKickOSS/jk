@@ -54,7 +54,7 @@ class TestLaunchFastTierWallsTest {
         for (TestSelection sel : List.of(
                 suites("integration"),
                 suites("test", "integration"),
-                TestSelection.of(List.of(), false, List.of(), List.of(), false, true),
+                TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false),
                 TestSelection.of(List.of(), true, List.of(), List.of()),
                 TestSelection.of(List.of(), false, List.of("smoke"), List.of()))) {
             WorkerEnv env = TestLaunch.withFastTierWalls(WorkerEnv.strict(), sel, TIERED);

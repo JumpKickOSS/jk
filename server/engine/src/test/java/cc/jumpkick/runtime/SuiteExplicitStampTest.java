@@ -42,7 +42,7 @@ class SuiteExplicitStampTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package app;\nclass LiveTest {}\n");
         Path lock = Files.writeString(dir.resolve("jk-lock.toml"), "");
-        TestSelection all = TestSelection.of(List.of(), true, List.of(), List.of(), true);
+        TestSelection all = TestSelection.of(List.of(), true, List.of(), List.of());
 
         Run explicit = run(dir, "explicit = true", all, src, lock);
         Run plain = run(dir, "explicit = false", all, src, lock);

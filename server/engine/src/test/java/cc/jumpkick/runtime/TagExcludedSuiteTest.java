@@ -9,27 +9,24 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** The results line of a tier the module has no tests in, and the hint when the profile's own tag is what excluded them. */
+/** The results line of a run whose {@code -I} / {@code -E} filter left the selected suites nothing to run. */
 class TagExcludedSuiteTest {
 
     private static final TestSummary NOTHING = new TestSummary(0, 0, 0, 0, 0, List.of(), Map.of(), 0);
 
     @Test
-    void a_profile_that_includes_a_tag_its_exclude_list_still_drops_says_how_to_clear_it() {
+    void a_tag_both_included_and_excluded_selects_nothing_and_says_so() {
         TestSelection sel = TestSelection.of(List.of(), true, List.of("integration"), List.of("integration", "slow"));
 
-        assertThat(TagExcludedSuite.line(sel, "integration", false, NOTHING))
-                .isEqualTo("0 tests: profile integration also excludes integration;"
-                        + " set [profiles.integration] exclude-tags = []");
+        assertThat(TagExcludedSuite.line(sel, false, NOTHING))
+                .isEqualTo("0 tests: --include-tags and --exclude-tags both name integration");
     }
 
     @Test
-    void a_profile_whose_include_and_exclude_lists_are_disjoint_keeps_the_plain_line() {
+    void disjoint_filters_name_the_flags_that_excluded_every_test() {
         TestSelection sel = TestSelection.of(List.of(), true, List.of("nightly"), List.of("slow"));
 
-        assertThat(TagExcludedSuite.line(sel, "nightly", false, NOTHING))
-                .isEqualTo("0 tests (all excluded by profile nightly)");
-        assertThat(TagExcludedSuite.line(sel, null, false, NOTHING))
-                .isEqualTo("0 tests (all excluded by" + " include-tags nightly and exclude-tags slow)");
+        assertThat(TagExcludedSuite.line(sel, false, NOTHING))
+                .isEqualTo("0 tests (all excluded by --include-tags nightly and --exclude-tags slow)");
     }
 }

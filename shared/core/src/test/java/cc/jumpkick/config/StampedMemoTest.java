@@ -177,8 +177,8 @@ class StampedMemoTest {
                         "jk.toml",
                         Stamp.BODY,
                         m -> "group = \"com.example\"\nname = \"widget\"\nversion = \"1.0.0\"\n"
-                                + "[test]\ninclude-tags = [\"" + m + "\"]\n",
-                        f -> JkBuildParser.parseTestTags(f).includeTags().getFirst()));
+                                + "[release]\ntag = \"" + m + "-{version}\"\n",
+                        f -> JkBuildParser.releaseTable(f).tag().replace("-{version}", "")));
     }
 
     @ParameterizedTest(name = "{0}")

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayout;
@@ -219,27 +218,15 @@ public final class CompileSupport {
         return release > 0 ? release : hostFeature;
     }
 
-    /**
-     * Pick the active profile. Explicit {@code explicitName} wins; otherwise the {@code ci} profile
-     * is auto-selected when running on CI. Returns null when no profile applies, {@link
-     * Profiles#NO_PROFILE} included.
-     */
+    /** The profile a run applies: the one {@code explicitName} names ({@code -p}), else none. */
     public static @Nullable Profile resolveProfile(Profiles profiles, @Nullable String explicitName) {
         String named = Profiles.named(explicitName);
-        if (named != null) return profiles.resolve(named);
-        String auto = activeProfileName(explicitName);
-        if (auto != null && profiles.contains(auto)) {
-            return profiles.resolve(auto);
-        }
-        return null;
+        return named == null ? null : profiles.resolve(named);
     }
 
-    /**
-     * The name of the profile a run applies: {@code explicitName} when given, else the CI-selected one,
-     * else null; null under {@link Profiles#NO_PROFILE}.
-     */
+    /** The name of the profile a run applies: {@code explicitName} when given, else null. */
     public static @Nullable String activeProfileName(@Nullable String explicitName) {
-        return Profiles.active(explicitName, BuildEnv::get);
+        return Profiles.named(explicitName);
     }
 
     private static List<Path> collectFilesWithExtension(Path root, String extension) throws IOException {

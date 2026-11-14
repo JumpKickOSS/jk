@@ -85,7 +85,7 @@ class TestSuitesTest {
 
     @Test
     void gate_includes_integration_when_discovered() {
-        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, false, false)
                 .resolve(List.of("test", "integration"));
         assertThat(r.ok()).isTrue();
         assertThat(r.suites()).containsExactly("test", "integration");
@@ -93,7 +93,7 @@ class TestSuitesTest {
 
     @Test
     void gate_skips_missing_integration() {
-        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, false, false)
                 .resolve(List.of("test"));
         assertThat(r.ok()).isTrue();
         assertThat(r.suites()).containsExactly("test");
@@ -101,7 +101,7 @@ class TestSuitesTest {
 
     @Test
     void gate_without_integration_dir_is_the_default_suite() {
-        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, false, false)
                 .resolve(List.of());
         assertThat(r.ok()).isTrue();
         assertThat(r.suites()).containsExactly("test");
@@ -117,7 +117,7 @@ class TestSuitesTest {
 
     @Test
     void gate_unknown_extra_suite_errors() {
-        var r = TestSelection.of(List.of("test", "contract"), false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(List.of("test", "contract"), false, List.of(), List.of(), true, false, false)
                 .resolve(List.of("test"));
         assertThat(r.ok()).isFalse();
         assertThat(r.missingMessage()).contains("contract").contains("test");
@@ -210,9 +210,9 @@ class TestSuitesTest {
     /** The stamp identity names the suites the selection runs, so a guard run never replays a plain one. */
     @Test
     void a_guard_selection_with_no_named_suites_has_the_guard_suites_identity() {
-        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false);
         TestSelection explicit =
-                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), true, false, false);
 
         assertThat(guard.identityToken()).isEqualTo(explicit.identityToken()).startsWith("suites=test,integration;");
         assertThat(guard.identityToken()).isNotEqualTo(TestSelection.DEFAULT.identityToken());

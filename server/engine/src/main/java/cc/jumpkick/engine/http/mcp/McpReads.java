@@ -247,14 +247,7 @@ public final class McpReads {
         try {
             List<String> include = includeTags == null ? List.of() : includeTags;
             List<String> exclude = excludeTags == null ? List.of() : excludeTags;
-            // Tags the caller names are final; none leaves each module to the workspace root's
-            // tiers under the active profile, as jk test -f resolves them.
-            TestSelection sel = TestSelection.of(
-                    suites == null ? List.of() : suites,
-                    false,
-                    include,
-                    exclude,
-                    !include.isEmpty() || !exclude.isEmpty());
+            TestSelection sel = TestSelection.of(suites == null ? List.of() : suites, false, include, exclude);
             Set<Path> only = null;
             if (modules != null && !modules.isEmpty()) {
                 // Same intersection semantics as jk test -f -m ….

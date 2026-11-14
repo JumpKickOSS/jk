@@ -115,7 +115,7 @@ class BuildKnobsForecastTest {
         Files.writeString(ws.resolve("jk-guards.toml"), RULES);
         Path cache = tmp.resolve("cache");
         lock(ws, cache);
-        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false);
         WorkspaceRequest run = new WorkspaceRequest(ws, cache, null, 0, null, false, false, 2, null, false, false)
                 .withSpec(WorkspaceSpec.of(WorkspaceTarget.RUN));
         build(run, guard);
@@ -131,7 +131,7 @@ class BuildKnobsForecastTest {
         Files.writeString(ws.resolve("jk-guards.toml"), ROOT_RULES);
         Path cache = tmp.resolve("cache");
         lock(ws, cache);
-        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false);
         build(request(ws, cache), guard);
 
         assertThat(dirty(ws, cache, request(ws, cache), guard))

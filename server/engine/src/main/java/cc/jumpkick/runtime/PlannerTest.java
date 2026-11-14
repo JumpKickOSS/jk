@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.config.TierTags;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
@@ -63,13 +62,12 @@ public final class PlannerTest {
     }
 
     /**
-     * The suites this module's run runs: the session's selection under the active profile, resolved
-     * by {@link TestStampInputs#resolveSuites}, the derivation the run-tests stamp keys.
+     * The suites this module's run runs: the session's selection, resolved by {@link
+     * TestStampInputs#resolveSuites}, the derivation the run-tests stamp keys.
      */
     static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
         var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
-        return TestStampInputs.resolveSuites(
-                sel, in.dir(), in.profileName(), compact, project.build().runSuites());
+        return TestStampInputs.resolveSuites(sel, in.dir(), compact, project.build().runSuites());
     }
 
     /** The plugin steps whose output compile-test reads: every test-source generator. */
@@ -108,12 +106,6 @@ public final class PlannerTest {
             }
         }
         return testRequires;
-    }
-
-    /** The tags the run uses without {@code -p}: the workspace root's, as {@link TierTags} resolves them. */
-    static TestClassMatch.Tier defaultTier(Path moduleDir) {
-        TierTags tiers = TierTags.of(moduleDir, null);
-        return new TestClassMatch.Tier(tiers.includeTags(), tiers.excludeTags());
     }
 
     /**

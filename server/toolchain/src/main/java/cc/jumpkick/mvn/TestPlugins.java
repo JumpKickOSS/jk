@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.TestFailureMode;
@@ -29,9 +30,11 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The plugins that run tests. Surefire's {@code <groups>} / {@code <excludedGroups>} are {@code
- * [test] include-tags} / {@code exclude-tags}, its {@code <excludes>} are {@code [test]
- * exclude-classes}, its {@code <classpathDependencyExcludes>} are {@code [test] exclude-dependencies},
+ * The plugins that run tests. Each tag in Surefire's {@code <excludedGroups>} becomes a suite that
+ * claims it ({@code [test.suites.<tag>] tags = ["<tag>"]}; {@code integration} is jk's built-in
+ * suite already), so plain {@code jk test} leaves those tests out as {@code mvn test} does and
+ * {@code jk test -s <tag>} runs them; {@code <groups>} has no equivalent (jk runs whatever no suite
+ * claims) and is a row. Its {@code <excludes>} are {@code [test] exclude-classes}, its {@code <classpathDependencyExcludes>} are {@code [test] exclude-dependencies},
  * its {@code <argLine>} is {@code [test] jvm-args} and its system properties are {@code [test]
  * system-properties}; its {@code <includes>} and a skip flag have no {@code [test]}
  * key and are rows saying where each lands. Failsafe's {@code <includes>} (or its defaults) are the
@@ -43,8 +46,8 @@ import org.jspecify.annotations.Nullable;
 final class TestPlugins {
 
     /**
-     * The {@code [test]} tag filters, excluded classes and dependencies, the {@code integration}
-     * suite (null without Failsafe), and test JVM settings a POM's test plugins declare.
+     * Surefire's tag lists, the {@code [test]} excluded classes and dependencies, the {@code
+     * integration} suite (null without Failsafe), and test JVM settings a POM's test plugins declare.
      */
     record TestSettings(
             List<String> includeTags,
@@ -105,6 +108,32 @@ final class TestPlugins {
                     + " which covers unit tests too");
         }
         return TestFailureMode.REPORT;
+    }
+
+    /**
+     * The suites the settings declare: Failsafe's {@code integration} suite, then one per Surefire
+     * {@code <excludedGroups>} tag, claiming it. Surefire's {@code <groups>} (run only these tags) has
+     * no suite to land in and is a row, as is an excluded tag that is no suite name.
+     */
+    static Map<String, DeclaredSuite> suites(TestSettings tests, ImportReport.Builder report) {
+        Map<String, DeclaredSuite> out = new LinkedHashMap<>();
+        if (tests.integration() != null) out.put(TestSuites.INTEGRATION, tests.integration());
+        for (String tag : tests.excludeTags()) {
+            if (tag.equals(TestSuites.INTEGRATION) || out.containsKey(tag)) continue;
+            if (!TestSuites.isSuiteName(tag)) {
+                report.warning(SUREFIRE + " <excludedGroups> " + tag + ": not a suite name, so no suite claims it"
+                        + " and its tests run in plain jk test; declare [test.suites.<name>] tags = [\"" + tag
+                        + "\"]");
+                continue;
+            }
+            out.put(tag, DeclaredSuite.ofTags(List.of(tag)));
+        }
+        if (!tests.includeTags().isEmpty()) {
+            report.warning(SUREFIRE + " <groups> " + String.join(", ", tests.includeTags())
+                    + ": not imported; plain jk test runs every test no suite claims, so give the other tags"
+                    + " suites ([test.suites.<name>] tags = [...])");
+        }
+        return out;
     }
 
     private static boolean ignoresFailures(Model model, String plugin) {
@@ -233,7 +262,7 @@ final class TestPlugins {
         if (value == null) return Optional.empty();
         if (value.chars().anyMatch(c -> TAG_EXPRESSION_OPERATORS.indexOf(c) >= 0)) {
             report.warning(plugin + " <" + element + "> " + value
-                    + ": tag expression not imported; list plain tags in [test] include-tags/exclude-tags");
+                    + ": tag expression not imported; give each tag a suite, [test.suites.<name>] tags = [...]");
             return Optional.empty();
         }
         List<String> tags = new ArrayList<>();

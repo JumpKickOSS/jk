@@ -12,7 +12,6 @@ jk test -g -b          # guard suites, skip extra scripts
 jk test -s integration              # climb one named suite
 jk test -s e2e                      # UI / compose / contract; not a habit
 jk test -A                        # every suite; tag excludes cleared. Nightly / release.
-jk test -p integration            # a profile's tags; every suite when it sets all-suites = true
 jk test -E slow,bench
 jk test -I smoke
 jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
@@ -163,7 +162,7 @@ explicit = true                                      # only when named: -s live 
 The suite name follows the directory rule (`[a-z][a-z0-9_-]*`), and `test`, `guard` and
 `fixtures` cannot be one. A tag is a JUnit tag name: no whitespace and none of `, ( ) & | !`. A
 table at a workspace root declares a suite of every member, which may add suites of its own and
-add settings to the root's ([Workspace scope](#workspace-scope-tag-filters-come-from-the-root)).
+add settings to the root's ([Workspace scope](#workspace-scope-suites-and-profiles-come-from-the-root)).
 `[test] exclude-classes` still removes a class from every suite, declared suites included.
 
 ## The guard suite is not a test suite
@@ -182,9 +181,8 @@ test has a debugger. The rules themselves, their kinds and their baseline: [Guar
 `guard` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).
 
 `--all` and `--suite` cannot be combined. `--all` and `--guard` cannot be combined.
-Unknown suite names error with the available list (`--guard`'s default `integration`
-is the exception: skip if absent). `--all` means “everything”: every suite directory and declared suite (not an `explicit` one)
-**and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
+Unknown suite names error with the available list. `--all` means “everything”: every suite
+directory and declared suite (not an `explicit` one). Explicit `--include-tags` /
 `--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
 
 Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`). Named
@@ -199,27 +197,19 @@ qualified name is exact, a simple name matches in any package, and `*` stands fo
 characters (`--class '*IT'`). Repeat the flag to union. The filter is part of the run's stamp,
 so a green `--class` run never marks the whole suite up to date.
 
-Tags still apply, and a named class is never dropped quietly. When every pattern names its class
-without a `*` (`--class OrdersIT`, `--class com.example.OrdersIT#refunds`) and the tag filter
-drops one of those classes, the module fails with the class, its tags and the profile that runs
-it, whatever else ran:
+A named class is never dropped quietly. A class another suite owns fails the run with that suite
+(`no test classes matched --class OrdersIT: OrdersIT is in the integration suite (jk test -s
+integration -S OrdersIT)`). When every pattern names its class without a `*` (`--class OrdersIT`,
+`--class com.example.OrdersIT#refunds`) and a `-I` / `-E` filter drops one of those classes, the
+module fails with the class, its tags and the flag to drop, whatever else ran:
 
 ```
---class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration to run it; -p integration runs it
+--class named 1 class the tag filter excluded: com.example.OrdersIT [slow]; drop --exclude-tags slow to run it
 ```
 
-Under `-p` the line names the profile, and when the class runs in the default tier (the
-`[test]` tags, no `-p`) it says so instead:
-
-```
-no test in profile integration matches --class com.example.WarmWorkersTest: the tag filter excluded com.example.WarmWorkersTest (untagged); it runs in the default tier (drop -p integration)
-```
-
-Run it again with that `--profile` (or `--include-tags`), or without `-p`. `--no-profile` (`-n`)
-applies no profile at all, neither `-p`'s nor CI's `ci`: its tags, `env`, `jvm-args` and `javac`
-all stay out, while `[test] exclude-tags` still holds. A wildcard composes with the tag filter: `--class '*Orders*'`
-runs the matches the filter keeps and warns about the ones it drops; a run in which the dropped
-ones were the only matches fails with that line.
+A wildcard composes with the tag filter: `--class '*Orders*'` runs the matches the filter keeps and
+warns about the ones it drops; a run in which the dropped ones were the only matches fails with
+that line.
 
 `--class OrdersTest#refunds` runs one method of the class — the shape the IntelliJ gutter's
 method-level Run and Debug pass. The class half follows the rules above; the method half is the
@@ -328,8 +318,8 @@ What to do with a slow one, cheapest first:
 - **Seam the wait.** A test that sleeps, polls or waits out a timeout takes that long every run.
   Inject a clock, a latch or a shorter timeout so the test decides when time has passed.
 - **Move it to a tier.** A test that is slow because it is end to end belongs out of the inner
-  loop: tag it `@Tag("integration")` (or `slow`) and run it with `jk test -p integration`
-  ([Tag filters](#tag-filters)).
+  loop: tag it `@Tag("integration")` (or `slow`) and run it with `jk test -s integration`
+  ([The built-in integration suite](#the-built-in-integration-suite)).
 
 To hold the inner loop to a time, give the fast tier a budget:
 
@@ -367,7 +357,7 @@ still names every class that completed ([Machine output](machine-output.md#event
 read one benchmark's table:
 
 ```bash
-jk test -p bench -S com.example.FormatBenchTest
+jk test -s bench -S com.example.FormatBenchTest
 cat target/surefire-reports/TEST-com.example.FormatBenchTest.xml
 ```
 
@@ -423,62 +413,26 @@ would be dishonest (`jk.toml` change, stale class files, too many types or modul
 dirty test outside the current suite), JumpKick prints `cannot rank affected tests` and tells
 you to run `jk test`.
 
-## Tag filters
+## One-run tag filters (`-I` / `-E`)
 
-```toml
-[test]
-workers = 1
-exclude-tags = ["slow", "network", "bench"]
+Suites choose the tests: the default suite, `-s <name>`, `-g`, `--all`. `--include-tags` (`-I`)
+and `--exclude-tags` (`-E`) narrow one run of the selected suites, and nothing else adds a tag
+filter. A tier is a [`[test.suites.<name>]`](#declared-suites-testsuitesname) that claims its tag,
+and the default suite leaves those tests out.
 
-[profiles.ci]
-# Auto-selected when CI is set. Keep the inner/guard excludes — do not clear them
-# just because it is CI. Nightly is `jk test -A` (or a dedicated nightly profile),
-# not the PR job.
-exclude-tags = ["slow", "network", "bench"]
-```
+A module whose tests the filter drops reports `0 tests (all excluded by --exclude-tags slow)` as a
+plain results line, and `-I` and `-E` naming the same tag selects nothing and says so. A `--class`
+that names a class the filter drops fails the run with the class, its tags and the flag to drop.
 
-**Precedence** (later layer replaces an earlier list only when it *speaks* for that list):
+**The default tier cannot reach the network.** A run of the default suite alone with no `-I` — the
+bare `jk test`, and the test step of `jk build` — in a module that routes tiers (a
+`[test.suites.<name>]` table of its own or its workspace root's claims a tag) hands every test JVM
+`JK_HTTP_DENY_HOSTS=*`, so a unit test that reaches a remote host (directly, or through an engine it
+starts) fails at once with the host named. Any other suite may fetch; put such a test there. A
+module that sets `JK_HTTP_DENY_HOSTS` in `[test] env` keeps its own value (`""` lifts the wall), and
+any process honours the variable as a comma-separated host list.
 
-| Layer | Behavior |
-|-------|----------|
-| `[test] include-tags` / `exclude-tags` | Baseline for bare `jk test` |
-| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear); a key it leaves out comes from its `inherits` parent, and `all-suites` holds when any profile in the chain sets it |
-| `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
-
-**A profile can widen the suites.** `all-suites = true` in `[profiles.<name>]` runs every suite
-a module has (every suite directory and declared suite, as `--all` does) under the profile's
-own tags; without it a profile runs the default suite alone. Unlike `--all` it leaves the tag
-filters as the profile resolved them, so a tier stays a tier: `jk test -p integration` with
-
-```toml
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-all-suites = true
-```
-
-runs the `integration`-tagged tests of `src/test` and `src/e2e` alike. A module without a second
-suite runs its default suite; nothing errors. `--suite` and `--guard` name the suites themselves and
-win over the switch. Any value but `true` or `false` is a config error.
-
-A module whose tests all carry tags the active profile drops reports
-`0 tests (all excluded by profile <name>)` as a plain results line: that tier has no tests in the
-module, which is the expected outcome and not a warning. A profile that includes a tag the
-`[test] exclude-tags` baseline still lists selects nothing — a `@Tag("integration")` on a method
-inside an untagged class included, since the exclude applies to the method — and the line says so,
-naming the tag and the fix: the profile clears the list with `exclude-tags = []` (or lists only the
-tags it does not run), as the scaffolded profiles do.
-
-**The default tier cannot reach Maven Central.** A run that includes no tag and excludes at
-least one — the bare `jk test`, and the test step of `jk build` — hands every test JVM
-`JK_HTTP_DENY_HOSTS=repo.maven.apache.org,maven-central.storage-download.googleapis.com`, so a
-unit test that reaches Central (directly, or through an engine it starts) fails at once with the
-host named instead of spending the machine's quota. A profile that includes a tag is a tier that
-may fetch; put such a test there. A module that sets `JK_HTTP_DENY_HOSTS` in `[test] env` keeps
-its own value (`""` lifts the wall), and any process honours the variable as a comma-separated
-host list.
-
-`--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
+A profile's `jvm-args` (`[profiles.<name>]
 jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after JumpKick's own tuning and after
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
 prints every flag the JVM started with as `test JVM flags: …`; its `javac` list reaches the compiler the same way
@@ -513,37 +467,25 @@ a green run is still replayed whole from its marker.
 
 ## The tier table partitions its vocabulary
 
-`[test]` and the profiles together form a tier table, and the engine holds it to one invariant
-when guards are on (`jk-guards.toml` present): every combination of tags in the vocabulary is run
-by exactly one tier, and every `@Tag` a compiled test carries is a tag some tier owns. A tag in
-`[test] exclude-tags` with no profile that includes it is a test that never executes and never
-goes red; two profiles including the same tag charge one test to two budgets; a misspelt tag runs
-in the fast tier by default. The check is exhaustive over the vocabulary (up to sixteen tags) and
-reports under the code `tiers` — `jk guard explain tiers` describes it. The `ci` profile is the
-fast tier under another name and is not a tier of its own.
+The root's suites that claim tags form a tier table, with the default suite as the fast tier, and
+the engine holds it to one invariant when guards are on (`jk-guards.toml` present): every
+combination of tags in the vocabulary is run by exactly one suite, and every `@Tag` a compiled test
+carries is a tag some suite owns. A test every claiming suite excludes is a test that never executes
+and never goes red; two suites claiming one tag charge one test to two budgets unless an
+`exclude-tags` settles it; a misspelt tag runs in the fast tier by default. The check is exhaustive over the vocabulary (up to sixteen tags) and
+reports under the code `tiers` — `jk guard explain tiers` describes it.
 
-## Workspace scope: tag filters come from the root
+## Workspace scope: suites and profiles come from the root
 
-In a workspace, the tag filters are resolved **once, from the invocation root**, and apply to
-every member:
+In a workspace, the test tiers are the root's: its `[test.suites.<name>]` tables are every
+member's, and `[test] guard-suites` is read from the root whichever directory `jk test -g` runs in.
 
-- `[test] include-tags` / `exclude-tags`
-- `[test] guard-suites`
-- `[profiles.<name>] include-tags` / `exclude-tags` / `all-suites`
-
-A member's own tags are used only when the root resolved none — the root wins outright rather
-than merging, so a workspace has one answer for "which tests". Running from inside a member
-directory makes no difference: the CLI rehomes to the workspace root first. Every path resolves
-the same way: `jk test`, `jk build`, MCP and BSP runs that name no tags, the tier `--class` hints
-name, and the tags `jk info` shows.
-
-The rest of a profile is a workspace fact too: a profile the root declares applies in every member,
-and means the same in each. Where a member declares a `[profiles.<name>]` of the same name, the two
-merge key by key and the root wins unless the key is additive per member:
+A profile is a workspace fact too: a profile the root declares applies in every member, and means
+the same in each. Where a member declares a `[profiles.<name>]` of the same name, the two merge key
+by key and the root wins unless the key is additive per member:
 
 | Key | Rule | Why |
 |-----|------|-----|
-| `include-tags`, `exclude-tags`, `all-suites` | The root's | They pick the tier; a workspace has one tier table |
 | `env` | Additive; the root's value wins a variable both set | A member adds what only its tests need, such as its own database |
 | `jvm-args` | Additive; the root's follow the member's, so the root wins a flag both set | A member adds flags only its test JVMs need |
 | `javac` | The root's when it sets the key, else the member's | The compiler flags a profile names (`-Werror` on CI) hold for the whole workspace; a module's own flags go in its `[javac]` |

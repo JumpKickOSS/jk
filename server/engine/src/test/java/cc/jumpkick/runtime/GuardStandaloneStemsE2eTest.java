@@ -121,7 +121,7 @@ class GuardStandaloneStemsE2eTest {
                 LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
         Session session = SessionContext.current()
-                .withTestSelection(TestSelection.of(List.of(), false, List.of(), List.of(), false, true));
+                .withTestSelection(TestSelection.of(List.of(), false, List.of(), List.of(), true, false, false));
         BuildPlanner.Inputs in = TestInputs.of(project, cache, session).withSkipTests(true);
         return SessionContext.where(session, () -> BuildPlanner.fullPlan(in).run());
     }

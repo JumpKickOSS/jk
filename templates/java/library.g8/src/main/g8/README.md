@@ -13,5 +13,5 @@ jk publish       # dry-run by default; see `jk skill`
 Every package is `@NullMarked` and `[nullness]` checks it with NullAway at compile time: a type is
 non-null unless it says `@Nullable`.
 
-`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
-tests tagged with that cost.
+`jk test` is the fast tier; `jk test -s integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost, and `jk test -g` runs the fast tier and `integration` together.

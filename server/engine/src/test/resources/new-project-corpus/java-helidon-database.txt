@@ -86,25 +86,19 @@ aot-cache = true
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -179,25 +173,19 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -303,25 +291,19 @@ test-start = false
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -413,25 +395,19 @@ test-start = false
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -519,25 +495,19 @@ aot-cache = false
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -627,25 +597,19 @@ SERVER_PORT = "0"
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -722,25 +686,19 @@ h2 = { group = "com.h2database", name = "h2" }
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -832,25 +790,19 @@ aot-cache = false
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -936,25 +888,19 @@ helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbcli
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -1040,25 +986,19 @@ aot-cache = true
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -1146,25 +1086,19 @@ test-start = false
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]
@@ -1243,25 +1177,19 @@ h2 = { group = "com.h2database", name = "h2" }
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]
 
-# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test -p integration`).
-[test]
-exclude-tags = ["integration", "network", "slow", "bench"]
-
-[profiles.integration]
-include-tags = ["integration"]
-exclude-tags = []
-
-[profiles.network]
-include-tags = ["network"]
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
 exclude-tags = ["integration"]
 
-[profiles.slow]
-include-tags = ["slow"]
+[test.suites.slow]
+tags = ["slow"]
 exclude-tags = ["integration", "network"]
 
-[profiles.bench]
-include-tags = ["bench"]
+[test.suites.bench]
+tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
 [format]

@@ -39,7 +39,7 @@ networked=(
 
 # jk test -m … --class … for one set of module:class pairs, plus any extra flags.
 run_set() {
-  local -a args=(test --no-ansi --no-profile --continue)
+  local -a args=(test --no-ansi --continue)
   local -a modules=()
   local pair
   for pair in "${@:2}"; do

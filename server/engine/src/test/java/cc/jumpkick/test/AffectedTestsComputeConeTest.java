@@ -69,32 +69,30 @@ class AffectedTestsComputeConeTest {
     }
 
     /**
-     * A selection that names no tags (MCP {@code affected_tests} without {@code include_tags} or
-     * {@code exclude_tags}) ranks within the workspace root's tiers, as the test step would run them:
-     * the root's {@code [test] exclude-tags} keeps a {@code slow} test out of the ranking.
+     * The ranking follows the suites the selection runs, as the test step would: the workspace
+     * root's {@code [test.suites.slow]} claims a {@code slow} test, so the default suite (and MCP
+     * {@code affected_tests} naming no suite) leaves it out and naming {@code slow} ranks it.
      */
     @Test
-    void a_selection_naming_no_tags_ranks_within_the_roots_tiers(@TempDir Path ws) throws Exception {
+    void the_ranking_follows_the_roots_suites(@TempDir Path ws) throws Exception {
         workspace(ws, """
 
-                [test]
-                exclude-tags = ["slow"]
+                [test.suites.slow]
+                tags = ["slow"]
                 """, "slow");
 
         assertThat(AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null)
                         .classNames())
                 .doesNotContain("com.acme.app.BarTest");
-        var cleared = TestSelection.of(List.of(), false, List.of(), List.of(), true);
-        assertThat(AffectedTestsCompute.fromDisk(ws, cleared, null, null).classNames())
-                .as("tags the caller resolved are final, an empty list included")
+        var slow = TestSelection.of(List.of("slow"), false, List.of(), List.of());
+        assertThat(AffectedTestsCompute.fromDisk(ws, slow, null, null).classNames())
                 .contains("com.acme.app.BarTest");
 
         assertThat(McpReads.affectedTests(ws.toString(), List.of(), List.of(), List.of(), List.of())
                         .toString())
                 .doesNotContain("com.acme.app.BarTest");
-        assertThat(McpReads.affectedTests(ws.toString(), List.of("slow"), List.of(), List.of(), List.of())
+        assertThat(McpReads.affectedTests(ws.toString(), List.of(), List.of(), List.of("slow"), List.of())
                         .toString())
-                .as("tags the caller names are final")
                 .contains("com.acme.app.BarTest");
     }
 

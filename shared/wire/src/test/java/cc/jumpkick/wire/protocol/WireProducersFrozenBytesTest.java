@@ -28,8 +28,8 @@ class WireProducersFrozenBytesTest {
                                 + "\"mainJarPath\":\"\",\"assemblyJarPath\":\"\",\"nativeBinPath\":\"\",\"nativeLibPath\":\"\","
                                 + "\"pathDeps\":[],\"sourcesJarPath\":\"\",\"javadocJarPath\":\"\",\"envRefs\":[],\"sourceCount\":0,"
                                 + "\"testCount\":0,\"nativeExplicitlyDisabled\":false,\"classesDir\":\"\",\"testClassesDir\":\"\","
-                                + "\"kotlinClassesDir\":\"\",\"groovyClassesDir\":\"\",\"testResultsDir\":\"\",\"testIncludeTags\":[],"
-                                + "\"testExcludeTags\":[],\"lockStale\":false,\"scala\":false,\"scalaVersion\":\"\","
+                                + "\"kotlinClassesDir\":\"\",\"groovyClassesDir\":\"\",\"testResultsDir\":\"\","
+                                + "\"lockStale\":false,\"scala\":false,\"scalaVersion\":\"\","
                                 + "\"coordinatorOnly\":false,\"productLib\":\"\",\"productBin\":\"\",\"toolchains\":{},\"publishRepository\":\"\",\"publishSign\":false,\"publishKeyFile\":\"\",\"releaseTag\":\"\",\"releaseFiles\":{},\"upstreams\":{}}");
         // A populated line in the old template's order, with the three tri-state format flags present
         // and a null error: decode then encode must give the same bytes back.
@@ -45,7 +45,7 @@ class WireProducersFrozenBytesTest {
                 + "\"javadocJarPath\":\"/j.jar\",\"envRefs\":[\"HOME\"],\"sourceCount\":3,\"testCount\":4,"
                 + "\"nativeExplicitlyDisabled\":true,\"classesDir\":\"/c\",\"testClassesDir\":\"/tc\","
                 + "\"kotlinClassesDir\":\"/kc\",\"groovyClassesDir\":\"/gc\",\"testResultsDir\":\"/tr\","
-                + "\"testIncludeTags\":[\"fast\"],\"testExcludeTags\":[\"slow\",\"bench\"],\"lockStale\":true,\"scala\":true,"
+                + "\"lockStale\":true,\"scala\":true,"
                 + "\"scalaVersion\":\"3.9\",\"coordinatorOnly\":false,\"productLib\":\"lib\",\"productBin\":\"jk\","
                 + "\"toolchains\":{\"a/b\":\"temurin-21@21\",\"c\":\"@25\"},\"publishRepository\":\"r\",\"publishSign\":true,\"publishKeyFile\":\"k.asc\",\"releaseTag\":\"v{version}\",\"releaseFiles\":{\"install.sh\":\"FLOOR=(.+)\"},\"upstreams\":{\"/w/a/b\":\"/w/c\"}}";
         assertThat(ProjectInfo.decode(line).encode()).isEqualTo(line);

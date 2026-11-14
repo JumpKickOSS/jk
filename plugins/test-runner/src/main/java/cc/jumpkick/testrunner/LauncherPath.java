@@ -301,14 +301,14 @@ final class LauncherPath {
             allTags.addAll(e.getValue());
         }
         if (!excludeTags.isEmpty() && !allTags.isEmpty()) {
-            sb.append("; pass --include-tags ")
-                    .append(String.join(",", allTags))
+            sb.append("; drop --exclude-tags ")
+                    .append(String.join(",", excludeTags))
                     .append(" to run ")
                     .append(dropped.size() == 1 ? "it" : "them");
         } else {
             sb.append("; drop --include-tags ")
                     .append(String.join(",", includeTags))
-                    .append(" or pass --no-profile to run ")
+                    .append(" to run ")
                     .append(dropped.size() == 1 ? "it" : "them");
         }
         return sb.toString();

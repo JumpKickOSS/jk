@@ -48,7 +48,6 @@ public final class ProtoJobs {
                         Jsonl.bool(json, "allSuites", false),
                         Jsonl.strArray(json, "includeTags"),
                         Jsonl.strArray(json, "excludeTags"),
-                        Jsonl.bool(json, "tagsResolved", false),
                         Jsonl.bool(json, "guard", false),
                         Jsonl.bool(json, "scriptsOnly", false),
                         Jsonl.bool(json, "noScripts", false),

@@ -47,7 +47,7 @@ with the module that wrote it, and stops both on Ctrl-C. `jk dev -T` in `app/` r
 
 ## Tiers and guards
 
-`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
-tests tagged with that cost. House rules come from the `spring` pack plus the `monorepo` pack's
+`jk test` is the fast tier; `jk test -s integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost, and `jk test -g` runs the fast tier and `integration` together. House rules come from the `spring` pack plus the `monorepo` pack's
 workspace-shaped rules (`jk-guards.toml`); `jk guard explain` lists them, and a failure's `Instead:`
 line says what to do.

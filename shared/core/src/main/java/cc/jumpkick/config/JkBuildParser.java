@@ -701,18 +701,6 @@ public final class JkBuildParser {
         return ManifestDeps.splitEmbeddedUrl(urlRaw);
     }
 
-    /**
-     * {@code [test] include-tags} / {@code exclude-tags} — the baseline tag filters when no profile
-     * or CLI override applies. Empty when the file or the table is absent.
-     *
-     * <p>A manifest that exists and does not parse throws. {@link TestTomlTags#EMPTY} means "this
-     * project filters no tags"; swallowing a parse error into that would silently widen the suite.
-     */
-    public static TestTomlTags parseTestTags(Path buildFile) {
-        TomlParseResult root = documentIfPresent(buildFile);
-        return root == null ? TestTomlTags.EMPTY : ManifestTables.parseTestTags(root);
-    }
-
     /** {@code [release]} — the tag template and the version-carrying files; defaults when the file or table is absent. */
     public static ReleaseTable releaseTable(Path file) {
         TomlParseResult root = documentIfPresent(file);
@@ -747,19 +735,6 @@ public final class JkBuildParser {
     public static PluginTuning jvmTuning(Path file) {
         TomlParseResult root = documentIfPresent(file);
         return root == null ? PluginTuning.NONE : PluginTunings.fromToml(root);
-    }
-
-    public record TestTomlTags(List<String> includeTags, List<String> excludeTags) {
-        public static final TestTomlTags EMPTY = new TestTomlTags(List.of(), List.of());
-
-        public TestTomlTags {
-            includeTags = includeTags == null ? List.of() : List.copyOf(includeTags);
-            excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
-        }
-
-        public boolean isEmpty() {
-            return includeTags.isEmpty() && excludeTags.isEmpty();
-        }
     }
 
     public static JkBuild withArtifactOverride(JkBuild build, ArtifactOverride override) {
