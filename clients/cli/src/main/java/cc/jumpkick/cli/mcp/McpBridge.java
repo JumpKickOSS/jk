@@ -429,6 +429,10 @@ public final class McpBridge {
                     "jk engine answered HTTP " + answer.status() + ": "
                             + answer.body().strip());
         }
+        // A request always gets an answer: a stream the engine closed before the response (a crash,
+        // a stop, a hand-off mid-call) becomes an error for its id rather than a reply never sent.
+        // A notification's empty 202 stays empty: error() has no id to answer.
+        if (answer.body().isEmpty()) return error(message, "jk engine closed the call before answering");
         return answer.body();
     }
 
