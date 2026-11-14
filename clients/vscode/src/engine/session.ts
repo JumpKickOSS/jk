@@ -41,6 +41,9 @@ export class EngineSession {
   private current: SessionState = { kind: "connecting" };
   private readonly stateListeners = new Set<Listener<SessionState>>();
   private readonly eventListeners = new Set<Listener<EngineEvent>>();
+  private readonly engineListeners = new Set<Listener<string>>();
+  /** The generation of the engine the stream last went live on. */
+  private liveEpoch = "";
   private readonly findEngine: () => Promise<EngineEndpoint>;
   private readonly retryMs: number;
   private readonly retryCapMs: number;
@@ -69,6 +72,15 @@ export class EngineSession {
     return { dispose: () => this.eventListeners.delete(l) };
   }
 
+  /**
+   * Called with the engine's generation whenever the stream goes live on an engine other than the
+   * last one: job ids start over with a new engine, so what was known of the old one's jobs is void.
+   */
+  onEngine(l: Listener<string>): { dispose(): void } {
+    this.engineListeners.add(l);
+    return { dispose: () => this.engineListeners.delete(l) };
+  }
+
   /** The live API, connecting first (and starting the engine through jk) when there is none. */
   async connect(): Promise<EngineApi> {
     if (this.api && this.current.kind === "live") return this.api;
@@ -80,11 +92,19 @@ export class EngineSession {
     return this.connecting;
   }
 
+  /** Ask jk for the engine again, whatever the session holds now: the Reconnect command. */
+  reconnect(): Promise<EngineApi> {
+    this.api = undefined;
+    this.current = { kind: "connecting" };
+    return this.connect();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.stream?.close();
     this.stateListeners.clear();
     this.eventListeners.clear();
+    this.engineListeners.clear();
   }
 
   private async establish(): Promise<EngineApi> {
@@ -130,6 +150,10 @@ export class EngineSession {
       while (!this.disposed && this.stream === stream) {
         const { end, lastEventId } = await stream.open(this.lastEventId, () => {
           delay = this.retryMs;
+          if (api.engineEpoch !== this.liveEpoch) {
+            this.liveEpoch = api.engineEpoch;
+            for (const l of this.engineListeners) l(api.engineEpoch);
+          }
           this.setState({ kind: "live", engine });
           attached?.();
           attached = undefined;

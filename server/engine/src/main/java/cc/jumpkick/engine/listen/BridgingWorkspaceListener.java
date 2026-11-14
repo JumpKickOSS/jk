@@ -7,6 +7,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -31,7 +32,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     public interface Hooks {
         default void preflight(String stage, int done, int total) {}
 
-        default void preflightFailed(String stage, long millis, String reason) {}
+        default void preflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {}
 
         default void workModel(WorkModel model) {}
 
@@ -103,8 +104,8 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
      * {@code error} line here would end the client's read before that terminal arrives.
      */
     @Override
-    public void onPreflightFailed(String stage, long millis, String reason) {
-        hooks.preflightFailed(stage == null ? "" : stage, millis, reason == null ? "" : reason);
+    public void onPreflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
+        hooks.preflightFailed(stage == null ? "" : stage, millis, reason == null ? "" : reason, at);
     }
 
     @Override

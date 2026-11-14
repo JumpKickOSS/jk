@@ -159,7 +159,10 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   container window reaches that guest's own engine). **JumpKick: Build**, **Test**, **Lock** and
   **Sync dependencies** start the same engine jobs the CLI does; the status bar follows every job
   in the window's folders, a terminal `jk build` included, from the engine's event stream, and the
-  **JumpKick** output channel shows each job's output and diagnostics.
+  **JumpKick** output channel shows each job's output and diagnostics. When a job ends, its compile
+  errors and warnings, a `jk.toml` that does not parse or validate, and a dependency the resolver
+  refuses appear in the **Problems** panel at their file and line (the dependency at its line in
+  `jk.toml`), and the next green run clears them.
 
 Both are **wire-only**: they never load engine jars. The IntelliJ plugin runs the `jk` CLI; the VS
 Code extension runs `jk` only to find the engine and otherwise speaks the engine's HTTP API.

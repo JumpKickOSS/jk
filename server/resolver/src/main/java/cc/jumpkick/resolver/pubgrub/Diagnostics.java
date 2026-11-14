@@ -142,6 +142,41 @@ public final class Diagnostics {
         return lines;
     }
 
+    /**
+     * The {@code group:artifact} of every dependency the project itself declares that the failure
+     * {@code rootCause} derives from, in pre-order over the DAG, each once: the declarations the
+     * user can relax or remove, and where an editor points the failure.
+     */
+    public static List<String> rootConstraints(Incompatibility rootCause) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        Set<Incompatibility> visited = identitySet();
+        Deque<Incompatibility> stack = new ArrayDeque<>();
+        stack.push(rootCause);
+        while (!stack.isEmpty()) {
+            Incompatibility inco = stack.pop();
+            if (!visited.add(inco)) continue;
+            switch (inco.cause()) {
+                case Incompatibility.Cause.Derived d -> {
+                    stack.push(d.b());
+                    stack.push(d.a());
+                }
+                case Incompatibility.Cause.Dependency dep
+                when isRoot(dep) && !isRoot(dep.to()) -> out.add(gaOf(dep.to().pkg()));
+                default -> {}
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static String gaOf(String pkg) {
+        if (!PackageId.isMavenPackageKey(pkg)) return pkg;
+        try {
+            return PackageId.parse(pkg).ga();
+        } catch (RuntimeException e) {
+            return pkg;
+        }
+    }
+
     private static void suggest(Incompatibility inco, LinkedHashSet<String> lines) {
         switch (inco.cause()) {
             case Incompatibility.Cause.NoVersions nv -> {

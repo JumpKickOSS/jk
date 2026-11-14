@@ -84,11 +84,15 @@ test("a dropped stream reconnects with Last-Event-ID and misses nothing", async 
   );
 });
 
-test("a replacement engine's new generation is latched before the next call", async () => {
+test("a replacement engine's new generation is latched before the next call, and announced", async () => {
   const { s } = open();
+  const generations: string[] = [];
+  s.onEngine((epoch) => generations.push(epoch));
   const api = await s.connect();
+  const first = engine.epoch;
   await engine.restart("0.0.0-stub@2");
-  await until("live again", () => engine.streamCount === 1);
+  await until("live again", () => engine.streamCount === 1 && generations.length === 2);
+  assert.deepEqual(generations, [first, "0.0.0-stub@2"]);
   const admitted = await api.startJob("/x", "build");
   assert.equal(admitted.kind, "started");
   assert.equal(api.engineEpoch, "0.0.0-stub@2");

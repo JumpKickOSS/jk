@@ -168,7 +168,7 @@ public final class WorkspacePreflightPhase {
                 GuardFormat.run(request.entryDir(), request.cache(), entryBuild, units, request.clientEnv());
         if (formatted != null && !formatted.unformatted().isEmpty()) {
             List<String> errors = GuardFormat.checkErrors(formatted, request.entryDir());
-            listener.onPreflightFailed("format", 0, errors.getFirst());
+            listener.onPreflightFailed("format", 0, errors.getFirst(), null);
             return completed(false, Exit.FAILURE, errors);
         }
         if (formatted != null && !formatted.rewritten().isEmpty()) {
@@ -303,7 +303,7 @@ public final class WorkspacePreflightPhase {
         }
         if (guard.status() != 0) {
             String error = guard.error() != null ? guard.error() : "dependency resolution failed";
-            listener.onPreflightFailed("lock", (clock.nanos() - started) / 1_000_000L, error);
+            listener.onPreflightFailed("lock", (clock.nanos() - started) / 1_000_000L, error, guard.location());
             return Optional.of(completed(false, guard.status(), List.of(error)));
         }
         listener.onPreflight("lock", 1, 1, "Workspace lock ready");

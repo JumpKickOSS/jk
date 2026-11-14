@@ -410,6 +410,11 @@ fields, so they show exactly what `jk-results.md` prints.
 A row's `record.json` carries a capped `diagnostics` list and names the rest in
 `diagnosticsSpill`, a file beside it; this list, `?id=` and the MCP history and diagnostics tools
 merge that file back, so every row carries its whole `diagnostics` and no `diagnosticsSpill`.
+A diagnostic that points somewhere names it: `file` (absolute), `line` and `col` (1-based, absent
+when unknown). A compiler's come from its own report; a `jk.toml` that does not parse or validate
+names the manifest and, for a syntax error or a refused key, the spot (`JkBuildParseException`'s
+location); a resolve the solver refuses names the declaration of the dependency it derives from
+(`FailureLocation`). Editors read these to mark the line (the VS Code extension's Problems panel).
 
 ### `GET /api/changes`
 

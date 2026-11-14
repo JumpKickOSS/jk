@@ -14,6 +14,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.wire.EnginePaths;
@@ -140,7 +141,7 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void onPreflightFailed(String stage, long millis, String reason) {
+            public void onPreflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
                 progress.onStepFinish(stage, false, reason);
             }
 

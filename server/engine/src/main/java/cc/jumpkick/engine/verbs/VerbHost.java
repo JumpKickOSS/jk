@@ -12,6 +12,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -79,6 +80,11 @@ public interface VerbHost {
 
     /** A failed run's run-level errors, the verdicts no module or step owns, as error rows on its journal row. */
     default void accRunErrors(long rid, List<String> errors) {}
+
+    /** One run-level error with the place in the project it points at ({@code null} when none). */
+    default void accRunError(long rid, String error, @Nullable SourceLocation at) {
+        accRunErrors(rid, List.of(error));
+    }
 
     /**
      * Refuse this request's journal row: the in-flight stub is deleted at finish and no

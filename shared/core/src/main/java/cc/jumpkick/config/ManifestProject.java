@@ -451,13 +451,13 @@ public final class ManifestProject {
             try {
                 value = Long.parseLong(s.trim());
             } catch (NumberFormatException e) {
-                throw new JkBuildParseException("java must be an integer, got: \"" + s + "\"");
+                throw JkBuildParseException.at(root, "java", "java must be an integer, got: \"" + s + "\"");
             }
         } else {
-            throw new JkBuildParseException("java must be an integer");
+            throw JkBuildParseException.at(root, "java", "java must be an integer");
         }
         if (value < 0 || value > Integer.MAX_VALUE) {
-            throw new JkBuildParseException("java out of range: " + value);
+            throw JkBuildParseException.at(root, "java", "java out of range: " + value);
         }
         return (int) value;
     }

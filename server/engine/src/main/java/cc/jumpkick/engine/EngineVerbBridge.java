@@ -15,6 +15,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -126,6 +127,11 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public void accRunErrors(long rid, List<String> errors) {
         journalWriter.accRunErrors(rid, errors);
+    }
+
+    @Override
+    public void accRunError(long rid, String error, @Nullable SourceLocation at) {
+        journalWriter.accRunError(rid, error, at);
     }
 
     @Override

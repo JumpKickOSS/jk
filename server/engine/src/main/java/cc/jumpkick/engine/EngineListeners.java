@@ -20,6 +20,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -114,8 +115,8 @@ public final class EngineListeners {
             }
 
             @Override
-            public void preflightFailed(String stage, long millis, String reason) {
-                journal.accPreflightFailed(rid, stage, millis, reason);
+            public void preflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
+                journal.accPreflightFailed(rid, stage, millis, reason, at);
             }
 
             @Override

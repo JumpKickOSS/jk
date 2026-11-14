@@ -134,6 +134,28 @@ public record BuildPlanResult(
                     "");
         }
 
+        /** This diagnostic pointing at the file and line of {@code at}. */
+        public Diagnostic at(SourceLocation at) {
+            return new Diagnostic(
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    at.file(),
+                    at.line(),
+                    snippetStart,
+                    snippet,
+                    worker,
+                    key,
+                    suite);
+        }
+
         /** This diagnostic with the tool's key for it. */
         public Diagnostic withKey(String key) {
             return new Diagnostic(

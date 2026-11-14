@@ -84,6 +84,14 @@ public interface TaskContext {
         keyedWarn(code, key, message);
     }
 
+    /**
+     * {@link #error(String, String)} pointing at {@code at}, the place in the project's manifests or
+     * sources the error is about; a {@code null} location is a plain error.
+     */
+    default void errorAt(String code, String message, @Nullable SourceLocation at) {
+        error(code, message);
+    }
+
     /** {@link #error(String, String)} with the tool's own key for the diagnostic. */
     default void keyedError(String code, String key, String message) {
         error(code, message);

@@ -223,7 +223,7 @@ public final class LockPlans {
                                         LockPipeline.of(ctx)));
                         ctx.put(TRUST, pipeline.trust());
                     } catch (UnsatisfiableException e) {
-                        ctx.error("verbatim", Errors.text(e));
+                        ctx.errorAt("verbatim", Errors.text(e), FailureLocation.of(e, dir));
                         throw new RuntimeException(e);
                     } catch (Exception e) {
                         ctx.error(TaskNames.RESOLVE_DEPS, Errors.text(e));

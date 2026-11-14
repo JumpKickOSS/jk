@@ -10,11 +10,13 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockDiff;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
@@ -150,7 +152,10 @@ public final class UpdateVerb implements HostedVerb {
             });
         } catch (Exception e) {
             long rid = host.eventRequestId();
-            if (rid > 0) host.accRunErrors(rid, List.of(Errors.text(e)));
+            String dir = Jsonl.str(requestLine, "dir");
+            if (rid > 0) {
+                host.accRunError(rid, Errors.text(e), dir == null ? null : FailureLocation.of(e, Path.of(dir)));
+            }
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }

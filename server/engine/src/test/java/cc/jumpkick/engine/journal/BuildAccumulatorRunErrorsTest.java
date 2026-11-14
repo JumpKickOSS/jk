@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.run.SourceLocation;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -36,12 +38,27 @@ class BuildAccumulatorRunErrorsTest {
     @Test
     void an_error_the_run_already_recorded_is_not_repeated() {
         BuildAccumulator a = new BuildAccumulator("build", "/ws", "g:ws", "cli");
-        a.addPreflightFailure("lock", 40, "no version of a:b satisfies 2.0");
+        a.addPreflightFailure("lock", 40, "no version of a:b satisfies 2.0", null);
         a.addRunErrors(List.of("no version of a:b satisfies 2.0", " "));
 
         BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
 
         assertThat(r.diagnostics()).singleElement().satisfies(d -> assertThat(d.step())
                 .isEqualTo("lock"));
+    }
+
+    @Test
+    void a_located_run_error_carries_its_file_line_and_column_into_the_record() {
+        BuildAccumulator a = new BuildAccumulator("build", "/ws", "g:ws", "cli");
+        a.addRunError("java must be an integer", new SourceLocation("/ws/jk.toml", 4, 1));
+        a.addPreflightFailure("lock", 40, "nothing has a:b", new SourceLocation("/ws/app/jk.toml", 7, 1));
+
+        BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
+
+        assertThat(r.diagnostics())
+                .extracting(
+                        BuildRecord.Diag::code, BuildRecord.Diag::file, BuildRecord.Diag::line, BuildRecord.Diag::col)
+                .containsExactlyInAnyOrder(
+                        tuple("run-error", "/ws/jk.toml", 4, 1), tuple("lock", "/ws/app/jk.toml", 7, 1));
     }
 }

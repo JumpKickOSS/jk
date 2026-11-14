@@ -35,6 +35,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.release.ReleaseTable;
+import cc.jumpkick.run.SourceLocation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -52,7 +53,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
+import org.tomlj.TomlParseError;
 import org.tomlj.TomlParseResult;
+import org.tomlj.TomlPosition;
 import org.tomlj.TomlTable;
 
 /**
@@ -205,7 +208,11 @@ public final class JkBuildParser {
      */
     public static JkBuild parse(Path file) throws IOException {
         Path moduleDir = moduleDirOf(file.toAbsolutePath().normalize());
-        return ResolvedOnce.of(moduleDir, parseLocal(file), JkBuildParser::parseLocal, JkBuildParser::resolved);
+        try {
+            return ResolvedOnce.of(moduleDir, parseLocal(file), JkBuildParser::parseLocal, JkBuildParser::resolved);
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(file);
+        }
     }
 
     /**
@@ -213,14 +220,22 @@ public final class JkBuildParser {
      * read the file once written: a check made before the write judges what the build then reads.
      */
     public static JkBuild parse(String toml, Path file) {
-        return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(toml, file));
+        try {
+            return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(toml, file));
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(file);
+        }
     }
 
     /** {@code toml}, the text about to be written as {@code file}, read as {@link #parseLocal(Path)} will read it. */
     public static JkBuild parseLocal(String toml, Path file) {
         PluginTableRegistry.syncUserPins();
         Path moduleDir = moduleDirOf(file.toAbsolutePath().normalize());
-        return build(document(toml), catalogOf(moduleDir), moduleDir);
+        try {
+            return build(document(toml), catalogOf(moduleDir), moduleDir);
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(file);
+        }
     }
 
     /** The module at {@code moduleDir}, read as written, with what {@link #parse(Path)} adds: inheritance and user pins. */
@@ -252,6 +267,14 @@ public final class JkBuildParser {
      */
     public static JkBuild parseLocal(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
+        try {
+            return parseLocalUnlocated(file);
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(file);
+        }
+    }
+
+    private static JkBuild parseLocalUnlocated(Path file) throws IOException {
         Path key = file.toAbsolutePath().normalize();
         String overlaid = ManifestOverlay.text(key);
         if (overlaid != null) return parseLocal(overlaid, key);
@@ -298,6 +321,14 @@ public final class JkBuildParser {
      */
     static TomlParseResult document(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
+        try {
+            return documentUnlocated(file);
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(file);
+        }
+    }
+
+    private static TomlParseResult documentUnlocated(Path file) throws IOException {
         Path key = file.toAbsolutePath().normalize();
         String overlaid = ManifestOverlay.text(key);
         if (overlaid != null) return document(overlaid);
@@ -328,8 +359,11 @@ public final class JkBuildParser {
     private static TomlParseResult document(String toml) {
         TomlParseResult result = Toml.parse(toml);
         if (result.hasErrors()) {
+            TomlParseError first = result.errors().getFirst();
+            TomlPosition at = first.position();
             throw new JkBuildParseException(
-                    "failed to parse jk.toml: " + result.errors().getFirst().getMessage());
+                    "failed to parse jk.toml: " + first.getMessage(),
+                    at == null ? null : SourceLocation.at(at.line(), at.column()));
         }
         // Reject ${VAR} outside the whitelisted positions before anything else reads the file, so
         // the message names the position rather than surfacing later as a bewildering "no such

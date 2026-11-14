@@ -2,6 +2,8 @@
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 
+let generations = 0;
+
 export interface StubJob {
   readonly jid: number;
   readonly dir: string;
@@ -16,7 +18,8 @@ export interface StubJob {
  */
 export class StubEngine {
   token = "stub-token";
-  epoch = "0.0.0-stub@1";
+  /** A generation of its own per stub, as every engine process mints one. */
+  epoch = `0.0.0-stub@${++generations}`;
   identity = { id: "stub00000001", label: "Stub engine", version: "0.0.0" };
   readonly jobs: StubJob[] = [];
   readonly cancelled: number[] = [];

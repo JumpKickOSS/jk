@@ -12,6 +12,7 @@ This extension connects VS Code to the JumpKick engine for any folder with a `jk
 |---|---|
 | **Commands** | Command Palette → **JumpKick: Build**, **Test**, **Lock**, **Sync dependencies**, **Cancel running build**. Each starts the same engine job the `jk` command does |
 | **Status bar** | A `jk` item follows every job in the window's folders, the ones you start from a terminal or an agent included: progress while one runs, the verdict when it ends, and whether the engine is reachable. Click it for the output |
+| **Problems** | When a job ends, its compile errors and warnings, a `jk.toml` that does not parse or validate, and a dependency that cannot be resolved appear in the Problems panel at their file and line; the next green run clears them |
 | **Output** | The **JumpKick** output channel shows each job's output and diagnostics as the engine streams them |
 | **Tasks** | Terminal → Run Task → `jk` (`lock`, `sync`, `build`, `test`, `assemble`), or a `"type": "jk"` task in `tasks.json` |
 | **BSP connection** | **JumpKick: Install BSP connection** runs `jk bsp install` and writes `.bsp/jk.json` for BSP-aware tools |

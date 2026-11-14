@@ -223,4 +223,48 @@ class DiagnosticsTest {
                 .as("the suggestion walk reaches the leaf at the bottom of the chain")
                 .contains("Relax or remove the project constraint on widget");
     }
+
+    /** The project's own declarations a failure derives from, which is where an editor marks it. */
+    @Test
+    void root_constraints_name_the_projects_own_declarations_behind_a_conflict() throws Exception {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("org.slf4j:slf4j-api", "1.7.36")
+                .version("org.slf4j:slf4j-api", "2.0.13")
+                .version(
+                        "ch.qos.logback:logback-classic",
+                        "1.5.6",
+                        deps -> deps.require("org.slf4j:slf4j-api", VersionSet.exact("2.0.13")))
+                .version(
+                        "org.apache.zookeeper:zookeeper",
+                        "3.9.2",
+                        deps -> deps.require("org.slf4j:slf4j-api", VersionSet.exact("1.7.36")))
+                .version("unrelated:lib", "1.0")
+                .build();
+        try {
+            new PubGrubSolver(src)
+                    .solve(
+                            "<root>",
+                            "1.0",
+                            List.of(
+                                    Term.positive("unrelated:lib", VersionSet.exact("1.0")),
+                                    Term.positive("ch.qos.logback:logback-classic", VersionSet.exact("1.5.6")),
+                                    Term.positive("org.apache.zookeeper:zookeeper", VersionSet.exact("3.9.2"))));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            assertThat(Diagnostics.rootConstraints(e.rootCause()))
+                    .containsExactlyInAnyOrder("ch.qos.logback:logback-classic", "org.apache.zookeeper:zookeeper");
+        }
+    }
+
+    @Test
+    void root_constraints_name_a_missing_package_the_project_declares() throws Exception {
+        PackageSource src = InMemoryPackageSource.builder().build();
+        try {
+            new PubGrubSolver(src)
+                    .solve("<root>", "1.0", List.of(Term.positive("missing:lib", VersionSet.exact("1.0"))));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            assertThat(Diagnostics.rootConstraints(e.rootCause())).containsExactly("missing:lib");
+        }
+    }
 }

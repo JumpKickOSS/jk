@@ -16,6 +16,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.mvn.PomCoord;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -170,9 +171,10 @@ public final class JournalWriter {
         if (a != null) a.addBuildPlan(dir, result);
     }
 
-    public void accPreflightFailed(long requestId, String stage, long millis, String reason) {
+    public void accPreflightFailed(
+            long requestId, String stage, long millis, String reason, @Nullable SourceLocation at) {
         BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.addPreflightFailure(stage, millis, reason);
+        if (a != null) a.addPreflightFailure(stage, millis, reason, at);
     }
 
     /** A compiler warning a module the run did not build said again; the reports carry it as the module's. */
@@ -184,6 +186,11 @@ public final class JournalWriter {
     public void accRunErrors(long requestId, List<String> errors) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.addRunErrors(errors);
+    }
+
+    public void accRunError(long requestId, String error, @Nullable SourceLocation at) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.addRunError(error, at);
     }
 
     public void accStepStart(long requestId, String dir, String step, String phase) {

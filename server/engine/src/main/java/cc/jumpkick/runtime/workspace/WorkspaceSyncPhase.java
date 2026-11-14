@@ -75,7 +75,7 @@ final class WorkspaceSyncPhase {
                 .map(d -> d.message() == null ? d.step() + " failed" : d.message())
                 .toList();
         if (errors.isEmpty()) errors = List.of("dependency sync failed");
-        listener.onPreflightFailed("sync", (clock.nanos() - started) / 1_000_000L, String.join("\n", errors));
+        listener.onPreflightFailed("sync", (clock.nanos() - started) / 1_000_000L, String.join("\n", errors), null);
         return new Synced(errors, new WorkspaceResult.SyncCounts(fetched.get(), upToDate.get()));
     }
 

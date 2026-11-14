@@ -8,13 +8,16 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -98,7 +101,10 @@ public final class LockVerb implements HostedVerb {
                             writer));
         } catch (Exception e) {
             long rid = host.eventRequestId();
-            if (rid > 0) host.accRunErrors(rid, List.of(Errors.text(e)));
+            String dir = Jsonl.str(requestLine, "dir");
+            if (rid > 0) {
+                host.accRunError(rid, Errors.text(e), dir == null ? null : FailureLocation.of(e, Path.of(dir)));
+            }
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }

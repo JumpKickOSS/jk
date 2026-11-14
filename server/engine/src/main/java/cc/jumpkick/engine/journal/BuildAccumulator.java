@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.SlowestTests;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
@@ -642,16 +643,22 @@ public final class BuildAccumulator {
      * diagnostic carrying the reason: a failure the run recorded, so the client hanging up on the
      * terminal cannot relabel it as a cancel, and {@code jk-results.md} names what the solver said.
      */
-    public void addPreflightFailure(String stage, long millis, String reason) {
+    public void addPreflightFailure(String stage, long millis, String reason, @Nullable SourceLocation at) {
         String step = stage == null || stage.isBlank() ? "preflight" : stage;
         addTask("", step, "resolve", "FAIL", millis, 0L);
         anyFailure = true;
-        addDiag(new BuildRecord.Diag(
+        addDiag(locatedError(step, step, reason == null ? "" : reason, at));
+    }
+
+    /** An error row with no module, step output or test identity, at {@code at} when known. */
+    private static BuildRecord.Diag locatedError(
+            @Nullable String step, String code, String message, @Nullable SourceLocation at) {
+        return new BuildRecord.Diag(
                 "error",
                 "",
                 step,
-                step,
-                reason == null ? "" : reason,
+                code,
+                message,
                 null,
                 null,
                 null,
@@ -659,12 +666,12 @@ public final class BuildAccumulator {
                 null,
                 null,
                 null,
-                "",
-                0,
-                0,
+                at == null ? "" : at.file(),
+                at == null ? 0 : at.line(),
+                at == null ? 0 : at.column(),
                 0,
                 List.of(),
-                0));
+                0);
     }
 
     /**
@@ -674,34 +681,19 @@ public final class BuildAccumulator {
      * already recorded, such as a preflight failure's reason, is not repeated.
      */
     public void addRunErrors(List<String> errors) {
-        for (String error : errors) {
-            if (error == null || error.isBlank()) continue;
-            boolean recorded;
-            synchronized (diagnostics) {
-                recorded = diagnostics.stream().anyMatch(d -> error.equals(d.message()));
-            }
-            if (recorded) continue;
-            anyFailure = true;
-            addDiag(new BuildRecord.Diag(
-                    "error",
-                    "",
-                    null,
-                    "run-error",
-                    error,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    "",
-                    0,
-                    0,
-                    0,
-                    List.of(),
-                    0));
+        for (String error : errors) addRunError(error, null);
+    }
+
+    /** One run-level error, at the place in the project {@code at} names when known. */
+    public void addRunError(@Nullable String error, @Nullable SourceLocation at) {
+        if (error == null || error.isBlank()) return;
+        boolean recorded;
+        synchronized (diagnostics) {
+            recorded = diagnostics.stream().anyMatch(d -> error.equals(d.message()));
         }
+        if (recorded) return;
+        anyFailure = true;
+        addDiag(locatedError(null, "run-error", error, at));
     }
 
     /** A step's latest label; the last one it set before finishing is its {@code detail}. */

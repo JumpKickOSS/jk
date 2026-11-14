@@ -32,6 +32,11 @@ export class RunTracker {
 
   constructor(private roots: readonly string[]) {}
 
+  /** Forget every job: the engine they ran on is gone. */
+  reset(): void {
+    this.runs.clear();
+  }
+
   setRoots(roots: readonly string[]): void {
     this.roots = roots;
   }

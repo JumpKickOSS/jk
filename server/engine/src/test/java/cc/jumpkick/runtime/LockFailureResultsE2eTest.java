@@ -8,6 +8,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JkResultsMarkdown;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -18,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,9 +42,9 @@ class LockFailureResultsE2eTest {
         List<String> failed = new ArrayList<>();
         WorkspaceBuildListener listener = new WorkspaceBuildListener() {
             @Override
-            public void onPreflightFailed(String stage, long millis, String reason) {
+            public void onPreflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
                 failed.add(stage + ": " + reason);
-                acc.addPreflightFailure(stage, millis, reason);
+                acc.addPreflightFailure(stage, millis, reason, at);
             }
         };
 

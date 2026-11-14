@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { EngineSession, type SessionState } from "./engine/session";
 import { runJk, stopAll } from "./engine/jkProcess";
 import type { EngineEvent } from "./engine/stream";
+import { ProblemsPanel } from "./problemsPanel";
 import { RunTracker, type Run } from "./runs";
 
 /** What the extension hands to `vscode.extensions.getExtension(...).exports`; the tests read it. */
@@ -21,6 +22,7 @@ export function activate(context: vscode.ExtensionContext): JumpKickApi {
   const output = vscode.window.createOutputChannel("JumpKick");
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   const runs = new RunTracker(folderPaths());
+  const problems = new ProblemsPanel();
   const s = new EngineSession({ bin: jkBin(), cwd: projectDir() ?? process.cwd() });
   session = s;
 
@@ -35,17 +37,26 @@ export function activate(context: vscode.ExtensionContext): JumpKickApi {
     status,
     { dispose: () => s.dispose() },
     s.onState(render),
+    s.onEngine(() => {
+      runs.reset();
+      recent.clear();
+      render();
+    }),
     s.onEvent((event) => {
       runs.accept(event);
       echo(output, runs, event);
     }),
+    problems,
     runs.onDidChange((run) => {
       if (run.state === "finished") {
         lastResult = run;
-        recent.set(run.jid, run);
-        if (recent.size > 64) recent.delete(recent.keys().next().value ?? run.jid);
-        finished.get(run.jid)?.(run);
-        finished.delete(run.jid);
+        // A run's waiter hears of its finish once its problems are on the panel.
+        void settleProblems(run).finally(() => {
+          recent.set(run.jid, run);
+          if (recent.size > 64) recent.delete(recent.keys().next().value ?? run.jid);
+          finished.get(run.jid)?.(run);
+          finished.delete(run.jid);
+        });
       }
       render();
     }),
@@ -53,6 +64,16 @@ export function activate(context: vscode.ExtensionContext): JumpKickApi {
   );
   render();
   status.show();
+
+  /** Show a finished run's diagnostics in the Problems panel, from its journal row. */
+  async function settleProblems(run: Run): Promise<void> {
+    if (run.cancelled) return;
+    try {
+      await problems.settle(await s.connect(), run);
+    } catch (e) {
+      output.appendLine(`JumpKick: could not read the diagnostics of jk ${run.kind}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   /** Start `kind` in the jk.toml folder and follow it to its finish. */
   const startJob = async (kind: string): Promise<Run | undefined> => {
@@ -116,7 +137,7 @@ export function activate(context: vscode.ExtensionContext): JumpKickApi {
       const api = await s.connect();
       for (const run of runs.active()) await api.cancel(run.jid);
     }),
-    vscode.commands.registerCommand("jk.reconnect", () => s.connect().catch(() => undefined)),
+    vscode.commands.registerCommand("jk.reconnect", () => s.reconnect().catch(() => undefined)),
     vscode.commands.registerCommand("jk.showOutput", () => output.show(true)),
     vscode.commands.registerCommand("jk.bspInstall", () => bspInstall(output)),
     vscode.tasks.registerTaskProvider("jk", {

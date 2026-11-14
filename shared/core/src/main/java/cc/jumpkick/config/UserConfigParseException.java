@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.run.SourceLocation;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -21,11 +22,17 @@ public final class UserConfigParseException extends JkBuildParseException {
     private final String reason;
 
     public UserConfigParseException(Path file, int line, int column, String reason) {
-        super(message(file, line, column, reason));
+        super(message(file, line, column, reason), new SourceLocation(file.toString(), line, column));
         this.file = Objects.requireNonNull(file, "file");
         this.line = line;
         this.column = column;
         this.reason = Objects.requireNonNull(reason, "reason");
+    }
+
+    /** The failure is in {@code ~/.jk/config.toml}, whichever manifest was being read when it surfaced. */
+    @Override
+    public JkBuildParseException locatedIn(Path manifest) {
+        return this;
     }
 
     public Path file() {

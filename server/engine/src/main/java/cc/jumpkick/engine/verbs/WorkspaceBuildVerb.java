@@ -28,6 +28,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.RunNotices;
@@ -407,7 +408,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     graalByDir.putAll(
                             SessionContext.where(session, () -> installGraal(body.graalInstalls(), jdksDir, listener)));
                 } catch (Exception e) {
-                    listener.onPreflightFailed("graal", 0L, String.valueOf(e.getMessage()));
+                    listener.onPreflightFailed("graal", 0L, String.valueOf(e.getMessage()), null);
                     host.sendQuiet(writer, host.requestFailedLine(null, e));
                     return JobOutcome.failed(Exit.FAILURE);
                 }
@@ -459,8 +460,9 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             String msg = EventRedaction.redactText(dir, Errors.text(e));
             host.sendQuiet(writer, host.requestFailedLine(dir, e));
             host.publishRequestError(rid, dir, msg);
-            // The run's record names why, so `jk history` and the agent report do too.
-            if (rid > 0) host.accRunErrors(rid, List.of(msg));
+            // The run's record names why, and where, so `jk history`, the agent report and an
+            // editor's problem list do too.
+            if (rid > 0) host.accRunError(rid, msg, dir == null ? null : FailureLocation.of(e, Path.of(dir)));
             return JobOutcome.failed(Exit.FAILURE);
         }
     }

@@ -275,8 +275,8 @@ final class CliRules {
                 matches(Pattern.compile("\\b(?:runJk|run)\\([^\\[\\)]*\\[\\s*\"([a-z][a-z0-9-]*)\""), extensionJs, 1);
         // every engine job the extension starts is a kind some hosted verb accepts
         TreeSet<String> kinds = new TreeSet<>();
-        Pattern jobKinds = Pattern.compile(
-                "List<String> jobKinds\\(\\)\\s*\\{\\s*return List\\.of\\(([^)]*)\\);", Pattern.DOTALL);
+        Pattern jobKinds =
+                Pattern.compile("List<String> jobKinds\\(\\)\\s*\\{\\s*return List\\.of\\(([^)]*)\\);", Pattern.DOTALL);
         // The verbs that host the build-like and lock jobs, the only kinds the extension starts.
         for (String verb : List.of("WorkspaceBuildVerb", "LockVerb")) {
             String rel = "server/engine/src/main/java/cc/jumpkick/engine/verbs/" + verb + ".java";
@@ -285,7 +285,8 @@ final class CliRules {
         }
         TreeSet<String> started = matches(Pattern.compile("startJob\\(\\s*\"([a-z][a-z0-9-]*)\""), extensionJs, 1);
         if (started.isEmpty() || kinds.isEmpty())
-            throw new IllegalStateException("found no engine job the extension starts, or no verb's jobKinds() — this arm is blind");
+            throw new IllegalStateException(
+                    "found no engine job the extension starts, or no verb's jobKinds() — this arm is blind");
         for (String k : started)
             if (!kinds.contains(k))
                 v.add(

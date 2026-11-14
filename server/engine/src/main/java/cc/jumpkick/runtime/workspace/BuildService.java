@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
@@ -46,8 +47,10 @@ public final class BuildService {
      * @param status process exit code — {@code 0} means the lock is fresh (or was re-locked OK)
      * @param error a bare message to surface (no command prefix), or {@code null}
      */
-    public record LockGuard(int status, @Nullable String error) {
-        public static final LockGuard OK = new LockGuard(0, null);
+    /** A lock freshen's verdict: its exit status, the reason it failed and where in the project that points. */
+    public record LockGuard(
+            int status, @Nullable String error, @Nullable SourceLocation location) {
+        public static final LockGuard OK = new LockGuard(0, null, null);
     }
 
     /**

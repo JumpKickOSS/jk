@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -15,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,7 +80,7 @@ class SyncBuildParityTest {
         }
 
         @Override
-        public void onPreflightFailed(String stage, long millis, String reason) {
+        public void onPreflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
             events.add("failed " + stage + " " + reason);
         }
 

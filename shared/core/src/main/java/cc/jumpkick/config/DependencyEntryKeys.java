@@ -52,7 +52,9 @@ final class DependencyEntryKeys {
     static void requireKnown(TomlTable entry, String displayPath, List<String> known) {
         for (String key : entry.keySet()) {
             if (!known.contains(key)) {
-                throw new JkBuildParseException(
+                throw JkBuildParseException.at(
+                        entry,
+                        key,
                         displayPath + " unknown key `" + key + "` — expected one of: " + String.join(", ", known));
             }
         }
