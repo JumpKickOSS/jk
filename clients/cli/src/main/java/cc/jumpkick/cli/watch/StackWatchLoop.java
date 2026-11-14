@@ -3,9 +3,9 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.ClientUpdate;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.EnvLookup;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
@@ -40,7 +40,7 @@ final class StackWatchLoop {
     private final AppWatchLoop loop;
     private final ExecPlan stack;
     private final List<String> selected;
-    private final boolean colour = GlobalConfig.colorEnabled();
+    private final boolean colour = Theme.colorEnabled();
 
     StackWatchLoop(AppWatchLoop loop, ExecPlan stack, List<String> selected) {
         this.loop = loop;

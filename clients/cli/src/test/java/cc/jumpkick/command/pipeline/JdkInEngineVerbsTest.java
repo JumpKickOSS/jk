@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.jdk.JdkEnsure;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -30,6 +32,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 @Tag("integration")
 @IsolatedStore
+@ExtendWith(ForcedAnsi.class)
 class JdkInEngineVerbsTest {
 
     @BeforeEach

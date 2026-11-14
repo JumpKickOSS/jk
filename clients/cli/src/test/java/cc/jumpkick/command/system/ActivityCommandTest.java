@@ -3,6 +3,7 @@ package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Pill;
 import cc.jumpkick.cli.tui.RenderContext;
@@ -10,7 +11,9 @@ import cc.jumpkick.cli.tui.Tree;
 import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(ForcedAnsi.class)
 class ActivityCommandTest {
 
     private static final String ENTRY =

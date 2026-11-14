@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
@@ -14,8 +15,10 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Window-title OSC handling and plain (no-ANSI) progress output of the JkManager component. */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerPlainProgressTest {
 
     @Test

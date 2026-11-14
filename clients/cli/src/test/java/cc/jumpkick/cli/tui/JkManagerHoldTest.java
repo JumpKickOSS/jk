@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.Session;
@@ -13,11 +14,13 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * A build on hold for memory: the header, the work rows and the plain lines, and their return; and a
  * step that waits for a lease while the build works, shown on its own row only.
  */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerHoldTest {
 
     @Test

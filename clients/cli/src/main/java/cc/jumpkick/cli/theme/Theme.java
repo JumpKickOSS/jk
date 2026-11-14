@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
@@ -294,22 +294,20 @@ public interface Theme {
     }
 
     /**
-     * True when ANSI escape sequences (color, cursor movement, Unicode glyphs) may be emitted.
-     * False when output is piped or {@code --no-ansi} / No-ANSI mode is active. Implementations
-     * default to {@link #colorEnabled()} — subclasses may override when they track TTY state
-     * separately from color choice.
+     * True when ANSI escape sequences (color, cursor movement, Unicode glyphs) may be emitted:
+     * stdout is a terminal (or a force switch is on) and no {@code --no-ansi}, {@code TERM=dumb} or
+     * {@code CI} says otherwise. {@link StreamCaps} owns the decision.
      */
     default boolean isAnsi() {
-        return colorEnabled();
+        return StreamCaps.ansi(StreamCaps.Side.OUT);
     }
 
     /**
-     * True when foreground color should be emitted, given the resolved {@code --color} choice.
-     * Spelled by {@link GlobalConfig#colorEnabled} — the one owner of the no-ANSI trigger triple
-     * and the color-choice switch.
+     * True when foreground color should be emitted on stdout: {@link #isAnsi()} and the resolved
+     * {@code --color} choice ({@link StreamCaps#color}).
      */
     static boolean colorEnabled() {
-        return GlobalConfig.colorEnabled();
+        return StreamCaps.color(StreamCaps.Side.OUT);
     }
 
     /**

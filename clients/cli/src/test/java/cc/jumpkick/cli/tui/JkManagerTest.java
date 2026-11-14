@@ -7,12 +7,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** The settle envelope of the JkManager component. */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerTest {
 
     @Test

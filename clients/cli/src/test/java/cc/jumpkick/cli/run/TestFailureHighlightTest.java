@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
@@ -14,8 +15,10 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** {@link TestFailureHighlight} turns the engine's plain failure block into a styled report. */
+@ExtendWith(ForcedAnsi.class)
 class TestFailureHighlightTest {
 
     @AfterEach

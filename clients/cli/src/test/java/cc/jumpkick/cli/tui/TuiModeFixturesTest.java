@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
@@ -12,11 +13,13 @@ import cc.jumpkick.config.NerdFontCaps;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Golden shape checks for the three human chrome modes — nerd (PUA caps), ansi (unicode,
  * no PUA), and plain ({@code --no-ansi} ASCII, no CSI).
  */
+@ExtendWith(ForcedAnsi.class)
 class TuiModeFixturesTest {
 
     private static final String CSI = "\u001B[";

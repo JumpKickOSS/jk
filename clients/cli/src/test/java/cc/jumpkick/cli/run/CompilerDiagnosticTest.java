@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Width;
@@ -14,9 +15,11 @@ import java.util.HashMap;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /** {@link CompilerDiagnostic} paints aligned keys and an editor-style source window. */
+@ExtendWith(ForcedAnsi.class)
 class CompilerDiagnosticTest {
 
     @AfterEach

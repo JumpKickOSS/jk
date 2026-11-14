@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
-import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.terminal.Style;
@@ -42,7 +42,7 @@ public final class SidecarOutput {
 
     /** The terminal listener under the session's colour gate ({@code --no-ansi}, {@code JK_NO_ANSI}, {@code NO_COLOR}). */
     public static Sidecars.Listener terminal(Consumer<String> sink) {
-        return terminal(sink, GlobalConfig.colorEnabled());
+        return terminal(sink, Theme.colorEnabled());
     }
 
     /** The terminal listener with colour decided by the caller. */

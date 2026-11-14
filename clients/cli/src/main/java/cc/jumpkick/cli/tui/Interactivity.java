@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.terminal.Terminals;
 import org.jspecify.annotations.Nullable;
 
@@ -20,14 +20,7 @@ public final class Interactivity {
 
     /** {@code true} when {@code CI} is truthy ({@code 1}/{@code true}/{@code yes}), {@code JK_NONINTERACTIVE} is set, or {@code TERM=dumb}. */
     static boolean forcedNonInteractive() {
-        if (EnvValues.isCi(System::getenv)) {
-            return true;
-        }
-        String nonInteractive = System.getenv("JK_NONINTERACTIVE");
-        if (nonInteractive != null && !nonInteractive.isBlank()) {
-            return true;
-        }
-        return "dumb".equals(System.getenv("TERM"));
+        return StreamCaps.forcedNonInteractive();
     }
 
     /**
@@ -64,7 +57,7 @@ public final class Interactivity {
      * unavailable. Forced-noninteractive still wins.
      */
     public static boolean stdoutIsTty() {
-        return Terminals.stdoutIsTty() && !forcedNonInteractive();
+        return StreamCaps.terminal(StreamCaps.Side.OUT) && !forcedNonInteractive();
     }
 
     /** Restore + close native fds. Safe when no session was opened. */

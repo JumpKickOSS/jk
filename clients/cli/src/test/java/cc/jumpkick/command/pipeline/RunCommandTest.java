@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.testing.BlankProject;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.function.IntConsumer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * (.java/.kt/.kts/.jar) lives under {@code jk tool run} — see {@link ToolRunCommandTest}.
  */
 @Tag("integration")
+@ExtendWith(ForcedAnsi.class)
 class RunCommandTest {
 
     @Test

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
@@ -20,12 +21,14 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * The shared workspace renderer's own behaviour. These assertions are what "one owner" buys: change
  * a rule here and every verb that renders a workspace changes with it, because
  * {@link WorkspaceRunViewOwnerTest} proves there is nowhere else the rule could be written.
  */
+@ExtendWith(ForcedAnsi.class)
 class WorkspaceRunViewTest {
 
     @BeforeEach

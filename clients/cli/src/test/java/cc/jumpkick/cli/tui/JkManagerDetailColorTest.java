@@ -4,12 +4,15 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Ansi;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Detail-segment classification and coloring ({@code JkManagerColor.colorDetail} and friends). */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerDetailColorTest {
 
     @Test

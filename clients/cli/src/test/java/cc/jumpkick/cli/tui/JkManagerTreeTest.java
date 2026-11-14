@@ -6,6 +6,7 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stripAll;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
@@ -18,8 +19,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Plan-mode header pill, work-tree rows, and resize/reflow repaint behavior of the JkManager component. */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerTreeTest {
 
     @Test

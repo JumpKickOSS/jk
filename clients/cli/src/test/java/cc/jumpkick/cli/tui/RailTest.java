@@ -3,9 +3,12 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(ForcedAnsi.class)
 class RailTest {
 
     @Test

@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * What Ctrl-C leaves on the terminal. The handler ends in {@link Runtime#halt}, which skips the
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
  * closing blank itself — otherwise the cancel line butts straight against the next shell prompt
  * while every other way a command ends is followed by a gap.
  */
+@ExtendWith(ForcedAnsi.class)
 class GlobalCancelSettleTest {
 
     @Test

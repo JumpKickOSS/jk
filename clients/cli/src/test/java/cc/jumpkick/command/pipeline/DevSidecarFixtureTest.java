@@ -64,7 +64,8 @@ class DevSidecarFixtureTest {
     /** Ctrl-C ending the session and its children leaving: a guard against a hang, not a deadline. */
     private static final long STOP_WAIT_SECONDS = 120;
 
-    private static final String READY_LINE = "ready · ";
+    /** The ready line as a redirected stderr carries it: plain, its middle dot rewritten to ASCII. */
+    private static final String READY_LINE = "ready - ";
 
     /** The dev server jk infers for the example's {@code [node] dir}: the module's name plus {@code -node}. */
     private static final String DEV_SERVER = "vite-sidecar-node";

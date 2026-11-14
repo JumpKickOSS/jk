@@ -4,12 +4,15 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Wedge wording for built vs checked vs fully up to date, and the shared module completion line. */
+@ExtendWith(ForcedAnsi.class)
 class BuildTailsTest {
 
     @Test

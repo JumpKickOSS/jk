@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -14,7 +16,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(ForcedAnsi.class)
 class OutputWindowTest {
 
     @Test
@@ -217,15 +221,17 @@ class OutputWindowTest {
     }
 
     @Test
-    void plan_opens_peek_when_config_build_output_true() {
+    void plan_opens_peek_when_config_build_output_true() throws Exception {
         CliOutput.beginCommand(false);
-        SessionContext.installConfig(JkConfig.empty().withBuildOutput(true));
-        var buf = new ByteArrayOutputStream();
-        var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
-        assertThat(cm.outputWindow().visible()).isTrue();
-        List<String> lines = cm.renderBuildPlanLines(80, 0);
-        assertThat(TestAnsi.strip(lines.get(0))).contains("output");
-        cm.close();
+        NoAnsi.withConfig(JkConfig.empty().withForceAnsi(true).withBuildOutput(true), () -> {
+            var buf = new ByteArrayOutputStream();
+            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+            assertThat(cm.outputWindow().visible()).isTrue();
+            List<String> lines = cm.renderBuildPlanLines(80, 0);
+            assertThat(TestAnsi.strip(lines.get(0))).contains("output");
+            cm.close();
+            return null;
+        });
     }
 
     @Test

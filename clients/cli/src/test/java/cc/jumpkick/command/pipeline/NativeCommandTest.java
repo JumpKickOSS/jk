@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.layout.NativePreflight;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -12,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  * without {@code [native]} is no longer refused for that reason.
  */
 @Tag("integration")
+@ExtendWith(ForcedAnsi.class)
 class NativeCommandTest {
 
     @Test

@@ -6,14 +6,17 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stripAll;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Phase chain, brief errors, completions tail, output window, and elapsed formatting of the JkManager plan chrome. */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerChromeTest {
 
     @Test

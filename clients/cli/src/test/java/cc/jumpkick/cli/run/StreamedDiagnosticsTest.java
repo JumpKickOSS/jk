@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * One compile error is two wire records — the live error line and the plan-finish summary — and
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
  * (it knows the module, so its header reads {@code Compile Java Failure in g:app}); the summary
  * exists for listeners that only ever see the end of the plan.
  */
+@ExtendWith(ForcedAnsi.class)
 class StreamedDiagnosticsTest {
 
     private static final String MESSAGE = "App.java:3: error: cannot find symbol zorblax";

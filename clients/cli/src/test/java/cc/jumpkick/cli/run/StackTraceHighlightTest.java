@@ -3,14 +3,17 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Width;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * {@link StackTraceHighlight} paints genuine stack-trace lines (frame, summary, "{@code … N more}")
  * and leaves everything else byte-for-byte unchanged.
  */
+@ExtendWith(ForcedAnsi.class)
 class StackTraceHighlightTest {
 
     private static final String ESC = "\u001b";

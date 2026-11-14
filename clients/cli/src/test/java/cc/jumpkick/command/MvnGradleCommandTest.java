@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @DisabledOnOs(OS.WINDOWS) // launcher scripts are .sh-only.
 @Tag("integration")
+@ExtendWith(ForcedAnsi.class)
 class MvnGradleCommandTest {
 
     @RegisterExtension

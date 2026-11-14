@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.terminal.Width;
 import java.io.ByteArrayOutputStream;
@@ -11,7 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(ForcedAnsi.class)
 class VerboseListenerTest {
 
     @Test

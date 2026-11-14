@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.tui.Rail;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import org.jspecify.annotations.Nullable;
@@ -118,9 +118,9 @@ public final class JkDarkTheme implements Theme {
 
     @Override
     public boolean isAnsi() {
-        // Suppression triple only — NOT gated on colorEnabled(): NO_COLOR / --color never only
-        // disables color; it does not disable Unicode glyphs, animations, or other ANSI sequences.
-        return !GlobalConfig.ansiSuppressed();
+        // Not gated on colorEnabled(): NO_COLOR / --color never only disables color; they do not
+        // disable Unicode glyphs, animations, or other ANSI sequences.
+        return StreamCaps.ansi(StreamCaps.Side.OUT);
     }
 
     @Override
@@ -477,6 +477,7 @@ public final class JkDarkTheme implements Theme {
     @Override
     public String gradientHeaderAnsi(String text) {
         if (text.isEmpty()) return "";
+        if (!isAnsi()) return text;
         if (!Theme.colorEnabled()) return Ansi.sgr("1") + text + Ansi.RESET;
         var codepoints = text.codePoints().toArray();
         var n = codepoints.length;

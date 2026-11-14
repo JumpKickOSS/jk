@@ -4,15 +4,18 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkCacheConfig;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Storage-surface rendering: {@code jk cache usage} and {@code jk storage usage} hand-built boxes
  * stay aligned via ANSI-aware {@code Table.visibleWidth} padding.
  */
+@ExtendWith(ForcedAnsi.class)
 class StorageSurfacesRenderTest {
 
     /** 4 GiB action budget / 512 MiB incremental budget — the shipped defaults. */

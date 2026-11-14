@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
@@ -14,8 +15,10 @@ import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Width;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Phase-pill diagnostic reports for non-test-failure errors. */
+@ExtendWith(ForcedAnsi.class)
 class DiagnosticReportTest {
 
     private static String plain(String s) {

@@ -4,13 +4,16 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * {@code jk guard} prints the guards' verdict on the terminal, read off the {@code ## Guards}
  * section the engine writes into {@code target/jk-results.md}, beside the build's own wedge.
  */
+@ExtendWith(ForcedAnsi.class)
 class GuardCommandVerdictTest {
 
     @Test

@@ -12,6 +12,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.host.ActionTree;
@@ -34,9 +35,11 @@ import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
+@ExtendWith(ForcedAnsi.class)
 class CacheCommandTest {
 
     @Test

@@ -5,15 +5,18 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Before the engine's estimate exists, a build's header draws no bar: the orb breathes beside the
  * preflight phase and the clock, and the taskbar is told the work is indeterminate. The stage
  * itself is the tree row below, so the header names the phase instead of repeating the row.
  */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerIndeterminateTest {
 
     private static boolean drawsBar(String line) {

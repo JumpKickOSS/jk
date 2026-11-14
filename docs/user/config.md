@@ -12,7 +12,7 @@ quiet = false
 verbose = false
 no-progress = false
 no-ansi = false         # ASCII-only; implies no-progress
-force-ansi = false      # emit ANSI even under TERM=dumb / CI
+force-ansi = false      # emit ANSI even into a file, or under TERM=dumb / CI
 no-osc = false
 notify = "auto"         # auto | always | never
 build-output = false    # live-plan process-output peek (Ctrl-O)
@@ -35,8 +35,8 @@ force = false
 **`--agent`:** commands that report a run (`build`, `test`, `run`, `lock`, …) print the
 verdict on stdout and skip progress, colour, and OSC. Shapes are in [MCP](mcp.md#verdict).
 The same text is selected when stdout is not a terminal and the process carries a variable a
-coding-agent CLI sets on commands it spawns. A pipe or a CI log without that variable keeps
-today's output. `-O jsonl` stays the live event stream unless `--agent` or `JK_AGENT=1`
+coding-agent CLI sets on commands it spawns. A pipe or a CI log without that variable gets the
+plain human output (below). `-O jsonl` stays the live event stream unless `--agent` or `JK_AGENT=1`
 is set.
 
 **`offline`:** no network, not no repositories. An offline run reads the store and every
@@ -47,12 +47,20 @@ network is asked nothing, and what the store already holds from it answers inste
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.
-`--no-progress` and `--no-osc` also suppress notifications.
+`--no-progress` and `--no-osc` also suppress notifications. A notification goes only to a
+terminal: with stdout redirected it goes to stderr when that is the terminal, and never into the log.
 
-**`force-ansi`:** ANSI is otherwise suppressed by `TERM=dumb` or a truthy `CI`, whichever the
-host sets. `force-ansi` outranks both, so output can be pinned to ANSI where the environment
-would strip it. `no-ansi` still wins when both are set — turning ANSI off is the safer
-direction to honor.
+**Plain output:** a stream that is not a terminal is plain, whether it goes to a file or a pipe:
+no colour, no escape sequences (links, progress, notifications), no live progress, and ASCII in
+place of Unicode chrome. stdout and stderr are judged separately, so `jk build 2> err.log`
+keeps the terminal's colour and writes a plain log. `--color always` or `force-ansi` keeps colour,
+chrome and links in a file or pipe (for `less -R`); live progress and notifications still need a
+terminal.
+
+**`force-ansi`:** ANSI is otherwise suppressed by a redirect, `TERM=dumb` or a truthy `CI`,
+whichever applies. `force-ansi` (like `--color always`) outranks them, so output can be pinned to
+ANSI where the environment would strip it. `no-ansi` still wins when both are set — turning ANSI
+off is the safer direction to honor.
 
 Under `--no-ansi`, chrome lines start with `jk: ` so they stay distinct from compiler/test
 output. Agents should use [machine output](machine-output.md), not scrape prose.

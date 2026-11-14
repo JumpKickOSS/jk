@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import org.junit.jupiter.api.extension.ExtendWith;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
@@ -12,6 +14,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+@ExtendWith(ForcedAnsi.class)
 class JdkInstallViewTest {
 
     private static final Path HOME = Path.of("/opt/jdks/temurin-21.0.12");

@@ -7,6 +7,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.IsolatedState;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.model.JkBuild;
@@ -26,9 +27,11 @@ import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
+@ExtendWith(ForcedAnsi.class)
 class NewCommandTest {
 
     /**

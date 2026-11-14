@@ -5,13 +5,16 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.ByteArrayOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Header ETA countdown, progress-bar strategies, and residual re-anchoring of the JkManager plan header. */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerCountdownTest {
 
     @Test

@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.cli.testing.TranscriptOf;
 import cc.jumpkick.command.DefaultTestDepsFixture;
@@ -22,11 +23,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
+@ExtendWith(ForcedAnsi.class)
 class UpdateCommandTest {
 
     @RegisterExtension

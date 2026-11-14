@@ -3,15 +3,18 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Width;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * {@link SyntaxHighlight} colorizes a single source line without changing its text, and overlays
  * the caret underline on the highlighted character.
  */
+@ExtendWith(ForcedAnsi.class)
 class SyntaxHighlightTest {
 
     private static final String ESC = "\u001b";

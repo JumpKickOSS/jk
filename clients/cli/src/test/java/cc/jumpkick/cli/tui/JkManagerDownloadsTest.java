@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static cc.jumpkick.cli.tui.JkManagerTestSupport.stripAll;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.Session;
@@ -16,8 +17,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** The run's downloads at the top of the work tree, in whatever phase they happen. */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerDownloadsTest {
 
     private static JkManager region() {

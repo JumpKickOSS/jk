@@ -86,8 +86,9 @@ public final class GlobalConfig {
     }
 
     /**
-     * True when foreground color should be emitted: {@link #ansiSuppressed()} wins outright, then
-     * the resolved {@code --color} choice ({@code AUTO} honors {@code NO_COLOR}, never isatty).
+     * True when the flags and environment allow foreground color: {@link #ansiSuppressed()} wins
+     * outright, then the resolved {@code --color} choice ({@code AUTO} honors {@code NO_COLOR}).
+     * Whether a stream is a terminal is the CLI's question ({@code StreamCaps}), not this one's.
      */
     public static boolean colorEnabled() {
         return colorEnabled(SessionContext.current().config(), BuildEnv::get);
@@ -100,10 +101,8 @@ public final class GlobalConfig {
         return switch (choice) {
             case ALWAYS -> true;
             case NEVER -> false;
-            // AUTO: emit color unless NO_COLOR is set. We don't gate on isatty —
-            // many jk consumers (CI logs, `less -R`, pipes into other formatters)
-            // benefit from preserved color, and users who want strictly plain
-            // output can pass `--color never`.
+            // AUTO: color unless NO_COLOR is set. The device (a terminal or a redirect) is
+            // judged per stream by the CLI's StreamCaps on top of this.
             case AUTO -> {
                 String nc = env.apply("NO_COLOR");
                 yield nc == null || nc.isEmpty();

@@ -5,14 +5,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.run.DurationText;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.run.TaskForecast;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Pure unit coverage for {@link ExplainCommand} plan rendering helpers. */
+@ExtendWith(ForcedAnsi.class)
 class ExplainCommandEstimateTest {
 
     @Test

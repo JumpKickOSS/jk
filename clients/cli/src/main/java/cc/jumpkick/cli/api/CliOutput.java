@@ -3,12 +3,14 @@ package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.terminal.Width;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntSupplier;
@@ -255,9 +257,33 @@ public final class CliOutput {
         return true;
     }
 
-    /** Rewrite {@code line} for plain consoles unless it is machine-bound stdout. */
+    /**
+     * {@code line} as its stream may carry it ({@link StreamCaps}): machine-bound stdout untouched;
+     * a stream that may not carry ANSI stripped of every escape sequence and its chrome rewritten to
+     * ASCII, so a helper that painted for the wrong stream still leaves a plain file plain.
+     */
     private static @Nullable String render(@Nullable String line, boolean err) {
-        return err || !SCRIPT_MODE.get() ? PlainAscii.apply(line) : line;
+        if (line == null || line.isEmpty()) return line;
+        if (!err && SCRIPT_MODE.get()) return line;
+        if (!StreamCaps.ansi(err ? StreamCaps.Side.ERR : StreamCaps.Side.OUT)) {
+            return PlainAscii.rewrite(Width.stripAnsi(line));
+        }
+        return PlainAscii.apply(line);
+    }
+
+    /**
+     * Which of the process's streams {@code out} writes to: {@link System#out}, {@link System#err}
+     * and the streams {@link #stdout()} / {@link #stderr()} hand out. Empty for any other stream (a
+     * test's own capture, a file).
+     */
+    public static Optional<StreamCaps.Side> sideOf(@Nullable PrintStream out) {
+        if (out == null) return Optional.empty();
+        if (out instanceof EnvelopeStream envelope) {
+            return Optional.of(envelope.err ? StreamCaps.Side.ERR : StreamCaps.Side.OUT);
+        }
+        if (out == System.out) return Optional.of(StreamCaps.Side.OUT);
+        if (out == System.err) return Optional.of(StreamCaps.Side.ERR);
+        return Optional.empty();
     }
 
     /**

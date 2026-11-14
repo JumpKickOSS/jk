@@ -3,11 +3,14 @@ package cc.jumpkick.command.toolchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(ForcedAnsi.class)
 class JdkUninstallWizardTest {
 
     @Test

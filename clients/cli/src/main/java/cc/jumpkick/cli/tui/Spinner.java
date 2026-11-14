@@ -261,7 +261,7 @@ public final class Spinner implements AutoCloseable {
 
     /** Pulse styles: {@code bright} at the ends of the cycle, {@code dim} at the midpoint. */
     static Style[] buildPulseStyles(int n, Rgb bright, Rgb dim) {
-        PulseKey key = new PulseKey(n, bright, dim, Theme.active(), GlobalConfig.colorEnabled());
+        PulseKey key = new PulseKey(n, bright, dim, Theme.active(), Theme.colorEnabled());
         return PULSE_CACHE.computeIfAbsent(key, k -> {
             Gradient gradient = new Gradient(k.bright(), k.dim());
             Style[] a = new Style[k.n()];

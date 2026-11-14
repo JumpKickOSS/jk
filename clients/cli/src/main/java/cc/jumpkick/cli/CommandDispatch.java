@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.api.AgentMode;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.args.Abbreviations;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
@@ -252,7 +253,7 @@ public final class CommandDispatch {
         String command = all.get(commandAt);
         Abbreviations.Result<CliCommand> r = Abbreviations.resolve(command, BY_NAME);
         if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
-            printAmbiguousCommand(command, r.candidates(), ansiEnabled());
+            printAmbiguousCommand(command, r.candidates());
             return Exit.USAGE;
         }
         CliCommand cmd = r.value();
@@ -265,7 +266,7 @@ public final class CommandDispatch {
                     WorkingDirectory.resolve(SessionContext.current().config().dirOr(WorkingDirectory.current()));
             Integer pluginExit = tryPluginCommand(dir, command, all.subList(commandAt + 1, all.size()));
             if (pluginExit != null) return pluginExit;
-            printUnknownCommand(command, ansiEnabled());
+            printUnknownCommand(command);
             return Exit.USAGE;
         }
         return dispatch(cmd, "jk " + cmd.name(), split(List.of(), all, commandAt), ansiEnabled());
@@ -467,12 +468,12 @@ public final class CommandDispatch {
             String subName = rest.get(subAt);
             Abbreviations.Result<CliCommand> r = resolveSub(cmd, subName);
             if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
-                printAmbiguousSubcommand(cmd, qualified, subName, r.candidates(), ansi);
+                printAmbiguousSubcommand(cmd, qualified, subName, r.candidates());
                 return Exit.USAGE;
             }
             CliCommand sub = r.value();
             if (sub == null) {
-                printUnknownSubcommand(cmd, qualified, subName, ansi);
+                printUnknownSubcommand(cmd, qualified, subName);
                 return Exit.USAGE;
             }
             return dispatch(sub, qualified + " " + sub.name(), split(args.leading(), rest, subAt), ansi);
@@ -489,7 +490,7 @@ public final class CommandDispatch {
         try {
             in = passthrough ? parsePassthrough(cmd, args) : ArgParser.parse(withGlobals(cmd), args.joined());
         } catch (ParseException e) {
-            printError(qualified, cmd, e, ansi);
+            printError(qualified, cmd, e);
             return Exit.USAGE;
         }
         if (in.isSet("version")) {
@@ -499,7 +500,6 @@ public final class CommandDispatch {
         // The one fold of this command's parsed globals into the session, before anything renders:
         // -u, -a, -x, -B and the rest reach every command wherever they sit on the line.
         GlobalOptions.from(in);
-        ansi = ansiEnabled();
         boolean agent = AgentMode.requested(in);
         boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in) || agent;
         boolean capture = agent && AgentMode.capturesOutput(cmd.name());
@@ -539,21 +539,21 @@ public final class CommandDispatch {
                 Confirm.clearAssumeYes();
             }
             List<String> jobWarnings = WireStream.takeJobWarnings();
-            if (code == 0) printJobWarnings(jobWarnings, ansi);
+            if (code == 0) printJobWarnings(jobWarnings);
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
-            printWorkerJarError(e, ansi);
+            printWorkerJarError(e);
             code = 1;
         } catch (UserConfigParseException unparsed) {
             // The message is the fix: file:line:col and what TOML said. No stack, a config exit.
             closeActiveLiveRegion();
-            CliOutput.err(
-                    HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + unparsed.getMessage());
+            CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " "
+                    + unparsed.getMessage());
             code = Exit.CONFIG;
         } catch (Exception e) {
             closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
-            CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
+            CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " " + msg);
             // The message alone often names no path ("No such file or directory"); the stack goes to
             // the state log every time, and to the terminal under -v.
             String[] argv = args.joined().toArray(String[]::new);
@@ -687,7 +687,8 @@ public final class CommandDispatch {
         return HelpRenderer.renderHelp(model, ansi);
     }
 
-    private static void printWorkerJarError(PluginJarNotFoundException e, boolean ansi) {
+    private static void printWorkerJarError(PluginJarNotFoundException e) {
+        boolean ansi = errAnsi();
         Theme t = Theme.active();
         String label = HelpRenderer.paint(Glyphs.CROSS + " Error:", t.errorLabel(), ansi);
         String jar = HelpRenderer.paint(e.artifactId() + ".jar", t.warning(), ansi);
@@ -704,7 +705,8 @@ public final class CommandDispatch {
     // Parse and usage errors print before the envelope opens (dispatch has not begun a command
     // yet), so they write the real streams directly. Everything after beginCommand goes through
     // CliOutput.
-    private static void printError(String qualified, CliCommand cmd, ParseException e, boolean ansi) {
+    private static void printError(String qualified, CliCommand cmd, ParseException e) {
+        boolean ansi = errAnsi();
         String label = HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi);
         String message =
                 switch (e.kind()) {
@@ -724,7 +726,8 @@ public final class CommandDispatch {
         System.err.println(helpHint(ansi));
     }
 
-    private static void printAmbiguousCommand(String command, List<String> candidates, boolean ansi) {
+    private static void printAmbiguousCommand(String command, List<String> candidates) {
+        boolean ansi = errAnsi();
         System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
                 + " '"
                 + HelpRenderer.paint(command, Theme.active().highlight(), ansi)
@@ -735,7 +738,8 @@ public final class CommandDispatch {
     }
 
     private static void printAmbiguousSubcommand(
-            CliCommand parent, String qualified, String sub, List<String> candidates, boolean ansi) {
+            CliCommand parent, String qualified, String sub, List<String> candidates) {
+        boolean ansi = errAnsi();
         System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
                 + " subcommand '"
                 + HelpRenderer.paint(sub, Theme.active().highlight(), ansi)
@@ -747,12 +751,13 @@ public final class CommandDispatch {
         System.err.println(helpHint(ansi));
     }
 
-    private static void printUnknownCommand(String command, boolean ansi) {
+    private static void printUnknownCommand(String command) {
+        boolean ansi = errAnsi();
         System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
                 + " unrecognized command '"
                 + HelpRenderer.paint(command, Theme.active().highlight(), ansi)
                 + "'");
-        printSuggestion("command", command, COMMANDS, ansi);
+        printSuggestion("command", command, COMMANDS);
         System.err.println();
         System.err.println(ansi
                 ? HelpRenderer.paint("Usage:", Theme.active().sectionHeading(), true)
@@ -764,12 +769,13 @@ public final class CommandDispatch {
         System.err.println(helpHint(ansi));
     }
 
-    private static void printUnknownSubcommand(CliCommand parent, String qualified, String sub, boolean ansi) {
+    private static void printUnknownSubcommand(CliCommand parent, String qualified, String sub) {
+        boolean ansi = errAnsi();
         System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
                 + " unrecognized subcommand '"
                 + HelpRenderer.paint(sub, Theme.active().highlight(), ansi)
                 + "'");
-        printSuggestion("subcommand", sub, parent.subcommands(), ansi);
+        printSuggestion("subcommand", sub, parent.subcommands());
         System.err.println();
         System.err.println(usageLine(parent, qualified, ansi));
         System.err.println();
@@ -787,7 +793,8 @@ public final class CommandDispatch {
         return Suggest.closest(typo, names);
     }
 
-    private static void printSuggestion(String noun, String typo, List<CliCommand> commands, boolean ansi) {
+    private static void printSuggestion(String noun, String typo, List<CliCommand> commands) {
+        boolean ansi = errAnsi();
         suggestion(typo, commands).ifPresent(name -> {
             System.err.println();
             System.err.println("  tip: a similar " + noun + " exists: '"
@@ -883,15 +890,21 @@ public final class CommandDispatch {
      * once each after the result. Only a command that succeeded says them: a failure already
      * names what broke.
      */
-    static void printJobWarnings(List<String> warnings, boolean ansi) {
+    static void printJobWarnings(List<String> warnings) {
+        boolean ansi = errAnsi();
         for (String w : warnings) {
             CliOutput.err(HelpRenderer.paint("warning:", Theme.active().warning(), ansi) + " " + w);
         }
     }
 
-    /** Colored help/error chrome follows the one color gate ({@link GlobalConfig#colorEnabled}). */
+    /** Whether help and other stdout chrome is coloured ({@link StreamCaps#color} of stdout). */
     static boolean ansiEnabled() {
-        return GlobalConfig.colorEnabled();
+        return StreamCaps.color(StreamCaps.Side.OUT);
+    }
+
+    /** Whether usage errors and other stderr lines are coloured, judged on stderr's own device. */
+    static boolean errAnsi() {
+        return StreamCaps.color(StreamCaps.Side.ERR);
     }
 
     /** The agent report of the run this invocation started, or {@code null} when it started none. */

@@ -12,8 +12,28 @@
 | **Human debugging** | `-v` / `--verbose` + `target/` | Scrollable detail |
 | **Agents / scripts / CI** | `-O jsonl`, or **script-mode** plain stdout | Parseable lines, no chrome scrape |
 | **Restricted terminals** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | ASCII prefixes, no animation |
+| **Logs, pipes, files** | stdout (or stderr) is not a terminal | Plain: no escape byte, ASCII chrome, no live region |
 
 **Do not** scrape wedges, progress bars, or box tables in scripts. Prefer JSONL or a script-mode command.
+
+## What a stream may carry
+
+`cli/api/StreamCaps` is the one owner of the plain-or-terminal decision; the theme, `CliOutput`,
+live regions, hyperlinks (`Osc.hyperlink`) and build notifications all ask it. A stream that is not
+a terminal is plain, whether it is a file or a pipe: no colour, no cursor or OSC sequence, no live
+region, chrome rewritten to ASCII. In order:
+
+1. `--no-ansi`, and agent mode (`-a` or a coding-agent environment), which implies it: plain.
+2. A force switch (`--color always`, `JK_FORCE_ANSI` / `force-ansi`) keeps colour, chrome and
+   hyperlinks on a non-terminal, for `less -R`. It never forces a live region, taskbar progress, a
+   window title or a desktop notification into a file.
+3. `TERM=dumb` or `CI`: plain.
+4. Otherwise a stream carries ANSI exactly when it is a terminal.
+
+Each stream is judged on its own device. Rendering follows stdout, where results go; `CliOutput`
+strips a redirected stderr of whatever stdout's decision let in, so `jk build 2> err.log` keeps a
+coloured terminal and a plain log. A build notification goes to the terminal hosting the build
+(stderr when only stdout is redirected) and never into a redirected log.
 
 ## JkWedge is the look
 
@@ -232,7 +252,7 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 |------|---------|--------|
 | **nerd** | ANSI + a PUA axis granted | Powerline PUA caps + Unicode glyphs |
 | **ansi** | ANSI, no PUA axis granted | Colored chips, Unicode glyphs, **no** PUA (bg-colored space cap) |
-| **plain** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | `jk: ` prefix on chrome; ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
+| **plain** | `--no-ansi` / `TERM=dumb` / `CI` / a stream that is not a terminal | `jk: ` prefix on chrome; ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
 
 ### The two PUA axes
 

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -17,8 +18,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Module listeners drive the tree; aggregate % comes only from engine snapshots. */
+@ExtendWith(ForcedAnsi.class)
 class AggregateModuleListenerTest {
 
     @Test

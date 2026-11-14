@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
@@ -17,7 +18,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(ForcedAnsi.class)
 class SpinnerTest {
 
     @Test
@@ -359,7 +362,11 @@ class SpinnerTest {
         SessionContext.installConfig(JkConfig.empty().withNoAnsi(true));
 
         var plainBuf = new ByteArrayOutputStream();
-        new Spinner(stream(plainBuf), "Working").step();
+        // Read the poisoned static itself, past the class's own ANSI pin.
+        SessionContext.where(SessionContext.installed(), () -> {
+            new Spinner(stream(plainBuf), "Working").step();
+            return null;
+        });
         assertThat(TestAnsi.strip(plainBuf.toString(StandardCharsets.UTF_8))).contains(Glyphs.PULSE_PLAIN + " Working");
 
         NoAnsi.forcedAnsi(() -> {
