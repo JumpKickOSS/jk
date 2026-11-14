@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The code graph's read tools, named like the {@code jk graph} subcommands they answer: {@code
@@ -137,23 +138,8 @@ public final class CodeGraphTool implements McpTool {
     @Override
     public Map<String, Object> call(McpCall in) {
         long started = Clock.SYSTEM.nanos();
-        GraphRequest request = new GraphRequest(
-                PathUtil.resolveUserPath(in.requiredDir()).toString(),
-                op,
-                args.apply(in),
-                "bfs",
-                3,
-                in.count("token_budget", 2000, 100, 100_000),
-                List.of(),
-                false,
-                in.count("max_hops", 8, 1, 50),
-                null,
-                false,
-                false,
-                in.str("scope"),
-                in.str("modules"),
-                in.str("source_set"),
-                options(in));
+        GraphRequest request =
+                request(in, PathUtil.resolveUserPath(in.requiredDir()).toString());
         GraphAck ack;
         try {
             ack = GraphRunner.run(request, progress -> {});
@@ -171,6 +157,27 @@ public final class CodeGraphTool implements McpTool {
         return in.text(text);
     }
 
+    /** The graph request {@code in} makes against {@code dir}, reading only the arguments this operation declares. */
+    GraphRequest request(McpCall in, String dir) {
+        return new GraphRequest(
+                dir,
+                op,
+                args.apply(in),
+                "bfs",
+                3,
+                declared("token_budget") ? in.count("token_budget", 2000, 100, 100_000) : 2000,
+                List.of(),
+                false,
+                declared("max_hops") ? in.count("max_hops", 8, 1, 50) : 8,
+                null,
+                false,
+                false,
+                optional(in, "scope"),
+                optional(in, "modules"),
+                optional(in, "source_set"),
+                options(in));
+    }
+
     private static Spec spec(String name, String description, Map<String, Object> props, List<String> required) {
         return new Spec(name, description, McpSchemas.object(props, required), McpSchemas.READ_ONLY);
     }
@@ -182,14 +189,23 @@ public final class CodeGraphTool implements McpTool {
         return out;
     }
 
+    /** Whether this operation's schema declares {@code key}: an argument it does not declare is never read. */
+    private boolean declared(String key) {
+        return spec.inputSchema().get("properties") instanceof Map<?, ?> props && props.containsKey(key);
+    }
+
+    private @Nullable String optional(McpCall in, String key) {
+        return declared(key) ? in.str(key) : null;
+    }
+
     /** The operation's named settings a call carries, as {@code key=value}. */
-    private static List<String> options(McpCall in) {
+    private List<String> options(McpCall in) {
         List<String> out = new ArrayList<>();
         for (String key : List.of("view", "kind", "visibility", "extends", "implements", "annotated")) {
-            String v = in.str(key);
+            String v = optional(in, key);
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }
-        if (in.flag("transitive")) out.add("transitive=true");
+        if (declared("transitive") && in.flag("transitive")) out.add("transitive=true");
         return out;
     }
 

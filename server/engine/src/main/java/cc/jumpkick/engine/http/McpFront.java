@@ -76,7 +76,8 @@ final class McpFront {
                                     "GET /mcp (Accept: text/event-stream); optional ?jid=N or " + "?progressToken=T")
                             .put(
                                     "instructions",
-                                    "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
+                                    "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, resources/list, "
+                                            + "resources/read, prompts/list, prompts/get, ping. "
                                             + "Bearer token required. Live progress: GET /mcp with "
                                             + "Accept: text/event-stream (optional ?jid= or "
                                             + "?progressToken=) or GET /api/events (dashboard SSE).")

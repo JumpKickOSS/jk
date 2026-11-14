@@ -23,8 +23,11 @@ public final class DiagnosticsTool implements McpTool {
         return new Spec(
                 "diagnostics",
                 DESCRIPTION,
-                McpSchemas.object(
-                        Map.of("file", McpSchemas.string(), "limit", McpSchemas.integer(), "dir", McpSchemas.string())),
+                McpSchemas.object(Map.of(
+                        "file", McpSchemas.string(),
+                        "limit", McpSchemas.integer(),
+                        "dir", McpSchemas.string(),
+                        "run", McpSchemas.string())),
                 McpSchemas.READ_ONLY);
     }
 
@@ -35,7 +38,6 @@ public final class DiagnosticsTool implements McpTool {
                 ? McpDiagnostics.findNewest(in.ctx().history(), in.dir())
                 : McpDiagnostics.findRun(in.ctx().history(), run, in.dir());
         String file = in.str("file");
-        if (file == null || file.isBlank()) file = in.str("module");
         if (file == null || file.isBlank()) {
             String all = McpAgentText.all(in.ctx(), rec);
             return in.text(all == null ? "0 diagnostics\n" : all);

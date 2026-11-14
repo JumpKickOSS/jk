@@ -152,7 +152,7 @@ class McpToolRegistryTest {
      * serves three tools over a Maven or Gradle results file, captured in
      * {@code src/test/resources/mcp/wrapper-tools-list.json}. Both are re-serialized by MiniJson
      * so the bytes compare serializer-for-serializer. The cards are paid on every turn, so the
-     * ceiling holds the loop to lean cards.
+     * ceiling holds the loop to lean cards; it includes the {@code run} argument {@code diagnostics} reads.
      */
     @Test
     void the_default_list_is_within_the_wrapper_budget() throws IOException {
@@ -163,7 +163,7 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(2_710);
+                .isLessThanOrEqualTo(2_732);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 

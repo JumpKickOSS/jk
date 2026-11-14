@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * The {@code prompts/*} catalog: one line of playbook per named workflow. Declared once here, so
@@ -34,9 +35,29 @@ public final class McpPrompts {
         return List.copyOf(CATALOG.keySet());
     }
 
-    /** The one-line playbook for {@code name}, if it exists. */
+    /**
+     * The one-line playbook for {@code name}, if it exists. One that names a tool off the default
+     * {@code tools/list} says how to see that tool's card.
+     */
     public static Optional<String> playbook(String name) {
-        return Optional.ofNullable(CATALOG.get(name));
+        String text = CATALOG.get(name);
+        if (text == null) return Optional.empty();
+        List<String> hidden = offList(text);
+        if (hidden.isEmpty()) return Optional.of(text);
+        return Optional.of(text + " (" + String.join(", ", hidden)
+                + " are off the default tool list: tools/list extended=true shows their cards)");
+    }
+
+    /** The tools {@code text} names, as words, that are not on {@link McpTools#LOOP}. */
+    static List<String> offList(String text) {
+        List<String> out = new ArrayList<>();
+        for (String tool : McpTools.standard().names()) {
+            if (McpTools.LOOP.contains(tool)) continue;
+            if (Pattern.compile("\\b" + Pattern.quote(tool) + "\\b")
+                    .matcher(text)
+                    .find()) out.add(tool);
+        }
+        return out;
     }
 
     public static Map<String, Object> list() {
