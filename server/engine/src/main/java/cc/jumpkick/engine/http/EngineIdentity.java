@@ -15,11 +15,12 @@ import java.util.Map;
 
 /**
  * Which engine this is, as every surface names it and as a front door discovers it: the OS, whether
- * it is a WSL or container guest, the hostname and {@code JK_HOME}. The {@code id} is stable across
- * restarts, since it hashes only those three, so a tab or a front door can tell this engine from
- * another one that answers on the same address.
+ * it is a WSL or container guest, the hostname and {@code JK_HOME}. The {@code id} tells apart every
+ * engine one machine can run (the host, each WSL distro, each container, a second {@code JK_HOME})
+ * and is stable across restarts and reboots, since it hashes only what names the engine's place.
  *
- * @param id 12 hex digits of the SHA-256 of OS, hostname and {@code JK_HOME}
+ * @param id 12 hex digits of the SHA-256 of OS, guest kind and {@link Guest#instance}, hostname and
+ *     {@code JK_HOME}
  * @param os {@code windows}, {@code linux} or {@code macos}
  */
 public record EngineIdentity(String id, String os, Guest guest, String hostname, String jkHome, String version) {
@@ -35,11 +36,20 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
             jkHome = home.toAbsolutePath().normalize().toString();
         }
         String hostname = localHostname();
-        return new EngineIdentity(idOf(os, hostname, jkHome), os, Guest.detect(), hostname, jkHome, version);
+        Guest guest = Guest.detect();
+        return new EngineIdentity(idOf(os, guest, hostname, jkHome), os, guest, hostname, jkHome, version);
     }
 
-    static String idOf(String os, String hostname, String jkHome) {
-        return Hashing.sha256Hex(os + "\n" + hostname + "\n" + jkHome).substring(0, 12);
+    /**
+     * The id of an engine with {@code JK_HOME} {@code jkHome} on {@code hostname}. A WSL distro's
+     * hostname is the Windows computer's and its {@code JK_HOME} the same path in every distro, so
+     * the guest's instance is what tells two distros apart. The guest's name is left out: it may come
+     * from the environment, which a daemon lacks.
+     */
+    static String idOf(String os, Guest guest, String hostname, String jkHome) {
+        return Hashing.sha256Hex(
+                        os + "\n" + guest.kind().wire() + "\n" + guest.instance() + "\n" + hostname + "\n" + jkHome)
+                .substring(0, 12);
     }
 
     /** {@code host}, or {@code guest} for a WSL distro or a container. */
