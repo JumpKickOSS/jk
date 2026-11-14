@@ -370,7 +370,7 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 
 | Step | Where | What |
 |------|-------|------|
-| 1 | release commit | `scripts/release-floors.sh` lists every jk floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; gates green (`jk guard`, `jk snapshot`, `jk snapshot -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
+| 1 | release commit | `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; gates green (`jk guard`, `jk snapshot`, `jk snapshot -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
 | 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
 | 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag |
@@ -387,10 +387,10 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
 same Mac (`container machine run`), one heavy lane per machine at a time. Each clones the tag into
 `<work-dir>/src`, bootstraps a home of its own (`<work-dir>/home`) from the pinned release with
-`scripts/ci-bootstrap.sh`, lets the tree's own jk take it over with `scripts/ci-takeover.sh`, builds
+`scripts/ci-bootstrap.sh`, lets the tree's own JumpKick take it over with `scripts/ci-takeover.sh`, builds
 the dist and assembles `out/release-<version>-<os>-<arch>/`. The engine jar's `Build-Commit` must be
 the tag's commit — the bridge a bootstrap builds reports the release's version too, so the version
-alone does not prove which jk packaged the dist. The linux-x86_64 lane is canonical: it also stages
+alone does not prove which JumpKick packaged the dist. The linux-x86_64 lane is canonical: it also stages
 `out/repo/` and lists it in `jk-repo-<version>.sha256`. Every lane uses the same pinned bootstrap,
 which is what makes the platform-neutral jars byte-identical. On Windows the lane runs in Git Bash;
 the bootstrap installs through `install.ps1`, which runs under Windows PowerShell 5.1 when there is
@@ -418,7 +418,7 @@ before the pointer, they would refuse the previous one. `release-publish.sh host
 refuses unless HEAD is the release tag with `install.sh`, `install.ps1` and `hosting/` unchanged,
 and unless the pointer jumpkick.build serves is at least the installers' floor.
 
-**Templates.** When `templates/` changed in a way the released jk needs, the published catalogue
+**Templates.** When `templates/` changed in a way the released JumpKick needs, the published catalogue
 (JumpKickOSS/jk-templates) carries those changes on a branch (`scripts/templates-sync.sh`, checked
 with `--check`). Fast-forward its `main` to that branch right after the pointer, not before (older
 releases cannot read it) and not long after (a new install scaffolds from the catalogue).
@@ -433,9 +433,9 @@ clean home and requires the new version. Then, on Linux, macOS, Windows and WSL,
 `jk --version -v` (the tag's commit), `jk new <name> -l java && jk build && jk test` (workers fetched
 from `repo/` and held to `jk-repo-<version>.sha256`), an update from the previous release with
 `jk self update` and back with `jk self rollback`, and a reinstall killed mid-unpack that leaves the
-previous jk working. `scripts/release-fleet.sh <version>` then runs `release-fleet-check.sh` (Linux,
+previous `jk` working. `scripts/release-fleet.sh <version>` then runs `release-fleet-check.sh` (Linux,
 WSL, macOS) or `release-fleet-check.ps1` (Windows PowerShell 5.1) on every machine of the fleet over
-ssh: each stops its engines, deletes its `~/.jk`, installs from jumpkick.build, fast-forwards its jk
+ssh: each stops its engines, deletes its `~/.jk`, installs from jumpkick.build, fast-forwards its JumpKick
 checkout to the tag and times a cold and a warm `jk build`, printing one `RESULT` line the driver
 appends to a Markdown table. Both refuse unless jumpkick.build serves the version they are given.
 Finally bump `.jk/ci/ci-bootstrap-version` to the release, and with it raise this tree's
