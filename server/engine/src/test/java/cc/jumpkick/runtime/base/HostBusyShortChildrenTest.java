@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -16,6 +17,9 @@ import org.junit.jupiter.api.Timeout;
  * each live under a second reads as no more external load than one whose children live long.
  * Measured on the real host, so run it on an otherwise idle machine.
  */
+// A live measurement of the host: another build on the machine moves the reading between its two
+// samples, so it runs with the bench tier, not in a gate (JK-RQ33G).
+@Tag("bench")
 class HostBusyShortChildrenTest {
 
     private static final int LANES = 6;
