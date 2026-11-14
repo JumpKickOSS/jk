@@ -155,11 +155,15 @@ class EngineInstallTest {
                 .containsExactlyInAnyOrder(Hashing.sha256Hex(good), Hashing.sha256Hex(bad), goodClient, badClient);
 
         assertThat(store.recordedClientCommit(badClient)).hasValue("bbbb");
-        assertThat(store.recordedClientCommit(goodClient)).as("not the live client").isEmpty();
+        assertThat(store.recordedClientCommit(goodClient))
+                .as("not the live client")
+                .isEmpty();
 
         var back = store.rollback(cas, bin);
         assertThat(back.version()).isEqualTo("0.12.0");
-        assertThat(store.recordedClientCommit(goodClient)).as("the commit comes back with its client").hasValue("aaaa");
+        assertThat(store.recordedClientCommit(goodClient))
+                .as("the commit comes back with its client")
+                .hasValue("aaaa");
         assertThat(store.engineJarPath()).hasContent("engine-good");
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-good");
         assertThat(back.client()).isEqualTo(EngineInstall.pathClient(bin));

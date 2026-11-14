@@ -617,7 +617,8 @@ class ActionCacheTest {
         for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) (i * 7);
         Files.write(image, bytes);
         cache.storeArtifacts("native-image", "key-seed", Map.of(), base, List.of(image));
-        String sha = Objects.requireNonNull(cache.lookup("key-seed").orElseThrow().outputs().get("app"));
+        String sha = Objects.requireNonNull(
+                cache.lookup("key-seed").orElseThrow().outputs().get("app"));
         try (var out = Files.newOutputStream(image, StandardOpenOption.WRITE)) {
             out.write(new byte[] {9, 9, 9, 9});
         }
