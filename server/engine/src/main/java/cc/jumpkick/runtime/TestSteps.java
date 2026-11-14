@@ -18,7 +18,6 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.StepForecast;
@@ -39,7 +38,6 @@ import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
-import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestLauncherFailure;
 import java.io.IOException;
@@ -48,7 +46,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -158,7 +155,6 @@ final class TestSteps {
         // module that says [test] cache = "module", runs its whole selection.
         boolean whole = rerun || affected != null || projectUnderTest.build().testCacheModule();
         TestClassLedger ledger = TestClassLedger.begin(ctx, actionCache, stampKey, moduleLabel, tier.name(), whole);
-        List<String> settled = ledger.settled();
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(
@@ -195,11 +191,11 @@ final class TestSteps {
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
-            Function<SuiteSettings, JUnitLauncher> launcher = s -> TestLaunch.launcher(
+            SuiteResources.Launcher launcher = ledger.launching((settled, s) -> TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
                     .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
-                    .withRecording(reads.flag());
+                    .withRecording(reads.flag()));
             try {
                 result = ctx.get(COMPILED_TESTS)
                         .map(c -> new SuiteResources(c.suiteRoots()))
@@ -208,7 +204,7 @@ final class TestSteps {
                                 testClasses,
                                 suites,
                                 effectiveSel.classes(),
-                                // The settled classes are left out by the launcher alone: a part
+                                // The settled classes are left out by the launcher alone: a launch
                                 // whose only matches passed earlier still starts, and runs nothing.
                                 projectUnderTest.build().testExcludeClasses(),
                                 affected,

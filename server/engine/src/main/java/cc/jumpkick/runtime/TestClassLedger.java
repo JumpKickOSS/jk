@@ -3,18 +3,24 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -25,7 +31,11 @@ import org.jspecify.annotations.Nullable;
  * failed or never finished, and a run stopped part way keeps the classes it got through.
  *
  * <p>Keyed by the stamp and stored in the action cache beside the suite marker, under its own task
- * id, so the run-tests task pointer the forecast reads still names the marker. A top-level class
+ * id, so the run-tests task pointer the forecast reads still names the marker. Each outcome is a
+ * class's in one launch ({@link SuiteResources.Launcher}): a suite with settings of its own runs in
+ * a launch of its own, so one class can run its untagged methods in one launch and its tagged ones
+ * in another, and passing in one says nothing about the other. A launch leaves out only the
+ * classes that passed in that launch. A top-level class
  * counts as passed only when it and every class nested in it passed: excluding a class from a run
  * excludes its nested classes too. A class recorded red that passes on the re-run is reported, since
  * with nothing changed it is flaky or depends on what ran before it.
@@ -68,8 +78,14 @@ final class TestClassLedger {
         }
     }
 
+    /** Each outcome by {@link #entryKey}: its launch and its class. */
     private final Map<String, Entry> previous;
-    private List<String> settled = List.of();
+
+    private boolean whole;
+    private volatile String launch = SuiteResources.ONE_LAUNCH;
+    /** The settled classes the launches this run started left out, by {@link #entryKey}. */
+    private final Set<String> leftOut = ConcurrentHashMap.newKeySet();
+
     private final Map<String, Entry> recorded = new ConcurrentHashMap<>();
     private final TestClassTally tally;
 
@@ -95,21 +111,36 @@ final class TestClassLedger {
     }
 
     /**
-     * The ledger under {@code stampKey}, with the classes this run may leave out: none for a run
-     * that runs its {@code whole} selection (forced, debug, coverage, affected). A run that leaves
-     * some out says so with {@link #NOT_RERUN}.
+     * The ledger under {@code stampKey}; a run that runs its {@code whole} selection (forced,
+     * debug, coverage, affected) leaves nothing out. A run that may leave classes out says so with
+     * {@link #NOT_RERUN}.
      */
     static TestClassLedger begin(
             TaskContext ctx, ActionCache cache, @Nullable String stampKey, String module, String tier, boolean whole) {
         TestClassLedger ledger = load(cache, stampKey, module, tier);
-        ledger.settled = whole ? List.of() : ledger.settledClasses();
-        if (!ledger.settled.isEmpty()) ctx.warn(NOT_RERUN, notRerun(ledger.settled.size()));
+        ledger.whole = whole;
+        int settled = whole ? 0 : ledger.settledInAnyLaunch();
+        if (settled > 0) ctx.warn(NOT_RERUN, notRerun(settled));
         return ledger;
     }
 
-    /** The classes this run leaves out ({@link #begin}). */
-    List<String> settled() {
+    /**
+     * {@code launch} starts: the classes it records from here on are its own, and the answer is the
+     * classes it leaves out, those that passed in it under this stamp ({@link #settledClasses}).
+     */
+    List<String> enter(String launch) {
+        this.launch = launch;
+        List<String> settled = whole ? List.of() : settledClasses(launch);
+        for (String cls : settled) leftOut.add(entryKey(launch, cls));
         return settled;
+    }
+
+    /**
+     * {@code launcher}, handed for each launch as it starts the classes that launch leaves out
+     * ({@link #enter}), so each launch records its classes as its own.
+     */
+    SuiteResources.Launcher launching(BiFunction<List<String>, SuiteSettings, JUnitLauncher> launcher) {
+        return (launch, settings) -> launcher.apply(enter(launch), settings);
     }
 
     /**
@@ -128,7 +159,7 @@ final class TestClassLedger {
                     "passed on a re-run with no input changed, so flaky or dependent on what ran before: "
                             + String.join(", ", flaky));
         }
-        return withSettled(ran, settled);
+        return withSettled(ran);
     }
 
     /** The action key the ledger of {@code stampKey} is stored under. */
@@ -137,21 +168,48 @@ final class TestClassLedger {
     }
 
     /**
-     * The top-level classes that passed under this stamp with every class nested in them: what a
-     * run under the same stamp need not run again. Sorted, for a stable launch.
+     * The top-level classes that passed in {@code launch} under this stamp with every class nested
+     * in them: what that launch need not run again under the same stamp. Sorted, for a stable launch.
      */
-    List<String> settledClasses() {
+    List<String> settledClasses(String launch) {
         Map<String, Boolean> green = new TreeMap<>();
+        Set<String> own = new HashSet<>();
         for (Map.Entry<String, Entry> e : previous.entrySet()) {
-            green.merge(topLevel(e.getKey()), e.getValue().green(), Boolean::logicalAnd);
+            String[] key = splitKey(e.getKey());
+            if (!key[0].equals(launch)) continue;
+            own.add(key[1]);
+            green.merge(topLevel(key[1]), e.getValue().green(), Boolean::logicalAnd);
         }
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, Boolean> e : green.entrySet()) {
             // A nested class alone says nothing about its outer class's own tests.
-            if (e.getValue() && previous.containsKey(e.getKey())) out.add(e.getKey());
+            if (e.getValue() && own.contains(e.getKey())) out.add(e.getKey());
         }
         return out;
     }
+
+    /** How many classes some launch may leave out, each counted once. */
+    private int settledInAnyLaunch() {
+        Set<String> launches = new TreeSet<>();
+        for (String key : previous.keySet()) launches.add(splitKey(key)[0]);
+        Set<String> classes = new TreeSet<>();
+        for (String l : launches) classes.addAll(settledClasses(l));
+        return classes.size();
+    }
+
+    /** The ledger's key of {@code className}'s outcome in {@code launch}. */
+    static String entryKey(String launch, String className) {
+        return launch + KEY_SEPARATOR + className;
+    }
+
+    /** {@link #entryKey}'s launch and class. */
+    private static String[] splitKey(String key) {
+        int at = key.indexOf(KEY_SEPARATOR);
+        return at < 0 ? new String[] {"", key} : new String[] {key.substring(0, at), key.substring(at + 1)};
+    }
+
+    /** Between a launch's name and a class name: neither a suite name nor a binary class name holds it. */
+    private static final char KEY_SEPARATOR = '|';
 
     /**
      * {@code delegate}, recording each class's outcome as the class finishes, so a run stopped part
@@ -222,19 +280,20 @@ final class TestClassLedger {
     }
 
     private void record(TestClassResult r) {
-        recorded.put(r.className(), new Entry(r.tests(), r.failed(), r.skipped()));
+        recorded.put(entryKey(launch, r.className()), new Entry(r.tests(), r.failed(), r.skipped()));
     }
 
     /**
-     * {@code ran}, the run of every class but {@code settled}, as the whole suite: the settled
-     * classes' recorded tests added in as passed and skipped as they were.
+     * {@code ran}, the run of every class but those its launches left out ({@link #enter}), as the
+     * whole suite: the left-out classes' recorded tests added in as passed and skipped as they were.
      */
-    TestSummary withSettled(TestSummary ran, List<String> settled) {
-        if (settled.isEmpty()) return ran;
+    TestSummary withSettled(TestSummary ran) {
+        if (leftOut.isEmpty()) return ran;
         long tests = 0;
         long skipped = 0;
         for (Map.Entry<String, Entry> e : previous.entrySet()) {
-            if (!settled.contains(topLevel(e.getKey()))) continue;
+            String[] key = splitKey(e.getKey());
+            if (!leftOut.contains(entryKey(key[0], topLevel(key[1])))) continue;
             tests += e.getValue().tests();
             skipped += e.getValue().skipped();
         }
@@ -243,7 +302,7 @@ final class TestClassLedger {
                 ran.succeeded() + (tests - skipped),
                 ran.failed(),
                 ran.skipped() + skipped,
-                ran.classes() > 0 ? ran.classes() + settled.size() : 0,
+                ran.classes() > 0 ? ran.classes() + leftOut.size() : 0,
                 ran.failures(),
                 ran.classWallMs(),
                 ran.workers());
@@ -251,12 +310,12 @@ final class TestClassLedger {
 
     /** Classes recorded red under this stamp that passed this time: with nothing changed, flaky or order-dependent. */
     List<String> passedOnRerun() {
-        List<String> out = new ArrayList<>();
-        for (Map.Entry<String, Entry> e : new TreeMap<>(recorded).entrySet()) {
+        Set<String> out = new TreeSet<>();
+        for (Map.Entry<String, Entry> e : recorded.entrySet()) {
             Entry before = previous.get(e.getKey());
-            if (before != null && !before.green() && e.getValue().green()) out.add(e.getKey());
+            if (before != null && !before.green() && e.getValue().green()) out.add(splitKey(e.getKey())[1]);
         }
-        return out;
+        return List.copyOf(out);
     }
 
     /**
@@ -278,7 +337,7 @@ final class TestClassLedger {
 
     /**
      * Store the ledger under {@code stampKey}: what this run recorded over what was recorded before,
-     * the newer outcome winning. Nothing when the stamp failed open or nothing finished. Safe to
+     * the newer outcome of a class in a launch winning. Nothing when the stamp failed open or nothing finished. Safe to
      * call on an interrupted thread: a cancelled run's classes are what this keeps.
      */
     void store(ActionCache cache, String testTaskId, @Nullable String stampKey) {
