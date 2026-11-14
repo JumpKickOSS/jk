@@ -91,6 +91,11 @@ final class PlannerJlink {
                             release,
                             config,
                             cacheKind);
+                    // The training run starts the application under the module's [env].
+                    if (cacheKind != JlinkImage.Cache.NONE) {
+                        tokens = new ArrayList<>(tokens);
+                        tokens.addAll(WorkerEnv.keyTokens(project.build().env(), layout.moduleRoot()));
+                    }
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JLINK, image);
                     String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
                     Path base = layout.artifactDir();

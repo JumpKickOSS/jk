@@ -5,7 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.host.Hashing;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
@@ -51,8 +51,7 @@ final class SuiteEnvKeys {
         if (build.env().inherit()) {
             // The whole environment reaches the suite: every value keys it, by digest, less what
             // differs between two terminals of one machine.
-            out.add("inherited-env:"
-                    + Hashing.sha256Hex(BuildEnv.inheritedFingerprintEnv().toString()));
+            out.add(WorkerEnv.inheritedKeyToken());
         }
         // The runner that launches the suite and reads its outcome is part of every run.
         try {

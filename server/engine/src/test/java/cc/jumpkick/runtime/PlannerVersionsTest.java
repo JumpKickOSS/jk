@@ -89,7 +89,8 @@ class PlannerVersionsTest {
                 List.of(),
                 JavacConfig.EMPTY,
                 dir,
-                main);
+                main,
+                List.of());
         assertThat(modular.extraOptions())
                 .containsSequence("--patch-module", "org.example.lib=" + main.toAbsolutePath());
 
@@ -103,7 +104,8 @@ class PlannerVersionsTest {
                 List.of(),
                 JavacConfig.EMPTY,
                 dir,
-                main);
+                main,
+                List.of());
         assertThat(plain.extraOptions()).doesNotContain("--patch-module");
     }
 }

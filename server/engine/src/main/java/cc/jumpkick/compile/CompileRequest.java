@@ -15,6 +15,8 @@ import org.jspecify.annotations.Nullable;
  * output. A null {@link #outputDir()} is check-only ({@code jk check}). {@code resourcesDigest} is
  * the digest of the main resources copied into the output ahead of a compile that runs processors,
  * which can read them back; null when none run, or for a compile that has no such resources.
+ * {@code env} is the module's {@code [env]} as key tokens ({@code WorkerEnv.keyTokens}): the
+ * environment the compiler worker is handed, which a processor or a javac plugin can read.
  */
 @Builder
 public record CompileRequest(
@@ -32,7 +34,8 @@ public record CompileRequest(
         @Nullable Path scalaBridgeJar,
         @Nullable String resourcesDigest,
         /** The module named its JDK ({@code jdk = …} or {@code --jdk}): javac runs on it ({@link CompilerJdk}). */
-        boolean pinnedJdk) {
+        boolean pinnedJdk,
+        List<String> env) {
 
     public CompileRequest {
         Objects.requireNonNull(sources, "sources");
@@ -45,6 +48,7 @@ public record CompileRequest(
         processorPath = List.copyOf(processorPath);
         if (compilerClasspath == null) compilerClasspath = List.of();
         compilerClasspath = List.copyOf(compilerClasspath);
+        env = env == null ? List.of() : List.copyOf(env);
         // A module that declares neither java nor jdk compiles at the level of the JDK compiling it,
         // as javac does without --release.
         if (release == 0) release = javaHome == null ? Runtime.version().feature() : JvmOptions.hostFeature(javaHome);
@@ -66,6 +70,7 @@ public record CompileRequest(
         private List<String> extraOptions = List.of();
         private List<Path> processorPath = List.of();
         private List<Path> compilerClasspath = List.of();
+        private List<String> env = List.of();
     }
 
     /** Java-only compile (no Scala compiler identity). */
@@ -91,7 +96,8 @@ public record CompileRequest(
                 null,
                 null,
                 null,
-                false);
+                false,
+                List.of());
     }
 
     /** The JDK that runs javac for this request: see {@link CompilerJdk}. */

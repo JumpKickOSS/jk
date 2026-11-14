@@ -218,6 +218,12 @@ public final class ActionKey {
         // of the compile. Absent when no processor runs, so a resource edit moves no other key.
         if (request.resourcesDigest() != null)
             sb.append("resources:").append(request.resourcesDigest()).append('\n');
+        // The module's [env] reaches the worker, and what reads it there is a processor or a javac
+        // plugin: keyed only when one may run, so a declared variable rebuilds no plain compile.
+        if (processorsMayRun(request.processorPath(), request.extraOptions())
+                || request.extraOptions().stream().anyMatch(o -> o.startsWith("-Xplugin:"))) {
+            for (String token : request.env()) sb.append(token).append('\n');
+        }
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');
             List<Path> scp = new ArrayList<>(request.compilerClasspath());
@@ -301,6 +307,7 @@ public final class ActionKey {
         }
         // Argv order, as forJavac: a flag pairs with the value after it.
         sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
+        for (String token : request.env()) sb.append(token).append('\n');
 
         // Compiler plugins reshape the output (all-open/no-arg synthesize members)
         // key on id + jar CONTENT + options so a plugin change re-compiles.
@@ -381,6 +388,7 @@ public final class ActionKey {
         // groovyc runs on, and links against the platform classes of, the engine's own JDK.
         sb.append("jdk:").append(jdkToken(JavaHomes.runningJavaHome())).append('\n');
         sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
+        for (String token : request.env()) sb.append(token).append('\n');
 
         // The hashed set IS the spec's SOURCE set (GroovycInputs): explicit sources plus every
         // .java the roots feed joint resolution — an edit to a swept file invalidates the key

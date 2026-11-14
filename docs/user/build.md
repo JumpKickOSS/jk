@@ -452,13 +452,16 @@ The same line, under the code `env-required` with the variable's name as its key
 not check. A name is declared once: in `require`, `optional`, or as a value in `vars`.
 
 `vars` sets literal values, as tables in the `[test] env` shape; a bare name there is refused with
-the `optional` spelling. A `${…}` reference is refused here, because `vars` reaches the compilers
-too and their keys do not carry the machine's environment; set the value in `[test] env`, or
+the `optional` spelling. A `${…}` reference is refused here; set the value in `[test] env`, or
 declare the name. The `[env]` table reaches every worker of the module; `[test] env` layers on top
-for test JVMs only. The declared names' values and both tables' values are part of the run-tests
-key, so a declared variable that changes between two builds runs the suite again, and one nothing
-declares cannot — [Test](test.md). A value taken from the environment enters the key as its
-SHA-256, never as text, so the key can travel to another machine. A declared name that reads as
+for test JVMs only. Each value keys the work that can read it: `[env]` keys a compile that runs
+annotation processors or a javac plugin, a Kotlin compile with a compiler plugin, every Groovy
+compile (a global AST transform can read it), every KSP round, plugin step and plugin packager,
+a `[jlink]` image that trains a startup cache, and the run-tests key; `[test] env` keys the run-tests
+key alone, so a variable declared for the tests never rebuilds a compile. A declared variable that
+changes between two builds reruns that work, `jk build -S` included, and one nothing declares
+cannot — [Test](test.md). A value taken from the environment enters a key as its SHA-256, never as text,
+so the key can travel to another machine. A declared name that reads as
 a credential — its name says `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
 `CREDENTIAL` — has its value masked as `***` in test output, errors and `jk results`, as a
 repository credential is. `jk run` launches the app from the shell itself and caches nothing, so

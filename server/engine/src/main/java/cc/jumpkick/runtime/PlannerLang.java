@@ -146,11 +146,23 @@ public final class PlannerLang {
             String moduleName,
             Path javaHome,
             /** The mixed module's Java roots {@code -Xjava-source-roots} in {@code args} names; empty otherwise. */
-            List<Path> javaSourceRoots) {
+            List<Path> javaSourceRoots,
+            /** The module's {@code [env]} as key tokens ({@link WorkerEnv#keyTokens}). */
+            List<String> env) {
         KotlinConfig {
             args = List.copyOf(args);
             plugins = List.copyOf(plugins);
             javaSourceRoots = List.copyOf(javaSourceRoots);
+            env = List.copyOf(env);
+        }
+
+        /**
+         * The {@code [env]} tokens that key this compile: all of them when a compiler plugin runs,
+         * which can read the environment the worker is handed, else none, since kotlinc reads none
+         * of it itself.
+         */
+        List<String> keyedEnv() {
+            return plugins.isEmpty() ? List.of() : env;
         }
 
         /**
@@ -175,6 +187,7 @@ public final class PlannerLang {
                 parts.add("plugin:" + p.id() + ":" + p.group() + ":" + p.artifact() + ":" + p.version() + ":"
                         + String.join(",", p.options()) + (p.sha256() == null ? "" : ":" + p.sha256()));
             }
+            parts.addAll(keyedEnv());
             return parts;
         }
     }
@@ -317,6 +330,7 @@ public final class PlannerLang {
                     // (member$module_name) is baked into call sites KSP-generated Java emits
                     // (Hilt factories calling internal providers).
                     .moduleName(moduleName)
+                    .env(config.keyedEnv())
                     .build();
             request = built;
             return built;
@@ -397,6 +411,7 @@ public final class PlannerLang {
         parts.add("jvmTarget:" + CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)));
         parts.add("jdk:" + groovyJdkToken());
         for (String arg : groovyArgs(project, lock, moduleDir)) parts.add("arg:" + arg);
+        parts.addAll(WorkerEnv.keyTokens(project.build().env(), moduleDir));
         return FreshnessStamp.optionsDigest(parts);
     }
 
@@ -478,7 +493,8 @@ public final class PlannerLang {
                 jvmTarget,
                 project.project().name(),
                 javaHome,
-                javaSourceRoots == null ? List.of() : javaSourceRoots);
+                javaSourceRoots == null ? List.of() : javaSourceRoots,
+                WorkerEnv.keyTokens(project.build().env(), moduleDir));
     }
 
     /** {@link #kotlinConfig} from the running step's published state, for the module being built. */
@@ -626,6 +642,7 @@ public final class PlannerLang {
                 .jvmTarget(CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)))
                 .workerClasspath(gv.workerClasspath())
                 .extraArgs(gvArgs)
+                .env(WorkerEnv.keyTokens(project.build().env(), moduleDir))
                 .build();
     }
 

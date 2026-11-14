@@ -96,7 +96,8 @@ public final class PlannerFixtures {
             int release,
             List<String> javacArgs,
             JavacConfig javac,
-            Path javaHome) {
+            Path javaHome,
+            List<String> env) {
         return CompileRequest.builder()
                 .sources(sources)
                 .classpath(classpath)
@@ -105,6 +106,7 @@ public final class PlannerFixtures {
                 .extraOptions(PlannerCompile.javacOptions(javacArgs, javac))
                 .javaHome(javaHome)
                 .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, contributedProcessors, classpath))
+                .env(env)
                 .build();
     }
 
@@ -153,7 +155,8 @@ public final class PlannerFixtures {
                 release,
                 javacArgs,
                 project.javac(),
-                javaHome);
+                javaHome,
+                WorkerEnv.keyTokens(project.build().env(), dir));
         String fxTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, layout.testFixturesClassesDir());
         Path fxState = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(cache)),
@@ -226,7 +229,8 @@ public final class PlannerFixtures {
                             ctx.require(PARSED_BUILD).release(),
                             javacArgs,
                             project.javac(),
-                            ctx.require(JAVA_HOME));
+                            ctx.require(JAVA_HOME),
+                            WorkerEnv.keyTokens(project.build().env(), in.dir()));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, out);
                     Path stateDir = ActionKey.stateDir(
                             ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),

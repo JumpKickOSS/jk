@@ -109,7 +109,8 @@ class PlannerFixturesTest {
                 25,
                 List.of("-Xlint:all"),
                 project.build().javac(),
-                jdk);
+                jdk,
+                List.of());
         assertThat(req.javaHome()).isEqualTo(jdk);
         assertThat(req.sources()).containsExactly(helper);
         assertThat(req.outputDir()).isEqualTo(layout.testFixturesClassesDir());
@@ -127,7 +128,8 @@ class PlannerFixturesTest {
                 25,
                 List.of("-Xlint:all"),
                 project.build().javac(),
-                jdk);
+                jdk,
+                List.of());
         assertThat(ActionKey.forJavac(
                         ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, again.outputDir()),
                         again,
@@ -178,7 +180,8 @@ class PlannerFixturesTest {
                 25,
                 List.of("-Xlint:all"),
                 project.build().javac(),
-                jdk);
+                jdk,
+                List.of());
         assertThat(req.extraOptions())
                 .as("fixtures are production code for the suites that take them")
                 .containsExactly("-Xlint:all", "-Xplugin:ErrorProne -Xep:NullAway:ERROR");
