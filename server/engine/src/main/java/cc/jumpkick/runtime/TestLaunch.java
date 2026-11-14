@@ -280,9 +280,17 @@ final class TestLaunch {
      * The "tests passed for this input" marker lives in the CAS (keyed by the content key), NOT in
      * target/ — so it survives {@code jk clean}: a later build that restores byte-identical classes
      * recomputes the same key and skips the runner, mirroring how the compile cache survives clean.
-     * True when a green marker was found and the step marked itself skipped.
+     * True when a green marker was found and the step marked itself skipped. The replay says the
+     * undeclared variables the green run named, as {@link EnvReadReport#replay} keeps them.
      */
-    static boolean replayGreenRun(TaskContext ctx, ActionCache actionCache, String stampKey) throws IOException {
+    static boolean replayGreenRun(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            ActionCache actionCache,
+            String stampKey,
+            JkBuild project,
+            WorkerEnv testEnv)
+            throws IOException {
         var marker = actionCache.lookup(stampKey);
         if (marker.isEmpty() || !TestStamp.green(marker.get())) return false;
         ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
@@ -297,6 +305,7 @@ final class TestLaunch {
         // the next real run upgrades them.
         TestSummary previous = PlannerTest.stampedSummary(marker.get());
         if (previous != null) ctx.put(TEST_RUN, TestRun.of(previous));
+        EnvReadReport.replay(ctx, in, project, testEnv, marker.get().said());
         return true;
     }
 
@@ -502,7 +511,8 @@ final class TestLaunch {
      * Rerun only means "do not restore/skip the runner"; the marker still uses the normal content
      * key (not a verify scratch salt), so the next explain must see it (same contract as compile).
      * Skipped only when the key failed open, or when the run is no evidence — a cancelled run
-     * included; see {@link PlannerTest#stampFor}.
+     * included; see {@link PlannerTest#stampFor}. A green marker keeps {@code said}, the lines
+     * {@link EnvReadReport#report} returned, for its replay.
      */
     static void recordOutcome(
             TaskContext ctx,
@@ -512,7 +522,8 @@ final class TestLaunch {
             @Nullable String stampKey,
             TestSummary result,
             boolean testSourcesExist,
-            TestFailureSource.Cache snippets)
+            TestFailureSource.Cache snippets,
+            List<String> said)
             throws Exception {
         if (!result.allPassed()) {
             if (stampKey != null) {
@@ -538,7 +549,8 @@ final class TestLaunch {
                         testTaskId,
                         stampKey,
                         Map.of(),
-                        TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0));
+                        TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0),
+                        said);
             case NO_TESTS -> actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.noTestsOutcome());
             case NONE -> {}
         }

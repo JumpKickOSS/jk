@@ -1033,6 +1033,9 @@ W AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it
 FIX add to [env] require: "MY_TOKEN_VALUE"
 ```
 
+A suite served from its green marker says the same warnings again, marked replayed in `-O jsonl`,
+for every variable the module still does not declare.
+
 ## What a suite read: discovered inputs
 
 A suite is replayed from its green marker only while everything it can see is unchanged. Most of

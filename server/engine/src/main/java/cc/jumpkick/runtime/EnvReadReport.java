@@ -5,6 +5,8 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.EnvDecl;
@@ -35,6 +37,9 @@ import java.util.function.Predicate;
  * anything looked up. The bytecode ({@link EnvReads}) stands in when no JVM was probed, and adds
  * to a failing suite: the test and main classes' and the dependencies' constant reads, and the
  * classes that read a computed name or the whole map.
+ *
+ * <p>A green run's undeclared variables ride its marker ({@link #report}'s lines), and a replay of
+ * that run says them again ({@link #replay}) while the module still does not give them.
  */
 public final class EnvReadReport {
 
@@ -50,11 +55,17 @@ public final class EnvReadReport {
     record Findings(Map<String, String> undeclared, Set<String> opaque) {}
 
     /**
+     * One undeclared variable a run names: the class that read it, and whether a test JVM looked
+     * it up as it ran ({@code ran}) or only the bytecode reads it.
+     */
+    record Told(String name, String owner, boolean ran) {}
+
+    /**
      * Reports what {@code testClasses}' suite reads that {@code project} does not declare; when
      * {@code result} failed, what the module's main classes and the jars of {@code runtimeCp} read
-     * too.
+     * too. Returns the undeclared variables as lines for the run's marker ({@link #replay}).
      */
-    static void report(
+    static List<String> report(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             JkBuild project,
@@ -66,25 +77,20 @@ public final class EnvReadReport {
         boolean probed = probed(records);
         List<Lookup> lookups = lookups(records);
         PathUtil.deleteRecursively(records); // the next run records afresh
-        if (testEnv.inherit()) return; // every variable reaches the suite
+        if (testEnv.inherit()) return List.of(); // every variable reaches the suite
         boolean failed = result.failed() > 0 || !result.failures().isEmpty();
-        String manifest = manifest(in.session().workingDir(), in.dir());
         Path mainClasses = ctx.require(BuildPlanner.MODULE).layout().classesDir();
         Map<String, String> looked = lookedUp(lookups, declared(project), testEnv, compiledInto(testClasses), failed);
         // What the suite looked up as it ran is the exact answer; the bytecode stands in without it.
         Findings f = probed && !failed
                 ? new Findings(Map.of(), Set.of())
                 : findings(project, testEnv, testClasses, mainClasses, runtimeCp, in.cache(), failed);
-        int told = 0;
-        for (Map.Entry<String, String> e : looked.entrySet()) {
-            if (told++ < MAX_TOLD) ctx.keyedWarn(UNDECLARED, e.getKey(), lookedUp(e.getValue(), e.getKey(), manifest));
-        }
-        for (Map.Entry<String, String> e : f.undeclared().entrySet()) {
-            if (looked.containsKey(e.getKey())) continue;
-            if (told++ < MAX_TOLD)
-                ctx.keyedWarn(UNDECLARED, e.getKey(), undeclared(e.getValue(), e.getKey(), manifest));
-        }
-        if (told > MAX_TOLD) ctx.warn(UNDECLARED, (told - MAX_TOLD) + MORE + MAX_TOLD);
+        List<Told> told = new ArrayList<>();
+        looked.forEach((name, owner) -> told.add(new Told(name, owner, true)));
+        f.undeclared().forEach((name, owner) -> {
+            if (!looked.containsKey(name)) told.add(new Told(name, owner, false));
+        });
+        tell(ctx, told, manifest(in.session().workingDir(), in.dir()), false);
         if (!f.opaque().isEmpty()) {
             ctx.warn(
                     COMPUTED,
@@ -92,6 +98,63 @@ public final class EnvReadReport {
                             + (f.opaque().size() > 1 ? " and " + (f.opaque().size() - 1) + " more" : "")
                             + " read the environment by a name jk cannot see");
         }
+        return said(told);
+    }
+
+    /**
+     * Says again, as replayed, the undeclared variables a green run's marker kept ({@code said}):
+     * each one {@code project} still does not give its suite.
+     */
+    static void replay(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, WorkerEnv testEnv, List<String> said) {
+        if (testEnv.inherit()) return;
+        Set<String> declared = declared(project);
+        List<Told> told = new ArrayList<>();
+        for (Told t : fromSaid(said)) {
+            if (!reaches(t.name(), declared, testEnv)) told.add(t);
+        }
+        if (!told.isEmpty()) tell(ctx, told, manifest(in.session().workingDir(), in.dir()), true);
+    }
+
+    /** One warning per variable in {@code told}, the first {@link #MAX_TOLD}, then the count of the rest. */
+    private static void tell(TaskContext ctx, List<Told> told, String manifest, boolean replayed) {
+        for (Told t : told.subList(0, Math.min(MAX_TOLD, told.size()))) {
+            String message =
+                    t.ran() ? lookedUp(t.owner(), t.name(), manifest) : undeclared(t.owner(), t.name(), manifest);
+            if (replayed) ctx.replayedWarn(UNDECLARED, t.name(), message);
+            else ctx.keyedWarn(UNDECLARED, t.name(), message);
+        }
+        if (told.size() > MAX_TOLD) {
+            String more = (told.size() - MAX_TOLD) + MORE + MAX_TOLD;
+            if (replayed) ctx.replayedWarn(UNDECLARED, "", more);
+            else ctx.warn(UNDECLARED, more);
+        }
+    }
+
+    /** {@code told} as a marker's lines, one JSON object each. */
+    static List<String> said(List<Told> told) {
+        List<String> out = new ArrayList<>(told.size());
+        for (Told t : told) {
+            out.add(JsonFields.object()
+                    .string("code", UNDECLARED)
+                    .string("name", t.name())
+                    .string("owner", t.owner())
+                    .bool("ran", t.ran())
+                    .finish());
+        }
+        return out;
+    }
+
+    /** The undeclared variables {@link #said} wrote; a line of any other shape is not one. */
+    static List<Told> fromSaid(List<String> said) {
+        List<Told> out = new ArrayList<>(said.size());
+        for (String line : said) {
+            if (!UNDECLARED.equals(Jsonl.str(line, "code"))) continue;
+            String name = Jsonl.str(line, "name");
+            String owner = Jsonl.str(line, "owner");
+            if (name == null || name.isBlank() || owner == null) continue;
+            out.add(new Told(name, owner, Jsonl.bool(line, "ran", false)));
+        }
+        return out;
     }
 
     /**

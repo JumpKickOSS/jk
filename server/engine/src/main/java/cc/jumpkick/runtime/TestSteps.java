@@ -152,9 +152,7 @@ final class TestSteps {
         // A coverage run is a request for a report; a replayed green marker has none.
         boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
         boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
-        if (!rerun && stampKey != null && TestLaunch.replayGreenRun(ctx, actionCache, stampKey)) {
-            return; // skip — nothing changed since last green run
-        }
+        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv)) return;
         // Under the same stamp the classes that passed before still stand: a red or cut-short
         // suite runs only what has not passed yet. A forced, debug, coverage or affected run, and a
         // module that says [test] cache = "module", runs its whole selection.
@@ -231,7 +229,7 @@ final class TestSteps {
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         result = ledger.finish(ctx, actionCache, testTaskId, stampKey, result);
-        EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
+        List<String> said = EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(
                 ctx,
                 in,
@@ -244,7 +242,17 @@ final class TestSteps {
                 testTaskId,
                 stampKey,
                 !testSrcs.isEmpty(),
-                snippets);
+                snippets,
+                said);
+    }
+
+    /** Whether the last green run under {@code stampKey} stands for this one: nothing changed and no {@code rerun}. */
+    private boolean replayedGreenRun(
+            TaskContext ctx, boolean rerun, @Nullable String stampKey, JkBuild project, WorkerEnv testEnv)
+            throws IOException {
+        return !rerun
+                && stampKey != null
+                && TestLaunch.replayGreenRun(ctx, in, actionCache, stampKey, project, testEnv);
     }
 
     /** {@code group:name}, the label a module's suite reports under. */
@@ -285,7 +293,20 @@ final class TestSteps {
             TestFailureSource.Cache snippets)
             throws Exception {
         TestSummary none = new TestSummary(0, 0, 0, 0, List.of());
-        settle(ctx, in, sel, false, suites, null, none, actionCache, testTaskId, null, testSourcesExist, snippets);
+        settle(
+                ctx,
+                in,
+                sel,
+                false,
+                suites,
+                null,
+                none,
+                actionCache,
+                testTaskId,
+                null,
+                testSourcesExist,
+                snippets,
+                List.of());
     }
 
     /**
@@ -368,7 +389,7 @@ final class TestSteps {
      * Judge the {@code --class} selection, then record the suite's outcome. A selection that
      * matched no test raises {@link TestClassMatch#NO_TESTS_MATCHED} and fails the step without a
      * red test; a named class the tag filter dropped beside tests that ran does the same after
-     * their summary is kept.
+     * their summary is kept. {@code said} rides a green marker for its replay to say again.
      */
     private static void settle(
             TaskContext ctx,
@@ -382,7 +403,8 @@ final class TestSteps {
             String testTaskId,
             @Nullable String stampKey,
             boolean testSourcesExist,
-            TestFailureSource.Cache snippets)
+            TestFailureSource.Cache snippets,
+            List<String> said)
             throws Exception {
         Judged judged = judgeClassSelection(ctx, in, sel, exactClassList, suites, tagExcluded, result);
         if (judged == null) return;
@@ -396,7 +418,7 @@ final class TestSteps {
             if (ran == null || ran.allPassed()) throw new IllegalArgumentException(judged.noMatch());
         }
         if (ran != null) {
-            TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, ran, testSourcesExist, snippets);
+            TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, ran, testSourcesExist, snippets, said);
         }
     }
 
