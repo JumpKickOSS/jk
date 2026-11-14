@@ -141,11 +141,12 @@ final class SseEndpoint {
         if (lastId >= 0) events.replayAfter(subscription, lastId);
         String stream = UUID.randomUUID().toString();
         JsonOut presence = JsonOut.object().put("stream", stream).put("every", pingMillis);
+        // Joined before it attaches, left in the finally: a tab closing meanwhile never sees zero.
+        liveVitals.onSubscriberJoined();
         try {
             dashboards.open(
                     stream, d -> events.deliverTo(subscription, EventCatalog.SSE_NOTIFY, JsonOut.rawObject(d.toMap())));
             events.deliverTo(subscription, EventCatalog.SSE_PRESENCE, presence);
-            liveVitals.onSubscriberJoined();
             // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
             // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
             // re-broadcasting chrome to every open tab. Cache hydrate re-sends the last

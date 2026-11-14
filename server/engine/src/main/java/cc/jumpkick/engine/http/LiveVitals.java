@@ -17,8 +17,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Change-gated live vitals on the dashboard SSE bus ({@link HttpEvents}).
  *
- * <p><strong>Sampled</strong> host/engine status (~2s) and optional cache (slow) run only while
- * {@link HttpEvents#hasDashboardSubscribers()} is true — an MCP progress stream alone neither
+ * <p><strong>Sampled</strong> host/engine status (~2s) and optional cache (slow) run only while a
+ * dashboard stream is open, connecting or attached — an MCP progress stream alone neither
  * starts nor sustains the samplers, and chrome frames go to dashboard subscriptions only
  *. A tiny last-published fingerprint suppresses no-op frames (e.g. free RAM still
  * presents as the same MiB). This is <em>not</em> a server-side UI model — only the last telegram
@@ -62,6 +62,10 @@ public final class LiveVitals implements AutoCloseable {
     });
 
     private final Object scheduleLock = new Object();
+
+    /** Dashboard streams joined and not yet left, attached or still connecting. Under {@link #scheduleLock}. */
+    private int streams;
+
     private @Nullable ScheduledFuture<?> statusTask;
     private @Nullable ScheduledFuture<?> cacheTask;
 
@@ -71,9 +75,13 @@ public final class LiveVitals implements AutoCloseable {
         this.cache = Objects.requireNonNull(cache, "cache");
     }
 
-    /** Start samplers if needed (idempotent). Call when an SSE stream attaches. */
+    /**
+     * A dashboard stream is connecting: start the samplers if they are stopped. Pair every call
+     * with one {@link #onSubscriberLeft}.
+     */
     public void onSubscriberJoined() {
         synchronized (scheduleLock) {
+            streams++;
             if (statusTask == null || statusTask.isCancelled()) {
                 statusTask = scheduler.scheduleAtFixedRate(
                         this::tickStatusSafe, STATUS_PERIOD_MILLIS, STATUS_PERIOD_MILLIS, TimeUnit.MILLISECONDS);
@@ -85,11 +93,21 @@ public final class LiveVitals implements AutoCloseable {
         }
     }
 
-    /** Stop samplers when the last dashboard subscriber leaves (MCP streams don't count). */
-    public void onSubscriberLeft() {
-        if (events.hasDashboardSubscribers()) return;
+    /** True while both samplers are scheduled. */
+    boolean sampling() {
         synchronized (scheduleLock) {
-            if (!events.hasDashboardSubscribers()) {
+            return statusTask != null && !statusTask.isCancelled() && cacheTask != null && !cacheTask.isCancelled();
+        }
+    }
+
+    /**
+     * A dashboard stream ended: stop the samplers when it was the last one, counting streams still
+     * connecting, which are not attached to the hub yet. MCP streams never join.
+     */
+    public void onSubscriberLeft() {
+        synchronized (scheduleLock) {
+            streams = Math.max(0, streams - 1);
+            if (streams == 0) {
                 cancel(statusTask);
                 cancel(cacheTask);
                 statusTask = null;
