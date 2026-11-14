@@ -24,7 +24,7 @@ class WindowsHostLiveTest {
         List<HostRow> rows = new WindowsHostCheck(HostFacts.live(), SetupMemo.NONE, home, project).rows();
         Duration took = Duration.ofNanos(System.nanoTime() - start);
         assertThat(took).isLessThan(Duration.ofSeconds(1));
-        assertThat(rows).hasSize(7).noneMatch(r -> r.detail().startsWith("not checked"));
+        assertThat(rows).hasSize(8).noneMatch(r -> r.detail().startsWith("not checked"));
         assertThat(HostFacts.live()
                         .registry()
                         .string(Registry.Hive.LOCAL_MACHINE, WindowsHostCheck.ENV_KEY, "PROCESSOR_ARCHITECTURE"))
