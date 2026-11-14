@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.version.Versions;
@@ -15,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -192,6 +194,40 @@ class EngineInstallTest {
                 .as("another client for the same engine replaces the live one; the previous install is the engine's to move")
                 .containsEntry(EngineInstall.CLIENT_SHA, "c2")
                 .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
+    }
+
+    /**
+     * A rollback puts back the engine of the install before; that engine launches its workers by
+     * the shelf manifest it was installed with, which the later install kept as the previous one.
+     */
+    @Test
+    void rollback_puts_back_the_shelf_manifest_of_the_engine_it_restores(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path a = Files.writeString(
+                Files.createDirectories(tmp.resolve("a")).resolve("jk-engine-0.12.0-SNAPSHOT.jar"), "engine-a");
+        Path b = Files.writeString(
+                Files.createDirectories(tmp.resolve("b")).resolve("jk-engine-0.12.0-SNAPSHOT.jar"), "engine-b");
+        String engineA = Hashing.sha256Hex(a);
+        String engineB = Hashing.sha256Hex(b);
+        FakeClock clock = new FakeClock();
+        String worker = "cc.jumpkick:w:0.12.0-SNAPSHOT";
+
+        store.materializeFromFiles("0.12.0-SNAPSHOT", cas, a);
+        ShelfManifest.record(store.shelfFile(), engineA, tmp, Map.of(worker, "a".repeat(64)), Map.of(), clock);
+        store.materializeFromFiles("0.12.0-SNAPSHOT", cas, b);
+        ShelfManifest.record(store.shelfFile(), engineB, tmp, Map.of(worker, "b".repeat(64)), Map.of(), clock);
+
+        store.rollback(cas, EngineInstall.nativeClients(home.resolve("bin")));
+        assertThat(ShelfManifest.read(store.previousShelfFile()))
+                .as("the later install's shelf is kept for a second rollback")
+                .hasValueSatisfying(m -> assertThat(m.pins(engineB)).isTrue());
+
+        assertThat(store.currentInstall().orElseThrow().engineSha()).isEqualTo(engineA);
+        assertThat(ShelfManifest.read(store.shelfFile()))
+                .as("the live shelf manifest pins the engine put back")
+                .hasValueSatisfying(m -> assertThat(m.pins(engineA)).isTrue());
     }
 
     @Test

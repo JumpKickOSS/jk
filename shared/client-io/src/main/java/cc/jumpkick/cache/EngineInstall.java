@@ -746,7 +746,8 @@ public final class EngineInstall {
     /**
      * Put back the install before this one, its engine and the client paired with it, from the store
      * that keeps them ({@link #pinnedEngineShas}); the install replaced becomes the previous one, so
-     * a second rollback undoes the first. Both move in the order {@link #install} keeps. Needs no
+     * a second rollback undoes the first. Both move in the order {@link #install} keeps, and the
+     * shelf manifest that engine was installed with becomes the live one again. Needs no
      * engine: an install that left an engine and client that fail every command is rolled back from
      * the client alone. Throws when the pointer names no previous engine, or the store no longer
      * holds it.
@@ -758,6 +759,8 @@ public final class EngineInstall {
             throw new IOException("the previous engine " + previous.engineSha() + " is no longer in the store");
         }
         Installed back = install(previous.version(), cas, previous.engineSha(), true, previous.client(), placer);
+        // The engine put back launches its workers by the shelf it was installed with.
+        ShelfManifest.restorePrevious(shelfFile(), previous.engineSha());
         return new RolledBack(back.engine().version(), back.engine().engineJar(), back.client());
     }
 

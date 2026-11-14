@@ -146,6 +146,24 @@ public record ShelfManifest(
         });
     }
 
+    /**
+     * Make the previous manifest beside {@code file} the live one when it pins {@code engineSha256}
+     * (a rollback put that engine back), the live one becoming the previous, so the engine put back
+     * launches the workers it was installed with and a second rollback swaps them again. A no-op
+     * when the previous manifest pins another engine or there is none. Runs under the writers' lock.
+     */
+    public static void restorePrevious(Path file, String engineSha256) throws IOException {
+        FileLocks.withLock(lockFile(file), () -> {
+            Path previous = file.resolveSibling(PREVIOUS_FILE_NAME);
+            if (read(previous).filter(m -> m.pins(engineSha256)).isEmpty()) return;
+            Path aside = file.resolveSibling(file.getFileName() + ".swap");
+            boolean live = Files.isRegularFile(file);
+            if (live) AtomicWrites.moveInto(file, aside);
+            AtomicWrites.moveInto(previous, file);
+            if (live) AtomicWrites.moveInto(aside, previous);
+        });
+    }
+
     /** The lock every writer of {@code file} takes: {@code <file>.lock} beside it. */
     static Path lockFile(Path file) {
         return file.resolveSibling(file.getFileName() + ".lock");
