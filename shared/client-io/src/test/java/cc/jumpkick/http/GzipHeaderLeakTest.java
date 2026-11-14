@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.http;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+/**
+ * A response that says {@code Content-Encoding: gzip} and starts with bytes that are not a gzip
+ * header fails in {@code new GZIPInputStream(in)} inside {@link Http#gzipAwareInputStream}; the
+ * upstream stream is closed with it, so the half-read connection is closed rather than left open.
+ */
+class GzipHeaderLeakTest {
+
+    @Test
+    @Timeout(30)
+    void a_bad_gzip_header_closes_the_connection_it_half_read() throws Exception {
+        try (ServerSocket listen = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            HttpClient client =
+                    HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+            URI uri = URI.create("http://127.0.0.1:" + listen.getLocalPort() + "/x.jar");
+            Thread caller = Thread.ofPlatform().start(() -> {
+                try {
+                    client.send(HttpRequest.newBuilder(uri).GET().build(), Http.gzipAwareInputStream());
+                } catch (IOException | InterruptedException | RuntimeException expected) {
+                    // the bad header fails the send; the question is what happens to the socket
+                }
+            });
+            try (Socket s = listen.accept()) {
+                readHeaders(s.getInputStream());
+                OutputStream out = s.getOutputStream();
+                out.write(("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 100000\r\n\r\n")
+                        .getBytes(StandardCharsets.US_ASCII));
+                out.write("not gzip at all".getBytes(StandardCharsets.US_ASCII));
+                out.flush();
+                caller.join(10_000);
+                assertThat(caller.isAlive()).as("send returned").isFalse();
+                s.setSoTimeout(5_000);
+                int read;
+                try {
+                    read = s.getInputStream().read();
+                } catch (SocketTimeoutException stillOpen) {
+                    read = -2;
+                }
+                assertThat(read)
+                        .as("client closed the half-read connection (-1), not left it open (-2)")
+                        .isEqualTo(-1);
+            }
+            client.shutdownNow();
+        }
+    }
+
+    private static void readHeaders(InputStream in) throws IOException {
+        int matched = 0;
+        int b;
+        byte[] end = {'\r', '\n', '\r', '\n'};
+        while ((b = in.read()) >= 0) {
+            matched = b == end[matched] ? matched + 1 : (b == '\r' ? 1 : 0);
+            if (matched == 4) return;
+        }
+    }
+}

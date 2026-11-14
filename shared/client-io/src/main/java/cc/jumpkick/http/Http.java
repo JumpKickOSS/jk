@@ -1031,6 +1031,13 @@ public final class Http {
                 try {
                     return new GZIPInputStream(in);
                 } catch (IOException e) {
+                    // Not a gzip header after all: close the half-read body, so its connection is
+                    // closed rather than held until the client is collected.
+                    try {
+                        in.close();
+                    } catch (IOException closing) {
+                        e.addSuppressed(closing);
+                    }
                     throw new UncheckedIOException(e);
                 }
             });
