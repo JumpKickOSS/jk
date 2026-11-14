@@ -126,11 +126,27 @@ public final class FileHashMemo {
      * the file still has {@code identity} after the read.
      */
     public static String contentHash(Path file, StatIdentity identity) throws IOException {
+        return contentHash(file, identity, true);
+    }
+
+    /**
+     * As {@link #contentHash(Path)}, but a seeded digest is trusted only once the file is {@link
+     * Settled}: a same-size rewrite inside one timestamp tick of the seed keeps the identity, and a
+     * caller deciding whether to overwrite the file must not take the seed for its bytes.
+     */
+    public static String settledContentHash(Path file) throws IOException {
+        Path abs = file.toAbsolutePath().normalize();
+        String projected = ProjectedFiles.contentHash(abs);
+        if (projected != null) return projected;
+        return contentHash(abs, StatIdentity.of(abs), false);
+    }
+
+    private static String contentHash(Path file, StatIdentity identity, boolean trustSeeded) throws IOException {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
 
         Store store = store();
         if (store != null) {
-            Entry hit = store.get(file.toString(), identity);
+            Entry hit = store.get(file.toString(), identity, trustSeeded);
             if (hit != null) {
                 MEMO_HITS.incrementAndGet();
                 return hit.token;
@@ -361,10 +377,10 @@ public final class FileHashMemo {
 
         /** The entry for {@code path} when it still describes the file the caller just stat'ed. */
         @Nullable
-        Entry get(String path, StatIdentity identity) {
+        Entry get(String path, StatIdentity identity, boolean trustSeeded) {
             Entry e = entries.get(path);
             if (e == null || !e.identity.equals(identity)) return null;
-            boolean valid = e.seeded || Settled.is(identity);
+            boolean valid = (trustSeeded && e.seeded) || Settled.is(identity);
             if (!valid) return null;
             e.used = USE_TICK.incrementAndGet();
             return e;

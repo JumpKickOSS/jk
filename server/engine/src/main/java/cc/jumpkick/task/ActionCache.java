@@ -786,8 +786,9 @@ public final class ActionCache {
         if (existing == null || existing.size() != blob.size()) return false;
         // The memo, not a full re-read: restoreArtifacts seeds this very file via rememberContent,
         // so the check that exists to avoid churning mtime costs a map lookup rather than re-reading
-        // a fat jar on every warm build.
-        return sha.equals(FileHashMemo.contentHash(target));
+        // a fat jar on every warm build. Only a settled entry counts: a step that rewrote the output
+        // in place at the same size within a tick of the restore left the seed's identity intact.
+        return sha.equals(FileHashMemo.settledContentHash(target));
     }
 
     /**
