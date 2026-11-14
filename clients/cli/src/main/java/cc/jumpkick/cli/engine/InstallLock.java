@@ -156,7 +156,8 @@ public final class InstallLock {
             st.jvm.readLock().unlock();
             throw e;
         }
-        Path record = record(file, Mode.SHARED, purpose);
+        SharedRecord record = new SharedRecord(record(file, Mode.SHARED, purpose), purpose);
+        st.threadShared.get().push(record);
         return new Hold() {
             private boolean open = true;
 
@@ -164,7 +165,8 @@ public final class InstallLock {
             public synchronized void close() {
                 if (!open) return;
                 open = false;
-                deleteQuietly(record);
+                st.threadShared.get().remove(record);
+                deleteQuietly(record.path());
                 synchronized (st) {
                     if (--st.shared == 0) st.release();
                 }
@@ -173,9 +175,13 @@ public final class InstallLock {
         };
     }
 
+    /** The record of one shared hold, kept so an exclusive hold of the same thread can hide it while it holds the lock. */
+    private record SharedRecord(@Nullable Path path, String purpose) {}
+
     /**
      * Hold the lock exclusively, waiting for every shared run on the host to finish. The calling
-     * thread's own shared holds are set aside while it is held and taken back on close.
+     * thread's own shared holds are set aside while it is held and taken back on close; their
+     * records are hidden meanwhile, so the process is listed once, as the exclusive holder.
      */
     public static Hold exclusive(String purpose) throws IOException {
         return disabled() ? NOOP : exclusive(lockFile(), purpose);
@@ -185,6 +191,8 @@ public final class InstallLock {
         State st = state(file);
         if (st.jvm.isWriteLockedByCurrentThread()) return NOOP;
         int setAside = st.jvm.getReadHoldCount();
+        List<SharedRecord> hidden = setAside > 0 ? List.copyOf(st.threadShared.get()) : List.of();
+        hidden.forEach(r -> deleteQuietly(r.path()));
         if (setAside > 0) {
             synchronized (st) {
                 st.shared -= setAside;
@@ -199,7 +207,7 @@ public final class InstallLock {
             }
         } catch (IOException | RuntimeException e) {
             st.jvm.writeLock().unlock();
-            restoreShared(st, setAside, purpose);
+            restoreShared(st, setAside, hidden, file, purpose);
             throw e;
         }
         Path record = record(file, Mode.EXCLUSIVE, purpose);
@@ -216,7 +224,7 @@ public final class InstallLock {
                 }
                 st.jvm.writeLock().unlock();
                 try {
-                    restoreShared(st, setAside, purpose);
+                    restoreShared(st, setAside, hidden, file, purpose);
                 } catch (IOException e) {
                     // The run goes on unlocked rather than failing after its install succeeded.
                 }
@@ -224,13 +232,24 @@ public final class InstallLock {
         };
     }
 
-    /** Take back the shared holds {@link #exclusive} set aside. */
-    private static void restoreShared(State st, int count, String purpose) throws IOException {
+    /**
+     * Take back the shared holds {@link #exclusive} set aside, and their records. The holds are
+     * counted before the lock is taken back, so a take-back that throws (an interrupt while another
+     * session holds the lock) still leaves the count the holds' closes undo: the last of them
+     * releases, and a later run in this JVM takes the OS lock again. The records come back only
+     * with the lock.
+     */
+    private static void restoreShared(State st, int count, List<SharedRecord> hidden, Path file, String purpose)
+            throws IOException {
         if (count == 0) return;
         for (int i = 0; i < count; i++) st.jvm.readLock().lock();
         synchronized (st) {
-            if (st.shared == 0) st.acquire(true, purpose);
+            boolean first = st.shared == 0;
             st.shared += count;
+            if (first) st.acquire(true, purpose);
+        }
+        for (SharedRecord r : hidden) {
+            if (r.path() != null) rewrite(r.path(), Mode.SHARED, r.purpose());
         }
     }
 
@@ -286,7 +305,13 @@ public final class InstallLock {
     private static @Nullable Path record(Path lockFile, Mode mode, String purpose) {
         Path dir = holdersDir(lockFile);
         long pid = ProcessHandle.current().pid();
-        Path f = dir.resolve(pid + "-" + SEQ.incrementAndGet() + ".hold");
+        return rewrite(dir.resolve(pid + "-" + SEQ.incrementAndGet() + ".hold"), mode, purpose);
+    }
+
+    /** Write the record {@code f} of this process's hold or wait; null when the state dir refuses it. */
+    private static @Nullable Path rewrite(Path f, Mode mode, String purpose) {
+        Path dir = f.getParent();
+        long pid = ProcessHandle.current().pid();
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("pid", Long.toString(pid));
         fields.put("mode", mode.name());
@@ -296,7 +321,7 @@ public final class InstallLock {
         StringBuilder sb = new StringBuilder();
         fields.forEach((k, v) -> sb.append(k).append('=').append(v).append('\n'));
         try {
-            OwnerOnlyFiles.createDirectories(dir);
+            if (dir != null) OwnerOnlyFiles.createDirectories(dir);
             OwnerOnlyFiles.writeString(f, sb.toString());
             return f;
         } catch (IOException | RuntimeException refused) {
@@ -350,6 +375,10 @@ public final class InstallLock {
 
         /** Guarded by this: shared holds in this JVM. */
         int shared;
+
+        /** The records of the calling thread's shared holds, newest first. */
+        final ThreadLocal<java.util.ArrayDeque<SharedRecord>> threadShared =
+                ThreadLocal.withInitial(java.util.ArrayDeque::new);
 
         State(Path file) {
             this.file = file;
