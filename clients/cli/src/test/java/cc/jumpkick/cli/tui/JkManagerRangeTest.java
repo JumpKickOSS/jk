@@ -5,14 +5,17 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * The countdown is plain when the estimate's likely range is narrow, the range with a {@code ~} when
  * it is wide, and a rough figure past about ±50% (JK-4TEZ7, JK-R0N5S).
  */
+@ExtendWith(ForcedAnsi.class)
 class JkManagerRangeTest {
 
     @Test

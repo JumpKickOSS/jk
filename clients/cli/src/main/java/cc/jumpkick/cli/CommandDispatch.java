@@ -21,6 +21,7 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.DownloadsView;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.LiveRegion;
+import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.command.interop.BspCommand;
 import cc.jumpkick.command.interop.ExportCommand;
@@ -457,14 +458,14 @@ public final class CommandDispatch {
                 // Bare group: optional default leaf, else print the subcommand list.
                 // `--help` always shows help.
                 if (helpRequested(cmd, args.joined())) {
-                    System.out.print(renderHelp(cmd, qualified, ansi));
+                    printHelpText(renderHelp(cmd, qualified, ansi));
                     return 0;
                 }
                 CliCommand def = cmd.defaultSubcommand();
                 if (def != null) {
                     return dispatch(def, qualified + " " + def.name(), args, ansi);
                 }
-                System.out.print(renderHelp(cmd, qualified, ansi));
+                printHelpText(renderHelp(cmd, qualified, ansi));
                 return Exit.USAGE;
             }
             String subName = rest.get(subAt);
@@ -495,18 +496,8 @@ public final class CommandDispatch {
             printError(qualified, cmd, e);
             return Exit.USAGE;
         }
-        if (in.isSet("version")) {
-            System.out.println("jk " + Jk.VERSION);
-            return 0;
-        }
-        String refusedFormat = refusedOutputFormat(cmd, in);
-        if (refusedFormat != null) {
-            printRefusedOutput(qualified, cmd, refusedFormat);
-            return Exit.USAGE;
-        }
-        // The one fold of this command's parsed globals into the session, before anything renders:
-        // -u, -a, -x, -B and the rest reach every command wherever they sit on the line.
-        GlobalOptions.from(in);
+        Integer settled = settleBeforeRun(cmd, qualified, in);
+        if (settled != null) return settled;
         boolean agent = AgentMode.requested(in);
         // JK_OUTPUT=json names a preference; a command with no machine output prints its text.
         boolean json = GlobalOptions.outputIsJson(in) && cmd.machineOutput() == MachineOutput.JSONL;
@@ -556,8 +547,8 @@ public final class CommandDispatch {
         } catch (UserConfigParseException unparsed) {
             // The message is the fix: file:line:col and what TOML said. No stack, a config exit.
             closeActiveLiveRegion();
-            CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " "
-                    + unparsed.getMessage());
+            CliOutput.err(
+                    HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi()) + " " + unparsed.getMessage());
             code = Exit.CONFIG;
         } catch (Exception e) {
             closeActiveLiveRegion();
@@ -736,11 +727,32 @@ public final class CommandDispatch {
     }
 
     /**
+     * What happens between the parse and the run: {@code --version} and a refused {@code -O} end
+     * the command (their exit is returned); otherwise the one fold of the parsed globals into the
+     * session, before anything renders, so -u, -a, -x, -B and the rest reach every command wherever
+     * they sit on the line, and null.
+     */
+    private static @Nullable Integer settleBeforeRun(CliCommand cmd, String qualified, Invocation in) {
+        if (in.isSet("version")) {
+            System.out.println("jk " + Jk.VERSION);
+            return 0;
+        }
+        String refusedFormat = refusedOutputFormat(cmd, in);
+        if (refusedFormat != null) {
+            printRefusedOutput(qualified, cmd, refusedFormat);
+            return Exit.USAGE;
+        }
+        GlobalOptions.from(in);
+        return null;
+    }
+
+    /**
      * The {@code -O} value {@code in} gives that {@code cmd} does not print, lower-case, or null
      * when there is none or {@code cmd} prints it.
      */
     static @Nullable String refusedOutputFormat(CliCommand cmd, Invocation in) {
-        String format = in.value("output").map(v -> v.trim().toLowerCase(Locale.ROOT)).orElse(null);
+        String format =
+                in.value("output").map(v -> v.trim().toLowerCase(Locale.ROOT)).orElse(null);
         if (format == null || format.isEmpty()) return null;
         return cmd.outputFormats().contains(format) ? null : format;
     }
@@ -794,12 +806,14 @@ public final class CommandDispatch {
                 + "'");
         printSuggestion("command", command, COMMANDS);
         System.err.println();
-        System.err.println(ansi
-                ? HelpRenderer.paint("Usage:", Theme.active().sectionHeading(), true)
-                        + " "
-                        + HelpRenderer.paint("jk", Theme.active().commandName(), true)
-                        + HelpRenderer.paint(" <COMMAND> [OPTIONS]", Theme.active().paramLabel(), true)
-                : "Usage: jk <COMMAND> [OPTIONS]");
+        System.err.println(
+                ansi
+                        ? HelpRenderer.paint("Usage:", Theme.active().sectionHeading(), true)
+                                + " "
+                                + HelpRenderer.paint("jk", Theme.active().commandName(), true)
+                                + HelpRenderer.paint(
+                                        " <COMMAND> [OPTIONS]", Theme.active().paramLabel(), true)
+                        : "Usage: jk <COMMAND> [OPTIONS]");
         System.err.println();
         System.err.println(helpHint(ansi));
     }
@@ -892,9 +906,14 @@ public final class CommandDispatch {
 
     /** A leaf command's help, then whatever this invocation's arguments add to it. */
     private static void printHelp(CliCommand cmd, String qualified, List<String> args, boolean ansi) {
-        System.out.print(renderHelp(cmd, qualified, ansi));
+        printHelpText(renderHelp(cmd, qualified, ansi));
         String more = cmd.helpFor(args);
-        if (!more.isEmpty()) System.out.print("\n" + more);
+        if (!more.isEmpty()) printHelpText("\n" + more);
+    }
+
+    /** Help text on stdout, its chrome rewritten to ASCII where stdout may not carry Unicode. */
+    static void printHelpText(String text) {
+        System.out.print(StreamCaps.ansi(StreamCaps.Side.OUT) ? text : PlainAscii.rewrite(text));
     }
 
     /**

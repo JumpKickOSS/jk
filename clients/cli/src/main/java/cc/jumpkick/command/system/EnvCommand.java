@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
-import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
@@ -13,12 +11,14 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +43,12 @@ public final class EnvCommand implements CliCommand {
     @Override
     public String description() {
         return "Print resolved environment values and their sources";
+    }
+
+    /** {@code jk env -e} prints shell commands for {@code eval}: byte-exact, no envelope. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return in.isSet("export");
     }
 
     @Override

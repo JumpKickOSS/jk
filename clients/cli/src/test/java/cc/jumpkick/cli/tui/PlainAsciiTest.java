@@ -86,4 +86,9 @@ class PlainAsciiTest {
         assertThat(Glyphs.PULSE_PLAIN).isEqualTo("*");
         assertThat(Glyphs.CANCELLED_PLAIN).isEqualTo("o");
     }
+
+    @Test
+    void arrows_dashes_and_bar_segments_have_ascii_forms() {
+        assertThat(PlainAscii.rewrite("a → b ➜ c ← d – e ∩ f ▰▰▱ ⎋")).isEqualTo("a -> b -> c <- d - e & f ##- ^");
+    }
 }

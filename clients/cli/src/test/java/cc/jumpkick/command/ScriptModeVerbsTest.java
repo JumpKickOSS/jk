@@ -9,6 +9,7 @@ import cc.jumpkick.command.interop.IdeCommand;
 import cc.jumpkick.command.interop.VscodeCommand;
 import cc.jumpkick.command.pipeline.SelectiveCommand;
 import cc.jumpkick.command.project.ExplainCommand;
+import cc.jumpkick.command.system.EnvCommand;
 import cc.jumpkick.command.system.TasksCommand;
 import cc.jumpkick.command.toolchain.ActivateCommand;
 import cc.jumpkick.model.command.CliCommand;
@@ -29,6 +30,14 @@ class ScriptModeVerbsTest {
         Invocation.Builder in = Invocation.builder();
         for (String p : positionals) in.addPositional(p);
         return cmd.scriptMode(in.build());
+    }
+
+    @Test
+    void env_prints_a_script_only_under_export() {
+        assertThat(script(new EnvCommand())).isFalse();
+        assertThat(new EnvCommand()
+                        .scriptMode(Invocation.builder().flag("export", true).build()))
+                .isTrue();
     }
 
     @Test

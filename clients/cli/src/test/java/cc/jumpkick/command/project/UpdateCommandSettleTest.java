@@ -6,14 +6,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RichText;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** Settle chrome for {@code jk update} — wedge shape, not the old {@code Updated: path › N} line. */
+@ExtendWith(ForcedAnsi.class)
 class UpdateCommandSettleTest {
 
     @BeforeEach

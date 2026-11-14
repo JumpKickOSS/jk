@@ -4,12 +4,15 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /** The repository stores as {@code jk storage usage} and {@code jk doctor} print them: origin beside name. */
+@ExtendWith(ForcedAnsi.class)
 class RepoStoresTest {
 
     private static final String PRIVATE_ROW =

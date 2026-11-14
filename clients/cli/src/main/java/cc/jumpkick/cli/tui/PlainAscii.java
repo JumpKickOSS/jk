@@ -83,6 +83,13 @@ public final class PlainAscii {
                 case 0x2191 -> sb.append('^'); // ↑ up arrow (Ctrl-O "↑ output ↑" caption)
                 case 0x229B -> sb.append(Glyphs.CANCELLED_PLAIN); // ⊛ circled asterisk (cancelled)
                 case 0x2014 -> sb.append("--"); // — em dash (table titles, n/a durations)
+                case 0x2013 -> sb.append('-'); // – en dash (ranges)
+                case 0x2192, 0x279C -> sb.append("->"); // → ➜ (results, settled answers)
+                case 0x2190 -> sb.append("<-"); // ← left arrow
+                case 0x2229 -> sb.append('&'); // ∩ intersection (explain)
+                case 0x25B0 -> sb.append('#'); // ▰ filled bar segment
+                case 0x25B1 -> sb.append('-'); // ▱ empty bar segment
+                case 0x238B -> sb.append('^'); // ⎋ tree back-reference
                 default -> sb.appendCodePoint(cp);
             }
         }

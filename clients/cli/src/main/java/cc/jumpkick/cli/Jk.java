@@ -9,6 +9,7 @@ import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.GlobalSuspend;
+import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
@@ -210,11 +211,12 @@ public final class Jk {
         }
         if (argList.contains("-h") || argList.contains("--help")) {
             // Full help: all command groups + global options.
-            System.out.print(fullHelp(ansi));
+            CommandDispatch.printHelpText(fullHelp(ansi));
             return 0;
         }
         // Bare `jk` (no command, no flags): curated short-help screen.
-        HelpRenderer.printShortHelp(CommandDispatch.commands(), HELP_TAGLINE, "jk", System.out, ansi);
+        HelpRenderer.printShortHelp(
+                CommandDispatch.commands(), HELP_TAGLINE, "jk", PlainAscii.wrapping(System.out), ansi);
         return 0;
     }
 
