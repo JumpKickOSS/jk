@@ -408,10 +408,11 @@ class SidecarsTest {
             restart.join(10_000);
 
             assertThat(started).hasSize(1);
-            assertThat(started.getFirst().isAlive())
+            // The JDK's reaper marks the Process exited a moment after the kernel has; a `sleep 30`
+            // close() left running is still there five seconds on.
+            assertThat(started.getFirst().waitFor(5, TimeUnit.SECONDS))
                     .as("the app started under the closing session outlived it")
-                    .isFalse();
-            assertThat(started.getFirst().waitFor(5, TimeUnit.SECONDS)).isTrue();
+                    .isTrue();
             assertThatThrownBy(() -> sidecars.startCompanion(() -> new ProcessBuilder("sh", "-c", "sleep 30").start()))
                     .isInstanceOf(InterruptedException.class);
         } finally {
