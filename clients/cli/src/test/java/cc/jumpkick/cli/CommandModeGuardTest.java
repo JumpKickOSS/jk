@@ -11,6 +11,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
+import cc.jumpkick.secret.SecretVault;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -46,12 +47,10 @@ class CommandModeGuardTest {
     static final Map<String, String> NOT_RUN = Map.ofEntries(
             Map.entry("jk mcp", "stdio JSON-RPC server: answers until its client closes stdin"),
             Map.entry("jk bsp", "stdio JSON-RPC server: answers until its client closes stdin"),
-            Map.entry("jk dev", "a watch loop that runs until Ctrl-C"),
             Map.entry("jk watch*", "a watch loop that runs until Ctrl-C"),
             Map.entry("jk web", "serves the dashboard and opens a browser"),
             Map.entry("jk shell", "starts an interactive subshell"),
             Map.entry("jk jshell", "starts an interactive REPL"),
-            Map.entry("jk run", "runs the user's program on inherited stdio"),
             Map.entry("jk tool run", "runs a tool on inherited stdio"),
             Map.entry("jk node exec", "runs a Node program on inherited stdio"),
             Map.entry("jk node run", "runs a package script on inherited stdio"),
@@ -63,30 +62,14 @@ class CommandModeGuardTest {
             Map.entry("jk activate", "writes the user's shell rc files"),
             Map.entry("jk deactivate", "writes the user's shell rc files"),
             Map.entry("jk jdk update-shell", "writes the user's shell rc files"),
-            Map.entry("jk agents", "writes coding-agent files beside the user's own"),
-            Map.entry("jk auth login", "asks for a secret and may use the OS keychain"),
-            Map.entry("jk auth logout", "may use the OS keychain"),
-            Map.entry("jk auth token", "may use the OS keychain"),
-            Map.entry("jk auth status", "may use the OS keychain"),
-            Map.entry("jk repo login", "asks for a secret and may use the OS keychain"),
-            Map.entry("jk repo logout", "may use the OS keychain"),
+            Map.entry("jk agents", "writes coding-agent files into the project the working directory names"),
             Map.entry("jk engine start", "starts an engine"),
-            Map.entry("jk engine stop", "stops the host's engine"),
-            Map.entry("jk engine rotate-token", "rewrites the engine's token"),
-            Map.entry("jk jdk install", "downloads and installs a JDK"),
-            Map.entry("jk jdk ensure", "downloads and installs a JDK"),
-            Map.entry("jk jdk update", "downloads and installs a JDK"),
-            Map.entry("jk jdk graal", "downloads and installs a JDK"),
-            Map.entry("jk jdk uninstall", "removes an installed JDK"),
-            Map.entry("jk jdk default", "changes the machine's default JDK"),
-            Map.entry("jk node install", "downloads and installs Node"),
-            Map.entry("jk node uninstall", "removes an installed Node"),
-            Map.entry("jk node update", "downloads and installs Node"),
             Map.entry("jk ide", "launches an IDE"),
             Map.entry("jk vscode", "launches an IDE"),
-            Map.entry("jk export idea", "launches an IDE"),
-            Map.entry("jk cache nuke", "deletes the cache root"),
-            Map.entry("jk storage nuke", "deletes the store"));
+            Map.entry("jk export idea", "launches an IDE"));
+
+    /** The roots a run may write, every one under the test's temporary directory. */
+    static final List<String> ISOLATED = List.of("JK_HOME", "JK_CACHE_DIR", "JK_STORE_DIR", "JK_STATE_DIR");
 
     /** The output modes a command runs in: the flags after its arguments. */
     enum Mode {
@@ -109,8 +92,12 @@ class CommandModeGuardTest {
 
     @BeforeEach
     void isolate() throws Exception {
-        System.setProperty(
-                "jk.env.JK_HOME", Files.createDirectories(tmp.resolve("home")).toString());
+        for (String dir : ISOLATED) {
+            System.setProperty(
+                    "jk.env." + dir, Files.createDirectories(tmp.resolve(dir)).toString());
+        }
+        // Secrets stay in the temporary home's files: no run reads or writes an OS keychain.
+        System.setProperty("jk.env." + SecretVault.ENV, "file");
         stdin = System.in;
         System.setIn(new ByteArrayInputStream(new byte[0]));
     }
@@ -118,7 +105,8 @@ class CommandModeGuardTest {
     @AfterEach
     void restore() {
         System.setIn(stdin);
-        System.clearProperty("jk.env.JK_HOME");
+        for (String dir : ISOLATED) System.clearProperty("jk.env." + dir);
+        System.clearProperty("jk.env." + SecretVault.ENV);
     }
 
     /** Every command path in the registry, groups and leaves, hidden ones included. */
