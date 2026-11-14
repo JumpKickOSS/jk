@@ -358,7 +358,7 @@ The project store holds:
 | `runs` | the step ledger: the latest 60 successful runs, one JSON line each, with each step's status and wall, the run's shape and work set, suite curves and suite workers (`StepLedger`) |
 | `means` | `key mean last count seen`: one running mean per measure the estimates read |
 | `classes` | `suiteDir⇥fqcn⇥last⇥mean⇥count⇥seen`: one running mean per test class of a suite, the suite as `<rel-dir><@selection>` |
-| `meta` | `runs N`, the number of runs folded, which `seen` counts in |
+| `meta` | `<section><@selection> N` per group of rows: the runs that folded a row of that section under that test selection (`means`, `classes@integration`), which its rows' `seen` count in |
 
 The measures kept are a module's step walls (`module.<dir>.task.<step>.wall-ms`), a suite's wall
 normalized to one runner (`module.<dir>.task.run-tests*.wall1-ms`), a step kind's wall
@@ -366,9 +366,11 @@ normalized to one runner (`module.<dir>.task.run-tests*.wall1-ms`), a step kind'
 (`invocation.<kind>.wall-ms`, `workspace.wall-ms`). A running mean is a plain mean for
 its first ten samples and then moves a tenth of the way to each new one; from the third sample on,
 a sample is clipped to within 4× of the mean before it is folded, so one stalled run cannot drag
-it. A row no run has refreshed in 200 runs is dropped, and past 4,000 means or 10,000 classes the
-least recently seen go first. A module step is read by its mean; another measure by its last sample
-unless that is a cache-restore blip beside a long mean.
+it. A row is dropped once 200 runs of its own group passed without refreshing it: a class gone from
+a suite that still runs goes, and an integration suite's classes outlive any number of default-tier
+runs. Past 4,000 means or 10,000 classes the stalest within their group go first. A module step is
+read by its mean; another measure by its last sample unless that is a cache-restore blip beside a
+long mean.
 
 The host store holds the calibration probe, the continuous rates, the rung biases and spreads
 (`rung kind log-factor scale runs`, and one `correlation mean-square independent correlated

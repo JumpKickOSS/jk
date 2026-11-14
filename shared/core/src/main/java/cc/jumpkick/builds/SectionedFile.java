@@ -84,6 +84,23 @@ public final class SectionedFile {
      */
     public static void update(Path file, String header, Map<String, UnaryOperator<List<String>>> edits)
             throws IOException {
+        updateAll(file, header, all -> {
+            for (Map.Entry<String, UnaryOperator<List<String>>> e : edits.entrySet()) {
+                List<String> now = e.getValue().apply(new ArrayList<>(all.getOrDefault(e.getKey(), List.of())));
+                if (now == null || now.isEmpty()) all.remove(e.getKey());
+                else all.put(e.getKey(), now);
+            }
+            return all;
+        });
+    }
+
+    /**
+     * {@link #update} with one edit that reads and writes every section at once, for an owner whose
+     * sections depend on each other: {@code edit} gets the sections in file order, mutable, and
+     * returns them; a section with no lines is dropped.
+     */
+    public static void updateAll(Path file, String header, UnaryOperator<Map<String, List<String>>> edit)
+            throws IOException {
         OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
         FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> {
             String before = readText(file);
@@ -94,13 +111,10 @@ public final class SectionedFile {
                             .add(line));
                 }
             }
-            for (Map.Entry<String, UnaryOperator<List<String>>> e : edits.entrySet()) {
-                List<String> now = e.getValue().apply(new ArrayList<>(all.getOrDefault(e.getKey(), List.of())));
-                if (now == null || now.isEmpty()) all.remove(e.getKey());
-                else all.put(e.getKey(), now);
-            }
-            String after = render(header, all);
-            if (!after.equals(before)) AtomicWrites.replace(file, after);
+            Map<String, List<String>> after = edit.apply(all);
+            after.values().removeIf(lines -> lines == null || lines.isEmpty());
+            String text = render(header, after);
+            if (!text.equals(before)) AtomicWrites.replace(file, text);
         });
     }
 

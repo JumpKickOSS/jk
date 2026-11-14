@@ -83,7 +83,7 @@ class ProjectStoreTest {
         assertThat(means.get("task.compile-java.wall-ms"))
                 .as("a key measured twice in one run is one sample: their mean")
                 .isEqualTo(new RunningMean(200, 200, 1, 1));
-        assertThat(Files.readString(ProjectStore.file(home))).contains("[meta]\nruns 1\n");
+        assertThat(Files.readString(ProjectStore.file(home))).contains("[meta]\nmeans 1\n");
     }
 
     @Test
@@ -109,15 +109,58 @@ class ProjectStoreTest {
     }
 
     @Test
-    void a_row_no_run_refreshed_in_two_hundred_runs_is_dropped(@TempDir Path home) {
+    void a_row_no_run_of_its_own_group_refreshed_in_two_hundred_runs_is_dropped(@TempDir Path home) {
         ProjectStore.foldRun(home, "task.gone.wall-ms = 5\n[test-class.\"m\".\"p\"]\nGone = 5\n");
-        for (int i = 0; i < ProjectStore.STALE_RUNS; i++) ProjectStore.foldRun(home, "task.kept.wall-ms = 5\n");
+        String later = "task.kept.wall-ms = 5\n[test-class.\"m\".\"p\"]\nKept = 5\n";
+        for (int i = 0; i < ProjectStore.STALE_RUNS; i++) ProjectStore.foldRun(home, later);
         assertThat(means(home)).containsKeys("task.gone.wall-ms", "task.kept.wall-ms");
-        ProjectStore.foldRun(home, "task.kept.wall-ms = 5\n");
+        assertThat(classes(home)).containsExactlyInAnyOrder("m p.Gone", "m p.Kept");
+        ProjectStore.foldRun(home, later);
         assertThat(means(home)).containsOnlyKeys("task.kept.wall-ms");
-        List<String> classes = new ArrayList<>();
-        ProjectStore.scan(home, null, (dir, fqcn, m) -> classes.add(fqcn));
-        assertThat(classes).isEmpty();
+        assertThat(classes(home))
+                .as("a class gone from a suite that still runs")
+                .containsExactly("m p.Kept");
+    }
+
+    @Test
+    void only_runs_that_could_refresh_a_row_age_it(@TempDir Path home) throws Exception {
+        ProjectStore.foldRun(home, """
+                module.io.task.run-tests@integration.wall-ms = 650000
+                [test-class."io@integration"."p"]
+                IoIT = 650000
+                [test-class."io"."p"]
+                IoTest = 40000
+                """);
+        for (int i = 0; i <= ProjectStore.STALE_RUNS; i++)
+            ProjectStore.foldRun(home, "task.compile-java.wall-ms = 5\n");
+        assertThat(classes(home))
+                .as("runs that folded no class walls age no class row")
+                .containsExactlyInAnyOrder("io@integration p.IoIT", "io p.IoTest");
+        assertThat(means(home)).containsKey("module.io.task.run-tests@integration.wall-ms");
+
+        String integration = "module.other.task.run-tests@integration.wall-ms = 5\n"
+                + "[test-class.\"other@integration\".\"p\"]\nOtherIT = 5\n";
+        for (int i = 0; i <= ProjectStore.STALE_RUNS; i++) ProjectStore.foldRun(home, integration);
+        assertThat(classes(home))
+                .as("a module's integration classes after 201 integration runs that never ran them")
+                .containsExactlyInAnyOrder("io p.IoTest", "other@integration p.OtherIT");
+        assertThat(means(home)).doesNotContainKey("module.io.task.run-tests@integration.wall-ms");
+        assertThat(Files.readString(ProjectStore.file(home)))
+                .contains("classes 1\n", "classes@integration " + (ProjectStore.STALE_RUNS + 2) + "\n");
+    }
+
+    @Test
+    void a_row_seen_after_its_groups_latest_run_is_dropped(@TempDir Path home) throws Exception {
+        Files.createDirectories(home);
+        Files.writeString(ProjectStore.file(home), "[meta]\nmeans 3\n[means]\ntask.x.wall-ms 5 5 1 900\n");
+        ProjectStore.foldRun(home, "task.y.wall-ms = 5\n");
+        assertThat(means(home)).containsOnlyKeys("task.y.wall-ms");
+    }
+
+    private static List<String> classes(Path home) {
+        List<String> out = new ArrayList<>();
+        ProjectStore.scan(home, null, (dir, fqcn, m) -> out.add(dir + " " + fqcn));
+        return out;
     }
 
     @Test
@@ -167,7 +210,7 @@ class ProjectStoreTest {
                 .isEqualTo((long) runs);
         assertThat(means).hasSize(runs + 1);
         assertThat(ProjectStore.runs(home)).hasSize(runs);
-        assertThat(Files.readString(ProjectStore.file(home))).contains("runs " + runs + "\n");
+        assertThat(Files.readString(ProjectStore.file(home))).contains("means " + runs + "\n");
     }
 
     @Test
