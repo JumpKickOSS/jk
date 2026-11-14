@@ -287,8 +287,9 @@ class PreflightMemoTest {
             assertThat(PreflightMemo.fingerprintModule(tmp, false)).isInstanceOf(PreflightMemo.Known.class);
             long readsAfterPreflight = FileHashMemo.contentReads();
             assertThat(readsAfterPreflight)
-                    .as("manifest, lock and the two sources: each read once")
-                    .isEqualTo(4);
+                    .as(
+                            "manifest, lock, the two sources and the release file of the JDK the tests run on: each read once")
+                    .isEqualTo(5);
 
             TestStamp.computeKey(
                     List.of(testSrc), tmp.resolve("target/classes"), List.of(), lock, List.of(), List.of());

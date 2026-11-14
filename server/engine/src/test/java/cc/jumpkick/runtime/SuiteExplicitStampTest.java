@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
@@ -75,6 +76,7 @@ class SuiteExplicitStampTest {
                         dir,
                         project,
                         layout,
+                        JavaHomes.runningJavaHome(),
                         null,
                         sel,
                         null,

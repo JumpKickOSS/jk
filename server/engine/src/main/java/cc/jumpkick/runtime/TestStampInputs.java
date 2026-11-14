@@ -9,6 +9,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -23,6 +24,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
@@ -66,11 +68,14 @@ public record TestStampInputs(
      * @param resolvedRuntime the test runtime classpath the classpath step publishes ({@link ModuleClasspaths#testRuntime})
      * @param providedRuntime the provided jars the test JVM also gets last ({@link ModuleClasspaths#providedRuntime})
      * @param compileTestKeys the test compiles' action keys
+     * @param javaHome the JDK the test JVM runs on: the module's resolved JDK, which a module with
+     *     no JDK pin does not compile on, so no test compile key names it
      */
     record Facts(
             Path dir,
             JkBuild project,
             BuildLayout layout,
+            Path javaHome,
             @Nullable String profileName,
             TestSelection sessionSelection,
             @Nullable PluginDeclarations pluginDecls,
@@ -87,6 +92,7 @@ public record TestStampInputs(
                 Path dir,
                 JkBuild project,
                 BuildLayout layout,
+                Path javaHome,
                 @Nullable String profileName,
                 @Nullable PluginDeclarations pluginDecls,
                 ModuleClasspaths classpaths,
@@ -96,6 +102,7 @@ public record TestStampInputs(
                     dir,
                     project,
                     layout,
+                    javaHome,
                     profileName,
                     SessionContext.current().testSelection(),
                     pluginDecls,
@@ -105,12 +112,16 @@ public record TestStampInputs(
                     compileTestKeys);
         }
 
-        /** The module on its own: the session's selection, no profile, plugin, classpath or test compile. */
+        /**
+         * The module on its own: the JDK the resolution walk finds for it, the session's selection,
+         * no profile, plugin, classpath or test compile.
+         */
         static Facts of(Path dir, JkBuild project) throws IOException {
             return new Facts(
                     dir,
                     project,
                     BuildLayout.of(dir, project),
+                    JavaHomes.resolveJavaHome(dir),
                     null,
                     SessionContext.current().testSelection(),
                     null,
@@ -179,6 +190,8 @@ public record TestStampInputs(
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
+        // The JDK the suite runs on decides what it computes; a patch update in place moves it too.
+        extras.add("test-jdk:" + ActionKey.jdkToken(facts.javaHome()));
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
     }
 

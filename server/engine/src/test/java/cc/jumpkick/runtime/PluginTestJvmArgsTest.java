@@ -102,6 +102,7 @@ class PluginTestJvmArgsTest {
                         facts.dir(),
                         facts.project(),
                         layout,
+                        facts.javaHome(),
                         null,
                         facts.sessionSelection(),
                         decls,
