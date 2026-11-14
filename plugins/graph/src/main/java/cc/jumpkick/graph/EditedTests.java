@@ -62,10 +62,12 @@ final class EditedTests {
         }
         String only = String.join(",", touched);
         if (classes.isEmpty()) {
-            return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + "." + done;
+            return "Test the modules it edited: run(kind=test, modules=" + only + "), or jk test -m " + only + "."
+                    + done;
         }
-        return "Test the test classes it edited: run(kind=test, only=" + only + ", classes=" + String.join(",", classes)
-                + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "." + done;
+        return "Test the test classes it edited: run(kind=test, modules=" + only + ", classes="
+                + String.join(",", classes) + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "."
+                + done;
     }
 
     /**

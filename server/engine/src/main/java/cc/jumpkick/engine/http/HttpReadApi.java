@@ -6,6 +6,8 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.jobs.JobEnvelope;
+import cc.jumpkick.engine.jobs.JobOrigin;
+import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.verbs.MetricsVerb;
 import cc.jumpkick.host.JkDirs;
@@ -29,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -230,28 +233,25 @@ final class HttpReadApi {
 
     /**
      * {@code POST /api/build} — acknowledge with a request id; progress streams on
-     * {@code /api/events}. Optional {@code kind} (default {@code build}) starts any HTTP-exposed
-     * job kind (test, lock, …) through the same admission point MCP {@code run} uses. Optional
-     * {@code deadlineMs} bounds the job's wall time ({@code 0} = none); absent, the engine's
-     * detached default applies.
+     * {@code /api/events}. The body is a job request {@link JobRequests} decodes, as MCP {@code run}'s
+     * arguments are; {@code kind} defaults to {@code build}, and an unknown field is a {@code 400}.
      */
     void handleBuild(HttpExchange exchange) throws IOException {
-        String body = HttpRequests.body(exchange);
-        String dir = Jsonl.str(body, "dir");
-        if (dir == null || dir.isBlank()) {
+        JobSpec spec;
+        try {
+            if (!(MiniJson.parse(HttpRequests.body(exchange)) instanceof Map<?, ?> raw)) {
+                throw new IllegalArgumentException("body must be a JSON object");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> fields = (Map<String, Object>) raw;
+            spec = JobRequests.decode(fields, JobOrigin.WEB, "build", null, Set.of());
+        } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object().put("error", "missing \"dir\"").toString());
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        String kind = Jsonl.str(body, "kind");
         long requestId;
         try {
-            JobSpec spec = JobSpec.of(kind == null ? "build" : kind, dir);
-            if (Jsonl.has(body, "deadlineMs")) {
-                spec = spec.withDeadlineMs(Jsonl.longValue(body, "deadlineMs", -1L));
-            }
             requestId = jobs.trigger(spec);
         } catch (JobEnvelope.AlreadyRunning e) {
             HttpResponses.sendJson(

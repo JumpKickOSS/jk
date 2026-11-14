@@ -68,7 +68,6 @@ class WireKeyClosureTest {
             Map.entry("java-options", "foreign format: jbang-catalog.json"),
             Map.entry("script-ref", "foreign format: jbang-catalog.json"),
             // A POST /api/build body field an HTTP client sets; the engine only ever reads it.
-            Map.entry("deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build"),
             // jk-import-model.init.gradle writes the xjc and schema-registry plugins' settings, in Groovy.
             Map.entry("xsdDir", GROOVY),
             Map.entry("defaultPackage", GROOVY),

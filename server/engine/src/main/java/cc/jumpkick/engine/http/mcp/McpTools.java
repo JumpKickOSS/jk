@@ -31,7 +31,6 @@ import cc.jumpkick.engine.http.mcp.tools.RunAliasTool;
 import cc.jumpkick.engine.http.mcp.tools.RunTool;
 import cc.jumpkick.engine.http.mcp.tools.SkillTool;
 import cc.jumpkick.engine.http.mcp.tools.StatusTool;
-import cc.jumpkick.engine.http.mcp.tools.TriggerTool;
 import cc.jumpkick.engine.http.mcp.tools.UpdateTool;
 import cc.jumpkick.engine.http.mcp.tools.WhyTool;
 import cc.jumpkick.engine.http.mcp.tools.WorkspaceTool;
@@ -142,21 +141,6 @@ public final class McpTools {
         List<McpTool> tools = new ArrayList<>(List.of(
                 new SkillTool(),
                 new StatusTool(),
-                new TriggerTool(
-                        "build",
-                        "build",
-                        "Start a workspace/module build for dir (async). Returns jid; stream progress "
-                                + "via GET /mcp?jid=N (or ?progressToken=T with _meta.progressToken) "
-                                + "Accept: text/event-stream. Same as POST /api/build."),
-                new TriggerTool(
-                        "test",
-                        "test",
-                        "Start a true test-only job for dir (async; compile + tests, no package — same as "
-                                + "jk test). Journal kind test. Progress: GET /mcp?jid=N. Returns jid."),
-                new TriggerTool(
-                        "lock",
-                        "lock",
-                        "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?jid=N."),
                 new CancelTool(),
                 new BindTool(),
                 new ProjectTool(),

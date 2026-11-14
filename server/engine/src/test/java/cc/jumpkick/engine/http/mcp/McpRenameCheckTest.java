@@ -23,7 +23,7 @@ class McpRenameCheckTest {
         McpCall in = new McpCall(context(), Map.of("dir", "/w", "timeout_s", 30), null);
         String renamed = "Renamed Range.contains to includes: 1 declaration, 2 calls, in 2 files.\n"
                 + "Every use the compiled classes record is renamed; no search needed. Test the test classes it"
-                + " edited: run(kind=test, only=core,app, classes=RangeTest,ShopTest), or jk test -m core,app -S"
+                + " edited: run(kind=test, modules=core,app, classes=RangeTest,ShopTest), or jk test -m core,app -S"
                 + " RangeTest -S ShopTest. A rename changes no behaviour: once that test passes, the task is done.";
 
         String answer = McpRenameCheck.verdict(McpRenameCheck.after(in, renamed, Clock.SYSTEM.nanos(), List.of()));

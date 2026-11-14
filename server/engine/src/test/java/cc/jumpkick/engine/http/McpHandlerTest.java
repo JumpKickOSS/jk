@@ -92,7 +92,7 @@ class McpHandlerTest {
         List<Object> loop = listedNames();
         assertThat(loop).contains("skill").doesNotContain("status", "build", "history", "bind");
         mcp.surface(McpTools.Surface.ALL);
-        assertThat(listedNames()).contains("status", "build", "test", "lock", "cancel", "bind", "project", "history");
+        assertThat(listedNames()).contains("status", "run", "cancel", "bind", "project", "history");
     }
 
     @Test
@@ -121,32 +121,28 @@ class McpHandlerTest {
     }
 
     @Test
-    void tools_call_build() {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"build\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
+    void tools_call_run_without_wait_answers_the_jid() {
+        String body = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"kind\":\"build\",\"wait\":false}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         String text = (String) objects(result, "content").getFirst().get("text");
         assertThat(text).isEqualTo("RUNNING build jid=42\nrun(jid=42)\n");
-        Map<String, Object> structured = object(result, "structuredContent");
-        assertThat(structured.get("type")).isEqualTo("build-accepted");
-        assertThat(number(structured, "jid").longValue()).isEqualTo(42L);
     }
 
     @Test
-    void tools_call_test_lock_cancel() {
-        String testBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
-        // Nested tool payload is JSON-escaped inside content.text
-        assertThat(testBody).contains("test-accepted");
-        assertThat(testBody).contains("jid");
-        assertThat(testBody).contains("43");
+    void tools_call_run_test_lock_then_cancel() {
+        String testBody = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"kind\":\"test\",\"wait\":false}}}");
+        assertThat(testBody).contains("RUNNING test jid=43");
 
-        String lockBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"lock\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
-        assertThat(lockBody).contains("lock-accepted");
-        assertThat(lockBody).contains("44");
+        String lockBody = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"kind\":\"lock\",\"wait\":false}}}");
+        assertThat(lockBody).contains("RUNNING lock jid=44");
 
         String cancelBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"cancel\",\"arguments\":{\"jid\":42}}}");
@@ -294,7 +290,7 @@ class McpHandlerTest {
                 AdmissionYield.NONE,
                 null);
         String body = withTokens.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"kind\":\"build\",\"wait\":false},"
                 + "\"_meta\":{\"progressToken\":\"tok-1\"}}}");
         assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
         assertThat(body).contains("jid=42");

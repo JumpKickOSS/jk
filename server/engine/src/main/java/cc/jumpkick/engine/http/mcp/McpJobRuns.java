@@ -3,12 +3,11 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
+import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.host.time.Suspensions;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -74,33 +73,8 @@ public final class McpJobRuns {
      * {@code null} reads {@code arguments.kind}, defaulting to {@code test}: the agent loop's step.
      */
     public static Map<String, Object> run(McpCall in, @Nullable String pinnedKind) {
-        if (in.args().containsKey("aot_cache")) {
-            // Not hosted: rejecting beats a silent no-op an agent would read as AOT training.
-            throw new McpError(-32602, "aot_cache is not supported; run jobs train AOT via engine policy");
-        }
         McpContext ctx = in.ctx();
-        String kind = pinnedKind;
-        if (kind == null) kind = in.str("kind");
-        if (kind == null || kind.isBlank()) kind = "test";
-        if ("publish".equals(kind) && in.flag("upload")) kind = "upload";
-        List<String> modules = in.strings("modules");
-        if (modules.isEmpty()) modules = only(in);
-        boolean affected = in.flag("affected");
-        if (affected && (modules == null || modules.isEmpty())) {
-            modules = List.of("affected-wip");
-        }
-        JobSpec spec = new JobSpec(
-                kind,
-                in.requiredDir(),
-                modules,
-                in.strings("include_tags"),
-                in.strings("exclude_tags"),
-                in.strings("suites"),
-                listOrCommas(in, "classes"),
-                in.flag("skip_tests"),
-                affected,
-                deadlineMs(in),
-                JobOrigin.mcp(in.sessionLabel()));
+        JobSpec spec = decode(in, pinnedKind);
         boolean wait = in.flagOr("wait", true);
         int timeoutS = timeoutS(in);
         long triggeredAt = System.currentTimeMillis();
@@ -142,6 +116,31 @@ public final class McpJobRuns {
         return in.text((text != null ? text : "FAIL run jid=" + jid + "\nno run record\n") + McpHolds.totalLine(jid));
     }
 
+    /**
+     * The arguments {@code run} and its aliases read themselves; everything else is a job field
+     * {@link JobRequests} decodes, and a name in neither set is refused.
+     */
+    public static final Set<String> RUN_FIELDS =
+            Set.of(McpSchemas.GOAL, "wait", "timeout_s", "jid", "run", McpDecisions.DECISION, "upload", "action");
+
+    /**
+     * {@code in}'s arguments as the job they ask for, through the decoder every surface shares;
+     * {@code pinnedKind} is an alias's kind, else {@code arguments.kind}, else {@code test}.
+     */
+    public static JobSpec decode(McpCall in, @Nullable String pinnedKind) {
+        String kind = pinnedKind;
+        if (kind == null) kind = in.str("kind");
+        if (kind == null || kind.isBlank()) kind = "test";
+        if ("publish".equals(kind) && in.flag("upload")) kind = "upload";
+        Map<String, Object> fields = new LinkedHashMap<>(in.args());
+        fields.put("kind", kind);
+        try {
+            return JobRequests.decode(fields, JobOrigin.mcp(in.sessionLabel()), kind, in.requiredDir(), RUN_FIELDS);
+        } catch (IllegalArgumentException e) {
+            throw new McpError(-32602, e.getMessage());
+        }
+    }
+
     /** {@code timeout_s}: how long one call parks before it answers {@code TIMEOUT}. */
     static int timeoutS(McpCall in) {
         return in.count("timeout_s", clientWaitS(in), 1, MAX_WAIT_S);
@@ -180,36 +179,6 @@ public final class McpJobRuns {
         if (token == null) return;
         Long jid = ctx.progressTokens().resolve(String.valueOf(token));
         if (jid != null) ctx.jobs().cancel(jid);
-    }
-
-    /**
-     * {@code deadline_s} as the job's wall deadline in ms: absent leaves the engine's detached
-     * default, {@code 0} lifts the cap, a negative is the caller's error.
-     */
-    private static @Nullable Long deadlineMs(McpCall in) {
-        Long seconds = in.num("deadline_s");
-        if (seconds == null) return null;
-        if (seconds < 0) throw new McpError(-32602, "deadline_s must be >= 0 (0 = no deadline)");
-        return seconds * 1000L;
-    }
-
-    /** {@code only} is the module filter: a string ({@code a,b}) or a string array. */
-    private static List<String> only(McpCall in) {
-        return listOrCommas(in, "only");
-    }
-
-    /** {@code key} as a list, or as one comma-separated string. */
-    private static List<String> listOrCommas(McpCall in, String key) {
-        List<String> many = in.strings(key);
-        if (!many.isEmpty()) return many;
-        String one = in.str(key);
-        if (one == null || one.isBlank()) return List.of();
-        List<String> out = new ArrayList<>();
-        for (String part : one.split(",", -1)) {
-            String s = part.trim();
-            if (!s.isEmpty()) out.add(s);
-        }
-        return out;
     }
 
     /** Modules and test filters, emitted only when the caller narrowed the job. */

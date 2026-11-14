@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  */
 public final class McpRenameCheck {
 
-    /** The answer's test instruction: {@code run(kind=test, only=a,b, classes=X,Y)}. */
+    /** The answer's test instruction: {@code run(kind=test, modules=a,b, classes=X,Y)}. */
     private static final Pattern TEST_CALL = Pattern.compile("run\\(kind=test((?:, [a-z]+=[^,) ]+(?:,[^,) =]+)*)*)\\)");
 
     /** The answer's sentence that names the check, from {@code Test} to the end of its line. */
@@ -66,7 +66,7 @@ public final class McpRenameCheck {
         }
         // Guard the modules the rename edited, as the tests ran: a workspace's whole guard can take minutes.
         Map<String, Object> guardArgs = new LinkedHashMap<>(Map.of("dir", in.requiredDir(), "kind", "guard"));
-        if (args.containsKey("only")) guardArgs.put("only", args.get("only"));
+        if (args.containsKey("modules")) guardArgs.put("modules", args.get("modules"));
         String guard = verdict(McpJobRuns.run(sub(in, guardArgs, left), null));
         if (!guard.startsWith("OK")) {
             return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Guard: " + guard.strip());

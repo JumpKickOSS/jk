@@ -840,11 +840,28 @@ with the created project and sends `notifications/elicitation/complete`.
 
 ## Starting a job (`POST /api/build`)
 
-One admission point for every HTTP and MCP job: the body's `dir` (required) and `kind`
-(default `build`; any HTTP-exposed kind — `test`, `lock`, `guard`, …) resolve to the hosted verb,
-decode to the same wire request line the CLI would send, and submit detached. The reply is
-`202` with the `jid`; progress is the SSE stream. `409` carries the `jid` of a same-project job
-already in flight, `400` a body the verb cannot run.
+One admission point for every HTTP and MCP job, and one decoder (`JobRequests`) in front of it:
+the body of `POST /api/build` and the arguments of MCP `run` are the same job request, and the
+same JSON admits the same `JobSpec` on both, apart from its origin (`web` or `mcp` and the
+connection). The fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `dir` | string | The checkout (required; MCP falls back to the connection's bind) |
+| `kind` | string | `build` (REST default; MCP `run` defaults to `test`), `test`, `lock`, `guard`, `update`, … |
+| `modules` | string array or `a,b` | Module selection, as `-m` |
+| `classes` | string array or `A,B` | Test classes, as `-S` |
+| `suites` | string array | Test suites, as `-s` |
+| `include_tags` / `exclude_tags` | string array | Test tags, as `-I` / `-E` |
+| `affected` | boolean | Only the modules the working tree changed (and what depends on them) |
+| `skip_tests` | boolean | Skip the test phase, as `-S` on `build` |
+| `deadline_s` | integer | The job's wall deadline in seconds (`0` = none) |
+
+A field outside the table (MCP `run` adds its own `goal`, `wait`, `timeout_s`, `jid`, `run`,
+`decision`) is refused, `400` naming it (`-32602` on MCP), as is a value of the wrong type. The
+spec resolves to the hosted verb, decodes to the same wire request line the CLI would send, and
+submits detached. The reply is `202` with the `jid`; progress is the SSE stream. `409` carries the
+`jid` of a same-project job already in flight, `400` a body the verb cannot run.
 
 Every JSON request body (`POST /api/build`, `/api/cancel`, `/api/projects`, `/mcp`) is capped at
 64 KiB; past it the engine stops reading and answers **413**
@@ -852,12 +869,12 @@ Every JSON request body (`POST /api/build`, `/api/cancel`, `/api/projects`, `/mc
 parsed. `PUT /api/project/file` has its own, larger cap.
 
 A detached job has no connection whose EOF would end it, so it always runs under a wall
-deadline: the body's `deadlineMs` when present (`0` = none; a negative is a `400`), else the
+deadline: the request's `deadline_s` when present (`0` = none; a negative is a `400`), else the
 engine's `[engine] detached-deadline-ms` / `JK_ENGINE_DETACHED_DEADLINE_MS` (default one hour).
 Past it the job takes the same bounded cancel path a user cancel does, and `request-finish` and
 the journal row carry a `cancelReason` naming the deadline and the knob that set it. Socket jobs
 the CLI owns are unchanged: their EOF is the deadline, and `JK_ENGINE_JOB_DEADLINE_MS` stays off
-unless set. MCP `run` exposes the same field as `deadline_s`.
+unless set.
 
 ## Live updates (`GET /api/events`)
 

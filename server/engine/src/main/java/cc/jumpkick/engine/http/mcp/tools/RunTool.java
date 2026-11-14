@@ -9,6 +9,8 @@ import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.engine.http.mcp.McpVitals;
+import cc.jumpkick.engine.jobs.JobRequests;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -16,37 +18,29 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code run} — start a job and wait, keep waiting on one, or read an earlier verdict. {@code jid}
  * waits on that job; {@code decision} continues the call a {@code NEEDS-YOU} answered; {@code run} (a history id) with no {@code kind} is the read; otherwise it
- * starts a job, {@code test} unless {@code kind} says otherwise. {@code only} limits modules.
+ * starts a job, {@code test} unless {@code kind} says otherwise. The job fields are {@link JobRequests}'.
  */
 public final class RunTool implements McpTool {
 
     static final String DESCRIPTION =
-            "Run and wait; the reply is the verdict. kind=test (default)|build|snapshot|lock|…; only=modules; classes=test classes; jid=N waits; run=<id> rereads.";
+            "Run and wait; the reply is the verdict. kind=test|build|lock|…; jid=N waits; run=<id> rereads.";
+
+    /**
+     * The job fields {@code run}'s card names: the ones an agent's loop uses. The decoder accepts
+     * the rest of {@link JobRequests#FIELDS} too ({@code docs/user/mcp.md} lists them); naming them
+     * here would cost every turn the bytes of arguments few calls send.
+     */
+    static final List<String> CARD_FIELDS = List.of("kind", "dir", "modules", "classes", "suites");
 
     @Override
     public Spec spec() {
-        return new Spec(
-                "run",
-                DESCRIPTION,
-                McpSchemas.withGoal(
-                        Map.of(
-                                "kind",
-                                McpSchemas.string(),
-                                "only",
-                                McpSchemas.string(),
-                                "dir",
-                                McpSchemas.string(),
-                                "run",
-                                McpSchemas.string(),
-                                "jid",
-                                McpSchemas.integer(),
-                                "suites",
-                                McpSchemas.strings(),
-                                "classes",
-                                McpSchemas.string(),
-                                McpDecisions.DECISION,
-                                McpSchemas.string()),
-                        List.of()));
+        Map<String, Object> all = JobRequests.schemaProperties();
+        Map<String, Object> props = new LinkedHashMap<>();
+        for (String f : CARD_FIELDS) props.put(f, all.get(f));
+        props.put("jid", McpSchemas.integer());
+        props.put("run", McpSchemas.string());
+        props.put(McpDecisions.DECISION, McpSchemas.string());
+        return new Spec("run", DESCRIPTION, McpSchemas.withGoal(props, List.of()));
     }
 
     @Override

@@ -152,15 +152,14 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
     @Test
     void build_trigger_carries_the_requests_deadline() throws Exception {
         assertThat(postBuild("{\"dir\":\"/some/workspace\"}").statusCode()).isEqualTo(202);
-        assertThat(postBuild("{\"dir\":\"/some/workspace\",\"deadlineMs\":90000}")
-                        .statusCode())
+        assertThat(postBuild("{\"dir\":\"/some/workspace\",\"deadline_s\":90}").statusCode())
                 .isEqualTo(202);
-        assertThat(postBuild("{\"dir\":\"/some/workspace\",\"deadlineMs\":0}").statusCode())
+        assertThat(postBuild("{\"dir\":\"/some/workspace\",\"deadline_s\":0}").statusCode())
                 .isEqualTo(202);
         assertThat(triggeredSpecs).extracting(JobSpec::deadlineMs).containsExactly(null, 90_000L, 0L);
-        HttpResponse<String> negative = postBuild("{\"dir\":\"/some/workspace\",\"deadlineMs\":-1}");
+        HttpResponse<String> negative = postBuild("{\"dir\":\"/some/workspace\",\"deadline_s\":-1}");
         assertThat(negative.statusCode()).isEqualTo(400);
-        assertThat(negative.body()).contains("deadlineMs");
+        assertThat(negative.body()).contains("deadline_s");
         assertThat(triggeredSpecs).hasSize(3);
     }
 

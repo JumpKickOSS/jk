@@ -66,7 +66,7 @@ This project's Java code is indexed by jk's code graph, on the `jk` MCP server. 
 facts and final: do not grep or re-read to check them.
 
 - Rename `T.m`: call `rename(address="T.m", to="newName")` first. It edits the method, its overrides, every
-  caller and the comments that can only mean it. Then do what its answer says: `run(kind="test", only=…)`
+  caller and the comments that can only mean it. Then do what its answer says: `run(kind="test", modules=…)`
   and `run(kind="guard")`. When both say OK, the task is done.
 - Who calls `T.m`: `callers(address="T.m")` once, and use its list as the answer.
 - An answer `TIMEOUT … jid=N` means the job is still running: call `run(jid=N)` until it says OK or FAIL.
