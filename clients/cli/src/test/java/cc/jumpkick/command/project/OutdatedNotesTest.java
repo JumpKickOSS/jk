@@ -37,7 +37,7 @@ class OutdatedNotesTest {
         assertThat(OutdatedCommand.movedNotes(List.of(moved, again, plain)))
                 .containsExactly("Moved: org.testcontainers:postgresql → org.testcontainers:testcontainers-postgresql"
                         + "; change the coordinate in jk.toml");
-        assertThat(OutdatedCommand.toJson(List.of(moved)))
+        assertThat(OutdatedCommand.toJson(moved))
                 .contains("\"relocated\":\"org.testcontainers:testcontainers-postgresql\"");
     }
 

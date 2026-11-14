@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.DurationText;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -106,7 +107,7 @@ public final class StatusCommand implements CliCommand {
                     .toList();
 
             if (global.outputIsJson()) {
-                CliOutput.machine("[" + String.join(",", rows) + "]");
+                for (String row : rows) JsonlShape.rowOf("status", row);
                 return 0;
             }
 

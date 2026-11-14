@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.SilentPeer;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.interop.MavenSpyJar;
@@ -157,29 +158,31 @@ public final class DoctorCommand implements CliCommand {
                 || lock.status == Status.FAIL; // tools alone (including a scan error) never fails
 
         if (global.outputIsJson()) {
-            CliOutput.machine(reportJson(
-                    config,
-                    client,
-                    engine,
-                    cache,
-                    state,
-                    jdk,
-                    lock,
-                    shell,
-                    mvn,
-                    m2,
-                    healthy,
-                    pruned,
-                    verified,
-                    drifted,
-                    firstSeen,
-                    empty,
-                    toolsError,
-                    workers,
-                    repos,
-                    settings,
-                    logins,
-                    windows));
+            JsonlShape.rowOf(
+                    "doctor",
+                    reportJson(
+                            config,
+                            client,
+                            engine,
+                            cache,
+                            state,
+                            jdk,
+                            lock,
+                            shell,
+                            mvn,
+                            m2,
+                            healthy,
+                            pruned,
+                            verified,
+                            drifted,
+                            firstSeen,
+                            empty,
+                            toolsError,
+                            workers,
+                            repos,
+                            settings,
+                            logins,
+                            windows));
             return hasFail ? 1 : 0;
         }
 

@@ -4,8 +4,11 @@ package cc.jumpkick.command.project;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.api.StreamCaps;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.lock.LockfileReader;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,6 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
+@ExtendWith(ForcedAnsi.class)
 class OutdatedCommandTest {
 
     @RegisterExtension
@@ -109,7 +114,9 @@ class OutdatedCommandTest {
         lockOrExplain(tempDir, cache);
 
         assertThat(table(tempDir, cache)).contains("(all 1 dependency up to date)");
-        assertThat(json(tempDir, cache).trim()).isEqualTo("[]");
+        assertThat(json(tempDir, cache).trim())
+                .as("no row when nothing can move")
+                .isEmpty();
         assertThat(table(tempDir, cache, "--all")).contains("c.f.o:leaf").contains("1.0");
     }
 
@@ -266,7 +273,7 @@ class OutdatedCommandTest {
         assertThat(byModule.stream().filter(l -> l.contains("c.f.o:leaf"))).hasSize(2);
         assertThat(byModule).anyMatch(l -> l.contains("com.acme:app")).anyMatch(l -> l.contains("com.acme:lib"));
 
-        assertThat(json(tempDir, cache).split("\\{\\\"module\\\"", -1)).hasSize(3);
+        assertThat(json(tempDir, cache).split("\"type\":\"outdated\"", -1)).hasSize(3);
     }
 
     @Test
@@ -327,7 +334,9 @@ class OutdatedCommandTest {
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         lockOrExplain(tempDir, cache);
 
-        String live = table(tempDir, cache);
+        assumeFalse(StreamCaps.forcedNonInteractive(), "CI or TERM=dumb turns every live row off");
+        // The row draws only on a terminal: stand one in for the captured stdout.
+        String live = StreamCaps.asTerminal(true, false, () -> table(tempDir, cache));
         int title = live.indexOf("Dependency versions");
         assertThat(title).isPositive();
         assertThat(live.substring(0, title)).contains(HIDE_CURSOR).contains(SHOW_CURSOR);
@@ -369,13 +378,13 @@ class OutdatedCommandTest {
     }
 
     @Test
-    void json_array_schema_fields_are_stable(@TempDir Path tempDir) throws Exception {
+    void json_row_schema_fields_are_stable(@TempDir Path tempDir) throws Exception {
         maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
 
         String json = json(tempDir, cache).trim();
-        assertThat(json).startsWith("[").endsWith("]");
+        assertThat(json).startsWith("{\"schema\":1,").contains("\"type\":\"outdated\"");
         assertThat(json)
                 .contains("\"dependency\":")
                 .contains("\"current\":")
@@ -407,10 +416,10 @@ class OutdatedCommandTest {
                 .contains("## Up to date");
         assertThat(md).contains("| `com.foo.outdated:leaf` | 1.1 | 1.1 | 2.0 | main |");
 
-        // JSON is still one array and nothing else; the file is written all the same.
+        // JSON is still envelope rows and nothing else; the file is written all the same.
         Files.delete(file);
         String json = json(tempDir, cache).trim();
-        assertThat(json).startsWith("[").endsWith("]").doesNotContain("Report:");
+        assertThat(json).startsWith("{\"schema\":1,").doesNotContain("Report:");
         assertThat(file).exists();
     }
 

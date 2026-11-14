@@ -169,8 +169,9 @@ export JK_OUTPUT=jsonl     # the same for every command that has machine output
   `watch`, `dev`), `lock`, `update`, `audit`, `guard` (also `-O sarif`), `outdated`, `doctor`,
   `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`,
   `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`.
-- One JSON object per line, flushed promptly. Human lines such a command still prints go to
-  stderr, so every stdout line parses.
+- One JSON object per line, flushed promptly, each with the envelope below; a command's own
+  rows (`doctor`, `engine-status`, `outdated`, `env`, `job`, …) carry its fields after it. Human
+  lines such a command still prints go to stderr, so every stdout line parses.
 - Every object: `schema` (int, **always 1** until JumpKick 1.0), `ts` (epoch ms), `type` (string).
 - Most lines also carry **`progress`**: aggregate percent **0–100** or `null`, computed
   **in the engine**. Do not re-sum per-task `numerator`/`denominator` for the job bar.

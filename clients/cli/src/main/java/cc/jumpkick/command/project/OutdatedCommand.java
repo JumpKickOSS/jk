@@ -9,6 +9,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.OutdatedBar;
@@ -127,7 +128,7 @@ public final class OutdatedCommand implements CliCommand {
         int checked = report.rows().size();
         List<OutdatedReport.Row> rows = all ? report.rows() : report.movable();
         if (global.outputIsJson()) {
-            CliOutput.machine(toJson(rows).strip());
+            for (OutdatedReport.Row row : rows) JsonlShape.rowOf("outdated", toJson(row));
             return Exit.SUCCESS;
         }
         if (global.offline) {
@@ -201,22 +202,19 @@ public final class OutdatedCommand implements CliCommand {
 
     // JSON
 
-    public static String toJson(List<OutdatedReport.Row> rows) {
-        List<String> items = new ArrayList<>();
-        for (OutdatedReport.Row r : rows) {
-            items.add(JsonFields.object()
-                    .string("module", r.moduleLabel())
-                    .string("dependency", r.coordinate())
-                    .string("display", r.display())
-                    .string("scope", r.scope())
-                    .string("current", r.current())
-                    .string("compatible", r.compatible())
-                    .string("latest", r.latest())
-                    .string("tip", r.tip())
-                    .string("relocated", r.relocated())
-                    .finish());
-        }
-        return "[" + String.join(",", items) + "]";
+    /** One dependency's fields in an {@code outdated} row of {@code -O jsonl}. */
+    public static String toJson(OutdatedReport.Row r) {
+        return JsonFields.object()
+                .string("module", r.moduleLabel())
+                .string("dependency", r.coordinate())
+                .string("display", r.display())
+                .string("scope", r.scope())
+                .string("current", r.current())
+                .string("compatible", r.compatible())
+                .string("latest", r.latest())
+                .string("tip", r.tip())
+                .string("relocated", r.relocated())
+                .finish();
     }
 
     // Rendering — box-drawn tables mirroring JdkListCommand's style. The rollup has one row per

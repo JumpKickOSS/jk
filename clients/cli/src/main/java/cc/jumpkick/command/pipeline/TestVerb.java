@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.RunSuspensions;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DebugAttach;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RenderContext;
@@ -190,7 +191,7 @@ final class TestVerb implements BuildVerb {
             return Exit.SOFTWARE;
         }
         if (run.global().outputIsJson()) {
-            CliOutput.machine(report.encode());
+            JsonlShape.rowOf("affected-tests", report.encode());
             return report.refused() ? Exit.CONFIG : Exit.SUCCESS;
         }
         if (report.refused()) {

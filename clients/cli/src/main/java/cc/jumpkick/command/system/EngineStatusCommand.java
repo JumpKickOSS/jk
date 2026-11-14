@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
-import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.engine.BuildStamps;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineHeapDump;
@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.SilentPeer;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -81,7 +82,7 @@ public final class EngineStatusCommand implements CliCommand {
             long stray = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
             List<EngineFleet.Member> others = EngineFleet.list();
             if (global.outputIsJson()) {
-                CliOutput.machine(notRunningJson(stray, others, InstallLock.holders()));
+                JsonlShape.rowOf("engine-status", notRunningJson(stray, others, InstallLock.holders()));
             } else {
                 CommandWedge.envelopeStart();
                 String headline;
@@ -104,8 +105,10 @@ public final class EngineStatusCommand implements CliCommand {
         long now = System.currentTimeMillis();
         long uptimeSeconds = Math.max(0, (now - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
-            CliOutput.machine(runningJson(
-                    s, uptimeSeconds, EngineFleet.list(), SelfUpdateStatus.describe(), InstallLock.holders()));
+            JsonlShape.rowOf(
+                    "engine-status",
+                    runningJson(
+                            s, uptimeSeconds, EngineFleet.list(), SelfUpdateStatus.describe(), InstallLock.holders()));
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
