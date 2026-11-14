@@ -535,8 +535,8 @@ public final class SuiteReads {
     }
 
     /**
-     * A started program by content when the command named its file, else by what the PATH the suite
-     * gets resolves the name to and what it says to {@code --version}.
+     * A started program by content when the command named its file, else by what the name, resolved
+     * on the PATH the suite gets, says to {@code --version} ({@link ToolIdentity}).
      */
     private static String programIdentity(String program, Path moduleDir) {
         try {

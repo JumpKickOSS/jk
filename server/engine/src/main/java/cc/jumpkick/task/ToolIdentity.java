@@ -20,10 +20,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The identity of an external tool a suite shells out to — {@code node}, {@code git}, {@code
- * protoc} — as a run-tests input: where the name resolves on the PATH the test JVM gets, and what
- * that executable says to {@code --version}. An upgrade changes the version line; a switch of
- * toolchain manager changes the path; a tool that is not on the PATH is {@code missing}, so a
- * suite that went green with the tool and now runs without it is retested rather than replayed.
+ * protoc} — as a run-tests input: what the executable the name resolves to on the PATH the test JVM
+ * gets says to {@code --version}, never where it is installed, so two machines whose tool prints the
+ * same version share the stamp. An upgrade changes the version line; a tool that is not on the PATH
+ * is {@link #MISSING}, so a suite that went green with the tool and now runs without it is retested
+ * rather than replayed.
  *
  * <p>The version is asked in the suite's directory with the request's environment, as the suite
  * would ask it: a toolchain manager's shim ({@code mise}, {@code asdf}, {@code volta}) answers
@@ -34,7 +35,7 @@ import org.jspecify.annotations.Nullable;
 public final class ToolIdentity {
 
     /** The value a declared tool takes when the PATH has no executable of that name. */
-    public static final String MISSING = "missing";
+    public static final String MISSING = "(not on PATH)";
 
     /** A tool that hangs on {@code --version} is not going to tell us anything better later. */
     private static final long VERSION_TIMEOUT_MILLIS = 5_000;
@@ -53,13 +54,24 @@ public final class ToolIdentity {
     private ToolIdentity() {}
 
     /**
-     * {@code <path>=<version line>} for {@code tool} resolved on {@code path} (the PATH the test JVM
-     * gets), or {@link #MISSING}, its version asked in {@code dir}, the directory the suite runs in.
+     * The version line of {@code tool} resolved on {@code path} (the PATH the test JVM gets), asked
+     * in {@code dir}, the directory the suite runs in, and {@link #normalized}; or {@link #MISSING}.
      */
     public static String of(String tool, @Nullable String path, Path dir) {
         Path exe = resolve(tool, path);
         if (exe == null) return MISSING;
-        return exe + "=" + version(exe, dir, path);
+        return normalized(version(exe, dir, path), exe);
+    }
+
+    /**
+     * A version line with no machine in it: the executable's own path reads as its file name, the
+     * user's home as {@code ~}, and each run of whitespace as one space.
+     */
+    static String normalized(String line, Path exe) {
+        String out = line.replace(exe.toString(), exe.getFileName().toString());
+        String home = System.getProperty("user.home");
+        if (home != null && home.length() > 1) out = out.replace(home, "~");
+        return out.strip().replaceAll("\\s+", " ");
     }
 
     /**

@@ -53,11 +53,11 @@ class ToolIdentityTest {
             try {
                 // On this thread: the request is bound here, not on a timeout helper's thread.
                 long start = System.nanoTime();
-                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo(node + "=no-version");
+                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo("no-version");
                 assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(20));
                 assertThat(ToolIdentity.of("node", path, tmp))
                         .as("the hang is remembered for the request")
-                        .isEqualTo(node + "=no-version");
+                        .isEqualTo("no-version");
                 assertThat(Files.readString(count).strip()).isEqualTo("1");
             } finally {
                 RequestScope.release();
@@ -80,8 +80,8 @@ class ToolIdentityTest {
         String second =
                 RequestShell.where(Map.of("PATH", path, "SHIM_NODE", "24"), () -> ToolIdentity.of("node", path, b));
 
-        assertThat(first).isEqualTo(node + "=v22 in a");
-        assertThat(second).isEqualTo(node + "=v24 in b");
+        assertThat(first).isEqualTo("v22 in a");
+        assertThat(second).isEqualTo("v24 in b");
     }
 
     @Test
@@ -101,16 +101,23 @@ class ToolIdentityTest {
 
         Request.of(1, new IoLedger()).run(() -> {
             try {
-                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo(node + "=no-version");
-                assertThat(ToolIdentity.of("node", path, tmp)).as("asked again").isEqualTo(node + "=v2");
-                assertThat(ToolIdentity.of("node", path, tmp)).as("remembered").isEqualTo(node + "=v2");
+                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo("no-version");
+                assertThat(ToolIdentity.of("node", path, tmp)).as("asked again").isEqualTo("v2");
+                assertThat(ToolIdentity.of("node", path, tmp)).as("remembered").isEqualTo("v2");
             } finally {
                 RequestScope.release();
             }
         });
         assertThat(ToolIdentity.of("node", path, tmp))
                 .as("a new request asks again")
-                .isEqualTo(node + "=v3");
+                .isEqualTo("v3");
+    }
+
+    @Test
+    void a_version_line_that_names_its_own_path_or_home_is_normalized() {
+        Path exe = Path.of(System.getProperty("user.home"), "tools/bin/tool");
+        assertThat(ToolIdentity.normalized("tool 1.2  at " + exe + "  (" + System.getProperty("user.home") + ")", exe))
+                .isEqualTo("tool 1.2 at tool (~)");
     }
 
     private static Path tool(Path bin, String name, String body) throws Exception {

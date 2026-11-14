@@ -52,6 +52,18 @@ one commit therefore compute one key set, whatever their absolute paths, and the
 every compile, package and test the first produced. Keys never collide across projects (the
 project id is in the tag) or across modules of one workspace (the output path is).
 
+Two machines share keys on the same terms. The compiling JDK keys a compile by its full version
+and its compiler, not its OS, architecture, vendor or build host, so a Linux runner and a macOS
+laptop on one JDK release share every compile and package key; a different patch release does
+not, since an update can change what javac emits. Steps whose output embeds or runs the platform
+(jlink, native images, plugin steps and packagers, test verdicts) key the JDK's whole `release`
+file and stay per platform. A test verdict keys a declared `[test] tools` entry by what it prints
+to `--version`, not by where it is installed.
+
+The project id comes from the committed lock. A checkout with no lock takes it from its git remote
+and path within the repository, or, outside git, from its absolute path, and two machines then
+share nothing: commit `jk-lock.toml` to share a cache.
+
 | Root | Share across branches | Share across concurrent agents | Why |
 |------|----------------------|-------------------------------|-----|
 | `JK_CACHE_DIR` | yes | yes | content-addressed records and blobs; every write is an atomic replace |

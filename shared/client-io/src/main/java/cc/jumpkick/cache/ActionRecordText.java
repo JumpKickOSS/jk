@@ -131,6 +131,45 @@ public final class ActionRecordText {
         return sb.toString();
     }
 
+    /**
+     * The record as it may leave this machine for a shared cache: its {@code TASK}, {@code KEY},
+     * {@code OUTPUT} and {@code EXEC} lines, and the {@code INPUT} lines that name nothing of the
+     * machine (a module-relative path, a fact such as {@code jdk} or {@code options}). An input
+     * named by an absolute path (a store jar, a JDK, a file declared by absolute path) or whose
+     * value holds one stays home, and so does every {@code SAID} line: a compiler's warning names
+     * the source by its absolute path. No key hashes either, so the hit it serves is the same.
+     */
+    public static String renderShared(Parsed record) {
+        Map<String, String> portable = new TreeMap<>();
+        for (Map.Entry<String, String> e : record.inputs().entrySet()) {
+            if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()))
+                portable.put(e.getKey(), e.getValue());
+        }
+        return render(record.taskId(), record.actionKey(), portable, record.outputs(), record.executables(), List.of());
+    }
+
+    /**
+     * Whether {@code text} spells a path of this machine: absolute once any {@code word:} prefixes
+     * are stripped ({@code cp:/home/…}, {@code C:/…}), or holding the user's home anywhere.
+     */
+    static boolean namesMachinePath(String text) {
+        String home = System.getProperty("user.home");
+        if (home != null && home.length() > 1 && (text.contains(home) || text.contains(home.replace('\\', '/'))))
+            return true;
+        String rest = text;
+        int colon;
+        while ((colon = rest.indexOf(':')) > 0 && isPrefixWord(rest, colon)) rest = rest.substring(colon + 1);
+        return rest.startsWith("/") || rest.startsWith("\\");
+    }
+
+    private static boolean isPrefixWord(String s, int end) {
+        for (int i = 0; i < end; i++) {
+            char c = s.charAt(i);
+            if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) return false;
+        }
+        return true;
+    }
+
     /** A record that is whole but not safe to trust: the reason says which line is wrong. */
     public static final class Refused extends IllegalArgumentException {
         Refused(String reason) {

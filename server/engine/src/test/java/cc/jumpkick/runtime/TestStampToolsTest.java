@@ -21,29 +21,48 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code [test] tools} in the run-tests stamp: a declared tool's PATH location and version line
- * are inputs, so an upgrade or a disappearance retests and an unchanged tool replays. The PATH is
+ * {@code [test] tools} in the run-tests stamp: a declared tool's version line is an input, and
+ * where it is installed is not, so an upgrade or a disappearance retests, an unchanged tool replays,
+ * and two machines that install one version in two places share the stamp. The PATH is
  * the one the test JVM gets — the caller's shell rides the session, as {@code [test] env} does.
  */
 @DisabledOnOs(OS.WINDOWS)
 class TestStampToolsTest {
 
     @Test
-    void a_declared_tool_s_path_and_version_are_stamp_inputs_and_an_upgrade_moves_them(@TempDir Path tmp)
-            throws Exception {
+    void a_declared_tool_s_version_is_a_stamp_input_and_an_upgrade_moves_it(@TempDir Path tmp) throws Exception {
         Path bin = Files.createDirectories(tmp.resolve("bin"));
-        Path node = fakeTool(bin, "node", "v22.1.0");
+        fakeTool(bin, "node", "v22.1.0");
         JkBuild project = project(tmp, "[test]\ntools = [\"node\"]\n");
 
         List<String> before = extras(project, tmp, bin);
-        assertThat(before).contains("tool:node=" + node + "=v22.1.0");
+        assertThat(before).contains("tool:node=v22.1.0");
         assertThat(extras(project, tmp, bin))
                 .as("an unchanged tool costs nothing new")
                 .isEqualTo(before);
 
         fakeTool(bin, "node", "v24.0.0");
         List<String> upgraded = extras(project, tmp, bin);
-        assertThat(upgraded).contains("tool:node=" + node + "=v24.0.0").isNotEqualTo(before);
+        assertThat(upgraded).contains("tool:node=v24.0.0").isNotEqualTo(before);
+    }
+
+    /**
+     * Two machines: one tool installed under two prefixes that print one version. The stamp names
+     * the version, not the prefix: the stamp's extras, its only tool input, are equal, so a verdict
+     * from one replays on the other.
+     */
+    @Test
+    void one_version_under_two_install_paths_stamps_alike(@TempDir Path tmp) throws Exception {
+        Path brew = Files.createDirectories(tmp.resolve("opt/homebrew/bin"));
+        Path mise = Files.createDirectories(tmp.resolve("home/someone/mise/installs/node/22/bin"));
+        fakeTool(brew, "node", "v22.1.0");
+        fakeTool(mise, "node", "v22.1.0");
+        JkBuild project = project(tmp, "[test]\ntools = [\"node\"]\n");
+
+        List<String> one = extras(project, tmp, brew);
+        List<String> two = extras(project, tmp, mise);
+        assertThat(one).contains("tool:node=v22.1.0").isEqualTo(two);
+        assertThat(String.join("\n", one)).doesNotContain(brew.toString()).doesNotContain(mise.toString());
     }
 
     @Test
@@ -66,7 +85,7 @@ class TestStampToolsTest {
         Path git = fakeTool(first, "git", "git version 2.47.1\nbuilt from source");
         fakeTool(second, "git", "git version 2.30.0");
         String path = first + SearchPath.SEPARATOR + second;
-        assertThat(ToolIdentity.of("git", path, tmp)).isEqualTo(git + "=git version 2.47.1");
+        assertThat(ToolIdentity.of("git", path, tmp)).isEqualTo("git version 2.47.1");
         assertThat(ToolIdentity.of("git", null, tmp)).isEqualTo(ToolIdentity.MISSING);
         assertThat(ToolIdentity.of("nothing-here", path, tmp)).isEqualTo(ToolIdentity.MISSING);
     }

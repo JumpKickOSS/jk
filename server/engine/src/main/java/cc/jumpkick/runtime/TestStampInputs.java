@@ -386,8 +386,8 @@ public record TestStampInputs(
         if (build.testNetworkAllowed()) extras.add("network:allowed");
         // What the test JVM is handed of the environment changes what the suite sees, so it retests.
         extras.addAll(ModuleEnvKeys.testJvm(project, moduleDir));
-        // [test] tools by identity — where the name resolves on the PATH the test JVM gets and what
-        // it says to --version — so a node or git upgrade retests the suites that shell out to it.
+        // [test] tools by what they say to --version on the PATH the test JVM gets, never where they
+        // are installed, so a node or git upgrade retests the suites that shell out to it.
         String path = BuildEnv.machine().get("PATH");
         for (String tool : build.testTools()) {
             extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path, moduleDir));

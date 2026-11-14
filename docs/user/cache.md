@@ -49,6 +49,13 @@ sequence) is shared by every checkout of one project through the lock's `project
 row names the checkout it came from. [CI](ci.md#sharing-a-cache-across-checkouts-and-agents)
 lists which roots a runner may therefore share.
 
+Across machines the same keys hold wherever the outputs are the same ([CI](ci.md#sharing-a-cache-across-checkouts-and-agents)),
+with one limit: a checkout without a committed `jk-lock.toml` takes its project id from its git
+remote, or outside git from its absolute path, so two machines share its keys only when it has a
+lock. A record that leaves the machine keeps its outputs and its module-relative inputs; an input
+named by an absolute path (a store jar under your home, a JDK) and what the step said as it ran,
+which names sources by absolute path, stay local.
+
 Everything under a cache root — including its `sha256/` blob pool — is cache tier:
 cleaned with `jk cache clean` and wiped by `jk cache nuke`. A nuke removes the root
 directory too: `jk cache nuke` and `jk self nuke -c` are `rm -rf $JK_CACHE_DIR`,
