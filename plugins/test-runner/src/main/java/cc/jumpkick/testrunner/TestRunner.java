@@ -38,7 +38,7 @@ public final class TestRunner implements Plugin {
         } catch (IllegalArgumentException e) {
             System.err.println("jk-test-runner: " + e.getMessage());
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
-                    + "[--list-only] [--pull --worker=<id> --commands=<host>:<port>] [--filter=<regex>] "
+                    + "[--list-only] [--pull --worker=<id> --commands=<host>:<port>] [--filter=<regex>] [--member=<any tags>|<no tags>|<class regex>] "
                     + "[--method=<class regex>#<method>]... [--include-tags=a,b] [--exclude-tags=c,d]");
             return Exit.USAGE;
         }
@@ -92,25 +92,12 @@ public final class TestRunner implements Plugin {
     }
 
     private static int runOneShot(Args args, EventWriter writer) {
-        return LauncherPath.runOneShot(
-                args.scanClasspath,
-                args.filter,
-                args.methods,
-                args.includeTags,
-                args.excludeTags,
-                args.workerId,
-                writer);
+        return LauncherPath.runOneShot(args.scanClasspath, args.filter, args.methods, args.tags, args.workerId, writer);
     }
 
     private static int runListOnly(Args args, EventWriter writer) {
         return LauncherPath.runListOnly(
-                args.scanClasspath,
-                args.filter,
-                args.methods,
-                args.includeTags,
-                args.excludeTags,
-                args.workerId,
-                writer);
+                args.scanClasspath, args.filter, args.methods, args.tags, args.workerId, writer);
     }
 
     /**
@@ -146,8 +133,7 @@ public final class TestRunner implements Plugin {
                 continue;
             }
             String className = line.substring(4).trim();
-            LauncherPath.runClass(
-                    launcher, className, args.methods, args.includeTags, args.excludeTags, args.workerId, writer);
+            LauncherPath.runClass(launcher, className, args.methods, args.tags, args.workerId, writer);
             LauncherPath.emitReady(writer, args.workerId);
         }
         System.err.println("jk-test-runner: the command channel closed before DONE");
@@ -173,8 +159,7 @@ public final class TestRunner implements Plugin {
             boolean listOnly,
             boolean pull,
             int workerId,
-            List<String> includeTags,
-            List<String> excludeTags,
+            TagFilters tags,
             @Nullable String commands) {
 
         static Args parse(String[] argv) {
@@ -186,6 +171,7 @@ public final class TestRunner implements Plugin {
             int workerId = 0;
             List<String> includeTags = new ArrayList<>();
             List<String> excludeTags = new ArrayList<>();
+            List<SuiteMembers.Clause> members = new ArrayList<>();
             String commands = null;
             for (var a : argv) {
                 if (a.startsWith("--scan-classpath=")) {
@@ -206,6 +192,8 @@ public final class TestRunner implements Plugin {
                     splitCsv(a.substring("--include-tags=".length()), includeTags);
                 } else if (a.startsWith("--exclude-tags=")) {
                     splitCsv(a.substring("--exclude-tags=".length()), excludeTags);
+                } else if (a.startsWith("--member=")) {
+                    members.add(SuiteMembers.parse(a.substring("--member=".length())));
                 } else if (a.equals("--fail-fast")) {
                     // accepted but currently a no-op — wired in a follow-up
                 } else {
@@ -231,8 +219,7 @@ public final class TestRunner implements Plugin {
                     listOnly,
                     pull,
                     workerId,
-                    List.copyOf(includeTags),
-                    List.copyOf(excludeTags),
+                    new TagFilters(includeTags, excludeTags, members),
                     commands);
         }
 

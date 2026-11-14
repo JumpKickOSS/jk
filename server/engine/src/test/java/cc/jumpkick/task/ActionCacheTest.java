@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -599,6 +600,32 @@ class ActionCacheTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("was not written");
         assertThat(cache.lookup("key-empty")).isEmpty();
+    }
+
+    /**
+     * A step that rewrites a restored output in place at the same size within one timestamp tick
+     * leaves the restore's seeded digest under the file's identity; the next restore must not take
+     * that seed for the bytes on disk.
+     */
+    @Test
+    void a_restore_does_not_take_an_unsettled_seed_for_the_bytes_on_disk(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path base = Files.createDirectories(tempDir.resolve("target"));
+        Path image = base.resolve("app");
+        byte[] bytes = new byte[(int) ActionCache.CLONE_MIN_BYTES * 2];
+        for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) (i * 7);
+        Files.write(image, bytes);
+        cache.storeArtifacts("native-image", "key-seed", Map.of(), base, List.of(image));
+        String sha = Objects.requireNonNull(cache.lookup("key-seed").orElseThrow().outputs().get("app"));
+        try (var out = Files.newOutputStream(image, StandardOpenOption.WRITE)) {
+            out.write(new byte[] {9, 9, 9, 9});
+        }
+        FileHashMemo.rememberContent(image, sha);
+
+        assertThat(cache.restoreArtifacts(cache.lookup("key-seed").orElseThrow(), base))
+                .isTrue();
+        assertThat(Files.readAllBytes(image)).isEqualTo(bytes);
     }
 
     @Test

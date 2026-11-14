@@ -205,11 +205,12 @@ public final class JobWorkers {
         Long request = track ? currentRequestId() : null;
         WorkerScope scope = track ? WorkerScope.current() : null;
         if (scope != null) scope.awaitReleased();
+        JvmOptions.HeapChoice priced = priced(choice, heaps);
         WorkerLeases.Grant grant;
         try {
             grant = resident != null
-                    ? leases.acquireResident(pb.command(), choice, resident)
-                    : leases.acquire(pb.command(), request, choice);
+                    ? leases.acquireResident(pb.command(), priced, resident)
+                    : leases.acquire(pb.command(), request, priced);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");
@@ -252,6 +253,17 @@ public final class JobWorkers {
         gc.observe(process);
         if (track) register(process);
         return process;
+    }
+
+    /**
+     * {@code choice} priced at what the worker this thread forks is expected to hold ({@link
+     * LearnedHeaps#price}); unchanged with no {@link HeapScope} key or inside {@link
+     * HeapScope#fullLease}.
+     */
+    static JvmOptions.HeapChoice priced(JvmOptions.HeapChoice choice, @Nullable LearnedHeaps heaps) {
+        HeapScope.Key key = HeapScope.get();
+        if (key == null || heaps == null || HeapScope.fullLease()) return choice;
+        return choice.priced(heaps.price(key));
     }
 
     /**

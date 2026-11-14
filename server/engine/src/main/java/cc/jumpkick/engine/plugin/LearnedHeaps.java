@@ -30,6 +30,10 @@ import org.jspecify.annotations.Nullable;
  * #firstHeap}. A key may also keep a fingerprint of the inputs its peaks were measured on ({@link
  * #inputs}), so a caller can tell when they no longer apply. Deleting the project's file forgets
  * them. A user-pinned heap is never written.
+ *
+ * <p>Each key also keeps its last {@value #WINDOW} resident-set peaks, and a host-wide row per
+ * worker kind keeps the last peaks of every module, so {@link #price} can lease a worker at what it
+ * is expected to hold rather than at its {@code -Xmx}.
  */
 public final class LearnedHeaps {
 
@@ -52,6 +56,30 @@ public final class LearnedHeaps {
     static final int CI_HEADROOM_PERCENT = 150;
 
     private static final boolean CI = EnvValues.isCi(ProcessEnv::get);
+
+    /** Lease over the expected resident peak, in percent: a JVM worker. */
+    static final int PRICE_PERCENT = 125;
+
+    /** Lease over the expected resident peak, in percent: a native-image build. */
+    static final int NATIVE_PRICE_PERCENT = 130;
+
+    /** Smallest lease {@link #price} asks for a JVM worker. */
+    static final long PRICE_FLOOR_BYTES = 160L << 20;
+
+    /** Smallest lease {@link #price} asks for a native-image build. */
+    static final long NATIVE_PRICE_FLOOR_BYTES = 2L << 30;
+
+    /** What a JVM worker is expected to hold when neither it nor its kind was seen on this host. */
+    static final long PRIOR_BYTES = 512L << 20;
+
+    /** What a native-image build is expected to hold when none was seen on this host. */
+    static final long NATIVE_PRIOR_BYTES = 3L << 30;
+
+    /** The module name of a kind's host-wide row, filed in {@link #HOST_FILE}. */
+    static final String ANY_MODULE = "*";
+
+    /** The file under the state directory that keeps each kind's host-wide resident peaks. */
+    static final String HOST_FILE = "host";
 
     private static final LearnedHeaps ENGINE =
             new LearnedHeaps(() -> JkDirs.state().resolve("worker-heaps"), null, true);
@@ -163,10 +191,13 @@ public final class LearnedHeaps {
 
     private @Nullable Row stored(Path project, String module, String kind, int jdk) {
         if (project == null || module == null || module.isBlank()) return null;
-        Path file = file(project);
+        return stored(file(project), row(module, kind, jdk));
+    }
+
+    private @Nullable Row stored(Path file, String row) {
         if (!Files.isRegularFile(file)) return null;
         synchronized (lock(file)) {
-            return rows(file).get(row(module, kind, jdk));
+            return rows(file).get(row);
         }
     }
 
@@ -182,7 +213,43 @@ public final class LearnedHeaps {
         update(
                 project,
                 row(module, kind, jdk),
-                stored -> new Row(prepend(stored.peaks(), peakBytes), stored.good(), stored.inputs()));
+                stored ->
+                        new Row(prepend(stored.peaks(), peakBytes), stored.good(), stored.inputs(), stored.resident()));
+    }
+
+    /**
+     * Record {@code residentBytes} as the newest resident-set peak for {@code key} and for its
+     * kind's host-wide row.
+     */
+    public void noteResident(HeapScope.@Nullable Key key, long residentBytes) {
+        if (key == null || residentBytes <= 0 || key.module().isBlank()) return;
+        UnaryOperator<Row> add = stored -> stored.withResident(prepend(stored.resident(), residentBytes));
+        update(key.project(), row(key.module(), key.kind(), key.jdk()), add);
+        updateFile(stateDir.get().resolve(HOST_FILE), row(ANY_MODULE, key.kind(), 0), add);
+    }
+
+    /**
+     * The bytes to lease {@code key}'s worker at: its largest recorded resident peak, else the
+     * largest its kind reached on this host lately, else a prior; times {@link #PRICE_PERCENT}
+     * ({@link #NATIVE_PRICE_PERCENT} for native-image), rounded up to 64 MiB, at least the floor.
+     * The ledger never leases more than the worker's {@code -Xmx} lease.
+     */
+    public long price(HeapScope.@Nullable Key key) {
+        boolean nativeImage = key != null && HeapScope.NATIVE_IMAGE.equals(key.kind());
+        long expected = 0;
+        if (key != null && !key.module().isBlank()) {
+            Row own = stored(file(key.project()), row(key.module(), key.kind(), key.jdk()));
+            if (own != null) expected = max(own.resident());
+            if (expected == 0) {
+                Row kind = stored(stateDir.get().resolve(HOST_FILE), row(ANY_MODULE, key.kind(), 0));
+                if (kind != null) expected = max(kind.resident());
+            }
+        }
+        if (expected == 0) expected = nativeImage ? NATIVE_PRIOR_BYTES : PRIOR_BYTES;
+        long percent = nativeImage ? NATIVE_PRICE_PERCENT : PRICE_PERCENT;
+        long scaled = (expected * percent + 99L) / 100L;
+        long rounded = ((scaled + STEP_BYTES - 1) / STEP_BYTES) * STEP_BYTES;
+        return Math.max(nativeImage ? NATIVE_PRICE_FLOOR_BYTES : PRICE_FLOOR_BYTES, rounded);
     }
 
     /**
@@ -194,7 +261,8 @@ public final class LearnedHeaps {
         update(
                 key.project(),
                 row(key.module(), key.kind(), key.jdk()),
-                stored -> new Row(stored.peaks(), Math.max(stored.good(), heapBytes), stored.inputs()));
+                stored -> new Row(
+                        stored.peaks(), Math.max(stored.good(), heapBytes), stored.inputs(), stored.resident()));
     }
 
     /** The input fingerprint stored for {@code key}, or {@code ""} when it has none. */
@@ -211,11 +279,14 @@ public final class LearnedHeaps {
         update(
                 key.project(),
                 row(key.module(), key.kind(), key.jdk()),
-                stored -> new Row(stored.peaks(), stored.good(), clean));
+                stored -> new Row(stored.peaks(), stored.good(), clean, stored.resident()));
     }
 
     private void update(Path project, String row, UnaryOperator<Row> change) {
-        Path file = file(project);
+        updateFile(file(project), row, change);
+    }
+
+    private void updateFile(Path file, String row, UnaryOperator<Row> change) {
         synchronized (lock(file)) {
             Map<String, Row> all = new LinkedHashMap<>(rows(file));
             all.put(row, change.apply(all.getOrDefault(row, Row.EMPTY)));
@@ -321,11 +392,12 @@ public final class LearnedHeaps {
         for (String line : text.split("\n", -1)) {
             if (line.isBlank() || line.charAt(0) == '#') continue;
             String[] p = line.split("\t", -1);
-            if (p.length != 6) continue;
+            if (p.length != 7) continue;
             long[] peaks = parse(p[3]);
             long good = positive(p[4]);
-            if (peaks.length == 0 && good == 0 && p[5].isBlank()) continue;
-            out.put(p[0] + "\t" + p[1] + "\t" + p[2], new Row(peaks, good, p[5]));
+            long[] resident = parse(p[6]);
+            if (peaks.length == 0 && good == 0 && p[5].isBlank() && resident.length == 0) continue;
+            out.put(p[0] + "\t" + p[1] + "\t" + p[2], new Row(peaks, good, p[5], resident));
         }
         return out;
     }
@@ -356,25 +428,35 @@ public final class LearnedHeaps {
 
     private static String write(Map<String, Row> rows) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# module\tkind\tjdk\tpeaks\tgood\tinputs\n");
+        sb.append("# module\tkind\tjdk\tpeaks\tgood\tinputs\tresident\n");
         for (var e : rows.entrySet()) {
             sb.append(e.getKey()).append('\t');
-            long[] peaks = e.getValue().peaks();
-            for (int i = 0; i < peaks.length; i++) {
-                if (i > 0) sb.append(',');
-                sb.append(peaks[i]);
-            }
+            join(sb, e.getValue().peaks());
             sb.append('\t').append(e.getValue().good());
-            sb.append('\t').append(e.getValue().inputs()).append('\n');
+            sb.append('\t').append(e.getValue().inputs()).append('\t');
+            join(sb, e.getValue().resident());
+            sb.append('\n');
         }
         return sb.toString();
     }
 
+    private static void join(StringBuilder sb, long[] values) {
+        for (int i = 0; i < values.length; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(values[i]);
+        }
+    }
+
     /**
-     * One key's peaks, newest first, its known-good heap ({@code 0} when it has none), and the
-     * fingerprint of the inputs they were measured on ({@code ""} when none was stored).
+     * One key's heap peaks, newest first, its known-good heap ({@code 0} when it has none), the
+     * fingerprint of the inputs they were measured on ({@code ""} when none was stored), and its
+     * resident-set peaks, newest first.
      */
-    private record Row(long[] peaks, long good, String inputs) {
-        static final Row EMPTY = new Row(new long[0], 0L, "");
+    private record Row(long[] peaks, long good, String inputs, long[] resident) {
+        static final Row EMPTY = new Row(new long[0], 0L, "", new long[0]);
+
+        Row withResident(long[] next) {
+            return new Row(peaks, good, inputs, next);
+        }
     }
 }

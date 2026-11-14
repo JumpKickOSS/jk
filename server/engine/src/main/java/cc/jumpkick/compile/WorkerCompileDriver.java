@@ -120,7 +120,7 @@ public final class WorkerCompileDriver {
             }
             if (first.cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(first.xmx, first.xmx, true));
-                return run(job, first.xmx).result;
+                return HeapScope.fullLease(() -> run(job, first.xmx)).result;
             }
             return first.result;
         } catch (IOException e) {

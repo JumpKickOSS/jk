@@ -431,7 +431,7 @@ public final class ForecastScope implements StepForecast.Scope {
                     p.parsed().kotlinModule(),
                     p.parsed().compact(),
                     TestSuites.compiled(
-                            dir, p.parsed().compact(), selected, project.build().testClassSuites()),
+                            dir, p.parsed().compact(), selected, project.build().testSuites()),
                     p.parsed().pkgDecls(),
                     sources,
                     roundCp,

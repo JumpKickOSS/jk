@@ -4,7 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
@@ -51,7 +51,7 @@ final class TestPlugins {
             List<String> excludeTags,
             List<String> excludeClasses,
             List<String> excludeDependencies,
-            @Nullable ClassSuite integration,
+            @Nullable DeclaredSuite integration,
             TestJvm jvm,
             TestFailureMode failures,
             List<EnvDecl> env) {
@@ -73,7 +73,7 @@ final class TestPlugins {
         TestSettings tags = PluginFacts.lifecycleBoundPlugin(model, SUREFIRE)
                 .map(surefire -> mapSurefire(surefire, model, report, jvm))
                 .orElse(TestSettings.NONE);
-        ClassSuite integration = PluginFacts.lifecycleBoundPlugin(model, FAILSAFE)
+        DeclaredSuite integration = PluginFacts.lifecycleBoundPlugin(model, FAILSAFE)
                 .map(failsafe -> mapFailsafe(failsafe, model, report, jvm))
                 .orElseGet(() -> unboundIntegration(model, report));
         if (PluginFacts.plugin(model, "jacoco-maven-plugin").isPresent()) {
@@ -497,7 +497,7 @@ final class TestPlugins {
      * pattern the class syntax cannot spell and the tag filters are rows. Its JVM settings land in
      * the same keys as Surefire's; null when no include maps.
      */
-    private static @Nullable ClassSuite mapFailsafe(
+    private static @Nullable DeclaredSuite mapFailsafe(
             Plugin failsafe, Model model, ImportReport.Builder report, Jvm jvm) {
         Set<String> includes = new LinkedHashSet<>();
         Set<String> excludes = new LinkedHashSet<>();
@@ -516,7 +516,7 @@ final class TestPlugins {
         List<String> patterns = classPatterns(declared, "<includes>", "classes", report);
         List<String> excluded = classPatterns(excludes, "<excludes>", "exclude-classes", report);
         jvm.take(PluginFacts.configurations(failsafe), FAILSAFE, model, report);
-        return patterns.isEmpty() ? null : new ClassSuite(patterns, excluded);
+        return patterns.isEmpty() ? null : DeclaredSuite.ofClasses(patterns, excluded);
     }
 
     /**
@@ -526,7 +526,7 @@ final class TestPlugins {
      * names are the {@code integration} suite, so plain {@code jk test} leaves them out too; null
      * when the test sources hold no such class.
      */
-    private static @Nullable ClassSuite unboundIntegration(Model model, ImportReport.Builder report) {
+    private static @Nullable DeclaredSuite unboundIntegration(Model model, ImportReport.Builder report) {
         Path tests = testSourceDirectory(model);
         if (tests == null) return null;
         boolean found;
@@ -538,7 +538,7 @@ final class TestPlugins {
         }
         if (!found) return null;
         report.warning("IT*, *IT and *ITCase classes: integration suite; run with jk test -s integration");
-        return new ClassSuite(classPatterns(FAILSAFE_DEFAULT_INCLUDES, "<includes>", "classes", report), List.of());
+        return DeclaredSuite.ofClasses(classPatterns(FAILSAFE_DEFAULT_INCLUDES, "<includes>", "classes", report));
     }
 
     /** Whether {@code fileName} is a source file Failsafe's default includes would select. */

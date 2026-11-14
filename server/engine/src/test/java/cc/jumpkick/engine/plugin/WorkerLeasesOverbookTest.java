@@ -46,7 +46,7 @@ class WorkerLeasesOverbookTest {
     @Test
     void no_grant_when_free_memory_does_not_cover_the_lease_and_the_headroom() throws Exception {
         long budget = 4 * GIB;
-        long headroom = WorkerLeases.headroomBytes(budget);
+        long headroom = OverbookSignals.headroom(budget, false);
         assertThat(headroom).isEqualTo(GIB);
         FakeSignals signals = healthy();
         signals.freeBytes = budget + headroom - 1;
@@ -63,7 +63,7 @@ class WorkerLeasesOverbookTest {
     @Test
     void headroom_grows_to_ten_percent_of_a_large_budget() throws Exception {
         long budget = 20 * GIB;
-        assertThat(WorkerLeases.headroomBytes(budget)).isEqualTo(2 * GIB);
+        assertThat(OverbookSignals.headroom(budget, false)).isEqualTo(2 * GIB);
         FakeSignals signals = healthy();
         signals.freeBytes = budget + 2 * GIB - 1;
         WorkerLeases.Ledger ledger = ledger(budget, 4, signals);
@@ -130,7 +130,7 @@ class WorkerLeasesOverbookTest {
             assertThat(held).extracting(WorkerLeases.Grant::overbooked).containsExactly(false, true, true);
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(1_800);
             assertThat(ledger.snapshot().overbookedBytes()).isEqualTo(800);
-            assertThat(ledger.snapshot().leasedBytes()).isLessThanOrEqualTo(budget * WorkerLeases.OVERBOOK_CAP_FACTOR);
+            assertThat(ledger.snapshot().leasedBytes()).isLessThanOrEqualTo(OverbookSignals.ceiling(budget, false));
             assertStaysQueued(ledger, 600);
         } finally {
             for (WorkerLeases.Grant grant : held) grant.close();
@@ -140,7 +140,7 @@ class WorkerLeasesOverbookTest {
     @Test
     void two_workspaces_requesting_at_once_never_hold_more_than_twice_the_budget() throws Exception {
         long budget = 4 * GIB;
-        long cap = budget * WorkerLeases.OVERBOOK_CAP_FACTOR;
+        long cap = OverbookSignals.ceiling(budget, false);
         WorkerLeases.Ledger ledger = ledger(budget, 64, healthy());
         AtomicLong most = new AtomicLong();
         AtomicLong overbooked = new AtomicLong();
@@ -264,33 +264,40 @@ class WorkerLeasesOverbookTest {
     }
 
     @Test
-    void ci_and_the_knob_and_a_non_linux_host_disable_overbooking() {
-        assertThat(allowed(true, true, true, true, null, null)).isTrue();
-        assertThat(allowed(true, true, false, false, null, null))
+    void the_knob_turns_overbooking_off_and_outside_a_cgroup_the_host_files_must_read() {
+        assertThat(OverbookSignals.allowed(true, true, true, false, null)).isTrue();
+        assertThat(OverbookSignals.allowed(true, false, false, false, null))
                 .as("cgroup mode does not need host files")
                 .isTrue();
-        assertThat(allowed(true, false, true, true, null, null)).isTrue();
-        assertThat(allowed(true, false, false, true, null, null)).isFalse();
-        assertThat(allowed(true, false, true, false, null, null)).isFalse();
-        assertThat(allowed(false, true, true, true, null, null)).isFalse();
-        for (String ci : List.of("1", "true", "yes", "on", "TRUE")) {
-            assertThat(allowed(true, true, true, true, ci, "1")).as("CI=%s", ci).isFalse();
-        }
+        assertThat(OverbookSignals.allowed(false, true, true, false, null)).isTrue();
+        assertThat(OverbookSignals.allowed(false, false, true, false, null)).isFalse();
+        assertThat(OverbookSignals.allowed(false, true, false, false, null)).isFalse();
         for (String off : List.of("0", "false", "no", "off")) {
-            assertThat(allowed(true, true, true, true, null, off))
+            assertThat(OverbookSignals.allowed(true, true, true, false, off))
                     .as("JK_OVERBOOK=%s", off)
                     .isFalse();
-            assertThat(allowed(true, true, true, true, off, null))
-                    .as("CI=%s is not set", off)
-                    .isTrue();
         }
-        assertThat(allowed(true, true, true, true, null, "1")).isTrue();
-        assertThat(allowed(true, true, true, true, null, "maybe")).isTrue();
-        assertThat(allowed(true, true, true, true, "", null)).isTrue();
-        assertThat(OverbookSignals.policyOff(null, null)).isFalse();
-        assertThat(OverbookSignals.policyOff("1", "1")).isTrue();
-        assertThat(OverbookSignals.policyOff(null, "0")).isTrue();
-        assertThat(OverbookSignals.policyOff("false", null)).isFalse();
+        assertThat(OverbookSignals.allowed(true, true, true, false, "1")).isTrue();
+        assertThat(OverbookSignals.allowed(true, true, true, false, "maybe")).isTrue();
+        assertThat(OverbookSignals.policyOff(null)).isFalse();
+        assertThat(OverbookSignals.policyOff("0")).isTrue();
+    }
+
+    @Test
+    void a_ci_engine_overbooks_cautiously_with_more_headroom_a_lower_cap_and_a_pressure_reading() {
+        assertThat(OverbookSignals.allowed(true, false, true, true, null))
+                .as("CI in a cgroup still needs pressure")
+                .isFalse();
+        assertThat(OverbookSignals.allowed(true, true, true, true, null)).isTrue();
+        assertThat(OverbookSignals.allowed(false, true, true, true, null)).isTrue();
+        assertThat(OverbookSignals.allowed(true, true, true, true, "0")).isFalse();
+        assertThat(OverbookSignals.headroom(8 * GIB, false)).isEqualTo(GIB);
+        assertThat(OverbookSignals.headroom(8 * GIB, true)).isEqualTo(2 * GIB);
+        assertThat(OverbookSignals.headroom(30 * GIB, false)).isEqualTo(3 * GIB);
+        assertThat(OverbookSignals.headroom(30 * GIB, true)).isEqualTo(6 * GIB);
+        assertThat(OverbookSignals.ceiling(10 * GIB, false)).isEqualTo(20 * GIB);
+        assertThat(OverbookSignals.ceiling(10 * GIB, true)).isEqualTo(15 * GIB);
+        assertThat(OverbookSignals.ceiling(Long.MAX_VALUE, true)).isEqualTo(Long.MAX_VALUE);
     }
 
     @Test
@@ -312,10 +319,17 @@ class WorkerLeasesOverbookTest {
         assertThat(OverbookSignals.worse(host, null)).isEqualTo(host);
         assertThat(OverbookSignals.worse(null, group)).isNull();
 
-        assertThat(OverbookSignals.cgroupFree("1000\n", "400\n")).isEqualTo(600);
-        assertThat(OverbookSignals.cgroupFree("max\n", "400\n")).isEqualTo(-1);
-        assertThat(OverbookSignals.cgroupFree("100\n", "400\n")).isEqualTo(-1);
-        assertThat(OverbookSignals.cgroupFree(null, "1\n")).isEqualTo(-1);
+        assertThat(OverbookSignals.cgroupFree("1000\n", "400\n", null)).isEqualTo(600);
+        assertThat(OverbookSignals.cgroupFree("max\n", "400\n", null)).isEqualTo(-1);
+        assertThat(OverbookSignals.cgroupFree("100\n", "400\n", null)).isEqualTo(-1);
+        assertThat(OverbookSignals.cgroupFree(null, "1\n", null)).isEqualTo(-1);
+        String stat = "anon 100\nfile 300\nactive_file 120\ninactive_file 250\nshmem 30\n";
+        assertThat(OverbookSignals.cgroupFree("1000\n", "400\n", stat))
+                .as("inactive file cache is not used memory")
+                .isEqualTo(850);
+        assertThat(OverbookSignals.cgroupFree("100\n", "400\n", stat)).isEqualTo(-1);
+        assertThat(MemoryProbe.inactiveFileBytes(stat)).isEqualTo(250);
+        assertThat(MemoryProbe.inactiveFileBytes(null)).isZero();
     }
 
     @Test
@@ -333,21 +347,35 @@ class WorkerLeasesOverbookTest {
                 672L << 20,
                 14 * GIB + (700L << 20),
                 13 * GIB + GIB / 2,
-                new OverbookSignals.Reading(true, 9 * GIB, 0.4, 0));
+                new OverbookSignals.Reading(true, 9 * GIB, 0.4, 0),
+                true);
         assertThat(line)
                 .isEqualTo("overbooked 672 MiB: leased 14.7 GiB of the 13.5 GiB budget, 1.2 GiB over, inside the"
                         + " 27.0 GiB cap (twice the budget); allowed because free 9.0 GiB covers the lease plus"
                         + " 1.3 GiB headroom and pressure is low (psi some 0.40 full 0.00)");
+        assertThat(OverbookSignals.overbookedLine(
+                        672L << 20, 14 * GIB, 13 * GIB, new OverbookSignals.Reading(true, 9 * GIB, 0, 0), false))
+                .as("no pressure signal off Linux")
+                .endsWith("covers the lease plus 1.3 GiB headroom");
     }
 
-    private static boolean allowed(
-            boolean linux,
-            boolean cgroup,
-            boolean pressure,
-            boolean available,
-            @Nullable String ci,
-            @Nullable String knob) {
-        return OverbookSignals.allowed(linux, cgroup, pressure, available, ci, knob);
+    @Test
+    void off_linux_the_free_physical_memory_decides_and_macos_pressure_past_normal_holds_back() {
+        OverbookSignals.Reading windows = OverbookSignals.elsewhere(20 * GIB, 0, null);
+        assertThat(windows.enabled()).isTrue();
+        assertThat(windows.pressureLow()).isTrue();
+        assertThat(windows.covers(4 * GIB, 2 * GIB)).isTrue();
+        assertThat(windows.covers(19 * GIB, 2 * GIB)).isFalse();
+        assertThat(OverbookSignals.elsewhere(20 * GIB, 1, null).pressureLow()).isTrue();
+        assertThat(OverbookSignals.elsewhere(20 * GIB, 2, null).pressureLow()).isFalse();
+        assertThat(OverbookSignals.elsewhere(20 * GIB, 4, null).pressureLow()).isFalse();
+        assertThat(OverbookSignals.elsewhere(20 * GIB, 0, null).enabled())
+                .as("CI does not turn it off")
+                .isTrue();
+        assertThat(OverbookSignals.elsewhere(20 * GIB, 0, "off").enabled()).isFalse();
+        assertThat(OverbookSignals.elsewhere(-1, 0, null).enabled())
+                .as("unreadable")
+                .isFalse();
     }
 
     /** Asserts a lease of {@code bytes} stays queued. The caller is holding whatever blocks it. */

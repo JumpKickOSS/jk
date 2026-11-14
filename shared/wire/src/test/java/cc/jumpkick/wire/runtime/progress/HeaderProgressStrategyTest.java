@@ -35,6 +35,41 @@ class HeaderProgressStrategyTest {
         assertThat(back[0]).isGreaterThanOrEqualTo(667);
     }
 
+    /**
+     * A cold integration run's suite priced at 54 s ran 638 s: peak-held, the bar sat still for
+     * minutes while the ETA grew (JK-ZJ8D9). Held, it moves at the pace the remainder sets, and never
+     * reaches the cap while work is left.
+     */
+    @Test
+    void clock_held_at_its_peak_still_advances_at_the_pace_the_remainder_sets() {
+        var clock = new ClockProgressStrategy();
+        clock.display(new HeaderProgressState(0, 0, 100_000, 0, 160_000, 30_000, false)); // 84.2%
+        // 10 s later the remainder grew to 90 s: raw 170/260 = 65%, under the peak.
+        long[] held = clock.display(new HeaderProgressState(0, 0, 100_000, 0, 170_000, 90_000, false));
+        // peak + (cap - peak) * 10 / (170 + 90) = 0.842 + 0.148 * 10 / 260
+        assertThat(held[0]).isEqualTo(848);
+        // Then a quarter of its run left at every repaint, once a second: the bar keeps moving.
+        long minuteAgo = held[0];
+        for (long t = 171_000; t <= 600_000; t += 1_000) {
+            long[] d = clock.display(new HeaderProgressState(0, 0, 100_000, 0, t, t / 4, false));
+            assertThat(d[0]).as("at %d ms", t).isLessThan(990);
+            if ((t - 170_000) % 60_000 == 0) {
+                assertThat(d[0] - minuteAgo)
+                        .as("a minute's progress to %d ms", t)
+                        .isGreaterThanOrEqualTo(3);
+                minuteAgo = d[0];
+            }
+        }
+    }
+
+    @Test
+    void clock_held_at_its_peak_does_not_move_without_time_passing() {
+        var clock = new ClockProgressStrategy();
+        clock.display(new HeaderProgressState(0, 0, 100_000, 0, 40_000, 20_000, false)); // 66.7%
+        long[] again = clock.display(new HeaderProgressState(0, 0, 100_000, 0, 40_000, 80_000, false));
+        assertThat(again[0]).isEqualTo(667);
+    }
+
     @Test
     void weighted_is_monotonic() {
         var w = new WeightedProgressStrategy();

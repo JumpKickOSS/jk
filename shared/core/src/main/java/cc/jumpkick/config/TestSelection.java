@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Which test suites and JUnit tags a {@code jk test} / build-with-tests run should use.
@@ -132,13 +133,23 @@ public record TestSelection(
 
     /** Resolve concrete suite names for a module (validates unknown names). */
     public Resolved resolve(List<String> discovered) {
+        return resolve(discovered, Set.of());
+    }
+
+    /**
+     * {@link #resolve(List)} for a module whose {@code explicit} suites run only when named: {@link
+     * #allSuites} leaves them out.
+     */
+    public Resolved resolve(List<String> discovered, Set<String> explicit) {
         Objects.requireNonNull(discovered, "discovered");
         if (allSuites) {
-            if (discovered.isEmpty()) {
+            List<String> every =
+                    discovered.stream().filter(s -> !explicit.contains(s)).toList();
+            if (every.isEmpty()) {
                 // No sources anywhere — still "default" so compile-test no-ops cleanly.
                 return new Resolved(List.of(TestSuites.DEFAULT), includeTags, excludeTags);
             }
-            return new Resolved(List.copyOf(discovered), includeTags, excludeTags);
+            return new Resolved(every, includeTags, excludeTags);
         }
         List<String> want = wanted();
         List<String> missing = new ArrayList<>();
@@ -168,6 +179,11 @@ public record TestSelection(
                 + ";-tag="
                 + String.join(",", excludeTags)
                 + (classes.isEmpty() ? "" : ";class=" + String.join(",", classes));
+    }
+
+    /** Whether this selection runs {@code suite}: it is named, or {@link #allSuites} and it is not {@code explicit}. */
+    public boolean runs(String suite, boolean explicit) {
+        return allSuites ? !explicit : wanted().contains(suite);
     }
 
     /** The suites asked for: the named ones, else the guard's list under {@link #guard}, else the default suite. */

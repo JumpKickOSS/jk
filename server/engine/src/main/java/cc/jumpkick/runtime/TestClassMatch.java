@@ -144,7 +144,7 @@ public final class TestClassMatch {
 
     /**
      * The step label of a module the patterns skipped, same shape as the absent-suite skip, with
-     * {@code suiteHint} ({@link cc.jumpkick.test.SuiteClassFilter#classHint}) when the patterns name
+     * {@code suiteHint} ({@link cc.jumpkick.test.SuiteFilter#classHint}) when the patterns name
      * classes another suite of the module owns.
      */
     public static String skipLabel(List<String> patterns, @Nullable String suiteHint) {

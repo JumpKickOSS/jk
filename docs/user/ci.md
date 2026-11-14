@@ -2,7 +2,9 @@
 
 JumpKick is lockfile-first: a cold runner with a committed `jk-lock.toml` is correct.
 Caching only speeds the runner up. A job with `CI` set (`1`, `true`, `yes`, or `on`) starts
-an engine that does not overbook worker leases — see [Engine](engine.md#worker-memory).
+an engine that overbooks worker leases cautiously: more free memory kept, a lower cap, and on
+Linux a pressure reading required. Inside a container the free memory is the container's own
+limit less its working set — see [Engine](engine.md#worker-memory).
 
 ```yaml
 - uses: actions/cache@v4

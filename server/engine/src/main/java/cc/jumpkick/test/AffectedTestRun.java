@@ -18,11 +18,13 @@ import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.task.MainAbi;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -42,8 +44,7 @@ public final class AffectedTestRun {
      *     selection). Throws {@link RankingRefused} when ranking cannot be honest.
      */
     public static @Nullable Outcome apply(
-            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteClassFilter suites)
-            throws Exception {
+            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteFilter suites) throws Exception {
         if (!in.session().affected()) return null;
         Path moduleDir = in.dir();
         Path wsRoot = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
@@ -119,18 +120,18 @@ public final class AffectedTestRun {
     }
 
     /**
-     * {@code tests} within the run's suites, less the classes {@code [test] exclude-classes} keeps
-     * out of every run.
+     * {@code tests} within the run's suites, by class and tag, less the classes {@code [test]
+     * exclude-classes} keeps out of every run.
      */
     static List<TestClassIndex.Entry> runnable(
-            List<TestClassIndex.Entry> tests, List<String> excluded, SuiteClassFilter suites) {
+            List<TestClassIndex.Entry> tests, List<String> excluded, SuiteFilter suites) {
         String body = JUnitClassFilter.excludeBody(excluded);
-        String suiteBody = suites.body();
-        if (body == null && suiteBody == null) return tests;
         Pattern out = body == null ? null : Pattern.compile(body);
-        Pattern in = suiteBody == null ? null : Pattern.compile(suiteBody);
+        Map<String, ClassTags> tags = new HashMap<>();
+        for (TestClassIndex.Entry t : tests) tags.put(t.className(), new ClassTags(t.classTags(), t.tags()));
+        Predicate<String> in = suites.withTags(tags::get).acceptor();
         return tests.stream()
-                .filter(t -> in == null || in.matcher(t.className()).matches())
+                .filter(t -> in.test(t.className()))
                 .filter(t -> out == null || !out.matcher(t.className()).matches())
                 .toList();
     }

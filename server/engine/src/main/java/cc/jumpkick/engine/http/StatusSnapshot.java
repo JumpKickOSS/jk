@@ -105,7 +105,7 @@ public record StatusSnapshot(
         int workerRunningJvms,
         /** How many forked JVMs may run at once. {@code -1} when not reported. */
         int workerCpuCap,
-        /** This process was started with {@code CI} set or {@code JK_OVERBOOK} off. */
+        /** This process was started with {@code JK_OVERBOOK} off. */
         boolean overbookingOff,
         /**
          * What the head of the worker lease queue needs and who holds the memory, as {@code job #7

@@ -4,9 +4,11 @@ package cc.jumpkick.layout;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
+import cc.jumpkick.model.SuiteSettings;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -149,10 +151,10 @@ class TestSuitesTest {
     }
 
     @Test
-    void a_class_pattern_suite_is_available_and_compiles_the_default_suites_roots(@TempDir Path tmp) throws Exception {
+    void a_class_suite_is_available_and_compiles_the_default_suites_roots(@TempDir Path tmp) throws Exception {
         Files.createDirectories(tmp.resolve("src/test/java"));
         Files.writeString(tmp.resolve("src/test/java/FooTest.java"), "class FooTest {}");
-        Map<String, ClassSuite> patterns = Map.of("integration", ClassSuite.of(List.of("*IT")));
+        Map<String, DeclaredSuite> patterns = Map.of("integration", DeclaredSuite.ofClasses(List.of("*IT")));
 
         assertThat(TestSuites.available(tmp, false, patterns)).containsExactly("test", "integration");
         assertThat(TestSuites.available(tmp, false, Map.of())).containsExactly("test");
@@ -170,6 +172,39 @@ class TestSuitesTest {
         assertThat(TestSuites.available(tmp, false, patterns)).containsExactly("test", "integration");
         assertThat(TestSuites.compiled(tmp, false, List.of("integration"), patterns))
                 .containsExactly("test", "integration");
+    }
+
+    @Test
+    void a_tag_suite_compiles_every_suite_directory_since_its_tests_may_sit_in_any(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/test/java"));
+        Files.writeString(tmp.resolve("src/test/java/FooTest.java"), "class FooTest {}");
+        Files.createDirectories(tmp.resolve("src/e2e/java"));
+        Files.writeString(tmp.resolve("src/e2e/java/CheckoutE2e.java"), "class CheckoutE2e {}");
+        Map<String, DeclaredSuite> tiers = Map.of("slow", DeclaredSuite.ofTags(List.of("slow")));
+
+        assertThat(TestSuites.available(tmp, false, tiers)).containsExactly("test", "e2e", "slow");
+        assertThat(TestSuites.compiled(tmp, false, List.of("slow"), tiers)).containsExactly("test", "e2e");
+        assertThat(TestSuites.compiled(tmp, false, List.of("test"), tiers))
+                .as("the default suite alone still compiles alone")
+                .containsExactly("test");
+    }
+
+    @Test
+    void all_leaves_an_explicit_suite_out_and_naming_it_runs_it(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/test/java"));
+        Files.writeString(tmp.resolve("src/test/java/FooTest.java"), "class FooTest {}");
+        Map<String, DeclaredSuite> suites = new LinkedHashMap<>();
+        suites.put("integration", DeclaredSuite.ofTags(List.of("integration")));
+        suites.put(
+                "live", new DeclaredSuite(List.of(), List.of("live"), List.of(), List.of(), SuiteSettings.NONE, true));
+
+        assertThat(TestSuites.resolve(TestSelection.of(List.of(), true, List.of(), List.of()), tmp, false, suites)
+                        .suites())
+                .containsExactly("test", "integration");
+        assertThat(TestSuites.resolve(
+                                TestSelection.of(List.of("live"), false, List.of(), List.of()), tmp, false, suites)
+                        .suites())
+                .containsExactly("live");
     }
 
     /** The stamp identity names the suites the selection runs, so a guard run never replays a plain one. */

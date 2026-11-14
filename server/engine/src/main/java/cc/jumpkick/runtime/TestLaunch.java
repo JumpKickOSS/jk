@@ -23,6 +23,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -399,7 +400,7 @@ final class TestLaunch {
      * The launcher for this module's suite: its label, the selection's tag and class filters less
      * the module's {@code [test] exclude-classes} and the classes already {@code settled} under this
      * stamp ({@link TestClassLedger}), its {@code [test] serial-tags} (those classes run
-     * on one trailing worker while the rest shard) and assertions, the fork's JVM args, the debug port, the coverage agent when the run
+     * on one trailing worker while the rest shard) and assertions, the fork's JVM args then {@code suite}'s own, the debug port, the coverage agent when the run
      * measures coverage, and the affected class names when the session ranked them.
      */
     static JUnitLauncher launcher(
@@ -407,10 +408,13 @@ final class TestLaunch {
             JkBuild projectUnderTest,
             TestSelection effectiveSel,
             List<String> testJvmArgs,
+            SuiteSettings suite,
             AffectedTestRun.@Nullable Outcome affected,
             CoverageTools.@Nullable Jacoco jacoco,
             @Nullable Path coverageExec,
             List<String> settled) {
+        List<String> jvmArgs = new ArrayList<>(testJvmArgs);
+        jvmArgs.addAll(suite.forkArgs());
         String moduleLabel = projectUnderTest.project().group() + ":"
                 + projectUnderTest.project().name();
         JUnitLauncher launcher = new JUnitLauncher()
@@ -419,7 +423,7 @@ final class TestLaunch {
                 .withSerialTags(projectUnderTest.build().testSerialTags())
                 .withAssertions(projectUnderTest.build().testAssertions())
                 .withIdleTimeout(projectUnderTest.build().testIdleTimeoutMs())
-                .withJvmArgs(testJvmArgs)
+                .withJvmArgs(jvmArgs)
                 .withClassPatterns(effectiveSel.classes())
                 .withExcludedClasses(projectUnderTest.build().testExcludeClasses(), settled)
                 .withDebug(in.session().debugJvm())

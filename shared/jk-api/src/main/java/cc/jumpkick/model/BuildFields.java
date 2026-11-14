@@ -43,7 +43,7 @@ final class BuildFields {
     List<String> testSerialTags;
     List<String> testIncludeTags, testExcludeTags;
     List<String> testExcludeClasses, testExcludeSrc, testExcludeDependencies;
-    Map<String, ClassSuite> testClassSuites;
+    Map<String, DeclaredSuite> testSuites;
     boolean testAssertions;
     boolean testCoverage;
     boolean testNetworkAllowed;
@@ -103,7 +103,7 @@ final class BuildFields {
         testExcludeClasses = b.testExcludeClasses();
         testExcludeSrc = b.testExcludeSrc();
         testExcludeDependencies = b.testExcludeDependencies();
-        testClassSuites = b.testClassSuites();
+        testSuites = b.testSuites();
         testAssertions = b.testAssertions();
         testCoverage = b.testCoverage();
         testNetworkAllowed = b.testNetworkAllowed();
@@ -152,7 +152,7 @@ final class BuildFields {
                 testExcludeClasses,
                 testExcludeSrc,
                 testExcludeDependencies,
-                testClassSuites,
+                testSuites,
                 testAssertions,
                 testCoverage,
                 testNetworkAllowed,

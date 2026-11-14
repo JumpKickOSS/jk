@@ -20,6 +20,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -183,11 +184,13 @@ public record TestStampInputs(
             throws IOException {
         Path dir = facts.dir();
         JkBuild project = facts.project();
-        List<String> discovered =
-                TestSuites.available(dir, compact, project.build().testClassSuites());
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps.
-        var resolved = SessionContext.current().testSelection().resolve(discovered);
+        var resolved = TestSuites.resolve(
+                SessionContext.current().testSelection(),
+                dir,
+                compact,
+                project.build().testSuites());
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         // The same factory compile-test collects its sources with, so the forecast stamps exactly
         // the files the run stamps: every selected suite's sources in every language, plus the
@@ -198,7 +201,7 @@ public record TestStampInputs(
         List<Path> stampRt = runtimeClasspath;
         List<String> stampExtras = extras();
         List<String> compiledSuites =
-                TestSuites.compiled(dir, compact, suites, project.build().testClassSuites());
+                TestSuites.compiled(dir, compact, suites, project.build().testSuites());
         // As the live copy: the test KSP round's output roots, then the suites' resources.
         List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
         stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
@@ -312,6 +315,20 @@ public record TestStampInputs(
     }
 
     /**
+     * The stamp tokens of the selected suites' own JVM settings: they change what those suites'
+     * tests see. An unselected suite's settings change nothing this run runs, so they stay out.
+     */
+    static List<String> suiteRunExtras(BuildBlock build, @Nullable TestSelection selection) {
+        List<String> out = new ArrayList<>();
+        build.testSuites().forEach((suite, spec) -> {
+            SuiteSettings run = spec.settings();
+            if (run.isEmpty() || selection == null || !selection.runs(suite, spec.explicit())) return;
+            out.add("suite-run:" + suite + "=" + String.join(" ", run.forkArgs()) + ";env=" + run.env());
+        });
+        return out;
+    }
+
+    /**
      * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}. There is
      * deliberately no lookup-free overload: it would silently skip both expansion and hashing and
      * produce a key that disagrees with this one.
@@ -353,10 +370,17 @@ public record TestStampInputs(
         if (!build.testExcludeClasses().isEmpty()) {
             extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
         }
-        // A class-pattern suite decides which compiled classes the default suite runs.
-        build.testClassSuites()
-                .forEach((suite, spec) -> extras.add("suite-classes:" + suite + "=" + String.join(",", spec.classes())
-                        + (spec.excludeClasses().isEmpty() ? "" : "!" + String.join(",", spec.excludeClasses()))));
+        // A declared suite decides which tests the default suite and every other suite runs.
+        build.testSuites()
+                .forEach((suite, spec) -> extras.add("suite:" + suite + "=" + String.join(",", spec.classes())
+                        + (spec.excludeClasses().isEmpty() ? "" : "!" + String.join(",", spec.excludeClasses()))
+                        + (spec.tags().isEmpty() && spec.excludeTags().isEmpty()
+                                ? ""
+                                : "@" + String.join(",", spec.tags())
+                                        + (spec.excludeTags().isEmpty()
+                                                ? ""
+                                                : "!" + String.join(",", spec.excludeTags())))));
+        extras.addAll(suiteRunExtras(build, selection));
         // The test JVM's flags change what the suite sees (-D properties, heap), so they retest:
         // the module's, then the request's own, which the suite fork appends from the same source.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));

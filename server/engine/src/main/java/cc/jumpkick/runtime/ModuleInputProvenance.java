@@ -169,7 +169,7 @@ public final class ModuleInputProvenance {
     /**
      * True unless this module's outputs are known to be the ones {@code fingerprint} produces: the
      * record is there, names these inputs, and every recorded file still there has its digest, with
-     * no file the record does not name in a classes tree.
+     * no file the record does not name in a classes tree or at a jar path this build writes.
      */
     public static boolean outputsFromOtherInputs(
             Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable String fingerprint) {
@@ -204,6 +204,12 @@ public final class ModuleInputProvenance {
                     seen.add(rel);
                 });
                 if (foreign[0]) return true;
+            }
+            // A jar at the name this build writes that the record does not name came from another
+            // build: a build at another version recorded its own jar, under its own name.
+            for (Path jar : jars(layout, build)) {
+                if (!jar.startsWith(target) || !Files.isRegularFile(jar)) continue;
+                if (!record.digests().containsKey(rel(target, jar))) return true;
             }
             for (Map.Entry<String, String> e : record.digests().entrySet()) {
                 if (seen.contains(e.getKey())) continue;

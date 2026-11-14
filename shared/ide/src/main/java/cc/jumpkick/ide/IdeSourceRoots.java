@@ -6,7 +6,7 @@ import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,20 +57,20 @@ public final class IdeSourceRoots {
 
     /**
      * The suites {@code jk test -s} can name in this module: the directory suites on disk, then
-     * its {@code [test.suites]} class-pattern suites. A manifest that does not parse adds none.
+     * its {@code [test.suites]} declared suites. A manifest that does not parse adds none.
      */
     public static List<String> suites(Path moduleDir) {
-        Map<String, ClassSuite> classSuites;
+        Map<String, DeclaredSuite> declared;
         try {
-            classSuites = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
+            declared = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
-                    .testClassSuites();
+                    .testSuites();
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
-            classSuites = Map.of();
+            declared = Map.of();
         }
-        return TestSuites.available(moduleDir, ModuleLayout.isCompact(moduleDir), classSuites);
+        return TestSuites.available(moduleDir, ModuleLayout.isCompact(moduleDir), declared);
     }
 
     public static boolean isCompact(Path moduleDir) {

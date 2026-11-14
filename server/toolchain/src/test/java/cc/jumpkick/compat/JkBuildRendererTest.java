@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
@@ -27,6 +28,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
@@ -78,6 +80,40 @@ class JkBuildRendererTest {
         assertThat(out).contains("[native]");
         assertThat(JkBuildParser.parse(out).applicationOpt().orElseThrow().relocate())
                 .containsEntry("com.google.common", "com.ex.shaded.guava");
+    }
+
+    @Test
+    void renders_and_round_trips_a_suite_that_claims_by_tag() {
+        DeclaredSuite integration =
+                new DeclaredSuite(List.of("*IT"), List.of("integration"), List.of(), List.of("slow"));
+        JkBuild model = JkBuild.builder(new Project("com.ex", "widget", "1.0.0", 25))
+                .build(BuildBlock.EMPTY.withTestSuites(Map.of("integration", integration)))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("\n[test.suites.integration]\nclasses = [\"*IT\"]\ntags = [\"integration\"]\n"
+                        + "exclude-tags = [\"slow\"]\n");
+        assertThat(JkBuildParser.parse(out).build().testSuites())
+                .containsExactly(Map.entry("integration", integration));
+    }
+
+    @Test
+    void renders_and_round_trips_a_suites_own_settings() {
+        DeclaredSuite live = new DeclaredSuite(
+                List.of(),
+                List.of("live"),
+                List.of(),
+                List.of(),
+                new SuiteSettings(Map.of("KEYCHAIN", "1"), List.of("-Xmx1g"), Map.of("mode", "live"), 90_000L),
+                true);
+        JkBuild model = JkBuild.builder(new Project("com.ex", "widget", "1.0.0", 25))
+                .build(BuildBlock.EMPTY.withTestSuites(Map.of("live", live)))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("timeout = \"90000ms\"\nexplicit = true\n");
+        assertThat(JkBuildParser.parse(out).build().testSuites()).containsExactly(Map.entry("live", live));
     }
 
     @Test

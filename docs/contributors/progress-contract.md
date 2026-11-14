@@ -31,7 +31,7 @@ R0            = WorkSchedule of the scheduled modules' step prices, in ms
 R(t)          = WorkSchedule of what remains:
                   finished step       → 0
                   not started         → its price
-                  running step        → max(5% of price, price − elapsed)
+                  running step        → max(5% of price, price − elapsed, elapsed / 4)
                   running suite       → price × its workers' scale (StepCost.scale) once it starts;
                                         f = its class-wall share read through its curve (SuiteCurve);
                                         price × (1 − f), then past half done the wall its rate
@@ -45,6 +45,7 @@ range         = R(t)·e^(±1.2816·σ(t))            # the 10th and 90th percent
 confidence    = Φ(ln 1.1 / σ(t)) − Φ(ln 0.9 / σ(t))  # P(truth within ±10% of R(t))
 countdown     = R_anchor − Δwork-time   # re-anchored on every engine sample, at least once a second
 bar           = min(99%, work-elapsed / (work-elapsed + R(t)))
+                held at its peak, it still closes the gap to 99% by Δt / (work-elapsed + R(t))
 ```
 
 A step's **shape** is the run's test profile, whether it is a full rebuild and whether a class
@@ -76,9 +77,11 @@ it; the schedule says how many modules are in flight at its dispatch, and the su
 share through its class walls (`StepCost.scale`) and priced for it.
 
 **A first build.** A step the ledger knows nothing of is priced from the host's calibration: a
-compile at a fixed cost plus a cost per source, a suite at its JVM's fixed cost plus a cost per
-method on one JVM, then read at its dispatch share (`Calibration.coldCompileMs`, `coldSuiteMs`,
-fitted to JumpKick's own first build).
+compile at a fixed cost plus a cost per source, the fixed cost growing with the square root of the
+modules the build works on (the compiles beside it share its cores and compiler worker: 3.5 s each
+among JumpKick's 61 modules, 0.46 s alone on the reference host), a suite at its JVM's fixed cost plus a cost
+per method on one JVM, then read at its dispatch share (`Calibration.coldCompileMs`, `coldSuiteMs`,
+fitted to JumpKick's own first build and fourteen unrelated projects' first builds).
 
 A module's steps run in three branches after its prefix (the compiles and the jar): the suite, the
 packaging tails, and the guard chain (`compile-guard`, `guard`), which nothing waits for. A forced
@@ -307,6 +310,13 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 - **Never go backwards** — one `SharedPeak` fraction floor per clock/weighted pair, so
   neither the AUTO weighted→clock takeover nor a denominator growth (calibrate/reweight) repaints
   lower; the web clamps per card (`card.peakPct`). Settle → 100%.
+- **Never stand still while work is left** — a bar held at its peak (the remainder grew past what
+  the peak implies) closes the gap to 99% by each repaint's share of the whole run, `Δt / (elapsed
+  + R)`, so it slows as the ETA grows but keeps moving; the web's peak follows the engine's
+  `progress`. A running step past its price keeps a quarter of the time it has run, uncapped: past
+  its high bound its price no longer says when it ends. A cold integration run's suite priced at
+  54 s from calibration ran 638 s, and capped at what its high bound left, the ETA read 3.3 s and
+  the bar 99% for its last six minutes (JK-ZJ8D9).
 
 ## Wire (schema 1, additive fields)
 

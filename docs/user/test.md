@@ -33,7 +33,7 @@ the git working tree (unstaged + untracked; last commit if the tree is clean).
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
-run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + `integration` when the module has one (a directory, or [a class-pattern suite](#suites-by-class-name-testsuitesname-classes)). Tag excludes
+run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + `integration` when the module has one (a directory, or [a declared suite](#declared-suites-testsuitesname)). Tag excludes
 from `[test]` still apply (`slow` / `network` / `bench` stay out). `--guard` cannot
 combine with `--all`. `--suite` wins over `--guard` (a warning is printed).
 
@@ -50,7 +50,7 @@ Unknown names in `guard-suites` fail with the discovered-suite list. Missing
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
-directory.
+directory: a suite that claims the tag (`tags = ["slow"]`) runs those tests wherever they live.
 
 What every suite shares comes from outside the suites: the module's own `[test] fixtures`
 (`src/fixtures/java`) ride every suite's classpath, and `[test] extra-src` roots and files compile
@@ -58,50 +58,99 @@ into whichever suites are selected. A file `extra-src` names brings the `package
 it, so its package's annotations (`@NullMarked`) hold in a suite that does not declare the package
 itself.
 
-## Suites by class name (`[test.suites.<name>] classes`)
+## Declared suites (`[test.suites.<name>]`)
 
-A suite is a directory unless the module says otherwise. A Maven tree keeps its integration
-tests beside the unit tests and tells them apart by name, Failsafe's `IT*` / `*IT` / `*ITCase`;
-`[test.suites.<name>]` names such a suite:
+A suite is a directory unless the module says otherwise. `[test.suites.<name>]` declares a suite
+that claims tests by class name, by JUnit tag, or both:
 
 ```toml
 [test.suites.integration]
-classes = ["IT*", "*IT", "*ITCase"]
-exclude-classes = ["*SlowIT"]     # optional
+tags = ["integration"]             # every test tagged integration, from any test source
+exclude-tags = ["slow"]            # optional: those run in no suite here
+
+[test.suites.slow]
+tags = ["slow"]
+
+[test.suites.contract]
+classes = ["*ContractTest"]        # classes of the default suite's sources, by name
+exclude-classes = ["*SlowContractTest"]   # optional
 ```
 
-`classes` takes `--class` patterns: a fully qualified name is exact, a bare name matches that
-simple name in any package, `*` stands for any run of characters, a nested class goes with its
-outer class, and there is no `#method`. They are matched against compiled class names, not source
-paths: Failsafe's `**/*IT.java` is `*IT` here, and `jk import` writes the mapping.
+A table claims with `classes`, `tags` or both, and the suite takes the union. A table without
+either claims nothing beyond its own directory, for a suite directory that only needs
+[its own JVM settings](#a-suites-own-test-jvms).
 
-- The suite's classes are the classes of the default suite's sources (`src/test/java`,
-  `test/src/`, …) its patterns match. **Plain `jk test` leaves every one of them out**, and
-  `jk test -s integration` runs them and nothing else. `--guard` runs both, `--all` every
-  suite. Both runs read the one `compile-test` output, so switching between them recompiles
-  nothing.
+- **By tag.** A test carrying one of `tags` belongs to the suite, from whichever test source it
+  comes: the default suite's (`src/test/java`, `test/src/`, …) and every suite directory's
+  (`src/e2e/java`, …) alike. A tag on a class covers its tests; a tag on a method, that test
+  alone. Tags are cost, not place, so a suite directory leaves its claimed tests to their suite:
+  `jk test -s e2e` never runs an e2e test tagged `slow`. Selecting a tag suite compiles every test
+  source, and each suite directory still runs beside its own resources.
+- **By class name.** `classes` takes `--class` patterns: a fully qualified name is exact, a bare
+  name matches that simple name in any package, `*` stands for any run of characters, a nested
+  class goes with its outer class, and there is no `#method`. They are matched against compiled
+  class names of the default suite's sources, not source paths: Failsafe's `**/*IT.java` is `*IT`
+  here, and `jk import` writes the mapping.
+- **The default suite keeps what no declared suite claims.** Plain `jk test` leaves out every
+  class a `classes` pattern matches and every test a `tags` entry names; `jk test -s integration`
+  runs that suite's tests and nothing else. `--guard` runs both, `--all` every suite. The runs read
+  one `compile-test` output, so switching between them recompiles nothing.
 - A suite that also has a directory (`src/integration/java`) runs that directory's classes too,
-  whatever their names. A class from another suite directory always belongs to that suite.
-- A class two pattern suites match belongs to both; it runs when either is selected.
-- `exclude-classes` (Failsafe's `<excludes>`, same pattern syntax) names classes among the suite's
-  that run in no suite: the suite skips them and the default suite does not take them back, as
-  under `mvn verify`.
+  whatever their names. A class from another suite directory belongs to that suite unless a tag
+  suite claims its test.
+- A test two suites claim belongs to both; it runs when either is selected.
+- `exclude-classes` (Failsafe's `<excludes>`, same pattern syntax) and `exclude-tags` name tests
+  among the suite's that run in no suite: the suite skips them and the default suite does not take
+  them back, as under `mvn verify`. To send a test tagged both `integration` and `slow` to `slow`
+  alone, give `integration` `exclude-tags = ["slow"]`.
 - `--class` narrows the selected suites as usual. A `--class` that names a class another suite
-  owns says so: `no test classes matched --class FooIT — FooIT is in the integration suite (jk test
-  --suite integration --class FooIT)`, or a `class-in-other-suite` warning when other classes
-  matched. `--affected` ranks only the selected suites' classes.
+  owns says so: `no test classes matched --class FooIT: FooIT is in the integration suite (jk test
+  -s integration -S FooIT)`, or a `class-in-other-suite` warning when other classes matched.
+  `--affected` ranks only the selected suites' classes.
 - The run-tests output names the suites it ran, for instance `test suites: test; not run:
-  integration (IT*, *IT, *ITCase), use jk test -s <name>`, and the patterns are part of the
-  run's stamp. Each test failure carries the suite it ran in (`suite` in `-O jsonl`,
+  integration (tagged integration), use jk test -s <name>`, and every declared suite is part of
+  the run's stamp. Each test failure carries the suite it ran in (`suite` in `-O jsonl`,
   `details.jsonl` and MCP diagnostics; `(integration suite)` beside the test in
   `target/jk-results.md` for any suite but `test`).
-- `jk ide` writes a `jk test -s <name>` run configuration (VS Code: a task) for a pattern suite
+- `jk ide` writes a `jk test -s <name>` run configuration (VS Code: a task) for a declared suite
   as for a directory suite, and MCP `affected_tests` and the progress estimate count only the
-  selected suites' classes.
+  selected suites' tests.
+
+### A suite's own test JVMs
+
+A suite table may also say how its tests run. A suite directory takes a table for this alone
+(`[test.suites.e2e]` with only `env`):
+
+```toml
+[test.suites.integration]
+tags = ["integration"]
+env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }     # on top of [test] env; the suite wins a name both set
+jvm-args = ["-Xmx1g"]                                # after [test] jvm-args
+system-properties = { "spring.profiles.active" = "it" }
+timeout = "5m"                                       # every test and lifecycle method stops here
+
+[test.suites.live]
+tags = ["live"]
+explicit = true                                      # only when named: -s live or guard-suites
+```
+
+- A suite with any of `env`, `jvm-args`, `system-properties` or `timeout` runs in test JVMs of its
+  own, so its settings reach its tests and no other suite's: `jk test -g` runs the default suite in
+  one set of JVMs and `integration` in another. A test two such suites claim runs in each.
+- `timeout` takes `"90s"`, `"5m"`, `"500ms"` or seconds. A method past it fails (`check() timed out
+  after 300000 milliseconds`), with a thread dump of the test JVM printed first. The method runs on
+  a separate thread, so the failure comes even when it ignores interrupts. An explicit `@Timeout`
+  keeps its own value.
+- `explicit = true` keeps the suite out of `--all`. It runs when named with `-s` or listed in
+  `guard-suites`, for tests that touch the machine itself (the OS keychain) or cost too much for
+  any routine run.
+- A selected suite's settings are part of the run's stamp; an unselected suite's are not, so
+  changing `integration`'s env re-runs `jk test -s integration` and leaves `jk test` cached.
 
 The suite name follows the directory rule (`[a-z][a-z0-9_-]*`), and `test`, `guard` and
-`fixtures` cannot be one. The table is per module, like the rest of `[test]`. `[test]
-exclude-classes` still removes a class from every suite, pattern suites included.
+`fixtures` cannot be one. A tag is a JUnit tag name: no whitespace and none of `, ( ) & | !`. The
+table is per module, like the rest of `[test]`. `[test] exclude-classes` still removes a class
+from every suite, declared suites included.
 
 ## The guard suite is not a test suite
 
@@ -120,12 +169,12 @@ test has a debugger. The rules themselves, their kinds and their baseline: [Guar
 
 `--all` and `--suite` cannot be combined. `--all` and `--guard` cannot be combined.
 Unknown suite names error with the available list (`--guard`'s default `integration`
-is the exception: skip if absent). `--all` means “everything”: every suite directory and class-pattern suite
+is the exception: skip if absent). `--all` means “everything”: every suite directory and declared suite (not an `explicit` one)
 **and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
 `--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
 
 Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`). Named
-suites are discovered when those directories exist, or declared by class pattern.
+suites are discovered when those directories exist, or declared in `[test.suites]`.
 
 When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 
@@ -383,7 +432,7 @@ exclude-tags = ["slow", "network", "bench"]
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
 **A profile can widen the suites.** `all-suites = true` in `[profiles.<name>]` runs every suite
-a module has (every suite directory and class-pattern suite, as `--all` does) under the profile's
+a module has (every suite directory and declared suite, as `--all` does) under the profile's
 own tags; without it a profile runs the default suite alone. Unlike `--all` it leaves the tag
 filters as the profile resolved them, so a tier stays a tier: `jk test -p integration` with
 

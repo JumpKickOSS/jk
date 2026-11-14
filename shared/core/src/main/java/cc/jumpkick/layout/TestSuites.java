@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceModules;
-import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.DeclaredSuite;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -155,31 +156,49 @@ public final class TestSuites {
 
     /**
      * The suites a selection can name in this module: the directory suites {@link #discover} finds,
-     * then each suite {@code [test.suites.<name>] classes} declares, in manifest order. A
-     * class-pattern suite is always present: its classes are the default suite's.
+     * then each suite a {@code [test.suites.<name>]} table declares, in manifest order. A declared
+     * suite is always present: it claims tests of the sources the module already has.
      */
-    public static List<String> available(Path projectDir, boolean compact, Map<String, ClassSuite> classSuites) {
+    public static List<String> available(Path projectDir, boolean compact, Map<String, DeclaredSuite> declared) {
         List<String> found = discover(projectDir, compact);
-        if (classSuites.isEmpty()) return found;
+        if (declared.isEmpty()) return found;
         LinkedHashSet<String> names = new LinkedHashSet<>(found);
-        names.addAll(classSuites.keySet());
+        names.addAll(declared.keySet());
         return List.copyOf(names);
     }
 
     /**
+     * {@code selection}'s suites in this module: the {@link #available} ones it names, every one
+     * but the {@code explicit} declared suites under {@code --all}.
+     */
+    public static TestSelection.Resolved resolve(
+            TestSelection selection, Path projectDir, boolean compact, Map<String, DeclaredSuite> declared) {
+        Set<String> explicit = new LinkedHashSet<>();
+        declared.forEach((name, suite) -> {
+            if (suite.explicit()) explicit.add(name);
+        });
+        return selection.resolve(available(projectDir, compact, declared), explicit);
+    }
+
+    /**
      * The suites whose source roots compile-test collects for the resolved {@code selected} suites.
-     * A class-pattern suite reads the default suite's classes, so it brings {@link #DEFAULT} (first)
-     * and its own directory only when that has sources; a pattern suite and the default suite then
-     * compile the same roots, so switching between them is one compile. A selection with no
-     * class-pattern suite is returned as is.
+     * A declared suite claiming {@code tags} claims them from every test source, so it brings every
+     * directory suite on disk, {@link #DEFAULT} first. One claiming only {@code classes} reads the
+     * default suite's classes, so it brings {@link #DEFAULT} and its own directory when that has
+     * sources; it and the default suite then compile the same roots, so switching between them is
+     * one compile. A selection with no declared suite is returned as is.
      */
     public static List<String> compiled(
-            Path projectDir, boolean compact, List<String> selected, Map<String, ClassSuite> classSuites) {
-        if (selected.stream().noneMatch(classSuites::containsKey)) return selected;
+            Path projectDir, boolean compact, List<String> selected, Map<String, DeclaredSuite> declared) {
+        if (selected.stream().noneMatch(declared::containsKey)) return selected;
         LinkedHashSet<String> out = new LinkedHashSet<>();
         out.add(DEFAULT);
+        boolean everySource = selected.stream()
+                .map(declared::get)
+                .anyMatch(suite -> suite != null && !suite.tags().isEmpty());
+        if (everySource) out.addAll(discover(projectDir, compact));
         for (String suite : selected) {
-            if (!classSuites.containsKey(suite) || hasSuiteSources(projectDir, compact, suite)) out.add(suite);
+            if (!declared.containsKey(suite) || hasSuiteSources(projectDir, compact, suite)) out.add(suite);
         }
         return List.copyOf(out);
     }

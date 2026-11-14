@@ -397,24 +397,56 @@
         },
         "suites": {
           "type": "object",
-          "description": "[test.suites.<name>]: suites selected by class pattern over the default suite's sources. The default suite leaves every matching class out; jk test --suite <name> (or --guard for integration) runs them from the same compile.",
+          "description": "[test.suites.<name>]: suites that claim tests by class pattern over the default suite's sources, by JUnit tag from every test source, or both. The default suite leaves every claimed test out; jk test --suite <name> (or --guard for integration) runs them from the same compile.",
           "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$", "not": { "enum": ["test", "guard", "fixtures"] } },
           "additionalProperties": {
             "type": "object",
             "properties": {
               "classes": {
                 "type": "array",
-                "minItems": 1,
                 "items": { "type": "string", "pattern": "^[^#]+$" },
                 "description": "Class patterns in --class syntax (fully qualified, simple name in any package, * wildcards), nested classes included; Failsafe's <includes>, e.g. [\"IT*\", \"*IT\", \"*ITCase\"]. A run-tests input."
+              },
+              "tags": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[^\\s,()&|!]+$" },
+                "description": "JUnit tag names: every test carrying one belongs to the suite, from whichever test source it comes, and no suite directory runs it. A tag on a class covers its tests. A run-tests input."
               },
               "exclude-classes": {
                 "type": "array",
                 "items": { "type": "string", "pattern": "^[^#]+$" },
                 "description": "Class patterns among the suite's classes that run in no suite: the suite skips them and the default suite does not take them back; Failsafe's <excludes>. A run-tests input."
+              },
+              "exclude-tags": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[^\\s,()&|!]+$" },
+                "description": "JUnit tag names among the suite's tests that run in no suite: the suite skips them and the default suite does not take them back. A run-tests input."
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": ["string", "number", "boolean"] },
+                "description": "Environment for the suite's own test JVMs, on top of [test] env; the suite wins a name both set. A run-tests input of the runs that select the suite."
+              },
+              "jvm-args": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Flags for the suite's own test JVMs, after [test] jvm-args. A run-tests input of the runs that select the suite."
+              },
+              "system-properties": {
+                "type": "object",
+                "additionalProperties": { "type": ["string", "number", "boolean"] },
+                "description": "One -Dkey=value each on the suite's own test JVMs. A run-tests input of the runs that select the suite."
+              },
+              "timeout": {
+                "type": ["string", "integer"],
+                "description": "Per-method limit (\"90s\", \"5m\", \"500ms\" or seconds): a method past it fails after a thread dump, run on a separate thread so one that ignores interrupts still fails."
+              },
+              "explicit": {
+                "type": "boolean",
+                "description": "Run only when named (-s, guard-suites), never under --all."
               }
             },
-            "required": ["classes"],
+            "minProperties": 1,
             "additionalProperties": false
           }
         }

@@ -48,6 +48,9 @@ class TestClassIndexFactsTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(tagged.tags()).containsExactlyInAnyOrder("slow", "network", "integration");
+        assertThat(tagged.classTags())
+                .as("the container's tags sit on the class; the method's do not")
+                .containsExactlyInAnyOrder("slow", "network");
         assertThat(tagged.imports()).containsExactly("cc.jumpkick.test.TestClassIndex");
         assertThat(tagged.nameMatchSimple()).isEqualTo("TaggedFixture");
     }

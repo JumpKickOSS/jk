@@ -8,6 +8,12 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,8 +24,11 @@ import org.jspecify.annotations.Nullable;
 /**
  * Live memory signals a {@link WorkerLeases.Ledger} reads before granting a lease the reservation
  * budget cannot hold. The sample is host pressure, and free bytes that already count running forks
- * at their real usage: the host's {@code MemAvailable}, which sees the workers of every engine, and
- * in cgroup mode no more than this engine's workers group has left under its {@code memory.max}.
+ * at their real usage. On Linux that is the host's {@code MemAvailable}, which sees the workers of
+ * every engine, in cgroup mode no more than this engine's workers group has left under its {@code
+ * memory.max}, and PSI pressure. On Windows and macOS it is the host's available physical memory
+ * ({@link MemoryProbe#current}); macOS adds the kernel's memory pressure level, and Windows has no
+ * pressure signal, so the free memory alone decides.
  *
  * <p>Readings are reused for {@link #CACHE_NANOS}. A grant checks the cached sample under the ledger
  * lock; the cache is what keeps that check from reading {@code /proc} on every fork.
@@ -49,6 +58,13 @@ public final class OverbookSignals {
 
     private static final Path MEMINFO = Path.of("/proc/meminfo");
     private static final Path PRESSURE = Path.of("/proc/pressure/memory");
+
+    /** This process's own cgroup: in a container, the container's limit and pressure. */
+    private static final Path OWN_MAX = Path.of("/sys/fs/cgroup/memory.max");
+
+    private static final Path OWN_CURRENT = Path.of("/sys/fs/cgroup/memory.current");
+    private static final Path OWN_STAT = Path.of("/sys/fs/cgroup/memory.stat");
+    private static final Path OWN_PRESSURE = Path.of("/sys/fs/cgroup/memory.pressure");
 
     private static final Reading CLOSED = new Reading(false, -1L, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
 
@@ -98,35 +114,67 @@ public final class OverbookSignals {
     }
 
     /**
-     * Whether overbooking may be considered at all. {@code ci} and {@code knob} are the raw values,
-     * not the variable names. A set {@code CI} (the jk-wide truth set) disables it, and so does an
-     * explicit off on the knob. Unrecognized knob text leaves the default, which is on.
+     * True when this engine was started with {@code CI} set: overbooking keeps {@linkplain
+     * #headroom(long, boolean) more headroom}, stops at a {@linkplain #ceiling(long, boolean) lower
+     * cap}, and on Linux needs a pressure reading. A kill on an unattended runner costs a retry or
+     * the job.
      */
-    /**
-     * True when this process was started with {@code CI} set or {@code JK_OVERBOOK} off. Read from
-     * the engine process: {@code jk engine stop} first.
-     */
+    public static final boolean CAUTIOUS = EnvValues.isCi(ProcessEnv::get);
+
+    /** True when this process was started with {@code JK_OVERBOOK} off. Read from the engine process. */
     public static boolean policyOff() {
-        return policyOff(ProcessEnv.get("CI"), ProcessEnv.get(ENV));
+        return policyOff(ProcessEnv.get(ENV));
     }
 
-    /** {@code ci} and {@code knob} are the raw values, not the variable names. */
-    static boolean policyOff(@Nullable String ci, @Nullable String knob) {
-        if (EnvValues.isCi(name -> "CI".equals(name) ? ci : null)) return true;
+    /** {@code knob} is the raw value of {@code JK_OVERBOOK}. */
+    static boolean policyOff(@Nullable String knob) {
         return !EnvValues.parseBool(knob).orElse(true);
     }
 
+    /**
+     * Whether a Linux engine may overbook at all: not with the knob off; outside a cgroup only when
+     * pressure and the free memory are both readable; a {@code cautious} one needs pressure even
+     * inside its workers group.
+     */
     static boolean allowed(
-            boolean linux,
             boolean cgroup,
             boolean pressureReadable,
             boolean availableReadable,
-            @Nullable String ci,
+            boolean cautious,
             @Nullable String knob) {
-        if (!linux) return false;
-        if (policyOff(ci, knob)) return false;
-        if (cgroup) return true;
+        if (policyOff(knob)) return false;
+        if (cgroup) return !cautious || pressureReadable;
         return pressureReadable && availableReadable;
+    }
+
+    /** {@link #ceiling(long, boolean)} for this engine. */
+    static long ceiling(long cap) {
+        return ceiling(cap, CAUTIOUS);
+    }
+
+    /**
+     * What the reserved total, and the heaps of the running forks, stay under: {@link
+     * WorkerLeases#OVERBOOK_CAP_FACTOR} times {@code cap}, one and a half times when {@code
+     * cautious}; saturating.
+     */
+    static long ceiling(long cap, boolean cautious) {
+        long budget = Math.max(0, cap);
+        if (budget > Long.MAX_VALUE / WorkerLeases.OVERBOOK_CAP_FACTOR) return Long.MAX_VALUE;
+        return cautious ? budget + budget / 2 : budget * WorkerLeases.OVERBOOK_CAP_FACTOR;
+    }
+
+    /** {@link #headroom(long, boolean)} for this engine. */
+    public static long headroom(long budgetBytes) {
+        return headroom(budgetBytes, CAUTIOUS);
+    }
+
+    /**
+     * Free memory that must remain after an overbooked lease's worst case: the larger of 1 GiB and
+     * 10% of {@code budgetBytes}, or of 2 GiB and 20% when {@code cautious}.
+     */
+    static long headroom(long budgetBytes, boolean cautious) {
+        long share = budgetBytes > 0 ? budgetBytes / (cautious ? 5 : 10) : 0;
+        return Math.max(cautious ? 2L << 30 : 1L << 30, share);
     }
 
     /** This process's sample. Never throws. */
@@ -140,9 +188,8 @@ public final class OverbookSignals {
     }
 
     private static Reading sample() {
-        if (!Os.isLinux()) return CLOSED;
-        String ci = ProcessEnv.get("CI");
         String knob = ProcessEnv.get(ENV);
+        if (!Os.isLinux()) return elsewhere(MemoryProbe.current().availableBytes(), MacPressure.level(), knob);
         Path workers = WorkerContainment.report().mode() == WorkerContainment.Mode.CGROUP
                 ? WorkerContainment.workersGroup()
                 : null;
@@ -150,14 +197,20 @@ public final class OverbookSignals {
         long available = -1L;
         String meminfo = readText(MEMINFO);
         if (meminfo != null) available = MemoryProbe.meminfoValueBytes(meminfo, "MemAvailable");
+        long own = cgroupFree(readText(OWN_MAX), readText(OWN_CURRENT), readText(OWN_STAT));
+        if (own >= 0) available = available >= 0 ? Math.min(available, own) : own;
         boolean availableReadable = available >= 0;
         long free = workers != null
                 ? hostFree(
                         cgroupFree(
-                                readText(workers.resolve("memory.max")), readText(workers.resolve("memory.current"))),
+                                readText(workers.resolve("memory.max")),
+                                readText(workers.resolve("memory.current")),
+                                readText(workers.resolve("memory.stat"))),
                         available)
                 : available;
         Pressure host = parsePressure(readText(PRESSURE));
+        Pressure ownPressure = parsePressure(readText(OWN_PRESSURE));
+        if (ownPressure != null) host = host == null ? ownPressure : worse(host, ownPressure);
         if (workers != null) {
             String groupText = readText(workers.resolve("memory.pressure"));
             if (groupText != null) {
@@ -166,19 +219,37 @@ public final class OverbookSignals {
             }
         }
         boolean pressureReadable = host != null && Double.isFinite(host.some) && Double.isFinite(host.full);
-        boolean enabled = allowed(true, cgroup, pressureReadable, availableReadable, ci, knob);
+        boolean enabled = allowed(cgroup, pressureReadable, availableReadable, CAUTIOUS, knob);
         if (host == null || !pressureReadable) {
             return new Reading(enabled, free, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
         }
         return new Reading(enabled, free, host.some, host.full);
     }
 
-    /** {@code memory.max - memory.current}, or {@code -1} when either side is missing or unlimited. */
-    static long cgroupFree(@Nullable String maxText, @Nullable String currentText) {
+    /**
+     * A Windows or macOS sample: {@code availableBytes} free, and macOS's pressure {@code level}
+     * ({@code 1} normal, {@code 2} warning, {@code 4} critical; {@code 0} where there is none). A
+     * level past normal reads as pressure that is not low.
+     */
+    static Reading elsewhere(long availableBytes, int level, @Nullable String knob) {
+        boolean enabled = !policyOff(knob) && availableBytes > 0;
+        double some = level <= MacPressure.NORMAL
+                ? 0
+                : level == MacPressure.WARN ? SOME_AVG10_LIMIT : Double.POSITIVE_INFINITY;
+        return new Reading(enabled, availableBytes, some, 0);
+    }
+
+    /**
+     * {@code memory.max} less what the group uses: {@code memory.current} without the inactive file
+     * cache {@code memory.stat} names, which the kernel drops before it kills anything (the working
+     * set Kubernetes acts on). {@code -1} when either limit is missing or unlimited.
+     */
+    static long cgroupFree(@Nullable String maxText, @Nullable String currentText, @Nullable String statText) {
         long max = parseLimit(maxText);
         long current = parseLimit(currentText);
-        if (max < 0 || current < 0 || current > max) return -1L;
-        return max - current;
+        if (max < 0 || current < 0) return -1L;
+        long used = Math.max(0, current - MemoryProbe.inactiveFileBytes(statText));
+        return used > max ? -1L : max - used;
     }
 
     /**
@@ -261,6 +332,51 @@ public final class OverbookSignals {
         }
     }
 
+    /** macOS's {@code kern.memorystatus_vm_pressure_level}, read with {@code sysctlbyname}. */
+    static final class MacPressure {
+        static final int NORMAL = 1;
+        static final int WARN = 2;
+
+        private static final @Nullable MethodHandle SYSCTL = Os.isDarwin() ? load() : null;
+
+        private MacPressure() {}
+
+        /** The level, or {@code 0} off macOS or when it cannot be read. */
+        static int level() {
+            MethodHandle sysctl = SYSCTL;
+            if (sysctl == null) return 0;
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
+                MemorySegment size = arena.allocate(ValueLayout.JAVA_LONG);
+                size.set(ValueLayout.JAVA_LONG, 0, Integer.BYTES);
+                MemorySegment name = arena.allocateFrom("kern.memorystatus_vm_pressure_level");
+                int rc = (int) sysctl.invokeExact(name, value, size, MemorySegment.NULL, 0L);
+                return rc == 0 ? value.get(ValueLayout.JAVA_INT, 0) : 0;
+            } catch (Throwable t) {
+                Log.debug("memory pressure level: unreadable", t);
+                return 0;
+            }
+        }
+
+        private static @Nullable MethodHandle load() {
+            try {
+                Linker linker = Linker.nativeLinker();
+                return linker.downcallHandle(
+                        linker.defaultLookup().find("sysctlbyname").orElseThrow(),
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_INT,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.JAVA_LONG));
+            } catch (Throwable unavailable) {
+                Log.debug("memory pressure level: sysctlbyname unavailable", unavailable);
+                return null;
+            }
+        }
+    }
+
     private static final class Cached implements Source {
         private final Source raw;
         private final LongSupplier clock;
@@ -295,22 +411,31 @@ public final class OverbookSignals {
         }
     }
 
+    /** {@link #overbookedLine(long, long, long, Reading, boolean)} naming PSI on Linux only. */
+    static String overbookedLine(long grantBytes, long leasedBytes, long budgetBytes, Reading reading) {
+        return overbookedLine(grantBytes, leasedBytes, budgetBytes, reading, Os.isLinux());
+    }
+
     /**
      * The engine-log line for one overbooked grant, after the bytes have been taken: what is leased
      * against the budget and its cap, and the sample that allowed it.
      */
-    static String overbookedLine(long grantBytes, long leasedBytes, long budgetBytes, OverbookSignals.Reading reading) {
+    static String overbookedLine(
+            long grantBytes, long leasedBytes, long budgetBytes, OverbookSignals.Reading reading, boolean psi) {
         long budget = Math.max(0, budgetBytes);
         long over = Math.max(0, leasedBytes - budget);
         return "overbooked " + WorkerLeases.format(grantBytes)
                 + ": leased " + WorkerLeases.format(leasedBytes)
                 + " of the " + WorkerLeases.format(budget) + " budget, " + WorkerLeases.format(over)
                 + " over, inside the "
-                + WorkerLeases.format(WorkerLeases.overbookCeiling(budget))
-                + " cap (twice the budget); allowed because free "
+                + WorkerLeases.format(ceiling(budget))
+                + (CAUTIOUS ? " cap (1.5 times the budget)" : " cap (twice the budget)")
+                + "; allowed because free "
                 + WorkerLeases.format(Math.max(0, reading.freeBytes())) + " covers the lease plus "
-                + WorkerLeases.format(WorkerLeases.headroomBytes(budget)) + " headroom and pressure is low (psi some "
-                + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
-                + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")";
+                + WorkerLeases.format(headroom(budget)) + " headroom"
+                + (psi
+                        ? " and pressure is low (psi some " + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
+                                + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")"
+                        : "");
     }
 }

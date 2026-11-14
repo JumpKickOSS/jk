@@ -24,12 +24,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * Peak heap of a worker. The GC log's largest before-occupancy ({@code 128M->40M}) misses a spike
  * between collections, so the process high-water RSS minus {@link #NON_HEAP_RSS} is kept too, and
- * the larger one is the peak.
+ * the larger one is the peak. The high-water resident set is recorded as well: it is what {@link
+ * LearnedHeaps#price} leases the next run of the worker at.
  */
 public final class WorkerGc {
 
     /**
-     * RSS that is not the Java heap (metaspace, code, threads, native), taken off {@code VmHWM}.
+     * RSS that is not the Java heap (metaspace, code, threads, native), taken off the process's peak resident set.
      * What remains is treated as heap.
      */
     static final long NON_HEAP_RSS = 96L << 20;
@@ -180,30 +181,6 @@ public final class WorkerGc {
         return (long) (n * mul);
     }
 
-    /** {@code VmHWM} from a {@code /proc/pid/status} body, in bytes, or {@code 0}. */
-    static long vmHwmBytes(@Nullable String status) {
-        if (status == null || status.isEmpty()) return 0L;
-        for (String line : status.split("\n", -1)) {
-            if (!line.startsWith("VmHWM:")) continue;
-            String[] parts = line.trim().split("\\s+");
-            if (parts.length < 2) return 0L;
-            try {
-                return Long.parseLong(parts[1]) * 1024L;
-            } catch (NumberFormatException e) {
-                return 0L;
-            }
-        }
-        return 0L;
-    }
-
-    private static long vmHwm(Path status) {
-        try {
-            return vmHwmBytes(Files.readString(status));
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
     /** The command to exec, and the log to fold in when the process has exited. */
     static final class Watch {
         private final List<String> command;
@@ -230,7 +207,7 @@ public final class WorkerGc {
             return command;
         }
 
-        /** Sample {@code process}'s VmHWM until it exits. No-op when this watch records nothing. */
+        /** Sample {@code process}'s peak resident set until it exits. No-op when this watch records nothing. */
         void observe(Process process) {
             if (process == null || log == null || key == null) return;
             long pid = process.pid();
@@ -238,16 +215,21 @@ public final class WorkerGc {
         }
 
         private void sample(Process process, long pid) {
-            Path status = Path.of("/proc", Long.toString(pid), "status");
+            ProcessMemory.Trees tree = HeapFlags.nativeImageCommand(command) ? new ProcessMemory.Trees() : null;
             while (process.isAlive() && !Thread.currentThread().isInterrupted()) {
-                rssPeak.accumulateAndGet(vmHwm(status), Math::max);
+                rssPeak.accumulateAndGet(peakOf(pid, tree), Math::max);
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
                     break;
                 }
             }
-            rssPeak.accumulateAndGet(vmHwm(status), Math::max);
+            rssPeak.accumulateAndGet(peakOf(pid, tree), Math::max);
+        }
+
+        /** {@code pid}'s peak resident bytes, its descendants' included when {@code tree} is set. */
+        private static long peakOf(long pid, ProcessMemory.@Nullable Trees tree) {
+            return (tree != null ? tree.read(pid) : ProcessMemory.of(pid)).peakBytes();
         }
 
         /** Record the peak for {@link #key} and delete the log. Safe to call twice. */
@@ -268,6 +250,7 @@ public final class WorkerGc {
                 if (rss > NON_HEAP_RSS) fromRss = rss - NON_HEAP_RSS;
                 long seen = Math.max(peak(log), fromRss);
                 if (seen > 0 && heaps != null) heaps.note(key, seen);
+                if (heaps != null) heaps.noteResident(key, rss);
             } finally {
                 try {
                     Files.deleteIfExists(log);

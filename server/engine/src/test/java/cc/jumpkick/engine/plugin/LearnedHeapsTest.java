@@ -130,4 +130,41 @@ class LearnedHeapsTest {
         assertThat(heaps.peak(key)).as("another engine's write is read").isEqualTo(512L << 20);
         assertThat(heaps.parses()).isEqualTo(afterWrite + 1);
     }
+
+    @Test
+    void a_worker_is_priced_at_its_resident_peak_else_its_kinds_on_this_host_else_a_prior(@TempDir Path dir)
+            throws Exception {
+        LearnedHeaps heaps = new LearnedHeaps(dir);
+        long mib = 1L << 20;
+        HeapScope.Key a = new HeapScope.Key(dir.resolve("a"), "g:a", HeapScope.TEST, 25);
+        HeapScope.Key b = new HeapScope.Key(dir.resolve("b"), "g:b", HeapScope.TEST, 25);
+        HeapScope.Key image = new HeapScope.Key(dir.resolve("a"), "g:a", HeapScope.NATIVE_IMAGE, 25);
+
+        assertThat(heaps.price(a)).as("nothing seen: the prior x 1.25").isEqualTo(640 * mib);
+        assertThat(heaps.price(image)).as("native prior x 1.3").isEqualTo(4032 * mib);
+
+        heaps.noteResident(a, 300 * mib);
+        heaps.noteResident(a, 200 * mib);
+        // 300 MiB x 1.25 = 375, rounded up to 384.
+        assertThat(heaps.price(a)).as("its own largest peak").isEqualTo(384 * mib);
+        assertThat(heaps.price(b))
+                .as("another module: the kind's host-wide peak")
+                .isEqualTo(384 * mib);
+        heaps.noteResident(a, 10 * mib);
+        assertThat(heaps.price(a)).isEqualTo(384 * mib);
+
+        HeapScope.Key small = new HeapScope.Key(dir.resolve("s"), "g:s", HeapScope.TEST, 25);
+        heaps.noteResident(small, 50 * mib);
+        assertThat(heaps.price(small)).as("floor").isEqualTo(160 * mib);
+
+        heaps.noteResident(image, 1800 * mib);
+        assertThat(heaps.price(image)).as("native: 1.3x, floor 2 GiB").isEqualTo(2368 * mib);
+        heaps.noteResident(new HeapScope.Key(dir.resolve("c"), "g:c", HeapScope.NATIVE_IMAGE, 25), 100 * mib);
+        assertThat(heaps.price(new HeapScope.Key(dir.resolve("c"), "g:c", HeapScope.NATIVE_IMAGE, 25)))
+                .isEqualTo(LearnedHeaps.NATIVE_PRICE_FLOOR_BYTES);
+
+        assertThat(Files.readString(heaps.file(dir.resolve("a"))))
+                .contains("g:a	test	25		0		" + (10 * mib) + "," + (200 * mib) + "," + (300 * mib));
+        assertThat(Files.readString(dir.resolve(LearnedHeaps.HOST_FILE))).contains("*	test	0	");
+    }
 }

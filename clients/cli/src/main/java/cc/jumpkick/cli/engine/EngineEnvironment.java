@@ -59,7 +59,7 @@ final class EngineEnvironment {
             "MISE_DATA_DIR",
             "NO_COLOR",
             "NERD_FONT",
-            // The engine reads CI to turn lease overbooking off. A worker does not inherit it
+            // The engine reads CI to overbook leases cautiously. A worker does not inherit it
             // unless the module asks for the engine's whole environment.
             "CI",
             // Windows

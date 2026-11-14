@@ -132,20 +132,16 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** The classes the run's suites own ({@link SuiteClassFilter#body}), or null for every class. */
-    private @Nullable String suiteFilter;
-
     /**
-     * The run's suites over a test-classes tree shared with class-pattern suites: no JVM of the run
-     * discovers or executes a class another suite owns, whatever the other filters select.
+     * The run's suites over a test-classes tree shared with other suites: no JVM of the run
+     * discovers or executes a test another suite owns, whatever the other filters select.
      */
-    public JUnitLauncher withSuites(SuiteClassFilter suites) {
-        this.suiteFilter = suites.body();
+    public JUnitLauncher withSuites(SuiteFilter suites) {
         this.suites = suites;
         return this;
     }
 
-    private SuiteClassFilter suites = SuiteClassFilter.NONE;
+    private SuiteFilter suites = SuiteFilter.NONE;
 
     /** Where the {@code integration} suite's JUnit XML goes, as Failsafe's does; null keeps it with the rest. */
     private @Nullable Path integrationResultsDir;
@@ -519,24 +515,25 @@ public final class JUnitLauncher {
         }
     }
 
-    /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's tag filters. */
+    /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's filters. */
     List<String> pullWorkerArgs(int workerId, Path testClassesDir) {
         return withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir), List.of());
     }
 
     /**
-     * {@code base} plus the class filter and the tag filters. The class filter is {@code names}
-     * exactly when given, else the {@code --class} patterns, within the run's suites and less the
-     * excluded classes either way.
+     * {@code base} plus the class filter, the tag filters and the run's suites. The class filter is
+     * {@code names} exactly when given, else the {@code --class} patterns, within the run's suites
+     * and less the excluded classes either way.
      */
     private List<String> withTagArgs(List<String> base, List<String> names) {
         var out = new ArrayList<>(base);
         String include = names.isEmpty() ? classFilter : JUnitClassFilter.exactRegex(names);
-        String filter = JUnitClassFilter.filter(include, excludeFilter, suiteFilter);
+        String filter = JUnitClassFilter.filter(include, excludeFilter, suites.body());
         if (filter != null) out.add("--filter=" + filter);
         if (classNames.isEmpty()) out.addAll(methodArgs);
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
         if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
+        for (String member : suites.members()) out.add("--member=" + member);
         return out;
     }
 
@@ -763,12 +760,7 @@ public final class JUnitLauncher {
             CaptureBuffer crash,
             TestProgressListener listener)
             throws IOException, InterruptedException {
-        HeapScope.Key key = SuiteRetry.key(
-                SuiteRetry.project(inferredModuleDir),
-                moduleLabel,
-                javaHome != null
-                        ? JvmOptions.hostFeature(javaHome)
-                        : Runtime.version().feature());
+        HeapScope.Key key = filledKey(javaHome);
         try {
             int exit = key == null
                     ? launch(javaHome, classpath, flags, args, aggregator, crash)
@@ -976,7 +968,8 @@ public final class JUnitLauncher {
     /**
      * One suite JVM for {@code classes} at {@code heap}; its non-protocol output lands in {@code
      * crash}. A fork that throws reported nothing that outlives it, and the record it displaced is
-     * put back before the throw.
+     * put back before the throw. A rung reruns classes after a memory failure, so its fork is leased
+     * at its whole heap ({@link HeapScope#fullLease}).
      */
     private Rung rung(
             Path javaHome,
@@ -1001,7 +994,9 @@ public final class JUnitLauncher {
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
             try {
-                return new Rung(forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener), held);
+                HeapScope.Fork<TestSummary> fork =
+                        () -> forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
+                return new Rung(HeapScope.fullLease(fork), held);
             } catch (TestLauncherFailure | IOException | InterruptedException e) {
                 held.restore();
                 throw e;

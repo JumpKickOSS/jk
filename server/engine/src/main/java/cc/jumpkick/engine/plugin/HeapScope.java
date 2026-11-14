@@ -43,8 +43,11 @@ public final class HeapScope {
 
     private static final ScopedValue<Key> CURRENT = ScopedValue.newInstance();
 
+    private static final ScopedValue<Boolean> FULL_LEASE = ScopedValue.newInstance();
+
     static {
         ContextPropagator.carry(CURRENT);
+        ContextPropagator.carry(FULL_LEASE);
     }
 
     private HeapScope() {}
@@ -80,6 +83,31 @@ public final class HeapScope {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * Run {@code body}'s forks leased at their whole {@code -Xmx}, not at the resident set they are
+     * expected to hold: the rerun of a worker that was killed for memory or ran out of it.
+     */
+    public static <T extends @Nullable Object> T fullLease(Fork<T> body) throws IOException, InterruptedException {
+        try {
+            return ScopedValue.where(FULL_LEASE, Boolean.TRUE).call(body::run);
+        } catch (IOException | InterruptedException | RuntimeException | Error e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** As {@link #fullLease(Fork)} for a body that throws what it likes. */
+    public static <T extends @Nullable Object, X extends Throwable> T fullLeaseCall(ScopedValue.CallableOp<T, X> body)
+            throws X {
+        return ScopedValue.where(FULL_LEASE, Boolean.TRUE).call(body);
+    }
+
+    /** True inside {@link #fullLease}. */
+    public static boolean fullLease() {
+        return Boolean.TRUE.equals(ContextPropagator.get(FULL_LEASE));
     }
 
     /**

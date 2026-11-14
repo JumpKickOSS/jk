@@ -29,6 +29,8 @@ import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkSchedule;
+import cc.jumpkick.wire.runtime.progress.ClockProgressStrategy;
+import cc.jumpkick.wire.runtime.progress.HeaderProgressState;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -1323,6 +1325,21 @@ public class Replay {
             List<long[]> pts = points.get(m);
             StringBuilder eta = new StringBuilder();
             StringBuilder bar = new StringBuilder();
+            // The bar as the engine paints it: its own strategy, peak hold and all, fed each sample.
+            double[] bars = new double[pts.size()];
+            ClockProgressStrategy painter = new ClockProgressStrategy();
+            for (int i = 0; i < pts.size(); i++) {
+                long el = pts.get(i)[0] - t0;
+                long[] d = painter.display(new HeaderProgressState(
+                        0, 0, Math.max(1, pts.get(i)[1]), 0, el, Math.max(0, pts.get(i)[1]), false));
+                bars[i] = d[1] > 0 ? 100.0 * d[0] / d[1] : 0;
+            }
+            // The longest stretch the bar moved less than a point, as a share of the wall (score.py's plateau).
+            double plateau = 0;
+            for (int i = 0, j = 0; i < pts.size(); i++) {
+                while (bars[i] - bars[j] >= 1.0) j++;
+                plateau = Math.max(plateau, (pts.get(i)[0] - pts.get(j)[0]) / (double) Math.max(1, wall));
+            }
             double peak = 0;
             int pi = 0;
             double etaSum = 0;
@@ -1334,11 +1351,8 @@ public class Replay {
                 long at = t0 + Math.round(f * wall);
                 long[] shown = null;
                 while (pi < pts.size() && pts.get(pi)[0] <= at) {
-                    long[] p = pts.get(pi++);
-                    double el = p[0] - t0;
-                    double b = Math.min(99.0, 100.0 * el / (el + Math.max(0, p[1])));
-                    peak = Math.max(peak, b);
-                    shown = p;
+                    peak = bars[pi];
+                    shown = pts.get(pi++);
                 }
                 if (shown == null && pi > 0) shown = pts.get(pi - 1);
                 long trueMs = end - at;
@@ -1362,7 +1376,7 @@ public class Replay {
                     }
                 }
             }
-            System.out.printf("  %-44s %s  %s%n", m.name(), eta, bar);
+            System.out.printf("  %-44s %s  %s   plateau %.0f%%%n", m.name(), eta, bar, 100 * plateau);
             if (nScored > 0) {
                 byModel.computeIfAbsent(m.name(), k -> new ArrayList<>())
                         .add(new double[] {etaSum / nScored, barSum / nScored, etaOk ? 1 : 0, barOk ? 1 : 0});
