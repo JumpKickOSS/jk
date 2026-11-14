@@ -48,8 +48,8 @@ class EnvReadReportTest {
                 .containsEntry("APP_DATABASE_URL", "ex.Config");
         assertThat(failed.opaque()).contains("ex.Config", "ex.AccessSomeApiTest");
         assertThat(EnvReadReport.undeclared("ex.AccessSomeApiTest", "MY_TOKEN_VALUE", "core/jk.toml"))
-                .isEqualTo("AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare;"
-                        + " add to [env] optional: \"MY_TOKEN_VALUE\"");
+                .isEqualTo("AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare."
+                        + " Add to [env] optional: \"MY_TOKEN_VALUE\"");
     }
 
     @Test

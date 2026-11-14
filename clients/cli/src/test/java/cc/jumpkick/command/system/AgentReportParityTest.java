@@ -29,103 +29,23 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class AgentReportParityTest {
 
+    private static final String ENV_UNDECLARED =
+            "EnvTest read FOO, which jk.toml does not declare; it saw no value. Add to [env] require: \"FOO\"";
+
     @TempDir
     Path tmp;
 
     @Test
     void agent_cli_and_mcp_print_the_same_text() throws Exception {
-        BuildRecord.Diag err = new BuildRecord.Diag(
-                "error",
-                tmp.toString(),
-                "compile-java",
-                "javac",
-                "';' expected",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                "src/A.java",
-                3,
-                10,
-                3,
-                List.of("class A {"),
-                0,
-                "");
-        BuildRecord record = new BuildRecord(
-                "run-1",
-                1,
-                BuildRecord.SCHEMA,
-                "build",
-                tmp.toString(),
-                "com.example:app",
-                "p",
-                1,
-                2,
-                700,
-                false,
-                false,
-                1,
-                "0.14.0",
-                null,
-                List.of(),
-                List.of(),
-                List.of(err),
-                "cli",
-                null,
-                null,
-                null,
-                false,
-                null,
-                9,
-                null,
-                List.of());
-        String expected = JkResultsAgent.render(record);
+        String expected = JkResultsAgent.render(record());
+        assertThat(expected).contains("W EnvTest read FOO", "FIX add to [env] require: \"FOO\"");
         Path target = Files.createDirectories(tmp.resolve(BuildLayout.TARGET));
         Files.writeString(target.resolve(ProjectBuilds.AGENT), expected, StandardCharsets.UTF_8);
         Path run = Files.createDirectories(tmp.resolve("run"));
         Files.writeString(run.resolve(ProjectBuilds.AGENT), expected, StandardCharsets.UTF_8);
         Files.writeString(run.resolve("details.jsonl"), "{}\n", StandardCharsets.UTF_8);
         // Json is package-private; the history row is the record the renderer just printed.
-        String raw = MiniJson.write(Map.of(
-                "id",
-                "run-1",
-                "kind",
-                "build",
-                "dir",
-                tmp.toString(),
-                "coord",
-                "com.example:app",
-                "success",
-                false,
-                "exitCode",
-                1,
-                "millis",
-                700,
-                "diagnostics",
-                List.of(Map.of(
-                        "severity",
-                        "error",
-                        "dir",
-                        tmp.toString(),
-                        "task",
-                        "compile-java",
-                        "code",
-                        "javac",
-                        "message",
-                        "';' expected",
-                        "file",
-                        "src/A.java",
-                        "line",
-                        3,
-                        "col",
-                        10,
-                        "snippetStart",
-                        3,
-                        "snippet",
-                        List.of("class A {")))));
+        String raw = row();
         // The file is what both sides print when it is on disk. Re-rendering the row must match it.
         assertThat(JkResultsAgent.render(Objects.requireNonNull(JkResultsAgent.recordOf(map(raw)))))
                 .isEqualTo(expected);
@@ -150,6 +70,133 @@ class AgentReportParityTest {
             }
         });
         assertThat(cli).isEqualTo(expected);
+    }
+
+    /** A failed build: one javac error, and a test that read a variable the module does not declare. */
+    private BuildRecord record() {
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                tmp.toString(),
+                "compile-java",
+                "javac",
+                "';' expected",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "src/A.java",
+                3,
+                10,
+                3,
+                List.of("class A {"),
+                0,
+                "");
+        BuildRecord.Diag env = new BuildRecord.Diag(
+                "warning",
+                tmp.toString(),
+                "run-tests",
+                "env-undeclared",
+                ENV_UNDECLARED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0,
+                "FOO");
+        return new BuildRecord(
+                "run-1",
+                1,
+                BuildRecord.SCHEMA,
+                "build",
+                tmp.toString(),
+                "com.example:app",
+                "p",
+                1,
+                2,
+                700,
+                false,
+                false,
+                1,
+                "0.14.0",
+                null,
+                List.of(),
+                List.of(),
+                List.of(err, env),
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                9,
+                null,
+                List.of());
+    }
+
+    /** {@link #record()} as its history row. */
+    private String row() {
+        return MiniJson.write(Map.of(
+                "id",
+                "run-1",
+                "kind",
+                "build",
+                "dir",
+                tmp.toString(),
+                "coord",
+                "com.example:app",
+                "success",
+                false,
+                "exitCode",
+                1,
+                "millis",
+                700,
+                "diagnostics",
+                List.of(
+                        Map.of(
+                                "severity",
+                                "error",
+                                "dir",
+                                tmp.toString(),
+                                "task",
+                                "compile-java",
+                                "code",
+                                "javac",
+                                "message",
+                                "';' expected",
+                                "file",
+                                "src/A.java",
+                                "line",
+                                3,
+                                "col",
+                                10,
+                                "snippetStart",
+                                3,
+                                "snippet",
+                                List.of("class A {")),
+                        Map.of(
+                                "severity",
+                                "warning",
+                                "dir",
+                                tmp.toString(),
+                                "task",
+                                "run-tests",
+                                "code",
+                                "env-undeclared",
+                                "message",
+                                ENV_UNDECLARED,
+                                "key",
+                                "FOO"))));
     }
 
     @SuppressWarnings("unchecked")

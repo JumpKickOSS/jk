@@ -1003,7 +1003,7 @@ the run, each variable a test class looked up — or JUnit, for its `@EnabledIfE
 / `@DisabledIfEnvironmentVariable` — that the module neither declares nor gets anyway is a warning:
 
 ```text
-W env-undeclared: AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it saw no value. Add to [env] require: "MY_TOKEN_VALUE"
+AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it saw no value. Add to [env] require: "MY_TOKEN_VALUE"
 ```
 
 When the suite fails, what the code under test and its libraries looked up counts too, since an
@@ -1012,7 +1012,7 @@ is judged from its test classes' bytecode instead, for `System.getenv("NAME")` a
 conditions:
 
 ```text
-W env-undeclared: AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare; add to [env] optional: "MY_TOKEN_VALUE"
+AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare. Add to [env] optional: "MY_TOKEN_VALUE"
 ```
 
 A run names at most eight such variables and counts the rest. The warning's key is the variable's
@@ -1023,6 +1023,15 @@ suite's bytecode is read as well: the test and main classes and every jar on the
 computed at run time or the whole `System.getenv()` map is named under `env-computed`, because
 no check can see which variable it wants. None of this is part of the suite's key: only what
 `[env]` declares is.
+
+The agent report (`jk -a`, MCP `run`) gives each variable on every verdict, green included, as a
+`W` line with the declaration as its `FIX`, for the first five variables:
+
+```text
+OK test core · 1 test · 680ms
+W AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it saw no value
+FIX add to [env] require: "MY_TOKEN_VALUE"
+```
 
 ## What a suite read: discovered inputs
 

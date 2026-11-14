@@ -39,10 +39,10 @@ import java.util.function.Predicate;
 public final class EnvReadReport {
 
     /** A read of a variable the module does not declare; the key is the variable's name. */
-    static final String UNDECLARED = "env-undeclared";
+    public static final String UNDECLARED = "env-undeclared";
 
     /** A class that reads a name no check can see, on a failed suite. */
-    static final String COMPUTED = "env-computed";
+    public static final String COMPUTED = "env-computed";
 
     private EnvReadReport() {}
 
@@ -84,11 +84,7 @@ public final class EnvReadReport {
             if (told++ < MAX_TOLD)
                 ctx.keyedWarn(UNDECLARED, e.getKey(), undeclared(e.getValue(), e.getKey(), manifest));
         }
-        if (told > MAX_TOLD) {
-            ctx.warn(
-                    UNDECLARED,
-                    (told - MAX_TOLD) + " more undeclared variables read; jk results lists the first " + MAX_TOLD);
-        }
+        if (told > MAX_TOLD) ctx.warn(UNDECLARED, (told - MAX_TOLD) + MORE + MAX_TOLD);
         if (!f.opaque().isEmpty()) {
             ctx.warn(
                     COMPUTED,
@@ -97,6 +93,34 @@ public final class EnvReadReport {
                             + " read the environment by a name jk cannot see");
         }
     }
+
+    /**
+     * An {@link #UNDECLARED} warning's message as what was read and the {@code [env]} line that
+     * declares it. {@code variables} is how many it names: one, or the count past the cap, whose
+     * {@code fix} is empty.
+     */
+    public record Said(String finding, String fix, int variables) {}
+
+    /** {@code message}, an {@link #UNDECLARED} warning's, split as {@link Said}. */
+    public static Said split(String message) {
+        int more = message.indexOf(MORE);
+        if (more > 0) {
+            try {
+                return new Said(message, "", Integer.parseInt(message.substring(0, more)));
+            } catch (NumberFormatException notACount) {
+                return new Said(message, "", 1);
+            }
+        }
+        int fix = message.lastIndexOf(FIX);
+        if (fix < 0) return new Said(message, "", 1);
+        return new Said(message.substring(0, fix), "add" + message.substring(fix + ". Add".length()), 1);
+    }
+
+    /** Between what an undeclared warning found and the declaration that fixes it. */
+    private static final String FIX = ". Add to [env] ";
+
+    /** After the count of the variables past the cap. */
+    private static final String MORE = " more undeclared variables read; jk results lists the first ";
 
     static Findings findings(
             JkBuild project,
@@ -226,14 +250,14 @@ public final class EnvReadReport {
 
     /** The line a looked-up, undeclared variable is reported as: the test saw nothing, so it is required. */
     static String lookedUp(String owner, String name, String manifest) {
-        return simple(owner) + " read " + name + ", which " + manifest + " does not declare; it saw no value."
-                + " Add to [env] require: \"" + name + "\"";
+        return simple(owner) + " read " + name + ", which " + manifest + " does not declare; it saw no value" + FIX
+                + "require: \"" + name + "\"";
     }
 
     /** The one line an undeclared read is reported as, ending with the exact declaration. */
     static String undeclared(String owner, String name, String manifest) {
-        return simple(owner) + " reads " + name + ", which " + manifest + " does not declare;"
-                + " add to [env] optional: \"" + name + "\"";
+        return simple(owner) + " reads " + name + ", which " + manifest + " does not declare" + FIX + "optional: \""
+                + name + "\"";
     }
 
     /** The manifest of {@code moduleDir} spelled from {@code entryDir}, where the build was entered. */
