@@ -31,7 +31,7 @@ final class McpUpdateOffer {
 
     private volatile Supplier<SelfUpdateControl> control = () -> SelfUpdateControl.NONE;
 
-    /** The release each session was last asked about. */
+    /** The release on offer each session was asked about and answered, or is being asked about now. */
     private final Map<String, String> asked = new ConcurrentHashMap<>();
 
     void control(Supplier<SelfUpdateControl> control) {
@@ -62,6 +62,8 @@ final class McpUpdateOffer {
         Optional<String> offer = c.offer();
         if (offer.isEmpty()) return null;
         String version = offer.get();
+        // An older release's entries can never match again.
+        asked.values().removeIf(v -> !v.equals(version));
         if (version.equals(asked.put(connection.id(), version))) return null;
         McpElicitResult answer = call.elicit(new McpElicitation.Form(question(version), emptyForm()), WAIT);
         return switch (answer) {
@@ -78,8 +80,16 @@ final class McpUpdateOffer {
                 yield null;
             }
             case McpElicitResult.Unsupported u -> line(version);
-            default -> null;
+            case McpElicitResult.TimedOut x -> unasked(connection, version);
+            case McpElicitResult.Closed x -> unasked(connection, version);
+            case McpElicitResult.Failed x -> unasked(connection, version);
         };
+    }
+
+    /** The question reached nobody: the session's next call asks again. */
+    private @Nullable String unasked(McpConnection connection, String version) {
+        asked.remove(connection.id(), version);
+        return null;
     }
 
     /** {@code result} with {@code line} appended as one more text block; unchanged when there is none. */

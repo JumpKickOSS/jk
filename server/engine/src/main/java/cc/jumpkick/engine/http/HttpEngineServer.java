@@ -272,6 +272,7 @@ public final class HttpEngineServer implements AutoCloseable {
                         this.log.accept("http: web-overlay " + d.dir() + " is served ahead of the shipped dashboard"));
         config.webOverlayIgnored(version).ifPresent(note -> this.log.accept("http: " + note));
         this.progressTokens = new ProgressTokenRegistry();
+        progressTokens.live(jid -> this.liveRuns.get().stream().anyMatch(r -> r.requestId() == jid));
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         // MCP journal reads are redacted at the supplier — every consumer (history,
         // diagnostics, project cards, run-wait summaries) sees the same defense-in-depth as REST.

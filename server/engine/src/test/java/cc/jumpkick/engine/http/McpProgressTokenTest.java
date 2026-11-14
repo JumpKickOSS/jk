@@ -30,6 +30,21 @@ class McpProgressTokenTest {
     };
 
     @Test
+    void a_full_registry_keeps_the_token_of_a_job_still_running() {
+        ProgressTokenRegistry tokens = new ProgressTokenRegistry();
+        tokens.live(jid -> jid == 1L);
+        tokens.bind("running", 1L);
+        for (int i = 0; i < 300; i++) tokens.bind("t" + i, 100L + i);
+
+        assertThat(tokens.resolve("running")).isEqualTo(1L);
+        assertThat(tokens.resolve("t299")).isEqualTo(399L);
+        assertThat(tokens.resolve("t0"))
+                .as("the oldest finished job's token goes first")
+                .isNull();
+        assertThat(tokens.size()).isLessThanOrEqualTo(ProgressTokenRegistry.MAX_ENTRIES);
+    }
+
+    @Test
     void integer_meta_token_binds_under_its_integral_text_form() {
         ProgressTokenRegistry tokens = new ProgressTokenRegistry();
         McpHandler mcp = new McpHandler(

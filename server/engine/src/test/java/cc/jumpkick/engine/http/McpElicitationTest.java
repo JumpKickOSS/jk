@@ -293,6 +293,40 @@ class McpElicitationTest {
     }
 
     @Test
+    void an_update_question_that_got_no_answer_is_asked_again_on_the_next_call() throws Exception {
+        FakeUpdate update = new FakeUpdate();
+        mcp.setSelfUpdate(() -> update);
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"form\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+        Map<String, Object> asked = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + asked.get("id")
+                        + "\",\"error\":{\"code\":-32603,\"message\":\"host dropped it\"}}",
+                session);
+        Map<String, Object> own = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + own.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+        call.get(10, TimeUnit.SECONDS);
+
+        CompletableFuture<McpHandler.Reply> again =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+        Map<String, Object> next = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        assertThat(object(next, "params").get("message"))
+                .as("the session never heard about the release, so it is asked again")
+                .isEqualTo(McpUpdateOffer.question("0.52.0"));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + next.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+        Map<String, Object> ownAgain = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + ownAgain.get("id") + "\",\"result\":{\"action\":\"decline\"}}",
+                session);
+        again.get(10, TimeUnit.SECONDS);
+        assertThat(update.did).containsExactly("snooze");
+    }
+
+    @Test
     void declining_the_update_is_the_shared_not_now() throws Exception {
         FakeUpdate update = new FakeUpdate();
         mcp.setSelfUpdate(() -> update);

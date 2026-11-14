@@ -1,40 +1,66 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongPredicate;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Maps MCP {@code _meta.progressToken} values to engine HTTP job {@code requestId}s so a later
- * {@code GET /mcp?progressToken=…} stream can filter to one job.
- *
- * <p>Bounded by practical agent concurrency — entries are not aggressively GC'd (jobs finish
- * quickly; tokens are short-lived strings). A soft cap drops oldest on overflow.
+ * {@code GET /mcp?progressToken=…} stream can filter to one job. Past {@link #MAX_ENTRIES} the
+ * oldest token whose job has ended goes first; a running job's token goes only when every token's
+ * job is running.
  */
 public final class ProgressTokenRegistry {
 
     static final int MAX_ENTRIES = 256;
 
-    private final ConcurrentHashMap<String, Long> tokens = new ConcurrentHashMap<>();
+    /** Insertion order, oldest first. Guarded by itself. */
+    private final LinkedHashMap<String, Long> tokens = new LinkedHashMap<>();
+
+    private volatile LongPredicate live = jid -> false;
+
+    /** Whether a job is still running; the engine sets it from its live runs. */
+    public void live(LongPredicate live) {
+        this.live = Objects.requireNonNull(live);
+    }
 
     /** Bind {@code progressToken} → {@code requestId} (overwrites if the token is reused). */
     public void bind(String progressToken, long requestId) {
         if (progressToken == null || progressToken.isBlank()) return;
-        if (tokens.size() >= MAX_ENTRIES) {
-            // Drop an arbitrary key — rare for agents to hold this many concurrent tokens.
-            var it = tokens.keySet().iterator();
-            if (it.hasNext()) {
-                tokens.remove(it.next());
+        String key = canonicalText(progressToken);
+        synchronized (tokens) {
+            tokens.remove(key);
+            if (tokens.size() >= MAX_ENTRIES) evictOne();
+            tokens.put(key, requestId);
+        }
+    }
+
+    private void evictOne() {
+        LongPredicate running = live;
+        Iterator<Map.Entry<String, Long>> it = tokens.entrySet().iterator();
+        while (it.hasNext()) {
+            if (!running.test(it.next().getValue())) {
+                it.remove();
+                return;
             }
         }
-        tokens.put(canonicalText(progressToken), requestId);
+        Iterator<String> oldest = tokens.keySet().iterator();
+        if (oldest.hasNext()) {
+            oldest.next();
+            oldest.remove();
+        }
     }
 
     /** Resolve a progress token to a request id, or {@code null} if unknown. */
     public @Nullable Long resolve(String progressToken) {
         if (progressToken == null || progressToken.isBlank()) return null;
-        return tokens.get(canonicalText(progressToken));
+        synchronized (tokens) {
+            return tokens.get(canonicalText(progressToken));
+        }
     }
 
     /**
@@ -50,25 +76,19 @@ public final class ProgressTokenRegistry {
 
     /** Test seam: clear all bindings. */
     void clear() {
-        tokens.clear();
+        synchronized (tokens) {
+            tokens.clear();
+        }
     }
 
     int size() {
-        return tokens.size();
+        synchronized (tokens) {
+            return tokens.size();
+        }
     }
 
     @Override
     public String toString() {
-        return "ProgressTokenRegistry{size=" + tokens.size() + "}";
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        return o instanceof ProgressTokenRegistry r && Objects.equals(tokens, r.tokens);
-    }
-
-    @Override
-    public int hashCode() {
-        return tokens.hashCode();
+        return "ProgressTokenRegistry{size=" + size() + "}";
     }
 }
