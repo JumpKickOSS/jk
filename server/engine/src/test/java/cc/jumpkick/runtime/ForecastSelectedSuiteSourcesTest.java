@@ -51,11 +51,15 @@ class ForecastSelectedSuiteSourcesTest {
     void aWidenedSelectionHashesEverySuiteItSelected(@TempDir Path module) throws Exception {
         Path unit = write(module, "src/test/java/app/WidgetTest.java");
         Path integration = write(module, "src/integration/java/app/WidgetIT.java");
+        Path e2e = write(module, "src/e2e/java/app/WidgetE2e.java");
         TestSelection all = TestSelection.of(List.of(), true, List.of(), List.of());
 
-        assertThat(selected(module, all)).containsExactlyInAnyOrder(unit, integration);
+        assertThat(selected(module, all)).containsExactlyInAnyOrder(unit, integration, e2e);
+        assertThat(selected(module, TestSelection.of(List.of("e2e"), false, List.of(), List.of())))
+                .containsExactly(e2e);
         assertThat(selected(module, TestSelection.of(List.of("integration"), false, List.of(), List.of())))
-                .containsExactly(integration);
+                .as("the built-in integration suite claims tagged tests from every source")
+                .containsExactlyInAnyOrder(unit, integration, e2e);
     }
 
     /** An unresolvable selection is the build's error or skip, so the key falls back to the tree. */

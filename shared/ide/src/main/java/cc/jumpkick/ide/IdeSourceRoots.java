@@ -64,7 +64,7 @@ public final class IdeSourceRoots {
         try {
             declared = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
-                    .testSuites();
+                    .runSuites();
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {

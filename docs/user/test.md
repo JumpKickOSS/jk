@@ -33,7 +33,7 @@ the git working tree (unstaged + untracked; last commit if the tree is clean).
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
-run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + `integration` when the module has one (a directory, or [a declared suite](#declared-suites-testsuitesname)). Tag excludes
+run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + [`integration`](#the-built-in-integration-suite). Tag excludes
 from `[test]` still apply (`slow` / `network` / `bench` stay out). `--guard` cannot
 combine with `--all`. `--suite` wins over `--guard` (a warning is printed).
 
@@ -44,8 +44,7 @@ Override the guard suite list:
 guard-suites = ["test", "integration", "contract"]
 ```
 
-Unknown names in `guard-suites` fail with the discovered-suite list. Missing
-`integration` on the default list is not an error.
+Unknown names in `guard-suites` fail with the discovered-suite list.
 
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
@@ -57,6 +56,20 @@ What every suite shares comes from outside the suites: the module's own `[test] 
 into whichever suites are selected. A file `extra-src` names brings the `package-info.java` beside
 it, so its package's annotations (`@NullMarked`) hold in a suite that does not declare the package
 itself.
+
+## The built-in `integration` suite
+
+Every module has an `integration` suite without writing a table: it runs the module's
+`src/integration` directory (when there is one) and every test tagged `@Tag("integration")`, from
+any of the module's test sources. Plain `jk test` leaves those tagged tests out, `jk test -s
+integration` runs them, and `jk test -g` runs both. A module holding no integration test runs none
+under `-s integration`.
+
+No other tag becomes a suite on its own: a `smoke` tag with no table changes nothing. No class name
+does either: a class named `*IT` stays in the default suite unless a table claims it
+(`classes = ["*IT"]`, which `jk import` writes for a Maven tree's Failsafe tests). A
+`[test.suites.integration]` table extends the convention: its `tags` add to `integration`, its
+`classes` claim more, and its exclusions and settings apply as written.
 
 ## Declared suites (`[test.suites.<name>]`)
 

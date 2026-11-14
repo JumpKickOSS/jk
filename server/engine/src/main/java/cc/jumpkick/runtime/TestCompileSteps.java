@@ -114,7 +114,7 @@ final class TestCompileSteps {
         // A declared suite compiles the default suite's roots (every suite's, when it claims tags): the suites whose
         // directories this compile reads, which is what the shared output records.
         List<String> compiledSuites = TestSuites.compiled(
-                in.dir(), compact, suiteNames, project.build().testSuites());
+                in.dir(), compact, suiteNames, project.build().runSuites());
         if (src.isEmpty()) {
             ctx.label("no test sources");
             StepWarnings.clear(ctx, TaskNames.COMPILE_TEST);
@@ -643,7 +643,7 @@ final class TestCompileSteps {
                 s.dir, compact, s.project.build(), SessionContext.current().testSelection());
         List<Path> roots = new ArrayList<>();
         for (String suite :
-                TestSuites.compiled(s.dir, compact, selected, s.project.build().testSuites())) {
+                TestSuites.compiled(s.dir, compact, selected, s.project.build().runSuites())) {
             for (Path root : TestSuites.javaRoots(s.dir, compact, suite)) {
                 if (Files.isDirectory(root)) roots.add(root);
             }

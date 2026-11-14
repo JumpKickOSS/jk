@@ -369,6 +369,16 @@ public record BuildBlock(
         return with(f -> f.testExcludeDependencies = coordinates);
     }
 
+    /**
+     * The suites a module runs beyond its directory suites: its {@code [test.suites.<name>]} tables
+     * ({@link #testSuites}, as written) with the built-in {@code integration} suite
+     * ({@link DeclaredSuite#withConvention}). Everything that selects, compiles or stamps tests reads
+     * this; only the manifest's own round trip reads {@link #testSuites}.
+     */
+    public Map<String, DeclaredSuite> runSuites() {
+        return DeclaredSuite.withConvention(testSuites);
+    }
+
     /** The same block with its {@code [test.suites.<name>]} declared suites set. */
     public BuildBlock withTestSuites(Map<String, DeclaredSuite> suites) {
         return with(f -> f.testSuites = suites);

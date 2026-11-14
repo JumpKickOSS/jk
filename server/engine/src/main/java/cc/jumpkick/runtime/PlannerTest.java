@@ -65,7 +65,7 @@ public final class PlannerTest {
     /** The session's suite selection resolved against the suites this module has, directories and class patterns. */
     static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
         var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
-        return TestSuites.resolve(sel, in.dir(), compact, project.build().testSuites());
+        return TestSuites.resolve(sel, in.dir(), compact, project.build().runSuites());
     }
 
     /** The plugin steps whose output compile-test reads: every test-source generator. */
@@ -119,7 +119,7 @@ public final class PlannerTest {
     static SuiteFilter suiteFilter(BuildPlanner.Inputs in, boolean compact, JkBuild project, Path testClasses) {
         var resolved = resolveSuites(in, compact, project);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        return SuiteFilter.of(in.dir(), compact, suites, project.build().testSuites())
+        return SuiteFilter.of(in.dir(), compact, suites, project.build().runSuites())
                 .withTags(SuiteFilter.classTagsIn(testClasses));
     }
 

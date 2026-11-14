@@ -201,7 +201,7 @@ public final class TestSupport {
         try {
             return JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
-                    .testSuites();
+                    .runSuites();
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
@@ -258,9 +258,9 @@ public final class TestSupport {
      */
     public static List<String> selectedSuites(
             Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
-        List<String> discovered = TestSuites.available(moduleDir, compact, build.testSuites());
+        List<String> discovered = TestSuites.available(moduleDir, compact, build.runSuites());
         if (selection != null) {
-            var resolved = TestSuites.resolve(selection, moduleDir, compact, build.testSuites());
+            var resolved = TestSuites.resolve(selection, moduleDir, compact, build.runSuites());
             if (resolved.ok()) return resolved.suites();
         }
         return discovered;

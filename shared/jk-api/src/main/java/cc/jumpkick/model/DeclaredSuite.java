@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A {@code [test.suites.<name>]} table: the tests the suite claims beyond its own directory.
@@ -42,6 +46,39 @@ public record DeclaredSuite(
     /** A suite of {@code classes} less {@code excludeClasses}, claiming no tag. */
     public static DeclaredSuite ofClasses(List<String> classes, List<String> excludeClasses) {
         return new DeclaredSuite(classes, List.of(), excludeClasses, List.of());
+    }
+
+    /** The built-in suite every module has, the tag it claims by convention, and its directory name. */
+    public static final String INTEGRATION = "integration";
+
+    /**
+     * {@code tables} with the built-in {@link #INTEGRATION} suite: every module has one, claiming the
+     * tests tagged {@code integration} beside its own directory, with no table written. A
+     * {@code [test.suites.integration]} table extends it: its tags add to the convention's, its
+     * classes claim more, and its exclusions and settings apply as written. No other tag becomes a
+     * suite on its own, and no class-name pattern ({@code *IT}) is implied.
+     */
+    public static Map<String, DeclaredSuite> withConvention(Map<String, DeclaredSuite> tables) {
+        DeclaredSuite table = tables.get(INTEGRATION);
+        if (table != null && table.tags().contains(INTEGRATION)) return tables;
+        Map<String, DeclaredSuite> out = new LinkedHashMap<>(tables);
+        if (table == null) {
+            out.put(INTEGRATION, ofTags(List.of(INTEGRATION)));
+        } else {
+            LinkedHashSet<String> tags = new LinkedHashSet<>();
+            tags.add(INTEGRATION);
+            tags.addAll(table.tags());
+            out.put(
+                    INTEGRATION,
+                    new DeclaredSuite(
+                            table.classes(),
+                            List.copyOf(tags),
+                            table.excludeClasses(),
+                            table.excludeTags(),
+                            table.settings(),
+                            table.explicit()));
+        }
+        return Collections.unmodifiableMap(out);
     }
 
     /** A suite of the tests tagged with any of {@code tags}. */

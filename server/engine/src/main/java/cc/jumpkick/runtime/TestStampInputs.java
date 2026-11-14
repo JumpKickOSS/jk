@@ -190,7 +190,7 @@ public record TestStampInputs(
                 SessionContext.current().testSelection(),
                 dir,
                 compact,
-                project.build().testSuites());
+                project.build().runSuites());
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         // The same factory compile-test collects its sources with, so the forecast stamps exactly
         // the files the run stamps: every selected suite's sources in every language, plus the
@@ -201,7 +201,7 @@ public record TestStampInputs(
         List<Path> stampRt = runtimeClasspath;
         List<String> stampExtras = extras();
         List<String> compiledSuites =
-                TestSuites.compiled(dir, compact, suites, project.build().testSuites());
+                TestSuites.compiled(dir, compact, suites, project.build().runSuites());
         // As the live copy: the test KSP round's output roots, then the suites' resources.
         List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
         stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
@@ -320,7 +320,7 @@ public record TestStampInputs(
      */
     static List<String> suiteRunExtras(BuildBlock build, @Nullable TestSelection selection) {
         List<String> out = new ArrayList<>();
-        build.testSuites().forEach((suite, spec) -> {
+        build.runSuites().forEach((suite, spec) -> {
             SuiteSettings run = spec.settings();
             if (run.isEmpty() || selection == null || !selection.runs(suite, spec.explicit())) return;
             out.add("suite-run:" + suite + "=" + String.join(" ", run.forkArgs()) + ";env=" + run.env());
@@ -371,7 +371,7 @@ public record TestStampInputs(
             extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
         }
         // A declared suite decides which tests the default suite and every other suite runs.
-        build.testSuites()
+        build.runSuites()
                 .forEach((suite, spec) -> extras.add("suite:" + suite + "=" + String.join(",", spec.classes())
                         + (spec.excludeClasses().isEmpty() ? "" : "!" + String.join(",", spec.excludeClasses()))
                         + (spec.tags().isEmpty() && spec.excludeTags().isEmpty()

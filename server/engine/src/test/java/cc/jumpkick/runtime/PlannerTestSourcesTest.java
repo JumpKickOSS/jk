@@ -42,13 +42,13 @@ class PlannerTestSourcesTest {
     @Test
     void aSingleSuiteSelectionNamesThatSuiteAlone(@TempDir Path module) throws Exception {
         write(module, "src/test/java/app/WidgetTest.java");
-        Path it = write(module, "src/integration/java/app/WidgetIT.java");
+        Path it = write(module, "src/e2e/java/app/WidgetE2e.java");
 
         JkBuild project = manifest(module, "");
         var sources = TestSources.collect(
-                project, module, false, List.of("integration"), BuildLayout.of(module, project), null);
+                project, module, false, List.of("e2e"), BuildLayout.of(module, project), null);
 
-        assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/integration/java"));
+        assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/e2e/java"));
         assertThat(sources.javacSources()).containsExactly(it);
     }
 

@@ -223,7 +223,7 @@ public final class AffectedTestsCompute {
             Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
             throws IOException {
         boolean compact = ModuleLayout.isCompact(moduleDir);
-        Map<String, DeclaredSuite> declared = build.build().testSuites();
+        Map<String, DeclaredSuite> declared = build.build().runSuites();
         TestSelection.Resolved resolved =
                 TestSuites.resolve(sel == null ? TestSelection.DEFAULT : sel, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
@@ -238,7 +238,7 @@ public final class AffectedTestsCompute {
             if (runs.test(e.className())) byName.put(e.className(), e);
         }
         List<String> roots = TestSuites.compiled(moduleDir, compact, suites, declared);
-        for (TestClassIndex.Entry e : scanTestSources(moduleDir, compact, roots)) {
+        for (TestClassIndex.Entry e : scanTestSources(moduleDir, compact, roots, tags)) {
             if (runs.test(e.className())) byName.putIfAbsent(e.className(), e);
         }
         return List.copyOf(byName.values());
@@ -247,6 +247,15 @@ public final class AffectedTestsCompute {
     /** The classes the sources of {@code suites}' directories declare, by path. */
     static List<TestClassIndex.Entry> scanTestSources(Path moduleDir, boolean compact, List<String> suites)
             throws IOException {
+        return scanTestSources(moduleDir, compact, suites, new HashMap<>());
+    }
+
+    /**
+     * {@link #scanTestSources(Path, boolean, List)}, filing in {@code tags} the tags each class not yet
+     * compiled carries in its source text ({@link ClassTags#ofSource}), so a tag suite can place it.
+     */
+    static List<TestClassIndex.Entry> scanTestSources(
+            Path moduleDir, boolean compact, List<String> suites, Map<String, ClassTags> tags) throws IOException {
         LinkedHashMap<String, TestClassIndex.Entry> out = new LinkedHashMap<>();
         for (String suite : suites) {
             LinkedHashSet<Path> roots = new LinkedHashSet<>();
@@ -263,6 +272,7 @@ public final class AffectedTestsCompute {
                     if (ext < 0) return;
                     String fqc = rel.substring(0, ext).replace('/', '.');
                     if (fqc.isBlank() || fqc.contains("$")) return;
+                    if (!tags.containsKey(fqc)) tags.put(fqc, ClassTags.ofSource(Files.readString(p)));
                     out.putIfAbsent(
                             fqc,
                             new TestClassIndex.Entry(
