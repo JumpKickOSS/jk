@@ -145,10 +145,16 @@ while IFS= read -r -d '' pom; do
   art="$(basename "$art_dir")"
   ver="$(basename "$ver_dir")"
   [[ "$art_dir" == "$STAGE/cc/jumpkick/$art" && "$art" == jk-* && -f "$ROOT/plugins/${art#jk-}/jk.toml" ]] || continue
-  # A stub is a POM that declares nothing at all. A self-contained worker (its runtime closure
-  # packed into the jar) rightly declares only test- or provided-scope dependencies: the build's
-  # POM, with nothing for a launch to fetch.
+  # A stub is a POM that declares nothing at all although its module declares dependencies. A
+  # worker whose module declares none (no dependency table in plugins/<name>/jk.toml) runs on the
+  # engine's classpath alone, so the empty POM is the one the build wrote. A self-contained worker
+  # (its runtime closure packed into the jar) rightly declares only test- or provided-scope
+  # dependencies: the build's POM, with nothing for a launch to fetch.
   if [[ -z "$(declared_dependencies "$pom")" ]]; then
+    if ! grep -Eq '^[[:space:]]*\[((provided|test|runtime)-)?dependencies([.][^]]*)?\][[:space:]]*(#.*)?$' "$ROOT/plugins/${art#jk-}/jk.toml"; then
+      echo "checked $art:$ver (its module declares no dependencies)"
+      continue
+    fi
     echo "publish-maven-repo: $art:$ver declares no dependencies in $pom — a worker POM names what the worker runs on; publish the POM the build wrote, not a stub" >&2
     exit 2
   fi

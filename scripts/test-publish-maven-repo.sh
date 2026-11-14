@@ -8,7 +8,8 @@
 # any other failure to read. Only JK_VERSION is staged: an older version in the store (a stub POM
 # an earlier jk wrote) stays out unless JK_MAVEN_STAGE_ALL asks for every version, and then an
 # artifact the store does not hold at JK_VERSION keeps the repository's metadata. A plugin worker's
-# POM must declare dependencies, and every first-party one it names must be staged.
+# POM must declare dependencies unless its module declares none, and every first-party one it names
+# must be staged.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -189,6 +190,14 @@ artifact . jk-formatter "$VERSION" '<project><dependencies></dependencies></proj
 if publish "$WORK/stage-stub"; then fail "a worker POM with no declared dependencies was accepted"; fi
 grep -q "jk-formatter:$VERSION declares no dependencies" "$WORK/out.log" || fail "the stub worker POM was not refused by name"
 rm -r "$LOCAL/jk-formatter"
+
+# A worker whose module declares no dependencies at all (plugins/schema-registry has no dependency
+# table) runs on the engine's classpath alone: its empty POM is the build's, not a stub.
+artifact . jk-schema-registry "$VERSION" '<project><dependencies></dependencies></project>'
+publish "$WORK/stage-nodeps" || fail "a worker whose module declares no dependencies was refused as a stub"
+grep -q "checked jk-schema-registry:$VERSION (its module declares no dependencies)" "$WORK/out.log" \
+  || fail "the dependency-free worker was not checked as such"
+rm -r "$LOCAL/jk-schema-registry"
 
 # A first-party library is not a worker: its POM shape is its own business.
 artifact . jk-model "$VERSION" '<project/>'
