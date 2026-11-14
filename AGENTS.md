@@ -215,6 +215,15 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
   A push whose commits since `origin/main` touch nothing jk builds (Markdown, the website under
   `hosting/`, scripts and results under `bench/`) needs no push gate: `jk guard docs` is enough.
+- **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
+  spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),
+  run the tests that can fail it, one module and one class at a time: every class an earlier run
+  of that gate failed, the tests of the code you changed, and the tests of whatever you merged or
+  rebased in. On the host that will run the gate, first make the installed jk match the tree (the
+  reinstall without tests, seconds when the build is cached): narrow end-to-end runs use the
+  installed jk's workers and fail falsely against an older install. Read each class's counts in
+  the test reports, not only the exit code. Start the long run once those pass; a long run that
+  fails on what a one-minute run would have caught has held the host for nothing.
 
 | Command | What runs | When |
 |---------|-----------|------|
@@ -232,7 +241,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
-   - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-s integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration suite per merge.
+   - Mid-ticket, and before every long run, test by module and by class as **Prove it cheaply first** (under Two gates) says; never the full integration suite per merge.
    - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
 2. **Reinstall** — done by the merge gate's `jk snapshot`. Never run `jk build` and then `jk snapshot`; the install is the build.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
