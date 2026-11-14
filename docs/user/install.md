@@ -146,7 +146,11 @@ What lands is the jar under `~/.jk/lib/jk/jk-<version>.jar`, the engine under
 (POSIX `sh`) or `%USERPROFILE%\.jk\bin\jk.bat`. `jkx` comes with it. Everything else — `jk
 activate`, the engine, `jk self update` — is the same; the update replaces the jar and rewrites
 the launcher instead of swapping a binary. Once a release lists a native client for the host,
-`jk self update` installs that in place of the JVM client (`JK_CLIENT=jvm` keeps the JVM client).
+`jk self update` installs that in place of the JVM client (`JK_CLIENT=jvm` keeps the JVM client);
+on Windows `jk.bat` stays behind as a forwarder to `jk.exe`. The Windows launcher names its jar
+from its own location rather than spelling the path out, so a profile whose name is outside the
+console's code page (`C:\Users\José`) works; a JDK outside both the JumpKick home and the profile must
+sit at an ASCII path (or be named by `JK_JAVA_HOME`).
 
 **You bring the JDK.** JumpKick downloads JDKs only for hosts the JDK feed covers, and a host on this
 path is by definition one it does not. The installer needs a full JDK (not a JRE) of **25 or
