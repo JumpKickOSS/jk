@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.host.JkDirs;
@@ -149,10 +150,10 @@ public final class MvnCommand implements CliCommand {
             if (Files.size(events) == 0) return;
             HostedEvents.MvnResults r = EngineClient.mvnResults(
                     EnginePaths.current(), projectDir, events, exit, millis, String.join(" ", args));
-            if (r.error() != null) CliOutput.err("jk mvn: run not journaled: " + r.error());
+            if (r.error() != null) CommandWedge.printChipErr(Glyphs.BANG, "Mvn", "run not journaled: " + r.error());
             else if (r.results() != null) CliOutput.err("results: " + projectDir.relativize(Path.of(r.results())));
         } catch (IOException e) {
-            CliOutput.err("jk mvn: run not journaled: " + e.getMessage());
+            CommandWedge.printChipErr(Glyphs.BANG, "Mvn", "run not journaled: " + e.getMessage());
         } finally {
             Files.deleteIfExists(events);
         }

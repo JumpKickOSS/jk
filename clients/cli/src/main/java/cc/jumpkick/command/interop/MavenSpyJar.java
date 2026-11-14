@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.interop;
 
-import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
 import cc.jumpkick.cli.engine.ReleasedClient;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.AtomicWrites;
@@ -135,8 +136,10 @@ public final class MavenSpyJar {
         try (ReleaseDownloadView view = new ReleaseDownloadView(CHIP, "Maven extension " + version)) {
             fetch(view);
         } catch (IOException e) {
-            CliOutput.err(
-                    "jk mvn: could not fetch " + jarName() + ", so Maven runs without a run report: " + e.getMessage());
+            CommandWedge.printChipErr(
+                    Glyphs.BANG,
+                    "Mvn",
+                    "could not fetch " + jarName() + ", so Maven runs without a run report: " + e.getMessage());
             return Optional.empty();
         }
         return locate();

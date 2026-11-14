@@ -388,7 +388,7 @@ public final class AddCommand implements CliCommand {
             if (!isJar) {
                 CommandWedge.printFail("Add", "--group, --name, and --ver are required for non-JAR files");
             } else {
-                StringBuilder msg = new StringBuilder("jk add: could not detect");
+                StringBuilder msg = new StringBuilder("could not detect");
                 if (group == null) msg.append(" group");
                 if (artifact == null) msg.append(group == null ? "," : "").append(" name");
                 if (version == null) msg.append(" version");
@@ -396,7 +396,7 @@ public final class AddCommand implements CliCommand {
                 if (group == null) msg.append("; supply --group");
                 if (artifact == null) msg.append("; supply --name");
                 if (version == null) msg.append("; supply --ver");
-                CliOutput.err(msg.toString());
+                CommandWedge.printFail("Add", msg.toString());
             }
             return Exit.USAGE;
         }
@@ -617,8 +617,9 @@ public final class AddCommand implements CliCommand {
             return 0;
         }
 
-        CliOutput.out(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + coordStr + " is unavailable.");
-        CliOutput.out("Failed to find " + coordStr + " in any configured repo.");
+        CommandWedge.printErrLine(
+                () -> Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + coordStr + " is unavailable.");
+        CliOutput.err("Failed to find " + coordStr + " in any configured repo.");
         return 1;
     }
 

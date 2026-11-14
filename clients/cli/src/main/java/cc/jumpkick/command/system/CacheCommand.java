@@ -18,7 +18,6 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.Progress;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
@@ -416,8 +415,7 @@ public final class CacheCommand extends GroupCommand {
             return 0;
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
-            CommandWedge.envelopeStart();
-            CliOutput.out(JkWedge.chipLine(Glyphs.CROSS, "Cache", nerdFont, "Nuke aborted."));
+            CommandWedge.printFail("Cache", "Nuke aborted.");
             return 1;
         }
         // Prefer engine idle-boundary wipe; fall back to in-process delete only when no engine

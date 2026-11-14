@@ -383,10 +383,10 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout =
-                withStdin("n\n", () -> Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
+        String stderr =
+                withStdin("n\n", () -> Capture.stderr(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
 
-        assertThat(stdout).contains("aborted");
+        assertThat(stderr).contains("aborted");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
     }
 

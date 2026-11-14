@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.EngineEdits;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
@@ -92,10 +93,13 @@ public final class AssemblyCommand implements CliCommand {
                 boolean changed = EngineEdits.apply(
                         toml, "set-artifacts", List.of(String.valueOf(true), String.valueOf(minified)));
                 if (changed) {
-                    CliOutput.err("jk assemble: wrote [application] " + overrideLabel + " = true to "
-                            + PathDisplay.styledRaw(toml));
+                    CommandWedge.printChipErr(
+                            Glyphs.CHECK,
+                            "Assemble",
+                            "wrote [application] " + overrideLabel + " = true to " + PathDisplay.styledRaw(toml));
                 } else {
-                    CliOutput.err("jk assemble: jk.toml already has " + overrideLabel + " = true");
+                    CommandWedge.printChipErr(
+                            Glyphs.CHECK, "Assemble", "jk.toml already has " + overrideLabel + " = true");
                 }
             } catch (IOException e) {
                 CommandWedge.printFail("Assemble", e.getMessage());

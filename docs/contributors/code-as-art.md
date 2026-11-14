@@ -1013,6 +1013,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G148 | a git command line spelled by hand (`List.of("git", …)`, `new ProcessBuilder("git", …)`, `.add("git")`) outside `cc.jumpkick.host.GitCommand`, in main, test or fixture code: it runs without the options git needs on every host, and on Windows fails once a path passes 260 characters | text over every Java source set, comment-blind, owner `GitCommand` | `git-command-owner` (text) |
 | G149 | a `TestEnvValues.resolve` in server main outside `ModuleEnvKeys`: an environment value keyed elsewhere is one the preflight memo and the forecast never see (a plugin's `env:NAME` once moved the packager key while the memo vouched for the module) | ban; the two launch-side resolutions (`WorkerEnv`, `TestEnv`) are allow entries | `env-key-owner` (forbid) |
 | G150 | a string comparison against a loopback literal (`equals("127.0.0.1")`, `startsWith("127.")`, `equals("::1")`) in production source outside `RepositorySpec`: a second answer to whether a host is this machine, which misses `[::ffff:127.0.0.1]` and the rest of 127/8 | ban, no allowlist | `one-loopback` (text) |
+| G151 | a CLI command printing a hand-typed `error:`, `usage:` or `jk <verb>:` prefix instead of the failure wedge, the bang chip or the parser's usage error: a second failure style with no stream, colour or chip rule | text, the literal as the first argument of a print under `command/` | `one-failure-style` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1091,6 +1092,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | null-marked-packages | annotate | NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off |
 | one-digest-surface | forbid | one digest surface: buffer size, exception policy and hex spelling decided once |
 | one-env-surface | forbid | the engine is a daemon: System.getenv answers from the shell that started it, not the `jk` command being served |
+| one-failure-style | text | a hand-typed error prefix is a second failure style: no wedge, no stream rule, no colour rule |
 | one-hex-spelling | forbid | bytes become hex in one place; a second spelling is a second answer |
 | one-host-surface | forbid | a copy of the host predicate that tests contains("win") calls Darwin a Windows box |
 | one-http-client | forbid | a client built outside Http goes direct behind the proxy every other request honours |

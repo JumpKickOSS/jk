@@ -148,7 +148,8 @@ class MavenSpyJarTest {
 
         assertThat(found.get()).isEmpty();
         assertThat(err)
-                .contains("jk mvn: could not fetch " + JAR_NAME)
+                .contains("could not fetch " + JAR_NAME)
+                .doesNotContain("jk mvn:")
                 .contains("HTTP 404")
                 .contains("Maven runs without a run report");
     }

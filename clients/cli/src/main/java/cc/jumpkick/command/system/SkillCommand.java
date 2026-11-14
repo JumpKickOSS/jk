@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.host.WorkingDirectory;
@@ -66,7 +67,7 @@ public final class SkillCommand implements CliCommand {
                 CliOutput.stdout().flush();
                 return Exit.SUCCESS;
             } catch (IOException e) {
-                CliOutput.err(e.getMessage() == null ? "install failed" : e.getMessage());
+                CommandWedge.printFail("Skill", e.getMessage() == null ? "install failed" : e.getMessage());
                 return Exit.CONFIG;
             }
         }
@@ -77,8 +78,7 @@ public final class SkillCommand implements CliCommand {
         }
         String text = JkSkill.topic(pos.get(0));
         if (text == null) {
-            CliOutput.err("unknown skill topic: " + pos.get(0));
-            CliOutput.err("jk skill -l");
+            CommandWedge.printFail("Skill", "unknown skill topic " + pos.get(0) + "; jk skill -l lists them");
             return Exit.USAGE;
         }
         CliOutput.outRaw(text);

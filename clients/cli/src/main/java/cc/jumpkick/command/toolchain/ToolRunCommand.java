@@ -526,7 +526,7 @@ public final class ToolRunCommand implements CliCommand {
             try {
                 fileWith = ToolTargets.resolveWith(in.values("with"));
             } catch (ToolTargets.TargetException e) {
-                CliOutput.err(e.getMessage());
+                CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.USAGE;
             }
             return new ScriptRunner(
@@ -591,7 +591,7 @@ public final class ToolRunCommand implements CliCommand {
             withInputs.addAll(aliasDeps);
             with = ToolTargets.resolveWith(withInputs);
         } catch (ToolTargets.TargetException e) {
-            CliOutput.err(e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.USAGE;
         }
         String bin = resolved.defaultBin();

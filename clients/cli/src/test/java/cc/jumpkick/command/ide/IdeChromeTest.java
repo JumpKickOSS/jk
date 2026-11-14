@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.tui.RichText;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 class IdeChromeTest {
@@ -23,6 +25,16 @@ class IdeChromeTest {
     @AfterEach
     void beginCommand() {
         CliOutput.beginCommand(false);
+    }
+
+    @Test
+    @ExtendWith(ForcedAnsi.class)
+    void a_user_cancel_settles_on_the_gray_cancelled_wedge_not_the_failure_cross() {
+        var buf = new ByteArrayOutputStream();
+        IdeChrome chrome = IdeChrome.start(stream(buf), true, "Sync");
+        assertThat(chrome.renderCanceled()).isTrue();
+        String out = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(out).contains("cancelled by user").doesNotContain("canceled by user");
     }
 
     @Test

@@ -10,11 +10,9 @@ import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
-import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -190,8 +188,7 @@ public final class RunVerb implements BuildVerb {
             }
         } catch (EntryPointUnresolvedException e) {
             String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
-            CommandWedge.printLine(JkWedge.failureLineCustom(
-                    "Run", GlobalConfig.nerdFont(), mainIssueSentence(e.issue(), coord, e.getMessage())));
+            CommandWedge.printFail("Run", mainIssueSentence(e.issue(), coord, e.getMessage()));
             return Exit.DATA_ERR;
         } catch (IOException e) {
             CommandWedge.printFail("Run", e.getMessage());

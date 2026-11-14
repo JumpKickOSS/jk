@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -99,7 +100,9 @@ public final class JdkDefaultCommand implements CliCommand {
             if (m != null && JdkLts.isLtsMajor(m)) ltsHits.add(hit);
         }
         if (ltsHits.isEmpty()) {
-            err.println("jk jdk default -l: no LTS JDK installed (try `jk jdk install --lts`).");
+            err.println(StreamCaps.renderingFor(
+                    StreamCaps.Side.ERR,
+                    () -> CommandWedge.fail("JDK", "no LTS JDK installed (try `jk jdk install --lts`)")));
             return false;
         }
         ltsHits.sort(Comparator.comparingInt((JdkHit h) ->

@@ -30,7 +30,7 @@ public interface Widget {
         boolean first = true;
         for (String line : render(RenderContext.current())) {
             if (first) {
-                CommandWedge.printErrLine(line);
+                CommandWedge.printErrLine(() -> line);
                 first = false;
             } else {
                 CliOutput.err(line);

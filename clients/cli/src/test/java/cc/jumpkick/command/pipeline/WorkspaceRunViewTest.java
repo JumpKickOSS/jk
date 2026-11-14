@@ -7,6 +7,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.ForcedAnsi;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
@@ -187,6 +188,31 @@ class WorkspaceRunViewTest {
     private static TestClassResult slowClass(String name) {
         return new TestClassResult(
                 "g:a", name, 2, 0, 0, 3_000, "fast", List.of(new TestClassResult.SlowMethod("boots", 2_500)));
+    }
+
+    @Test
+    void a_headless_launch_failure_settles_on_stderr_only() {
+        var run = headlessView();
+        run.headless();
+        var tails = new WorkspaceRunView.Tails((r, n) -> "Tests passed", r -> "failed", false, r -> "no main class");
+        int[] code = {0};
+        Capture.Streams streams = Capture.both(() -> {
+            code[0] = run.settleHeadless(new WorkspaceResult(true, 0, List.of(), List.of()), 10, tails, s -> {});
+        });
+        assertThat(code[0]).isEqualTo(Exit.DATA_ERR);
+        assertThat(TestAnsi.strip(streams.out())).doesNotContain("no main class");
+        assertThat(TestAnsi.strip(streams.err())).contains("no main class");
+    }
+
+    @Test
+    void a_headless_cancel_settles_on_stderr_only() {
+        var run = headlessView();
+        run.headless();
+        Capture.Streams streams = Capture.both(() -> {
+            run.settleHeadless(new WorkspaceResult(false, 1, List.of(), List.of(), true), 10, TAILS, s -> {});
+        });
+        assertThat(TestAnsi.strip(streams.out())).doesNotContain("cancelled");
+        assertThat(TestAnsi.strip(streams.err())).contains("cancelled");
     }
 
     @Test

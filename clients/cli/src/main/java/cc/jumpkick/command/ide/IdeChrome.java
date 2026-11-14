@@ -278,7 +278,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
                 wipe();
                 out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
-                out.println(JkWedge.fail(COMMAND, "canceled by user").renderLine(RenderContext.current()));
+                out.println(JkWedge.cancelled(COMMAND, true, null).renderLine(RenderContext.current()));
                 out.flush();
                 return true;
             }

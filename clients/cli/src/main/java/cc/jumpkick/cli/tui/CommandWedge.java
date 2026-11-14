@@ -228,8 +228,13 @@ public final class CommandWedge {
     /**
      * Print a pre-rendered wedge line on stderr with the leading blank when this is first chrome.
      */
-    public static void printErrLine(String wedgeLine) {
-        CliOutput.err(wedgeLine);
+    public static void printErrLine(Supplier<String> wedgeLine) {
+        CliOutput.err(forErr(wedgeLine));
+    }
+
+    /** The gray cancelled settle for {@code name} on stderr, with how long it ran when known. */
+    public static void printCancelled(String name, @Nullable String tookTail) {
+        printErrLine(() -> JkWedge.cancelledJobLine(name, GlobalConfig.nerdFont(), false, tookTail));
     }
 
     /**

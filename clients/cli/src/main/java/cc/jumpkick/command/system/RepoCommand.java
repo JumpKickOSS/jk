@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -89,11 +90,11 @@ public final class RepoCommand extends GroupCommand {
                         in.positionals(),
                         false);
             } catch (IOException e) {
-                CliOutput.err(String.valueOf(e.getMessage()));
+                CommandWedge.printFail("Repo", String.valueOf(e.getMessage()));
                 return Exit.SOFTWARE;
             }
             if (ack.error() != null) {
-                CliOutput.err(ack.error());
+                CommandWedge.printFail("Repo", ack.error());
                 return Exit.FAILURE;
             }
             for (String packed : ack.lines()) {
@@ -154,11 +155,11 @@ public final class RepoCommand extends GroupCommand {
                 ack = EngineClient.cacheInventory(
                         EnginePaths.current(), "repo-search", cacheRoot, JkStores.store(), terms, List.of(), false);
             } catch (IOException e) {
-                CliOutput.err(String.valueOf(e.getMessage()));
+                CommandWedge.printFail("Repo", String.valueOf(e.getMessage()));
                 return Exit.SOFTWARE;
             }
             if (ack.error() != null) {
-                CliOutput.err(ack.error());
+                CommandWedge.printFail("Repo", ack.error());
                 return Exit.FAILURE;
             }
             List<String> hits = ack.entries();

@@ -200,7 +200,7 @@ public final class InstallCommand {
             if (!isJar) {
                 CommandWedge.printFail("Install", "--group, --name, and --ver are required for non-JAR files");
             } else {
-                StringBuilder msg = new StringBuilder("jk install: could not detect");
+                StringBuilder msg = new StringBuilder("could not detect");
                 if (group == null) msg.append(" group");
                 if (artifact == null) msg.append(" name");
                 if (version == null) msg.append(" version");
@@ -208,7 +208,7 @@ public final class InstallCommand {
                 if (group == null) msg.append("; supply --group");
                 if (artifact == null) msg.append("; supply --name");
                 if (version == null) msg.append("; supply --ver");
-                CliOutput.err(msg.toString());
+                CommandWedge.printFail("Install", msg.toString());
             }
             return Exit.USAGE;
         }
@@ -242,7 +242,7 @@ public final class InstallCommand {
         try {
             resolved = ToolTargets.resolve(coord);
         } catch (ToolTargets.TargetException e) {
-            CliOutput.err(e.getMessage());
+            CommandWedge.printFail("Install", e.getMessage());
             return Exit.USAGE;
         }
         String bin = binName != null && !binName.isBlank() ? binName : resolved.defaultBin();

@@ -19,8 +19,6 @@ import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
-import cc.jumpkick.cli.tui.JkWedge;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
@@ -574,9 +572,7 @@ final class WorkspaceRunView {
         }
         String launchFailure = tails.launch().of(result);
         if (launchFailure != null) {
-            if (!toStdout)
-                CommandWedge.printLine(
-                        JkWedge.failureLineCustom(chrome.planName(), GlobalConfig.nerdFont(), launchFailure));
+            if (!toStdout) CommandWedge.printFail(chrome.planName(), launchFailure);
             if (session != null) session.wedge(launchFailure);
             terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.FAILED);
@@ -594,7 +590,7 @@ final class WorkspaceRunView {
     int settleHeadlessCancelled(long elapsedMs) {
         if (!toStdout) {
             String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
-            CommandWedge.printLine(JkWedge.cancelledJobLine(chrome.planName(), GlobalConfig.nerdFont(), false, took));
+            CommandWedge.printCancelled(chrome.planName(), took);
         }
         if (session != null) session.wedge(chrome.planName() + " job was cancelled");
         terminal(JsonlShape.workspaceFinish(false, elapsedMs, planned()));

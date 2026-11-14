@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
-import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -58,21 +57,21 @@ public final class AuthLogoutCommand implements CliCommand {
         try {
             kind = AuthCommand.requireKind(provider);
         } catch (IllegalArgumentException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return Exit.CONFIG;
         }
         String resolvedHost;
         try {
             resolvedHost = ForgeAuth.resolveHost(kind, host);
         } catch (AuthException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return Exit.CONFIG;
         }
 
         try {
             AuthCommand.authFor(credentialsDir).logout(kind, resolvedHost);
         } catch (SecretBackendException refused) {
-            CliOutput.err("error: " + refused.getMessage() + "; login kept, run `jk auth logout` again later");
+            CommandWedge.printFail("Auth", refused.getMessage() + "; login kept, run `jk auth logout` again later");
             return 1;
         }
         if (!global.quiet) {

@@ -264,7 +264,7 @@ public final class ToolInstallCommand implements CliCommand {
             withInputs.addAll(aliasDeps);
             with = ToolTargets.resolveWith(withInputs);
         } catch (ToolTargets.TargetException e) {
-            CliOutput.err(e.getMessage());
+            CommandWedge.printFail("Tool", e.getMessage());
             return Exit.USAGE;
         }
         String bin = binName != null && !binName.isBlank() ? binName : resolved.defaultBin();
@@ -353,7 +353,7 @@ public final class ToolInstallCommand implements CliCommand {
             try {
                 fileWith = ToolTargets.resolveWith(in.values("with"));
             } catch (ToolTargets.TargetException e) {
-                CliOutput.err(e.getMessage());
+                CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.USAGE;
             }
             return installFile(

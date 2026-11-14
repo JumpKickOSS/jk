@@ -2794,3 +2794,16 @@ reason = "the progress interpolation timer eases step bars forward and reads no 
 [[guards.executors-through-jkthreads.allow]]
 in     = "cc.jumpkick.winhost.WindowsHostCheck"
 reason = "the host probes read the machine, never a request; the pool is shut down with the call so a hung probe is interrupted"
+
+# A command's failure is the failure wedge on stderr (CommandWedge.printFail), its warning the bang
+# chip (printChipErr) and its usage error the parser's: a hand-typed `error:`, `usage:` or `jk <verb>:`
+# prefix is a second failure style with no chip, no colour rule and no stream rule behind it.
+[guards.one-failure-style]
+kind     = "text"
+files    = ["clients/cli/src/main/java/cc/jumpkick/command/**/*.java"]
+blank    = "comments"
+patterns = ['(?:CliOutput\.(?:err|out)|\.println|\.print)\(\s*"(?:(?:[Ee]rror|[Uu]sage): |jk [a-z][a-z-]*(?: [a-z][a-z-]*)?: )']
+hit      = 'CliOutput.err("error: " + e.getMessage());'
+miss     = 'CommandWedge.printFail("Auth", e.getMessage());'
+instead  = "CommandWedge.printFail(<Command>, message), printChipErr(Glyphs.BANG, …) for a warning, or a required parameter the parser enforces"
+why      = "a hand-typed error prefix is a second failure style: no wedge, no stream rule, no colour rule"

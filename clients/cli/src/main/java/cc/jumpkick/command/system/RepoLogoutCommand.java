@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
-import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -55,8 +54,8 @@ public final class RepoLogoutCommand implements CliCommand {
         try {
             store.clear(id);
         } catch (SecretBackendException refused) {
-            CliOutput.err(
-                    "error: " + refused.getMessage() + "; login kept, run `jk repo logout " + id + "` again later");
+            CommandWedge.printFail(
+                    "Repo", refused.getMessage() + "; login kept, run `jk repo logout " + id + "` again later");
             return 1;
         }
         if (!global.quiet) {

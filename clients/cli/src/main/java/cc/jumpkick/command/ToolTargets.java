@@ -38,16 +38,14 @@ public final class ToolTargets {
             }
             case ToolTarget.CatalogName c -> resolveCatalogName(c);
             case ToolTarget.JBangAlias j ->
-                throw new TargetException("jk tool: JBang catalog aliases (`alias@user/repo`) aren't supported yet");
-            case ToolTarget.Url u -> throw new TargetException("jk tool: web URL targets aren't supported yet");
+                throw new TargetException("JBang catalog aliases (`alias@user/repo`) aren't supported yet");
+            case ToolTarget.Url u -> throw new TargetException("web URL targets aren't supported yet");
             case ToolTarget.Git g ->
-                throw new TargetException(
-                        "jk tool: git targets aren't supported yet; use `jk install " + g.raw() + "`");
+                throw new TargetException("git targets aren't supported yet; use `jk install " + g.raw() + "`");
             case ToolTarget.Directory d ->
-                throw new TargetException(
-                        "jk tool: directory targets aren't supported yet; `cd` there and use `jk run`");
+                throw new TargetException("directory targets aren't supported yet; `cd` there and use `jk run`");
             case ToolTarget.UnsupportedFile f ->
-                throw new TargetException("jk tool: " + f.path() + " is not a .java, .kt, .kts or .jar file");
+                throw new TargetException("" + f.path() + " is not a .java, .kt, .kts or .jar file");
         };
     }
 
@@ -77,7 +75,7 @@ public final class ToolTargets {
                 VersionSelector.parse(c.suffix());
             } catch (IllegalArgumentException e) {
                 throw new TargetException(
-                        "jk tool: bad version selector `@" + c.suffix() + "` on `" + c.name() + "`: " + e.getMessage());
+                        "bad version selector `@" + c.suffix() + "` on `" + c.name() + "`: " + e.getMessage());
             }
         }
         String coordSpec = module.group() + ":" + module.artifact() + (c.suffix() != null ? "@" + c.suffix() : "");
@@ -86,7 +84,7 @@ public final class ToolTargets {
     }
 
     private static TargetException catalogMiss(LibraryCatalog catalog, ToolTarget.CatalogName c) {
-        StringBuilder msg = new StringBuilder("jk tool: `" + c.name() + "` is not in the library catalog");
+        StringBuilder msg = new StringBuilder("`" + c.name() + "` is not in the library catalog");
         if (c.suffix() != null) {
             // §6.1: a bare-word suffix is only ambiguous when the name resolves; on a miss,
             // report both interpretations and the forced spellings.
@@ -106,7 +104,7 @@ public final class ToolTargets {
         try {
             return ToolCoordSpec.parse(raw);
         } catch (IllegalArgumentException e) {
-            throw new TargetException("jk tool: " + e.getMessage());
+            throw new TargetException("" + e.getMessage());
         }
     }
 

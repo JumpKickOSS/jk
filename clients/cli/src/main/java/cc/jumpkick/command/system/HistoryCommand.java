@@ -10,7 +10,6 @@ import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
-import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
@@ -275,10 +274,6 @@ public final class HistoryCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws Exception {
-            if (in.positionals().isEmpty()) {
-                CliOutput.err("usage: jk history show <id>");
-                return Exit.USAGE;
-            }
             String id = in.positionals().get(0);
             List<String> lines = EngineJournalReads.historyShow(EnginePaths.current(), id);
             String record = lines.stream()
@@ -286,7 +281,7 @@ public final class HistoryCommand extends GroupCommand {
                     .findFirst()
                     .orElse(null);
             if (record == null) {
-                CliOutput.err("No such build: " + id);
+                CommandWedge.printFail("History", "no such build: " + id);
                 return 1;
             }
             if (CliOutput.jsonMode()) {
@@ -400,16 +395,12 @@ public final class HistoryCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws Exception {
-            if (in.positionals().isEmpty()) {
-                CliOutput.err("usage: jk history rm <id>");
-                return Exit.USAGE;
-            }
             String id = in.positionals().get(0);
             if (EngineJournalReads.historyDelete(EnginePaths.current(), id)) {
                 CommandWedge.printOk("History", "Deleted build " + id);
                 return 0;
             }
-            CliOutput.err("No such build: " + id);
+            CommandWedge.printFail("History", "no such build: " + id);
             return 1;
         }
     }

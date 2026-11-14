@@ -360,10 +360,11 @@ public final class JdkUninstallCommand implements CliCommand {
             // The spinner has already cleared its line; print the failure where
             // the confirmation prompt was (confirmDeletion wiped it for us), then
             // rethrow so the plan records the failure and the exit code is 1.
-            CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().error())
-                    + " Failed to remove "
-                    + Theme.colorize(label, Theme.active().warning())
-                    + "!");
+            CommandWedge.printErrLine(
+                    () -> Theme.colorize(Glyphs.CROSS, Theme.active().error())
+                            + " Failed to remove "
+                            + Theme.colorize(label, Theme.active().warning())
+                            + "!");
             throw e;
         }
         CommandWedge.envelopeStart();

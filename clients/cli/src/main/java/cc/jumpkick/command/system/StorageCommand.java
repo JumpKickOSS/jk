@@ -17,8 +17,6 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.JkWedge;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -143,8 +141,7 @@ public final class StorageCommand extends GroupCommand {
             return 0;
         }
         if (!skipConfirm && !confirmNuke(storeRoot, pre, orphans)) {
-            CommandWedge.envelopeStart();
-            CliOutput.out(JkWedge.chipLine(Glyphs.CROSS, "Storage", GlobalConfig.nerdFont(), "Nuke aborted."));
+            CommandWedge.printFail("Storage", "Nuke aborted.");
             return 1;
         }
         // Stop the fleet first — engines from other checkouts keep writing into the store

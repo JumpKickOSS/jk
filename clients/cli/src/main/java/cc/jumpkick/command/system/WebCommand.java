@@ -102,7 +102,9 @@ public final class WebCommand implements CliCommand {
                 CliOutput.out(Theme.paint("  Opening in your browser…", t.darkGray()));
             } else {
                 CliOutput.out("");
-                CliOutput.out(Theme.paint("  Could not open a browser; copy the URL above.", t.warning()));
+                CommandWedge.printErrLine(() -> Theme.paint(
+                        "  Could not open a browser; copy the URL above.",
+                        Theme.active().warning()));
             }
         }
         return Exit.SUCCESS;

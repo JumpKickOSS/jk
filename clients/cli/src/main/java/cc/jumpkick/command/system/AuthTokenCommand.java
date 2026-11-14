@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.forge.AuthException;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ResolvedToken;
@@ -66,26 +67,28 @@ public final class AuthTokenCommand implements CliCommand {
         try {
             target = AuthCommand.resolveTarget(provider, host, global.workingDir());
         } catch (IllegalArgumentException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return Exit.CONFIG;
         }
         String resolvedHost;
         try {
             resolvedHost = ForgeAuth.resolveHost(target.kind(), target.host());
         } catch (AuthException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return Exit.CONFIG;
         }
 
         Optional<ResolvedToken> token =
                 AuthCommand.authFor(credentialsDir).resolveSilently(target.kind(), resolvedHost);
         if (token.isEmpty()) {
-            CliOutput.err("error: not logged in to "
-                    + target.kind().displayName()
-                    + " ("
-                    + resolvedHost
-                    + "). Run: jk auth login "
-                    + target.kind().id());
+            CommandWedge.printFail(
+                    "Auth",
+                    "not logged in to "
+                            + target.kind().displayName()
+                            + " ("
+                            + resolvedHost
+                            + "). Run: jk auth login "
+                            + target.kind().id());
             return 1;
         }
         CliOutput.out(token.get().value());

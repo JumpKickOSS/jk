@@ -358,9 +358,9 @@ public final class GuardCommand implements CliCommand {
             return Exit.CONFIG;
         }
         for (String w : done.written())
-            CliOutput.out("jk guard: installed " + done.hooksDir().resolve(w));
-        for (String r : done.refused()) CliOutput.out("jk guard: kept " + r);
-        CliOutput.out("jk guard: protected files listed in " + done.protectedList());
+            CommandWedge.printOk("Guard", "installed " + done.hooksDir().resolve(w));
+        for (String r : done.refused()) CommandWedge.printFail("Guard", "kept " + r);
+        CommandWedge.printOk("Guard", "protected files listed in " + done.protectedList());
         return done.refused().isEmpty() ? 0 : 1;
     }
 
@@ -390,20 +390,27 @@ public final class GuardCommand implements CliCommand {
         }
         GuardBaselineMarker.leave(dir, "jk guard freeze");
         if (retire) {
-            CliOutput.out("jk guard: retired " + id + ", dropped " + ack.accepted() + " baseline "
-                    + (ack.accepted() == 1 ? "entry" : "entries") + "; " + ack.total() + " remain");
+            CommandWedge.printOk(
+                    "Guard",
+                    "retired " + id + ", dropped " + ack.accepted() + " baseline "
+                            + (ack.accepted() == 1 ? "entry" : "entries") + "; " + ack.total() + " remain");
         } else if (ack.rebased() > 0) {
-            CliOutput.out("jk guard: accepted " + id + "'s smaller scope"
-                    + (ack.accepted() == 0
-                            ? ""
-                            : " and froze " + ack.accepted() + (ack.accepted() == 1 ? " violation" : " violations"))
-                    + " in jk-guards-baseline.toml (" + ack.total() + " entries); commit it");
+            CommandWedge.printOk(
+                    "Guard",
+                    "accepted " + id + "'s smaller scope"
+                            + (ack.accepted() == 0
+                                    ? ""
+                                    : " and froze " + ack.accepted()
+                                            + (ack.accepted() == 1 ? " violation" : " violations"))
+                            + " in jk-guards-baseline.toml (" + ack.total() + " entries); commit it");
         } else if (ack.accepted() == 0) {
-            CliOutput.out("jk guard: " + id
-                    + (acceptScope ? " has nothing new to accept" : " has no new violations to freeze"));
+            CommandWedge.printOk(
+                    "Guard", id + (acceptScope ? " has nothing new to accept" : " has no new violations to freeze"));
         } else {
-            CliOutput.out("jk guard: froze " + ack.accepted() + " " + (ack.accepted() == 1 ? "violation" : "violations")
-                    + " of " + id + " into jk-guards-baseline.toml (" + ack.total() + " entries); commit it");
+            CommandWedge.printOk(
+                    "Guard",
+                    "froze " + ack.accepted() + " " + (ack.accepted() == 1 ? "violation" : "violations") + " of " + id
+                            + " into jk-guards-baseline.toml (" + ack.total() + " entries); commit it");
         }
         return 0;
     }

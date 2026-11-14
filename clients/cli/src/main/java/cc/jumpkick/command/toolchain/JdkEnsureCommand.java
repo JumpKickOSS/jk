@@ -191,10 +191,13 @@ public final class JdkEnsureCommand implements CliCommand {
                 + " in the JetBrains feed — ";
         Optional<JdkHit> hit = registry.findHitAtLeast(e.majorVersion(), e.version(), List.of());
         if (hit.isPresent()) {
-            CliOutput.out(head
-                    + "using the latest LTS "
-                    + Theme.colorize(label(e), Theme.active().cyan())
-                    + " instead");
+            CommandWedge.printErrLine(
+                    () -> Theme.colorize(Glyphs.BANG, Theme.active().warning())
+                            + " no JDK matches "
+                            + Theme.colorize(spec, Theme.active().cyan())
+                            + " in the JetBrains feed — using the latest LTS "
+                            + Theme.colorize(label(e), Theme.active().cyan())
+                            + " instead");
             report(JdkRender.displayName(hit.get()), hit.get().home(), false);
             return 0;
         }

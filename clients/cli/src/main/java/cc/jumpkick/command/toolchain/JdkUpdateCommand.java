@@ -237,11 +237,13 @@ public final class JdkUpdateCommand implements CliCommand {
                 updated++;
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().error())
-                        + " "
-                        + Theme.colorize(oldId, Theme.active().warning())
-                        + ": "
-                        + e.getMessage());
+                String message = e.getMessage();
+                CommandWedge.printErrLine(
+                        () -> Theme.colorize(Glyphs.CROSS, Theme.active().error())
+                                + " "
+                                + Theme.colorize(oldId, Theme.active().warning())
+                                + ": "
+                                + message);
                 failed++;
             }
         }

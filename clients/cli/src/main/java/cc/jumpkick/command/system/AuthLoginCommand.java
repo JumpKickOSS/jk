@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.OpenBrowser;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.ForgeAuthConfig;
 import cc.jumpkick.forge.AuthException;
 import cc.jumpkick.forge.DeviceCode;
@@ -79,7 +80,7 @@ public final class AuthLoginCommand implements CliCommand {
         try {
             target = AuthCommand.resolveTarget(provider, host, global.workingDir());
         } catch (IllegalArgumentException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return Exit.CONFIG;
         }
         ForgeKind kind = target.kind();
@@ -88,7 +89,7 @@ public final class AuthLoginCommand implements CliCommand {
         try {
             resolvedHost = ForgeAuth.resolveHost(kind, target.host());
         } catch (AuthException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return Exit.CONFIG;
         }
 
@@ -97,10 +98,10 @@ public final class AuthLoginCommand implements CliCommand {
             String token = withToken ? readTokenFromStdin() : runDeviceFlow(kind, resolvedHost);
             stored = auth.store(kind, resolvedHost, token);
         } catch (AuthException | IllegalStateException e) {
-            CliOutput.err("error: " + e.getMessage());
+            CommandWedge.printFail("Auth", e.getMessage());
             return 1;
         } catch (IOException e) {
-            CliOutput.err("error: could not read token from stdin: " + e.getMessage());
+            CommandWedge.printFail("Auth", "could not read token from stdin: " + e.getMessage());
             return 1;
         }
         if (stored.notice() != null) CliOutput.err(stored.notice());

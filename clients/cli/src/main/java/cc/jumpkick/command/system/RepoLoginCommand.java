@@ -83,12 +83,14 @@ public final class RepoLoginCommand implements CliCommand {
         try {
             url = urlFor(id, in.value("url").orElse(null), global.workingDir());
         } catch (IllegalArgumentException malformed) {
-            CliOutput.err("error: " + malformed.getMessage());
+            CommandWedge.printFail("Repo", malformed.getMessage());
             return 1;
         }
         if (url == null) {
-            CliOutput.err("error: no repository '" + id + "' in " + ManifestPaths.MANIFEST
-                    + " or ~/.jk/config.toml; pass --url <repository-url>");
+            CommandWedge.printFail(
+                    "Repo",
+                    "no repository '" + id + "' in " + ManifestPaths.MANIFEST
+                            + " or ~/.jk/config.toml; pass --url <repository-url>");
             return 1;
         }
 
@@ -96,11 +98,11 @@ public final class RepoLoginCommand implements CliCommand {
         try {
             secret = new String(System.in.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException e) {
-            CliOutput.err("error: could not read secret from stdin: " + e.getMessage());
+            CommandWedge.printFail("Repo", "could not read secret from stdin: " + e.getMessage());
             return 1;
         }
         if (secret.isBlank()) {
-            CliOutput.err("error: no " + (username != null ? "password" : "token") + " supplied on stdin.");
+            CommandWedge.printFail("Repo", "no " + (username != null ? "password" : "token") + " supplied on stdin.");
             return 1;
         }
 
@@ -111,7 +113,7 @@ public final class RepoLoginCommand implements CliCommand {
         try {
             stored = store(credentialsDir).write(id, cred, url);
         } catch (IllegalStateException noKeychain) {
-            CliOutput.err("error: " + noKeychain.getMessage());
+            CommandWedge.printFail("Repo", noKeychain.getMessage());
             return 1;
         }
         if (stored.notice() != null) CliOutput.err(stored.notice());
