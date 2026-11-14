@@ -414,10 +414,9 @@ public final class BuildForecasting {
     /**
      * The modules a build without {@code --verify-cache} would have left alone: clean by the dirty
      * memo, and clean by the forecast walk, each asked on its own so a verifying build holds both to
-     * what the steps then key. Neither is stored.
+     * what the steps then key, and with their outputs in place. Neither is stored.
      */
-    private static Set<Path> claimedClean(
-            BuildGraph.Result graph, Path cache, @Nullable Path entryDir, BuildKnobs knobs) {
+    static Set<Path> claimedClean(BuildGraph.Result graph, Path cache, @Nullable Path entryDir, BuildKnobs knobs) {
         Session honest = SessionContext.current()
                 .withConfig(SessionContext.current().config().withRebuild(false).withForce(false))
                 .withVerifyCache(false);
@@ -433,14 +432,17 @@ public final class BuildForecasting {
                             knobs.skipTests(),
                             knobs.profile(),
                             new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
+                    // A module whose outputs are gone is scheduled by a plain build to restore them,
+                    // so it is no claim to sample: left out of a sample, its dependents would fail.
                     memo.ifPresent(m -> {
-                        Set<Path> dirty = new HashSet<>(m.dirty());
-                        for (Path dir : all) if (!dirty.contains(dir)) clean.add(dir);
+                        Set<Path> scheduled = new HashSet<>(m.dirty());
+                        scheduled.addAll(m.restoreNeeded());
+                        for (Path dir : all) if (!scheduled.contains(dir)) clean.add(dir);
                     });
                 }
                 Preflight walked = forecastWithFingerprints(graph, cache, null, knobs, false);
                 for (Path dir : all) {
-                    if (!walked.dirty().contains(dir)) clean.add(dir);
+                    if (!walked.dirty().contains(dir) && !walked.restoreNeeded().contains(dir)) clean.add(dir);
                 }
                 return null;
             });
