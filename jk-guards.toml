@@ -354,6 +354,18 @@ reason = "recognises a foreign build file's declared repository: every spelling 
 in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/gradle/GradleExporter.java"
 reason = "writes a foreign build file's repository block in that file's own vocabulary"
 
+# G150. Whether a host is this machine has one answer, RepositorySpec.loopback (and loopbackAuthority
+# for a host:port): an address literal in 127/8 or ::1, in every spelling, no lookup. A string
+# comparison against a loopback literal is a second answer that misses the mapped and 127/8 forms.
+[guards.one-loopback]
+kind     = "text"
+files    = ["**/src/main/**/*.java"]
+pattern  = '(?:equals|equalsIgnoreCase|startsWith)\("(?:127\.|\[?::1|0:0:0:0:0:0:0:1)'
+hit      = 'host.startsWith("127.")'
+miss     = 'URI.create("http://127.0.0.1:" + port)'
+instead  = "RepositorySpec.loopback(host), or RepositorySpec.loopbackAuthority(authority) for a host:port"
+why      = "a loopback test outside RepositorySpec misses [::ffff:127.0.0.1] and the rest of 127/8"
+
 # G119. A Maven resolve gets its repositories from RepoGroupBuilder, which lays the user's own
 # repositories over the public baseline and routes each through the mirror that stands in for it. A
 # MavenRepo built over Central's URL by hand goes around both: behind a firewall that admits only

@@ -1012,6 +1012,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G147 | a `ResolvedSecrets.plus` or `SecretRedactor.from` in server or shared main outside `BuildEnv`: a sink composing its own redactor masks less than the wire (the test reports once masked only filed credentials, not `.env` names) | ban; the run-tests stamp's value hashing is an allow entry | `redactor-owner` (forbid) |
 | G148 | a git command line spelled by hand (`List.of("git", …)`, `new ProcessBuilder("git", …)`, `.add("git")`) outside `cc.jumpkick.host.GitCommand`, in main, test or fixture code: it runs without the options git needs on every host, and on Windows fails once a path passes 260 characters | text over every Java source set, comment-blind, owner `GitCommand` | `git-command-owner` (text) |
 | G149 | a `TestEnvValues.resolve` in server main outside `ModuleEnvKeys`: an environment value keyed elsewhere is one the preflight memo and the forecast never see (a plugin's `env:NAME` once moved the packager key while the memo vouched for the module) | ban; the two launch-side resolutions (`WorkerEnv`, `TestEnv`) are allow entries | `env-key-owner` (forbid) |
+| G150 | a string comparison against a loopback literal (`equals("127.0.0.1")`, `startsWith("127.")`, `equals("::1")`) in production source outside `RepositorySpec`: a second answer to whether a host is this machine, which misses `[::ffff:127.0.0.1]` and the rest of 127/8 | ban, no allowlist | `one-loopback` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1094,6 +1095,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | one-host-surface | forbid | a copy of the host predicate that tests contains("win") calls Darwin a Windows box |
 | one-http-client | forbid | a client built outside Http goes direct behind the proxy every other request honours |
 | one-json-splicer | text | every hand chop got the separator wrong on an empty object |
+| one-loopback | text | a loopback test outside RepositorySpec misses [::ffff:127.0.0.1] and the rest of 127/8 |
 | one-module-per-package | split-package | package-private reach across a jar boundary stops working under JPMS; a split package is breakage that grows quietly |
 | one-module-planner | forbid | a second planner is how build verbs drifted apart in which phases they ran |
 | one-recursive-delete | text | a hand-rolled tree delete decides the follow-links question again, and one FOLLOW_LINKS is data loss |
