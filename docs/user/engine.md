@@ -161,7 +161,10 @@ holds it exclusively: an install that replaces JumpKick's own engine or client (
 `jk install` of the JumpKick tree, from its copy step
 through the takeover), `jk self update` and `jk engine stop`. So an install waits for the runs in
 progress to finish, a run started during an install waits for it, and no run's steps span two
-builds of the engine. A wait prints one line naming who holds the lock:
+builds of the engine. A run started while an install waits queues behind the install, so sessions
+running builds back to back cannot keep it out; if the runs in progress do not finish for ten
+seconds, the install lets the queued runs in for a moment, so a run that another run waits for (a
+`jk` invoked from a test) is never deadlocked. A wait prints one line naming who holds the lock:
 
 ```
 jk: jk snapshot waits for the jk runs using the engine (install lock held by pid 41877 jk test (shared) in /home/me/jk-wt2 since …)
