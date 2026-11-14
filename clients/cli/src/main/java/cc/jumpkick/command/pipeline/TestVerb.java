@@ -228,7 +228,7 @@ final class TestVerb implements BuildVerb {
      * tree reads as a replay and not as a run.
      *
      * <p>{@code withSuite} is how many modules ran a suite or replayed one; zero is a green run that
-     * tested nothing ({@code -p <tier>} over modules with no such tier), which must not read as a
+     * tested nothing ({@code -s <suite>} over modules where it holds no tests), which must not read as a
      * passing suite. {@code notTested} is how many prerequisites {@code --exclusive} compiled
      * without running their suites; they are named in their own clause.
      */

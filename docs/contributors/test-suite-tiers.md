@@ -394,7 +394,7 @@ CLI tier leaves no slot per fixture behind. A slot a live launch holds is never 
 
 | Intent | Command |
 |--------|---------|
-| Fast / default | `jk test` (suite `test` only; `[test] exclude-tags`) |
+| Fast / default | `jk test` (suite `test` only: what no declared suite claims) |
 | Extra suite | `jk test -s integration` or put e2e under `integration/` |
 | Everything | `jk test -A` / `jk build -A` (every suite but the explicit ones) |
 | Tag filter | `jk test -E slow` / `--include-tags smoke` |

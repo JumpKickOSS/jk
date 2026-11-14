@@ -167,7 +167,7 @@ These are **deliberately separate**:
 | Knob | Changes |
 |------|---------|
 | **Features** | *Which* optional deps are on (`[features]` naming `optional = true` entries; an optional dep no feature names is simply yours, never a consumer's — [Dependencies](dependencies.md#optional-dependencies)) |
-| **Profiles** | *How* you compile and test (`javac` flags, test-JVM args, tag filters). `--profile` / auto `ci` |
+| **Profiles** | *How* you compile and test (`javac` flags, test-JVM args and env), never which tests run. `-p` / `--profile` |
 | **Variants** | *Which product* you build (sources, deps, plugin config). `--variant` / `--release` |
 
 A dimension with no `default` must be selected (`--variant contentType=demo`) on every verb that

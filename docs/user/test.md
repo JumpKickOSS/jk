@@ -11,7 +11,7 @@ jk test -P               # guard scripts, no JUnit
 jk test -g -b          # guard suites, skip extra scripts
 jk test -s integration              # climb one named suite
 jk test -s e2e                      # UI / compose / contract; not a habit
-jk test -A                        # every suite; tag excludes cleared. Nightly / release.
+jk test -A                        # every suite. Nightly / release.
 jk test -E slow,bench
 jk test -I smoke
 jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
@@ -32,8 +32,8 @@ the git working tree (unstaged + untracked; last commit if the tree is clean).
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
-run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + [`integration`](#the-built-in-integration-suite). Tag excludes
-from `[test]` still apply (`slow` / `network` / `bench` stay out). `--guard` cannot
+run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + [`integration`](#the-built-in-integration-suite). A test
+that a suite outside `guard-suites` claims (a `slow` suite's, say) stays out. `--guard` cannot
 combine with `--all`. `--suite` wins over `--guard` (a warning is printed).
 
 Override the guard suite list:
@@ -282,8 +282,8 @@ classpath is part of the run's stamp, so changing the list re-runs the suite.
 ## A run with no tests
 
 A workspace `jk test` in which no module has a test suite exits **0**, as `mvn test` does, and
-the terminal line reads `No tests to run`; so does a `--profile` run over modules that carry no
-such tier. A `--class` selection that matches nothing is still `no test classes matched`, exit 64.
+the terminal line reads `No tests to run`; so does a `-s <suite>` run over modules where that
+suite holds no tests. A `--class` selection that matches nothing is still `no test classes matched`, exit 64.
 A suite replayed from its green stamp counts as run, and the terminal line says how many were:
 `Tests passed for 49 modules, 47 served from cache` — the two others ran — or `all served from
 cache` over an unchanged tree; a run that replayed nothing reads `Tests passed for 49 modules`. A
@@ -305,8 +305,8 @@ Slowest tests
 ```
 
 A class's time is its wall, setup and teardown included; a method's is the test itself. The tier is
-`fast` for a run that includes no tag (a bare `jk test`), the profile's name for `-p <profile>`
-and `all` for `-A`. Only what ran this time is timed: a module whose suite was served from cache
+`fast` for the default suite alone (a bare `jk test`), the suites joined with `+` for `-s` and
+`-g` (`integration`, `test+integration+e2e`), the included tags for `-I` and `all` for `-A`. Only what ran this time is timed: a module whose suite was served from cache
 has no row. The same ranking is a `slowest-tests` line under `-O jsonl`, just before
 `workspace-finish` ([Machine output](machine-output.md#event-vocabulary)), each `class-finish`
 line carries `tier` and its class's `slow` methods, and `jk results` has a **Slowest tests**
@@ -334,8 +334,8 @@ method and its time: `demo.OrderFlowTest#ships_overnight took 9.8s, over the fas
 1.0s ([test] fast-method-budget)`. Being over the budget does not fail the run: a loaded host slows
 every method. A JUnit Jupiter method still running at **four times** the budget is stopped: its
 thread is interrupted and the method fails as timed out, so a hung test cannot hold the fast tier
-(a method's own `@Timeout` wins). A run with `-p <profile>` is not held to either, and there is no
-budget unless one is set. At the workspace root it holds every member; a
+(a method's own `@Timeout` wins). A run of any other tier (`-s`, `-g`, `-I`, `-A`) is not held to either, and
+there is no budget unless one is set. At the workspace root it holds every member; a
 member's own `fast-method-budget` wins over the root's. The budget is a run-tests input: changing
 it runs the fast tier again.
 
@@ -343,7 +343,7 @@ it runs the fast tier again.
 
 Everything a test class prints while it runs, on stdout or stderr, passing or failing, lands in
 the `<system-out>` of that class's `target/surefire-reports/TEST-<class>.xml`
-(`target/failsafe-reports/` for the `integration` suite), for a `--class` or `--profile` run as
+(`target/failsafe-reports/` for the `integration` suite), for a `--class` or `-s` run as
 for a full one. The test JVM merges stderr into stdout, so `<system-err>` stays empty. Each class
 keeps its first 262,144 characters of output, and a closing line counts the lines cut. The files are written
 when the module's run ends; a class re-run after its JVM ran out of heap reports the re-run.
@@ -956,7 +956,9 @@ recorder that notes the variable's name, whether it had a value and the test cla
 the value itself, and writes the list when the JVM exits. The rewrite touches only the class
 file's constant pool, so it works on any suite JDK and adds nothing to the test classpath. After
 the run, each variable a test class looked up — or JUnit, for its `@EnabledIfEnvironmentVariable`
-/ `@DisabledIfEnvironmentVariable` — that the module neither declares nor gets anyway is a warning:
+/ `@DisabledIfEnvironmentVariable` — that the module neither declares nor gets anyway is a warning
+(a name in the suite's own `[test.suites.<name>] env` counts as declared, and every test JVM gets
+`JAVA_HOME`, set to the JDK it runs on):
 
 ```text
 AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it saw no value. Add to [env] require: "MY_TOKEN_VALUE"
