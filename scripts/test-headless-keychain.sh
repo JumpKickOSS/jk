@@ -9,7 +9,7 @@
 #
 # Runs in podman, else docker; with neither answering it skips with a notice. The jk under test is
 # installed into a throwaway home; that home's store hard-links the host's (JK_STORE_DIR, else
-# $JK_HOME/store, else ~/.jk/store) when it can, and the host's JDKs (JK_JDKS_DIR, else ~/.jdks) are mounted
+# $JK_HOME/store, else ~/.jk/store) when it can, less the host's shelf of jk's own modules, and the host's JDKs (JK_JDKS_DIR, else ~/.jdks) are mounted
 # read-only, so a developer machine needs no network beyond the container image.
 # JK_HEADLESS_IMAGE overrides the image (default docker.io/library/ubuntu:24.04).
 # JK_HEADLESS_REQUIRE_RUNTIME=1 (CI) turns the no-runtime skip into a failure.
@@ -68,6 +68,10 @@ if [[ -d "$HOST_STORE" ]] && ! cp -al "$HOST_STORE" "$HOME_DIR/store" 2>/dev/nul
   rm -rf "$HOME_DIR/store"
   echo "test-headless-keychain: the store at $HOST_STORE is on another file system; the lock fetches what it needs" >&2
 fi
+# The host's shelf of jk's own modules is the developer's install, not a cache: the jk under test
+# shelves its dist's own, and a host shelf holding another line of the same version (a 0.51.0-SNAPSHOT
+# under a 0.51.0 dist) makes install.sh refuse, rightly. Unlinking the copy leaves the host's files.
+rm -rf "$HOME_DIR/store/repos/jk-local"
 JK_HOME="$HOME_DIR" bash "$ROOT/install.sh" "$JK_BIN" >"$WORK/install.log" 2>&1 \
   || { cat "$WORK/install.log" >&2; fail "install.sh could not install $JK_BIN"; }
 
