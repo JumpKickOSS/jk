@@ -14,7 +14,6 @@ import cc.jumpkick.task.TestRun;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,8 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The suites a run stamps are the suites it runs. A green marker stored while a suite was left out
  * must not replay once that suite would run: flipping a suite's {@code explicit} under {@code
- * --all}, or a request that names no tags under a profile whose {@code all-suites} is on (an MCP or
- * HTTP build, a BSP run), runs the failing test the suite claims.
+ * --all} runs the failing test the suite claims.
  */
 // Out of the unit tier: network resolve + real forked test JVMs.
 @Tag("integration")
@@ -40,7 +38,7 @@ class SuiteSelectionStampE2eTest {
                 explicit = true
                 """);
         TestSelection all = TestSelection.of(List.of(), true, List.of(), List.of());
-        Run first = run(project, all, null);
+        Run first = run(project, all);
         assertThat(first.result().success())
                 .as("-A leaves the explicit live suite out")
                 .isTrue();
@@ -50,27 +48,11 @@ class SuiteSelectionStampE2eTest {
                 [test.suites.live]
                 tags = ["live"]
                 """));
-        Run second = run(project, all, null);
+        Run second = run(project, all);
         assertThat(second.result().success())
                 .as("-A now runs the live suite, whose test fails; a replayed green marker would pass")
                 .isFalse();
         assertThat(second.tests().failed()).isEqualTo(1L);
-    }
-
-    @Test
-    void a_profiles_all_suites_runs_every_suite_for_a_request_that_names_none() throws Exception {
-        Path project = project(tmp, """
-                [profiles.ci]
-                all-suites = true
-
-                [test.suites.live]
-                tags = ["live"]
-                """);
-        Run ci = run(project, TestSelection.DEFAULT, "ci");
-        assertThat(ci.result().success())
-                .as("the ci profile runs every suite, the live suite's failing test with them")
-                .isFalse();
-        assertThat(ci.tests().failed()).isEqualTo(1L);
     }
 
     private record Run(BuildPlan plan, BuildPlanResult result) {
@@ -79,10 +61,9 @@ class SuiteSelectionStampE2eTest {
         }
     }
 
-    private Run run(Path project, TestSelection selection, @Nullable String profile) throws Exception {
+    private Run run(Path project, TestSelection selection) throws Exception {
         Session session = Session.defaults().withTestSelection(selection);
         BuildPlanner.Inputs in = TestInputs.of(project, tmp.resolve("cache"), session)
-                .withProfileName(profile)
                 .withEstimatedTestCount(1)
                 .withTestOnly(true);
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();

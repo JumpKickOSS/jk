@@ -130,7 +130,7 @@ final class TestSteps {
                 SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
         List<Path> testRtCp = stamp.runtimeClasspath();
-        WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest, effectiveSel);
+        WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest);
         TestTier tier = stamp.tier();
         List<String> testJvmArgs = stamp.jvmArgs();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
@@ -206,8 +206,8 @@ final class TestSteps {
                                 affected,
                                 launcher,
                                 runtimeCp,
-                                (one, cp, s) -> TestLaunch.launch(
-                                        ctx, in, one, cp, testWorkers, workerJars, testEnv.with(s.env()), tagExcluded));
+                                (one, cp, l) -> TestLaunch.launch(
+                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, l, tagExcluded));
             } catch (TestLauncherFailure e) {
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;

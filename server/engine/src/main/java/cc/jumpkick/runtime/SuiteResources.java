@@ -146,11 +146,11 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
 
     /**
      * One test JVM run: a launcher over the shared classpath with {@code classpath} after the test
-     * classes, for suites whose own {@code settings} its JVMs get.
+     * classes, for {@code launch}'s suites, whose own settings its JVMs get.
      */
     @FunctionalInterface
     interface Launch {
-        TestSummary run(JUnitLauncher launcher, List<Path> classpath, SuiteSettings settings) throws Exception;
+        TestSummary run(JUnitLauncher launcher, List<Path> classpath, SuiteFilter.Launch launch) throws Exception;
     }
 
     /**
@@ -186,8 +186,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             throws Exception {
         List<SuiteFilter.Launch> launches = suites.launches();
         if (!split() && launches.size() == 1) {
-            SuiteSettings settings = launches.getFirst().settings();
-            return launch.run(launcher.of(ONE_LAUNCH, settings).withSuites(suites), runtimeCp, settings);
+            SuiteFilter.Launch only = launches.getFirst();
+            return launch.run(launcher.of(ONE_LAUNCH, only.settings()).withSuites(suites), runtimeCp, only);
         }
         Map<String, List<Path>> groups = split() ? bySuite : Collections.singletonMap(TestSuites.DEFAULT, List.of());
         TestSummary total = null;
@@ -212,7 +212,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 if (names != null) one.withClassNames(names);
                 List<Path> classpath = new ArrayList<>(group.getValue());
                 classpath.addAll(runtimeCp);
-                TestSummary ran = launch.run(one, classpath, shared.settings());
+                TestSummary ran = launch.run(one, classpath, shared);
                 total = total == null ? ran : JUnitLauncher.merge(total, ran);
             }
         }

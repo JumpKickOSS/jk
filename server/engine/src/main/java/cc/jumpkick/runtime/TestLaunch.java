@@ -20,6 +20,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
@@ -48,6 +49,7 @@ import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.EnvProbeJar;
 import cc.jumpkick.test.JUnitLauncher;
+import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestProgressListener;
 import cc.jumpkick.test.TestWorkers;
@@ -60,6 +62,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -229,27 +232,32 @@ final class TestLaunch {
     }
 
     /**
-     * The environment {@code project}'s suite JVMs get for {@code sel}: its {@link #testEnvironment},
-     * the active profile's {@code env} on top, then the fast tier's walls ({@link #withFastTierWalls}).
+     * The environment {@code project}'s suite JVMs get: its {@link #testEnvironment} with the active
+     * profile's {@code env} on top. Each launch adds its suites' own {@code env} and, for the default
+     * tier, its walls ({@link #withFastTierWalls}).
      */
-    static WorkerEnv suiteEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, TestSelection sel)
-            throws Exception {
-        WorkerEnv env = testEnvironment(ctx, in, project).with(profileEnv(project, in.profileName()));
-        return withFastTierWalls(env, sel, project);
+    static WorkerEnv suiteEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project) throws Exception {
+        return testEnvironment(ctx, in, project).with(profileEnv(project, in.profileName()));
     }
 
     /**
-     * The default tier's walls. A run of the default suite alone that includes no tag, in a module
-     * that routes tiers ({@link BuildBlock#routesTiers}: a {@code [test.suites.<name>]} table of its
-     * own or its workspace root's claims tests by tag), is the module's plain {@code jk test} tier,
-     * the one {@code jk build} runs. Its JVMs find every host but this one refused by {@link Http}
-     * with the host named, and may not start or take over an engine ({@link
-     * EnginePaths#NO_SPAWN_ENV}). Any other suite ({@code -s integration}, {@code -g}, {@code --all})
-     * or an included tag names a tier that may do both, a project that never sorted its tests keeps
-     * them as they are, and a module that sets either variable in {@code [test] env} keeps its value.
+     * The default tier's walls. A launch that runs the default suite beside no suite that claims a
+     * tag, with no tag included, in a module that routes tiers ({@link BuildBlock#routesTiers}: a
+     * {@code [test.suites.<name>]} table of its own or its workspace root's claims tests by tag), runs
+     * the fast tier's tests: plain {@code jk test}, the test step of {@code jk build}, and the
+     * default suite's launch under {@code jk test -g}. Its JVMs find every host but this one refused
+     * by {@link Http} with the host named, and may not start or take over an engine ({@link
+     * EnginePaths#NO_SPAWN_ENV}). A launch of a tag suite ({@code integration}, {@code slow}), one
+     * that runs one beside the default suite ({@code --all}), or a run that includes a tag may do
+     * both; a project that never sorted its tests keeps them as they are; and a module that sets
+     * either variable in {@code [test] env} keeps its value.
      */
-    static WorkerEnv withFastTierWalls(WorkerEnv testEnv, TestSelection sel, JkBuild project) {
-        if (!project.build().routesTiers() || !sel.includeTags().isEmpty() || !sel.defaultSuiteAlone()) {
+    static WorkerEnv withFastTierWalls(WorkerEnv testEnv, Set<String> suites, TestSelection sel, JkBuild project) {
+        boolean defaultTier = suites.contains(TestSuites.DEFAULT)
+                && suites.stream()
+                        .map(project.build().runSuites()::get)
+                        .allMatch(s -> s == null || s.tags().isEmpty());
+        if (!project.build().routesTiers() || !sel.includeTags().isEmpty() || !defaultTier) {
             return testEnv;
         }
         Map<String, String> walls = new LinkedHashMap<>();
@@ -473,9 +481,15 @@ final class TestLaunch {
             List<Path> runtimeCp,
             int testWorkers,
             Map<String, String> workerJars,
-            WorkerEnv testEnv,
+            WorkerEnv moduleEnv,
+            SuiteFilter.Launch launch,
             TestProgressListener listener)
             throws Exception {
+        WorkerEnv testEnv = withFastTierWalls(
+                moduleEnv.with(launch.settings().env()),
+                launch.suites(),
+                in.session().testSelection(),
+                ctx.require(MODULE).project());
         TestSummary summary;
         try (TestHomes.Hold held = TestEnv.holdSandboxes(in.dir())) {
             summary = launcher.run(
