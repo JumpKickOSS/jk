@@ -43,7 +43,8 @@ Override the guard suite list:
 guard-suites = ["test", "integration", "contract"]
 ```
 
-Unknown names in `guard-suites` fail with the discovered-suite list.
+`guard-suites` is the workspace root's, and each module runs the ones it has: `e2e` runs where a
+module has `src/e2e`, and a module without one runs the rest.
 
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that

@@ -27,8 +27,9 @@ public record TestSelection(
         /** {@code --exclude-tags}: a one-run filter on the selected suites' tests; empty means none. */
         List<String> excludeTags,
         /**
-         * {@code --guard}: {@link TestSuites#INTEGRATION} in {@link #suites}
-         * is optional (skip if the directory is absent) instead of an unknown-suite error.
+         * {@code --guard}: each of {@link #suites} runs in the modules that have it; a module without
+         * one ({@code e2e} where there is no {@code src/e2e}) runs the rest, never an unknown-suite
+         * error.
          */
         boolean guard,
         /** {@code --scripts-only}: run guard scripts, skip JUnit. */
@@ -152,9 +153,7 @@ public record TestSelection(
         for (String s : want) {
             if (known.contains(s) || s.equals(TestSuites.DEFAULT)) {
                 if (!ordered.contains(s)) ordered.add(s);
-            } else if (guard && TestSuites.INTEGRATION.equals(s)) {
-                // --guard includes integration when the directory exists; skip otherwise.
-            } else {
+            } else if (!guard) {
                 missing.add(s);
             }
         }

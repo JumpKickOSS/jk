@@ -116,14 +116,6 @@ class TestSuitesTest {
     }
 
     @Test
-    void gate_unknown_extra_suite_errors() {
-        var r = TestSelection.of(List.of("test", "contract"), false, List.of(), List.of(), true, false, false)
-                .resolve(List.of("test"));
-        assertThat(r.ok()).isFalse();
-        assertThat(r.missingMessage()).contains("contract").contains("test");
-    }
-
-    @Test
     void traditional_layout_discover(@TempDir Path tmp) throws Exception {
         Path testJava = tmp.resolve("src/test/java");
         Files.createDirectories(testJava);
@@ -205,6 +197,21 @@ class TestSuitesTest {
                                 TestSelection.of(List.of("live"), false, List.of(), List.of()), tmp, false, suites)
                         .suites())
                 .containsExactly("live");
+    }
+
+    /** The guard's suites run where a module has them: a module without {@code src/e2e} runs the rest. */
+    @Test
+    void a_guard_suite_a_module_lacks_is_left_out_not_an_error() {
+        TestSelection guard =
+                TestSelection.of(List.of("test", "integration", "e2e"), false, List.of(), List.of(), true, false, false);
+        TestSelection.Resolved resolved = guard.resolve(List.of("test", "integration"));
+        assertThat(resolved.ok()).isTrue();
+        assertThat(resolved.suites()).containsExactly("test", "integration");
+
+        TestSelection named = TestSelection.of(List.of("e2e"), false, List.of(), List.of());
+        assertThat(named.resolve(List.of("test", "integration")).ok())
+                .as("a suite named outright is still an unknown-suite error")
+                .isFalse();
     }
 
     /** The stamp identity names the suites the selection runs, so a guard run never replays a plain one. */
