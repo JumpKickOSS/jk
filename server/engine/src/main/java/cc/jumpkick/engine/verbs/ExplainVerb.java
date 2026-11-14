@@ -1,30 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.jobs.JobSelect;
-import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
-import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.workspace.ExplainReport;
-import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import cc.jumpkick.wire.protocol.ProtoSession;
-import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 public final class ExplainVerb implements HostedVerb {
@@ -60,72 +50,23 @@ public final class ExplainVerb implements HostedVerb {
         try {
             try {
                 ExplainRequest req = ExplainRequest.decode(requestLine);
-                Path entryDir = Path.of(req.dir());
-                Path cache = Path.of(req.cache());
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-                JkBuild entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
-                String etaJdksDirStr = req.jdksDir();
-                int maxModuleConcurrency = req.maxModuleConcurrency();
-                if (maxModuleConcurrency <= 0 && req.serial()) {
-                    maxModuleConcurrency = 1;
-                }
-                Path etaJdksDir = etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null;
-                // The selector tokens resolve the way the build verb resolves them; the plan is
-                // then that build's cone. A selector that matches nothing is the build's error too.
-                Set<Path> selection = Set.of();
-                if (!req.modules().isEmpty()) {
-                    ModuleSelection.Result hit = JobSelect.resolveTokens(entryDir, entryBuild, req.modules());
-                    if (hit != null && !hit.ok()) {
-                        String why = hit.errorMessage();
-                        host.sendQuiet(
-                                writer,
-                                host.requestFailedLine(
-                                        entryDir.toString(),
-                                        why == null ? "module selection failed: " + req.modules() : why));
-                        host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
-                        return JobOutcome.declined();
-                    }
-                    if (hit != null) {
-                        if (hit.moduleDirs().isEmpty()) {
-                            host.sendQuiet(
-                                    writer,
-                                    host.requestFailedLine(
-                                            entryDir.toString(),
-                                            "selection matched no workspace module: "
-                                                    + String.join(", ", req.modules())));
-                            host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
-                            return JobOutcome.declined();
-                        }
-                        selection = hit.moduleDirs().stream()
-                                .map(BuildGraph::canonicalPath)
-                                .collect(Collectors.toUnmodifiableSet());
-                    }
-                }
                 // Announce the bootstrap probe the same way the workspace build does, from the
                 // same decision — the client renders "Calibrating host…", it never predicts it.
-                Calibration.ensureAnnounced(
-                        etaJdksDir,
+                Forecasts.Forecast forecast = Forecasts.forecast(
+                        req,
+                        session,
                         (stage, done, total, label) ->
                                 host.sendQuiet(writer, ProtoEvents.preflight(stage, done, total, label)));
-                // The knobs of the jk build being explained: the session carries its variant and env.
-                BuildKnobs knobs = BuildKnobs.of(session)
-                        .withProfile(req.profile())
-                        .withSkipTests(req.skipTests())
-                        .withSelection(selection);
-                int budget = maxModuleConcurrency;
-                // A quick forecast (jk status) must not start a compiler worker to plan a compile.
-                ExplainReport report = ScopedValue.where(
-                                JavaCompile.PLAN_WORKERS,
-                                req.quick() ? JavaCompile.PlanWorkers.WARM : JavaCompile.PlanWorkers.ANY)
-                        .call(() -> ExplainReport.compute(entryDir, entryBuild, cache, session, knobs, budget));
-                ExplainPlan plan = report.plan();
-                if (plan.hasErrors()) {
-                    for (String err : plan.errors()) {
-                        host.sendQuiet(writer, host.requestFailedLine(entryDir.toString(), err));
+                if (forecast instanceof Forecasts.Forecast.Refused(List<String> errors)) {
+                    for (String err : errors) {
+                        host.sendQuiet(writer, host.requestFailedLine(String.valueOf(req.dir()), err));
                     }
                     host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
                     return JobOutcome.declined();
                 }
+                ExplainReport report = ((Forecasts.Forecast.Ready) forecast).report();
+                ExplainPlan plan = report.plan();
                 for (TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
                     host.sendQuiet(

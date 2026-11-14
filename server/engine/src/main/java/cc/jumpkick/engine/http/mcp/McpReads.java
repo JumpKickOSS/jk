@@ -13,11 +13,9 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
-import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.GenerateOps;
 import cc.jumpkick.runtime.base.GraphOps;
-import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.AffectedTestsCompute;
@@ -36,8 +34,8 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Sync reads (why / explain / outdated): the same domain results the wire verbs serve
- * ({@link WhyReport}, {@link ExplainReport}, {@link OutdatedReport}), encoded for MCP
+ * Sync reads (why / outdated): the same domain results the wire verbs serve
+ * ({@link WhyReport}, {@link OutdatedReport}), encoded for MCP
  * {@code structuredContent}. Only encoding lives here — never a second result shaping.
  */
 public final class McpReads {
@@ -48,80 +46,6 @@ public final class McpReads {
         Path root = PathUtil.resolveUserPath(dir);
         return GraphOps.why(root, query, FeatureSelection.DEFAULTS, RepoGroupBuilder::buildFor)
                 .toStructured();
-    }
-
-    /**
-     * Budgeted explain: per-module dirty/cached summary plus the same ETAs and module edges the
-     * wire burst carries. The step-level rows stay wire/CLI-only — an agent that needs them runs
-     * {@code jk explain} or reads the CLI JSONL.
-     */
-    public static Map<String, Object> explain(String dir) {
-        Path root = PathUtil.resolveUserPath(dir);
-        Map<String, Object> m = new LinkedHashMap<>();
-        try {
-            var build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-            Path cache = JkDirs.cache();
-            Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
-            ExplainReport report = ExplainReport.compute(root, build, cache, session);
-            if (report.plan().hasErrors()) {
-                m.put("errors", report.plan().errors());
-                return m;
-            }
-            List<Map<String, Object>> mods = new ArrayList<>();
-            int dirty = 0;
-            long provisionalSteps = 0;
-            for (TaskForecast.Module mod : report.plan().modules()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("dir", mod.dir().toString());
-                row.put("coord", mod.coord());
-                boolean isDirty = mod.dirty();
-                if (isDirty) dirty++;
-                row.put("dirty", isDirty);
-                long cached =
-                        mod.steps().stream().filter(TaskForecast.Task::cached).count();
-                row.put("cachedSteps", cached);
-                row.put("steps", mod.steps().size());
-                // Verdicts that wait on a sibling the build has yet to compile: a guess the build
-                // settles and re-prices once the sibling has compiled (JK-0PDBN).
-                long provisional = mod.steps().stream()
-                        .filter(TaskForecast.Task::provisional)
-                        .count();
-                if (provisional > 0) row.put("provisionalSteps", provisional);
-                provisionalSteps += provisional;
-                mods.add(row);
-            }
-            m.put("modules", mods);
-            m.put("dirtyCount", dirty);
-            m.put("provisionalSteps", provisionalSteps);
-            m.put("maxReadyWidth", report.plan().maxReadyWidth());
-            m.put("etaMillis", report.etaMillis());
-            m.put("fullMillis", report.fullMillis());
-            // The estimate's likely range: the 10th to 90th percentile of where the truth lands, and
-            // the probability that it lands within 10% of the estimate (JK-R0N5S).
-            m.put("etaLowMillis", report.lowMillis());
-            m.put("etaHighMillis", report.highMillis());
-            m.put("etaCoverage", 0.8);
-            m.put("etaConfidence", Math.round(report.confidence() * 100) / 100.0);
-            // The chain of modules the estimate's length rides on, first first (JK-47ZGV).
-            if (!report.criticalPath().isEmpty()) {
-                m.put(
-                        "criticalPath",
-                        report.criticalPath().stream().map(Path::toString).toList());
-            }
-            List<Map<String, Object>> edges = new ArrayList<>();
-            for (var e : report.plan().edges().entrySet()) {
-                for (Path dep : e.getValue()) {
-                    Map<String, Object> edge = new LinkedHashMap<>();
-                    edge.put("from", e.getKey().toString());
-                    edge.put("to", dep.toString());
-                    edges.add(edge);
-                }
-            }
-            m.put("edges", edges);
-        } catch (Exception e) {
-            m.put("error", Errors.text(e));
-        }
-        return m;
     }
 
     /**

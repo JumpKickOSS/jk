@@ -3,6 +3,8 @@ package cc.jumpkick.engine.http;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** Percent-decode one raw query parameter, strictly or leniently. */
@@ -22,6 +24,23 @@ final class HttpQuery {
             if (eq > 0 && pair.substring(0, eq).equals(name)) return decodeOnce(pair.substring(eq + 1));
         }
         return null;
+    }
+
+    /**
+     * Every parameter of a RAW query string, decoded; a repeated name keeps its last value. Throws
+     * {@link IllegalArgumentException} on malformed percent-encoding.
+     */
+    static Map<String, String> params(@Nullable String rawQuery) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (rawQuery == null || rawQuery.isEmpty()) return out;
+        for (String pair : rawQuery.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String name = decodeOnce(eq < 0 ? pair : pair.substring(0, eq));
+            String value = eq < 0 ? "" : decodeOnce(pair.substring(eq + 1));
+            if (name != null) out.put(name, value == null ? "" : value);
+        }
+        return out;
     }
 
     /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */

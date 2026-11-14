@@ -876,6 +876,23 @@ the journal row carry a `cancelReason` naming the deadline and the knob that set
 the CLI owns are unchanged: their EOF is the deadline, and `JK_ENGINE_JOB_DEADLINE_MS` stays off
 unless set.
 
+## Forecasting a job (`GET /api/explain`)
+
+`GET /api/explain?dir=<path>&modules=a,b&skip_tests=true` forecasts the build `POST /api/build`
+with the same fields would start: the job request's selection fields (`dir`, `modules`, `classes`,
+`suites`, `include_tags`, `exclude_tags`, `affected`, `skip_tests`; lists comma-separated) go
+through the same decoder, and the forecast runs under the session a hosted build of that selection
+gets. `kind` and `deadline_s` do not change a forecast and are refused like any unknown field
+(`400`). The CLI's `jk explain`, this route and MCP `explain` are one operation (`Forecasts`):
+
+`{ modules: [{ dir, coord, dirty, cachedSteps, steps, provisionalSteps? }], moreModules?, dirtyCount,
+provisionalSteps, maxReadyWidth, etaMillis, fullMillis, etaLowMillis, etaHighMillis, etaConfidence,
+criticalPath? }`
+
+At most 100 module rows; `moreModules` counts the rest. A selection that matches nothing or a
+plan with errors is a `422` with `{ errors: [...] }`. Step rows stay on the wire burst `jk explain`
+renders.
+
 ## Live updates (`GET /api/events`)
 
 One SSE stream serves **build activity** and **chrome vitals**. Additive event names only (no

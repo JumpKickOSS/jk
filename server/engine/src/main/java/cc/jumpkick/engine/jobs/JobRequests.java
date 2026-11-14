@@ -63,9 +63,20 @@ public final class JobRequests {
             String defaultKind,
             @Nullable String fallbackDir,
             Set<String> callerFields) {
+        return decode(fields, FIELDS, origin, defaultKind, fallbackDir, callerFields);
+    }
+
+    /** As above, accepting only the fields in {@code table} (a subset of {@link #FIELDS}). */
+    public static JobSpec decode(
+            Map<String, ?> fields,
+            List<Field> table,
+            JobOrigin origin,
+            String defaultKind,
+            @Nullable String fallbackDir,
+            Set<String> callerFields) {
         Set<String> unknown = new TreeSet<>();
         for (String key : fields.keySet()) {
-            if (!accepted(key) && !callerFields.contains(key)) unknown.add(key);
+            if (!accepted(table, key) && !callerFields.contains(key)) unknown.add(key);
         }
         if (!unknown.isEmpty()) {
             throw new IllegalArgumentException(
@@ -96,8 +107,13 @@ public final class JobRequests {
 
     /** The JSON Schema {@code properties} for {@link #FIELDS}: types only, so a tool card stays small. */
     public static Map<String, Object> schemaProperties() {
+        return schemaProperties(FIELDS);
+    }
+
+    /** As above for {@code table}. */
+    public static Map<String, Object> schemaProperties(List<Field> table) {
         Map<String, Object> props = new LinkedHashMap<>();
-        for (Field f : FIELDS) {
+        for (Field f : table) {
             props.put(
                     f.name(),
                     switch (f.type()) {
@@ -153,8 +169,8 @@ public final class JobRequests {
         return n.longValue();
     }
 
-    private static boolean accepted(String key) {
-        for (Field f : FIELDS) if (f.name().equals(key)) return true;
+    private static boolean accepted(List<Field> table, String key) {
+        for (Field f : table) if (f.name().equals(key)) return true;
         return false;
     }
 }

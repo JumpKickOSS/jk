@@ -5,8 +5,10 @@ import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.verbs.Forecasts;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
@@ -14,6 +16,7 @@ import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.base.ProjectCard;
+import cc.jumpkick.wire.protocol.ExplainRequest;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -22,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
@@ -34,6 +38,9 @@ final class HttpProjectApi {
      * the new timestamp and serve stale rows for a full TTL.
      */
     private record TemplatesCache(List<TemplateSpec> entries, long atNanos) {}
+
+    /** The query parameter a token-in-URL client sends, never a request field. */
+    private static final Set<String> ACCESS_TOKEN = Set.of("access_token");
 
     private static final long TEMPLATES_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
 
@@ -244,6 +251,33 @@ final class HttpProjectApi {
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
      * for the Project page ECharts panel.
      */
+    /**
+     * {@code GET /api/explain?dir=…&modules=a,b&skip_tests=true} — the forecast of the build {@code
+     * POST /api/build} with the same fields would start: the selection fields of a job request
+     * ({@link Forecasts#FIELDS}), lists comma-separated. The answer is the object MCP {@code
+     * explain} returns; a refused selection or plan answers {@code 422} with its {@code errors}.
+     */
+    void handleExplain(HttpExchange exchange) throws IOException {
+        ExplainRequest req;
+        try {
+            req = Forecasts.request(HttpQuery.params(exchange.getRequestURI().getRawQuery()), null, ACCESS_TOKEN);
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        Forecasts.Forecast forecast;
+        try {
+            forecast = Forecasts.forecast(req);
+        } catch (Exception e) {
+            HttpResponses.sendJson(
+                    exchange, 422, JsonOut.object().put("error", Errors.text(e)).toString());
+            return;
+        }
+        int status = forecast instanceof Forecasts.Forecast.Refused ? 422 : 200;
+        HttpResponses.sendJson(exchange, status, MiniJson.write(Forecasts.structured(forecast)));
+    }
+
     void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         Path projectDir;
