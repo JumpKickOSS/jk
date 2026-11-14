@@ -182,7 +182,7 @@ public final class PlannerLang {
             parts.add("kotlin:" + (kotlinVersion == null ? "" : kotlinVersion));
             parts.add("jvmTarget:" + jvmTarget);
             parts.add("moduleName:" + moduleName);
-            parts.add("jdk:" + ActionKey.jdkToken(javaHome));
+            parts.add("jdk:" + ActionKey.compileJdkToken(javaHome));
             for (String arg : args) parts.add("arg:" + arg);
             for (KotlinPluginUse p : plugins) {
                 parts.add("plugin:" + p.id() + ":" + p.group() + ":" + p.artifact() + ":" + p.version() + ":"
@@ -419,7 +419,7 @@ public final class PlannerLang {
     /** The JDK groovyc runs on, as its action key spells it: the engine's own. */
     private static String groovyJdkToken() {
         try {
-            return ActionKey.jdkToken(JavaHomes.runningJavaHome());
+            return ActionKey.compileJdkToken(JavaHomes.runningJavaHome());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

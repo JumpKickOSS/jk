@@ -252,7 +252,7 @@ final class GuardKeys {
         List<String> tokens = new ArrayList<>();
         tokens.add("module:" + module);
         tokens.add("facts:" + factsDigest);
-        tokens.add("jdk:" + ActionKey.jdkToken(JavaHomes.runningJavaHome()));
+        tokens.add("jdk:" + ActionKey.compileJdkToken(JavaHomes.runningJavaHome()));
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
         for (Path classes : siblings.siblingClosureClasses()) tokens.add("sibling:" + ClasspathAbi.token(classes));

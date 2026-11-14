@@ -191,7 +191,7 @@ public record TestStampInputs(
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
         // The JDK the suite runs on decides what it computes; a patch update in place moves it too.
-        extras.add("test-jdk:" + ActionKey.jdkToken(facts.javaHome()));
+        extras.add("test-jdk:" + ActionKey.platformJdkToken(facts.javaHome()));
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
     }
 

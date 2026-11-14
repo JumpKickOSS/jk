@@ -620,7 +620,8 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Compile classpath | ABI token (`abi:<sha256>` for javac/groovyc, `kt-abi:<sha256>` for kotlinc) | Content-derived; a body-only dependency change keeps the key |
 | Processors / runtime classpath | content identity (`file:<sha256>`, `dir:<sha256>`) | Hex identity, independent of on-disk path |
 | Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
-| OS/arch | only when outputs are platform-specific | Omit for pure class jars |
+| Compiling JDK | `jdk:` is `ActionKey.compileJdkToken`: the full `JAVA_VERSION` and the content of the `jdk.compiler` module, its `module-info.class` and version resource left out. javac, kotlinc, groovyc, KSP, javadoc, guard and script keys | Two machines whose JDKs differ only in OS, arch, libc, vendor or build host share it. A patch release does not: an update can change javac's code generator and the `--release` API data in `ct.sym` |
+| Platform JDK | `ActionKey.platformJdkToken`: the content of the whole `release` file. jlink, native-image, plugin steps and packagers (trained caches included), run-tests stamps | OS, arch, libc and the full build all key it: these outputs embed, link or run the platform |
 
 **CAS addressing:** blobs are `sha256` content-addressed; a remote store can use the same hex
 keys. Local restore remains copy-not-link (see CAS invariant tests).

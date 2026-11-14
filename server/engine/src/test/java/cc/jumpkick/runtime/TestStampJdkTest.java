@@ -60,7 +60,7 @@ class TestStampJdkTest {
         TestStampInputs.Facts facts = TestStampInputs.Facts.of(module, project);
         assertThat(facts.javaHome()).isEqualTo(JavaHomes.resolveJavaHome(module));
         assertThat(TestStampInputs.of(facts, ClasspathFingerprint.ON_DISK).extras())
-                .contains("test-jdk:" + ActionKey.jdkToken(facts.javaHome()));
+                .contains("test-jdk:" + ActionKey.platformJdkToken(facts.javaHome()));
     }
 
     /** The module's stamp extras with its tests run on {@code javaHome}, as the live run and the forecast hand it. */

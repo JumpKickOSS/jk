@@ -60,7 +60,7 @@ final class MemoInputs {
             Lockfile lock = Files.isRegularFile(lockPath) ? LockfileReader.read(lockPath) : Lockfile.empty("preflight");
             Path home = TaskForecaster.forecastJavaHome(root, build, lock);
             if (home == null) return null;
-            String token = ActionKey.jdkToken(home);
+            String token = ActionKey.platformJdkToken(home);
             if (token == null || token.isBlank() || "none".equals(token)) return null;
             return token;
         } catch (InterruptedException e) {

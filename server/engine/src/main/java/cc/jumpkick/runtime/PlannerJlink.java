@@ -26,6 +26,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ParsedBuild;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,7 +89,7 @@ final class PlannerJlink {
                                     libs.stream().map(LibDirLayout.Lib::jar).toList()),
                             LibDirLayout.classPath("libs", libs),
                             declaredMain,
-                            ActionKey.jdkToken(javaHome),
+                            javaHome,
                             release,
                             config,
                             cacheKind);
@@ -141,23 +142,27 @@ final class PlannerJlink {
                 .build();
     }
 
-    /** The key's inputs: the jars, the JDK, and every key of the table. */
+    /**
+     * The key's inputs: the jars, the JDK and every key of the table. The image embeds the JDK's
+     * own runtime, so the JDK keys by its whole platform ({@link ActionKey#platformJdkToken}).
+     */
     static List<String> tokens(
             String jarToken,
             String libsToken,
             List<String> libNames,
             String mainClass,
-            String jdkToken,
+            Path javaHome,
             int release,
             Jlink config,
-            JlinkImage.Cache cacheKind) {
+            JlinkImage.Cache cacheKind)
+            throws IOException {
         Map<String, String> env = new TreeMap<>(config.trainingEnv());
         return List.of(
                 "jar:" + jarToken,
                 "libs:" + libsToken,
                 "names:" + String.join(",", libNames),
                 "main:" + mainClass,
-                "jdk:" + jdkToken,
+                "jdk:" + ActionKey.platformJdkToken(javaHome),
                 "release:" + release,
                 "modules:" + String.join(",", config.modules()),
                 "strip-debug:" + config.stripDebug(),

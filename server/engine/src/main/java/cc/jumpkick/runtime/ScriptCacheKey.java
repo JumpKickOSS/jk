@@ -48,7 +48,7 @@ final class ScriptCacheKey {
         }
         // The JDK the compile forks on, and the release it compiles for.
         key.append("jdk:")
-                .append(ActionKey.jdkToken(JavaHomes.resolveJavaHome(dir)))
+                .append(ActionKey.compileJdkToken(JavaHomes.resolveJavaHome(dir)))
                 .append('\n');
         key.append("release:").append(release(header)).append('\n');
         return Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));

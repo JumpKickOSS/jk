@@ -652,7 +652,7 @@ public final class PlannerPlugin {
                     // carries `release`, which is a different fact entirely. Without this,
                     // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
                     // plugins restores output built against the old platform.
-                    tokens.add("jdk:" + ActionKey.jdkToken(javaHome));
+                    tokens.add("jdk:" + ActionKey.platformJdkToken(javaHome));
                     // The step forks with the module's [env] and reads its plugin config, env:NAME values included.
                     tokens.addAll(ModuleEnvKeys.plugin(project, in.dir()));
                     // The step's CODE is an input: a changed plugin jar must re-run the

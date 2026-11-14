@@ -502,9 +502,9 @@ public final class PlannerNative {
             List<Path> metadataDirs,
             ClasspathFingerprint.EntryIdentity identity)
             throws Exception {
-        // The toolchain by its release file, as ActionKey.jdkToken spells a JDK; a home with no
+        // The toolchain by its release file, as ActionKey.platformJdkToken spells a JDK; a home with no
         // release file keys its portable spelling, never the machine's path.
-        String graalTok = ActionKey.jdkToken(javaHome);
+        String graalTok = ActionKey.platformJdkToken(javaHome);
         List<String> nativeTokens = new ArrayList<>(List.of(
                 "cp:" + ClasspathFingerprint.of(classpath, identity),
                 "args:" + ActionKey.optionsToken(allArgs),

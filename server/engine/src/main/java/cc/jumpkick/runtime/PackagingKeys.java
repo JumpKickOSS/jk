@@ -414,7 +414,7 @@ public final class PackagingKeys {
         tokens.add("facts:" + facts.token());
         // The JDK the packager runs against reaches the body as spec.javaHome and decides the
         // bytecode it may rewrite or the launcher it embeds, so it keys the output.
-        tokens.add("jdk:" + ActionKey.jdkToken(p.javaHome()));
+        tokens.add("jdk:" + ActionKey.platformJdkToken(p.javaHome()));
         // The packager forks with the module's [env] and reads its plugin config, env:NAME values included.
         tokens.addAll(ModuleEnvKeys.plugin(p.project(), p.moduleDir()));
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
@@ -682,7 +682,7 @@ public final class PackagingKeys {
                 "sources:" + (readme ? "" : sourcesToken(moduleDir, documented)),
                 "classpath:" + (readme ? "" : classpathAbiToken(classpath, cp)),
                 "options:" + (readme ? "" : tool),
-                "jdk:" + (readme ? "" : ActionKey.jdkToken(javaHome)),
+                "jdk:" + (readme ? "" : ActionKey.compileJdkToken(javaHome)),
                 "packaging:" + (readme ? "javadoc-readme" : "javadoc"));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAVADOC, javadocJar);
         String jdKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
