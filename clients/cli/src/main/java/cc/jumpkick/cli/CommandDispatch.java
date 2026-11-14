@@ -496,6 +496,10 @@ public final class CommandDispatch {
             System.out.println("jk " + Jk.VERSION);
             return 0;
         }
+        // The one fold of this command's parsed globals into the session, before anything renders:
+        // -u, -a, -x, -B and the rest reach every command wherever they sit on the line.
+        GlobalOptions.from(in);
+        ansi = ansiEnabled();
         boolean agent = AgentMode.requested(in);
         boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in) || agent;
         boolean capture = agent && AgentMode.capturesOutput(cmd.name());

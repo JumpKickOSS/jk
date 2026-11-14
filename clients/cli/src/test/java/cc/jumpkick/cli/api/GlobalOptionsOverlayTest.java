@@ -15,8 +15,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The engine reads rebuild/offline off the session wire, so {@code GlobalOptions.from}
- * must fold them into the session overlay — {@code Jk.applyCliOverrides} catches only exact
- * tokens, and a bundled {@code -rq} or abbreviated {@code --red}/{@code --offl} would otherwise
+ * must fold them into the session overlay — the pre-dispatch scan reads globals after the verb
+ * only by their exact names, and a bundled {@code -rq} or abbreviated {@code --red}/{@code --offl} would otherwise
  * parse fine client-side while the engine serves a fully cached build.
  */
 class GlobalOptionsOverlayTest {

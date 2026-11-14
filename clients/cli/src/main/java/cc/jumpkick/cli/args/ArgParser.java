@@ -75,6 +75,69 @@ public final class ArgParser {
         return out.build();
     }
 
+    /**
+     * The options of {@code command} that appear in {@code args}, read before the command that owns
+     * the rest is known: every token the table does not own is skipped, a value missing at the end
+     * is dropped, and nothing throws. Long names are matched exactly from {@code abbreviateBefore}
+     * on, where another command's options share the line and a prefix could name either; before it
+     * they may be abbreviated as the parser allows. A short cluster is read until its first letter
+     * the table does not own. A literal {@code --} ends the scan.
+     */
+    public static Invocation scan(Command command, List<String> args, int abbreviateBefore) {
+        Map<String, Opt> byName = new HashMap<>();
+        for (Opt opt : command.options()) {
+            for (String n : opt.allNames()) byName.put(n, opt);
+        }
+        Invocation.Builder out = Invocation.builder();
+        for (int i = 0; i < args.size(); i++) {
+            String tok = args.get(i);
+            if (tok.equals("--")) break;
+            if (!looksLikeOption(tok)) continue;
+            try {
+                if (tok.startsWith("--")) {
+                    i = scanLong(byName, out, args, i, tok, i < abbreviateBefore);
+                } else {
+                    i = scanShort(byName, out, args, i, tok);
+                }
+            } catch (ParseException notOurs) {
+                // The real parse, once the command is known, reports it.
+            }
+        }
+        return out.build();
+    }
+
+    private static int scanLong(
+            Map<String, Opt> byName, Invocation.Builder out, List<String> args, int i, String tok, boolean abbreviate)
+            throws ParseException {
+        int eq = tok.indexOf('=');
+        String name = eq >= 0 ? tok.substring(0, eq) : tok;
+        String inline = eq >= 0 ? tok.substring(eq + 1) : null;
+        Opt opt = abbreviate ? Abbreviations.resolve(name, byName).value() : byName.get(name);
+        if (opt != null) return consume(out, opt, args, i, inline);
+        if (name.startsWith("--no-")) {
+            String base = "--" + name.substring("--no-".length());
+            Opt neg = abbreviate ? Abbreviations.resolve(base, byName).value() : byName.get(base);
+            if (neg != null && neg.negatable() && !neg.takesValue()) {
+                out.flag(neg.canonicalName(), !inlineBoolean(name, inline));
+            }
+        }
+        return i;
+    }
+
+    private static int scanShort(Map<String, Opt> byName, Invocation.Builder out, List<String> args, int i, String tok)
+            throws ParseException {
+        for (int c = 1; c < tok.length(); c++) {
+            Opt opt = byName.get("-" + tok.charAt(c));
+            if (opt == null) return i;
+            if (opt.takesValue()) {
+                String rest = tok.substring(c + 1);
+                return consume(out, opt, args, i, rest.isEmpty() ? null : rest);
+            }
+            out.flag(opt.canonicalName(), true);
+        }
+        return i;
+    }
+
     // --- long options: --name, --name=value, --no-name -----------------------
 
     private static int parseLong(

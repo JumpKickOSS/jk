@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.engine.BuildStamps;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
@@ -18,6 +19,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -293,72 +295,19 @@ public final class Jk {
     }
 
     /**
-     * Argv-scan pass that folds explicit CLI flags into {@link cc.jumpkick.config.SessionContext}. This is intentionally a
-     * small scan rather than reusing ArgParser: the highest-precedence layer needs to be
-     * available <em>before</em> dispatch (e.g. so {@link Quietable} can mute
-     * stdout before the first subcommand println). Only flags that affect global behavior are read
-     * here; everything else flows through the dispatcher.
+     * Fold the explicit global flags in argv into {@link SessionContext} before dispatch, so the
+     * help and version paths and {@link Quietable}'s mute see them before the first println. argv
+     * is read against the global option table itself ({@link ArgParser#scan}): short forms and
+     * bundles count, and so do globals after the command, matched exactly. Dispatch folds the full
+     * parse once more for the command it runs ({@link GlobalOptions#cliLayer}).
      */
     static void applyCliOverrides(String[] args) {
-        int end = CommandDispatch.ownArgsEnd(List.of(args));
-        JkConfig.ColorChoice color = null;
-        Boolean offline = null;
-        Boolean force = null;
-        Boolean rebuild = null;
-        Boolean noProgress = null;
-        Boolean noAnsi = null;
-        Boolean noOsc = null;
-        JkConfig.NotifyChoice notify = null;
-        Boolean quiet = null;
-        Boolean verbose = null;
-        Path directory = null;
-        for (int i = 0; i < end; i++) {
-            String a = args[i];
-            switch (a) {
-                case "-q", "--quiet" -> quiet = true;
-                case "-v", "--verbose" -> verbose = true;
-                case "--offline" -> offline = true;
-                case "-F", "--force" -> force = true;
-                case "-r", "--redo", "--rebuild" -> rebuild = true;
-                case "--no-progress" -> noProgress = true;
-                // --no-ansi: strip ALL ANSI (color + bold/italic + CSI). Progress still runs as
-                // multi-line plain frames — use --no-progress to silence chrome entirely.
-                // Distinct from --color never which strips color but preserves text attributes.
-                case "--no-ansi" -> noAnsi = true;
-                case "--no-osc" -> noOsc = true;
-                case "--notify" -> notify = JkConfig.NotifyChoice.ALWAYS;
-                case "--no-notify" -> notify = JkConfig.NotifyChoice.NEVER;
-                case "--color" -> {
-                    if (i + 1 < end)
-                        color = JkConfig.ColorChoice.parse(args[++i]).orElse(null);
-                }
-                case "-C", "--dir" -> {
-                    if (i + 1 < end) directory = WorkingDirectory.resolve(args[++i]);
-                }
-                default -> {
-                    if (a.startsWith("--color=")) {
-                        color = JkConfig.ColorChoice.parse(a.substring("--color=".length()))
-                                .orElse(null);
-                    } else if (a.startsWith("--dir=")) {
-                        directory = WorkingDirectory.resolve(a.substring("--dir=".length()));
-                    }
-                }
-            }
-        }
-        JkConfig cli = new JkConfig(
-                color,
-                offline,
-                rebuild,
-                noProgress,
-                quiet,
-                verbose,
-                directory,
-                force,
-                noAnsi,
-                null, // force-ansi: config/env only
-                noOsc,
-                notify,
-                null); // build-output: config/env only
+        List<String> own = List.of(args).subList(0, CommandDispatch.ownArgsEnd(List.of(args)));
+        int commandAt = CommandDispatch.commandIndex(own);
+        Invocation in = ArgParser.scan(GlobalOptions.globals(), own, commandAt < 0 ? own.size() : commandAt);
+        JkConfig cli = GlobalOptions.cliLayer(in);
+        Path directory = in.value("dir").map(WorkingDirectory::resolve).orElse(null);
+        if (directory != null) cli = cli.withDir(directory);
         SessionContext.installConfig(SessionContext.current().config().mergedWith(cli));
     }
 

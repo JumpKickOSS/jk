@@ -9,8 +9,10 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -171,53 +173,29 @@ public final class GlobalOptions {
      * body ({@code global.workingDir}, {@code global.offline}, …) is unchanged.
      */
     public static GlobalOptions from(Invocation in) {
-        // Session already holds file+env layers (and any early CLI overlays from Jk.applyCliOverrides).
-        JkConfig cfg = SessionContext.current().config();
+        // Session already holds file+env layers (and the pre-dispatch CLI layer).
+        // Folding the parsed flags again is idempotent: dispatch does it once for every command, and
+        // a command that builds its own options reads the same session back.
+        JkConfig cfg = SessionContext.current().config().mergedWith(cliLayer(in));
+        SessionContext.installConfig(cfg);
 
         GlobalOptions g = new GlobalOptions();
-        // Boolean flags: CLI set wins; otherwise inherit true from config/env when present.
-        g.quiet = in.isSet("quiet") || cfg.quietOr(false);
-        g.verbose = in.isSet("verbose") || cfg.verboseOr(false);
+        g.quiet = cfg.quietOr(false);
+        g.verbose = cfg.verboseOr(false);
         g.color = in.value("color").orElse(null);
-        g.offline = in.isSet("offline") || cfg.offlineOr(false);
+        g.offline = cfg.offlineOr(false);
         // Dispatch installs assume-yes for Confirm around the leaf command and clears it after; a
         // parse has no side effect, so a nested parse or a test cannot leave the flag on the thread.
         g.yes = in.isSet("yes");
-        g.force = in.isSet("force") || cfg.forceOr(false);
+        g.force = cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
-        g.rebuild = in.isSet("redo") || Boolean.TRUE.equals(cfg.rebuild());
+        g.rebuild = Boolean.TRUE.equals(cfg.rebuild());
         g.agent = AgentMode.requested(in);
-        g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false) || g.agent;
-        // Progress is independent of --no-ansi: plain multi-line chrome still runs
-        // unless --no-progress / quiet / json mute it. Agent mode mutes it too.
-        g.noProgress = in.isSet("no-progress") || cfg.noProgressOr(false) || g.agent;
-        g.noOsc = in.isSet("no-osc") || cfg.noOscOr(false) || g.agent;
-        // Notify: --no-notify > --notify > config/env (default AUTO).
-        if (in.isSet("no-notify") || g.agent) {
-            g.notify = JkConfig.NotifyChoice.NEVER;
-        } else if (in.isSet("notify")) {
-            g.notify = JkConfig.NotifyChoice.ALWAYS;
-        } else {
-            g.notify = cfg.notifyOr(JkConfig.NotifyChoice.AUTO);
-        }
+        g.noAnsi = cfg.noAnsiOr(false);
+        g.noProgress = cfg.noProgressOr(false);
+        g.noOsc = cfg.noOscOr(false);
+        g.notify = cfg.notifyOr(JkConfig.NotifyChoice.AUTO);
         g.noTimeline = in.isSet("no-timeline");
-        // Re-fold CLI/config OSC+notify into the session so mid-run readers see the same policy.
-        // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
-        // offline + rebuild ride the overlay too: the engine reads them off the session wire, and
-        // Jk.applyCliOverrides only catches exact tokens — a bundled `-rq` or abbreviated `--red` /
-        // `--offl` lands here, in the parsed Invocation. `dir` and `build-output` are absent
-        // on purpose: the first is not a config layer and the second is config/env only.
-        JkConfig cliOverlay = JkConfig.empty()
-                .withOffline(flag(g.offline))
-                .withRebuild(flag(g.rebuild))
-                .withNoProgress(flag(g.noProgress))
-                .withQuiet(flag(g.quiet))
-                .withVerbose(flag(g.verbose))
-                .withForce(flag(g.force))
-                .withNoAnsi(flag(g.noAnsi))
-                .withNoOsc(flag(g.noOsc))
-                .withNotifyPolicy(g.notify);
-        SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
         TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
@@ -314,6 +292,65 @@ public final class GlobalOptions {
      */
     public int jobsEffective() {
         return Jobs.resolve(Optional.ofNullable(jobs), JkEngineConfig.resolve(), System::getenv);
+    }
+
+    /**
+     * The global options alone, as a command: what the pre-dispatch scan in {@code Jk} reads argv against
+     * before the command that owns the rest of it is known.
+     */
+    public static Command globals() {
+        return GLOBALS;
+    }
+
+    private static final Command GLOBALS = new Command() {
+        private final List<Opt> opts = globalOpts();
+
+        @Override
+        public String name() {
+            return "jk";
+        }
+
+        @Override
+        public String description() {
+            return "";
+        }
+
+        @Override
+        public List<Opt> options() {
+            return opts;
+        }
+
+        @Override
+        public List<Param> parameters() {
+            return List.of();
+        }
+    };
+
+    /**
+     * The explicit-CLI config layer {@code in} asks for: the one fold of parsed global flags into the
+     * session, shared by the pre-dispatch scan and by dispatch. Agent mode is decided here, before
+     * any other output choice: it means no ANSI, no progress, no OSC and no notification. {@code
+     * --dir} is left out; the pre-dispatch scan places it, since it moves the project every later
+     * layer is read from.
+     */
+    public static JkConfig cliLayer(Invocation in) {
+        boolean agent = AgentMode.requested(in);
+        JkConfig.NotifyChoice notify = in.isSet("no-notify") || agent
+                ? JkConfig.NotifyChoice.NEVER
+                : in.isSet("notify") ? JkConfig.NotifyChoice.ALWAYS : null;
+        return JkConfig.empty()
+                .withColor(in.value("color")
+                        .flatMap(JkConfig.ColorChoice::parse)
+                        .orElse(null))
+                .withOffline(flag(in.isSet("offline")))
+                .withRebuild(flag(in.isSet("redo")))
+                .withNoProgress(flag(in.isSet("no-progress") || agent))
+                .withQuiet(flag(in.isSet("quiet")))
+                .withVerbose(flag(in.isSet("verbose")))
+                .withForce(flag(in.isSet("force")))
+                .withNoAnsi(flag(in.isSet("no-ansi") || agent))
+                .withNoOsc(flag(in.isSet("no-osc") || agent))
+                .withNotifyPolicy(notify);
     }
 
     /**
