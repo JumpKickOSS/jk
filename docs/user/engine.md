@@ -127,8 +127,18 @@ without killing the dashboard.
 
 Windows with a WSL distro, or a host with a build container, runs one engine on each side, and each
 serves its own dashboard and MCP endpoint: the host on port 8910, a WSL distro or container on a port
-of its own from 8911 up that it keeps across restarts. `jk engine status` names the engine (`Engine`)
-and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there.
+of its own between 8911 and 8999 that it keeps across restarts (it never takes 8910, even when that
+is free). A `jk` run inside the guest talks to the guest's engine and one on the host to the host's.
+The guest's first choice follows from its engine id, so two distros or containers usually land on
+different ports; a port already taken moves it along the band, and with all 89 taken it serves no
+dashboard and its log says so. `[http] port` in `~/.jk/config.toml` or `JK_HTTP_PORT` binds exactly
+the port you name instead.
+
+`jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
+3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
+(`jk web -O jsonl` prints `url`, `token` and `engineId`). The id stays the same across restarts and
+differs per machine, guest and JumpKick home: it is derived from the OS, the WSL distro or container
+instance, the host name and the home's path.
 
 A resident engine **does not idle out**. It exits on `jk engine stop`, version-skew
 replacement, or (if displaced/orphaned) after draining. Details of lifetime and auth:

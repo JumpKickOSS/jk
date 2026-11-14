@@ -27,6 +27,12 @@ require one exact checksum entry, and hash the archive before replacing or execu
 Unix needs stock-compatible OpenSSL; Windows uses .NET RSA in PowerShell 5.1. Positional local
 file installs remain available for development and do not require release evidence.
 
+An install that stops part way leaves the JumpKick you had. The installer unpacks the new client
+beside the live one, runs its `--version`, and only a client that answers takes the live one's
+place, in one rename; `install.ps1` puts the old `jk.exe` back if that swap fails. A truncated
+download, a full disk, Ctrl-C or a kill leaves the old client working and says `the installed jk
+is unchanged`, and the next run clears what an interrupted one left.
+
 `JK_ARCHIVE_URL` is an advanced remote override and requires `JK_VERSION`; checksum and signature
 evidence comes from `JK_RELEASES_URL/<version>/`, so an arbitrary archive URL cannot choose its
 own trust metadata.

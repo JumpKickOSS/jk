@@ -360,8 +360,8 @@ firewall that allows only your mirrors costs you that feature's freshness, not a
 |---|---|---|---|
 | `repo.maven.apache.org`, `maven-central.storage-download.googleapis.com` | Maven Central (the second host when Central rate-limits) | a [`mirror-of`](repositories.md#a-corporate-repository-mirror-or-source) table, or a `settings.xml` `<mirror>` | the resolve fails, naming the repository or its mirror |
 | `dl.google.com` | Google's Maven repository | the same | the same |
-| `jumpkick.build` (`/repo/…`) | JumpKick's own repository: plugins, and the engine's worker jars when the store lacks them | the same (it is the `jumpkick` repository) | the same |
-| `jumpkick.build` (`/releases/…`) | `jk self update` and the engine jar of an install that has none | `JK_RELEASES_URL`; `self-update = "never"` stops the checks | the update or install fails |
+| `jumpkick.build` (`/repo/…`) | JumpKick's own repository: plugins, and the engine's worker jars when the store lacks them, each checked against the release's signed digest list from `/releases/` | the same (it is the `jumpkick` repository), with `JK_RELEASES_URL` for the digest list | the same; a worker whose digest list cannot be read is refused |
+| `jumpkick.build` (`/releases/…`) | `jk self update`, the engine jar of an install that has none, and the signed digests of the worker jars the engine downloads | `JK_RELEASES_URL` (a mirror of `releases/`); `self-update = "never"` stops the update checks | the update or install fails, and so does a worker download |
 | `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into JumpKick; asked again 10 minutes later at the earliest, and the engine log says so once |
 | `download.jetbrains.com` | the JDK catalog | `[mirrors] jdk` | optional: the catalog on disk; `jk new` lists the JDKs you have installed, and provisioning a JDK needs a catalog |
 | the JDK vendors' hosts (`github.com`, `cdn.azul.com`, …) | JDK archives the catalog names | `[mirrors] jdk` | provisioning that JDK fails |
