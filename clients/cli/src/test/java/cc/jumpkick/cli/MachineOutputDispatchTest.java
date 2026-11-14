@@ -52,6 +52,13 @@ class MachineOutputDispatchTest {
         assertThat(CommandDispatch.refusedOutputFormat(new WebCommand(), jsonl)).isNull();
     }
 
+    /** The VS Code extension finds the engine with {@code jk web -O jsonl}. */
+    @Test
+    void web_prints_its_connect_line_as_jsonl() {
+        Invocation jsonl = Invocation.builder().putValue("output", "jsonl").build();
+        assertThat(CommandDispatch.refusedOutputFormat(new WebCommand(), jsonl)).isNull();
+    }
+
     @Test
     void a_format_no_command_prints_is_refused() throws Exception {
         Run xml = run("tool", "list", "-O", "xml");
