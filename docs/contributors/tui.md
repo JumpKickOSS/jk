@@ -164,7 +164,7 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 | `jk tool dir` / `jk cache dir` / `jk storage dir` | Path | scripts / installers |
 | `jk skill` | Playbook markdown | agents / MCP |
 | `jk agent-hook` | Hook reply JSON on stdout | agent hook |
-| `jk --version` / `-V` | `jk <version>` | CI |
+| `jk --version` / `-V` | `jk <version>`; with `-v`, then the client's and the running engine's version and commit | CI |
 | `jk explain -U dot\|mermaid` | Graph source | `dot` / editors |
 | `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |
 | `jk bsp serve` (bare `jk bsp` is `serve`; `run` is an alias) | JSON-RPC on stdio | IDE BSP client |

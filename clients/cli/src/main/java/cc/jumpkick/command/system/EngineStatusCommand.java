@@ -3,6 +3,7 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.BuildStamps;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
@@ -16,6 +17,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -111,7 +113,12 @@ public final class EngineStatusCommand implements CliCommand {
                     GlobalConfig.nerdFont(),
                     "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         }
-        detail("Version", s.version());
+        BuildStamps.Client client = BuildStamps.client();
+        detail("Version", BuildStamps.describe(s.version(), s.engineCommit()));
+        detail(
+                "Client",
+                client.describe(JkVersion.VERSION)
+                        + (BuildStamps.differ(client.commit(), s.engineCommit()) ? " (not the engine's build)" : ""));
         if (s.engineLabel() != null)
             detail("Engine", s.engineLabel() + (s.engineId() == null ? "" : " (id " + s.engineId() + ")"));
         if (s.installSource() != null && !s.installSource().isEmpty()) detail("Source", s.installSource());
@@ -351,10 +358,25 @@ public final class EngineStatusCommand implements CliCommand {
             List<EngineFleet.Member> fleet,
             String selfUpdate,
             List<InstallLock.Holder> installLock) {
+        return runningJson(s, uptimeSeconds, fleet, selfUpdate, installLock, BuildStamps.client());
+    }
+
+    /** The running line, naming {@code client} as the client's build. */
+    public static String runningJson(
+            EngineProbe.Status s,
+            long uptimeSeconds,
+            List<EngineFleet.Member> fleet,
+            String selfUpdate,
+            List<InstallLock.Holder> installLock,
+            BuildStamps.Client client) {
         JsonFields json = JsonFields.object()
                 .bool("running", true)
                 .number("pid", s.pid())
                 .string("version", s.version())
+                .string("commit", s.engineCommit())
+                .string("clientVersion", JkVersion.VERSION)
+                .string("clientCommit", client.commit())
+                .bool("clientCommitRecorded", client.recorded())
                 .number("startedAt", s.startedAtMillis())
                 .number("uptimeSeconds", uptimeSeconds)
                 .number("activeRequests", s.activeRequests())

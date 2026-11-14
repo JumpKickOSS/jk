@@ -3,6 +3,8 @@ package cc.jumpkick.cli;
 
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.BuildStamps;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.GlobalSuspend;
@@ -17,6 +19,7 @@ import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -195,6 +198,11 @@ public final class Jk {
         List<String> argList = List.of(rewritten);
         if (argList.contains("-V") || argList.contains("--version")) {
             System.out.println("jk " + VERSION);
+            if (argList.contains("-v") || argList.contains("--verbose")) {
+                Optional<EngineProbe.Status> engine =
+                        EngineProbe.status(EnginePaths.activeSocket(EnginePaths.current()));
+                for (String line : BuildStamps.versionLines(BuildStamps.client(), engine)) System.out.println(line);
+            }
             return 0;
         }
         if (argList.contains("-h") || argList.contains("--help")) {

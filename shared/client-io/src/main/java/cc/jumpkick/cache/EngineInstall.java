@@ -116,6 +116,15 @@ public final class EngineInstall {
     public static final String PREVIOUS_CLIENT_SHA = "previous-client-sha256";
 
     /**
+     * The pointer key recording the commit the {@link #CLIENT_SHA} client was built from, for a
+     * client that carries none itself (a snapshot's native image); absent when the install knew none.
+     */
+    public static final String CLIENT_COMMIT = "client-commit";
+
+    /** The commit recorded for the {@link #PREVIOUS_CLIENT_SHA} client, which a rollback restores with it. */
+    public static final String PREVIOUS_CLIENT_COMMIT = "previous-client-commit";
+
+    /**
      * The engine jars and PATH clients the store must keep for this install: the live ones the
      * pointer names, and the ones the install before it named, which {@link #rollback} puts back.
      * Lower-case hex; empty when the pointer names none.
@@ -501,7 +510,7 @@ public final class EngineInstall {
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
         // The clients the pointer names are another install step's to change ({@link #recordClient}).
-        for (String key : List.of(CLIENT_SHA, PREVIOUS_CLIENT_SHA)) {
+        for (String key : List.of(CLIENT_SHA, PREVIOUS_CLIENT_SHA, CLIENT_COMMIT, PREVIOUS_CLIENT_COMMIT)) {
             String sha = before.get(key);
             if (sha != null && !sha.isBlank()) keys.put(key, sha);
         }
@@ -522,18 +531,41 @@ public final class EngineInstall {
     }
 
     /**
-     * Name {@code clientSha} as the PATH client this install put in place, the one named until now
-     * as the previous one, so {@link #rollback} can put it back. A no-op when the pointer is missing
-     * (nothing to roll back with) or already names {@code clientSha}.
+     * Name {@code clientSha} as the PATH client this install put in place, built from {@code commit}
+     * ({@code null}: not known), the one named until now becoming the previous one, so {@link
+     * #rollback} can put it back. The same client installed again keeps its place and takes the new
+     * commit: a snapshot's image is not relinked when only the commit moved. A no-op when the
+     * pointer is missing (nothing to roll back with).
      */
-    public void recordClient(String clientSha) throws IOException {
+    public void recordClient(String clientSha, @Nullable String commit) throws IOException {
         Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
         if (keys.isEmpty()) return;
+        Map<String, String> before = Map.copyOf(keys);
         String live = keys.get(CLIENT_SHA);
-        if (clientSha.equalsIgnoreCase(live)) return;
-        if (live != null && !live.isBlank()) keys.put(PREVIOUS_CLIENT_SHA, live);
-        keys.put(CLIENT_SHA, clientSha);
+        if (!clientSha.equalsIgnoreCase(live)) {
+            keys.remove(PREVIOUS_CLIENT_SHA);
+            keys.remove(PREVIOUS_CLIENT_COMMIT);
+            if (live != null && !live.isBlank()) {
+                keys.put(PREVIOUS_CLIENT_SHA, live);
+                String liveCommit = keys.get(CLIENT_COMMIT);
+                if (liveCommit != null && !liveCommit.isBlank()) keys.put(PREVIOUS_CLIENT_COMMIT, liveCommit);
+            }
+            keys.put(CLIENT_SHA, clientSha);
+        }
+        if (commit == null || commit.isBlank()) keys.remove(CLIENT_COMMIT);
+        else keys.put(CLIENT_COMMIT, commit);
+        if (keys.equals(before)) return;
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /**
+     * The commit the install recorded for the PATH client whose bytes hash to {@code clientSha}, or
+     * empty when the pointer names another client or records no commit for it.
+     */
+    public Optional<String> recordedClientCommit(String clientSha) {
+        Map<String, String> keys = pointerKeys();
+        if (!clientSha.equalsIgnoreCase(keys.get(CLIENT_SHA))) return Optional.empty();
+        return Optional.ofNullable(keys.get(CLIENT_COMMIT)).filter(c -> !c.isBlank());
     }
 
     /** What {@link #rollback} put back: the engine's version and jar, and the client, when one was. */
@@ -561,11 +593,12 @@ public final class EngineInstall {
             throw new IOException("no version for the previous engine in " + configFile());
         }
         String clientSha = keys.get(PREVIOUS_CLIENT_SHA);
+        String clientCommit = keys.get(PREVIOUS_CLIENT_COMMIT);
         Materialized engine = materialize(version, cas, engineSha, true);
         Path installed = null;
         if (clientSha != null && !clientSha.isBlank() && Files.isRegularFile(cas.pathFor(clientSha))) {
             installBinaries(cas.pathFor(clientSha), binDir);
-            recordClient(clientSha);
+            recordClient(clientSha, clientCommit);
             installed = pathClient(binDir);
         }
         return new RolledBack(engine.version(), engine.engineJar(), installed);

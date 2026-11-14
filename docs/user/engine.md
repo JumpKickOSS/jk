@@ -36,8 +36,13 @@ the running build and refuses with its number.
 
 ### Live and queued jobs
 
-`jk engine status` prints the engine's version and, when the engine was installed by
-`jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
+`jk engine status` prints the engine's version and the commit it was built from (`(dirty)` when
+the checkout had uncommitted changes, `unknown` for a build outside a git checkout), a `Client` row
+with the same for the `jk` you ran, marked when the two are not one build (`commit`,
+`clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` and `jk
+doctor` show the same pair). A released native client carries its commit; a snapshot's native
+client does not, so `jk snapshot` and `jk install` record the checkout's commit beside it in
+`jk-engine.toml` and the row says `(recorded at install)`. And, when the engine was installed by `jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
 [install](install.md#on-disk-layout)). Its `Updates` row says what JumpKick's own update does next —
 the mode and why, the last check, a download waiting to install, or a hold (`selfUpdate` in `-O

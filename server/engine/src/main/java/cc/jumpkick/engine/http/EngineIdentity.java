@@ -6,12 +6,14 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.model.BuildIdentity;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Which engine this is, as every surface names it and as a front door discovers it: the OS, whether
@@ -85,6 +87,7 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
         m.put("hostname", hostname);
         m.put("jkHome", jkHome);
         m.put("version", version);
+        m.put("commit", Objects.requireNonNullElse(BuildIdentity.builtFrom(), ""));
         m.put("port", port);
         return m;
     }

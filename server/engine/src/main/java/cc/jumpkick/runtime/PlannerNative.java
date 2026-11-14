@@ -326,6 +326,7 @@ public final class PlannerNative {
                     + " from plugins");
         }
         List<String> allArgs = new ArrayList<>(pluginNativeArgs);
+        allArgs.addAll(PackagingKeys.nativeCommitArgs(project, dir));
         allArgs.addAll(nativeCfg.args());
         allArgs.addAll(extra);
         return allArgs;

@@ -41,7 +41,7 @@ class DoctorEngineCheckTest {
                     ? ScriptedEngine.helloAck(VERSION, 4242)
                     : ScriptedEngine.statusAck(VERSION, 4242, 1, true);
         })) {
-            DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG);
+            DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG, null);
 
             assertThat(check.status()).isEqualTo(DoctorCommand.Status.OK);
             assertThat(check.detail()).contains("running pid 4242").contains("draining 1 job");
@@ -55,7 +55,7 @@ class DoctorEngineCheckTest {
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
-            DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG);
+            DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG, null);
 
             assertThat(check.status()).isEqualTo(DoctorCommand.Status.WARN);
             assertThat(check.detail())
@@ -73,7 +73,7 @@ class DoctorEngineCheckTest {
     void a_silent_socket_with_no_live_holder_is_likely_wedged() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
-            DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG);
+            DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG, null);
 
             assertThat(check.status()).isEqualTo(DoctorCommand.Status.FAIL);
             assertThat(check.detail()).contains("not answering").contains("jk engine stop -n");
@@ -84,7 +84,7 @@ class DoctorEngineCheckTest {
     void nothing_listening_is_not_running() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
 
-        DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG);
+        DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG, null);
 
         assertThat(check.status()).isEqualTo(DoctorCommand.Status.WARN);
         assertThat(check.detail()).contains("not running");

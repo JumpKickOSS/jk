@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.BuildStamps;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
@@ -106,6 +107,7 @@ public final class DoctorCommand implements CliCommand {
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
         // `-O jsonl` performs the same repair the human view does instead of only reporting it.
         Check config = checkConfig(JkDirs.userConfigFile(), JkVersion.VERSION);
+        Check client = checkClient(BuildStamps.client());
         Check engine = withHeapDump(checkEngine(), EngineHeapDump.find(EnginePaths.current()));
         Check cache = checkDirs();
         Check state = checkStateMode();
@@ -151,6 +153,7 @@ public final class DoctorCommand implements CliCommand {
         if (global.outputIsJson()) {
             CliOutput.out(reportJson(
                     config,
+                    client,
                     engine,
                     cache,
                     state,
@@ -179,6 +182,7 @@ public final class DoctorCommand implements CliCommand {
         CliOutput.out(CommandWedge.menu("Doctor"));
 
         printCheck(config, t);
+        printCheck(client, t);
         printCheck(engine, t);
         printCheck(cache, t);
         printCheck(state, t);
@@ -516,31 +520,41 @@ public final class DoctorCommand implements CliCommand {
                 : new Check(Status.WARN, "config", file + " parses · " + ignored);
     }
 
+    /** The client row: this jk's version and the commit it was built from. */
+    public static Check checkClient(BuildStamps.Client client) {
+        return new Check(Status.OK, "client", client.describe(JkVersion.VERSION));
+    }
+
     private static Check checkEngine() {
         return checkEngine(
                 EnginePaths.activeSocket(EnginePaths.current()),
                 EngineProbe.Patience.DEFAULT,
-                SilentPeer.Grace.DEFAULT);
+                SilentPeer.Grace.DEFAULT,
+                BuildStamps.client().commit());
     }
 
     /**
      * The engine row. A silent socket is given {@code patience} before it means anything, and then
      * the process behind it is read under {@code grace}: one that shows life is busy, not wedged.
      */
-    static Check checkEngine(Path socket, EngineProbe.Patience patience, SilentPeer.Grace grace) {
+    static Check checkEngine(
+            Path socket, EngineProbe.Patience patience, SilentPeer.Grace grace, @Nullable String clientStamp) {
         Optional<EngineProbe.Status> st = EngineProbe.statusPatiently(socket, patience);
         if (st.isEmpty()) {
             if (EngineProbe.reachable(socket)) return silentEngine(socket, patience, grace);
             return new Check(Status.WARN, "engine", "not running (lazy start on next build)");
         }
         EngineProbe.Status s = st.get();
-        String detail = "running pid " + s.pid() + " · " + s.version() + " · up "
-                + formatUptime((Clock.SYSTEM.millis() - s.startedAtMillis()) / 1000);
+        String detail = "running pid " + s.pid() + " · " + BuildStamps.describe(s.version(), s.engineCommit())
+                + " · up " + formatUptime((Clock.SYSTEM.millis() - s.startedAtMillis()) / 1000);
         if (s.draining()) {
             detail += " · draining " + s.activeBuildPlans() + (s.activeBuildPlans() == 1 ? " job" : " jobs");
         }
         if (s.httpError() != null && !s.httpError().isBlank()) {
             return new Check(Status.WARN, "engine", detail + " · http: " + s.httpError());
+        }
+        if (BuildStamps.differ(clientStamp, s.engineCommit())) {
+            return new Check(Status.WARN, "engine", detail + " · not the client's build");
         }
         return new Check(Status.OK, "engine", detail);
     }
@@ -921,6 +935,7 @@ public final class DoctorCommand implements CliCommand {
      */
     public static String reportJson(
             Check config,
+            Check client,
             Check engine,
             Check cache,
             Check state,
@@ -943,6 +958,7 @@ public final class DoctorCommand implements CliCommand {
             List<HostRow> windows) {
         return JsonFields.object()
                 .token("config", checkJson(config))
+                .token("client", checkJson(client))
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
                 .token("state", checkJson(state))

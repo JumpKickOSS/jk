@@ -38,6 +38,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkVersion;
@@ -949,7 +950,8 @@ public final class InstallCommand {
                     Path.of(plan.linkSrcs().get(0)),
                     binDir(),
                     JkStores.storeCas(),
-                    new EngineInstall(JkDirs.productLib()));
+                    new EngineInstall(JkDirs.productLib()),
+                    checkoutCommit(projectDir));
         }
         // The jars land first and the launcher last: a launcher on PATH never names a jar that is
         // not there yet.
@@ -974,21 +976,36 @@ public final class InstallCommand {
      * process running this install keeps its inode; {@code jkx} is re-linked to the new binary.
      */
     public static Path installProductBin(Path builtBinary, Path binDir, Cas cas) throws IOException {
-        return installProductBin(builtBinary, binDir, cas, null);
+        return installProductBin(builtBinary, binDir, cas, null, null);
     }
 
     /**
      * As {@link #installProductBin(Path, Path, Cas)}, naming the client in the engine's install
      * pointer ({@link EngineInstall#recordClient}), which keeps the one it replaces in the store for
-     * {@code jk self rollback}.
+     * {@code jk self rollback}, with {@code commit}, the checkout the client was built from: a
+     * snapshot's native client carries no commit of its own, so {@code jk --version -v} reads it there.
      */
-    public static Path installProductBin(Path builtBinary, Path binDir, Cas cas, @Nullable EngineInstall pointer)
+    public static Path installProductBin(
+            Path builtBinary, Path binDir, Cas cas, @Nullable EngineInstall pointer, @Nullable String commit)
             throws IOException {
         String sha = Hashing.sha256Hex(builtBinary);
         cas.putFile(builtBinary, sha);
         EngineInstall.installBinaries(cas.pathFor(sha), binDir);
-        if (pointer != null) pointer.recordClient(sha);
+        if (pointer != null) pointer.recordClient(sha, commit);
         return binDir.resolve(BuildLayout.nativeExecutableFileName("jk"));
+    }
+
+    /**
+     * The commit {@code dir}'s checkout is at, with {@code -dirty} when it has uncommitted changes
+     * (untracked files included, as the build's own stamp counts them); null outside a git checkout
+     * or without git.
+     */
+    static @Nullable String checkoutCommit(Path dir) {
+        ReleaseCommand.Git git = new ReleaseCommand.Git(dir);
+        String sha = git.output("rev-parse", "--verify", "HEAD");
+        if (sha == null || sha.isBlank()) return null;
+        String status = git.output("status", "--porcelain");
+        return BuildIdentity.commitStamp(sha, status != null && !status.isEmpty());
     }
 
     private static @Nullable Integer rejectInvalidLauncherName(String name) {

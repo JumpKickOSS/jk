@@ -144,16 +144,20 @@ class EngineInstallTest {
 
         store.materializeFromFiles("0.12.0", cas, good);
         EngineInstall.installBinaries(cas.pathFor(goodClient), bin);
-        store.recordClient(goodClient);
+        store.recordClient(goodClient, "aaaa");
         store.materializeFromFiles("0.13.0", cas, bad);
         EngineInstall.installBinaries(cas.pathFor(badClient), bin);
-        store.recordClient(badClient);
+        store.recordClient(badClient, "bbbb");
         assertThat(store.pinnedEngineShas())
                 .as("the store keeps both engines and both clients")
                 .containsExactlyInAnyOrder(Hashing.sha256Hex(good), Hashing.sha256Hex(bad), goodClient, badClient);
 
+        assertThat(store.recordedClientCommit(badClient)).hasValue("bbbb");
+        assertThat(store.recordedClientCommit(goodClient)).as("not the live client").isEmpty();
+
         var back = store.rollback(cas, bin);
         assertThat(back.version()).isEqualTo("0.12.0");
+        assertThat(store.recordedClientCommit(goodClient)).as("the commit comes back with its client").hasValue("aaaa");
         assertThat(store.engineJarPath()).hasContent("engine-good");
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-good");
         assertThat(back.client()).isEqualTo(EngineInstall.pathClient(bin));
@@ -162,6 +166,25 @@ class EngineInstallTest {
         assertThat(again.version()).as("a second rollback undoes the first").isEqualTo("0.13.0");
         assertThat(store.engineJarPath()).hasContent("engine-bad");
         assertThat(EngineInstall.pathClient(bin)).hasContent("client-bad");
+    }
+
+    @Test
+    void the_same_client_installed_again_takes_the_new_commit(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        store.materializeFromFiles("0.12.0", cas, Files.writeString(tmp.resolve("e.jar"), "engine"));
+        store.recordClient("c1", "aaaa-dirty");
+        store.recordClient("c1", "bbbb");
+        assertThat(store.recordedClientCommit("c1")).hasValue("bbbb");
+        assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
+                .as("an unchanged binary is not its own previous client")
+                .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
+        store.recordClient("c2", null);
+        assertThat(store.recordedClientCommit("c2")).isEmpty();
+        assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
+                .containsEntry(EngineInstall.PREVIOUS_CLIENT_SHA, "c1")
+                .containsEntry(EngineInstall.PREVIOUS_CLIENT_COMMIT, "bbbb");
     }
 
     @Test
