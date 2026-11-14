@@ -49,6 +49,24 @@ class WorkspaceProgressTrackerHoldTest {
     }
 
     @Test
+    void a_suspend_the_ticker_counted_comes_off_the_clock_so_the_bar_and_countdown_do_not_jump() {
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker(null, ticker);
+        t.seedWall(100_000, 3);
+        t.noteRemaining(100_000, 100_000);
+        advance(20_000);
+        var before = t.snapshot();
+
+        // A stopped process, or Windows, whose monotonic clock counts the 274 s asleep.
+        advance(274_000);
+        t.suspended(274_000L * 1_000_000L);
+        var after = t.snapshot();
+        assertThat(after.percent()).isEqualTo(before.percent());
+        assertThat(after.remainingMs()).isEqualTo(before.remainingMs());
+        advance(10_000);
+        assertThat(t.snapshot().percent()).isGreaterThan(before.percent());
+    }
+
+    @Test
     void the_likely_range_and_the_confidence_ride_the_residual_at_its_spread() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker(null, ticker);
         t.seedWall(100_000, 3);

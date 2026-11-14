@@ -32,6 +32,7 @@ import cc.jumpkick.wire.protocol.PlanStartEvent;
 import cc.jumpkick.wire.protocol.PreflightEvent;
 import cc.jumpkick.wire.protocol.ProgressEvent;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
+import cc.jumpkick.wire.protocol.SuspendedEvent;
 import cc.jumpkick.wire.protocol.TaskFinishEvent;
 import cc.jumpkick.wire.protocol.TaskStartEvent;
 import cc.jumpkick.wire.protocol.TickUpdateEvent;
@@ -454,6 +455,11 @@ public final class JsonlShape {
     public static String memoryHold(String dir, boolean held, long needBytes, long freeBytes, long heldMs) {
         return console(
                 (held ? MemoryHoldEvent.start(dir, needBytes, freeBytes) : MemoryHoldEvent.end(dir, heldMs)).encode());
+    }
+
+    /** The engine was not running for {@code suspendedMs} ({@code suspended}). */
+    public static String suspended(String dir, long suspendedMs, long monoMs) {
+        return console(new SuspendedEvent(dir, 0, suspendedMs, monoMs).encode());
     }
 
     /** The run's downloads summed up, without the per-transfer rows; {@code done} closes a burst. */

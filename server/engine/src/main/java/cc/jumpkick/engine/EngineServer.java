@@ -46,10 +46,12 @@ import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.wire.EnginePaths;
@@ -434,6 +436,19 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void resumed(long requestId, long heldMillis) {
                 holds.holdEnded(requestId, heldMillis);
+            }
+        });
+        // A spell the engine did not run (a suspend, a stop) is recorded on every job that ran
+        // across it, taints the steps in flight, and comes off every countdown.
+        JournalWriter suspendedRuns = journalWriter;
+        Suspensions.system().beatOn(beat -> JkThreads.platform().execute(beat));
+        var say = this.log;
+        Suspensions.system().listen((gap, jobs) -> {
+            say.accept("jk engine: not running for " + gap.wallMs() + " ms (suspended or stopped; monotonic "
+                    + gap.monoMs() + " ms); " + jobs.size() + " job(s) ran across it");
+            for (long rid : jobs) {
+                suspendedRuns.accSuspended(rid, gap.startedAt(), gap.wallMs());
+                holds.suspended(rid, gap);
             }
         });
         this.jobs = newJobEnvelope();

@@ -103,6 +103,17 @@ final class Json {
 
         if (r.publish() != null) o.put("publish", publishMap(r.publish()));
         if (r.delta() != null) o.put("delta", deltaMap(r.delta()));
+        if (!r.suspensions().isEmpty()) {
+            List<Object> gaps = new ArrayList<>();
+            for (BuildRecord.Suspension g : r.suspensions()) {
+                Map<String, Object> gm = new LinkedHashMap<>();
+                gm.put("startedAt", g.startedAt());
+                gm.put("millis", g.millis());
+                gaps.add(gm);
+            }
+            o.put("suspendedMillis", r.suspendedMillis());
+            o.put("suspensions", gaps);
+        }
 
         o.put("moduleCount", r.modules().size());
         o.put("failedModules", r.modules().stream().filter(m -> !m.success()).count());
@@ -260,6 +271,7 @@ final class Json {
             if (p.millis() >= 0) pm.put("millis", p.millis());
             if (p.waitMillis() > 0) pm.put("waitMillis", p.waitMillis());
             if (!p.detail().isEmpty()) pm.put("detail", p.detail());
+            if (p.suspendedMillis() > 0) pm.put("suspendedMillis", p.suspendedMillis());
             out.add(pm);
         }
         return out;
@@ -446,7 +458,18 @@ final class Json {
                 publish,
                 coverage,
                 readDelta(o),
-                str(o, "episode"));
+                str(o, "episode"),
+                readSuspensions(o));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<BuildRecord.Suspension> readSuspensions(Map<String, Object> o) {
+        List<BuildRecord.Suspension> out = new ArrayList<>();
+        for (Object e : arr(o, "suspensions")) {
+            Map<String, Object> gm = (Map<String, Object>) e;
+            out.add(new BuildRecord.Suspension(lng(gm, "startedAt"), lng(gm, "millis")));
+        }
+        return out;
     }
 
     /**
@@ -499,7 +522,8 @@ final class Json {
                     text(pm, "status"),
                     pm.get("millis") instanceof Number n ? n.longValue() : -1L,
                     pm.get("waitMillis") instanceof Number w ? w.longValue() : 0L,
-                    text(pm, "detail")));
+                    text(pm, "detail"),
+                    lng(pm, "suspendedMillis")));
         }
         return steps;
     }

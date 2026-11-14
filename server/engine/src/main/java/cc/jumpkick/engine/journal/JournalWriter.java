@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -194,8 +195,16 @@ public final class JournalWriter {
     }
 
     public void accStepStart(long requestId, String dir, String step, String phase) {
+        // A gap the heartbeat has not looked for yet is the steps' before this one starts.
+        Suspensions.system().poll();
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.noteTaskStart(dir, step, phase, clock.getAsLong());
+    }
+
+    /** The engine was not running while {@code requestId} ran ({@link BuildAccumulator#noteSuspended}). */
+    public void accSuspended(long requestId, long startedAt, long millis) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.noteSuspended(startedAt, millis);
     }
 
     /** A step's label; the accumulator keeps the last as the step's detail. */
@@ -212,6 +221,8 @@ public final class JournalWriter {
 
     public void accStepFinish(
             long requestId, String dir, String step, String phase, String status, long millis, long waitMillis) {
+        // A gap the step ran across is on its row before the row is written.
+        Suspensions.system().poll();
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.addTask(dir, step, phase, status, millis, waitMillis);
     }

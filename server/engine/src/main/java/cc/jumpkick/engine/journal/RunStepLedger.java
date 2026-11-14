@@ -12,7 +12,9 @@ import cc.jumpkick.wire.runtime.StepCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
@@ -44,14 +46,24 @@ final class RunStepLedger {
         UnaryOperator<List<String>> entry = StepLedger.entry(
                 RunShapes.of(finished.requestId()),
                 RunShapes.frontierOf(finished.requestId()),
-                RunShapes.curvesOf(finished.requestId()),
-                RunShapes.workersOf(finished.requestId()),
+                withoutSuspendedSuites(RunShapes.curvesOf(finished.requestId()), samples),
+                withoutSuspendedSuites(RunShapes.workersOf(finished.requestId()), samples),
                 RunShapes.compilerWarmthOf(finished.requestId()),
                 RunShapes.hostBusyOf(finished.requestId()),
                 samples);
         StepEffort.learn(StepEffort.defaultFile(), effortSamples(samples));
         RungBias.learn(RungBias.defaultFile(), pricedPairs(finished.requestId(), samples));
         return entry;
+    }
+
+    /** {@code byDir} less the suites that ran across a suspend: their curve and their walls are the gap's. */
+    static <V> Map<String, V> withoutSuspendedSuites(Map<String, V> byDir, List<StepLedger.Sample> samples) {
+        if (byDir == null || byDir.isEmpty()) return byDir;
+        Map<String, V> out = new HashMap<>(byDir);
+        for (StepLedger.Sample s : samples) {
+            if (StepLedger.SUSPENDED.equals(s.status()) && TaskNames.isRunTests(s.step())) out.remove(s.dir());
+        }
+        return out;
     }
 
     /** The run's finished node steps and plugin goals, each with its measure in its module ({@link StepEffort}). */
@@ -96,6 +108,10 @@ final class RunStepLedger {
     static StepLedger.Sample sample(String dir, BuildRecord.Task t, long heldMillis) {
         long wall = Math.max(0, t.millis());
         long off = Math.min(Math.max(0, t.waitMillis()), Math.max(0, heldMillis));
-        return new StepLedger.Sample(dir, t.name(), t.status(), Math.max(0, wall - off));
+        // A step the engine stopped running across measured the time nothing ran: the ledger keeps
+        // that it ran, under a status no price reads, so it teaches the ledger, the effort section
+        // and the rung bias nothing while the steps before and after the gap teach them as usual.
+        String status = t.suspended() && "SUCCESS".equals(t.status()) ? StepLedger.SUSPENDED : t.status();
+        return new StepLedger.Sample(dir, t.name(), status, Math.max(0, wall - off));
     }
 }

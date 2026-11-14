@@ -337,6 +337,17 @@ public final class WorkspaceProgressTracker {
         holdStartNanos = 0;
     }
 
+    /**
+     * The build was not running for {@code nanos} on the ticker (the machine slept or the process
+     * was stopped): taken off its clock, as a hold's time is, so the countdown resumes where it was.
+     */
+    public synchronized void suspended(long nanos) {
+        if (nanos <= 0 || elapsedEpochNanos == 0) return;
+        elapsedEpochNanos += nanos;
+        // A hold that spans the gap already takes it off when it resumes.
+        if (holdStartNanos != 0) holdStartNanos = Math.min(ticker.nanos(), holdStartNanos + nanos);
+    }
+
     /** Whether the build is on hold. */
     public synchronized boolean onHold() {
         return holdStartNanos != 0;

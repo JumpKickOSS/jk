@@ -4,6 +4,8 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.host.time.Suspensions;
+import cc.jumpkick.run.SlowestTests;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,7 +17,8 @@ import org.jspecify.annotations.Nullable;
  * A job on hold for memory ({@link MemoryHolds}), as an agent learns of it: a parked call's
  * progress notifications say when the hold starts, keep coming while it lasts (so the client does
  * not time the call out as stalled) and say when it resumes; {@code status} names each held job;
- * the final verdict names the time held in all, so a slow build can be told from a starved host.
+ * the final verdict names the time held in all, and the time suspended, so a slow build can be told
+ * from a starved host or a machine that slept.
  */
 final class McpHolds {
 
@@ -87,10 +90,17 @@ final class McpHolds {
         }
     }
 
-    /** The verdict's line for a job that spent time on hold, or {@code ""} when it spent none. */
+    /**
+     * The verdict's lines for a job that spent time on hold or suspended (the machine slept or the
+     * engine was stopped), or {@code ""} when it spent none: its wall is not what its work took.
+     */
     static String totalLine(long jid) {
         long held = MemoryHolds.totalHeldMillis(jid);
-        return held < 1_000 ? "" : "on hold for memory " + seconds(held) + " in all\n";
+        long suspended = Suspensions.system().suspendedMillis(jid);
+        return (held < 1_000 ? "" : "on hold for memory " + seconds(held) + " in all\n")
+                + (suspended < 1_000
+                        ? ""
+                        : "suspended " + SlowestTests.duration(suspended) + " (the machine slept or jk was stopped)\n");
     }
 
     /** {@code status}'s rows for the live jobs on hold: jid, time held so far, the memory waited for. */

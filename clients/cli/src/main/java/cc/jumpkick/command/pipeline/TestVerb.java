@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.RunSuspensions;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
@@ -239,7 +240,7 @@ final class TestVerb implements BuildVerb {
         if (n <= 0 || planned == 0 || withSuite == 0) {
             return "No tests to run" + skipped;
         }
-        String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+        String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs), RunSuspensions.wallMs());
         if (n == 1) {
             return "Tests passed" + (served > 0 ? ", served from cache" : "") + skipped + " " + took;
         }

@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 
@@ -93,6 +94,12 @@ public final class BuildAccumulator {
     // printed, both dropped as the step finishes: they exist for the step a cancel interrupts.
     private final Map<String, Long> stepStartedAt = new ConcurrentHashMap<>();
     private final Map<String, ArrayDeque<String>> forkTails = new ConcurrentHashMap<>();
+
+    /** Per running step (its {@link #stepKey}), the time the engine was not running while it ran. */
+    private final Map<String, Long> stepSuspended = new ConcurrentHashMap<>();
+
+    /** The times the engine was not running while this run ran, in the order they were detected. */
+    private final List<BuildRecord.Suspension> suspensions = new CopyOnWriteArrayList<>();
     // Step dependency edges (dir → step name → requires), captured from the genuine in-process
     // BuildPlanResult in addBuildPlan. Reconstructs each module's step DAG for the critical-path
     // cache-benefit metric; the wire's stepFinish carries no edges, so this is the only source.
@@ -572,7 +579,8 @@ public final class BuildAccumulator {
                 Long started = stepStartedAt.remove(key);
                 long millis = started == null ? 0L : Math.max(0L, finishedAt - started);
                 synchronized (m) {
-                    m.put(t.name(), new BuildRecord.Task(t.name(), t.stage(), "CANCELLED", millis, 0L));
+                    long suspended = Objects.requireNonNullElse(stepSuspended.remove(key), 0L);
+                    m.put(t.name(), new BuildRecord.Task(t.name(), t.stage(), "CANCELLED", millis, 0L, "", suspended));
                 }
                 ArrayDeque<String> tail = forkTails.remove(key);
                 List<String> lines;
@@ -702,14 +710,26 @@ public final class BuildAccumulator {
         lastLabels.put(stepKey(dirKey(dir), step), label);
     }
 
+    /**
+     * The engine was not running for {@code millis} from {@code startedAt} (the machine slept or the
+     * process was stopped) while this run ran: the run records it, and every step running now ran
+     * across it, so its wall teaches nothing ({@link BuildRecord.Task#suspendedMillis}).
+     */
+    public void noteSuspended(long startedAt, long millis) {
+        if (millis <= 0) return;
+        suspensions.add(new BuildRecord.Suspension(startedAt, millis));
+        for (String key : stepStartedAt.keySet()) stepSuspended.merge(key, millis, Long::sum);
+    }
+
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;
         String d = dirKey(dir);
         String detail = Objects.requireNonNullElse(lastLabels.remove(stepKey(d, step)), "");
+        long suspended = Objects.requireNonNullElse(stepSuspended.remove(stepKey(d, step)), 0L);
         stepsByDir
                 .computeIfAbsent(d, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
-                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis, detail));
+                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis, detail, suspended));
         stepStartedAt.remove(stepKey(d, step));
         forkTails.remove(stepKey(d, step));
         if (timeline != null) {
@@ -1065,33 +1085,34 @@ public final class BuildAccumulator {
                 : new BuildRecord.Io(bytes.remoteUp(), bytes.remoteDown(), bytes.localUp(), bytes.localDown());
         long wall = toolWallMillis > 0 ? toolWallMillis : millis;
         return new BuildRecord(
-                null,
-                0L,
-                BuildRecord.SCHEMA,
-                kind,
-                dir,
-                coord,
-                projectId,
-                finishedAt - wall,
-                finishedAt,
-                wall,
-                ok,
-                cancelledEffective,
-                exit,
-                jkVersion,
-                tests,
-                moduleList,
-                topSteps,
-                noVerdict ? withNoVerdictRow(diagSnapshot()) : diagSnapshot(),
-                trigger,
-                session,
-                commit,
-                benefitRow,
-                false,
-                ioRow,
-                requestId,
-                publish,
-                List.of());
+                        null,
+                        0L,
+                        BuildRecord.SCHEMA,
+                        kind,
+                        dir,
+                        coord,
+                        projectId,
+                        finishedAt - wall,
+                        finishedAt,
+                        wall,
+                        ok,
+                        cancelledEffective,
+                        exit,
+                        jkVersion,
+                        tests,
+                        moduleList,
+                        topSteps,
+                        noVerdict ? withNoVerdictRow(diagSnapshot()) : diagSnapshot(),
+                        trigger,
+                        session,
+                        commit,
+                        benefitRow,
+                        false,
+                        ioRow,
+                        requestId,
+                        publish,
+                        List.of())
+                .withSuspensions(suspensions);
     }
 
     private static boolean notBlank(String s) {

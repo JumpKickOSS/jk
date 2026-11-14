@@ -52,7 +52,8 @@ public record BuildRecord(
         @Nullable Publish publish,
         List<Coverage> coverage,
         @Nullable JobDelta delta,
-        @Nullable String episode) {
+        @Nullable String episode,
+        List<Suspension> suspensions) {
 
     /**
      * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
@@ -66,6 +67,71 @@ public record BuildRecord(
         steps = steps == null ? List.of() : List.copyOf(steps);
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
         coverage = coverage == null ? List.of() : List.copyOf(coverage);
+        suspensions = suspensions == null ? List.of() : List.copyOf(suspensions);
+    }
+
+    /** A run that was never suspended: every producer but the journal writer's finish. */
+    public BuildRecord(
+            @Nullable String id,
+            long buildNumber,
+            int schema,
+            String kind,
+            String dir,
+            @Nullable String coord,
+            @Nullable String projectId,
+            long startedAt,
+            long finishedAt,
+            long millis,
+            boolean success,
+            boolean cancelled,
+            int exitCode,
+            String jkVersion,
+            @Nullable Tests tests,
+            List<Module> modules,
+            List<Task> steps,
+            List<Diag> diagnostics,
+            @Nullable String trigger,
+            @Nullable String session,
+            @Nullable String commit,
+            @Nullable CacheBenefit benefit,
+            boolean running,
+            @Nullable Io io,
+            long requestId,
+            @Nullable Publish publish,
+            List<Coverage> coverage,
+            @Nullable JobDelta delta,
+            @Nullable String episode) {
+        this(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                delta,
+                episode,
+                List.of());
     }
 
     /** A run placed in no episode: every producer but the engine's own admission. */
@@ -278,7 +344,8 @@ public record BuildRecord(
                 publish,
                 coverage,
                 delta,
-                episode);
+                episode,
+                suspensions);
     }
 
     /** This record with its per-project build number set. */
@@ -312,7 +379,8 @@ public record BuildRecord(
                 publish,
                 coverage,
                 delta,
-                episode);
+                episode,
+                suspensions);
     }
 
     /** This record with its journal id set (begin path). */
@@ -346,7 +414,8 @@ public record BuildRecord(
                 publish,
                 coverage,
                 delta,
-                episode);
+                episode,
+                suspensions);
     }
 
     /** This record with what changed since the run before it from the same origin. */
@@ -380,7 +449,8 @@ public record BuildRecord(
                 publish,
                 coverage,
                 delta,
-                episode);
+                episode,
+                suspensions);
     }
 
     /** This record placed in the session episode {@code episode}. */
@@ -414,7 +484,8 @@ public record BuildRecord(
                 publish,
                 coverage,
                 delta,
-                episode);
+                episode,
+                suspensions);
     }
 
     /**
@@ -459,7 +530,50 @@ public record BuildRecord(
                 publish,
                 coverage,
                 delta,
-                episode);
+                episode,
+                suspensions);
+    }
+
+    /** This record with the times its engine was not running while it ran. */
+    public BuildRecord withSuspensions(List<Suspension> suspensions) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                delta,
+                episode,
+                suspensions);
+    }
+
+    /** Milliseconds its engine was not running while it ran (the machine slept, the process was stopped). */
+    public long suspendedMillis() {
+        long sum = 0;
+        for (Suspension s : suspensions) sum += Math.max(0, s.millis());
+        return sum;
     }
 
     /** {@code trigger}, then the session that asked when there is one: {@code mcp · claude-code 3f9a}. */
@@ -645,19 +759,45 @@ public record BuildRecord(
      *     worker's queue); {@code millis - waitMillis} is the step's own work
      * @param detail the step's last label ({@code package web-0.1.0.jar · dist/ under static/}),
      *     {@code ""} when it set none
+     * @param suspendedMillis how long the engine was not running while the step ran (the run's
+     *     {@link Suspension}s it spanned), {@code 0} for a step that ran throughout
      */
-    public record Task(String name, String stage, String status, long millis, long waitMillis, String detail) {
+    public record Task(
+            String name,
+            String stage,
+            String status,
+            long millis,
+            long waitMillis,
+            String detail,
+            long suspendedMillis) {
         public Task {
             stage = stage == null ? "" : stage;
             waitMillis = Math.max(0, waitMillis);
             detail = detail == null ? "" : detail;
+            suspendedMillis = Math.max(0, suspendedMillis);
+        }
+
+        /** A task that ran with its engine running throughout. */
+        public Task(String name, String stage, String status, long millis, long waitMillis, String detail) {
+            this(name, stage, status, millis, waitMillis, detail, 0);
         }
 
         /** A task with no label. */
         public Task(String name, String stage, String status, long millis, long waitMillis) {
             this(name, stage, status, millis, waitMillis, "");
         }
+
+        /** Whether the engine stopped running while this step ran: its wall is not what it costs. */
+        public boolean suspended() {
+            return suspendedMillis > 0;
+        }
     }
+
+    /**
+     * A time the engine was not running while the run ran: from {@code startedAt} (epoch ms) for
+     * {@code millis}. The machine slept or the process was stopped; the run's wall includes it.
+     */
+    public record Suspension(long startedAt, long millis) {}
 
     /**
      * One diagnostic: {@code severity} is {@code "error"} or {@code "warning"}; {@code dir} is the

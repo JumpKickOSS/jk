@@ -295,6 +295,12 @@ final class WorkspaceRunView {
             }
 
             @Override
+            public void onSuspended(long suspendedMs, long monoMs) {
+                view.suspended(suspendedMs, monoMs);
+                event(JsonlShape.suspended(entryDir.toString(), suspendedMs, monoMs));
+            }
+
+            @Override
             public void onPlan(List<ModulePlan> plan) {
                 // Engine calibrates the aggregate bar; the CLI only records plan size for the
                 // completion lines' denominator.
@@ -396,6 +402,11 @@ final class WorkspaceRunView {
             public void onMemoryHold(boolean held, long needBytes, long freeBytes, long heldMs) {
                 holds.note(held);
                 event(JsonlShape.memoryHold(entryDir.toString(), held, needBytes, freeBytes, heldMs));
+            }
+
+            @Override
+            public void onSuspended(long suspendedMs, long monoMs) {
+                event(JsonlShape.suspended(entryDir.toString(), suspendedMs, monoMs));
             }
 
             @Override

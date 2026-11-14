@@ -29,6 +29,7 @@ import cc.jumpkick.wire.protocol.PlanStartEvent;
 import cc.jumpkick.wire.protocol.PlanTaskEvent;
 import cc.jumpkick.wire.protocol.PreflightEvent;
 import cc.jumpkick.wire.protocol.ProgressEvent;
+import cc.jumpkick.wire.protocol.SuspendedEvent;
 import cc.jumpkick.wire.protocol.TaskFinishEvent;
 import cc.jumpkick.wire.protocol.TaskStartEvent;
 import cc.jumpkick.wire.protocol.TaskWaitEvent;
@@ -222,6 +223,10 @@ final class EngineEventDecoder {
                     case EngineProtocol.HOLD_START, EngineProtocol.HOLD_END -> {
                         MemoryHoldEvent e = MemoryHoldEvent.decode(line);
                         listener.onMemoryHold(e.held(), e.needBytes(), e.freeBytes(), e.heldMs());
+                    }
+                    case EngineProtocol.SUSPENDED -> {
+                        SuspendedEvent e = SuspendedEvent.decode(line);
+                        listener.onSuspended(e.suspendedMs(), e.monoMs());
                     }
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                     case EngineProtocol.ETA ->

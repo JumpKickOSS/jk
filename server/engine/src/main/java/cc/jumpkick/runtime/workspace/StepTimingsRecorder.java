@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
@@ -65,15 +67,28 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         this(moduleKey, sink, testSummary, null, DEFAULT_SUITE);
     }
 
+    /** Per running step, where {@link Suspensions}' record stood when it started. */
+    private final Map<String, Long> cursorByStep = new ConcurrentHashMap<>();
+
+    /** Steps the engine stopped running across: their walls teach nothing. */
+    private final Set<String> suspendedSteps = ConcurrentHashMap.newKeySet();
+
     @Override
     public void stepStart(String step, @Nullable String group, int ticks) {
         ticksByStep.put(step, ticks);
+        cursorByStep.put(step, Suspensions.system().cursor());
     }
 
     @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
         if (status != TaskStatus.SUCCESS || !learnable(step)) return;
+        // A step that ran across a suspend or a stop measured the time nothing ran.
+        Long cursor = cursorByStep.remove(step);
+        if (cursor != null && Suspensions.system().resumedSince(cursor)) {
+            suspendedSteps.add(step);
+            return;
+        }
         // The step's own work: a wall that is mostly queue wait behind a shared compiler worker
         // would teach a per-source rate that prices the machine, not the compile.
         long ms = duration == null ? 0 : duration.toMillis();
@@ -88,7 +103,9 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         if (result == null || result.cancelled() || result.userCancelled()) return;
         // The run's own measures, journaled with its record: a request without them measures nothing.
         RunMeasures measures = RunMeasures.current();
+        boolean suiteSuspended = suspendedSteps.contains(TaskNames.RUN_TESTS);
         if (!result.success()) {
+            if (suiteSuspended) return;
             // A failed plan trains no rate, but its suite's classes ran for real and their walls
             // price the next run's: a first integration run of the engine failed on one class, and
             // the next ran 249 s with no class walls to read its progress by.

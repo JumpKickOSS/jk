@@ -14,6 +14,7 @@ export const EVENT = Object.freeze({
   workspaceProgress: 'workspace-progress',
   holdStart: 'hold-start',
   holdEnd: 'hold-end',
+  suspended: 'suspended',
   eta: 'eta',
   output: 'output',
   error: 'error',

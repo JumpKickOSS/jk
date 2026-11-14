@@ -110,6 +110,24 @@ class JkManagerHoldTest {
     }
 
     @Test
+    void a_suspend_the_monotonic_clock_counted_comes_off_the_work_clock_and_plain_mode_says_so() {
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
+        SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
+            var buf = new ByteArrayOutputStream();
+            var cm = JkManager.plan(stream(buf), "Build", true);
+            cm.progress(0, 100);
+            long at = cm.elapsedMillis() + 300_000;
+            long before = cm.workElapsedMillis(at);
+
+            cm.suspended(274_000, 274_000);
+
+            assertThat(cm.workElapsedMillis(at)).isEqualTo(Math.max(0, before - 274_000));
+            assertThat(buf.toString(StandardCharsets.UTF_8))
+                    .contains("JumpKick build suspended 4m 34s - the machine slept or jk was stopped");
+        });
+    }
+
+    @Test
     void the_plain_count_up_names_the_seconds_held() {
         assertThat(JkManagerPlainView.holdLine(45_200)).isEqualTo("On hold 45s");
     }

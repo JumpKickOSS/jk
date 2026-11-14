@@ -164,7 +164,9 @@ public final class JkResultsMarkdown {
         String coord = some(r.coord());
         if (coord != null) sb.append(" · `").append(coord).append('`');
         if (r.buildNumber() > 0) sb.append(" · #").append(r.buildNumber());
-        if (r.millis() > 0) sb.append(" · ").append(fmtDuration(r.millis()));
+        long suspended = r.suspendedMillis();
+        if (r.millis() > 0) sb.append(" · ").append(fmtDuration(Math.max(0, r.millis() - suspended)));
+        if (suspended > 0) sb.append(" · suspended ").append(fmtDuration(suspended));
         if (r.exitCode() != 0) sb.append(" · **exit ").append(r.exitCode()).append("**");
         else sb.append(" · exit 0");
         if (r.requestId() > 0) sb.append(" · jid ").append(r.requestId());

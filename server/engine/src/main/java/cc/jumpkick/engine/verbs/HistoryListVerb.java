@@ -89,6 +89,7 @@ public final class HistoryListVerb implements HostedVerb {
                         .put("startedAt", r.startedAt())
                         .put("finishedAt", r.finishedAt())
                         .put("millis", elapsed)
+                        .put("suspendedMillis", r.suspendedMillis())
                         .put("success", r.success())
                         .put("cancelled", r.cancelled())
                         .put("running", r.running())

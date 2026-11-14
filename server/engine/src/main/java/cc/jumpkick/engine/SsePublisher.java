@@ -17,6 +17,7 @@ import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -29,6 +30,7 @@ import cc.jumpkick.wire.protocol.ErrorLineEvent;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import cc.jumpkick.wire.protocol.MemoryHoldEvent;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.SuspendedEvent;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.io.BufferedWriter;
@@ -359,11 +361,33 @@ public final class SsePublisher implements SseEvents {
         sendHold(requestId, s, MemoryHoldEvent.end(progressRoot(requestId), heldMs));
     }
 
+    /**
+     * The engine was not running for {@code gap} while {@code requestId} ran ({@link Suspensions}):
+     * like a hold that already ended, its clock and its running steps take the time off, so the
+     * countdown resumes where it stood, and the client and the dashboard are told.
+     */
+    public void suspended(long requestId, Suspensions.Gap gap) {
+        JobSession s = get(requestId);
+        if (s == null || s.retired()) return;
+        s.tracker().suspended(gap.monoMs() * 1_000_000L);
+        RemainingWork rw = s.remaining();
+        if (rw != null) {
+            synchronized (rw) {
+                rw.suspended(gap.wallMs());
+            }
+        }
+        SuspendedEvent event = new SuspendedEvent(progressRoot(requestId), gap.startedAt(), gap.wallMs(), gap.monoMs());
+        send(requestId, s, EngineProtocol.SUSPENDED, event.encode());
+    }
+
     private void sendHold(long requestId, JobSession s, MemoryHoldEvent event) {
-        String line = event.encode();
+        send(requestId, s, event.type(), event.encode());
+    }
+
+    private void send(long requestId, JobSession s, String type, String line) {
         BufferedWriter writer = s.writer();
         if (writer != null) WireWriter.sendQuiet(writer, line);
-        if (eventsWanted()) publishEvent(event.type(), SseFrame.of(event.type(), requestId, line), false);
+        if (eventsWanted()) publishEvent(type, SseFrame.of(type, requestId, line), false);
         emitWorkspaceProgress(requestId, writer, true);
     }
 
@@ -440,6 +464,8 @@ public final class SsePublisher implements SseEvents {
     public void emitWorkspaceProgress(
             long requestId, @Nullable BufferedWriter writer, boolean force, boolean dashboardOnly) {
         if (requestId <= 0) return;
+        // A gap the heartbeat has not looked for yet comes off the clocks before they are read.
+        Suspensions.system().poll();
         // A straggler from an abandoned job must not re-register the maps teardown just cleared,
         // nor take a fresh emit lock that no longer serializes against anything.
         if (sessions.retired(requestId)) return;

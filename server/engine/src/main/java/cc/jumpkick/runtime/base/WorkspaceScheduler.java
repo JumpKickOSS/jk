@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.SessionCancel;
 import java.nio.file.Path;
@@ -301,9 +302,12 @@ public final class WorkspaceScheduler {
             boolean stalled = inFlight - parking.parked() <= 0 && !notStarted.isEmpty();
             Object event;
             try {
+                long cursor = stalled ? Suspensions.system().cursor() : 0;
                 event = stalled ? events.poll(STALL_GRACE_MILLIS, TimeUnit.MILLISECONDS) : events.take();
                 if (event == null) {
                     if (inFlight - parking.parked() > 0) continue;
+                    // A grace the engine slept through gave no wake a chance to land: wait it again.
+                    if (Suspensions.system().resumedSince(cursor)) continue;
                     for (U u : List.copyOf(unitOf.values())) stopUnit.accept(u);
                     drainCancelled(inflight);
                     throw unsatisfiable(notStarted, dirOf, edges, unitDirs, published);

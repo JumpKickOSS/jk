@@ -225,6 +225,11 @@ public final class EventCatalog {
                     Carried.as(EngineProtocol.HOLD_END, "when a held build resumes"),
                     Carried.as(EngineProtocol.HOLD_END, "when a held build resumes (SsePublisher.holdEnded)")),
             new Row(
+                    EngineProtocol.SUSPENDED,
+                    wire(),
+                    Carried.as(EngineProtocol.SUSPENDED, "when the engine resumes from a suspend or a stop"),
+                    Carried.as(EngineProtocol.SUSPENDED, "when the engine resumes (SsePublisher.suspended)")),
+            new Row(
                     EngineProtocol.MODULE_START,
                     wire(),
                     Carried.as(EngineProtocol.MODULE_START, "every module"),

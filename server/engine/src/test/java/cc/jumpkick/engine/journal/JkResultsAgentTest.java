@@ -42,6 +42,13 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void a_run_the_machine_slept_through_names_the_time_suspended_apart_from_the_time_it_took() {
+        BuildRecord r = record("test", true, false, 491_000, new BuildRecord.Tests(1, 1, 0, 0), List.of(), List.of())
+                .withSuspensions(List.of(new BuildRecord.Suspension(1_000, 274_000)));
+        assertThat(JkResultsAgent.render(r)).isEqualTo("OK test rest-service · 1 test · 3m 37s · suspended 4m 34s\n");
+    }
+
+    @Test
     void an_ok_run_over_a_partial_build_says_in_one_line_that_the_guard_baseline_was_left_alone() {
         BuildRecord.Diag workspace = new BuildRecord.Diag(
                 "warning",

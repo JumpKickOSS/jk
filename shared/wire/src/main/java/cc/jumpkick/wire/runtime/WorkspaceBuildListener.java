@@ -107,6 +107,13 @@ public interface WorkspaceBuildListener {
      */
     default void onMemoryHold(boolean held, long needBytes, long freeBytes, long heldMs) {}
 
+    /**
+     * The engine was not running for {@code suspendedMs} (the machine slept or the process was
+     * stopped), told on resume: a hold that already ended. {@code monoMs} is how far the monotonic
+     * clock moved across it, which a countdown on that clock takes off its elapsed time.
+     */
+    default void onSuspended(long suspendedMs, long monoMs) {}
+
     /** The whole workspace build finished. */
     default void onWorkspaceFinish(WorkspaceResult result) {}
 }

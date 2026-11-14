@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.engine.RunSuspensions;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Coord;
@@ -77,14 +78,20 @@ final class BuildTails {
         return Theme.colorize("stopped by the failure:", Theme.active().midGray()) + " " + Coord.module(coord);
     }
 
-    /** Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime}. */
+    /**
+     * Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime},
+     * naming the time the engine was suspended when it was ({@link RunSuspensions}).
+     */
     static @Nullable String elapsedSince(long startNanos) {
-        return ConsoleSpec.took(Duration.ofMillis(elapsedMsSince(startNanos)));
+        return ConsoleSpec.took(Duration.ofMillis(elapsedMsSince(startNanos)), RunSuspensions.wallMs());
     }
 
-    /** Milliseconds since a {@link System#nanoTime} start — the unit every workspace event uses. */
+    /**
+     * Milliseconds of work since a {@link System#nanoTime} start — the unit every workspace event
+     * uses: what the monotonic clock moved while the engine was suspended does not count.
+     */
     static long elapsedMsSince(long startNanos) {
-        return (System.nanoTime() - startNanos) / 1_000_000;
+        return Math.max(0, (System.nanoTime() - startNanos) / 1_000_000 - RunSuspensions.monoMs());
     }
 
     /** The green {@code Build successful} lead that opens every build success message. */

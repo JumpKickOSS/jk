@@ -510,6 +510,7 @@
                 <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
               </span>
             </span></span>
+          <span v-if="projectRun.card.suspendedMs > 0" class="chip chip-warn" data-tip="The machine slept or jk was stopped while this ran; the time is not counted">suspended {{ duration(projectRun.card.suspendedMs) }}</span>
           <span v-if="projectRun.outcome !== 'running'" class="ago" :data-tip="fmtDateTime(projectRun.card.finishedAt) || undefined">{{ ago(projectRun.card.finishedAt) }}</span>
         </div>
         <!-- Laid out as the terminal: the chip and bar, then the fixed worker rows; the module cells close the pane. -->

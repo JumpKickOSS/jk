@@ -193,6 +193,14 @@ public final class EngineProtocol {
     /** Server → client: the build resumed after a {@link #HOLD_START}; {@code heldMs} is how long it held. */
     public static final String HOLD_END = "hold-end";
 
+    /**
+     * Server → client: the engine was not running for {@code suspendedMs} (the machine slept or the
+     * process was stopped), detected on resume. Like a hold that already ended: the countdown takes
+     * the time off its clock ({@code monoMs} is how far the monotonic clock moved across it), and
+     * the steps that ran across it teach no estimate.
+     */
+    public static final String SUSPENDED = "suspended";
+
     /** Server → client: a module's plan is about to run — {@code onModuleStart}. */
     public static final String MODULE_START = "module-start";
 

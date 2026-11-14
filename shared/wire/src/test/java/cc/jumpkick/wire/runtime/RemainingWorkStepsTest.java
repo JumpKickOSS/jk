@@ -257,6 +257,46 @@ class RemainingWorkStepsTest {
     }
 
     /**
+     * The machine slept 274 s with the suite half done at its own rate and a class running: none of
+     * it ran, so what remained when it stopped is what remains when it resumes, and the countdown
+     * goes on from there instead of reading the sleep as the suite overrunning.
+     */
+    @Test
+    void a_suspend_moves_every_running_clock_on_so_the_remainder_resumes_where_it_stood() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "compile-java");
+        rw.stepFinish(A, "compile-java");
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(30_000);
+        rw.suiteProgress(A, 0.60);
+        rw.suiteClassStarted(A, "LongTest", 40_000);
+        now.addAndGet(1_000);
+        long before = rw.remaining();
+
+        now.addAndGet(274_000);
+        rw.suspended(274_000);
+        assertThat(rw.remaining()).as("just resumed").isEqualTo(before);
+        now.addAndGet(5_000);
+        assertThat(rw.remaining()).as("counting again").isCloseTo(before - 5_000, within(2L * MS));
+    }
+
+    @Test
+    void a_suspend_inside_a_hold_is_taken_off_once() {
+        RemainingWork rw = model();
+        rw.stepStart(A, "run-tests");
+        now.addAndGet(10_000);
+        long before = rw.remaining();
+
+        rw.hold();
+        now.addAndGet(5_000);
+        now.addAndGet(60_000);
+        rw.suspended(60_000);
+        now.addAndGet(5_000);
+        rw.resume();
+        assertThat(rw.remaining()).isEqualTo(before);
+    }
+
+    /**
      * A hold is one fork of the build waiting for memory; the others run on. The engine's suite
      * started inside a 21 s hold and ran through it: its share is what it really did, and read
      * against a clock that stood still its rate came out double and its remainder 19 s short.

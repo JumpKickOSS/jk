@@ -598,8 +598,8 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     }
 
     /**
-     * The run's elapsed time less its time on hold for memory: the clock the bar and the
-     * countdown run on, so both stand still through a hold and resume where they were.
+     * The run's elapsed time less its time on hold for memory and suspended: the clock the bar and
+     * the countdown run on, so both stand still through a hold and resume where they were.
      */
     long workElapsedMillis() {
         return workElapsedMillis(elapsedMillis());
@@ -645,6 +645,21 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
             heldTotalMs += Math.max(0, elapsedMillis() - since);
             holdSinceMs = -1;
             plain.onResume(heldMs);
+        }
+    }
+
+    /**
+     * The engine was not running for {@code suspendedMs} (the machine slept or the engine was
+     * stopped), told on resume: the time the monotonic clock moved across it ({@code monoMs}) comes
+     * off the bar's and the countdown's clock, as a hold's does, so both go on from where they stood.
+     */
+    public void suspended(long suspendedMs, long monoMs) {
+        synchronized (lock) {
+            if (done) return;
+            // A hold that spans the gap already takes it off when it resumes.
+            if (holdSinceMs >= 0) holdSinceMs = Math.min(elapsedMillis(), holdSinceMs + Math.max(0, monoMs));
+            else heldTotalMs += Math.max(0, monoMs);
+            plain.onSuspended(suspendedMs);
         }
     }
 

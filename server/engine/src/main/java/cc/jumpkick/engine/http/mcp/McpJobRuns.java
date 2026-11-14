@@ -5,6 +5,7 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.time.Suspensions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -271,8 +272,12 @@ public final class McpJobRuns {
      */
     private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs, McpHolds.Notifier holds) {
         long start = Clock.SYSTEM.millis();
+        Suspensions watch = Suspensions.system();
+        long cursor = watch.cursor();
         boolean seen = false;
-        while (Clock.SYSTEM.millis() - start < timeoutMs) {
+        // The wait's window restarts when the engine resumes from a suspend or a stop: the client
+        // that waits slept too, and its own tool-call timer did not run either.
+        while (Clock.SYSTEM.millis() - Math.max(start, watch.resumedAt(cursor)) < timeoutMs) {
             holds.tick(Clock.SYSTEM.millis());
             boolean live = McpVitals.isLive(ctx, jid);
             if (live) seen = true;

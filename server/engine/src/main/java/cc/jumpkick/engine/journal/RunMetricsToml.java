@@ -17,7 +17,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * A finished run's measures as {@link MetricsFile} text, which its project's {@link
  * cc.jumpkick.builds.ProjectStore} and the host's {@link cc.jumpkick.builds.HostStore} fold: the
- * walls of its successful steps and its invocation, and its suites' class walls.
+ * walls of its successful steps and its invocation, and its suites' class walls. A step the engine
+ * stopped running across ({@link BuildRecord.Task#suspended}) and the wall of a run that had such
+ * a gap are left out.
  */
 final class RunMetricsToml {
 
@@ -31,7 +33,9 @@ final class RunMetricsToml {
         if (finished == null || finished.running() || finished.cancelled()) return null;
         if (!finished.success()) return renderClassWallsOnly(finished, measures);
         StringBuilder sb = new StringBuilder();
-        if (finished.millis() > 0) {
+        // A run the engine stopped running in the middle of took longer than its work: its whole
+        // wall teaches nothing, its steps before and after the gap still do.
+        if (finished.millis() > 0 && finished.suspensions().isEmpty()) {
             sb.append("workspace.wall-ms = ").append(finished.millis()).append('\n');
             String kind = sanitize(finished.kind() == null ? "build" : finished.kind());
             sb.append("invocation.")
@@ -127,6 +131,14 @@ final class RunMetricsToml {
             Map<String, String> suiteSteps) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
+        if (s.suspended()) {
+            // Its wall includes the time nothing ran; what it measured goes with it.
+            if (TaskNames.RUN_TESTS.equals(s.name()) && moduleDir != null) {
+                measures.takeSuite(moduleDir);
+                measures.takeRunners(moduleDir);
+            }
+            return;
+        }
         // A suite's wall is kept under the selection that ran it. A --class run measured only some
         // of the suite's classes, and leaves no suite wall at all.
         String suiteStep = null;

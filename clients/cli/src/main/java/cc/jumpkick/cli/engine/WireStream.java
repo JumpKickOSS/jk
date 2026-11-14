@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobFinishFrame;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
 import cc.jumpkick.wire.protocol.JobStartFrame;
+import cc.jumpkick.wire.protocol.SuspendedEvent;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -175,6 +176,11 @@ public final class WireStream {
                     ActiveJobs.note(notedJid);
                     notifyJobStart(start, notedJid);
                     continue;
+                }
+                if (EngineProtocol.SUSPENDED.equals(type)) {
+                    // Every verb's summary takes the time off what it measured; the decoder may show it.
+                    SuspendedEvent e = SuspendedEvent.decode(line);
+                    RunSuspensions.note(e.suspendedMs(), e.monoMs());
                 }
                 if (EngineProtocol.DOWNLOADS.equals(type)) {
                     // Any job may download, whatever its verb, so the run's download frames are read

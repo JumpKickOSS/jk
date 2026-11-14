@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.host.time.Suspensions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,6 +58,9 @@ public final class McpVitals {
                 row.put("etaHighMs", r.highMs());
             }
             if (r.confidence() >= 0) row.put("confidence", Math.round(r.confidence() * 100) / 100.0);
+            // The machine slept or the engine was stopped while it ran: its wall is not its work.
+            long suspended = Suspensions.system().suspendedMillis(r.requestId());
+            if (suspended > 0) row.put("suspendedMs", suspended);
             rows.add(row);
         }
         return rows;

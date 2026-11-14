@@ -289,6 +289,23 @@ public final class RemainingWork {
     /** When the current hold began; -1 when not on hold. */
     private long heldSince = -1;
 
+    /**
+     * The build was not running for {@code ms} on the clock (the machine slept or the process was
+     * stopped): every running step and suite starts that much later on both clocks, since none of
+     * them ran either, so what remains is what remained when it stopped.
+     */
+    public synchronized void suspended(long ms) {
+        if (ms <= 0) return;
+        for (Map<String, Long> starts : started.values()) starts.replaceAll((step, at) -> at + ms);
+        for (Map<String, Long> starts : startedAt.values()) starts.replaceAll((step, at) -> at + ms);
+        suiteAt.replaceAll((dir, at) -> at + ms);
+        for (Map<String, long[]> classes : runningClasses.values()) {
+            for (long[] c : classes.values()) c[1] += ms;
+        }
+        // A hold that spans the gap already takes it off when it resumes.
+        if (heldSince >= 0) heldSince = Math.min(clock.millis(), heldSince + ms);
+    }
+
     /** Whether the module at {@code dir} is counted down by its steps. */
     public synchronized boolean steps(Path dir) {
         return steps.containsKey(dir);

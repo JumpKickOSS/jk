@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.plugin.process.CommandChannel;
 import java.io.BufferedReader;
@@ -90,7 +91,13 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
         synchronized (connecting) {
             if (out != null) return true;
             long deadline = Clock.SYSTEM.nanos() + wait.toNanos();
+            long cursor = Suspensions.system().cursor();
             while (true) {
+                // A worker cannot connect while the machine sleeps: the wait starts again on resume.
+                if (Suspensions.system().resumedSince(cursor)) {
+                    cursor = Suspensions.system().cursor();
+                    deadline = Clock.SYSTEM.nanos() + wait.toNanos();
+                }
                 long left = (deadline - Clock.SYSTEM.nanos()) / 1_000_000L;
                 if (left <= 0) return false;
                 listener.setSoTimeout((int) Math.min(Integer.MAX_VALUE, left));
@@ -98,6 +105,7 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
                 try {
                     s = listener.accept();
                 } catch (SocketTimeoutException e) {
+                    if (Suspensions.system().resumedSince(cursor)) continue;
                     return false;
                 }
                 if (!proves(s)) {

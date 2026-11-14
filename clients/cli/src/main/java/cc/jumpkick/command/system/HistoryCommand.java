@@ -85,6 +85,11 @@ public final class HistoryCommand extends GroupCommand {
         return session == null || session.isBlank() ? trigger : trigger + " · " + session;
     }
 
+    /** A run's working time: its wall less the time its engine was suspended; unknown stays unknown. */
+    static long worked(long millis, long suspendedMillis) {
+        return millis < 0 ? millis : Math.max(0, millis - Math.max(0, suspendedMillis));
+    }
+
     static String duration(long millis) {
         if (millis < 0) return "—";
         if (millis < 1000) return millis + "ms";
@@ -198,7 +203,9 @@ public final class HistoryCommand extends GroupCommand {
                 String saved = savedMillis >= 0 && estMillis > 0
                         ? duration(savedMillis) + " (" + pctString(savedMillis, estMillis) + ")"
                         : "";
+                long suspended = Jsonl.longValue(e, "suspendedMillis", 0);
                 String note = failed > 0 ? failed + " failed" : "";
+                if (suspended > 0) note = (note.isEmpty() ? "" : note + ", ") + "suspended " + duration(suspended);
                 List<String> row =
                         new ArrayList<>(List.of(glyph(success, cancelled), String.valueOf(Jsonl.str(e, "id")), label));
                 if (!checkouts.isEmpty()) {
@@ -208,7 +215,7 @@ public final class HistoryCommand extends GroupCommand {
                 row.addAll(List.of(
                         kind == null ? "" : kind,
                         origin(Jsonl.str(e, "trigger"), Jsonl.str(e, "session")),
-                        duration(Jsonl.longValue(e, "millis", -1)),
+                        duration(worked(Jsonl.longValue(e, "millis", -1), suspended)),
                         ago(Jsonl.longValue(e, "finishedAt", 0), now),
                         saved,
                         note));
@@ -278,7 +285,9 @@ public final class HistoryCommand extends GroupCommand {
             if (!origin.isEmpty()) CliOutput.out("  trigger:  " + origin);
             CliOutput.out("  project:  " + label(Jsonl.str(record, "coord"), Jsonl.str(record, "dir")));
             CliOutput.out("  dir:      " + Jsonl.str(record, "dir"));
-            CliOutput.out("  duration: " + duration(Jsonl.longValue(record, "millis", -1)) + "   "
+            long suspended = Jsonl.longValue(record, "suspendedMillis", 0);
+            CliOutput.out("  duration: " + duration(worked(Jsonl.longValue(record, "millis", -1), suspended))
+                    + (suspended > 0 ? ", suspended " + duration(suspended) : "") + "   "
                     + ago(Jsonl.longValue(record, "finishedAt", 0), System.currentTimeMillis()));
             long savedMillis = Jsonl.longValue(record, "savedMillis", -1);
             long estMillis = Jsonl.longValue(record, "estimatedUncachedMillis", -1);

@@ -298,7 +298,11 @@ public final class JkResultsAgent {
         if (!name.isEmpty()) sb.append(' ').append(name);
         String counts = counts(r, loci, tests);
         if (!counts.isEmpty()) sb.append(" · ").append(counts);
-        if (r.millis() > 0) sb.append(" · ").append(JkResultsMarkdown.fmtDuration(r.millis()));
+        // The time the engine was not running (the machine slept, the engine was stopped) is named
+        // apart from the time the work took.
+        long suspended = r.suspendedMillis();
+        if (r.millis() > 0) sb.append(" · ").append(JkResultsMarkdown.fmtDuration(Math.max(0, r.millis() - suspended)));
+        if (suspended > 0) sb.append(" · suspended ").append(JkResultsMarkdown.fmtDuration(suspended));
         return sb.toString();
     }
 

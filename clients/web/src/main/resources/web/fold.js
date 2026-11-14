@@ -283,6 +283,20 @@ export function foldEvent(cards, event) {
       }
       break;
     }
+    case EVENT.suspended: {
+      // The engine was not running (the machine slept, the engine was stopped): like a hold that
+      // already ended, the time comes off the countdown's anchors, so it resumes where it stood.
+      const card = resolveCard(cards, d);
+      const away = typeof d.suspendedMs === 'number' ? Math.max(0, d.suspendedMs) : 0;
+      if (card && away > 0) {
+        if (card.residualAt != null) card.residualAt += away;
+        if (card.r0At != null) card.r0At += away;
+        if (card.holdSince != null) card.holdSince += away;
+        card.heldMs = (card.heldMs || 0) + away;
+        card.suspendedMs = (card.suspendedMs || 0) + away;
+      }
+      break;
+    }
     case EVENT.eta: {
       const card = resolveCard(cards, d);
       if (card && typeof d.millis === 'number') {
@@ -370,7 +384,7 @@ export function foldEvent(cards, event) {
         if (d.projectId && !card.projectId) card.projectId = d.projectId;
         card.state = 'finished';
         card.finishedAt = event.at ?? null;
-        card.millis = d.millis ?? null;
+        card.millis = d.millis == null ? null : Math.max(0, d.millis - (card.suspendedMs || 0));
         card.cancelled = !!d.cancelled;
         card.success = typeof d.success === 'boolean' ? d.success : null;
         card.output = []; // the console tail is an in-flight affordance; finished cards are compact
@@ -581,7 +595,8 @@ export function seedFromHistory(cards, records) {
         // must not leave the card spinning forever — history is the durable truth.
         live.state = 'finished';
         live.finishedAt = rec.finishedAt || live.finishedAt || null;
-        live.millis = rec.millis ?? live.millis;
+        live.millis = rec.millis != null ? workMillis(rec) : live.millis;
+        live.suspendedMs = rec.suspendedMillis || 0;
         live.cancelled = !!rec.cancelled;
         if (typeof rec.success === 'boolean') live.success = rec.success;
         live.output = [];
@@ -647,7 +662,8 @@ export function historyCard(rec) {
     startedAt: rec.startedAt ?? null,
     startedAtClient: null,
     finishedAt: running ? null : rec.finishedAt ?? null,
-    millis: running ? null : rec.millis ?? null,
+    millis: running || rec.millis == null ? null : workMillis(rec),
+    suspendedMs: rec.suspendedMillis || 0, // the machine slept or the engine was stopped while it ran
     cancelled: !!rec.cancelled,
     success: running ? null : typeof rec.success === 'boolean' ? rec.success : null,
     modules: historyModules(rec),
@@ -1072,4 +1088,9 @@ export function downloadsOf(d) {
     ? d.rows.map((r) => ({ label: r.label || '', read: r.read || 0, total: typeof r.total === 'number' ? r.total : -1 }))
     : [];
   return { settled, planned, files: d.files || 0, bytes, inflight, rows };
+}
+
+/** A run record's working time: its wall less the time its engine was suspended. */
+function workMillis(rec) {
+  return Math.max(0, (rec.millis || 0) - (rec.suspendedMillis || 0));
 }

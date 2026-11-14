@@ -15,7 +15,9 @@ Status: **normative** for TUI / wire progress. Implementations live under
    of where the truth lands, and a confidence, the chance that it lands within 10% of the
    estimate; a wide range is shown as the range, a very wide one as a rough figure.
 5. **Pauses are not work** — a build fully stalled for memory is on hold: shown as such, its
-   countdown stands still, and the hold teaches no timing. Queueing for a slot is work.
+   countdown stands still, and the hold teaches no timing. Queueing for a slot is work. A spell
+   the engine did not run at all (the machine slept, the engine was stopped) is said the same way
+   and teaches nothing either.
 6. **The bar never goes backwards** and never runs ahead of the estimate.
 7. **Measured** — `bench/eta` scores every change against a corpus of real builds before it lands.
 
@@ -204,6 +206,37 @@ stand still; every surface shows the hold and restores itself on resume:
 A fork's time on hold, and only that, comes off the walls its step teaches the ledger: a slot wait
 or a memory wait while other forks ran is build time. The scorer judges a run on its working time.
 
+**Suspended.** While a job runs, a heartbeat looks at the clocks once a second (`Suspensions`; an
+idle engine does not look). A look that arrives late means the engine was not running: the machine
+slept, hibernated or had its lid closed, the VM was paused, or the process was stopped. Which clock
+sees it depends on the OS: on Linux and macOS the JVM's monotonic clock stops through a suspend and
+only the wall clock moves, on Windows the monotonic clock counts through sleep, and a stopped process
+moves both everywhere. So a gap is the monotonic clock arriving 10 s late, or the wall clock running
+5 s ahead of the monotonic one with the boot clock agreeing (`/proc/uptime` on Linux counts suspended
+time and never steps; where there is no boot clock, 30 s ahead), so an NTP step is not taken for a
+suspend. Every reader of the clocks looks before it reads, so a gap is known before an elapsed time
+that spans it is used. A gap is like a hold that already ended:
+
+- the run records it (`suspensions` in `record.json`, `startedAt` and `millis` each, and their sum
+  `suspendedMillis`), and each step running across it carries `suspendedMillis`;
+- a step that ran across it teaches nothing: the ledger keeps it under the status `SUSPENDED`,
+  which no price reads, and it gives no step wall, class wall, rung-bias pair, effort sample or
+  host rate; a suite that ran across it leaves no curve; the run gives no workspace or invocation
+  wall. Steps wholly before or after it are learned as usual;
+- the countdown and the bar take the time off their clocks and go on from where they stood;
+- JumpKick's own wall-clock watchdogs start their window again: the worker inactivity timeout, the worker
+  connect wait, MCP's parked waits, the scheduler's stall grace; a job's wall deadline does not
+  count the time suspended.
+
+| Surface | Suspended |
+|---------|-----------|
+| TUI | the countdown carries on from where it stood; the summary reads `took 3m 37s, suspended 4m 34s` |
+| Plain | `JumpKick build suspended 4m 34s - the machine slept or jk was stopped`, and the summary |
+| jsonl / wire | `suspended` (`suspendedMs`, `monoMs`, `startedAt`) |
+| History | `jk history` gives the working time under Took and `suspended 4m 34s` under Notes; `jk history show` beside the duration; `jk-results.md` on its headline |
+| Web | the countdown's anchors move by the time away; the run page shows a `suspended 4m 34s` chip beside its working time |
+| MCP | `status` gives each job that was suspended `suspendedMs` under `estimates`; the verdict names the time suspended |
+
 ### Packaging cascade (hard rule)
 
 | If dirty… | Then dirty… |
@@ -264,6 +297,7 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 | `SuiteCurve` | A suite's class share read as the share of its wall: the median of the curves its recent runs measured |
 | `WorkspaceProgressTracker` | Preflight band, bar strategies, peak hold, the hold clock, the range and confidence at the residual |
 | `MemoryHolds` | Which builds are on hold for memory, and for how long |
+| `Suspensions` | When the engine was not running, which jobs ran across it, and for how long |
 | Wire `workspace-progress` / `eta` | `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `confidence`, `state`, `heldMs` |
 
 ### Guards-off invariant (measured)
@@ -325,6 +359,7 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 | `eta` | `millis` (= remaining), `remainingMs`, `fullMillis` (explain), `lowMs`, `highMs`, `confidence` |
 | `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0`, `etaLowMs`, `etaHighMs`, `confidence` (0–1, two decimals); on hold also `state: on-hold`, `heldMs` |
 | `hold-start` / `hold-end` | `needBytes`, `freeBytes` / `heldMs` |
+| `suspended` | `startedAt` (epoch ms), `suspendedMs` (time away), `monoMs` (what the monotonic clock moved across it) |
 | `task-wait` | `dir`, `task`, `reason` (`slot`, `memory`, or `""` once a fork runs); wire only |
 
 ## Learning layout

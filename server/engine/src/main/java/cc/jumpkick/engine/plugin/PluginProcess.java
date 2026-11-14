@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -600,9 +601,11 @@ public final class PluginProcess {
      * otherwise delay it for as long as the spin lasts. Interrupting it ends the watch.
      */
     static Thread startWatchdog(Process process, AtomicLong lastLineAt, long idleTimeoutMs) {
+        Suspensions watch = Suspensions.system();
+        long cursor = watch.cursor();
         return SessionContext.startPlatform("jk-worker-watchdog", () -> {
             while (process.isAlive() || hasLiveDescendant(process)) {
-                long idle = Clock.SYSTEM.millis() - lastLineAt.get();
+                long idle = idleMillis(Clock.SYSTEM.millis(), lastLineAt.get(), watch, cursor);
                 if (idle >= idleTimeoutMs) {
                     forceStop(process);
                     return;
@@ -614,6 +617,15 @@ public final class PluginProcess {
                 }
             }
         });
+    }
+
+    /**
+     * How long the worker has been silent at {@code now}: since its last line, or since the engine
+     * last resumed from a suspend or a stop after {@code cursor}, whichever is later. A suite cannot
+     * print while the machine sleeps, so a sleep longer than the idle timeout is not a hang.
+     */
+    static long idleMillis(long now, long lastLineAt, Suspensions watch, long cursor) {
+        return now - Math.max(lastLineAt, watch.resumedAt(cursor));
     }
 
     private static void forceStop(Process process) {

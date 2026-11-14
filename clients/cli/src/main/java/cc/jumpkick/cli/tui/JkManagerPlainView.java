@@ -434,6 +434,20 @@ final class JkManagerPlainView {
         lastStatus = "";
     }
 
+    /** The engine was not running for {@code suspendedMs}, told on resume. Must hold the manager lock. */
+    void onSuspended(long suspendedMs) {
+        if (m.done || !animating()) return;
+        printPlain(suspendedLine(suspendedMs));
+        lastSubject = "";
+        lastStatus = "";
+    }
+
+    /** The line a plain run prints when the engine resumes from a suspend or a stop. */
+    static String suspendedLine(long suspendedMs) {
+        return "JumpKick build suspended " + DurationText.clockMillis(suspendedMs)
+                + " - the machine slept or jk was stopped";
+    }
+
     /** {@code On hold 45s}: the plain count-up of a hold. */
     static String holdLine(long heldMs) {
         return "On hold " + Math.max(0, heldMs) / 1000L + "s";

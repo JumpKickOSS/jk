@@ -83,6 +83,12 @@ public final class StepLedger {
      */
     private static final StampedMemo<Path, StatIdentity, StepLedger> MEMO = StampedMemo.bounded(8);
 
+    /**
+     * The status of a step that succeeded with the engine stopped (suspended, paused) while it ran:
+     * the ledger keeps that it ran, and no price reads its wall.
+     */
+    public static final String SUSPENDED = "SUSPENDED";
+
     /** One step's wall in a finished run. */
     public record Sample(String dir, String step, String status, long ms) {
         public Sample {
@@ -188,7 +194,8 @@ public final class StepLedger {
     public static Set<String> frontierOf(List<Sample> samples) {
         Set<String> out = new TreeSet<>();
         for (Sample s : samples) {
-            if ("SUCCESS".equals(s.status()) && isMainCompile(s.step())) out.add(s.dir());
+            boolean ran = "SUCCESS".equals(s.status()) || SUSPENDED.equals(s.status());
+            if (ran && isMainCompile(s.step())) out.add(s.dir());
         }
         return out;
     }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -487,12 +488,18 @@ public final class WarmWorkers {
          */
         private boolean awaitConnection(BooleanSupplier cancelled) throws IOException, InterruptedException {
             long deadline = CLOCK.nanos() + WorkerCommands.CONNECT_WAIT.toNanos();
+            long cursor = Suspensions.system().cursor();
             while (!commands.connect(POLL)) {
                 if (Thread.interrupted()) {
                     kill();
                     throw new InterruptedException();
                 }
                 if (!process.isAlive()) return false;
+                // A worker cannot connect while the machine sleeps: the wait starts again on resume.
+                if (Suspensions.system().resumedSince(cursor)) {
+                    cursor = Suspensions.system().cursor();
+                    deadline = CLOCK.nanos() + WorkerCommands.CONNECT_WAIT.toNanos();
+                }
                 if (cancelled.getAsBoolean() || CLOCK.nanos() - deadline > 0) {
                     kill();
                     return false;

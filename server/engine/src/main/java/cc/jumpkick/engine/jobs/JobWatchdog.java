@@ -6,6 +6,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.plugin.WorkerScopes;
+import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
@@ -173,7 +174,9 @@ final class JobWatchdog {
         long nextWait() {
             long wait = heartbeats ? limits.heartbeatMs() : deadline.bounded() ? 1_000L : stallTick();
             if (deadline.bounded()) {
-                long remaining = deadline.ms() - (nowMillis.getAsLong() - start);
+                // The time the engine was not running (a suspend, a stop) is not the job's.
+                long away = Suspensions.system().suspendedMillis(eventRequestId);
+                long remaining = deadline.ms() - (nowMillis.getAsLong() - start - away);
                 if (remaining <= 0) return -1L;
                 wait = Math.min(wait, remaining);
             }
