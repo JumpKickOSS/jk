@@ -10,6 +10,7 @@ import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -241,7 +242,7 @@ public final class PlannerVersions {
                     project.javac(),
                     prepared.javaHome(),
                     layout.classesDir(),
-                    WorkerEnv.keyTokens(project.build().env(), dir));
+                    ModuleEnvKeys.worker(project, dir));
             var pred = JavaCompile.predict(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_VERSIONS, out),
                     req,
@@ -336,7 +337,7 @@ public final class PlannerVersions {
                 project.javac(),
                 ctx.require(JAVA_HOME),
                 mainClasses,
-                WorkerEnv.keyTokens(project.build().env(), in.dir()));
+                ModuleEnvKeys.worker(project, in.dir()));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_VERSIONS, out);
         Path stateDir = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),

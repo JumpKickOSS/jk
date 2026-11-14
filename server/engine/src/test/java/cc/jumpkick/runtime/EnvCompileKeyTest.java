@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -78,11 +79,9 @@ class EnvCompileKeyTest {
         JkBuild build = parse(project);
 
         List<String> tokens = RequestShell.where(
-                Map.of("GEN_MODE", "secret-mode-value", "TEST_ONLY", "x"),
-                () -> WorkerEnv.keyTokens(build.build().env(), project));
-        List<String> withoutTestOnly = RequestShell.where(
-                Map.of("GEN_MODE", "secret-mode-value"),
-                () -> WorkerEnv.keyTokens(build.build().env(), project));
+                Map.of("GEN_MODE", "secret-mode-value", "TEST_ONLY", "x"), () -> ModuleEnvKeys.worker(build, project));
+        List<String> withoutTestOnly =
+                RequestShell.where(Map.of("GEN_MODE", "secret-mode-value"), () -> ModuleEnvKeys.worker(build, project));
 
         assertThat(tokens)
                 .singleElement()
@@ -92,8 +91,7 @@ class EnvCompileKeyTest {
         assertThat(withoutTestOnly)
                 .as("a [test] env name moves no worker key but the suite's")
                 .isEqualTo(tokens);
-        assertThat(RequestShell.where(
-                        Map.of(), () -> WorkerEnv.keyTokens(build.build().env(), project)))
+        assertThat(RequestShell.where(Map.of(), () -> ModuleEnvKeys.worker(build, project)))
                 .as("an unset forwarded name keys apart from a set one")
                 .isNotEqualTo(tokens);
     }
@@ -103,7 +101,7 @@ class EnvCompileKeyTest {
         Files.writeString(project.resolve("jk.toml"), "name = \"demo\"\ngroup = \"com.demo\"\nversion = \"0.1.0\"\n");
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
 
-        assertThat(WorkerEnv.keyTokens(build.build().env(), project)).isEmpty();
+        assertThat(ModuleEnvKeys.worker(build, project)).isEmpty();
     }
 
     private static JkBuild parse(Path project) throws Exception {
@@ -140,7 +138,7 @@ class EnvCompileKeyTest {
                 null,
                 null,
                 false,
-                WorkerEnv.keyTokens(build.build().env(), project)));
+                ModuleEnvKeys.worker(build, project)));
         return ActionKey.forJavac("compile-java", request, "test");
     }
 }

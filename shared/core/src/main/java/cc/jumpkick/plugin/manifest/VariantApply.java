@@ -2,13 +2,10 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Scope;
@@ -22,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -237,8 +233,8 @@ public final class VariantApply {
      */
     private static String resolveEnv(
             String raw, @Nullable Map<String, String> clientEnv, Path moduleDir, String where) {
-        if (!raw.startsWith("env:")) return raw;
-        String name = raw.substring("env:".length()).trim();
+        if (!raw.startsWith(EnvRead.PLUGIN_PREFIX)) return raw;
+        String name = raw.substring(EnvRead.PLUGIN_PREFIX.length()).trim();
         // Prefer the client-shipped map (caller's shell) then BuildEnv (.env + session + process).
         String v = clientEnv == null ? null : clientEnv.get(name);
         if (v == null && moduleDir != null) {
@@ -260,12 +256,8 @@ public final class VariantApply {
     /**
      * Every environment variable name this manifest depends on, for the client to resolve and ship
      * with the request — the client sends the engine nothing else of the caller's shell beyond
-     * what the engine reads for itself ({@code RequestEnvNames}).
-     *
-     * <p>One list over every vocabulary a manifest has: the names {@code [env]} declares, the
-     * {@code ${NAME}} references in its values and in {@code [test] env}'s, the bare names {@code
-     * [test] env} forwards, and {@code env:NAME} in a plugin's table. {@link #WHOLE_SHELL} when the
-     * manifest inherits the caller's environment.
+     * what the engine reads for itself ({@code RequestEnvNames}). The names of {@link EnvRead#of};
+     * {@link #WHOLE_SHELL} when the manifest inherits the caller's environment.
      */
     public static List<String> envRefs(JkBuild build) {
         return envRefs(List.of(build));
@@ -278,38 +270,9 @@ public final class VariantApply {
      */
     public static List<String> envRefs(Collection<JkBuild> builds) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
-        for (JkBuild build : builds) collectEnvRefs(build, names);
+        for (JkBuild build : builds) {
+            for (EnvRead read : EnvRead.of(build)) names.addAll(read.names());
+        }
         return List.copyOf(names);
-    }
-
-    private static void collectEnvRefs(JkBuild build, LinkedHashSet<String> names) {
-        if (build.build().env().inherit()) names.add(WHOLE_SHELL);
-        for (PluginConfig config : build.pluginConfigs().values()) {
-            collectEnvRefs(config.values(), names);
-        }
-        for (EnvDecl decl : build.build().testEnvDecls()) {
-            switch (decl) {
-                case EnvDecl.Forward forward -> names.add(forward.name());
-                case EnvDecl.Set set -> collectReferences(set.value(), names);
-            }
-        }
-    }
-
-    /** The {@code ${NAME}} references in one value, minus jk's own layout tokens. */
-    private static void collectReferences(String value, Set<String> names) {
-        for (String name : Interpolation.references(value)) {
-            if (!TestEnvValues.isPathToken(name)) names.add(name);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void collectEnvRefs(Map<String, Object> values, Set<String> names) {
-        for (Object v : values.values()) {
-            if (v instanceof String s && s.startsWith("env:")) {
-                names.add(s.substring("env:".length()).trim());
-            } else if (v instanceof Map<?, ?> m) {
-                collectEnvRefs((Map<String, Object>) m, names);
-            }
-        }
     }
 }

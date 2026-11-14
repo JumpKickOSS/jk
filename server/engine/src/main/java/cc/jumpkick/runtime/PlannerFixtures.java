@@ -10,6 +10,7 @@ import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -156,7 +157,7 @@ public final class PlannerFixtures {
                 javacArgs,
                 project.javac(),
                 javaHome,
-                WorkerEnv.keyTokens(project.build().env(), dir));
+                ModuleEnvKeys.worker(project, dir));
         String fxTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, layout.testFixturesClassesDir());
         Path fxState = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(cache)),
@@ -230,7 +231,7 @@ public final class PlannerFixtures {
                             javacArgs,
                             project.javac(),
                             ctx.require(JAVA_HOME),
-                            WorkerEnv.keyTokens(project.build().env(), in.dir()));
+                            ModuleEnvKeys.worker(project, in.dir()));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, out);
                     Path stateDir = ActionKey.stateDir(
                             ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),

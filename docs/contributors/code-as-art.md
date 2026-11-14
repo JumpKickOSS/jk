@@ -1011,6 +1011,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G146 | a `TestSuites.resolve` or `TestSelection.resolve` in server/engine outside `TestStampInputs.resolveSuites`: suites resolved from the raw selection are suites a run stamps and does not run, or runs and does not stamp | ban, no allowlist | `test-suites-resolve-owner` (forbid) |
 | G147 | a `ResolvedSecrets.plus` or `SecretRedactor.from` in server or shared main outside `BuildEnv`: a sink composing its own redactor masks less than the wire (the test reports once masked only filed credentials, not `.env` names) | ban; the run-tests stamp's value hashing is an allow entry | `redactor-owner` (forbid) |
 | G148 | a git command line spelled by hand (`List.of("git", …)`, `new ProcessBuilder("git", …)`, `.add("git")`) outside `cc.jumpkick.host.GitCommand`, in main, test or fixture code: it runs without the options git needs on every host, and on Windows fails once a path passes 260 characters | text over every Java source set, comment-blind, owner `GitCommand` | `git-command-owner` (text) |
+| G149 | a `TestEnvValues.resolve` in server main outside `ModuleEnvKeys`: an environment value keyed elsewhere is one the preflight memo and the forecast never see (a plugin's `env:NAME` once moved the packager key while the memo vouched for the module) | ban; the two launch-side resolutions (`WorkerEnv`, `TestEnv`) are allow entries | `env-key-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1058,6 +1059,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | engine-log-owner | forbid | a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink |
 | engine-off-virtual-threads | forbid | a virtual thread that loads a class or computes pins its carrier, and with every carrier pinned the engine stops |
 | engine-static-memo | statics | a static memo in the resident engine outlives every build that filled it and goes stale or grows for days |
+| env-key-owner | forbid | an environment value keyed outside ModuleEnvKeys is one the preflight memo and the forecast never see |
 | executors-through-jkthreads | forbid | a pool of one's own carries no request onto its tasks unless each is wrapped by hand |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
 | git-command-owner | text | a git command spelled by hand runs without long paths, and fails on Windows once a path passes 260 characters |

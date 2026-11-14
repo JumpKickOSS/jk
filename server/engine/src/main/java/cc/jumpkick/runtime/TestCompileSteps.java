@@ -13,6 +13,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompilerJdk;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -368,8 +369,7 @@ final class TestCompileSteps {
                         mainClasses(ctx),
                         classpaths.testProcessorDiscovery(),
                         CompilerJdk.pinned(ctx.require(MODULE).project(), in.session()),
-                        WorkerEnv.keyTokens(
-                                ctx.require(MODULE).project().build().env(), in.dir())),
+                        ModuleEnvKeys.worker(ctx.require(MODULE).project(), in.dir())),
                 genDir,
                 cas,
                 in.cache(),
@@ -503,7 +503,7 @@ final class TestCompileSteps {
                     layout.classesDir(),
                     prepared.classpaths().testProcessorDiscovery(),
                     CompilerJdk.pinned(s.project, SessionContext.current()),
-                    WorkerEnv.keyTokens(s.project.build().env(), layout.moduleRoot())));
+                    ModuleEnvKeys.worker(s.project, layout.moduleRoot())));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path stateDir = ActionKey.stateDir(
                     ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(s.cache)),

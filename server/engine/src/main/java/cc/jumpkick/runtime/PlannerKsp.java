@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.PlannerPlugin.beforeCompile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -589,7 +590,7 @@ public final class PlannerKsp {
         parts.add("moduleName:" + project.project().name());
         for (String option : kspOptions(project, moduleDir, lock)) parts.add("option:" + option);
         // The round forks with the module's [env], and a KSP processor can read it.
-        parts.addAll(WorkerEnv.keyTokens(project.build().env(), moduleDir));
+        parts.addAll(ModuleEnvKeys.worker(project, moduleDir));
         return FreshnessStamp.optionsDigest(parts);
     }
 

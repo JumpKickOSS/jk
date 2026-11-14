@@ -2,14 +2,12 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -35,7 +33,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -176,8 +173,8 @@ public record TestStampInputs(
      * those reads on its next stamp.
      */
     List<String> extras() throws IOException {
-        List<String> extras = new ArrayList<>(testStampExtras(
-                facts.workerJars(), selection, facts.project().build(), jvmArgs, facts.dir(), identity));
+        List<String> extras = new ArrayList<>(
+                testStampExtras(facts.workerJars(), selection, facts.project(), jvmArgs, facts.dir(), identity));
         extras.add(suitesToken(suites));
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
@@ -333,37 +330,18 @@ public record TestStampInputs(
     }
 
     /**
-     * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}. There is
-     * deliberately no lookup-free overload: it would silently skip both expansion and hashing and
-     * produce a key that disagrees with this one.
+     * Stamp extras. Declared {@code [env]} and {@code [test] env} values only, as {@link
+     * ModuleEnvKeys#testJvm} keys them (sandbox defaults stay out — they are absolute paths that
+     * would defeat cache sharing).
      */
     private static List<String> testStampExtras(
             Map<String, String> workerJars,
             TestSelection selection,
-            BuildBlock build,
+            JkBuild project,
             List<String> jvmArgs,
             Path moduleDir,
             ClasspathFingerprint.EntryIdentity identity) {
-        EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        List<String> extras = new ArrayList<>(testStampExtras(
-                workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, moduleDir, identity));
-        extras.addAll(SuiteEnvKeys.tokens(build, moduleDir, selection == null ? TestSelection.DEFAULT : selection));
-        return extras;
-    }
-
-    /**
-     * Stamp extras. Declared {@code [env] vars} and {@code [test] env} values only (sandbox defaults
-     * stay out — they are absolute paths that would defeat cache sharing).
-     */
-    private static List<String> testStampExtras(
-            Map<String, String> workerJars,
-            TestSelection selection,
-            BuildBlock build,
-            List<String> jvmArgs,
-            SecretRedactor redactor,
-            EnvLookup lookup,
-            Path moduleDir,
-            ClasspathFingerprint.EntryIdentity identity) {
+        BuildBlock build = project.build();
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome.
@@ -390,19 +368,8 @@ public record TestStampInputs(
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         List<String> userArgs = JvmOptions.suiteUserArgs();
         if (!userArgs.isEmpty()) extras.add("jvm-user-args:" + String.join(" ", userArgs));
-        // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
-        // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,
-        // a .env-sourced value is hashed, and an unset ${VAR} fails here exactly as it fails at
-        // launch — a manifest jk cannot fork must never forecast as "tests cached".
-        // The launch-side directories are not passed: the mode, not the caller, decides what the
-        // two path tokens mean, and this mode keeps them literal.
-        var mode = new TestEnvValues.Mode.CacheKey(lookup, redactor);
-        var resolved =
-                new LinkedHashMap<>(TestEnvValues.resolve("[env]", build.env().decls(), null, null, mode));
-        resolved.putAll(TestEnvValues.resolve("[test].env", build.testEnv(), null, null, mode));
-        for (Map.Entry<String, String> e : resolved.entrySet()) {
-            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
-        }
+        // What the test JVM is handed of the environment changes what the suite sees, so it retests.
+        extras.addAll(ModuleEnvKeys.testJvm(project, moduleDir));
         // [test] tools by identity — where the name resolves on the PATH the test JVM gets and what
         // it says to --version — so a node or git upgrade retests the suites that shell out to it.
         String path = BuildEnv.machine().get("PATH");
@@ -420,6 +387,7 @@ public record TestStampInputs(
             }
             extras.add("worker:" + e.getKey() + "=" + fp);
         }
+        extras.addAll(SuiteEnvKeys.tokens(build, moduleDir, selection == null ? TestSelection.DEFAULT : selection));
         return extras;
     }
 }

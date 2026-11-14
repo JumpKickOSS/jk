@@ -10,6 +10,7 @@ import cc.jumpkick.compile.KotlincSnapshots;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -147,7 +148,7 @@ public final class PlannerLang {
             Path javaHome,
             /** The mixed module's Java roots {@code -Xjava-source-roots} in {@code args} names; empty otherwise. */
             List<Path> javaSourceRoots,
-            /** The module's {@code [env]} as key tokens ({@link WorkerEnv#keyTokens}). */
+            /** The module's {@code [env]} as key tokens ({@link ModuleEnvKeys#worker}). */
             List<String> env) {
         KotlinConfig {
             args = List.copyOf(args);
@@ -411,7 +412,7 @@ public final class PlannerLang {
         parts.add("jvmTarget:" + CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)));
         parts.add("jdk:" + groovyJdkToken());
         for (String arg : groovyArgs(project, lock, moduleDir)) parts.add("arg:" + arg);
-        parts.addAll(WorkerEnv.keyTokens(project.build().env(), moduleDir));
+        parts.addAll(ModuleEnvKeys.worker(project, moduleDir));
         return FreshnessStamp.optionsDigest(parts);
     }
 
@@ -494,7 +495,7 @@ public final class PlannerLang {
                 project.project().name(),
                 javaHome,
                 javaSourceRoots == null ? List.of() : javaSourceRoots,
-                WorkerEnv.keyTokens(project.build().env(), moduleDir));
+                ModuleEnvKeys.worker(project, moduleDir));
     }
 
     /** {@link #kotlinConfig} from the running step's published state, for the module being built. */
@@ -642,7 +643,7 @@ public final class PlannerLang {
                 .jvmTarget(CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)))
                 .workerClasspath(gv.workerClasspath())
                 .extraArgs(gvArgs)
-                .env(WorkerEnv.keyTokens(project.build().env(), moduleDir))
+                .env(ModuleEnvKeys.worker(project, moduleDir))
                 .build();
     }
 

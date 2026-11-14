@@ -466,7 +466,9 @@ for test JVMs only. Each value keys the work that can read it: `[env]` keys a co
 annotation processors or a javac plugin, a Kotlin compile with a compiler plugin, every Groovy
 compile (a global AST transform can read it), every KSP round, plugin step and plugin packager,
 a `[jlink]` image that trains a startup cache, and the run-tests key; `[test] env` keys the run-tests
-key alone, so a variable declared for the tests never rebuilds a compile. A declared variable that
+key alone, so a variable declared for the tests never rebuilds a compile. A plugin table's
+`env:NAME` value (`store-file = "env:KEYSTORE_FILE"`) keys that plugin's steps and packager
+the same way, from the shell or the module's `.env`. A declared variable that
 changes between two builds reruns that work, `jk build -S` included, and one nothing declares
 cannot — [Test](test.md). A value taken from the environment enters a key as its SHA-256, never as text,
 so the key can travel to another machine. A declared name that reads as

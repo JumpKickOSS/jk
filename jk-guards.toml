@@ -1477,8 +1477,29 @@ instead    = "BuildEnv.secretsFor(moduleDir), or BuildEnv.secretsFor(null) for w
 why        = "a sink with a redactor of its own masks less than the wire, and a CI job that publishes it leaks what the terminal hid"
 
 [[guards.redactor-owner.allow]]
-in     = "cc.jumpkick.runtime.TestStampInputs"
-reason = "hashes the .env values its own lookup resolved into the run-tests stamp; it writes no text anywhere"
+in     = "cc.jumpkick.engine.plugin.ModuleEnvKeys"
+reason = "hashes the .env values its own lookup resolved into step keys and the run-tests stamp; it writes no text anywhere"
+
+# G149. A manifest's environment values are keyed in one place. ModuleEnvKeys turns every read
+# EnvRead lists into the tokens the preflight memo, the step keys and the forecast carry; a value
+# resolved for a key anywhere else is one the memo can vouch for while it moves.
+[guards.env-key-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.config.TestEnvValues#resolve(**)"]
+scope      = ["server/*"]
+source-set = "main"
+owner      = "cc.jumpkick.engine.plugin.ModuleEnvKeys"
+fixture    = "server/engine/guard-fixtures/env-key-owner"
+instead    = "ModuleEnvKeys.worker, plugin or testJvm for a key; WorkerEnv.declared for a launch"
+why        = "an environment value keyed outside ModuleEnvKeys is one the preflight memo and the forecast never see"
+
+[[guards.env-key-owner.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerEnv"
+reason = "resolves [env] for a worker's launch, the values the keys hash in ModuleEnvKeys"
+
+[[guards.env-key-owner.allow]]
+in     = "cc.jumpkick.runtime.base.TestEnv"
+reason = "resolves [test] env for the test JVM's launch, the values the stamp hashes in ModuleEnvKeys"
 
 # G97. A catch of Exception, Throwable or RuntimeException whose body is only a comment has written
 # down its intent and dropped its evidence. This rule measures the sites; the ratchet below holds

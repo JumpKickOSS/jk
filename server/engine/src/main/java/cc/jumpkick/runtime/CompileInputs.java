@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
-import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
@@ -115,7 +115,7 @@ final class CompileInputs {
                 scala,
                 new ProcessorResources(m.dir(), m.project(), m.shape().compact()),
                 m.pinnedJdk(),
-                WorkerEnv.keyTokens(m.project().build().env(), m.dir()));
+                ModuleEnvKeys.worker(m.project(), m.dir()));
     }
 
     /**

@@ -9,6 +9,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.JlinkImage;
 import cc.jumpkick.compile.LibDirLayout;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
@@ -94,7 +95,7 @@ final class PlannerJlink {
                     // The training run starts the application under the module's [env].
                     if (cacheKind != JlinkImage.Cache.NONE) {
                         tokens = new ArrayList<>(tokens);
-                        tokens.addAll(WorkerEnv.keyTokens(project.build().env(), layout.moduleRoot()));
+                        tokens.addAll(ModuleEnvKeys.worker(project, layout.moduleRoot()));
                     }
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JLINK, image);
                     String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);

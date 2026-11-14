@@ -11,6 +11,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -151,7 +152,7 @@ public final class PlannerGuardSuite {
                 release,
                 javacArgs,
                 javaHome,
-                WorkerEnv.keyTokens(project.build().env(), dir));
+                ModuleEnvKeys.worker(project, dir));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GUARD, layout.guardClassesDir());
         Path state = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(cache)),
@@ -221,7 +222,7 @@ public final class PlannerGuardSuite {
                             ctx.require(PARSED_BUILD).release(),
                             ctx.require(PARSED_BUILD).javacArgs(),
                             ctx.require(JAVA_HOME),
-                            WorkerEnv.keyTokens(project.build().env(), in.dir()));
+                            ModuleEnvKeys.worker(project, in.dir()));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GUARD, out);
                     Path stateDir = ActionKey.stateDir(
                             ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),

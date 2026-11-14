@@ -10,6 +10,7 @@ import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
@@ -652,8 +653,8 @@ public final class PlannerPlugin {
                     // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
                     // plugins restores output built against the old platform.
                     tokens.add("jdk:" + ActionKey.jdkToken(javaHome));
-                    // The step forks with the module's [env] (workerEnv), and its body can read it.
-                    tokens.addAll(WorkerEnv.keyTokens(project.build().env(), in.dir()));
+                    // The step forks with the module's [env] and reads its plugin config, env:NAME values included.
+                    tokens.addAll(ModuleEnvKeys.plugin(project, in.dir()));
                     // The step's CODE is an input: a changed plugin jar must re-run the
                     // step, or a plugin upgrade (or first-party dev iteration) silently restores
                     // outputs produced by the old code.

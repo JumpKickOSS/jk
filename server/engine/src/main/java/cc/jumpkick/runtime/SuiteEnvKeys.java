@@ -5,7 +5,6 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
@@ -20,10 +19,9 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What reaches a suite besides its declared inputs, as run-tests stamp tokens: the locale and
- * terminal variables every test JVM inherits, the whole inherited environment of a module that
- * says {@code [env] inherit}, jk's test runner by content, and the inputs its runs were found to
- * read ({@link SuiteReads}).
+ * What reaches a suite besides its declared inputs, as run-tests stamp tokens: the locale every
+ * test JVM inherits, jk's test runner by content, and the inputs its runs were found to read
+ * ({@link SuiteReads}). What the manifest hands it of the environment is {@link ModuleEnvKeys}'s.
  */
 final class SuiteEnvKeys {
 
@@ -34,11 +32,6 @@ final class SuiteEnvKeys {
         // The locale every test JVM is seeded with (TestEnv), the caller's over the engine's. Its
         // TERM is fixed, so it keys nothing.
         BuildEnv.locale().forEach((name, value) -> out.add("machine-env:" + name + "=" + value));
-        if (build.env().inherit()) {
-            // The whole environment reaches the suite: every value keys it, by digest, less what
-            // differs between two terminals of one machine.
-            out.add(WorkerEnv.inheritedKeyToken());
-        }
         // The runner that launches the suite and reads its outcome is part of every run.
         try {
             for (String token : WorkerClosure.tokens(PluginJar.TEST_RUNNER)) out.add("runner:" + token);

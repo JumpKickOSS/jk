@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * output. A null {@link #outputDir()} is check-only ({@code jk check}). {@code resourcesDigest} is
  * the digest of the main resources copied into the output ahead of a compile that runs processors,
  * which can read them back; null when none run, or for a compile that has no such resources.
- * {@code env} is the module's {@code [env]} as key tokens ({@code WorkerEnv.keyTokens}): the
+ * {@code env} is the module's {@code [env]} as key tokens ({@code ModuleEnvKeys.worker}): the
  * environment the compiler worker is handed, which a processor or a javac plugin can read.
  */
 @Builder
