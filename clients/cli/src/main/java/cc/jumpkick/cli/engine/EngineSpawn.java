@@ -27,6 +27,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HelloAckFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -922,8 +923,10 @@ public final class EngineSpawn {
      * plugin-jar location overrides (e.g. {@code -Djk.test.runner.jar=…} from a test JVM —
      * PluginJar.locate reads System.getProperty there), the worker startup-cache switch so nested
      * engines honour {@code jk.worker.aot}, the {@code jk.env.*} layout overlays (JkDirs test seam)
-     * so a spawned engine resolves the same store/state the client did, and the owner pid a sandbox
-     * names so its engine dies with it.
+     * so a spawned engine resolves the same store/state the client did, the transport override so
+     * the engine binds the lane this client connects on (a socket the client reads as a port file, or
+     * the reverse, refuses every connect), and the owner pid a sandbox names so its engine dies with
+     * it.
      *
      * <p>Never {@code jk.plugin.class}: that is a client/test-runner host signal that would load
      * workspace/test plugin overlays inside the engine.
@@ -934,6 +937,7 @@ public final class EngineSpawn {
         return key.endsWith(".jar")
                 || key.equals("jk.worker.aot")
                 || key.startsWith("jk.env.")
+                || key.equals(EngineTransport.TRANSPORT_PROPERTY)
                 || key.equals(OWNER_PID_PROPERTY);
     }
 

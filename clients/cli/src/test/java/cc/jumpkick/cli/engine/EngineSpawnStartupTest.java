@@ -48,10 +48,14 @@ class EngineSpawnStartupTest {
         Thread winner = Thread.ofVirtual().start(() -> {
             try {
                 Thread.sleep(700);
-                ScriptedEngine engine =
-                        new ScriptedEngine(socket, (type, connection) -> ScriptedEngine.helloAck(VERSION, 4242));
-                Thread.sleep(5_000);
-                engine.close();
+                // Closed however the thread ends: the test interrupts it, and an engine left open
+                // leaves its transport override set for every later test in this JVM.
+                try (ScriptedEngine engine =
+                        new ScriptedEngine(socket, (type, connection) -> ScriptedEngine.helloAck(VERSION, 4242))) {
+                    Thread.sleep(5_000);
+                }
+            } catch (InterruptedException done) {
+                // The wait is over.
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
