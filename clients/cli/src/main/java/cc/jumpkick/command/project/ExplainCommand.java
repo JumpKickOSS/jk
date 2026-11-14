@@ -25,6 +25,7 @@ import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ModuleSelectors;
+import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.config.SessionContext;
@@ -197,6 +198,9 @@ public final class ExplainCommand implements CliCommand {
             int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain");
             if (lockCode != 0) return lockCode;
         }
+        // The variant and the declared variables the build would run with, as `jk build` installs
+        // them: after the lock, whose refresh drops the project summaries they are read from.
+        VariantSelection.install(in, startDir);
         try (Spinner prep = livePrep ? CommandWedge.analyzingStdout("Explain", "Calculating build plan…") : null) {
             // Forecast via engine: graph + per-step plan + schedule-aware ETA. The selector tokens
             // and the entry dir are the ones `jk build` sends from this cwd — the workspace root

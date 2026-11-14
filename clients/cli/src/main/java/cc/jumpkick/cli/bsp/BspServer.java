@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.config.DebugJvm;
@@ -286,6 +287,8 @@ public final class BspServer {
     private synchronized void invalidateModel() {
         cachedModel = null;
         cachedInfo = null;
+        // The names the requests carry are read from these summaries; a reload re-reads jk.toml.
+        ProjectInfos.forget();
     }
 
     private synchronized IdeWireModel model() throws IOException {
