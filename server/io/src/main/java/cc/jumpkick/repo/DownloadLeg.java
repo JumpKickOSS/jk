@@ -183,8 +183,13 @@ final class DownloadLeg {
                 verifyUpstreamChecksum(coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
             }
             streamed.transfer().finished();
-        } catch (IOException | InterruptedException e) {
-            Files.deleteIfExists(tmp);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            // Whatever failed the leg, its temp is a whole artifact nothing will read.
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException deleting) {
+                e.addSuppressed(deleting);
+            }
             throw e;
         } finally {
             // Rejected bytes leave as they came: streamed, never counted as landed.
