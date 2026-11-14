@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.ShelfManifest;
@@ -637,25 +636,31 @@ public final class InstallCommand {
         for (var m : result.modules()) {
             if (m.success() && m.installed() != null) outcomes.add(m.installed());
         }
-        for (Map.Entry<Path, ProjectInfo> entry : InstallOrder.ordered(installed, infoByDir, this::projectInfo)) {
-            Path mod = entry.getKey();
-            ProjectInfo info = entry.getValue();
-            // A coordinator root builds as a unit but publishes nothing — announcing it would
-            // claim an install the plan never carried a `cache-install` step for.
-            if (info.coordinatorOnly()) continue;
-            Path launcher = null;
-            boolean productLib = !info.productLib().isBlank();
-            boolean productBin = !info.productBin().isBlank();
-            if ((productLib || productBin) && installHold == null) {
-                installHold = InstallLock.exclusive("jk " + verb + " (installing jk)");
+        EngineInstall.Pass jk = new EngineInstall(JkDirs.productLib()).pass();
+        // A pass cut short still records the client it put in place.
+        try {
+            for (Map.Entry<Path, ProjectInfo> entry : InstallOrder.ordered(installed, infoByDir, this::projectInfo)) {
+                Path mod = entry.getKey();
+                ProjectInfo info = entry.getValue();
+                // A coordinator root builds as a unit but publishes nothing — announcing it would
+                // claim an install the plan never carried a `cache-install` step for.
+                if (info.coordinatorOnly()) continue;
+                Path launcher = null;
+                boolean productLib = !info.productLib().isBlank();
+                boolean productBin = !info.productBin().isBlank();
+                if ((productLib || productBin) && installHold == null) {
+                    installHold = InstallLock.exclusive("jk " + verb + " (installing jk)");
+                }
+                if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
+                    launcher = applyInstallPlan(mod, pass.cacheDir(), info.productLib(), info.productBin(), jk);
+                }
+                if (productBin && launcher != null) installedClient = launcher;
+                String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
+                lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
+                modules++;
             }
-            if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
-                launcher = applyInstallPlan(mod, pass.cacheDir(), info.productLib(), info.productBin());
-            }
-            if (productBin && launcher != null) installedClient = launcher;
-            String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
-            lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
-            modules++;
+        } finally {
+            jk.finish();
         }
         pinShelf(pass, result).ifPresent(lines::add);
         return new Applied(modules, outcomes, lines);
@@ -898,9 +903,11 @@ public final class InstallCommand {
      * plan (link set + launcher script or a direct native-binary link); this process applies it —
      * copy each pair, write the launcher, mark executables. Returns the launcher path. A module
      * that declares {@code [install] product-lib} is materialized into jk's own product library
-     * instead of linked into {@code ~/.jk/bin}.
+     * instead of linked into {@code ~/.jk/bin}; jk's own client and engine go through {@code jk}, which
+     * records them as one install.
      */
-    private @Nullable Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib, String productBin)
+    private @Nullable Path applyInstallPlan(
+            Path projectDir, Path cacheDir, String productLib, String productBin, EngineInstall.Pass jk)
             throws IOException {
         ExecPlan plan = EngineClient.execPlan(
                 EnginePaths.current(),
@@ -928,7 +935,7 @@ public final class InstallCommand {
             if (src == null) return null;
             String version = engineInstallVersion(projectDir, src);
             InstallOrder.refuseOlderPathClient(binDir(), version, InstallOrder.PathClientVersion.ASK);
-            new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.storeCas(), src);
+            jk.engine(version, JkStores.storeCas(), src);
             return null; // a jar the client launches — no launcher/bin to link
         }
         if (!productBin.isBlank()) {
@@ -946,12 +953,10 @@ public final class InstallCommand {
                 }
                 return jvmLauncher;
             }
-            return installProductBin(
-                    Path.of(plan.linkSrcs().get(0)),
-                    binDir(),
-                    JkStores.storeCas(),
-                    new EngineInstall(JkDirs.productLib()),
-                    checkoutCommit(projectDir));
+            // Ingested into the CAS and copied from that immutable blob, as `jk self update` installs
+            // a release: a link into target/ would alias whatever the next build writes there.
+            return jk.placeNative(
+                    Path.of(plan.linkSrcs().get(0)), binDir(), JkStores.storeCas(), checkoutCommit(projectDir));
         }
         // The jars land first and the launcher last: a launcher on PATH never names a jar that is
         // not there yet.
@@ -966,35 +971,6 @@ public final class InstallCommand {
         Path bin = Path.of(plan.binPath());
         markExecutable(bin);
         return bin;
-    }
-
-    /**
-     * jk's own client replaces the PATH client. The built binary is ingested into the CAS and the
-     * {@code bin/} entry linked from that immutable blob, exactly as {@code jk self update} installs
-     * a release — a link straight into {@code target/} would make the installed client an alias of
-     * whatever the next build writes there. The previous client is parked as {@code .old}, so the
-     * process running this install keeps its inode; {@code jkx} is re-linked to the new binary.
-     */
-    public static Path installProductBin(Path builtBinary, Path binDir, Cas cas) throws IOException {
-        return installProductBin(builtBinary, binDir, cas, null, null);
-    }
-
-    /**
-     * As {@link #installProductBin(Path, Path, Cas)}, naming the client in the engine's install
-     * pointer ({@link EngineInstall#recordClient}) as the one paired with its engine, which keeps it
-     * in the store for {@code jk self rollback}, with {@code commit}, the checkout the client was built from: a
-     * snapshot's native client carries no commit of its own, so {@code jk --version -v} reads it there.
-     */
-    public static Path installProductBin(
-            Path builtBinary, Path binDir, Cas cas, @Nullable EngineInstall pointer, @Nullable String commit)
-            throws IOException {
-        String sha = Hashing.sha256Hex(builtBinary);
-        cas.putFile(builtBinary, sha);
-        EngineInstall.installBinaries(cas.pathFor(sha), binDir);
-        if (pointer != null) {
-            pointer.recordClient(new EngineInstall.InstalledClient(sha, EngineInstall.ClientKind.NATIVE, commit));
-        }
-        return binDir.resolve(BuildLayout.nativeExecutableFileName("jk"));
     }
 
     /**

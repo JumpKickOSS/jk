@@ -376,6 +376,50 @@ public final class EngineInstall {
     /** What {@link #install} put in place: the engine, and the client's path when it placed one. */
     public record Installed(Materialized engine, @Nullable Path client) {}
 
+    /** A new {@link Pass} over this install. */
+    public Pass pass() {
+        return new Pass();
+    }
+
+    /**
+     * One install that puts a native PATH client and the engine in place as separate steps, the
+     * client first (a checkout install of jk's own modules). The client is recorded with the
+     * engine step, so the install the pass replaces, engine and client, becomes the previous one
+     * whole; recorded any earlier, the pointer would pair the old engine with the new client and a
+     * rollback would leave the new client in place. A pass with no engine step records the client
+     * alone at {@link #finish}.
+     */
+    public final class Pass {
+        private @Nullable InstalledClient placed;
+
+        private Pass() {}
+
+        /**
+         * Ingest {@code built} into {@code cas} and put a copy of that blob in place as the PATH
+         * client under {@code binDir}, built from {@code commit} ({@code null}: not known).
+         */
+        public Path placeNative(Path built, Path binDir, Cas cas, @Nullable String commit) throws IOException {
+            String sha = Hashing.sha256Hex(built);
+            cas.putFile(built, sha);
+            installBinaries(cas.pathFor(sha), binDir);
+            placed = new InstalledClient(sha, ClientKind.NATIVE, commit);
+            return pathClient(binDir);
+        }
+
+        /** Ingest {@code engineJar} and materialize it as {@code version}, paired with the client placed so far. */
+        public Materialized engine(String version, Cas cas, Path engineJar) throws IOException {
+            Materialized m = materializeFromFiles(version, cas, engineJar, false, placed);
+            placed = null;
+            return m;
+        }
+
+        /** Record a client placed after the engine step, or by a pass that had none. */
+        public void finish() throws IOException {
+            if (placed != null) recordClient(placed);
+            placed = null;
+        }
+    }
+
     /**
      * Throw the refusal {@link #materialize(String, Cas, String, boolean)} would, without changing
      * anything: an install that must not end half done asks first.

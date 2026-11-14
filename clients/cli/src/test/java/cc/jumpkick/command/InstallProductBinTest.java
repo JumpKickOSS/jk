@@ -4,7 +4,9 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.command.pipeline.InstallCommand;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.tool.AppLauncher;
@@ -12,7 +14,11 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -33,7 +39,8 @@ class InstallProductBinTest {
         Path built =
                 Files.writeString(Files.createDirectories(tmp.resolve("target")).resolve(nativeName), "new client");
 
-        Path installed = InstallCommand.installProductBin(built, bin, new Cas(tmp.resolve("cas")));
+        Path installed =
+                new EngineInstall(tmp.resolve("lib")).pass().placeNative(built, bin, new Cas(tmp.resolve("cas")), null);
 
         assertThat(installed).isEqualTo(bin.resolve(nativeName));
         assertThat(bin.resolve(nativeName)).hasContent("new client");
@@ -49,6 +56,76 @@ class InstallProductBinTest {
         // The bin entry is not an alias of target/: rebuilding there leaves the install alone.
         Files.writeString(built, "next build");
         assertThat(bin.resolve(nativeName)).hasContent("new client");
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_checkout_install_records_the_client_it_replaces_and_a_rollback_puts_it_back(@TempDir Path tmp)
+            throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Cas cas = new Cas(tmp.resolve("cas"));
+        EngineInstall pointer = new EngineInstall(tmp.resolve("lib"));
+        Path target = Files.createDirectories(tmp.resolve("target"));
+        Path clientA = Files.writeString(target.resolve("jk-a"), "client 0.51.0-SNAPSHOT");
+        Path clientB = Files.writeString(target.resolve("jk-b"), "client 0.51.0");
+        Path engineA = Files.writeString(target.resolve("jk-engine-a.jar"), "engine 0.51.0-SNAPSHOT");
+        Path engineB = Files.writeString(target.resolve("jk-engine-b.jar"), "engine 0.51.0");
+
+        // The snapshot install, then the release install over it: each pass puts the client in
+        // place before the engine, as a checkout install orders them.
+        installJk(pointer, clientA, bin, cas, "aaaa", engineA, "0.51.0-SNAPSHOT");
+        installJk(pointer, clientB, bin, cas, null, engineB, "0.51.0");
+
+        EngineInstall.Install previous = pointer.previousInstall().orElseThrow();
+        assertThat(previous.version()).isEqualTo("0.51.0-SNAPSHOT");
+        EngineInstall.InstalledClient replaced = Objects.requireNonNull(previous.client());
+        assertThat(replaced.sha256()).isEqualTo(Hashing.sha256Hex(clientA));
+        assertThat(replaced.commit()).isEqualTo("aaaa");
+        assertThat(pointer.liveClient().orElseThrow().sha256()).isEqualTo(Hashing.sha256Hex(clientB));
+
+        pointer.rollback(cas, EngineInstall.nativeClients(bin));
+
+        assertThat(EngineInstall.pathClient(bin)).hasContent("client 0.51.0-SNAPSHOT");
+        assertThat(pointer.currentInstall().orElseThrow().version()).isEqualTo("0.51.0-SNAPSHOT");
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_pass_that_replaces_only_the_client_keeps_the_previous_install(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Cas cas = new Cas(tmp.resolve("cas"));
+        EngineInstall pointer = new EngineInstall(tmp.resolve("lib"));
+        Path target = Files.createDirectories(tmp.resolve("target"));
+        Path engineA = Files.writeString(target.resolve("jk-engine-a.jar"), "engine A");
+        Path engineB = Files.writeString(target.resolve("jk-engine-b.jar"), "engine B");
+        installJk(pointer, Files.writeString(target.resolve("jk-a"), "client A"), bin, cas, null, engineA, "1.0.0");
+        installJk(pointer, Files.writeString(target.resolve("jk-b"), "client B"), bin, cas, null, engineB, "1.1.0");
+
+        Path clientC = Files.writeString(target.resolve("jk-c"), "client C");
+        installJk(pointer, clientC, bin, cas, null, null, null);
+
+        assertThat(pointer.liveClient().orElseThrow().sha256()).isEqualTo(Hashing.sha256Hex(clientC));
+        EngineInstall.Install previous = pointer.previousInstall().orElseThrow();
+        assertThat(previous.version()).isEqualTo("1.0.0");
+        assertThat(Objects.requireNonNull(previous.client()).sha256())
+                .isEqualTo(Hashing.sha256Hex(target.resolve("jk-a")));
+        assertThat(EngineInstall.pathClient(bin)).hasContent("client C");
+    }
+
+    /** One checkout install pass: the client placed, then the engine when there is one. */
+    private static void installJk(
+            EngineInstall pointer,
+            Path client,
+            Path bin,
+            Cas cas,
+            @Nullable String commit,
+            @Nullable Path engineJar,
+            @Nullable String version)
+            throws Exception {
+        EngineInstall.Pass pass = pointer.pass();
+        pass.placeNative(client, bin, cas, commit);
+        if (engineJar != null && version != null) pass.engine(version, cas, engineJar);
+        pass.finish();
     }
 
     @Test
