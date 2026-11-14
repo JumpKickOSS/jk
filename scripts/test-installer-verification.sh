@@ -5,7 +5,31 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # `cd && pwd` drops the `//` macOS's trailing-slash TMPDIR leaves, as the installer does.
 WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/jk-installer-test.XXXXXX")" && pwd)"
-trap 'rm -rf "$WORK"' EXIT
+# One line per case. A case is a `pass` call site; the run fails when any case fails, and also when
+# a case never ran (an aborted run, a skipped block), since every call site must be reached.
+CASES_EXPECTED="$(grep -c '^[[:space:]]*pass "' "${BASH_SOURCE[0]}")"
+CASES_PASSED=0
+PASSED_SITES=" "
+pass() {
+  case "$PASSED_SITES" in
+    *" ${BASH_LINENO[0]} "*) ;;
+    *) PASSED_SITES="$PASSED_SITES${BASH_LINENO[0]} "; CASES_PASSED=$((CASES_PASSED + 1)) ;;
+  esac
+  echo "ok   $1"
+}
+finish() {
+  local status=$?
+  rm -rf "$WORK"
+  if [[ "$status" -ne 0 ]]; then
+    echo "test-installer-verification: FAILED (exit $status) after $CASES_PASSED of $CASES_EXPECTED case(s)" >&2
+    exit "$status"
+  fi
+  if [[ "$CASES_PASSED" -ne "$CASES_EXPECTED" ]]; then
+    echo "test-installer-verification: only $CASES_PASSED of $CASES_EXPECTED case(s) ran" >&2
+    exit 1
+  fi
+}
+trap finish EXIT
 mkdir -p "$WORK/http/releases/1.0.0" "$WORK/bin"
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/test-key.pem" 2>/dev/null
@@ -103,7 +127,7 @@ run_installer() {
     JK_RELEASES_URL="https://fixture/releases" \
     CI=1 \
     "$@" \
-    bash "$WORK/install.sh" "${INSTALLER_ARGS[@]}" >"$WORK/last-install.log" 2>&1
+    bash "$WORK/install.sh" ${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"} >"$WORK/last-install.log" 2>&1
 }
 
 # The pinned flow (explicit version and archive URL) that every refusal case exercises.
@@ -131,6 +155,7 @@ write_evidence
 rm -f "$WORK/jk-calls"
 run_pinned_installer "$WORK/home-success"
 cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-success/bin/jk"
+pass "pinned-install"
 
 # ---- the shell rc block ------------------------------------------------------------------------
 #
@@ -151,6 +176,7 @@ grep -qF -- "the shell rc files are left alone" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "a private JK_HOME did not say the rc files were left alone" >&2; exit 1; }
 grep -qF -- "\"$WORK/home-success/bin/jk\" activate" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "a private JK_HOME did not print the activate line for its own bin" >&2; exit 1; }
+pass "private-home-leaves-rc"
 
 # --rc asks for the block on a private home.
 rm -f "$WORK/jk-calls"
@@ -160,6 +186,7 @@ INSTALLER_ARGS=()
 grep -q -- "^activate --yes --rc\$" "$WORK/jk-calls" || { cat "$WORK/jk-calls" >&2; echo "--rc did not run 'jk activate --yes --rc'" >&2; exit 1; }
 grep -qF -- "$WORK/home-rc/bin/jk" "$WORK/user-home/.zshrc" || { echo "--rc did not write the rc block" >&2; exit 1; }
 seed_user_home "$WORK/user-home"
+pass "rc-flag-writes-block"
 
 # The default home ($HOME/.jk, JK_HOME unset) writes the block unasked.
 rm -f "$WORK/jk-calls"
@@ -168,40 +195,49 @@ grep -q -- "^activate --yes\$" "$WORK/jk-calls" || { cat "$WORK/jk-calls" >&2; e
 cmp -s "$RELEASE/$ARTIFACT" "$WORK/user-home/.jk/bin/jk" || { echo "the default home did not land under \$HOME/.jk/bin" >&2; exit 1; }
 grep -qF -- "$WORK/user-home/.jk/bin/jk" "$WORK/user-home/.bashrc" || { echo "the default home did not write the rc block" >&2; exit 1; }
 seed_user_home "$WORK/user-home"
+pass "default-home-writes-block"
 
 write_evidence
 printf 'tampered' >>"$RELEASE/$ARTIFACT"
 assert_refused_unchanged "tampered-artifact"
+pass "tampered-artifact"
 write_artifact
 
 write_evidence
 printf '%064d  %s\n' 0 "$ARTIFACT" >"$RELEASE/SHA256SUMS"
 assert_refused_unchanged "tampered-metadata"
+pass "tampered-metadata"
 
 hash="$(openssl dgst -sha256 "$RELEASE/$ARTIFACT" | awk '{print tolower($NF)}')"
 write_evidence "$hash  wrong-artifact"$'\n'
 assert_refused_unchanged "wrong-name"
+pass "wrong-name"
 
 write_evidence "$hash  $ARTIFACT"$'\n'"$hash  $ARTIFACT"$'\n'
 assert_refused_unchanged "duplicate-name"
+pass "duplicate-name"
 
 # Rollback: a valid manifest from another release, served under this version's directory. The
 # artifact name carries the version, so the manifest names nothing this install asks for.
 write_evidence "$hash  jk-linux-x86_64-0.9.0"$'\n'
 assert_refused_unchanged "other-release-manifest"
+pass "other-release-manifest"
 
 # Strict LF: the signer and every verifier agree on the bytes; a CRLF manifest is refused everywhere.
 write_evidence "$hash  $ARTIFACT"$'\r\n'
 assert_refused_unchanged "crlf-manifest"
+pass "crlf-manifest"
 
 write_evidence
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/other-key.pem" 2>/dev/null
 "$ROOT/scripts/sign-release.sh" "$RELEASE/SHA256SUMS" "$WORK/other-key.pem" >/dev/null
 assert_refused_unchanged "untrusted-key"
+pass "untrusted-key"
 
 write_evidence
 rm -f "$RELEASE/SHA256SUMS.sig"
 assert_refused_unchanged "missing-signature"
+pass "missing-signature"
 
 # A relative JK_HOME is refused before anything is downloaded or written (JkDirs would refuse it
 # on every later step, so an installer that accepted it reported success over a dead install).
@@ -219,6 +255,7 @@ grep -q "JK_HOME must be an absolute path" "$WORK/last-install.log" || {
   exit 1
 }
 [[ ! -e "$WORK/rel-home" ]] || { echo "relative JK_HOME created a directory" >&2; exit 1; }
+pass "relative-home-refused"
 
 # Without JK_VERSION the installer reads the signed latest/LATEST pointer and takes the host's
 # artifact from the release directory it names. A missing pointer (404, DNS) is reported with its
@@ -264,6 +301,7 @@ if command -v gzip >/dev/null 2>&1; then
     exit 1
   }
   rm -f "$RELEASE/$LATEST_ARTIFACT"
+pass "latest-pointer-install"
 fi
 
 # Every pointer refusal happens before the version directory is even named, so these cases need
@@ -294,33 +332,41 @@ awk 'NR<=2' "$LATEST_DIR/LATEST" >"$LATEST_DIR/LATEST.two"
 mv "$LATEST_DIR/LATEST.two" "$LATEST_DIR/LATEST"
 rm -f "$LATEST_DIR/LATEST.sig"
 assert_pointer_refused "unsigned-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+pass "unsigned-pointer"
 
 write_pointer 1.0.0
 sed -i.bak 's/^version 1\.0\.0$/version 1.0.1/' "$LATEST_DIR/LATEST"
 assert_pointer_refused "tampered-pointer" "latest-release pointer signature verification failed"
+pass "tampered-pointer"
 
 # Rollback: an older release's pointer, validly signed, re-served as the latest one.
 write_pointer 0.9.0
 assert_pointer_refused "rolled-back-pointer" "names 0.9.0, older than the 1.0.0 this installer ships with"
+pass "rolled-back-pointer"
 
 write_pointer 1.0.0 "$WORK/other-key.pem"
 assert_pointer_refused "untrusted-key-pointer" "latest-release pointer signature verification failed"
+pass "untrusted-key-pointer"
 
 # Signed, but not the two-line form the signer writes: CRLF, a bare version, a third line.
 write_pointer 1.0.0
 printf 'version 1.0.0\r\nissued 1\r\n' >"$LATEST_DIR/LATEST"
 "$ROOT/scripts/sign-release.sh" "$LATEST_DIR/LATEST" "$WORK/test-key.pem" >/dev/null
 assert_pointer_refused "crlf-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+pass "crlf-pointer"
 printf '1.0.0\n' >"$LATEST_DIR/LATEST"
 "$ROOT/scripts/sign-release.sh" "$LATEST_DIR/LATEST" "$WORK/test-key.pem" >/dev/null
 assert_pointer_refused "bare-version-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+pass "bare-version-pointer"
 printf 'version 1.0.0\nissued 1\nversion 0.9.0\n' >"$LATEST_DIR/LATEST"
 "$ROOT/scripts/sign-release.sh" "$LATEST_DIR/LATEST" "$WORK/test-key.pem" >/dev/null
 assert_pointer_refused "three-line-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+pass "three-line-pointer"
 
 # The bare VERSION is a convenience nothing verifies: on its own it resolves nothing.
 rm -rf "$LATEST_DIR" && mkdir -p "$LATEST_DIR" && printf '1.0.0\n' >"$LATEST_DIR/VERSION"
 assert_pointer_refused "version-only-pointer" "could not resolve the latest jk version from https://fixture/releases/latest/LATEST"
+pass "version-only-pointer"
 
 if run_installer "$WORK/home-no-latest" JK_RELEASES_URL="https://fixture/releases-missing"; then
   cat "$WORK/last-install.log" >&2
@@ -333,6 +379,7 @@ grep -q "could not resolve the latest jk version from https://fixture/releases-m
   echo "a missing latest/LATEST was not reported with its URL" >&2
   exit 1
 }
+pass "missing-pointer-reported"
 
 # ---- the JVM client ---------------------------------------------------------------------------
 #
@@ -386,6 +433,7 @@ cmp -s "$RELEASE/$JVM_JAR" "$WORK/home-jvm/lib/jk/$JVM_JAR" || { echo "the clien
 grep -q -- "-jar $WORK/home-jvm/lib/jk/$JVM_JAR self write-launcher" "$WORK/java-calls" || {
   cat "$WORK/java-calls" >&2; echo "the launcher was not written through the installed jar" >&2; exit 1; }
 grep -q "installing the JVM client" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the fallback was not announced" >&2; exit 1; }
+pass "jvm-client-unhosted"
 
 # JK_CLIENT=native on the same host refuses instead of falling back.
 if run_jvm_installer "$WORK/home-jvm-refused" JK_CLIENT=native; then
@@ -393,12 +441,14 @@ if run_jvm_installer "$WORK/home-jvm-refused" JK_CLIENT=native; then
 fi
 grep -q "jk 1.0.0 publishes no native sunos-sun4v client" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the native refusal did not name the host" >&2; exit 1; }
 [[ ! -e "$WORK/home-jvm-refused/bin/jk" ]] || { echo "the refusal installed something" >&2; exit 1; }
+pass "jvm-native-refused"
 
 # An Intel Mac: a known OS and architecture with no native client in a release.
 fixture_uname Darwin x86_64
 home="$WORK/home-jvm-Darwin-x86_64"
 run_jvm_installer "$home" || { cat "$WORK/last-install.log" >&2; echo "JVM install on Darwin x86_64 failed" >&2; exit 1; }
 cmp -s "$RELEASE/$JVM_JAR" "$home/lib/jk/$JVM_JAR" || { echo "Darwin x86_64 did not install the JVM client" >&2; exit 1; }
+pass "jvm-intel-mac"
 
 # The release, not the installer, decides: a host whose native client the sums list gets it,
 # whatever the host.
@@ -413,6 +463,7 @@ if command -v gzip >/dev/null 2>&1; then
   [[ ! -e "$WORK/home-native-freebsd/lib/jk/$JVM_JAR" ]] || { echo "a listed native client still installed the JVM client" >&2; exit 1; }
   rm -f "$RELEASE/$BSD_ARTIFACT"
   write_evidence "$jvm_hash  $JVM_JAR"$'\n'"$engine_hash  $ENGINE_JAR"$'\n'
+  pass "listed-native-client"
 fi
 fixture_uname SunOS sun4v
 
@@ -422,11 +473,13 @@ if run_jvm_installer "$WORK/home-jvm-old" FIXTURE_JAVA_VERSION=21.0.4; then
 fi
 grep -q "is Java 21; the JVM client needs a JDK 25 or newer" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the old JDK was not refused by version" >&2; exit 1; }
 [[ ! -e "$WORK/home-jvm-old" ]] || { echo "an old JDK still wrote the home" >&2; exit 1; }
+pass "old-jdk-refused"
 mkdir -p "$WORK/jre/bin"
 if run_jvm_installer "$WORK/home-jvm-jre" FIXTURE_JAVA_HOME="$WORK/jre"; then
   cat "$WORK/last-install.log" >&2; echo "a JRE unexpectedly installed the JVM client" >&2; exit 1
 fi
 grep -q "is a JRE (no bin/javac)" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the JRE was not refused" >&2; exit 1; }
+pass "jre-refused"
 
 # The engine jar is evidence-checked like the client jar: a tampered engine jar is refused whole.
 printf 'tampered' >>"$RELEASE/$ENGINE_JAR"
@@ -435,6 +488,7 @@ if run_jvm_installer "$WORK/home-jvm-tampered-engine"; then
 fi
 grep -q "checksum mismatch for $ENGINE_JAR" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the tampered engine jar was not named" >&2; exit 1; }
 [[ ! -e "$WORK/home-jvm-tampered-engine/bin/jk" ]] || { echo "a tampered engine jar still installed the launcher" >&2; exit 1; }
+pass "tampered-engine-refused"
 printf 'PK fixture engine jar\n' >"$RELEASE/$ENGINE_JAR"
 
 # A local jar beside its engine jar installs the JVM client from the dist layout, no network; the
@@ -460,6 +514,7 @@ grep -q -- "^self materialize $WORK/home-jvm-local/bin/jk $WORK/dist/lib/$ENGINE
   cat "$WORK/jk-calls" >&2; echo "a local JVM client install did not materialize the engine jar beside the jar" >&2; exit 1; }
 grep -q -- "^self shelve $WORK/dist/repos\$" "$WORK/jk-calls" || {
   cat "$WORK/jk-calls" >&2; echo "a local JVM client install did not shelve the dist's repos tree" >&2; exit 1; }
+pass "jvm-local-dist"
 rm -f "$WORK/bin/uname" "$WORK/bin/java" "$RELEASE/$JVM_JAR" "$RELEASE/$ENGINE_JAR"
 write_evidence
 
@@ -482,6 +537,7 @@ grep -q -- "^self materialize $WORK/home-native-local/bin/jk $WORK/dist/lib/$ENG
 grep -q -- "^self shelve $WORK/dist/repos\$" "$WORK/jk-calls" || {
   cat "$WORK/jk-calls" >&2; echo "the dist's repos tree was not shelved" >&2; exit 1; }
 assert_rc_untouched "native-local"
+pass "native-local-dist"
 
 # ---- a failed or interrupted reinstall keeps the previous jk -----------------------------------
 #
@@ -523,6 +579,7 @@ if command -v gzip >/dev/null 2>&1; then
     cat "$WORK/last-install.log" >&2; echo "a truncated archive installed" >&2; exit 1
   fi
   assert_prior_client_runs "truncated-archive" "$home"
+pass "truncated-archive"
   rm -f "$WORK/dist/jk-linux-x86_64-0.0.1.gz"
 fi
 
@@ -537,6 +594,7 @@ fi
 grep -qF -- "the new jk does not run" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "the broken client was refused for another reason" >&2; exit 1; }
 assert_prior_client_runs "broken-client" "$home"
+pass "broken-client"
 rm -f "$WORK/dist/jk-broken"
 
 # Killed mid-unpack: a fixture gunzip writes part of the binary, then signals the installer.
@@ -563,6 +621,7 @@ SH
     else
       assert_prior_client_runs "killed-$sig" "$home"
     fi
+    pass "killed-$sig"
   done
   # The stage SIGKILL left is swept by the next install, which succeeds.
   home="$WORK/home-killed-KILL"
@@ -573,6 +632,7 @@ SH
   if compgen -G "$home/bin/.jk-install.*" >/dev/null; then
     ls -la "$home/bin" >&2; echo "the killed run's stage was not swept" >&2; exit 1
   fi
+  pass "killed-stage-swept"
   rm -rf "$WORK/kill-bin" "$WORK/dist/jk-linux-x86_64-1.0.0.gz"
 fi
 
@@ -594,6 +654,7 @@ grep -qF -- "'jk snapshot'" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "the snapshot-line refusal did not name jk snapshot" >&2; exit 1; }
 [[ "$(cat "$home/bin/jk")" == "prior-install" ]] || { echo "the snapshot-line refusal replaced the client" >&2; exit 1; }
 [[ ! -e "$WORK/jk-calls" ]] || { cat "$WORK/jk-calls" >&2; echo "the snapshot-line refusal ran the client" >&2; exit 1; }
+pass "snapshot-line-refused"
 # Another version's snapshot line is no conflict: the dist installs over it.
 mv "$home/store/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0-SNAPSHOT" \
   "$home/store/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.1-SNAPSHOT"
@@ -603,6 +664,7 @@ if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG=
   cat "$WORK/last-install.log" >&2; echo "a release dist beside another version's snapshot line was refused" >&2; exit 1
 fi
 cmp -s "$RELEASE/$ARTIFACT" "$home/bin/jk" || { echo "the dist did not install beside another snapshot line" >&2; exit 1; }
+pass "other-snapshot-line"
 
 # The same dist without repos/: installed, but the missing shelf is named.
 rm -rf "$WORK/dist/repos"
@@ -615,6 +677,7 @@ fi
 if grep -q -- "self shelve" "$WORK/jk-calls"; then echo "a dist without repos/ ran 'jk self shelve'" >&2; exit 1; fi
 grep -qF -- "no repos/jk-local beside dist/lib: no workers shelved" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "a dist without repos/ did not name the missing shelf" >&2; exit 1; }
+pass "dist-without-shelf"
 
 # A binary with no engine jar beside it is refused whole: installing it would pair the tree's
 # client with the released engine.
@@ -626,6 +689,7 @@ if ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" HOME="$WORK/user-
 fi
 grep -q -- "no jk-engine-\*.jar in $WORK/dist/lib" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "the missing engine jar was not named" >&2; exit 1; }
+pass "dist-without-engine"
 rm -rf "$WORK/dist"
 
 # `curl | bash` executes whatever has arrived, so a download cut short must run nothing. Every
@@ -649,7 +713,7 @@ check_truncated_prefix() {
   read -r -d '' content <"$home/bin/jk" || true
   shopt -s nullglob dotglob
   entries=("$home"/* "$home"/bin/*)
-  if [[ "$content" != "prior-install" || "${entries[*]}" != "$home/bin $home/install.sh $home/bin/jk" ]]; then
+  if [[ "$content" != "prior-install" || "${entries[*]-}" != "$home/bin $home/install.sh $home/bin/jk" ]]; then
     echo "a copy truncated at byte $n touched the prior installation" >&2
     exit 1
   fi
@@ -662,6 +726,7 @@ installer_size="$(wc -c <"$WORK/install.sh" | tr -d '[:space:]')"
 seq 1 "$((installer_size - 2))" |
   xargs -P "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" -n 64 \
     bash -c 'for n; do check_truncated_prefix "$n"; done' _
+pass "truncated-installer-runs-nothing"
 
 # A release run signs only with the key the installers trust: the test key is not it.
 if JK_RELEASE_REQUIRE_TRUSTED_KEY=1 "$ROOT/scripts/sign-release.sh" "$WORK/secret-form-sums" "$WORK/test-key.pem" \
@@ -671,5 +736,6 @@ if JK_RELEASE_REQUIRE_TRUSTED_KEY=1 "$ROOT/scripts/sign-release.sh" "$WORK/secre
 fi
 grep -q "not the release key the installers trust" "$WORK/untrusted.err" \
   || { echo "the untrusted-key refusal does not say why" >&2; exit 1; }
+pass "untrusted-release-key-refused"
 
-echo "Shell installer verification fixtures passed."
+echo "Shell installer verification fixtures passed: $CASES_PASSED of $CASES_EXPECTED case(s)."

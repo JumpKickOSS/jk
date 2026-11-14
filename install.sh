@@ -669,7 +669,7 @@ main() {
     # asked for here. Failure must not abort warm-up — the binary is already installed.
     ACTIVATE_ARGS=(--yes)
     [ "$RC_REQUESTED" = 1 ] && ACTIVATE_ARGS+=(--rc)
-    run_jk activate "${ACTIVATE_ARGS[@]}" || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
+    run_jk activate ${ACTIVATE_ARGS[@]+"${ACTIVATE_ARGS[@]}"} || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
   else
     info "JK_HOME is $JK_HOME_DIR, not the default $DEFAULT_HOME_DIR: the shell rc files are left alone."
     note "To use this install in the current shell, run: $ACTIVATE_LINE"
