@@ -322,13 +322,26 @@ public final class BuildEnv {
     }
 
     /**
-     * Redactor for {@code .env}-sourced values at {@code moduleDir}. Use before any
-     * free-form text (wire events, journal, errors) leaves the process, and before a value enters
-     * a cache key.
+     * The one redactor for work at {@code moduleDir}: the effective value of every name a {@code
+     * .env} file declares there, plus every value filed for its workspace ({@link ResolvedSecrets}:
+     * resolved repository credentials, credential-named declared variables). Every sink text leaves
+     * the engine through (the wire, the journal, the test reports, the action cache) builds its
+     * redactor here, so no sink masks less than another; the {@code redactor-owner} guard holds
+     * the line. Build one per batch of lines, not per line: it parses {@code .env} (memoized by
+     * stamp) and merges the filed values. A null {@code moduleDir} is the session's working
+     * directory, for work that carries no directory of its own; off a session, nothing is masked.
      */
-    public static SecretRedactor secretsFor(Path moduleDir) {
-        if (moduleDir == null) return SecretRedactor.none();
-        return SecretRedactor.from(lookupFor(moduleDir));
+    public static SecretRedactor secretsFor(@Nullable Path moduleDir) {
+        Path dir = moduleDir;
+        if (dir == null) {
+            try {
+                dir = SessionContext.current().workingDir();
+            } catch (RuntimeException noSession) {
+                return SecretRedactor.none();
+            }
+        }
+        if (dir == null) return SecretRedactor.none();
+        return ResolvedSecrets.plus(dir, SecretRedactor.from(lookupFor(dir)));
     }
 
     /** The request's {@link #NODE} variables and those under {@code prefixes}; empty outside a request. */

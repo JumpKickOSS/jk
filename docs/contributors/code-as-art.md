@@ -1009,6 +1009,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G144 | a `TestStampInputs.testStampExtras` call outside `TestStampInputs`: run-tests extras composed elsewhere are a stamp the forecast does not look up | ban, no allowlist | `test-stamp-extras-owner` (forbid) |
 | G145 | a `WorkspaceClasspath.resolve`, `ClasspathResolver.classpathFor` / `testRuntimeClasspathFor` or `ProvidedClasspath` derivation in server/engine outside `ModuleClasspaths` and the classpath step around it (`SetupSteps` and `SiblingWaits`: sibling requires, processor errors, the provided fetch) | ban; the forecast's provided fetch and subsystems that key nothing (exec, IDE, plugin closures, guard fixtures, build-logic, the headless builder) are allow entries | `module-classpath-owner` (forbid) |
 | G146 | a `TestSuites.resolve` or `TestSelection.resolve` in server/engine outside `TestStampInputs.resolveSuites`: suites resolved from the raw selection are suites a run stamps and does not run, or runs and does not stamp | ban, no allowlist | `test-suites-resolve-owner` (forbid) |
+| G147 | a `ResolvedSecrets.plus` or `SecretRedactor.from` in server or shared main outside `BuildEnv`: a sink composing its own redactor masks less than the wire (the test reports once masked only filed credentials, not `.env` names) | ban; the run-tests stamp's value hashing is an allow entry | `redactor-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1101,6 +1102,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | published-installer-ps1 | parity | a published installer that drifts from the repo copy installs JumpKick where the CLI does not look |
 | published-installer-sh | parity | a published installer that drifts from the repo copy installs JumpKick where the CLI does not look |
 | published-poms | output | a POM with an unspecified coordinate is an artifact nobody can depend on |
+| redactor-owner | forbid | a sink with a redactor of its own masks less than the wire, and a CI job that publishes it leaks what the terminal hid |
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
 | request-thread-carries-session | forbid | a bare thread reads the default session, not the request's |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |

@@ -1454,6 +1454,24 @@ owner      = "cc.jumpkick.host.Log"
 instead    = "cc.jumpkick.host.Log.debug / info / warn / error, with Log.detail(key, value, …) for structure"
 why        = "a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink"
 
+# G147. Text that leaves a jk process is masked by one redactor per module: BuildEnv.secretsFor, the
+# module's .env names plus every value filed for its workspace. A sink that composes its own from
+# part of that (the filed values alone, or the .env names alone) masks less than the wire does,
+# which is how test reports came to print a .env value the terminal masked.
+[guards.redactor-owner]
+kind       = "forbid"
+signatures = ["cc.jumpkick.config.ResolvedSecrets#plus(**)", "cc.jumpkick.config.SecretRedactor#from(**)"]
+scope      = ["server/*", "shared/*"]
+source-set = "main"
+owner      = "cc.jumpkick.config.BuildEnv"
+fixture    = "server/engine/guard-fixtures/redactor-owner"
+instead    = "BuildEnv.secretsFor(moduleDir), or BuildEnv.secretsFor(null) for work that carries no directory (the session's working directory)"
+why        = "a sink with a redactor of its own masks less than the wire, and a CI job that publishes it leaks what the terminal hid"
+
+[[guards.redactor-owner.allow]]
+in     = "cc.jumpkick.runtime.TestStampInputs"
+reason = "hashes the .env values its own lookup resolved into the run-tests stamp; it writes no text anywhere"
+
 # G97. A catch of Exception, Throwable or RuntimeException whose body is only a comment has written
 # down its intent and dropped its evidence. This rule measures the sites; the ratchet below holds
 # the count — `owner` is the whole main tree because a match is tolerated wherever the ratchet still
