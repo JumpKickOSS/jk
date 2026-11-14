@@ -53,7 +53,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * configured roots beyond its resources directory.
      */
     static SuiteResources of(Path moduleDir, boolean compact, List<String> compiled, List<Path> defaultExtra) {
-        if (compiled.size() < 2) return NONE;
+        if (!splits(compiled)) return NONE;
         Map<String, List<Path>> out = new LinkedHashMap<>();
         for (String suite : compiled) {
             out.put(suite, new ArrayList<>(ModuleLayout.suiteResourceDirs(moduleDir, compact, List.of(suite))));
@@ -118,6 +118,25 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
         if (!mixedTestGv && keys.groovy() != null) released.add(keys.groovy());
         for (String key : released) MirroredOutputs.release(actionCache, key, testClasses, mirrored);
         return new CompiledTests(false, sources, keys, suiteResDirs, apart.bySuite());
+    }
+
+    /** Whether a run compiling {@code compiled} runs its directory suites apart, mirroring none of their resources. */
+    static boolean splits(List<String> compiled) {
+        return compiled.size() >= 2;
+    }
+
+    /**
+     * Whether {@code testClasses} lacks a suite resource a run compiling {@code compiled} mirrors
+     * into it: the one directory suite's resource roots, none when the suites run apart. The
+     * forecast's question, answered by the mirror's own rule.
+     */
+    static boolean mirroredResourcesOutOfSync(
+            Path moduleDir, boolean compact, List<String> compiled, Path testClasses) {
+        if (splits(compiled)) return false;
+        for (Path root : ModuleLayout.suiteResourceDirs(moduleDir, compact, compiled)) {
+            if (TaskForecaster.resourcesOutOfSync(root, testClasses)) return true;
+        }
+        return false;
     }
 
     /** Whether the suites run apart, each with its own roots, rather than over the tree's copy. */
