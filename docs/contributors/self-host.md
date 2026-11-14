@@ -196,7 +196,9 @@ The client module is a plain JVM program, and two things run it without a native
   engine this same install put under `lib/jk-engine/`, so a checkout that has a JumpKick of any kind can
   produce a JVM client for the machine it runs on. The tree's own build still links the native
   client, so on a machine with no GraalVM it provisions one (`--yes` answers the offer) rather
-  than needing one preinstalled.
+  than needing one preinstalled. An install puts the PATH client in place before the engine, and
+  refuses to install the engine when `bin/jk` is still a released JumpKick older than it (no native
+  client linked, or `-m server/engine` alone): that client would hand every command to itself.
 - **The release's JVM client**, `jk-<version>.jar` under `releases/<version>/`, is the CLI
   module's assembly under its shipped name; `install.sh` / `install.ps1` install it on a host with
   no native client, and the jar writes its own launcher (`jk self write-launcher`) over the JDK the

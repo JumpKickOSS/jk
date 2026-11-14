@@ -637,10 +637,9 @@ public final class InstallCommand {
         for (var m : result.modules()) {
             if (m.success() && m.installed() != null) outcomes.add(m.installed());
         }
-        for (Path mod : installed) {
-            // Engine-reported module dirs are normalized the same way moduleDirs was; fall back to
-            // a fresh request only for a dir the sweep above never saw.
-            ProjectInfo info = infoByDir.containsKey(mod) ? infoByDir.get(mod) : projectInfo(mod);
+        for (Map.Entry<Path, ProjectInfo> entry : InstallOrder.ordered(installed, infoByDir, this::projectInfo)) {
+            Path mod = entry.getKey();
+            ProjectInfo info = entry.getValue();
             // A coordinator root builds as a unit but publishes nothing — announcing it would
             // claim an install the plan never carried a `cache-install` step for.
             if (info.coordinatorOnly()) continue;
@@ -928,6 +927,7 @@ public final class InstallCommand {
             Path src = productLibSource(plan);
             if (src == null) return null;
             String version = engineInstallVersion(projectDir, src);
+            InstallOrder.refuseOlderPathClient(binDir(), version, InstallOrder.PathClientVersion.ASK);
             new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.storeCas(), src);
             return null; // a jar the client launches — no launcher/bin to link
         }
