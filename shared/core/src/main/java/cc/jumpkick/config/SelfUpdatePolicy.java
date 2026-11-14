@@ -84,7 +84,8 @@ public final class SelfUpdatePolicy {
         if (Versions.isSnapshot(version)) return new Decision(Action.OFF, "a -SNAPSHOT build never updates itself");
         if (state.isHeld()) {
             return new Decision(
-                    Action.OFF, "held at " + state.held() + " after a downgrade or rollback; `jk self update` resumes updates");
+                    Action.OFF,
+                    "held at " + state.held() + " after a downgrade or rollback; `jk self update` resumes updates");
         }
         Optional<Mode> fromEnv = Mode.parse(env);
         if (fromEnv.isPresent())

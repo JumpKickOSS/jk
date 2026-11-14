@@ -149,8 +149,7 @@ class SelfUpdateApplyTest {
 
     @Test
     @DisabledOnOs(OS.WINDOWS)
-    void a_rollback_after_an_installer_reinstall_never_pairs_an_engine_with_another_releases_client()
-            throws Exception {
+    void a_rollback_after_an_installer_reinstall_never_pairs_an_engine_with_another_releases_client() throws Exception {
         EngineInstall install = EngineInstall.current();
         Cas cas = JkStores.storeCas();
         SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
@@ -195,8 +194,7 @@ class SelfUpdateApplyTest {
      */
     @Test
     @DisabledOnOs(OS.WINDOWS)
-    void a_rollback_holds_auto_update_at_the_release_it_put_back_and_swaps_under_the_install_lock()
-            throws Exception {
+    void a_rollback_holds_auto_update_at_the_release_it_put_back_and_swaps_under_the_install_lock() throws Exception {
         EngineInstall install = EngineInstall.current();
         Cas cas = JkStores.storeCas();
         SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
@@ -232,8 +230,11 @@ class SelfUpdateApplyTest {
         Path lib = JvmClientInstall.libDir();
         assertThat(back.version()).isEqualTo("0.17.0");
         assertThat(lib.resolve("jk-0.17.0.jar")).hasContent("client 0.17.0");
-        assertThat(lib.resolve("jk-0.18.0.jar")).as("the later client's jar is retired").doesNotExist();
-        assertThat(Files.readString(JvmClientInstall.launcher(JkDirs.binDir(), false))).contains("jk-0.17.0.jar");
+        assertThat(lib.resolve("jk-0.18.0.jar"))
+                .as("the later client's jar is retired")
+                .doesNotExist();
+        assertThat(Files.readString(JvmClientInstall.launcher(JkDirs.binDir(), false)))
+                .contains("jk-0.17.0.jar");
     }
 
     @Test

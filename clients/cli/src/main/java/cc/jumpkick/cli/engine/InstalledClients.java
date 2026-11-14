@@ -30,14 +30,16 @@ public final class InstalledClients {
      */
     public static Optional<InstalledClient> running(Cas cas, @Nullable Path fallback) throws IOException {
         Optional<Path> jar = JvmClient.jar();
-        if (jar.isPresent() && Files.isRegularFile(jar.get())) return Optional.of(ingest(cas, jar.get(), ClientKind.JVM));
+        if (jar.isPresent() && Files.isRegularFile(jar.get()))
+            return Optional.of(ingest(cas, jar.get(), ClientKind.JVM));
         if (EngineSpawn.isNativeImage()) {
             Optional<String> exe = ProcessHandle.current().info().command();
             if (exe.isPresent() && Files.isRegularFile(Path.of(exe.get()))) {
                 return Optional.of(ingest(cas, Path.of(exe.get()), ClientKind.NATIVE));
             }
         }
-        if (fallback != null && Files.isRegularFile(fallback)) return Optional.of(ingest(cas, fallback, ClientKind.NATIVE));
+        if (fallback != null && Files.isRegularFile(fallback))
+            return Optional.of(ingest(cas, fallback, ClientKind.NATIVE));
         return Optional.empty();
     }
 

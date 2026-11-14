@@ -160,9 +160,11 @@ public final class EngineInstall {
      * with: its bytes' digest (a blob the store keeps), its kind, and the commit it was built from
      * when the client does not carry that itself ({@code null}: not known).
      */
-    public record InstalledClient(String sha256, ClientKind kind, @Nullable String commit) {
+    public record InstalledClient(
+            String sha256, ClientKind kind, @Nullable String commit) {
 
-        private static @Nullable InstalledClient read(Map<String, String> keys, String sha, String kind, String commit) {
+        private static @Nullable InstalledClient read(
+                Map<String, String> keys, String sha, String kind, String commit) {
             String digest = keys.get(sha);
             if (digest == null || digest.isBlank()) return null;
             String c = keys.get(commit);
@@ -177,7 +179,8 @@ public final class EngineInstall {
     }
 
     /** One install as the pointer records it: an engine and the client paired with it, when one is known. */
-    public record Install(String version, String engineSha, @Nullable InstalledClient client) {}
+    public record Install(
+            String version, String engineSha, @Nullable InstalledClient client) {}
 
     /**
      * Puts a recorded client's bytes ({@code blob}, from the store) in place as the PATH client of
@@ -638,8 +641,7 @@ public final class EngineInstall {
         throw new IOException("could not allocate a unique engine jar name for " + version);
     }
 
-    private void writePointer(
-            String version, String engineJarSha, String jarFileName, @Nullable InstalledClient client)
+    private void writePointer(String version, String engineJarSha, String jarFileName, @Nullable InstalledClient client)
             throws IOException {
         // jk-config.* properties are the base; the COMPUTED identity keys are written last so they
         // always win. A stray -Djk-config.engine-sha256 could otherwise poison the digest and make
@@ -658,10 +660,15 @@ public final class EngineInstall {
             keys.put(PREVIOUS_ENGINE_SHA, live);
             String liveVersion = before.get("version");
             if (liveVersion != null && !liveVersion.isBlank()) keys.put(PREVIOUS_VERSION, liveVersion);
-            if (liveClient != null) liveClient.write(keys, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT);
+            if (liveClient != null)
+                liveClient.write(keys, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT);
         } else {
             for (String key : List.of(
-                    PREVIOUS_ENGINE_SHA, PREVIOUS_VERSION, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT)) {
+                    PREVIOUS_ENGINE_SHA,
+                    PREVIOUS_VERSION,
+                    PREVIOUS_CLIENT_SHA,
+                    PREVIOUS_CLIENT_KIND,
+                    PREVIOUS_CLIENT_COMMIT)) {
                 String value = before.get(key);
                 if (value != null && !value.isBlank()) keys.put(key, value);
             }
@@ -726,7 +733,9 @@ public final class EngineInstall {
         String version = keys.get(PREVIOUS_VERSION);
         if (engineSha == null || engineSha.isBlank() || version == null || version.isBlank()) return Optional.empty();
         return Optional.of(new Install(
-                version, engineSha, InstalledClient.read(keys, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT)));
+                version,
+                engineSha,
+                InstalledClient.read(keys, PREVIOUS_CLIENT_SHA, PREVIOUS_CLIENT_KIND, PREVIOUS_CLIENT_COMMIT)));
     }
 
     /**
@@ -754,7 +763,8 @@ public final class EngineInstall {
      */
     public RolledBack rollback(Cas cas, ClientPlacer placer) throws IOException {
         Install previous = previousInstall()
-                .orElseThrow(() -> new IOException("no previous engine to roll back to: " + configFile() + " names none"));
+                .orElseThrow(
+                        () -> new IOException("no previous engine to roll back to: " + configFile() + " names none"));
         if (!Files.isRegularFile(cas.pathFor(previous.engineSha()))) {
             throw new IOException("the previous engine " + previous.engineSha() + " is no longer in the store");
         }

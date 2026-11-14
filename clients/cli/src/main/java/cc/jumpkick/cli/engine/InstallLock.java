@@ -19,6 +19,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -377,8 +378,7 @@ public final class InstallLock {
         int shared;
 
         /** The records of the calling thread's shared holds, newest first. */
-        final ThreadLocal<java.util.ArrayDeque<SharedRecord>> threadShared =
-                ThreadLocal.withInitial(java.util.ArrayDeque::new);
+        final ThreadLocal<ArrayDeque<SharedRecord>> threadShared = ThreadLocal.withInitial(ArrayDeque::new);
 
         State(Path file) {
             this.file = file;

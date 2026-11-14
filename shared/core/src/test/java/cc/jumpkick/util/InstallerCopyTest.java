@@ -56,8 +56,7 @@ class InstallerCopyTest {
         String shell = Files.readString(repo.resolve("install.sh"));
         String powershell = Files.readString(repo.resolve("install.ps1"));
 
-        assertThat(shell.indexOf("openssl dgst -sha256 -verify"))
-                .isLessThan(shell.indexOf("mkdir \"$STAGE_DIR\""));
+        assertThat(shell.indexOf("openssl dgst -sha256 -verify")).isLessThan(shell.indexOf("mkdir \"$STAGE_DIR\""));
         assertThat(powershell.lastIndexOf("Test-ReleaseEvidence"))
                 .isLessThan(powershell.indexOf("Install-NativeClient -Archive $ArchiveFile"));
     }

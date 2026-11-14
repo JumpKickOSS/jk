@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -191,7 +192,8 @@ class EngineInstallTest {
         store.recordClient(nativeClient("c2", null));
         assertThat(store.recordedClientCommit("c2")).isEmpty();
         assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
-                .as("another client for the same engine replaces the live one; the previous install is the engine's to move")
+                .as(
+                        "another client for the same engine replaces the live one; the previous install is the engine's to move")
                 .containsEntry(EngineInstall.CLIENT_SHA, "c2")
                 .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
     }
@@ -782,7 +784,7 @@ class EngineInstallTest {
         assertThat(EngineInstall.isEngineJarName("widget-1.0.0.jar")).isFalse();
     }
 
-    private static EngineInstall.InstalledClient nativeClient(String sha, @org.jspecify.annotations.Nullable String commit) {
+    private static EngineInstall.InstalledClient nativeClient(String sha, @Nullable String commit) {
         return new EngineInstall.InstalledClient(sha, EngineInstall.ClientKind.NATIVE, commit);
     }
 }

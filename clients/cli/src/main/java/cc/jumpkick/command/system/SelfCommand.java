@@ -191,7 +191,10 @@ public final class SelfCommand extends GroupCommand {
         public int run(Invocation in) {
             try {
                 EngineInstall.RolledBack back = rollback(
-                        EngineInstall.current(), JkStores.storeCas(), JkDirs.binDir(), () -> EngineFleet.stopAll(false));
+                        EngineInstall.current(),
+                        JkStores.storeCas(),
+                        JkDirs.binDir(),
+                        () -> EngineFleet.stopAll(false));
                 CommandWedge.printOk(
                         "Rollback",
                         "jk-engine " + back.version() + " (" + back.engineJar().getFileName() + ")"
