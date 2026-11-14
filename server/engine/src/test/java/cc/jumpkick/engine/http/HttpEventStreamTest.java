@@ -76,9 +76,9 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
         Decision d = new DecisionQueue()
                 .open(new DecisionQueue.Ask(
                         "disk-clean",
-                        "Clean jk's cache?",
+                        "Clean JumpKick's cache?",
                         List.of(),
-                        DecisionForms.confirm("disk-clean", "Clean jk's cache?", "Yes"),
+                        DecisionForms.confirm("disk-clean", "Clean JumpKick's cache?", "Yes"),
                         null,
                         null,
                         null,

@@ -489,7 +489,7 @@ public final class GitCliExtension implements GitBackend {
             GitProxy.route(extras, value, git.version(), remoteUrl);
         } catch (IOException tooOld) {
             throw new IOException(
-                    tooOld.getMessage() + " Or set " + GitFetcher.BACKEND_ENV + "=jgit to use jk's built-in git.",
+                    tooOld.getMessage() + " Or set " + GitFetcher.BACKEND_ENV + "=jgit to use JumpKick's built-in git.",
                     tooOld);
         }
     }

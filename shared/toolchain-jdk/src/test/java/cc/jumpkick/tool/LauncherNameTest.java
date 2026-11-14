@@ -53,7 +53,7 @@ class LauncherNameTest {
                         "VERSION",
                         "version"))
                 .allMatch(name -> LauncherName.validationError(name)
-                        .filter(message -> message.contains("jk's own"))
+                        .filter(message -> message.contains("JumpKick's own"))
                         .isPresent());
         // Near misses stay valid: only the exact stems are jk's.
         assertThat(List.of("jk2", "jkx-foo", "jkbuild", "my-jk", "versions"))

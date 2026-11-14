@@ -70,10 +70,10 @@ class DashboardsTest {
         return new Decision(
                 "abc",
                 "disk-clean",
-                "Clean jk's cache?",
+                "Clean JumpKick's cache?",
                 List.of(),
                 "jk decide abc",
-                DecisionForms.confirm("disk-clean", "Clean jk's cache?", "Yes"),
+                DecisionForms.confirm("disk-clean", "Clean JumpKick's cache?", "Yes"),
                 null,
                 null,
                 null,

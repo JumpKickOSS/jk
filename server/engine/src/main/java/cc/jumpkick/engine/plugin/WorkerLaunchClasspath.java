@@ -148,7 +148,7 @@ public final class WorkerLaunchClasspath {
             return cas.pathFor(pinned);
         }
         throw new IllegalStateException("POM of " + coordinate + ": this engine needs " + pinned.substring(0, 12)
-                + from + ", but another install replaced it; run jk install from that checkout, or rerun jk to"
+                + from + ", but another install replaced it; run jk snapshot from that checkout, or rerun jk to"
                 + " start the installed engine");
     }
 
@@ -188,7 +188,7 @@ public final class WorkerLaunchClasspath {
         }
         throw new IllegalStateException(coordinate + ": this engine needs " + pinned.substring(0, 12) + from
                 + ", but another install replaced it with " + hex.substring(0, 12)
-                + "; run jk install from that checkout, or rerun jk to start the installed engine");
+                + "; run jk snapshot from that checkout, or rerun jk to start the installed engine");
     }
 
     /**

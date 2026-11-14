@@ -46,7 +46,7 @@ final class GradleSchemaRegistry {
             outputs.add(d.output());
         }
         if (registry.registers())
-            local.warning("schemaRegistry: register and compatibility not run; jk only downloads");
+            local.warning("schemaRegistry: register and compatibility not run; JumpKick only downloads");
         String url = registry.url();
         if (subjects.isEmpty() || url == null) return Mapped.NONE;
         Map<String, Object> table = new LinkedHashMap<>();

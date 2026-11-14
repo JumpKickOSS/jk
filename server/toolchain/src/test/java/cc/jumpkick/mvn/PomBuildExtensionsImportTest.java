@@ -119,8 +119,9 @@ class PomBuildExtensionsImportTest {
                 .extracting(ImportReport.Issue::message)
                 .singleElement()
                 .asString()
-                .isEqualTo("extension com.acme:my-extension:1.0: Maven core extension, which jk does not load. Skipped;"
-                        + " drop it or run that step with jk mvn");
+                .isEqualTo(
+                        "extension com.acme:my-extension:1.0: Maven core extension, which JumpKick does not load. Skipped;"
+                                + " drop it or run that step with jk mvn");
     }
 
     @Test

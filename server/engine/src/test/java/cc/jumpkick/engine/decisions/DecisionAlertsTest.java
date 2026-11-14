@@ -103,7 +103,7 @@ class DecisionAlertsTest {
     }
 
     private static Decision decision() {
-        return decision("Clean jk's cache?");
+        return decision("Clean JumpKick's cache?");
     }
 
     private static Decision decision(String question) {
@@ -142,7 +142,7 @@ class DecisionAlertsTest {
                             "--hint=string:desktop-entry:jumpkick",
                             DecisionAlerts.TITLE);
             assertThat(argv).noneMatch(a -> a.startsWith("--action") || a.equals("--wait"));
-            assertThat(argv.getLast()).isEqualTo("Clean jk's cache?\nAnswer it in the dashboard.\n" + LINK);
+            assertThat(argv.getLast()).isEqualTo("Clean JumpKick's cache?\nAnswer it in the dashboard.\n" + LINK);
         });
 
         alerts.raise(UiAsk.NOTIFY, decision(), LINK);
@@ -165,7 +165,7 @@ class DecisionAlertsTest {
                             "--print-id",
                             "--wait",
                             DecisionAlerts.TITLE,
-                            "Clean jk's cache?\nAnswer it in the dashboard.\n" + LINK);
+                            "Clean JumpKick's cache?\nAnswer it in the dashboard.\n" + LINK);
             w.lines().accept("17");
             assertThat(launcher.launched).isEmpty();
             w.lines().accept("default");
@@ -192,9 +192,9 @@ class DecisionAlertsTest {
         new Decisions(queue, id -> null, new Dashboards()).alerts(alerts);
         Decision d = queue.open(new DecisionQueue.Ask(
                 "disk-clean",
-                "Clean jk's cache?",
+                "Clean JumpKick's cache?",
                 List.of(),
-                DecisionForms.confirm("disk-clean", "Clean jk's cache?", "Yes"),
+                DecisionForms.confirm("disk-clean", "Clean JumpKick's cache?", "Yes"),
                 null,
                 null,
                 null,
@@ -237,7 +237,7 @@ class DecisionAlertsTest {
         assertThat(launcher.launched).singleElement().satisfies(argv -> {
             assertThat(argv.subList(0, 2)).containsExactly("osascript", "-e");
             assertThat(argv.get(2))
-                    .startsWith("display notification \"Clean jk's cache?\nAnswer it in the dashboard.\n")
+                    .startsWith("display notification \"Clean JumpKick's cache?\nAnswer it in the dashboard.\n")
                     .contains(LINK)
                     .endsWith("with title \"" + DecisionAlerts.TITLE + "\"");
         });
@@ -300,7 +300,7 @@ class DecisionAlertsTest {
         assertThat(toast.getAttribute("launch")).isEqualTo(LINK);
         NodeList texts = toast.getElementsByTagName("text");
         assertThat(texts.item(0).getTextContent()).isEqualTo(DecisionAlerts.TITLE);
-        assertThat(texts.item(1).getTextContent()).isEqualTo("Clean jk's cache?\nAnswer it in the dashboard.");
+        assertThat(texts.item(1).getTextContent()).isEqualTo("Clean JumpKick's cache?\nAnswer it in the dashboard.");
     }
 
     @Test

@@ -126,7 +126,7 @@ class JkManagerHoldTest {
 
             assertThat(cm.workElapsedMillis(at)).isEqualTo(Math.max(0, before - 274_000));
             assertThat(buf.toString(StandardCharsets.UTF_8))
-                    .contains("JumpKick build suspended 4m 34s - the machine slept or jk was stopped");
+                    .contains("JumpKick build suspended 4m 34s - the machine slept or JumpKick was stopped");
         });
     }
 

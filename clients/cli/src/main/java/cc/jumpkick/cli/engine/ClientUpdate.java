@@ -53,7 +53,7 @@ public final class ClientUpdate {
     static boolean updatedBetweenPasses(Optional<String> newer) {
         if (newer.isEmpty()) return false;
         handOffTo = newer.get();
-        CliOutput.err("jk was updated to " + newer.get() + "; continuing on it");
+        CliOutput.err("JumpKick was updated to " + newer.get() + "; continuing on it");
         return true;
     }
 

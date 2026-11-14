@@ -530,7 +530,7 @@ public final class ManifestProject {
         if (value == 0) return;
         if (value < JavaRelease.FLOOR) {
             throw new JkBuildParseException(
-                    path + " = " + value + " is not supported; jk needs JDK " + JavaRelease.FLOOR + " or later");
+                    path + " = " + value + " is not supported; JumpKick needs JDK " + JavaRelease.FLOOR + " or later");
         }
     }
 

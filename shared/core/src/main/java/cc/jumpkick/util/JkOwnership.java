@@ -93,7 +93,7 @@ public final class JkOwnership {
             // The only case that needs an answer.
         }
         if (!isOwned(path)) {
-            throw new IOException("refusing to remove " + path + ": jk did not create it (no " + MARKER + ")");
+            throw new IOException("refusing to remove " + path + ": JumpKick did not create it (no " + MARKER + ")");
         }
         PathUtil.deleteRecursively(path);
     }

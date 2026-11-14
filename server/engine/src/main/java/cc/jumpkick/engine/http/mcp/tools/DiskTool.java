@@ -21,9 +21,9 @@ public final class DiskTool implements McpTool {
 
     /** The question each destructive action puts to a host that can ask. */
     private static final Map<String, String> QUESTIONS = Map.of(
-            "clean", "Clean jk's cache (disk clean)?",
-            "nuke", "Delete jk's whole cache tier (disk nuke)?",
-            "m2-clean", "Remove the files jk downloaded into ~/.m2 and has not used lately (disk m2-clean)?");
+            "clean", "Clean JumpKick's cache (disk clean)?",
+            "nuke", "Delete JumpKick's whole cache tier (disk nuke)?",
+            "m2-clean", "Remove the files JumpKick downloaded into ~/.m2 and has not used lately (disk m2-clean)?");
 
     private static final String YES = "Yes, delete them";
 
@@ -32,7 +32,7 @@ public final class DiskTool implements McpTool {
         return new Spec(
                 "disk",
                 "Cache vs store disk usage. clean/nuke/m2-clean require confirm=true, and a host that can ask the user asks (nuke cache only; m2-clean"
-                        + " removes only files jk downloaded into ~/.m2 and has not used for olderThanDays,"
+                        + " removes only files JumpKick downloaded into ~/.m2 and has not used for olderThanDays,"
                         + " keeping what dir's lockfile pins; without confirm it previews).",
                 McpSchemas.object(Map.of(
                         "action",

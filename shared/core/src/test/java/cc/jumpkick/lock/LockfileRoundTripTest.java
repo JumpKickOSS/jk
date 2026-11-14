@@ -450,7 +450,7 @@ class LockfileRoundTripTest {
             assertThatThrownBy(() -> LockfileReader.parse(lock))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("schema version " + v + " is not supported")
-                    .hasMessageContaining("this jk reads v1");
+                    .hasMessageContaining("this JumpKick reads v1");
         }
     }
 

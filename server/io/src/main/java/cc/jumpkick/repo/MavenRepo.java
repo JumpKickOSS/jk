@@ -448,7 +448,7 @@ public final class MavenRepo {
         this.download =
                 new DownloadLeg(name, this.fetchBase, gate.over(transport), credential, storeDir(), allowUnverified);
         if (mirror != null && mirror.refusal() != null) {
-            unreachable.set(new OutOfJob("jk refuses it: " + mirror.refusal(), false));
+            unreachable.set(new OutOfJob("JumpKick refuses it: " + mirror.refusal(), false));
         }
     }
 
@@ -1036,7 +1036,7 @@ public final class MavenRepo {
                         + coord.version() + " at " + relativePath + "; check disk space and permissions"));
         if (repoStore.verify(relativePath, sha256) != RepoArtifactStore.IndexState.VERIFIED) {
             throw new IOException(placed + " does not match the locked sha256 of " + coord.group() + ":"
-                    + coord.artifact() + ":" + coord.version() + " and jk did not write it; remove the file, or"
+                    + coord.artifact() + ":" + coord.version() + " and JumpKick did not write it; remove the file, or"
                     + " point JK_M2_LOCAL elsewhere");
         }
         if (repoStore.m2Backed() && repoStore.fetchedByJk(relativePath)) writeMavenSidecars(placed);

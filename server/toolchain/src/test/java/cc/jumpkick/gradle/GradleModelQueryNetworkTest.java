@@ -563,7 +563,7 @@ class GradleModelQueryNetworkTest {
                         Map.entry("package", "com.acme.events"),
                         Map.entry("builders", true),
                         Map.entry("jsr303", true));
-        assertThat(rows).noneMatch(r -> r.contains("jsonschema2pojo") || r.contains("outside jk's layout"));
+        assertThat(rows).noneMatch(r -> r.contains("jsonschema2pojo") || r.contains("outside JumpKick's layout"));
     }
 
     /** sngular's scs-multiapi Gradle plugin's AsyncAPI spec imports as [asyncapi]. */

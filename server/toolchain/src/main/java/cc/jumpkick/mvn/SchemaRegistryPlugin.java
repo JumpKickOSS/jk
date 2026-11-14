@@ -59,7 +59,7 @@ final class SchemaRegistryPlugin {
         for (PluginExecution execution : plugin.getExecutions()) {
             for (String goal : execution.getGoals()) {
                 if (!DOWNLOAD_ONLY.contains(goal))
-                    report.warning(ARTIFACT + " " + goal + ": not run; jk only downloads");
+                    report.warning(ARTIFACT + " " + goal + ": not run; JumpKick only downloads");
             }
         }
         Path baseDir = model.getProjectDirectory() == null

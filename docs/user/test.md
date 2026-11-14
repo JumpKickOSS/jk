@@ -672,7 +672,7 @@ the refusal names the member.
 
 ```text
 org.junit.jupiter:junit-jupiter-engine:5.12.2 is pulled in by:
-  added by jk for com.example:svc: junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)
+  added by JumpKick for com.example:svc: junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)
   org.junit.jupiter:junit-jupiter-engine:5.12.2
 ```
 

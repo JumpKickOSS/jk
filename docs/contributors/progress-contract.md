@@ -231,7 +231,7 @@ that spans it is used. A gap is like a hold that already ended:
 | Surface | Suspended |
 |---------|-----------|
 | TUI | the countdown carries on from where it stood; the summary reads `took 3m 37s, suspended 4m 34s` |
-| Plain | `JumpKick build suspended 4m 34s - the machine slept or jk was stopped`, and the summary |
+| Plain | `JumpKick build suspended 4m 34s - the machine slept or JumpKick was stopped`, and the summary |
 | jsonl / wire | `suspended` (`suspendedMs`, `monoMs`, `startedAt`) |
 | History | `jk history` gives the working time under Took and `suspended 4m 34s` under Notes; `jk history show` beside the duration; `jk-results.md` on its headline |
 | Web | the countdown's anchors move by the time away; the run page shows a `suspended 4m 34s` chip beside its working time |

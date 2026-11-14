@@ -788,7 +788,7 @@ final class GradleModelImporter {
         }
         if (d.classifier() != null && !d.classifier().isBlank()) dep = dep.withClassifier(d.classifier());
         if (d.type() != null && !d.type().isBlank()) {
-            local.warning(module + ": artifact type " + d.type() + " dropped; jk uses the jar");
+            local.warning(module + ": artifact type " + d.type() + " dropped; JumpKick uses the jar");
         }
         List<String> exclusions = exclusions(d);
         if (!exclusions.isEmpty()) dep = dep.withExclusions(exclusions);
@@ -879,7 +879,7 @@ final class GradleModelImporter {
             if (!odd.isEmpty()) {
                 local.warning("source set " + s.name() + " reads "
                         + String.join(", ", odd.stream().map(p::withWriters).toList())
-                        + ", outside jk's layout; move them or generate them");
+                        + ", outside JumpKick's layout; move them or generate them");
             }
         }
     }
@@ -915,7 +915,7 @@ final class GradleModelImporter {
         if (url.startsWith("file:") && url.replace('\\', '/').matches(".*/\\.m2/repository/?")) {
             if (mavenLocal) return;
             mavenLocal = true;
-            report.warning("mavenLocal() ignored; jk reads ~/.m2 already");
+            report.warning("mavenLocal() ignored; JumpKick reads ~/.m2 already");
             return;
         }
         String normalized = url.endsWith("/") ? url : url + "/";

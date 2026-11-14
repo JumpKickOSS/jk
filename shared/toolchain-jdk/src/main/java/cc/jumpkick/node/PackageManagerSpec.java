@@ -28,7 +28,7 @@ public record PackageManagerSpec(PackageManager manager, String version) {
         if (at <= 0) throw new IllegalArgumentException("packageManager \"" + raw + "\" is not <name>@<version>");
         PackageManager pm = PackageManager.byId(s.substring(0, at))
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "packageManager \"" + raw + "\" names a manager jk does not run (npm, pnpm, yarn, bun)"));
+                        "packageManager \"" + raw + "\" names a manager JumpKick does not run (npm, pnpm, yarn, bun)"));
         String version = s.substring(at + 1);
         int plus = version.indexOf('+');
         if (plus >= 0) version = version.substring(0, plus);

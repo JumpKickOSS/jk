@@ -424,7 +424,7 @@ class GradleModelImporterTest {
         assertThat(Objects.requireNonNull(core.project().kotlin()).raw()).isEqualTo(KotlinResolver.FLOOR_VERSION);
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's minimum"));
+                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below JumpKick's minimum"));
     }
 
     @Test

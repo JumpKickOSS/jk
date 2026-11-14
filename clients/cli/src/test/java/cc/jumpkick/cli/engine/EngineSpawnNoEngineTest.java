@@ -16,7 +16,7 @@ class EngineSpawnNoEngineTest {
     void the_missing_engine_advice_names_jk_snapshot_and_no_dist_install() {
         String advice = EngineSpawn.noEngine("1.2.3-SNAPSHOT");
 
-        assertThat(advice).startsWith("no build engine for jk 1.2.3-SNAPSHOT");
+        assertThat(advice).startsWith("no build engine for JumpKick 1.2.3-SNAPSHOT");
         assertThat(advice).contains("`jk snapshot`", "`jk self materialize …`", "`jk self update`", "JK_ENGINE_EXE");
         assertThat(advice).doesNotContain("install.sh", "target/dist");
     }

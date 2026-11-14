@@ -123,7 +123,7 @@ one run per cell, fail fast.
 | Layer | Choice |
 |---|---|
 | Language | Java 25 |
-| Build of jk itself | jk (root `jk.toml` workspace, `jk-lock.toml`, `.jk/scripts/*.kts` build scripts) |
+| Build of JumpKick itself | JumpKick (root `jk.toml` workspace, `jk-lock.toml`, `.jk/scripts/*.kts` build scripts) |
 | Native CLI | GraalVM native-image (`clients/cli`) |
 | Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
 | Config / lock | TOML (`jk.toml`), canonical `jk-lock.toml` (workspace root only) |
@@ -133,9 +133,9 @@ one run per cell, fail fast.
 | Wire | JSONL client↔engine protocol (`shared/wire`) |
 | Modules | `shared/` (client-safe), `server/` (engine-only), `clients/`, `plugins/` |
 
-Build with the installed jk (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** jk's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
+Build with the installed JumpKick (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** JumpKick's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 
-**Several sessions on one host share one installed jk and one resident engine.** jk coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of jk itself (`jk snapshot`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk snapshot && jk test -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
+**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk snapshot`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk snapshot && jk test -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
 
 ## Reinstall from this checkout
 
@@ -158,8 +158,8 @@ Never run `jk build` first; it repeats work the snapshot does anyway.
 | Command | What it does |
 |---|---|
 | `jk snapshot -S` | Everything `jk build -S` does (every module compiled and packaged; `target/dist/jk` native CLI + `target/dist/lib/jk-engine-<version>.jar`), then shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
-| `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
-| `scripts/reinstall-chain.sh` | The same install when the installed jk is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
+| `./install.sh target/dist/jk` | The same ship layout onto a machine with no JumpKick yet |
+| `scripts/reinstall-chain.sh` | The same install when the installed JumpKick is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
 
 A host with no native client gets the JVM client from the same installer ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
@@ -210,18 +210,18 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 - **Merge gate** — before every local merge into `main`: `jk guard` (it formats what changed), then
   `jk snapshot` (`jk build` plus the reinstall; never run `jk build` before it).
 - **Push gate** — before every `git push` of `main` to `origin`: `jk snapshot -g` on the
-  local `main` you are about to push (the test classpath and the installed jk must report the same
-  `-SNAPSHOT` version; `jk test -g` against a snapshot-installed jk does not). One run covers every branch merged since the last push, so
+  local `main` you are about to push (the test classpath and the installed JumpKick must report the same
+  `-SNAPSHOT` version; `jk test -g` against a snapshot-installed JumpKick does not). One run covers every branch merged since the last push, so
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
-  A push whose commits since `origin/main` touch nothing jk builds (Markdown, the website under
+  A push whose commits since `origin/main` touch nothing JumpKick builds (Markdown, the website under
   `hosting/`, scripts and results under `bench/`) needs no push gate: `jk guard docs` is enough.
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
   spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),
   run the tests that can fail it, one module and one class at a time: every class an earlier run
   of that gate failed, the tests of the code you changed, and the tests of whatever you merged or
-  rebased in. On the host that will run the gate, first make the installed jk match the tree (the
+  rebased in. On the host that will run the gate, first make the installed JumpKick match the tree (the
   reinstall without tests, seconds when the build is cached): narrow end-to-end runs use the
-  installed jk's workers and fail falsely against an older install. Read each class's counts in
+  installed JumpKick's workers and fail falsely against an older install. Read each class's counts in
   the test reports, not only the exit code. Start the long run once those pass; a long run that
   fails on what a one-minute run would have caught has held the host for nothing.
 

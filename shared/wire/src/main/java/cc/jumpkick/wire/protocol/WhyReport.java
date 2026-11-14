@@ -81,7 +81,7 @@ public record WhyReport(
      * workspace members it was added for when {@code units} names them.
      */
     public static String addedByJkLine(String reason, String units) {
-        return "added by jk" + (units.isEmpty() ? "" : " for " + units) + ": " + reason;
+        return "added by JumpKick" + (units.isEmpty() ? "" : " for " + units) + ": " + reason;
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */

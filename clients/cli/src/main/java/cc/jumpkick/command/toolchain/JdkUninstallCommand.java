@@ -225,7 +225,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 .filter(h -> JdkUninstallPolicy.refusal(h, registry.jdksRoot()).isEmpty())
                 .toList();
         if (installed.isEmpty()) {
-            CommandWedge.printFail("JDK", "no JDKs jk can remove; JDKs other tools manage stay");
+            CommandWedge.printFail("JDK", "no JDKs JumpKick can remove; JDKs other tools manage stay");
             return 0;
         }
         Optional<String> currentDefault = defaults.defaultId();

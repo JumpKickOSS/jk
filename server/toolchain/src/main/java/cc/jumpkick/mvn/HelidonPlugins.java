@@ -318,7 +318,7 @@ final class HelidonPlugins {
         for (String named : List.of("additionalJlinkArgs", "defaultDebugOptions", "finalName")) {
             if (config != null && config.getChild(named) != null) {
                 report.warning(MAVEN_PLUGIN + " <" + named + "> not imported: [jlink] writes target/<name>-jri/ with"
-                        + " jdeps' modules, and bin/start --debug uses jk's debug options");
+                        + " jdeps' modules, and bin/start --debug uses JumpKick's debug options");
             }
         }
         return new Jlink(

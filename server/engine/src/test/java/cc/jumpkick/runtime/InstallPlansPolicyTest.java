@@ -132,7 +132,7 @@ class InstallPlansPolicyTest {
 
         assertThatThrownBy(() -> install(project, built(project, "v1")))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("jk did not install it");
+                .hasMessageContaining("JumpKick did not install it");
         assertThat(Files.readString(slotJar("1.0.0-SNAPSHOT"))).isEqualTo("from maven");
     }
 
@@ -144,7 +144,7 @@ class InstallPlansPolicyTest {
 
         assertThatThrownBy(() -> install(project, built(project, "v2")))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("jk did not install it");
+                .hasMessageContaining("JumpKick did not install it");
         assertThat(Files.readString(slotJar("1.0.0-SNAPSHOT"))).isEqualTo("hand edited");
     }
 
@@ -216,7 +216,7 @@ class InstallPlansPolicyTest {
 
         assertThatThrownBy(() -> installPrivate(project, built(project, "v1")))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("jk did not install it");
+                .hasMessageContaining("JumpKick did not install it");
         assertThat(Files.readString(shelfJar("1.0.0-SNAPSHOT"))).isEqualTo("copied in by hand");
     }
 

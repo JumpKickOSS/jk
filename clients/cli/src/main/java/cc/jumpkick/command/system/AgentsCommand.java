@@ -38,7 +38,7 @@ public final class AgentsCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Wire every supported agent, not only those in use here.", "-A", "--all"),
-                Opt.flag("Take jk's entries out instead.", "-R", "--remove"));
+                Opt.flag("Take JumpKick's entries out instead.", "-R", "--remove"));
     }
 
     @Override

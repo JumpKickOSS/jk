@@ -390,7 +390,7 @@ final class PackagingPlugins {
         }
         if (majorOf(version) < 2) {
             report.warning("quarkus-maven-plugin at Quarkus " + version
-                    + ": jk needs 2.0+; no [quarkus] table. Upgrade, then add [quarkus] version");
+                    + ": JumpKick needs 2.0+; no [quarkus] table. Upgrade, then add [quarkus] version");
             return null;
         }
         return new PluginConfig("quarkus", Map.of("version", version));

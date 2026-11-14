@@ -130,7 +130,8 @@ public final class McpCommand implements CliCommand {
     private static void startInstalledEngine(String version) throws IOException {
         Path jk = EngineInstall.pathClient(JkDirs.binDir());
         if (!Files.isRegularFile(jk)) {
-            throw new IOException("jk was updated to " + version + " but " + jk + " is missing; reinstall jk");
+            throw new IOException(
+                    "JumpKick was updated to " + version + " but " + jk + " is missing; reinstall JumpKick");
         }
         Process p = new ProcessBuilder(jk.toString(), "engine", "start", "--no-ansi")
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)

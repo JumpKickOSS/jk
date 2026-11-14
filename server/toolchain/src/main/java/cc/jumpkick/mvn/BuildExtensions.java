@@ -59,17 +59,17 @@ final class BuildExtensions {
                     "flattens the deployed POM; jk publish writes a flat one"),
             covered(
                     "org.apache.maven.extensions:maven-build-cache-extension",
-                    "caches module outputs; jk's action cache does this"),
+                    "caches module outputs; JumpKick's action cache does this"),
             covered("io.takari.maven:takari-smart-builder", "schedules the reactor; jk build schedules its own graph"),
             covered(
                     "fr.brouillard.oss:jgitver-maven-plugin",
                     "versions from git tags; set version in jk.toml from the tag before jk build"),
             unbuilt(
                     "org.apache.maven.archetype:archetype-packaging",
-                    "maven-archetype packaging, which jk does not build"),
-            unbuilt("org.eclipse.tycho:tycho-maven-plugin", "Tycho/p2 packaging, which jk does not build"),
-            unbuilt("org.apache.felix:maven-bundle-plugin", "OSGi bundle packaging; jk writes no OSGi manifest"),
-            unbuilt("com.github.maven-nar:nar-maven-plugin", "nar native packaging, which jk does not build"));
+                    "maven-archetype packaging, which JumpKick does not build"),
+            unbuilt("org.eclipse.tycho:tycho-maven-plugin", "Tycho/p2 packaging, which JumpKick does not build"),
+            unbuilt("org.apache.felix:maven-bundle-plugin", "OSGi bundle packaging; JumpKick writes no OSGi manifest"),
+            unbuilt("com.github.maven-nar:nar-maven-plugin", "nar native packaging, which JumpKick does not build"));
 
     private BuildExtensions() {}
 
@@ -101,7 +101,7 @@ final class BuildExtensions {
             String ga = extension.getGroupId() + ":" + extension.getArtifactId();
             if (PROPERTY_ONLY.contains(ga)) continue;
             Role role = ROLES.get(ga);
-            String effect = role != null ? role.effect() : "Maven core extension, which jk does not load";
+            String effect = role != null ? role.effect() : "Maven core extension, which JumpKick does not load";
             ImportReport.Severity severity = role != null ? role.severity() : ImportReport.Severity.ERROR;
             String message = "extension " + coordinate(ga, extension.getVersion()) + ": " + effect + remedy(severity);
             row(em, report, inherited, isRoot, severity, message, raw -> declaresExtension(raw, ga));

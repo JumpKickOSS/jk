@@ -104,7 +104,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<dir>", "Override the lib directory.", "--lib-dir").hide(),
                 Opt.value(
                         "<m2|jk>",
-                        "Install into m2 (the Maven local repository, default) or jk's own repository",
+                        "Install into m2 (the Maven local repository, default) or JumpKick's own repository",
                         "--destination"),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),

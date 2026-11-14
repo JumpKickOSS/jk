@@ -97,7 +97,7 @@ public final class EnvReadReport {
                     COMPUTED,
                     "the suite failed and " + simple(f.opaque().iterator().next())
                             + (f.opaque().size() > 1 ? " and " + (f.opaque().size() - 1) + " more" : "")
-                            + " read the environment by a name jk cannot see");
+                            + " read the environment by a name JumpKick cannot see");
         }
         return said(told);
     }

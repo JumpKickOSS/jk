@@ -68,7 +68,8 @@ public final class RepositoryToml {
             if (RepositorySpec.JK_LOCAL.equals(name)) {
                 // The first-party install store (repos/jk-local) is not a user's to redeclare.
                 if (onBad == OnBad.REJECT) {
-                    throw new JkBuildParseException("repositories.jk-local: name reserved for jk; pick another name");
+                    throw new JkBuildParseException(
+                            "repositories.jk-local: name reserved for JumpKick; pick another name");
                 }
                 continue;
             }

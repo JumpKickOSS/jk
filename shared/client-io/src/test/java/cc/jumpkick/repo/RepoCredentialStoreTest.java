@@ -120,7 +120,7 @@ class RepoCredentialStoreTest {
     @Test
     void with_the_keychain_locked_the_secret_stays_in_the_file_with_one_notice(@TempDir Path dir) throws Exception {
         FakeKeychain keychain = new FakeKeychain();
-        keychain.locked = "the default keyring is locked, and jk never asks to unlock it";
+        keychain.locked = "the default keyring is locked, and JumpKick never asks to unlock it";
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
 
         SecretVault.Stored stored = store.write("ghp", new RepoCredential.Bearer("tok-123"), NEXUS);

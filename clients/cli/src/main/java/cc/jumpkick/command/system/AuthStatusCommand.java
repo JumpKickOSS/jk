@@ -19,7 +19,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-/** {@code jk auth status} — report which forges jk is authenticated with. */
+/** {@code jk auth status} — report which forges JumpKick is authenticated with. */
 public final class AuthStatusCommand implements CliCommand {
 
     @Override
@@ -29,7 +29,7 @@ public final class AuthStatusCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Show which forges jk is authenticated with";
+        return "Show which forges JumpKick is authenticated with";
     }
 
     @Override

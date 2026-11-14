@@ -42,7 +42,7 @@ public final class LauncherName {
             return Optional.of("launcher name " + Jsonl.quote(name) + " is reserved on Windows");
         }
         if (JK_OWN_STEMS.contains(stem)) {
-            return Optional.of("launcher name " + Jsonl.quote(name) + " is jk's own file under bin/");
+            return Optional.of("launcher name " + Jsonl.quote(name) + " is JumpKick's own file under bin/");
         }
         return Optional.empty();
     }

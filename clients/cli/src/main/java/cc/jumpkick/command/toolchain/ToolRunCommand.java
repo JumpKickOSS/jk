@@ -310,7 +310,7 @@ public final class ToolRunCommand implements CliCommand {
 
     /** {@code --debug-jvm} names a JVM jk launches for a project; tools and scripts have their own launchers. */
     private static int refuseDebug() {
-        CommandWedge.printFail("Run", "--debug-jvm applies to a jk project run (a directory with jk.toml)");
+        CommandWedge.printFail("Run", "--debug-jvm applies to a JumpKick project run (a directory with jk.toml)");
         return Exit.USAGE;
     }
 

@@ -28,8 +28,8 @@ class LockfileReaderNewerWriterTest {
                 """.replace("NEWER", NEWER));
         assertThatThrownBy(() -> LockfileReader.read(lock))
                 .hasMessageContaining("schema version 2 is not supported")
-                .hasMessageContaining("written by jk " + NEWER + " and this is jk " + JkVersion.VERSION)
-                .hasMessageContaining("upgrade jk, do not re-lock")
+                .hasMessageContaining("written by JumpKick " + NEWER + " and this is JumpKick " + JkVersion.VERSION)
+                .hasMessageContaining("upgrade JumpKick, do not re-lock")
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain("re-run `jk lock`"));
     }
 
@@ -44,7 +44,7 @@ class LockfileReaderNewerWriterTest {
                 """.replace("NEWER", NEWER));
         assertThatThrownBy(() -> LockfileReader.read(lock))
                 .hasMessageContaining("unknown top-level key(s) [shiny-new-table]")
-                .hasMessageContaining("upgrade jk, do not re-lock");
+                .hasMessageContaining("upgrade JumpKick, do not re-lock");
     }
 
     @Test

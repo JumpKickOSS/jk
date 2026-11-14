@@ -36,7 +36,7 @@ class McpRenameCheckTest {
                 .startsWith("Renamed Range.contains to includes")
                 .as("the instruction is replaced by what the check found")
                 .doesNotContain("Test the test classes it edited")
-                .contains("Checked by jk, the edited tests: FAIL");
+                .contains("Checked by JumpKick, the edited tests: FAIL");
     }
 
     @Test
@@ -67,7 +67,7 @@ class McpRenameCheckTest {
         assertThat(submitted).extracting(JobSpec::kind).containsExactly("test", "guard");
         assertThat(answer)
                 .doesNotContain("Test next", "The task is done")
-                .contains("\nChecked by jk: OK")
+                .contains("\nChecked by JumpKick: OK")
                 .endsWith(
                         ". tool has no compiled classes, so the calls made there are missing: search it for calls too.");
 

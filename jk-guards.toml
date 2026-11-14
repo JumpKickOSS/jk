@@ -648,7 +648,7 @@ reason = "names the banned narration phrases as the policy"
 [guards.product-name-in-docs]
 kind        = "text"
 requires-jk = "0.50.5"
-files       = ["README.md", "docs/**/*.md"]
+files       = ["README.md", "CONTRIBUTING.md", "AGENTS.md", "docs/**/*.md"]
 languages   = ["prose"]
 blank       = "prose"
 pattern     = '(?<![\w./~\\-])jk(?![\w/\\-]|\.\w)'

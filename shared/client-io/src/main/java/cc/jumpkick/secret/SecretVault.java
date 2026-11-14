@@ -225,7 +225,7 @@ public final class SecretVault {
             if (probe.available()) return new Placement(backend, refusals, absences, headless);
             (probe.refused() ? refusals : absences).add(backend.displayName() + ": " + probe.reason());
         }
-        if (backends.isEmpty()) absences.add("jk knows no keychain on " + Os.name());
+        if (backends.isEmpty()) absences.add("JumpKick knows no keychain on " + Os.name());
         return new Placement(null, refusals, absences, headless);
     }
 

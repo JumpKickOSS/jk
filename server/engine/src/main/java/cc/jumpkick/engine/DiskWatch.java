@@ -176,7 +176,7 @@ final class DiskWatch implements AutoCloseable {
         long now = clock.getAsLong();
         if (!wasCritical) {
             log.accept("jk engine: disk nearly full at " + critical + " (" + DiskGuard.describe(space)
-                    + "); heavy blobs stay out of the caches and jk is reclaiming space");
+                    + "); heavy blobs stay out of the caches and JumpKick is reclaiming space");
         }
         wasCritical = true;
         if (now - lastEmergency < COOLDOWN.toMillis()) return true;

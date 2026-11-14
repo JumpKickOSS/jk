@@ -32,7 +32,7 @@ class JkOwnershipTest {
         assertThatIOException()
                 .isThrownBy(() -> JkOwnership.removeIfOwned(theirs))
                 .withMessageContaining("graalvm-25")
-                .withMessageContaining("jk did not create it");
+                .withMessageContaining("JumpKick did not create it");
 
         assertThat(theirs.resolve("payload.txt")).exists();
     }

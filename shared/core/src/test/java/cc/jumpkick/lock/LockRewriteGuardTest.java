@@ -44,8 +44,8 @@ class LockRewriteGuardTest {
         String refusal = refusal(writtenBy("0.14.0", null), "0.13.7", null);
 
         assertThat(refusal)
-                .contains("written by jk 0.14.0")
-                .contains("this engine is jk 0.13.7, an older jk")
+                .contains("written by JumpKick 0.14.0")
+                .contains("this engine is JumpKick 0.13.7, an older JumpKick")
                 .contains("a relock would drop jdk.future-key")
                 .contains("jk engine stop")
                 .contains("jk lock -F");
@@ -76,8 +76,8 @@ class LockRewriteGuardTest {
         WriterBuild older = new WriterBuild("bbbbbbbbbbbb", EARLIER);
 
         assertThat(refusal(writtenBy("0.13.7", newer), "0.13.7", older))
-                .contains("written by jk 0.13.7 (build aaaaaaaaaaaa of 2026-09-17T15:57:16Z)")
-                .contains("this engine is jk 0.13.7 (build bbbbbbbbbbbb of 2026-09-16T13:12:00Z)")
+                .contains("written by JumpKick 0.13.7 (build aaaaaaaaaaaa of 2026-09-17T15:57:16Z)")
+                .contains("this engine is JumpKick 0.13.7 (build bbbbbbbbbbbb of 2026-09-16T13:12:00Z)")
                 .contains("an older build of the same version");
         assertThat(refusal(writtenBy("0.13.7", older), "0.13.7", newer)).isNull();
         assertThat(refusal(writtenBy("0.13.7", newer), "0.13.7", newer))
@@ -125,7 +125,7 @@ class LockRewriteGuardTest {
         LockfileReader.clearCache();
         assertThatThrownBy(() -> LockRewriteGuard.refuseUnlessForced(lock, false))
                 .isInstanceOf(LockRewriteGuard.LockRewriteRefused.class)
-                .hasMessageContaining("written by jk 99.0.0");
+                .hasMessageContaining("written by JumpKick 99.0.0");
         assertThatCode(() -> LockRewriteGuard.refuseUnlessForced(lock, true)).doesNotThrowAnyException();
 
         Files.writeString(lock, "not = [a lock");

@@ -57,7 +57,7 @@ public final class PluginSdkFloor {
             throws IOException, InterruptedException {
         String version = version(manifest);
         if (manifest == null || manifest.sdk() == null) {
-            note.accept("note: " + decl.coordinate() + " declares no SDK version; using this jk's, " + version);
+            note.accept("note: " + decl.coordinate() + " declares no SDK version; using this JumpKick's, " + version);
         }
         List<Lockfile.Artifact> out = new ArrayList<>();
         for (String artifact : ARTIFACTS) {

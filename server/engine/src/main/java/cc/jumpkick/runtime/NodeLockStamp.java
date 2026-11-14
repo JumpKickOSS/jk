@@ -79,7 +79,7 @@ final class NodeLockStamp {
     static @Nullable PackageManagerSpec managerOf(NodeProject project) {
         PackageManager pm = PackageManager.byId(project.packageManager())
                 .orElseThrow(() -> new IllegalArgumentException("package manager `" + project.packageManager()
-                        + "` is not one jk runs (npm, pnpm, yarn, bun)"));
+                        + "` is not one JumpKick runs (npm, pnpm, yarn, bun)"));
         if (pm.tool().isEmpty()) return null;
         String version = project.packageManagerVersion();
         return new PackageManagerSpec(pm, version == null || version.isBlank() ? PackageManagerSpec.LATEST : version);

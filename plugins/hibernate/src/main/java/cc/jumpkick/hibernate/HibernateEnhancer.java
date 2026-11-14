@@ -115,7 +115,7 @@ final class HibernateEnhancer {
                         .invoke(null));
                 return new Enhancer(target, enhance, discover, version);
             } catch (ReflectiveOperationException e) {
-                throw new IOException("the project's Hibernate has no enhancer jk can drive: " + cause(e), e);
+                throw new IOException("the project's Hibernate has no enhancer JumpKick can drive: " + cause(e), e);
             }
         }
 

@@ -1,4 +1,4 @@
-# Contributing to jk
+# Contributing to JumpKick
 
 ## Source headers
 
@@ -23,22 +23,22 @@ git config --global core.eol lf
 
 ## Toolchain
 
-Build with the released jk: `curl -fsSL https://jumpkick.build/install.sh | bash` installs the
+Build with the released JumpKick: `curl -fsSL https://jumpkick.build/install.sh | bash` installs the
 client, the engine and the JDK the engine runs on. The native client links against a GraalVM-capable
 JDK (`jk build` uses the one `--graal` / `GRAALVM_HOME` names, else an installed one). Java sources
 compile at **JDK 25**; the two JDK-17 libraries (`shared/host`, `shared/plugin-sdk`,
 `shared/guard-api`) say so in their manifests.
 
 Dashboard JS suites (`clients/web`, part of the fast tier) run under `node --test` on the Node.js
-`clients/web/jk.toml` declares: jk provisions it and pins it in `jk-lock.toml`, so a contributor
-needs no Node of their own, and neither does CI: every job runs its JS on the Node.js jk provisions.
+`clients/web/jk.toml` declares: JumpKick provisions it and pins it in `jk-lock.toml`, so a contributor
+needs no Node of their own, and neither does CI: every job runs its JS on the Node.js JumpKick provisions.
 [`.nvmrc`](.nvmrc) names the same major for editors, and for the release job's deploy step, which
-installs no jk.
+installs no JumpKick.
 
 ### Container runtime (Testcontainers)
 
 The jk-examples scenarios that start databases, and `bench/wall/spring-petclinic`, run
-Testcontainers against your container runtime. jk configures none of it: it passes `DOCKER_HOST`
+Testcontainers against your container runtime. JumpKick configures none of it: it passes `DOCKER_HOST`
 and the `TESTCONTAINERS_*` variables from your shell to the test JVMs
 ([Build](docs/user/build.md)), and it never writes `~/.testcontainers.properties`.
 
@@ -72,7 +72,7 @@ jk snapshot -S     # builds every module (native client + engine jar → target/
 
 From then on the engine running your builds is the one you just compiled; the long form is
 [self-host](docs/contributors/self-host.md#bootstrap). `./install.sh target/dist/jk` installs the
-ship layout on a machine with no jk yet. A host with no native client gets the JVM client from the
+ship layout on a machine with no JumpKick yet. A host with no native client gets the JVM client from the
 same installer ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
 ### Dependency locking
@@ -93,7 +93,7 @@ Smart App Control blocks an unsigned `jk.exe`.
 
 ### Black-box examples (sibling repo)
 
-End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `jk test`.
+End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall the local JumpKick and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `jk test`.
 
 `jk build` produces the slim GraalVM native `jk` client and the engine fat jar
 (`target/dist/lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
@@ -111,7 +111,7 @@ jk-templates. `scripts/templates-sync.sh --check` names every drifted file; the 
 
 ### Formatting
 
-jk formats itself: the root `jk.toml` sets `[format] enforce = true`, so `jk guard` formats every
+JumpKick formats itself: the root `jk.toml` sets `[format] enforce = true`, so `jk guard` formats every
 source that changed before it builds, and in CI (where `CI` is set) the same step fails naming any
 unformatted file. Run `jk guard` before every commit; there is no separate format step (see
 [AGENTS.md](AGENTS.md#code-formatting-part-of-jk-guard)).
@@ -128,10 +128,10 @@ Code as Art / Typed Envelope (see [docs/contributors/code-as-art.md](docs/contri
 Long-form dogfood: **[docs/contributors/self-host.md](docs/contributors/self-host.md)**.
 
 Catalog short names resolve through the **system catalog** (downloaded global registry +
-bundled offline floor); jk's own manifests use registry names only and the tree carries no
+bundled offline floor); JumpKick's own manifests use registry names only and the tree carries no
 `jk-libs.toml`. There is no host-local catalog file and no `catalog =` pin in `jk.toml`.
 
-The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
+The repo is a JumpKick **workspace** (root `jk.toml` + per-module manifests under `shared/`,
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
@@ -259,7 +259,7 @@ Commits must read as ordinary human contributions:
 - Do **not** add tool or model co-author trailers (`Co-Authored-By: …` for bots/tools), nor “generated by …” lines in commit messages, comments, or Javadoc.
 - Do **not** name third-party AI products or models in commit messages, code comments, Javadoc, or user-facing docs (product docs may describe MCP clients generically).
 
-Local guard: install jk's git hooks once per clone. The `commit-msg` hook refuses a message that
+Local guard: install JumpKick's git hooks once per clone. The `commit-msg` hook refuses a message that
 breaks a `commit` rule in `jk-guards.toml` (here: agent attribution trailers); the `pre-commit`
 hook refuses a hand-edited guard baseline or a suppression-shaped comment.
 

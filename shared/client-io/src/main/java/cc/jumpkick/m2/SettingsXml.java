@@ -109,7 +109,7 @@ final class SettingsXml {
     private void undecryptable(String where, String element, MavenPasswords.Undecryptable e, String instead) {
         values.report(new SettingsValues.Notice(
                 "m2-settings-undecryptable:" + file + " " + where + " " + element,
-                "jk: warning: " + where + " in " + file + " has an encrypted " + element + " jk cannot decrypt: "
+                "jk: warning: " + where + " in " + file + " has an encrypted " + element + " JumpKick cannot decrypt: "
                         + e.getMessage() + "; " + instead));
     }
 

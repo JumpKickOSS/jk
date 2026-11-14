@@ -264,7 +264,7 @@ public final class McpMachine {
                     return m;
                 }
                 if (!JdkOwnership.isJkOwnedJavaHome(hit.get().home())) {
-                    m.put("error", "refusing to uninstall a JDK jk does not own — use jk jdk uninstall");
+                    m.put("error", "refusing to uninstall a JDK JumpKick does not own — use jk jdk uninstall");
                     return m;
                 }
                 victims.add(jdkVictim(hit.get()));
@@ -333,7 +333,7 @@ public final class McpMachine {
                 out.put("preview", true);
                 out.put(
                         "note",
-                        "pass confirm=true to remove these; only files jk downloaded and nothing changed since");
+                        "pass confirm=true to remove these; only files JumpKick downloaded and nothing changed since");
             } else {
                 boolean ran = CacheMaintenanceLocks.tryExclusively(cacheGate, JkDirs.cache(), () -> {
                     report[0] = CachePlans.cleanM2(projectDir, olderThanDays, false);

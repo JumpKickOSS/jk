@@ -708,7 +708,7 @@ public final class CacheCommand extends GroupCommand {
             return List.of(
                     CommonOpts.cacheDir(),
                     Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"),
-                    Opt.flag("Clean jk's unused downloads from ~/.m2 instead of the cache.", "-m", "--m2"),
+                    Opt.flag("Clean JumpKick's unused downloads from ~/.m2 instead of the cache.", "-m", "--m2"),
                     Opt.value(
                             "<DAYS>", "With --m2: days unused (default: [m2] clean-after-days)", "-t", "--older-than"));
         }

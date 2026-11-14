@@ -50,7 +50,7 @@ public final class Jk {
      */
     static final String WIRE_ONLY_CLIENT = "jk: no engine in this binary (wire-only client)\n"
             + "  run `jk self update` or `jk self materialize`, or set JK_ENGINE_EXE\n"
-            + "  in jk's checkout, `jk snapshot` installs the client with its engine";
+            + "  in JumpKick's checkout, `jk snapshot` installs the client with its engine";
 
     /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code

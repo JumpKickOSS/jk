@@ -268,7 +268,7 @@ final class GeneratorPlugins {
         if (!types.isEmpty()) values.put("type-mappings", types);
         reportUncovered(configs, report);
         if ("spring".equals(generator)) {
-            report.warning("[openapi] spring generator: jk's defaults drop springdoc, swagger and JsonNullable;"
+            report.warning("[openapi] spring generator: JumpKick's defaults drop springdoc, swagger and JsonNullable;"
                     + " set them in options if needed");
         }
         return new PluginConfig("openapi", values);

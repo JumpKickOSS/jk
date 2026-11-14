@@ -68,13 +68,13 @@ class JkBuildParserRepositoryTest {
                 jk-local = "https://example.invalid/maven/"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.jk-local: name reserved for jk");
+                .hasMessageContaining("repositories.jk-local: name reserved for JumpKick");
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [repositories.jk-local]
                 url = "file:///tmp/repo"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.jk-local: name reserved for jk");
+                .hasMessageContaining("repositories.jk-local: name reserved for JumpKick");
     }
 
     @Test

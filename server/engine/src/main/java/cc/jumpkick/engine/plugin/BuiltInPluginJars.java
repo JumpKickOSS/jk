@@ -87,7 +87,7 @@ public final class BuiltInPluginJars {
      */
     static String doesNotOwn(PluginJar plugin, Path jar, String table) {
         return "the installed " + plugin.artifactId() + " (" + jar + ") does not own [" + table
-                + "]; the project needs a newer " + plugin.artifactId() + "; run jk install from a jk checkout"
+                + "]; the project needs a newer " + plugin.artifactId() + "; run jk snapshot from a JumpKick checkout"
                 + " that has it, or set -D" + plugin.jarProperty() + "=<path to its jar>";
     }
 
@@ -110,8 +110,8 @@ public final class BuiltInPluginJars {
         if (!owner.equals(artifact)) {
             throw new IllegalStateException("not registered: " + located.path() + " is the " + artifact
                     + " worker but its " + ManifestPaths.PLUGIN_MANIFEST + " describes plugin `" + descriptor.id()
-                    + "` (table [" + descriptor.table() + "], worker " + owner + "); reinstall it with jk install"
-                    + " from the jk checkout, or jk storage clean -w to fetch the published jar");
+                    + "` (table [" + descriptor.table() + "], worker " + owner + "); reinstall it with jk snapshot"
+                    + " from the JumpKick checkout, or jk storage clean -w to fetch the published jar");
         }
         return descriptor;
     }

@@ -434,7 +434,7 @@ public final class GradleImporter {
             }
         }
         if (body.contains("mavenLocal()")) {
-            report.warning("mavenLocal() ignored; jk reads ~/.m2 already");
+            report.warning("mavenLocal() ignored; JumpKick reads ~/.m2 already");
         }
         return new ArrayList<>(deduped.values());
     }

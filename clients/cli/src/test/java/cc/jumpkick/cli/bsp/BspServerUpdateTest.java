@@ -35,7 +35,7 @@ class BspServerUpdateTest {
                 .serve();
 
         String responses = out.toString(StandardCharsets.UTF_8);
-        assertThat(responses).contains("\"id\":1").contains("jk was updated to 9.9.9");
+        assertThat(responses).contains("\"id\":1").contains("JumpKick was updated to 9.9.9");
         assertThat(responses).as("nothing after the update is served").doesNotContain("\"id\":2");
     }
 

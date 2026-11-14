@@ -31,7 +31,7 @@ public final class NodeListCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "List installed Node.js versions, jk's and other managers'";
+        return "List installed Node.js versions, JumpKick's and other managers'";
     }
 
     @Override

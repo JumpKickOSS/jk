@@ -100,7 +100,8 @@ final class McpHolds {
         return (held < 1_000 ? "" : "on hold for memory " + seconds(held) + " in all\n")
                 + (suspended < 1_000
                         ? ""
-                        : "suspended " + SlowestTests.duration(suspended) + " (the machine slept or jk was stopped)\n");
+                        : "suspended " + SlowestTests.duration(suspended)
+                                + " (the machine slept or JumpKick was stopped)\n");
     }
 
     /** {@code status}'s rows for the live jobs on hold: jid, time held so far, the memory waited for. */

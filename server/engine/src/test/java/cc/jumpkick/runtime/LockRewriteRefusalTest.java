@@ -53,8 +53,8 @@ class LockRewriteRefusalTest {
         assertThatThrownBy(() -> AutoLock.maybeReLock(
                         tmp, existing, lock, tmp.resolve("cache"), null, List.of(), true, ResolveObserver.NOOP, null))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("written by jk " + NEWER)
-                .hasMessageContaining("this engine is jk " + JkVersion.VERSION)
+                .hasMessageContaining("written by JumpKick " + NEWER)
+                .hasMessageContaining("this engine is JumpKick " + JkVersion.VERSION)
                 .hasMessageContaining("jdk.future-key");
         assertThat(LockfileReader.read(lock).generatedBy())
                 .as("the lock on disk is untouched")
@@ -77,7 +77,7 @@ class LockRewriteRefusalTest {
         assertThatThrownBy(() ->
                         pipeline.run(LockfileReader.read(lock), ResolveObserver.NOOP, LockPipeline.Progress.SILENT))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("written by jk " + NEWER);
+                .hasMessageContaining("written by JumpKick " + NEWER);
         assertThat(LockfileReader.read(lock).generatedBy()).isEqualTo("jk " + NEWER);
     }
 }

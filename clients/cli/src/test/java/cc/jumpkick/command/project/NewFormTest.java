@@ -364,7 +364,7 @@ class NewFormTest {
                           flavour: plain|sweet = plain (advanced)  # Flavour
                         """);
         assertThat(NewForm.help(Form.of("new-project", "New project", project("java", false)), "java/x"))
-                .isEqualTo("Template java/x asks nothing beyond jk's own flags.\n");
+                .isEqualTo("Template java/x asks nothing beyond JumpKick's own flags.\n");
     }
 
     @Test

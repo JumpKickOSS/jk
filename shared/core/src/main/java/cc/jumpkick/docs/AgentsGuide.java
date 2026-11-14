@@ -167,7 +167,7 @@ public final class AgentsGuide {
         int end = text.indexOf(END, begin);
         if (end < 0) throw malformed(file, "has " + BEGIN + " with no " + END + " after it");
         if (text.indexOf(BEGIN, begin + 1) >= 0 || text.indexOf(END, end + 1) >= 0) {
-            throw malformed(file, "has jk's markers more than once");
+            throw malformed(file, "has JumpKick's markers more than once");
         }
         int after = end + END.length();
         if (text.startsWith(eol, after)) after += eol.length();
@@ -188,7 +188,7 @@ public final class AgentsGuide {
     }
 
     private static IOException malformed(Path file, String what) {
-        return new IOException(file + " " + what + "; fix the markers by hand (jk owns only the text" + " between "
-                + BEGIN + " and " + END + ")");
+        return new IOException(file + " " + what + "; fix the markers by hand (JumpKick owns only the text"
+                + " between " + BEGIN + " and " + END + ")");
     }
 }

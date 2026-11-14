@@ -506,7 +506,7 @@ public final class InstallPlans {
     }
 
     private static String foreignSlot(Coordinate coord, Path dir) {
-        return coord.toGav() + " is already in " + dir + ", but jk did not install it;"
+        return coord.toGav() + " is already in " + dir + ", but JumpKick did not install it;"
                 + " delete that directory to let jk install replace it";
     }
 

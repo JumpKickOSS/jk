@@ -89,7 +89,7 @@ class GraphOpsAddedRootsWhyTest {
         assertThat(report.rootOf(0)).isEqualTo("com.example:svc");
         assertThat(WhyReport.decode(report.encode()).rootReasonOf(0)).isEqualTo(report.rootReasonOf(0));
         assertThat(WhyReport.addedByJkLine(requireNonNull(report.rootReasonOf(0)), report.rootOf(0)))
-                .isEqualTo("added by jk for com.example:svc: junit-jupiter-api 5.12.2 is on the test graph"
+                .isEqualTo("added by JumpKick for com.example:svc: junit-jupiter-api 5.12.2 is on the test graph"
                         + " without an engine (Surefire parity)");
     }
 

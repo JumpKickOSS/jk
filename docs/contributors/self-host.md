@@ -137,7 +137,7 @@ failure bisects the first-parent history after the installed JumpKick's source (
 checkout again. Scratch locks are forced and thrown away; the checkout is never edited.
 
 The failure mode names itself: a JumpKick older than the lock's writer refuses the lock with
-`written by jk <newer> and this is jk <older>; upgrade jk, do not re-lock` instead of suggesting
+`written by JumpKick <newer> and this is JumpKick <older>; upgrade JumpKick, do not re-lock` instead of suggesting
 `jk lock`, which would restate the branch's lock in the old format and hand a newer tree an older
 lock. A manifest key the pinned release does not
 know fails its parse with the key's name and the keys that table accepts; the remedy is the same
@@ -213,7 +213,7 @@ The client module is a plain JVM program, and two things run it without a native
 What the JVM client cannot do yet is *bootstrap* a platform with no JumpKick: a JVM client only pairs
 with an engine of its own version, and the hosted pieces do not pair today — `repo/` holds the
 0.13.2 closure while `releases/` holds the 0.13.3 engine (there is no `releases/0.13.2/`), so a
-0.13.2 JVM client stops at `no build engine for jk 0.13.2` on its first build. The owner closes
+0.13.2 JVM client stops at `no build engine for JumpKick 0.13.2` on its first build. The owner closes
 the gap by publishing the 0.13.3 closure the way [releases](releases.md#platforms-without-a-hosted-client)
 describes (`jk install`, then `scripts/publish-maven-repo.sh`), after which a JVM client from the
 closure materializes the hosted engine with `jk self materialize <client> <engine-jar>`. Until

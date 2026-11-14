@@ -259,7 +259,8 @@ public final class CachePlans {
                     if (report.foreign() > 0) {
                         ctx.warn(
                                 "m2",
-                                report.foreign() + " file(s) jk downloaded have changed since and were left alone");
+                                report.foreign()
+                                        + " file(s) JumpKick downloaded have changed since and were left alone");
                     }
                     ctx.put(FILES, (long) report.removed().size());
                     ctx.put(BYTES, report.freedBytes());

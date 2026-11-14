@@ -35,7 +35,7 @@ public final class NodeUninstallCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Remove a Node.js version jk installed";
+        return "Remove a Node.js version JumpKick installed";
     }
 
     @Override

@@ -54,7 +54,7 @@ class PomRuntimeClasspathStagingTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:fat:1.0")
                 .hasMessageContaining("no POM")
-                .hasMessageContaining("run jk install again");
+                .hasMessageContaining("run jk snapshot again");
     }
 
     @Test
@@ -79,7 +79,7 @@ class PomRuntimeClasspathStagingTest {
         assertThatThrownBy(() -> resolve(store, workerJar))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:gone:1.0 not found")
-                .hasMessageContaining("run jk install again");
+                .hasMessageContaining("run jk snapshot again");
     }
 
     @Test

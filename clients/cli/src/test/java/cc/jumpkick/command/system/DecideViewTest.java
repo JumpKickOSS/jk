@@ -14,7 +14,7 @@ class DecideViewTest {
     private static final String LIST = """
             [{"id":"3f9a0c1e","kind":"jdk-uninstall","question":"Uninstall temurin-21?","detail":["21.0.5"],
               "label":"claude-code 3f9a","project":"/ws/app","state":"open"},
-             {"id":"3f9b7777","kind":"disk-clean","question":"Clean jk's cache?","detail":[],"state":"declined"}]
+             {"id":"3f9b7777","kind":"disk-clean","question":"Clean JumpKick's cache?","detail":[],"state":"declined"}]
             """;
 
     @Test

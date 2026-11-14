@@ -210,7 +210,7 @@ public final class BuildVerbCommand implements CliCommand {
     private static void refreshAgentsGuide(Path root) {
         try {
             if (AgentsGuide.refresh(root) == AgentsGuide.Change.UPDATED) {
-                CliOutput.err("updated jk's section of " + root.resolve(AgentsGuide.FILE));
+                CliOutput.err("updated JumpKick's section of " + root.resolve(AgentsGuide.FILE));
             }
         } catch (IOException ignored) {
             // A read-only or vanished AGENTS.md is the project's business, not the build's.

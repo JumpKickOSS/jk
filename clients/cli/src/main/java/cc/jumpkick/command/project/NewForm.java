@@ -241,7 +241,7 @@ final class NewForm {
             if (f.key().equals("layout") || !PROJECT_KEYS.contains(f.key())) fields.add(f);
         }
         if (fields.isEmpty())
-            return out.append(" asks nothing beyond jk's own flags.\n").toString();
+            return out.append(" asks nothing beyond JumpKick's own flags.\n").toString();
         out.append(" (-L for layout, -p key=value for the rest):\n");
         for (Field f : fields) out.append("  ").append(FieldLine.of(f)).append('\n');
         return out.toString();

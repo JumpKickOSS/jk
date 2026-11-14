@@ -33,7 +33,7 @@ public final class NodeVerifyCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Check that jk's Node.js installs are intact";
+        return "Check that JumpKick's Node.js installs are intact";
     }
 
     @Override
@@ -46,7 +46,7 @@ public final class NodeVerifyCommand implements CliCommand {
         boolean json = GlobalOptions.outputIsJson(in);
         List<NodeInstalls.Install> managed = NodeCli.installs().managed();
         if (managed.isEmpty()) {
-            if (!json) CommandWedge.printOk(NodeCli.WEDGE, "No Node.js installed by jk to verify.");
+            if (!json) CommandWedge.printOk(NodeCli.WEDGE, "No Node.js installed by JumpKick to verify.");
             return 0;
         }
         boolean failed = false;

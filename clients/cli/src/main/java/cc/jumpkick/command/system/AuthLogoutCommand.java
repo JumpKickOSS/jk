@@ -28,7 +28,7 @@ public final class AuthLogoutCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Remove jk's stored token for a forge host";
+        return "Remove JumpKick's stored token for a forge host";
     }
 
     @Override

@@ -84,7 +84,7 @@ final class LibDirPlugins {
         }
         if (mainClass == null) {
             report.warning("`" + DEPENDENCY_PLUGIN + "` execution `" + execution.getId() + "` copies the runtime"
-                    + " dependencies into target/" + dir + "; jk's `lib-dir` layout belongs to an application and"
+                    + " dependencies into target/" + dir + "; JumpKick's `lib-dir` layout belongs to an application and"
                     + " this module names no main class, so it is not written.");
             return new Mapped(null, consumed);
         }

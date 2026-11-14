@@ -111,7 +111,7 @@ public final class BspServer {
     private boolean superseded(String json) throws IOException {
         Optional<String> newer = newerInstall.get();
         if (newer.isEmpty()) return false;
-        String reason = "jk was updated to " + newer.get() + "; restart the build server to use it";
+        String reason = "JumpKick was updated to " + newer.get() + "; restart the build server to use it";
         System.err.println("jk bsp: " + reason);
         try {
             String id = requestId(MiniJson.parse(json));

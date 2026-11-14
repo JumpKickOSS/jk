@@ -70,7 +70,7 @@ class WhyLinesTest {
                 List.of(),
                 null);
         assertThat(WhyLines.of(report, "junit-jupiter-engine"))
-                .contains("org.junit.jupiter:junit-jupiter-engine 5.12.2 · added by jk for com.example:svc:"
+                .contains("org.junit.jupiter:junit-jupiter-engine 5.12.2 · added by JumpKick for com.example:svc:"
                         + " junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)");
     }
 

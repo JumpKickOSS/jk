@@ -84,7 +84,7 @@ public final class LockRewriteGuard {
     }
 
     /**
-     * How the running jk is older than the lock's writer ({@code "an older jk"}, {@code "an older
+     * How the running jk is older than the lock's writer ({@code "an older JumpKick"}, {@code "an older
      * build of the same version"}), or null when it is not.
      */
     public static @Nullable String olderThanWriter(Lockfile existing) {
@@ -103,7 +103,7 @@ public final class LockRewriteGuard {
         }
         if (order < 0) return null;
         WriterBuild writer = existing.writerBuild();
-        if (order > 0) return "an older jk";
+        if (order > 0) return "an older JumpKick";
         if (writer == null || running == null || writer.id().equals(running.id())) return null;
         Instant wrote = writer.time();
         Instant runs = running.time();
@@ -157,10 +157,10 @@ public final class LockRewriteGuard {
             @Nullable WriterBuild running,
             String relation,
             Set<String> dropped) {
-        return "jk-lock.toml was written by jk " + writerVersion + describe(writer) + "; this engine is jk "
+        return "jk-lock.toml was written by JumpKick " + writerVersion + describe(writer) + "; this engine is JumpKick "
                 + runningVersion + describe(running) + ", " + relation
                 + "\na relock would drop " + String.join(", ", dropped)
-                + "; install that jk and run jk engine stop, or use jk lock -F";
+                + "; install that JumpKick and run jk engine stop, or use jk lock -F";
     }
 
     /** {@code " (build 4ee07400a592 of 2026-09-17T15:57:16Z)"}, or {@code ""} for no build. */

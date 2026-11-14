@@ -55,7 +55,7 @@ class JkResultsAgentEnvTest {
                 "/ws/rest-service",
                 "run-tests",
                 "env-computed",
-                "the suite failed and Config read the environment by a name jk cannot see",
+                "the suite failed and Config read the environment by a name JumpKick cannot see",
                 null,
                 null);
         BuildRecord.Diag token = envUndeclared(
@@ -66,7 +66,7 @@ class JkResultsAgentEnvTest {
                 .startsWith("FAIL test rest-service")
                 .contains("W ApiTest read TOKEN, which jk.toml does not declare; it saw no value\n"
                         + "FIX add to [env] require: \"TOKEN\"\n"
-                        + "W the suite failed and Config read the environment by a name jk cannot see\n");
+                        + "W the suite failed and Config read the environment by a name JumpKick cannot see\n");
     }
 
     private static BuildRecord.Diag envUndeclared(String name, String message) {

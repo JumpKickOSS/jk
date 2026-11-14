@@ -823,8 +823,8 @@ public final class PluginDescriptors {
         String floor = spec.substring(2).trim();
         String running = JkVersion.VERSION;
         if (compareNumericCore(running, floor) < 0) {
-            throw new IllegalArgumentException("plugin " + id + " requires jk " + floor + " or newer but this jk is "
-                    + running + " — upgrade with `jk self update`");
+            throw new IllegalArgumentException("plugin " + id + " requires JumpKick " + floor
+                    + " or newer but this JumpKick is " + running + " — upgrade with `jk self update`");
         }
     }
 

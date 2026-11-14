@@ -257,8 +257,8 @@ class PomPackagingImportTest {
                 """);
         assertThat(result.jkBuild().pluginConfig("quarkus")).isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m ->
-                        m.startsWith("quarkus-maven-plugin at Quarkus 1.0.0.Final") && m.contains("jk needs 2.0+"));
+                .anyMatch(m -> m.startsWith("quarkus-maven-plugin at Quarkus 1.0.0.Final")
+                        && m.contains("JumpKick needs 2.0+"));
     }
 
     @Test

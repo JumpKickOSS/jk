@@ -131,7 +131,7 @@ public final class EngineSpawn {
             if (supersededBy(hs, clientVersion, ReleasedClient.current(), installedVersion())) {
                 // jk updated itself while this process ran: taking the newer engine over would hand
                 // the next command's client an engine older than itself, and it would take it back.
-                throw new IOException("jk was updated to " + hs.version() + " while this " + clientVersion
+                throw new IOException("JumpKick was updated to " + hs.version() + " while this " + clientVersion
                         + " client ran; run the command again");
             }
             logReason(
@@ -486,9 +486,9 @@ public final class EngineSpawn {
      * release-versioned, and its shelved release would hide every later snapshot of the same version.
      */
     static String noEngine(String clientVersion) {
-        return "no build engine for jk " + clientVersion + "\n"
+        return "no build engine for JumpKick " + clientVersion + "\n"
                 + "  run `jk self update` or `jk self materialize …`, or set JK_ENGINE_EXE\n"
-                + "  in jk's checkout, `jk snapshot` installs the client with its engine";
+                + "  in JumpKick's checkout, `jk snapshot` installs the client with its engine";
     }
 
     /**

@@ -86,7 +86,7 @@ class PomSchemaGeneratorImportTest {
                 .extracting(ImportReport.Issue::message)
                 .contains(
                         "kafka-schema-registry-maven-plugin: pattern payments-.* not imported; list its subjects",
-                        "kafka-schema-registry-maven-plugin test-compatibility: not run; jk only downloads")
+                        "kafka-schema-registry-maven-plugin test-compatibility: not run; JumpKick only downloads")
                 .noneMatch(m -> m.contains("kafka-schema-registry-maven-plugin not imported"));
     }
 

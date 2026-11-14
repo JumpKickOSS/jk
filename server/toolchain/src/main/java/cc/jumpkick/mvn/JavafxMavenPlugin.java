@@ -93,8 +93,9 @@ final class JavafxMavenPlugin {
         for (Xpp3Dom config : PluginFacts.configurations(plugin.get())) {
             for (String named : List.of("jlinkImageName", "launcher", "jlinkZipName")) {
                 if (config.getChild(named) != null) {
-                    report.warning(PLUGIN + " <" + named + "> not imported: jk writes the image to target/<name>-jri/"
-                            + " with bin/start as its launcher, and zips nothing");
+                    report.warning(
+                            PLUGIN + " <" + named + "> not imported: JumpKick writes the image to target/<name>-jri/"
+                                    + " with bin/start as its launcher, and zips nothing");
                 }
             }
         }

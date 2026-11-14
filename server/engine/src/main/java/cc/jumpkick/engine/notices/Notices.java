@@ -162,7 +162,7 @@ public final class Notices {
         });
     }
 
-    /** "claude-code 3f9a needs you: Clean jk's cache?" */
+    /** "claude-code 3f9a needs you: Clean JumpKick's cache?" */
     static String decisionText(Decision d) {
         String label = d.label();
         String who = label != null && !label.isBlank() ? label : "setup".equals(d.kind()) ? "JumpKick" : "An agent";

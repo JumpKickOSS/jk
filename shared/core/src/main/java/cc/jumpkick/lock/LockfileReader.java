@@ -162,7 +162,7 @@ public final class LockfileReader {
         if (lockVersion != Lockfile.CURRENT_VERSION) {
             throw new IllegalArgumentException("jk-lock.toml schema version "
                     + lockVersion
-                    + " is not supported (this jk reads v"
+                    + " is not supported (this JumpKick reads v"
                     + Lockfile.CURRENT_VERSION
                     + "); " + remedy(writer));
         }
@@ -481,7 +481,8 @@ public final class LockfileReader {
      */
     static String remedy(@Nullable String newerWriter) {
         if (newerWriter == null) return "re-run `jk lock` to restate it";
-        return "written by jk " + newerWriter + " and this is jk " + JkVersion.VERSION + "; upgrade jk, do not re-lock";
+        return "written by JumpKick " + newerWriter + " and this is JumpKick " + JkVersion.VERSION
+                + "; upgrade JumpKick, do not re-lock";
     }
 
     private static String requireString(LockToml result, String key) {

@@ -259,7 +259,8 @@ final class SelfUpdateScheduler implements AutoCloseable, SelfUpdateControl {
                 boolean ok = steps.download(d.version());
                 if (!ok) {
                     downloadFailedAtMillis = clock.millis();
-                    log.accept("jk engine: self-update: download of jk " + d.version() + " failed; retrying later");
+                    log.accept(
+                            "jk engine: self-update: download of JumpKick " + d.version() + " failed; retrying later");
                 }
                 yield ok;
             }

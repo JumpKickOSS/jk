@@ -277,7 +277,7 @@ final class TestPlugins {
         List<String> patterns = children(config.getChild("includes"));
         if (patterns.isEmpty()) return;
         report.warning(SUREFIRE + " <includes> " + String.join(", ", patterns)
-                + ": not imported; jk runs every test class. Filter with jk test -S '<pattern>' or tags");
+                + ": not imported; JumpKick runs every test class. Filter with jk test -S '<pattern>' or tags");
     }
 
     /**

@@ -220,7 +220,7 @@ class GradleImporterPropertiesTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("Kotlin 2.2.21 is below jk's minimum")
+                        .contains("Kotlin 2.2.21 is below JumpKick's minimum")
                         .contains("kotlin = \"" + KotlinResolver.FLOOR_VERSION + "\""));
     }
 

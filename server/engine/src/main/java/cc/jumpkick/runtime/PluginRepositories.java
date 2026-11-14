@@ -111,7 +111,7 @@ record PluginRepositories(
         MavenRepo.Mirror mirror = repo.mirror().orElse(null);
         if (mirror == null || mirror.refusal() == null) return;
         throw new IllegalStateException("repository " + repo.name() + " is reached through " + mirror.label()
-                + ", which jk refuses: " + mirror.refusal());
+                + ", which JumpKick refuses: " + mirror.refusal());
     }
 
     private static RepositoryRoute route(MavenRepo repo, URI url) {

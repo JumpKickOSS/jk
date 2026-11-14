@@ -56,12 +56,12 @@ public final class McpRenameCheck {
         String body = TEST_LINE.matcher(renamed).replaceAll("").stripTrailing();
         String test = verdict(McpJobRuns.run(sub(in, args, left), null));
         if (!test.startsWith("OK")) {
-            return in.text(body + "\nChecked by jk, the edited tests: " + test.strip() + "\n" + call.group()
+            return in.text(body + "\nChecked by JumpKick, the edited tests: " + test.strip() + "\n" + call.group()
                     + " runs them again; then run(kind=guard).");
         }
         left = budget - elapsedS(startedNanos);
         if (left < GUARD_FLOOR_S) {
-            return in.text(body + "\nChecked by jk: " + firstLine(test) + ". Then run(kind=guard)"
+            return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Then run(kind=guard)"
                     + (uncompiled.isEmpty() ? "; when it says OK the task is done." : ". " + unseen(uncompiled)));
         }
         // Guard the modules the rename edited, as the tests ran: a workspace's whole guard can take minutes.
@@ -69,10 +69,10 @@ public final class McpRenameCheck {
         if (args.containsKey("only")) guardArgs.put("only", args.get("only"));
         String guard = verdict(McpJobRuns.run(sub(in, guardArgs, left), null));
         if (!guard.startsWith("OK")) {
-            return in.text(body + "\nChecked by jk: " + firstLine(test) + ". Guard: " + guard.strip());
+            return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Guard: " + guard.strip());
         }
         return in.text(
-                body + "\nChecked by jk: " + firstLine(test) + "; " + firstLine(guard) + ". " + done(uncompiled));
+                body + "\nChecked by JumpKick: " + firstLine(test) + "; " + firstLine(guard) + ". " + done(uncompiled));
     }
 
     /** The answer's last sentence after a check that passed. */

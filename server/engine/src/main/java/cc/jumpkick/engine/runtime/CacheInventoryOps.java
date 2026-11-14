@@ -624,7 +624,7 @@ public final class CacheInventoryOps {
         if (killedTrainers.isEmpty()) {
             return base + "\nheld by a process outside jk: an editor, a virus scan, or a shell in that directory";
         }
-        return base + "\nheld by a process outside jk; jk's startup-cache trainers " + killedTrainers
+        return base + "\nheld by a process outside JumpKick; JumpKick's startup-cache trainers " + killedTrainers
                 + " were stopped first";
     }
 

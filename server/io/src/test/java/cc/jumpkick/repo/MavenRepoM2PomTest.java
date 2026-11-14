@@ -83,6 +83,6 @@ class MavenRepoM2PomTest {
         // Not served as the repository's: the fork is named, never read as Central's POM.
         assertThatThrownBy(() -> RepoGroup.of(repo).tryFetchPom(Coordinate.of("com.example", "widget", "1.0")))
                 .hasMessageContaining(m2.resolve(REL).toString())
-                .hasMessageContaining("jk did not write it");
+                .hasMessageContaining("JumpKick did not write it");
     }
 }

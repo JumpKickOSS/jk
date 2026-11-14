@@ -115,9 +115,9 @@ class NoticesTest {
         n.follow(queue);
         Decision d = queue.open(new DecisionQueue.Ask(
                 "disk-clean",
-                "Clean jk's cache?",
+                "Clean JumpKick's cache?",
                 List.of(),
-                DecisionForms.confirm("disk-clean", "Clean jk's cache?", "Yes"),
+                DecisionForms.confirm("disk-clean", "Clean JumpKick's cache?", "Yes"),
                 null,
                 null,
                 null,
@@ -127,7 +127,7 @@ class NoticesTest {
             assertThat(notice.kind()).isEqualTo("decision");
             assertThat(notice.decision()).isEqualTo(d.id());
             assertThat(notice.href()).isEqualTo("#decision/" + d.id());
-            assertThat(notice.text()).isEqualTo("An agent needs you: Clean jk's cache?");
+            assertThat(notice.text()).isEqualTo("An agent needs you: Clean JumpKick's cache?");
         });
     }
 }

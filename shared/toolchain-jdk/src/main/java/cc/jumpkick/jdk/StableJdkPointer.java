@@ -267,7 +267,7 @@ public final class StableJdkPointer {
     private static final int MAX_DISPLACED = 64;
 
     private static IOException populatedInstall(Path pointer) {
-        return new IOException("refusing to replace " + pointer + ": it is a JDK jk did not install;"
+        return new IOException("refusing to replace " + pointer + ": it is a JDK JumpKick did not install;"
                 + " remove it with jk jdk uninstall");
     }
 

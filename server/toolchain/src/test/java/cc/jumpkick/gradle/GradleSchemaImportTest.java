@@ -170,7 +170,7 @@ class GradleSchemaImportTest {
         assertThat(messages(result.report()))
                 .contains(
                         "schemaRegistry: pattern payments-.* not imported; list its subjects",
-                        "schemaRegistry: register and compatibility not run; jk only downloads")
+                        "schemaRegistry: register and compatibility not run; JumpKick only downloads")
                 .noneMatch(m -> m.contains("kafka-schema-registry-gradle-plugin"));
     }
 

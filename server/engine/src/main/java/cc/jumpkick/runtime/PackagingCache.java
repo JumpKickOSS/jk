@@ -111,7 +111,7 @@ final class PackagingCache {
         ctx.warn(
                 DISK_LOW,
                 "not cached: the disk is nearly full (" + DiskGuard.describe(DiskGuard.space(cacheRoot))
-                        + "); the output stays where it was built and jk is reclaiming space");
+                        + "); the output stays where it was built and JumpKick is reclaiming space");
         return false;
     }
 

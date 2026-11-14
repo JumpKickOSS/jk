@@ -46,7 +46,7 @@ class SymlinkProvisionerTest {
 
         assertThatIOException()
                 .isThrownBy(() -> SymlinkProvisioner.link(theirs, source))
-                .withMessageContaining("jk did not create it");
+                .withMessageContaining("JumpKick did not create it");
 
         assertThat(theirs.resolve("payload.txt")).exists();
         assertThat(Files.isSymbolicLink(theirs)).isFalse();

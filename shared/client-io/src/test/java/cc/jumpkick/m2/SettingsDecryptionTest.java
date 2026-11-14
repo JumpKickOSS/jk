@@ -113,7 +113,7 @@ class SettingsDecryptionTest {
             assertThat(p.password()).isNull();
         });
         assertThat(settings.warnings()).anySatisfy(w -> assertThat(w)
-                .startsWith("jk: warning: <server> `nexus` in " + xml + " has an encrypted <password> jk"
+                .startsWith("jk: warning: <server> `nexus` in " + xml + " has an encrypted <password> JumpKick"
                         + " cannot decrypt: there is no "
                         + dir.resolve("home").resolve(".m2").resolve("settings-security.xml"))
                 .endsWith("; the repository is accessed anonymously")

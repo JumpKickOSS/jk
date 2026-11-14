@@ -100,7 +100,7 @@ public final class SecretServiceBackend implements SecretBackend {
         if (r.exit() == 0) {
             if (out.equals("b false") || out.equals("(<false>,)")) return Probe.AVAILABLE;
             if (out.equals("b true") || out.equals("(<true>,)")) {
-                return Probe.refused("the default keyring is locked, and jk never asks to unlock it");
+                return Probe.refused("the default keyring is locked, and JumpKick never asks to unlock it");
             }
             return Probe.refused("the default keyring's Locked property reads \"" + out + "\"");
         }

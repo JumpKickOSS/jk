@@ -47,7 +47,7 @@ class SecretVaultTest {
     @Test
     void auto_with_a_locked_keychain_keeps_the_secret_in_the_file_with_one_notice_naming_why() {
         FakeKeychain locked = new FakeKeychain();
-        locked.locked = "the default keyring is locked, and jk never asks to unlock it";
+        locked.locked = "the default keyring is locked, and JumpKick never asks to unlock it";
         SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(locked));
 
         Path record = Path.of("/home/u/.jk/creds/repo/nexus");

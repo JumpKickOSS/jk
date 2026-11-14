@@ -172,7 +172,7 @@ final class RepositoryRoutes {
                 return previous == null ? null : previous.getProxy(repository);
             });
         } catch (IllegalStateException readOnly) {
-            System.err.println("jk-quarkus: warning: jk's proxy settings not applied; using settings.xml's");
+            System.err.println("jk-quarkus: warning: JumpKick's proxy settings not applied; using settings.xml's");
         }
     }
 
@@ -202,7 +202,7 @@ final class RepositoryRoutes {
                         .build();
             });
         } catch (IllegalStateException readOnly) {
-            System.err.println("jk-quarkus: warning: jk's repository routing not applied to POM repositories");
+            System.err.println("jk-quarkus: warning: JumpKick's repository routing not applied to POM repositories");
         }
     }
 
