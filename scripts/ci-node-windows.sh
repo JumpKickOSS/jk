@@ -94,8 +94,8 @@ PY
 }
 
 run_set "" "${untagged[@]}"
-run_set "--include-tags integration" "${integration[@]}"
-if ((network)); then run_set "--include-tags network" "${networked[@]}"; fi
+run_set "-s integration" "${integration[@]}"
+if ((network)); then run_set "-s network" "${networked[@]}"; fi
 
 ran=("${untagged[@]}" "${integration[@]}")
 if ((network)); then ran+=("${networked[@]}"); fi
