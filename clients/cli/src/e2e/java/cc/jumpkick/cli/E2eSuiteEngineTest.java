@@ -30,6 +30,6 @@ class E2eSuiteEngineTest {
         assertThat(EngineTestSupport.materialized())
                 .as("the engine extension ran for this suite")
                 .isTrue();
-        assertThat(Jk.execute("info", "-C", dir.toString())).isZero();
+        assertThat(Jk.execute("tasks", "-C", dir.toString())).isZero();
     }
 }

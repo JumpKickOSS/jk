@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A command jk does not know, in a project, is offered to the plugins. When no plugin can be asked
- * — here no engine runs for the home — the normal help follows, except beside a config.toml that
+ * — here no engine runs for the home — the unknown-command error follows, except beside a config.toml that
  * does not parse: a pin there may declare the command, so the file is named with its position.
  */
 class PluginCommandFallbackTest {
@@ -52,7 +52,7 @@ class PluginCommandFallbackTest {
     }
 
     @Test
-    void an_unanswered_command_beside_a_sound_config_toml_falls_back_to_the_help() throws Exception {
+    void an_unanswered_command_beside_a_sound_config_toml_is_left_to_the_unknown_command_error() throws Exception {
         Files.writeString(home.resolve("config.toml"), "[network]\n");
         @Nullable Integer[] exit = new Integer[] {-1};
 

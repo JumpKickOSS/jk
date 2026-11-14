@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.util.Suggest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -52,37 +53,10 @@ public final class BuildLogicStems {
         return Optional.ofNullable(best);
     }
 
-    /** The valid stem closest to a typo, when it is close enough (edit distance ≤ 2) to suggest. */
+    /** The valid stem closest to a typo, when it is close enough to suggest. */
     public static Optional<String> closest(String stem) {
         if (stem == null || stem.isBlank()) return Optional.empty();
-        String n = normalize(stem);
-        String best = null;
-        int bestDistance = 3;
-        for (String base : ALL) {
-            int d = editDistance(n, base);
-            if (d < bestDistance) {
-                bestDistance = d;
-                best = base;
-            }
-        }
-        return Optional.ofNullable(best);
-    }
-
-    private static int editDistance(String a, String b) {
-        int[] prev = new int[b.length() + 1];
-        int[] cur = new int[b.length() + 1];
-        for (int j = 0; j <= b.length(); j++) prev[j] = j;
-        for (int i = 1; i <= a.length(); i++) {
-            cur[0] = i;
-            for (int j = 1; j <= b.length(); j++) {
-                int sub = prev[j - 1] + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1);
-                cur[j] = Math.min(sub, Math.min(prev[j] + 1, cur[j - 1] + 1));
-            }
-            int[] t = prev;
-            prev = cur;
-            cur = t;
-        }
-        return prev[b.length()];
+        return Suggest.closest(normalize(stem), ALL);
     }
 
     private static List<String> concat(List<String> a, List<String> b) {

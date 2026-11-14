@@ -106,6 +106,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.util.Suggest;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
@@ -239,9 +240,10 @@ public final class CommandDispatch {
     }
 
     /**
-     * If the command names a ported command, parse and run it (descending through subcommands as
-     * needed), returning the exit code; otherwise return {@code null} so the caller falls back to
-     * picocli.
+     * If argv names a command, parse and run it (descending through subcommands as needed) and
+     * return the exit code. A name that is neither a jk command nor a plugin's is a usage error with
+     * a did-you-mean. {@code null} when argv names no command at all (bare {@code jk}, {@code jk
+     * --help}, {@code jk --version}).
      */
     public static @Nullable Integer tryDispatch(String[] args) {
         List<String> all = List.of(args);
@@ -263,7 +265,8 @@ public final class CommandDispatch {
                     WorkingDirectory.resolve(SessionContext.current().config().dirOr(WorkingDirectory.current()));
             Integer pluginExit = tryPluginCommand(dir, command, all.subList(commandAt + 1, all.size()));
             if (pluginExit != null) return pluginExit;
-            return null; // let the caller show top-level help
+            printUnknownCommand(command, ansiEnabled());
+            return Exit.USAGE;
         }
         return dispatch(cmd, "jk " + cmd.name(), split(List.of(), all, commandAt), ansiEnabled());
     }
@@ -336,7 +339,7 @@ public final class CommandDispatch {
     /**
      * Attempt {@code command} as a plugin-declared command of the project in {@code dir}. Returns
      * the exit code when a plugin owned and ran it, else {@code null} (no jk.toml, no reachable
-     * engine, no owning plugin — the normal unknown-command help follows).
+     * engine, no owning plugin — the unknown-command error follows).
      *
      * <p>Beside a {@code ~/.jk/config.toml} that does not parse, the command is not looked up at all:
      * a {@code [plugins]} pin there may be what declares it, and the lookup parses the project with
@@ -384,7 +387,7 @@ public final class CommandDispatch {
             if (!report.found()) return null;
             return printPluginReport(command, args, report);
         } catch (Exception e) {
-            // Best-effort: the caller falls back to the normal help, or names config.toml when
+            // Best-effort: the caller reports an unknown command, or names config.toml when
             // that file is why the command could not be looked up.
             return null;
         }
@@ -740,15 +743,52 @@ public final class CommandDispatch {
         System.err.println(helpHint(ansi));
     }
 
+    private static void printUnknownCommand(String command, boolean ansi) {
+        System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
+                + " unrecognized command '"
+                + HelpRenderer.paint(command, Theme.active().highlight(), ansi)
+                + "'");
+        printSuggestion("command", command, COMMANDS, ansi);
+        System.err.println();
+        System.err.println(ansi
+                ? HelpRenderer.paint("Usage:", Theme.active().sectionHeading(), true)
+                        + " "
+                        + HelpRenderer.paint("jk", Theme.active().commandName(), true)
+                        + HelpRenderer.paint(" <COMMAND> [OPTIONS]", Theme.active().paramLabel(), true)
+                : "Usage: jk <COMMAND> [OPTIONS]");
+        System.err.println();
+        System.err.println(helpHint(ansi));
+    }
+
     private static void printUnknownSubcommand(CliCommand parent, String qualified, String sub, boolean ansi) {
         System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi)
                 + " unrecognized subcommand '"
                 + HelpRenderer.paint(sub, Theme.active().highlight(), ansi)
                 + "'");
+        printSuggestion("subcommand", sub, parent.subcommands(), ansi);
         System.err.println();
         System.err.println(usageLine(parent, qualified, ansi));
         System.err.println();
         System.err.println(helpHint(ansi));
+    }
+
+    /** The visible name among {@code commands} closest to {@code typo}, when one is close enough. */
+    static Optional<String> suggestion(String typo, List<CliCommand> commands) {
+        List<String> names = new ArrayList<>();
+        for (CliCommand c : commands) {
+            if (c.hidden()) continue;
+            names.add(c.name());
+            names.addAll(c.aliases());
+        }
+        return Suggest.closest(typo, names);
+    }
+
+    private static void printSuggestion(String noun, String typo, List<CliCommand> commands, boolean ansi) {
+        suggestion(typo, commands).ifPresent(name -> {
+            System.err.println();
+            System.err.println("  tip: a similar " + noun + " exists: '"
+                    + HelpRenderer.paint(name, Theme.active().success(), ansi) + "'");
+        });
     }
 
     private static String usageLine(CliCommand cmd, String qualified, boolean ansi) {

@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.command.interop.MvnCommand;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.ByteArrayOutputStream;
@@ -99,6 +101,40 @@ class CommandDispatchTest {
         for (String name : passthrough) {
             assertThat(help).as("the %s row points at jk's own help", name).contains("jk --help " + name);
         }
+    }
+
+    @Test
+    void an_unknown_command_is_a_usage_error_on_stderr_with_a_did_you_mean() throws Exception {
+        int[] exit = new int[1];
+        Capture.Streams typo = NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute("biuld")));
+        assertThat(exit[0]).as("a misspelt verb fails the script that ran it").isEqualTo(Exit.USAGE);
+        assertThat(typo.out()).as("nothing on stdout").isEmpty();
+        assertThat(typo.err())
+                .contains("error: unrecognized command 'biuld'")
+                .contains("a similar command exists: 'build'")
+                .contains("Usage: jk <COMMAND> [OPTIONS]");
+
+        Capture.Streams far = NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute("nosuchverb")));
+        assertThat(exit[0]).isEqualTo(Exit.USAGE);
+        assertThat(far.err()).contains("unrecognized command 'nosuchverb'").doesNotContain("similar");
+    }
+
+    @Test
+    void an_unknown_subcommand_names_the_closest_one() throws Exception {
+        int[] exit = new int[1];
+        Capture.Streams typo = NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute("engine", "stauts")));
+        assertThat(exit[0]).isEqualTo(Exit.USAGE);
+        assertThat(typo.err())
+                .contains("unrecognized subcommand 'stauts'")
+                .contains("a similar subcommand exists: 'status'");
+    }
+
+    @Test
+    void bare_jk_still_prints_the_help_and_exits_zero() throws Exception {
+        int[] exit = new int[1];
+        String out = NoAnsi.forced(() -> Capture.stdout(() -> exit[0] = Jk.execute()));
+        assertThat(exit[0]).isZero();
+        assertThat(out).contains("Usage");
     }
 
     @Test
