@@ -242,4 +242,61 @@ class ReleaseCommandTest {
         assertThat(git(tmp, "tag", "--list")).as("the local release stands").isEqualTo("v1.4.7");
         assertThat(git(tmp, "log", "-1", "--format=%s")).isEqualTo("Start 1.4.8");
     }
+
+    @Test
+    void undo_takes_back_a_local_release_so_its_snapshot_installs_again(@TempDir Path tmp) throws Exception {
+        Path m2 = repository(tmp, "1.4.7");
+        String released = git(tmp, "rev-parse", "HEAD");
+        assertThat(jk(tmp, m2, "release")).isZero();
+        Path jar = m2.resolve("repository/com/example/rel-lib/1.4.7/rel-lib-1.4.7.jar");
+        assertThat(jar).exists();
+        Files.writeString(tmp.resolve("jk.toml"), MANIFEST.formatted("1.4.7"));
+        git(tmp, "commit", "-q", "-am", "Back to 1.4.7 by hand");
+        assertThat(jk(tmp, m2, "snapshot", "-S"))
+                .as("the installed release hides its snapshot")
+                .isNotZero();
+        git(tmp, "reset", "-q", "--hard", "HEAD^");
+
+        assertThat(jk(tmp, m2, "release", "--undo")).isZero();
+
+        assertThat(git(tmp, "tag", "--list")).as("the tag is gone").isEmpty();
+        assertThat(git(tmp, "rev-parse", "HEAD"))
+                .as("the version commit is gone")
+                .isEqualTo(released);
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("version   = \"1.4.7\"");
+        assertThat(git(tmp, "status", "--porcelain")).isEmpty();
+        assertThat(jar).as("the installed release is gone").doesNotExist();
+        assertThat(jk(tmp, m2, "snapshot", "-S")).isZero();
+        assertThat(m2.resolve("repository/com/example/rel-lib/1.4.7-SNAPSHOT/rel-lib-1.4.7-SNAPSHOT.jar"))
+                .exists();
+        assertThat(jk(tmp, m2, "release", "--undo"))
+                .as("nothing left to take back")
+                .isNotZero();
+    }
+
+    @Test
+    void undo_refuses_a_release_whose_tag_was_pushed(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectory(tmp.resolve("project"));
+        Path m2 = repository(project, "1.4.7");
+        Path remote = Files.createDirectory(tmp.resolve("remote.git"));
+        git(remote, "init", "-q", "--bare", "-b", "main");
+        git(project, "remote", "add", "origin", remote.toString());
+        git(project, "push", "-q", "-u", "origin", "main");
+        assertThat(jk(project, m2, "release")).isZero();
+        String head = git(project, "rev-parse", "HEAD");
+        git(project, "push", "-q", "origin", "v1.4.7");
+
+        assertThat(jk(project, m2, "release", "--undo")).isNotZero();
+
+        assertThat(git(project, "tag", "--list")).isEqualTo("v1.4.7");
+        assertThat(git(project, "rev-parse", "HEAD")).isEqualTo(head);
+        assertThat(m2.resolve("repository/com/example/rel-lib/1.4.7/rel-lib-1.4.7.jar"))
+                .exists();
+
+        git(project, "push", "-q", "origin", ":refs/tags/v1.4.7", "main");
+        assertThat(jk(project, m2, "release", "--undo"))
+                .as("the version commit is pushed")
+                .isNotZero();
+        assertThat(git(project, "tag", "--list")).isEqualTo("v1.4.7");
+    }
 }

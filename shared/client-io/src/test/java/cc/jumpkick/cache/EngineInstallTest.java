@@ -233,6 +233,31 @@ class EngineInstallTest {
     }
 
     @Test
+    void forgetting_the_previous_install_leaves_rollback_nothing_and_the_live_one_alone(@TempDir Path tmp)
+            throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path a = Files.writeString(Files.createDirectories(tmp.resolve("a")).resolve("e.jar"), "engine-a");
+        Path b = Files.writeString(Files.createDirectories(tmp.resolve("b")).resolve("e.jar"), "engine-b");
+        FakeClock clock = new FakeClock();
+        store.materializeFromFiles("1.0.0", cas, a);
+        ShelfManifest.record(store.shelfFile(), Hashing.sha256Hex(a), tmp, Map.of(), Map.of(), clock);
+        store.materializeFromFiles("1.1.0", cas, b);
+        ShelfManifest.record(store.shelfFile(), Hashing.sha256Hex(b), tmp, Map.of(), Map.of(), clock);
+        assertThat(store.previousInstall()).isPresent();
+
+        store.forgetPrevious();
+
+        assertThat(store.previousInstall()).isEmpty();
+        assertThat(store.previousShelfFile()).doesNotExist();
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("1.1.0");
+        assertThat(ShelfManifest.read(store.shelfFile())).isPresent();
+        assertThatThrownBy(() -> store.rollback(cas, EngineInstall.nativeClients(home.resolve("bin"))))
+                .hasMessageContaining("no previous engine");
+    }
+
+    @Test
     void rollback_with_no_previous_engine_says_so(@TempDir Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));

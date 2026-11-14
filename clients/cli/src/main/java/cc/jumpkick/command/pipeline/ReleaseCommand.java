@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.api.BuildOptions;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
@@ -18,12 +22,15 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
+import cc.jumpkick.repo.InstalledRelease;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RemoteClaim;
 import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.run.BuildPlanListener;
@@ -83,6 +90,9 @@ public final class ReleaseCommand implements CliCommand {
                 Opt.flag("Publish to the [publish] target before tagging; takes jk publish options.", "--publish"),
                 Opt.flag("Push the branch and tag to its upstream after the release.", "--push"),
                 Opt.flag("Check everything and print what would happen; change nothing.", "--dry-run"),
+                Opt.flag(
+                        "Take back a release cut here and not pushed: its tag, the version commit, its installed jars.",
+                        "--undo"),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
@@ -144,12 +154,21 @@ public final class ReleaseCommand implements CliCommand {
         boolean dryRun = in.isSet("dry-run");
         boolean publish = in.isSet("publish");
         boolean push = in.isSet("push");
+        boolean undo = in.isSet("undo");
+        if (undo && (publish || push || segments > 0)) {
+            CommandWedge.printFail(CHIP, "--undo takes no --publish, --push or version segment");
+            return Exit.USAGE;
+        }
 
         String text = Files.readString(manifest, StandardCharsets.UTF_8);
         String version = ReleaseVersion.declared(text).orElse(null);
         if (version == null) {
             CommandWedge.printFail(CHIP, "this jk.toml inherits its version; run `jk release` where `version` is set");
             return Exit.CONFIG;
+        }
+        if (undo) {
+            return withdraw(
+                    dir, version, dryRun, in.value("m2-dir").map(CliPaths::abs).orElse(null));
         }
         String next;
         try {
@@ -287,6 +306,150 @@ public final class ReleaseCommand implements CliCommand {
                 "Released " + info.group() + ":" + info.name() + ":" + version + ", tag " + tag + ", next " + next
                         + (push ? ", pushed" : "; push with `git push --follow-tags`"));
         return Exit.SUCCESS;
+    }
+
+    /**
+     * The release {@code jk release} cut at HEAD: the tag on HEAD's parent when HEAD is the commit
+     * that moved {@code jk.toml} on ({@code bumped}), or on HEAD itself when the move was never
+     * committed.
+     */
+    record CutRelease(String version, String tag, boolean bumped) {}
+
+    /** The release cut at HEAD, or {@code null} when HEAD is not where {@code jk release} left a tree. */
+    static @Nullable CutRelease cutAtHead(Git git, String tagTemplate, String declared) {
+        String atHead = ReleaseTag.render(tagTemplate, declared);
+        if (tagged(git, atHead, "HEAD")) return new CutRelease(declared, atHead, false);
+        String parentManifest = git.output("show", "HEAD^:./" + ManifestPaths.MANIFEST);
+        if (parentManifest == null) return null;
+        String released = ReleaseVersion.declared(parentManifest).orElse(null);
+        if (released == null || released.equals(declared)) return null;
+        String tag = ReleaseTag.render(tagTemplate, released);
+        return tagged(git, tag, "HEAD^") ? new CutRelease(released, tag, true) : null;
+    }
+
+    private static boolean tagged(Git git, String tag, String rev) {
+        String tagged = git.output("rev-parse", "-q", "--verify", "refs/tags/" + tag + "^{commit}");
+        return tagged != null && tagged.equals(git.output("rev-parse", "-q", "--verify", rev + "^{commit}"));
+    }
+
+    /** Why {@code cut} is out of this checkout's hands, or {@code null} when it can be taken back. */
+    static @Nullable String published(Git git, CutRelease cut) {
+        String remotes = git.output("remote");
+        if (remotes == null) return "git remote failed here";
+        for (String remote :
+                remotes.lines().map(String::strip).filter(r -> !r.isEmpty()).toList()) {
+            String found = git.output("ls-remote", "--tags", remote, "refs/tags/" + cut.tag());
+            if (found == null) return "could not ask " + remote + " for tag " + cut.tag() + "; try again online";
+            if (!found.isEmpty()) return "tag " + cut.tag() + " is on " + remote + "; a pushed release stays";
+        }
+        if (cut.bumped()) {
+            String pushed = git.output("branch", "-r", "--contains", "HEAD");
+            if (pushed == null) return "git branch failed here";
+            if (!pushed.isEmpty())
+                return "the version commit is on "
+                        + pushed.lines().findFirst().orElse("").strip();
+        }
+        return null;
+    }
+
+    /**
+     * {@code jk release --undo}: take back the release {@code jk release} cut at HEAD and never
+     * pushed or published. The version commit goes (HEAD, when it is that commit), then the
+     * release's installed jars and POMs, then the record of the install before the live one when it
+     * was that release, then the tag, so a run cut short can be run again. Refused while the
+     * installed JumpKick runs the release's own jars: {@code jk self rollback} first.
+     */
+    private int withdraw(Path dir, String declared, boolean dryRun, @Nullable Path m2Dir) throws IOException {
+        ProjectInfo info = EngineClient.projectInfo(EnginePaths.current(), dir);
+        if (info.error() != null) {
+            CommandWedge.printFail(CHIP, info.error());
+            return Exit.CONFIG;
+        }
+        Git git = new Git(dir);
+        String dirty = git.output("status", "--porcelain");
+        if (dirty == null || !dirty.isEmpty()) {
+            CommandWedge.printFail(
+                    CHIP,
+                    dirty == null
+                            ? "not inside a git work tree"
+                            : "the working tree has uncommitted changes; commit or stash them first:\n" + dirty);
+            return Exit.CONFIG;
+        }
+        CutRelease cut = cutAtHead(git, info.releaseTag(), declared);
+        if (cut == null) {
+            CommandWedge.printFail(CHIP, "no release tag on HEAD or on the version commit before it");
+            return Exit.CONFIG;
+        }
+        String refusal = published(git, cut);
+        if (refusal == null && startClaim(info, cut.version()).join() == RemoteClaim.Verdict.CLAIMED) {
+            refusal = cut.version() + " is published to " + info.publishRepository();
+        }
+        if (refusal != null) {
+            CommandWedge.printFail(CHIP, refusal);
+            return Exit.CONFIG;
+        }
+        List<Coordinate> coordinates = new ArrayList<>();
+        for (ProjectInfo module : modules(dir, info)) {
+            if (module.version().equals(declared)) {
+                coordinates.add(Coordinate.of(module.group(), module.name(), cut.version()));
+            }
+        }
+        EngineInstall engine = EngineInstall.current();
+        if (pinsAny(engine.shelfFile(), coordinates)) {
+            CommandWedge.printFail(
+                    CHIP, "the installed JumpKick is " + cut.version() + "; run `jk self rollback` first");
+            return Exit.CONFIG;
+        }
+        if (dryRun) {
+            CommandWedge.printOk(
+                    CHIP,
+                    "Would delete tag " + cut.tag() + (cut.bumped() ? ", drop the version commit" : "")
+                            + " and uninstall " + coordinates.size() + " module(s) at " + cut.version());
+            return Exit.SUCCESS;
+        }
+        if (cut.bumped()) {
+            String reset = git.run("reset", "-q", "--keep", "HEAD^");
+            if (reset != null) {
+                CommandWedge.printFail(CHIP, "could not drop the version commit: " + reset);
+                return Exit.CONFIG;
+            }
+        }
+        InstalledRelease.Withdrawn withdrawn =
+                InstalledRelease.withdraw(JkStores.store(), M2Dirs.repository(m2Dir), coordinates);
+        if (pinsAny(engine.previousShelfFile(), coordinates)) engine.forgetPrevious();
+        String untagged = git.run("tag", "-d", cut.tag());
+        if (untagged != null) {
+            CommandWedge.printFail(CHIP, "could not delete tag " + cut.tag() + ": " + untagged);
+            return Exit.CONFIG;
+        }
+        for (Path left : withdrawn.foreign()) {
+            CliOutput.err("left " + left + ": JumpKick did not install what is there");
+        }
+        CommandWedge.printOk(
+                CHIP,
+                "Took back " + cut.version() + ": tag " + cut.tag() + " deleted, jk.toml at " + cut.version() + ", "
+                        + coordinates.size() + " module(s) uninstalled");
+        return Exit.SUCCESS;
+    }
+
+    /** {@code root} and, for a workspace, every member it lists. */
+    private static List<ProjectInfo> modules(Path dir, ProjectInfo root) throws IOException {
+        List<ProjectInfo> out = new ArrayList<>(List.of(root));
+        if (!root.workspaceRoot()) return out;
+        for (String moduleDir : root.moduleDirs()) {
+            Path member = Path.of(moduleDir);
+            if (member.toAbsolutePath().normalize().equals(dir.toAbsolutePath().normalize())) continue;
+            ProjectInfo info = EngineClient.projectInfo(EnginePaths.current(), member);
+            if (info.error() == null) out.add(info);
+        }
+        return out;
+    }
+
+    /** Whether the shelf manifest at {@code file} pins any of {@code coordinates}. */
+    private static boolean pinsAny(Path file, List<Coordinate> coordinates) {
+        return ShelfManifest.read(file)
+                .map(m -> coordinates.stream().anyMatch(c -> m.sha(c.toGav()).isPresent()))
+                .orElse(false);
     }
 
     /** The reason this tree cannot release, or {@code null} when it can. */

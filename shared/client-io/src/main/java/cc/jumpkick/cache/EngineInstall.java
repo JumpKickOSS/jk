@@ -783,6 +783,26 @@ public final class EngineInstall {
     }
 
     /**
+     * Drop the record of the install before the live one, and the shelf it was installed with, so
+     * {@link #rollback} has nothing to put back: for a release taken back, whose worker jars are
+     * gone. The live install is untouched.
+     */
+    public void forgetPrevious() throws IOException {
+        Files.deleteIfExists(previousShelfFile());
+        Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
+        boolean changed = false;
+        for (String key : List.of(
+                PREVIOUS_ENGINE_SHA,
+                PREVIOUS_VERSION,
+                PREVIOUS_CLIENT_SHA,
+                PREVIOUS_CLIENT_KIND,
+                PREVIOUS_CLIENT_COMMIT)) {
+            changed |= keys.remove(key) != null;
+        }
+        if (changed) AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /**
      * The commit the install recorded for the PATH client whose bytes hash to {@code clientSha}, or
      * empty when the pointer names another client or records no commit for it.
      */

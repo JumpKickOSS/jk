@@ -217,6 +217,27 @@ merged and signed on the one machine that holds the release key, and the same ma
 the same sequence in the cloud; while they are not the publisher, the `Release` workflow is
 disabled for the length of a manual release, so a pushed tag cannot publish by itself.
 
+### Re-cutting a release
+
+A release cut here and never pushed can be taken back and cut again. `jk release` left the home
+running the release (its engine, its client, its worker jars on the shelf, pinned in
+`jk-shelf.toml`), the tree at `Start <next>` and the tag `v<version>` on the commit before. A home
+in that state refuses `jk snapshot` of `<version>-SNAPSHOT`, since the release would hide it, and
+deleting the shelved release by hand leaves the installed engine without its workers. The way back:
+
+```bash
+jk self rollback      # back to the install before the release: its engine, client and shelf
+jk release --undo     # drop "Start <next>", uninstall <version>, delete the tag
+jk snapshot           # <version>-SNAPSHOT installs and gates again
+```
+
+`jk release --undo` refuses while the installed JumpKick still runs the release's own worker jars
+(roll back first), when any git remote has the tag or a remote branch has the `Start <next>`
+commit, and when the `[publish]` repository already holds the version. Once the tag is pushed, the
+version is gone: raise it instead. The undo also drops the rollback record when it names the
+release, so a second `jk self rollback` cannot put back an engine whose workers are gone. Each
+step can be run again after a failure: the tag goes last.
+
 ## CI and CD (started by the release tag)
 
 Workflows: [`ci.yml`](../../.github/workflows/ci.yml) (CI) and
