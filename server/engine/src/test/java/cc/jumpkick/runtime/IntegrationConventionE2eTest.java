@@ -59,7 +59,8 @@ class IntegrationConventionE2eTest {
         Path tests = Files.createDirectories(project.resolve("test/src/com/example"));
         Files.writeString(tests.resolve("FooTest.java"), testClass("FooTest", "", "", "@Tag(\"smoke\")"));
         Files.writeString(tests.resolve("CartIT.java"), testClass("CartIT", "", ""));
-        Files.writeString(tests.resolve("CheckoutTest.java"), testClass("CheckoutTest", "@Tag(\"integration\")", "", ""));
+        Files.writeString(
+                tests.resolve("CheckoutTest.java"), testClass("CheckoutTest", "@Tag(\"integration\")", "", ""));
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();

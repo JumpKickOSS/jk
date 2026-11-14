@@ -45,8 +45,8 @@ class PlannerTestSourcesTest {
         Path it = write(module, "src/e2e/java/app/WidgetE2e.java");
 
         JkBuild project = manifest(module, "");
-        var sources = TestSources.collect(
-                project, module, false, List.of("e2e"), BuildLayout.of(module, project), null);
+        var sources =
+                TestSources.collect(project, module, false, List.of("e2e"), BuildLayout.of(module, project), null);
 
         assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/e2e/java"));
         assertThat(sources.javacSources()).containsExactly(it);
