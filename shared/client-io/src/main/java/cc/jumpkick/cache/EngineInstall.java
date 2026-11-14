@@ -6,6 +6,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -38,8 +40,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Materialize never renames or overwrites an existing jar (Windows cannot move a file {@code
  * java.exe} has memory-mapped). A free canonical name {@code jk-engine-<version>.jar} is used when
  * possible; a collision with different bytes publishes {@code jk-engine-<version>.<epochMillis>.jar}
- * beside the old file. {@link #gc} deletes every engine jar except the live name, plus parked PATH
- * binaries ({@code jk.old} / {@code jk.exe.old}).
+ * beside the old file. {@link #gc} deletes the engine jars nothing needs any more (not the one the
+ * pointer names, not one holding the engine its rollback record names, not one a running process
+ * was started from), plus parked PATH binaries ({@code jk.old} / {@code jk.exe.old}). Every install
+ * sweeps after it writes the pointer, and the engine sweeps on its maintenance tick, so a jar a
+ * draining engine kept mapped goes once that engine exits.
  *
  * <p>{@code jk-shelf.toml} beside the pointer ({@link ShelfManifest}) names the first-party
  * shelf the last install pinned to its engine; it is the install's to write and never swept.
@@ -60,14 +65,20 @@ public final class EngineInstall {
 
     private final Path productLib;
     private final LongSupplier clock;
+    private final Predicate<Path> running;
 
     public EngineInstall(Path productLibDir) {
-        this(productLibDir, System::currentTimeMillis);
+        this(productLibDir, Clock.SYSTEM::millis);
     }
 
     EngineInstall(Path productLibDir, LongSupplier clock) {
+        this(productLibDir, clock, EngineInstall::runByAProcess);
+    }
+
+    EngineInstall(Path productLibDir, LongSupplier clock, Predicate<Path> running) {
         this.productLib = productLibDir;
-        this.clock = clock == null ? System::currentTimeMillis : clock;
+        this.clock = clock == null ? Clock.SYSTEM::millis : clock;
+        this.running = running;
     }
 
     /** Rooted at the product lib, {@code <home>/lib}. */
@@ -181,18 +192,28 @@ public final class EngineInstall {
      * binaries. Never throws.
      */
     public List<Path> gc() {
-        List<Path> removed = gc(JkDirs.binDir(), JkDirs.state());
+        List<Path> removed = gc(JkDirs.binDir());
         sweepAbandonedConfig(JkDirs.current().configDir(), removed);
         return removed;
     }
 
     /**
-     * @param binDir PATH install directory ({@code jk.old} / {@code jk.exe.old}); {@code null} skips
-     * @param stateDir engine state; unused, kept so callers name both roots the gc reaches
+     * {@link #gc()} with the PATH install directory ({@code jk.old} / {@code jk.exe.old}) given;
+     * {@code null} skips it. The engine jars are swept only while no install holds the install
+     * dir's lock: an install sweeps them itself once its pointer is written.
      */
-    public List<Path> gc(@Nullable Path binDir, @Nullable Path stateDir) {
+    public List<Path> gc(@Nullable Path binDir) {
         List<Path> removed = new ArrayList<>();
-        sweepRetiredJars(removed);
+        Path home = engineHome();
+        if (Files.isDirectory(home)) {
+            try (FileChannel lockCh = FileChannel.open(
+                            home.resolve(LOCK_NAME), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    FileLock lock = lockCh.tryLock()) {
+                if (lock != null) sweepRetiredJars(removed);
+            } catch (IOException | RuntimeException busy) {
+                // an install in progress sweeps when it is done
+            }
+        }
         sweepParkedClients(binDir, removed);
         return removed;
     }
@@ -469,6 +490,7 @@ public final class EngineInstall {
             Files.deleteIfExists(jarTmp);
         }
         writePointer(version, engineJarSha, dest.getFileName().toString());
+        sweepRetiredJars(new ArrayList<>());
         return currentInstall()
                 .orElseThrow(() -> new IOException("materialization of " + version + " left no engine jar"));
     }
@@ -734,24 +756,68 @@ public final class EngineInstall {
         return false;
     }
 
+    /**
+     * Delete the engine jars and leftovers the install no longer needs. Kept: the jar the pointer
+     * names, a jar holding the previous engine the pointer's rollback record names by digest (what
+     * {@link #rollback} puts back), and any jar a running process was started from (a draining
+     * engine, an engine of another store under this home). With no readable pointer nothing is
+     * retired. The caller holds the install dir's lock.
+     */
     private void sweepRetiredJars(List<Path> removed) {
         Path home = engineHome();
         if (!Files.isDirectory(home)) return;
-        String liveName = currentInstall()
-                .map(m -> m.engineJar().getFileName().toString())
-                .orElse(null);
+        Map<String, String> pointer = pointerKeys();
+        String liveName = pointer.get("jar");
+        if (liveName == null || liveName.isBlank()) return;
+        String previous = pointer.getOrDefault(PREVIOUS_ENGINE_SHA, "").strip().toLowerCase(Locale.ROOT);
+        List<Path> jars = new ArrayList<>();
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(home)) {
             for (Path p : entries) {
                 if (!Files.isRegularFile(p)) continue;
                 String name = p.getFileName().toString();
                 if (LOCK_NAME.equals(name) || POINTER_NAME.equals(name) || SHELF_NAME.equals(name)) continue;
-                if (liveName != null && liveName.equals(name)) continue;
-                if (isEngineJarName(name) || name.endsWith(".tmp") || name.endsWith(".old") || name.contains(".old-")) {
+                if (liveName.equals(name)) continue;
+                if (isEngineJarName(name)) jars.add(p);
+                else if (name.endsWith(".tmp") || name.endsWith(".old") || name.contains(".old-"))
                     tryDelete(p, removed);
-                }
             }
         } catch (IOException ignored) {
             // best-effort
+        }
+        for (Path jar : jars) {
+            if (running.test(jar) || (!previous.isEmpty() && previous.equals(digest(jar)))) continue;
+            tryDelete(jar, removed);
+        }
+    }
+
+    private static String digest(Path jar) {
+        try {
+            return Hashing.sha256Hex(jar).toLowerCase(Locale.ROOT);
+        } catch (IOException | RuntimeException unreadable) {
+            return "";
+        }
+    }
+
+    /**
+     * Whether a live process names {@code jar} on its command line, as an engine names the jar it
+     * runs from on its class path. Where the OS does not show other processes' command lines
+     * (Windows), a jar a running engine has mapped refuses the delete instead.
+     */
+    static boolean runByAProcess(Path jar) {
+        Set<String> spellings = new HashSet<>();
+        spellings.add(jar.toAbsolutePath().normalize().toString());
+        try {
+            spellings.add(jar.toRealPath().toString());
+        } catch (IOException | RuntimeException unresolved) {
+            // the absolute spelling is enough
+        }
+        try {
+            return ProcessHandle.allProcesses().anyMatch(p -> p.info()
+                    .commandLine()
+                    .map(cmd -> spellings.stream().anyMatch(cmd::contains))
+                    .orElse(false));
+        } catch (RuntimeException unlisted) {
+            return true;
         }
     }
 

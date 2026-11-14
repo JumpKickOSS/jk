@@ -196,7 +196,9 @@ so the record of a nuke survives it ([what JumpKick changed](config.md#what-jump
 
 The live engine jar is `~/.jk/lib/jk-engine/jk-engine-<version>.jar` (or
 `jk-engine-<version>.<epoch>.jar` when that name is already occupied), with the live pointer
-in `~/.jk/lib/jk-engine/jk-engine.toml`. `jk-shelf.toml` beside it names, by sha256, the
+in `~/.jk/lib/jk-engine/jk-engine.toml`. Every install, and the running engine once a minute,
+deletes the engine jars beside it that nothing needs: kept are the live jar, the previous engine
+`jk self rollback` puts back, and any jar a running engine was started from until it exits. `jk-shelf.toml` beside it names, by sha256, the
 first-party worker jars and POMs that engine was installed with and the checkout they came from;
 the engine launches its workers by those shas, so a later install from another checkout cannot
 swap a worker or its dependency list under it.
