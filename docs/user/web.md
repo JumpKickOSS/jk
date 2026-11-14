@@ -2,8 +2,13 @@
 
 ```bash
 jk web                 # ensure engine, print URL, open browser
-jk web -n       # print only
+jk web -n              # print only
+jk web -O jsonl        # one {url, token, engineId} object; opens nothing
 ```
+
+The JSONL form is how an editor extension (the VS Code extension, for one) finds the engine your
+`jk` uses and authenticates to it: it runs `jk` and reads the line, so it never reads the engine's
+state directory itself and lands on the right engine inside a WSL distro or a container.
 
 The resident engine serves a small dashboard (thin renderer; the engine owns all build
 logic). `jk engine status` also prints the authenticated URL.

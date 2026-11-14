@@ -154,6 +154,12 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   with no Remote JVM Debug configuration of your own. `jk ide -i` is the export for an IDE
   without the plugin.
 - **VS Code** — `clients/vscode/` in the JumpKick repo; package with
-  `./scripts/package-vscode.sh`
+  `./scripts/package-vscode.sh`. Opening a folder with a `jk.toml` connects the window to the
+  engine your `jk` uses (it asks `jk web -O jsonl` for the address and token, so a Remote-WSL or
+  container window reaches that guest's own engine). **JumpKick: Build**, **Test**, **Lock** and
+  **Sync dependencies** start the same engine jobs the CLI does; the status bar follows every job
+  in the window's folders, a terminal `jk build` included, from the engine's event stream, and the
+  **JumpKick** output channel shows each job's output and diagnostics.
 
-Both are **wire-only**: they run the `jk` CLI and never load engine jars.
+Both are **wire-only**: they never load engine jars. The IntelliJ plugin runs the `jk` CLI; the VS
+Code extension runs `jk` only to find the engine and otherwise speaks the engine's HTTP API.

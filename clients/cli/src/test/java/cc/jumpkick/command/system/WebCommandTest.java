@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CommandDispatch;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +34,16 @@ class WebCommandTest {
         Files.createDirectories(store);
         EnginePaths.Paths paths = EnginePaths.resolve(state, store);
         assertThat(WebCommand.tokenizedUrl("http://127.0.0.1:8910/", paths)).isEqualTo("http://127.0.0.1:8910/");
+    }
+
+    @Test
+    void connectJson_names_url_token_and_engine() {
+        String line = WebCommand.connectJson("http://127.0.0.1:8911/", "sekret", "204af7ec9480");
+        assertThat(Jsonl.str(line, "url")).isEqualTo("http://127.0.0.1:8911/");
+        assertThat(Jsonl.str(line, "token")).isEqualTo("sekret");
+        assertThat(Jsonl.str(line, "engineId")).isEqualTo("204af7ec9480");
+        assertThat(Jsonl.str(WebCommand.connectJson("http://127.0.0.1:8910/", "", null), "engineId"))
+                .isEmpty();
     }
 
     @Test

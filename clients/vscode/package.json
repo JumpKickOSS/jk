@@ -13,7 +13,7 @@
     "directory": "clients/vscode"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.95.0"
   },
   "categories": [
     "Build Tools",
@@ -24,10 +24,12 @@
     "jk",
     "java",
     "kotlin",
-    "bsp",
     "build",
     "maven",
     "gradle"
+  ],
+  "extensionKind": [
+    "workspace"
   ],
   "activationEvents": [
     "workspaceContains:jk.toml"
@@ -35,38 +37,54 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In an untrusted workspace JumpKick does not offer to install the BSP connection, and jk.path is read from user settings only.",
+      "description": "In an untrusted workspace JumpKick starts no builds, and jk.path is read from user settings only.",
       "restrictedConfigurations": [
         "jk.path"
       ]
     }
   },
-  "main": "./extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "jk.bspInstall",
-        "title": "JumpKick: Install BSP connection (.bsp/jk.json)"
-      },
-      {
-        "command": "jk.sync",
-        "title": "JumpKick: Sync dependencies"
-      },
-      {
         "command": "jk.build",
-        "title": "JumpKick: Build"
+        "title": "Build",
+        "category": "JumpKick"
       },
       {
         "command": "jk.test",
-        "title": "JumpKick: Test"
+        "title": "Test",
+        "category": "JumpKick"
       },
       {
         "command": "jk.lock",
-        "title": "JumpKick: Lock"
+        "title": "Lock",
+        "category": "JumpKick"
+      },
+      {
+        "command": "jk.sync",
+        "title": "Sync dependencies",
+        "category": "JumpKick"
+      },
+      {
+        "command": "jk.cancel",
+        "title": "Cancel running build",
+        "category": "JumpKick"
+      },
+      {
+        "command": "jk.reconnect",
+        "title": "Reconnect to the engine",
+        "category": "JumpKick"
       },
       {
         "command": "jk.showOutput",
-        "title": "JumpKick: Show output"
+        "title": "Show output",
+        "category": "JumpKick"
+      },
+      {
+        "command": "jk.bspInstall",
+        "title": "Install BSP connection (.bsp/jk.json)",
+        "category": "JumpKick"
       }
     ],
     "taskDefinitions": [
@@ -78,7 +96,7 @@
         "properties": {
           "task": {
             "type": "string",
-            "description": "JumpKick verb: lock, sync, build, test, assemble, \u2026"
+            "description": "JumpKick verb: lock, sync, build, test, assemble, …"
           },
           "args": {
             "type": "array",
@@ -98,19 +116,28 @@
           "default": "jk",
           "description": "Path to the jk executable, absolute or on PATH. Set in user settings only: a workspace cannot choose the program this extension runs.",
           "scope": "machine"
-        },
-        "jk.autoBspInstall": {
-          "type": "boolean",
-          "default": true,
-          "description": "When a workspace has jk.toml but no .bsp/jk.json, offer (or auto-run) jk bsp install."
         }
       }
     }
   },
   "scripts": {
-    "package": "vsce package --no-dependencies"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "bundle": "node esbuild.mjs",
+    "build": "npm run typecheck && npm run bundle",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "test:unit": "npm run compile-tests && node test/run-unit.mjs",
+    "test:integration": "npm run bundle && npm run compile-tests && node out/test/integration/runTest.js",
+    "test": "npm run build && npm run test:unit && npm run test:integration",
+    "package": "npm run build && vsce package --no-dependencies"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.2.1"
+    "@types/mocha": "10.0.10",
+    "@types/node": "20.19.43",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.1",
+    "esbuild": "0.28.2",
+    "mocha": "12.0.3",
+    "typescript": "6.0.3"
   }
 }

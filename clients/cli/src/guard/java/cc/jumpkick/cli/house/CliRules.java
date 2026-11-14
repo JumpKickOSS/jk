@@ -226,12 +226,18 @@ final class CliRules {
     @Guard(
             id = "ide-client-wiring",
             why =
-                    "the IDE clients are wired to jk by string and no compiler looks at them: a palette entry can name a handler that does not exist, a client can shell out to a verb that is not a command, plugin.xml can name a class that is gone",
+                    "the IDE clients are wired to jk by string and no compiler looks at them: a palette entry can name a handler that does not exist, a client can shell out to a verb that is not a command or start an engine job kind that is not one, plugin.xml can name a class that is gone",
             instead = "rename on both ends; every arm reads its expectation from the owning file")
     void ideClientsAreWiredToRealThings(Text text, Violations v) {
         // palette entries and registered handlers are the same set
         String packageJson = raw(text, "clients/vscode/package.json");
-        String extensionJs = raw(text, "clients/vscode/extension.js");
+        // The extension registers its commands, starts its jobs and runs jk in these two files.
+        StringBuilder sources = new StringBuilder();
+        for (String rel : List.of("clients/vscode/src/extension.ts", "clients/vscode/src/engine/connect.ts")) {
+            if (!exists(text, rel)) throw new IllegalStateException(rel + " is gone — this arm is blind");
+            sources.append(raw(text, rel)).append('\n');
+        }
+        String extensionJs = sources.toString();
         TreeSet<String> declared = matches(Pattern.compile("\"command\"\\s*:\\s*\"([^\"]+)\""), packageJson, 1);
         TreeSet<String> registered = matches(Pattern.compile("registerCommand\\(\\s*\"([^\"]+)\""), extensionJs, 1);
         if (declared.isEmpty())
@@ -240,12 +246,12 @@ final class CliRules {
             if (!registered.contains(d))
                 v.add(
                         new TextSite("clients/vscode/package.json", 0, d),
-                        "package.json contributes " + d + ", which extension.js never registers");
+                        "package.json contributes " + d + ", which clients/vscode/src never registers");
         for (String r : registered)
             if (!declared.contains(r))
                 v.add(
-                        new TextSite("clients/vscode/extension.js", 0, r),
-                        "extension.js registers " + r + ", which package.json never contributes");
+                        new TextSite("clients/vscode/src", 0, r),
+                        "clients/vscode/src registers " + r + ", which package.json never contributes");
         // every shelled-out verb is a real jk command name or alias
         TreeSet<String> verbs = new TreeSet<>();
         Pattern name = Pattern.compile("String name\\(\\)\\s*\\{\\s*return \"([a-z][a-z0-9-]*)\";");
@@ -264,7 +270,27 @@ final class CliRules {
         if (verbs.size() < 40)
             throw new IllegalStateException("verb owner scan under cc/jumpkick/command found " + verbs.size()
                     + " — the name()/aliases() shape moved and this arm is blind");
-        TreeSet<String> shelled = matches(Pattern.compile("runJk\\(\\[\\s*\"([a-z][a-z0-9-]*)\""), extensionJs, 1);
+        // `runJk(bin, ["bsp", …], dir)` and `run(bin, ["web", …], cwd)`: the verb opens the argument list.
+        TreeSet<String> shelled =
+                matches(Pattern.compile("\\b(?:runJk|run)\\([^\\[\\)]*\\[\\s*\"([a-z][a-z0-9-]*)\""), extensionJs, 1);
+        // every engine job the extension starts is a kind some hosted verb accepts
+        TreeSet<String> kinds = new TreeSet<>();
+        Pattern jobKinds = Pattern.compile(
+                "List<String> jobKinds\\(\\)\\s*\\{\\s*return List\\.of\\(([^)]*)\\);", Pattern.DOTALL);
+        // The verbs that host the build-like and lock jobs, the only kinds the extension starts.
+        for (String verb : List.of("WorkspaceBuildVerb", "LockVerb")) {
+            String rel = "server/engine/src/main/java/cc/jumpkick/engine/verbs/" + verb + ".java";
+            if (exists(text, rel))
+                for (String block : matches(jobKinds, raw(text, rel), 1)) kinds.addAll(matches(quoted, block, 1));
+        }
+        TreeSet<String> started = matches(Pattern.compile("startJob\\(\\s*\"([a-z][a-z0-9-]*)\""), extensionJs, 1);
+        if (started.isEmpty() || kinds.isEmpty())
+            throw new IllegalStateException("found no engine job the extension starts, or no verb's jobKinds() — this arm is blind");
+        for (String k : started)
+            if (!kinds.contains(k))
+                v.add(
+                        new TextSite("clients/vscode/src", 0, "job " + k),
+                        "the VS Code extension starts a `" + k + "` job, which no hosted verb's jobKinds() accepts");
         String cliAction = IDEA_JAVA + "cc/jumpkick/idea/JkCliAction.java";
         if (exists(text, cliAction))
             shelled.addAll(matches(
@@ -278,7 +304,7 @@ final class CliRules {
         for (String s : shelled)
             if (!verbs.contains(s))
                 v.add(
-                        new TextSite("clients/vscode/extension.js", 0, "verb " + s),
+                        new TextSite("clients/vscode/src", 0, "verb " + s),
                         "an IDE client shells out to `" + s + "`, which is not a name or alias of any :cli command");
         // plugin.xml names classes that exist
         String pluginXml = "clients/intellij/src/main/resources/META-INF/plugin.xml";

@@ -691,7 +691,8 @@ below both `cli` and `engine`: `jk ide` adds the live chrome around the same gen
 MCP `ide` runs in-process. `wire` cannot host them (it is the frozen protocol contract, and the
 generators need `toolchain-jdk`); `core` cannot see the wire record at all.
 
-- **VS Code:** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.
+- **VS Code:** `clients/vscode/` — a TypeScript VSIX; commands and the status bar speak the
+  engine's `/api` and event stream, with the address and token from `jk web -O jsonl`.
 - **IntelliJ:** `clients/intellij/` — install-from-disk zip. **Sync project**
   uses `jk ide -p` (structured model) + `jk ide -i` (shared generator apply) +
   `jk bsp install` (dual-path with JetBrains BSP). Open-project activity offers/auto Sync when

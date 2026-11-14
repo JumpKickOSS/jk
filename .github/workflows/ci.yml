@@ -305,6 +305,46 @@ jobs:
         if: failure() && steps.audit.outcome == 'failure'
         run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl HIGH
 
+  # The VS Code extension (clients/vscode), on the three desktop OSes. It is not a jk module: jk's
+  # own build never needs Node.js. Unit tests run under Node's runner; the integration suite starts
+  # VS Code (downloaded by @vscode/test-electron) against a stub engine and a fake jk, so it needs
+  # no engine and no jk install. Locally: the same npm commands, with VSCODE_EXECUTABLE naming an
+  # installed VS Code (clients/vscode/README.md).
+  vscode-extension:
+    name: VS Code extension (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: clients/vscode
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Type-check and bundle
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:integration
+
+      - name: Integration tests
+        if: runner.os != 'Linux'
+        run: npm run test:integration
+
   installer-windows:
     name: PowerShell 5.1 installer verification
     runs-on: windows-latest
