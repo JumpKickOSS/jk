@@ -71,6 +71,9 @@ public enum CacheTree {
     /** A materialized Maven repo per path-dependency, keyed by source path then by fingerprint. */
     PATH_ARTIFACTS("path-artifacts"),
 
+    /** A built Maven repo per git dependency commit, keyed by repository URL hash then by commit. */
+    GIT_ARTIFACTS("git-artifacts"),
+
     /** Annotation-processor output for test compiles, keyed by task id. */
     GENERATED("generated"),
 

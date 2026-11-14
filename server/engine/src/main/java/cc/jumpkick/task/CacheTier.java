@@ -78,6 +78,11 @@ public final class CacheTier {
             // Every source edit mints one, so the cap belongs to the inner key, not the tier.
             case PATH_ARTIFACTS -> Bound.nestedSubtrees(Duration.ofDays(7), Bound.countCap(2));
 
+            // One built repo per git dependency commit, its `.used` stamped on every hit, so the
+            // newest mtime in a tree is its last use. A commit nobody has built against for a month
+            // goes, and a repository keeps its four newest; either costs one build of that commit.
+            case GIT_ARTIFACTS -> Bound.nestedSubtrees(Duration.ofDays(30), Bound.countCap(4));
+
             // A dead task id freezes: nothing rewrites its tree, so the window is the whole policy.
             case GENERATED -> Bound.subtrees(Duration.ofDays(7), Bound.none());
 

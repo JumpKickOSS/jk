@@ -5,7 +5,9 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.git.GitFetcher;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GitRefSpec;
@@ -55,11 +57,11 @@ public final class GitSourceMaterializer {
     /** One fetcher for every source this materializer sees, so each mirror is fetched once. */
     private @Nullable GitFetcher fetcher;
 
-    /** Production wiring: caches under {@code $JK_CACHE_DIR}, forge-auth git credentials. */
+    /** Production wiring: mirrors in the store, built commits in the cache, forge-auth git credentials. */
     GitSourceMaterializer(Cas cas, RepoGroup buildRepos, Path javaHome, String jkVersion) {
         this(
                 JkDirs.store().resolve("git"),
-                JkDirs.store().resolve("git-artifacts"),
+                CacheTree.GIT_ARTIFACTS.under(JkDirs.cache()),
                 cas,
                 buildRepos,
                 javaHome,
@@ -128,6 +130,7 @@ public final class GitSourceMaterializer {
         if (group != null
                 && Files.isRegularFile(artifactJar(repo, group, artifact, version))
                 && Files.isRegularFile(artifactPom(repo, group, artifact, version))) {
+            markUsed(shaDir);
             return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
         }
 
@@ -141,6 +144,15 @@ public final class GitSourceMaterializer {
             writeCoordinateMarker(marker, built);
         }
         return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
+    }
+
+    /** Stamp {@code shaDir}'s {@code .used}: retention reads the newest mtime in it as its last use. */
+    private static void markUsed(Path shaDir) {
+        try {
+            Files.writeString(shaDir.resolve(".used"), "");
+        } catch (IOException e) {
+            Log.debug("git artifact use stamp: best-effort", e);
+        }
     }
 
     private static Path artifactJar(

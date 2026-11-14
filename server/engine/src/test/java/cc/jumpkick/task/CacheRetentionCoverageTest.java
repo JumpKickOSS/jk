@@ -66,6 +66,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.BASE_JRE, root -> subtree(root, CacheTree.BASE_JRE, "sha256-dead", OLD));
         m.put(CacheTree.JIB_LAYERS, root -> in(root, CacheTree.JIB_LAYERS, "layers/sha256/abc/layer.tar", "x", OLD));
         m.put(CacheTree.PATH_ARTIFACTS, root -> subtree(root, CacheTree.PATH_ARTIFACTS, "pathhash/fp", OLD));
+        m.put(CacheTree.GIT_ARTIFACTS, root -> subtree(root, CacheTree.GIT_ARTIFACTS, "urlhash/sha", OLD));
         m.put(CacheTree.GENERATED, root -> subtree(root, CacheTree.GENERATED, "compile-test@dead", OLD));
         m.put(CacheTree.PROJECTS, root -> subtree(root, CacheTree.PROJECTS, "dead-project", OLD));
         m.put(CacheTree.TOOL_SRC, root -> subtree(root, CacheTree.TOOL_SRC, "deadhash", OLD));
@@ -186,6 +187,26 @@ class CacheRetentionCoverageTest {
             assertThat(tier.under(root).resolve(pathHash + "/fp-1")).exists();
             assertThat(tier.under(root).resolve(pathHash + "/fp-2")).exists();
         }
+    }
+
+    /** A git dependency's built commits: one used this month stays, the oldest past the cap per repository goes. */
+    @Test
+    void a_git_commit_build_goes_after_a_month_unused_or_past_four_per_repository(@TempDir Path root)
+            throws IOException {
+        CacheTree tier = CacheTree.GIT_ARTIFACTS;
+        Path used = subtree(root, tier, "repo-a/used", Duration.ofDays(29).toMillis());
+        Path unused = subtree(root, tier, "repo-a/unused", Duration.ofDays(31).toMillis());
+        long inWindow = Duration.ofDays(2).toMillis();
+        for (int i = 0; i < 5; i++) subtree(root, tier, "repo-b/sha-" + i, inWindow + (5 - i) * 60_000L);
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(used).exists();
+        assertThat(unused).doesNotExist();
+        assertThat(tier.under(root).resolve("repo-b/sha-0"))
+                .as("the oldest of five")
+                .doesNotExist();
+        assertThat(tier.under(root).resolve("repo-b/sha-1")).exists();
     }
 
     /** A compiled script the kts host served this month stays; one unused past the window goes. */
