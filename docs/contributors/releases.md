@@ -396,6 +396,16 @@ which is what makes the platform-neutral jars byte-identical. On Windows the lan
 the bootstrap installs through `install.ps1`, which runs under Windows PowerShell 5.1 when there is
 no PowerShell 7. Put `TMPDIR` on a disk, not a RAM-backed `/tmp`: the bridge checkout goes there.
 
+The linux-aarch64 VM (a `container` machine on the Mac) needs `git`, `curl`, `xz-utils`, `zip`,
+`unzip`, `python3`, a C toolchain with `zlib1g-dev` for `native-image`, and a GraalVM 25 at
+`~/.jdks/graalvm-25`; give it at least 6 CPUs, 8 GB of memory and 10 GB of disk, which its sparse
+image takes from the Mac's own volume, and keep `TMPDIR` out of its small tmpfs `/tmp`. The Mac's home
+is mounted read-write inside it at `/Users/<user>`, which is also where `container machine run`
+starts a command: every command run there starts with `cd ~` (the guest's own home), since a Java
+tool started in the Mac's home walks all of it. A `container machine run` can block for good when the
+guest hangs, so each one runs in the background with a time limit, and files come out by `cat`-ing
+a tar from the guest's home through a script on stdin.
+
 **Merge** (`scripts/release-merge.sh`). Each lane's `SHA256SUMS` proves its copy arrived whole (Git
 Bash's ` *name` lines are normalized first); `scripts/flatten-release.sh` then makes one version
 directory with one `SHA256SUMS` over every platform, refusing a missing platform or a
@@ -408,9 +418,14 @@ copied by tooling. It needs `openssl`, `bash` and a checkout of the tag (the tru
 read from its `install.sh`). Two byte strings are signed: `SHA256SUMS` (→ `SHA256SUMS.sig`) and the
 first two lines of `latest/LATEST` (→ its third line).
 
-**Upload order.** The version tree (`rsync -d`), then `repo/` (additive), then the pointer — one
-`gsutil cp` of `LATEST` with `Cache-Control: no-cache,max-age=0`, `VERSION` beside it, any old
-`LATEST.sig` removed. The release is live once the pointer lands.
+**Upload order.** The version tree (`rsync -d`; the step then requires the bucket to hold as many
+objects as the tree: the artifacts, `SHA256SUMS` and its signature), then `repo/` (additive), then
+the pointer — one `gsutil cp` of `LATEST` with `Cache-Control: no-cache,max-age=0`, `VERSION` beside
+it, any old `LATEST.sig` removed. The pointer step first fetches every file of the version directory
+through jumpkick.build and refuses unless each is served, `SHA256SUMS` and its signature are this
+tree's byte for byte, and every file matches the sums. The release is live once the pointer lands.
+The GitHub Release body takes at most 125000 characters; longer notes go up as their highlights and
+a compare link (`RELEASE_NOTES.github.md`), the full list staying in `RELEASE_NOTES.md`.
 
 **Hosting only from the tag.** The installers carry a floor and refuse any pointer older than it.
 Deployed from the "Start <next>" commit, they would refuse the release just published; deployed
