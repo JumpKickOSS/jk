@@ -431,6 +431,23 @@ miss     = "d.testsTotalLine"
 instead  = "TestSummary.WIRE_KEY with countsJson/countsMap/readCounts — the nested tests:{total,succeeded,failed,skipped} object"
 why      = "a retired spelling back in production source is a reader of a shape nobody writes"
 
+# A jk.toml a build may be parsing is replaced in one rename, never truncated and rewritten: a
+# reader that lands between the two sees half a manifest.
+[guards.manifest-writes-atomic]
+kind     = "text"
+files    = ["**/src/main/java/**/*.java"]
+blank    = "comments+strings"
+patterns = ['Files\.write(?:String)?\(\s*\w*[mM]anifest\w*\s*,']
+fixture  = "server/guard/fixtures/manifest-writes-atomic"
+hit      = "Files.writeString(manifest, edited);"
+miss     = "AtomicWrites.replace(manifest, edited);"
+instead  = "AtomicWrites.replace(manifest, text), or ManifestEdit for a dependency, workspace or java edit"
+why      = "a concurrently-parsing build must never see a torn jk.toml"
+
+[[guards.manifest-writes-atomic.allow]]
+in     = "plugins/android/src/main/java/cc/jumpkick/android/ManifestStep.java"
+reason = "writes a stub AndroidManifest.xml into the build's own output, which nothing else reads while it is written"
+
 # G71. `class` is banned as a field key in the SPA only: .class literals and the test-worker
 # discovery protocol keep the token live in Java on purpose. The dashboard reads d.testClass.
 [guards.spa-no-class-key]
@@ -1838,10 +1855,6 @@ reason = "edits the written jk.toml and refuses a shadowed directory"
 [[guards.manifest-reader-owner.allow]]
 in     = "clients/cli/src/main/java/cc/jumpkick/command/project/UpdateCommand.java"
 reason = "rewrites the written jk.toml's pins and refuses a shadowed directory"
-
-[[guards.manifest-reader-owner.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpManifest.java"
-reason = "the MCP manifest editors write the jk.toml and refuse a shadowed directory"
 
 [[guards.manifest-reader-owner.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpUpdate.java"

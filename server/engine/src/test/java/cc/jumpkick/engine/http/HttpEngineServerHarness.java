@@ -272,6 +272,18 @@ abstract class HttpEngineServerHarness {
         throw new AssertionError("did not see " + comment + " within 200 lines");
     }
 
+    /** {@code POST} a JSON {@code body} to {@code path} with the dashboard's credentials. */
+    HttpResponse<String> postJson(String path, String body) throws Exception {
+        return client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + path.substring(1)))
+                        .header("Authorization", "Bearer " + token())
+                        .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
     HttpResponse<String> postBuild(String body) throws Exception {
         return client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/build"))

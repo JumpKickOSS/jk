@@ -7,8 +7,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.StableVersions;
-import cc.jumpkick.runtime.base.EditOps;
 import cc.jumpkick.wire.protocol.EditRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoReads;
@@ -16,15 +16,14 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Engine-hosted {@code jk.toml} edits. An {@code add-dependency} whose selector is {@code latest}
- * is pinned to the newest stable release in the project's repositories before the editor runs;
- * an exact version no repository serves is refused before anything is written.
+ * Engine-hosted {@code jk.toml} edits for {@code jk add} and {@code jk remove}: the wire op decoded
+ * into the one {@link ManifestEdit}, which checks versions, writes atomically and relocks after a
+ * dependency edit, putting the files back when the new lock trips the deny policy.
  */
 public final class EditVerb implements HostedVerb {
 
@@ -57,7 +56,10 @@ public final class EditVerb implements HostedVerb {
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
-            EditOps.Result result;
+            boolean changed = false;
+            String error;
+            String detail = "";
+            String warning = null;
             try {
                 EditRequest req = EditRequest.decode(requestLine);
                 Path file = Path.of(req.file());
@@ -68,15 +70,31 @@ public final class EditVerb implements HostedVerb {
                                 Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory"))
                         .withCancel(cancelToken);
                 if (PROBE_DEPENDENCY.equals(req.op())) {
-                    result = SessionContext.where(session, () -> probe(file, req.args()));
+                    detail = SessionContext.where(session, () -> probe(file, req.args()));
+                    error = null;
                 } else {
-                    List<String> args = SessionContext.where(session, () -> pinned(file, req.op(), req.args()));
-                    result = EditOps.apply(file, req.op(), args);
+                    ManifestEdit.Request edit =
+                            new ManifestEdit.Request(file, List.of(op(req.op(), req.args())), false, true);
+                    ManifestEdit.Result result = SessionContext.where(session, () -> ManifestEdit.run(edit));
+                    changed = result.changed();
+                    detail = result.detail();
+                    error = result.error();
+                    if (error == null && !result.lockOk()) {
+                        // The edit stands: an offline add, or a module the lock cannot reach yet, is
+                        // still the user's edit; the next jk lock or build reports the resolve.
+                        warning = "jk.toml edited; the lock did not resolve: "
+                                + String.valueOf(result.lock())
+                                        .lines()
+                                        .skip(1)
+                                        .findFirst()
+                                        .orElse("resolve failed")
+                                        .replaceFirst("^E ", "");
+                    }
                 }
             } catch (Exception e) {
-                result = new EditOps.Result(false, Errors.text(e));
+                error = Errors.text(e);
             }
-            host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error(), result.detail()));
+            host.sendQuiet(writer, ProtoReads.editAck(changed, error, detail, warning));
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
@@ -92,25 +110,45 @@ public final class EditVerb implements HostedVerb {
      */
     static final String PROBE_DEPENDENCY = "probe-dependency";
 
-    private static EditOps.Result probe(Path file, List<String> args) throws IOException {
+    private static String probe(Path file, List<String> args) throws IOException {
         if (args.size() < 3) throw new IOException(PROBE_DEPENDENCY + " takes group, artifact and version");
         String version = args.get(2).isBlank() ? null : args.get(2);
-        String found = StableVersions.probe(file, args.get(0), args.get(1), version)
+        return StableVersions.probe(file, args.get(0), args.get(1), version)
                 .map(URI::toString)
                 .orElse("");
-        return new EditOps.Result(false, null, found);
     }
 
     /**
-     * {@code add-dependency} args with {@code latest} replaced by the selector to write: {@code
-     * managed} under a platform that manages the coordinate, else the number. An exact version must
-     * exist in the project's repositories.
+     * The wire op and its positional args as a {@link ManifestEdit.Op}. {@code add-dependency}
+     * takes scope, library, group, artifact, version ({@code latest} for the newest stable) and an
+     * optional classifier; {@code add-file-dependency} the same five and the jar's path.
      */
-    private static List<String> pinned(Path file, @Nullable String op, List<String> args) throws IOException {
-        if (!"add-dependency".equals(op) || args.size() < 5) return args;
-        StableVersions.requireExists(file, args.get(2), args.get(3), args.get(4));
-        List<String> out = new ArrayList<>(args);
-        out.set(4, StableVersions.versionToWrite(file, args.get(2), args.get(3), args.get(4)));
-        return out;
+    public static ManifestEdit.Op op(@Nullable String op, List<String> args) {
+        return switch (op == null ? "" : op) {
+            case "add-dependency" ->
+                new ManifestEdit.Op.AddDependency(
+                        Scope.fromCanonical(args.get(0)),
+                        args.get(1),
+                        args.get(2),
+                        args.get(3),
+                        args.get(4),
+                        args.size() > 5 && !args.get(5).isBlank() ? args.get(5) : null);
+            case "add-file-dependency" ->
+                new ManifestEdit.Op.AddFileDependency(
+                        Scope.fromCanonical(args.get(0)),
+                        args.get(1),
+                        args.get(2),
+                        args.get(3),
+                        args.get(4),
+                        Path.of(args.get(5)));
+            case "remove-dependency" ->
+                new ManifestEdit.Op.RemoveDependency(Scope.fromCanonical(args.get(0)), args.get(1));
+            case "add-workspace-module" -> new ManifestEdit.Op.AddWorkspaceModule(args.get(0));
+            case "register-workspace-module" -> new ManifestEdit.Op.RegisterWorkspaceModule(args.get(0));
+            case "remove-workspace-module" -> new ManifestEdit.Op.RemoveWorkspaceModule(args.get(0));
+            case "set-artifacts" ->
+                new ManifestEdit.Op.SetArtifacts(Boolean.parseBoolean(args.get(0)), Boolean.parseBoolean(args.get(1)));
+            default -> throw new IllegalArgumentException("unknown edit op: " + op);
+        };
     }
 }

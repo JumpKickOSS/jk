@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -162,6 +165,7 @@ final class EngineReads {
                 line -> {
                     EditAck ack = EditAck.decode(line);
                     if (ack.error() != null) throw new IOException(ack.error());
+                    warn(ack);
                     return ack.changed();
                 });
         // Manifest just changed — drop memoized project summaries for this invocation.
@@ -183,9 +187,17 @@ final class EngineReads {
                 line -> {
                     EditAck ack = EditAck.decode(line);
                     if (ack.error() != null) throw new IOException(ack.error());
+                    warn(ack);
                     String detail = ack.detail();
                     return detail == null ? "" : detail;
                 });
+    }
+
+    /** An edit that was written but whose relock failed: one warning line on stderr. */
+    private static void warn(EditAck ack) {
+        String warning = ack.warning();
+        if (warning == null || warning.isBlank() || CliOutput.jsonMode()) return;
+        CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + warning);
     }
 
     /** The module DAG behind {@code jk explain -U}. */

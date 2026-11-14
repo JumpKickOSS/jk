@@ -45,6 +45,12 @@ evaluate them before writing: an edit a rule bans is refused with the rule's car
 `Why`, the `allow` path), and the manifest is left as it was. The same rules run over the
 manifest and the resolved lock in the model lane of every build.
 
+After writing, `jk add` and `jk remove` relock, keeping every other pin, so the next build reads a
+current `jk-lock.toml`. An add whose new lock trips the project's [deny policy](publish.md#deny-policy) is put
+back: `jk.toml` and `jk-lock.toml` are restored and the command fails naming each rule it trips. A lock that does not resolve (offline, or a repository that cannot be reached) leaves the edit written and prints a warning; the next `jk lock` or build reports the resolve. The write itself is atomic: a build that reads `jk.toml` at the same moment sees the
+old file or the new one, never half of each. MCP `deps` and `POST /api/project/deps` run the same
+edit.
+
 ## Coordinates
 
 Three spellings, one grammar. The left-hand key is the local handle (`jk why`, `jk update

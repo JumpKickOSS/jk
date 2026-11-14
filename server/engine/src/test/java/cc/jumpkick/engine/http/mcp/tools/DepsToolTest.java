@@ -7,8 +7,8 @@ import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpContext;
-import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.RepoFixtures;
@@ -24,7 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code deps} writes jk.toml and leaves a lock the next build can trust; a version no configured
  * repository serves is refused, preview or not, and an add the deny policy refuses writes nothing.
  */
-class DepsLockTest {
+class DepsToolTest {
 
     @Test
     void remove_relocks_so_the_lock_matches_the_manifest(@TempDir Path tmp) throws Exception {
@@ -33,9 +33,12 @@ class DepsLockTest {
         assertThat(first.status()).as("the first lock: %s", first.error()).isZero();
         assertThat(LockFreshness.needsRefresh(dir)).isFalse();
 
-        Map<String, Object> added =
-                McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true);
-        assertThat(added.get("applied")).isEqualTo(true);
+        ManifestEdit.Result added = ManifestEdit.run(new ManifestEdit.Request(
+                dir.resolve("jk.toml"),
+                ManifestEdit.coordOps("add", List.of("com.acme:thing:1.0.0"), "main"),
+                false,
+                false));
+        assertThat(added.applied()).isTrue();
         assertThat(LockFreshness.needsRefresh(dir)).isTrue();
 
         Map<String, Object> result = new DepsTool()

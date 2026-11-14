@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.command.toolchain.NodeCli;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
@@ -128,7 +129,7 @@ final class NewNode {
             PathUtil.deleteRecursively(webDir);
             int exit = generate(home, framework.get(), webDir, params);
             if (exit != 0) return exit;
-            Files.writeString(manifest, toml, StandardCharsets.UTF_8);
+            AtomicWrites.replace(manifest, toml);
             ignore(webDir);
             return Exit.SUCCESS;
         } catch (IOException e) {

@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.RepoFixtures;
@@ -37,7 +38,7 @@ class McpManifestTest {
     @Test
     void set_java_on_a_table_terminated_manifest_lands_at_top_level(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
-        Map<String, Object> out = McpManifest.setJava(dir.toString(), 21, true);
+        Map<String, Object> out = setJava(dir.toString(), 21, true);
         assertThat(out.get("applied")).isEqualTo(true);
         assertThat(out).doesNotContainKey("error");
         String after = Files.readString(dir.resolve("jk.toml"), StandardCharsets.UTF_8);
@@ -49,9 +50,9 @@ class McpManifestTest {
     void a_pom_only_directory_is_refused_with_both_remedies(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
         for (Map<String, Object> out : List.of(
-                McpManifest.setJava(dir.toString(), 21, true),
-                McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true),
-                McpManifest.workspace(dir.toString(), "add_member", "api", true),
+                setJava(dir.toString(), 21, true),
+                deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true),
+                workspace(dir.toString(), "add_member", "api", true),
                 McpUpdate.run(dir.toString(), List.of(), false, false))) {
             assertThat(out.get("applied")).isEqualTo(false);
             assertThat(String.valueOf(out.get("error")))
@@ -72,8 +73,8 @@ class McpManifestTest {
                 dir.resolve("jk.toml"),
                 TABLE_TERMINATED + "\n[repositories.local]\nurl = \"" + repo.toUri() + "\"\ngroups = [\"com.acme\"]\n",
                 StandardCharsets.UTF_8);
-        McpManifest.setJava(dir.toString(), 21, true);
-        McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true);
+        setJava(dir.toString(), 21, true);
+        deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true);
         try (var files = Files.list(dir)) {
             assertThat(files.map(p -> p.getFileName().toString())).containsExactly("jk.toml");
         }
@@ -129,7 +130,7 @@ class McpManifestTest {
                 dir.resolve("jk.toml"),
                 "name = \"a\"\ngroup = \"g\"\nversion = \"1\"\njava = 17  # from the CI image\n[dependencies]\n",
                 StandardCharsets.UTF_8);
-        Map<String, Object> out = McpManifest.setJava(dir.toString(), 25, true);
+        Map<String, Object> out = setJava(dir.toString(), 25, true);
         assertThat(out).doesNotContainKey("error");
         String after = Files.readString(dir.resolve("jk.toml"), StandardCharsets.UTF_8);
         assertThat(after).containsOnlyOnce("java =");
@@ -141,7 +142,7 @@ class McpManifestTest {
     void set_java_replaces_an_existing_root_line(@TempDir Path dir) throws Exception {
         Files.writeString(
                 dir.resolve("jk.toml"), "name = \"a\"\ngroup = \"g\"\nversion = \"1\"\njava = 17\n[dependencies]\n");
-        McpManifest.setJava(dir.toString(), 25, true);
+        setJava(dir.toString(), 25, true);
         String after = Files.readString(dir.resolve("jk.toml"), StandardCharsets.UTF_8);
         assertThat(after).contains("java = 25");
         assertThat(after).doesNotContain("java = 17");
@@ -156,15 +157,39 @@ class McpManifestTest {
         Locale prev = Locale.getDefault();
         try {
             Locale.setDefault(Locale.forLanguageTag("tr"));
-            assertThat(McpManifest.parseScope("MAIN")).isEqualTo(Scope.MAIN);
-            assertThat(McpManifest.parseScope("runtime")).isEqualTo(Scope.RUNTIME);
-            assertThat(McpManifest.parseScope("test-dev")).isEqualTo(Scope.TEST_DEV);
-            assertThatThrownBy(() -> McpManifest.parseScope("runtimes"))
+            assertThat(ManifestEdit.parseScope("MAIN")).isEqualTo(Scope.MAIN);
+            assertThat(ManifestEdit.parseScope("runtime")).isEqualTo(Scope.RUNTIME);
+            assertThat(ManifestEdit.parseScope("test-dev")).isEqualTo(Scope.TEST_DEV);
+            assertThatThrownBy(() -> ManifestEdit.parseScope("runtimes"))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("runtimes")
                     .hasMessageContaining("runtime");
         } finally {
             Locale.setDefault(prev);
         }
+    }
+
+    private static Map<String, Object> edit(String dir, List<ManifestEdit.Op> ops, boolean apply) {
+        return ManifestEdit.structured(
+                ManifestEdit.run(new ManifestEdit.Request(Path.of(dir).resolve("jk.toml"), ops, !apply, false)));
+    }
+
+    private static Map<String, Object> setJava(String dir, int java, boolean apply) {
+        return edit(dir, List.of(new ManifestEdit.Op.SetJava(java)), apply);
+    }
+
+    private static Map<String, Object> deps(
+            String dir, String action, List<String> coords, String scope, boolean apply) {
+        return edit(dir, ManifestEdit.coordOps(action, coords, scope), apply);
+    }
+
+    private static Map<String, Object> workspace(String dir, String action, String path, boolean apply) {
+        return edit(
+                dir,
+                List.of(
+                        "remove_member".equals(action)
+                                ? new ManifestEdit.Op.RemoveWorkspaceModule(path)
+                                : new ManifestEdit.Op.RegisterWorkspaceModule(path)),
+                apply);
     }
 }

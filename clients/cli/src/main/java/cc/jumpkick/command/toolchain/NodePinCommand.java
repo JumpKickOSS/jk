@@ -11,6 +11,7 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.NodePinEdit;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.LockPaths;
@@ -116,7 +117,7 @@ public final class NodePinCommand implements CliCommand {
             CommandWedge.printFail(NodeCli.WEDGE, "could not write node = " + value + ": " + e.getMessage());
             return Exit.CONFIG;
         }
-        Files.writeString(manifest, edited, StandardCharsets.UTF_8);
+        AtomicWrites.replace(manifest, edited);
         String plain = unquote(value);
         if (in.isSet("file")) {
             Files.writeString(

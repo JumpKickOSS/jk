@@ -17,6 +17,7 @@ import cc.jumpkick.config.ReleaseVersion.Segment;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
@@ -490,7 +491,7 @@ public final class ReleaseCommand implements CliCommand {
     private static void bump(
             ProjectInfo info, Path dir, Path manifest, String text, String version, String next, List<Path> bumped)
             throws IOException {
-        Files.writeString(manifest, ReleaseVersion.rewrite(text, next));
+        AtomicWrites.replace(manifest, ReleaseVersion.rewrite(text, next));
         bumped.add(manifest);
         Path base = info.workspaceRootDir().isEmpty() ? dir : Path.of(info.workspaceRootDir());
         for (var file : info.releaseFiles().entrySet()) {
@@ -511,7 +512,7 @@ public final class ReleaseCommand implements CliCommand {
             if (memberManifest.equals(manifest) || !Files.isRegularFile(memberManifest)) continue;
             String member = Files.readString(memberManifest, StandardCharsets.UTF_8);
             if (ReleaseVersion.declared(member).filter(version::equals).isPresent()) {
-                Files.writeString(memberManifest, ReleaseVersion.rewrite(member, next));
+                AtomicWrites.replace(memberManifest, ReleaseVersion.rewrite(member, next));
                 bumped.add(memberManifest);
             }
         }

@@ -3,10 +3,10 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.http.mcp.McpManifest;
+import cc.jumpkick.engine.verbs.EditVerb;
+import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.runtime.base.EditOps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,8 +44,7 @@ class EditOpsGuardTest {
         Path p = project(dir, true);
         Path manifest = p.resolve(ManifestPaths.MANIFEST);
         String before = Files.readString(manifest);
-        EditOps.Result r =
-                EditOps.apply(manifest, "add-dependency", List.of("main", "junit", "junit", "junit", "=4.13.2"));
+        ManifestEdit.Result r = edit(manifest, "add-dependency", List.of("main", "junit", "junit", "junit", "=4.13.2"));
         assertThat(r.changed()).isFalse();
         assertThat(r.error())
                 .startsWith("GUARD no-junit4  refused this edit")
@@ -53,8 +52,8 @@ class EditOpsGuardTest {
                 .contains("no --force");
         assertThat(Files.readString(manifest)).isEqualTo(before);
 
-        EditOps.Result ok = EditOps.apply(
-                manifest, "add-dependency", List.of("main", "guava", "com.google.guava", "guava", "=33.4.0-jre"));
+        ManifestEdit.Result ok =
+                edit(manifest, "add-dependency", List.of("main", "guava", "com.google.guava", "guava", "=33.4.0-jre"));
         assertThat(ok.changed()).isTrue();
         assertThat(ok.error()).isNull();
     }
@@ -122,7 +121,7 @@ class EditOpsGuardTest {
         String before = Files.readString(manifest);
         List<String> playwright = List.of("playwright", "com.microsoft.playwright", "playwright", "=1.57.0");
 
-        EditOps.Result main = EditOps.apply(manifest, "add-dependency", with("main", playwright));
+        ManifestEdit.Result main = edit(manifest, "add-dependency", with("main", playwright));
         assertThat(main.changed()).isFalse();
         assertThat(main.error())
                 .startsWith("GUARD cli-runtime-classpath  refused this edit")
@@ -131,7 +130,7 @@ class EditOpsGuardTest {
                 .doesNotContain("junit");
         assertThat(Files.readString(manifest)).isEqualTo(before);
 
-        EditOps.Result test = EditOps.apply(manifest, "add-dependency", with("test", playwright));
+        ManifestEdit.Result test = edit(manifest, "add-dependency", with("test", playwright));
         assertThat(test.error()).isNull();
         assertThat(test.changed()).isTrue();
         // The row lands either way; whether it is the short name or full coordinates depends on
@@ -149,7 +148,7 @@ class EditOpsGuardTest {
     @Test
     void without_guards_the_edit_takes_the_old_path(@TempDir Path dir) throws Exception {
         Path p = project(dir, false);
-        EditOps.Result r = EditOps.apply(
+        ManifestEdit.Result r = edit(
                 p.resolve(ManifestPaths.MANIFEST),
                 "add-dependency",
                 List.of("main", "junit", "junit", "junit", "=4.13.2"));
@@ -157,12 +156,27 @@ class EditOpsGuardTest {
     }
 
     @Test
-    void mcp_deps_returns_the_refusal_in_notes_and_never_applies(@TempDir Path dir) throws Exception {
+    void mcp_deps_returns_the_refusal_as_its_error_and_never_applies(@TempDir Path dir) throws Exception {
         Path p = project(dir, true);
-        Map<String, Object> out = McpManifest.deps(p.toString(), "add", List.of("junit:junit:4.13.2"), "main", true);
+        Map<String, Object> out = deps(p.toString(), "add", List.of("junit:junit:4.13.2"), "main", true);
         assertThat(out.get("changed")).isEqualTo(false);
         assertThat(out.get("applied")).isEqualTo(false);
-        assertThat(String.valueOf(out.get("notes"))).contains("GUARD no-junit4");
+        assertThat(String.valueOf(out.get("error"))).contains("GUARD no-junit4");
         assertThat(Files.readString(p.resolve(ManifestPaths.MANIFEST))).doesNotContain("junit");
+    }
+
+    /** One wire edit op through the shared edit, no relock. */
+    private static ManifestEdit.Result edit(Path manifest, String op, List<String> args) {
+        return ManifestEdit.run(new ManifestEdit.Request(manifest, List.of(EditVerb.op(op, args)), false, false));
+    }
+
+    /** MCP deps' coordinate edit through the shared edit, no relock. */
+    private static Map<String, Object> deps(
+            String dir, String action, List<String> coords, String scope, boolean apply) {
+        return ManifestEdit.structured(ManifestEdit.run(new ManifestEdit.Request(
+                Path.of(dir).resolve(ManifestPaths.MANIFEST),
+                ManifestEdit.coordOps(action, coords, scope),
+                !apply,
+                false)));
     }
 }

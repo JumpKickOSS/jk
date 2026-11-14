@@ -4,9 +4,12 @@ package cc.jumpkick.engine.http.mcp.tools;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpError;
-import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.verbs.ManifestEdit;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.ManifestPaths;
+import java.util.List;
 import java.util.Map;
 
 /** {@code workspace} — preview or apply a workspace member add/remove. */
@@ -34,7 +37,11 @@ public final class WorkspaceTool implements McpTool {
         String path = in.str("path");
         if (path == null || path.isBlank()) throw new McpError(-32602, "workspace requires path");
         boolean apply = in.flag("apply");
-        Map<String, Object> data = McpManifest.workspace(dir, in.action("add_member"), path, apply);
+        ManifestEdit.Op op = "remove_member".equals(in.action("add_member"))
+                ? new ManifestEdit.Op.RemoveWorkspaceModule(path)
+                : new ManifestEdit.Op.RegisterWorkspaceModule(path);
+        Map<String, Object> data = ManifestEdit.structured(ManifestEdit.run(new ManifestEdit.Request(
+                ManifestPaths.manifestIn(PathUtil.resolveUserPath(dir)), List.of(op), !apply, false)));
         return in.ok(
                 McpEnvelope.of("workspace", data, false, null, ManifestEdits.relockHint(data)),
                 apply ? "workspace applied" : "workspace preview");

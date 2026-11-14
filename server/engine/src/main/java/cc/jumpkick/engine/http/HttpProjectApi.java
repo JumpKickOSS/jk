@@ -6,9 +6,11 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.verbs.Forecasts;
+import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
@@ -276,6 +278,53 @@ final class HttpProjectApi {
         }
         int status = forecast instanceof Forecasts.Forecast.Refused ? 422 : 200;
         HttpResponses.sendJson(exchange, status, MiniJson.write(Forecasts.structured(forecast)));
+    }
+
+    /** The fields {@code POST /api/project/deps} reads; any other is a {@code 400}. */
+    private static final List<String> DEPS_FIELDS = List.of("dir", "action", "coords", "scope", "preview");
+
+    /**
+     * {@code POST /api/project/deps {dir, action, coords, scope, preview}} — add, remove or pin
+     * {@code group:artifact[:version]} coordinates through the one {@link ManifestEdit} {@code jk add}
+     * and MCP {@code deps} run: version check, guard rules, atomic write, relock, deny gate. The
+     * answer is {@link ManifestEdit#structured}; {@code 422} when the edit was refused or its lock failed.
+     */
+    void handleDeps(HttpExchange exchange) throws IOException {
+        ManifestEdit.Request req;
+        try {
+            if (!(MiniJson.parse(HttpRequests.body(exchange)) instanceof Map<?, ?> body)) {
+                throw new IllegalArgumentException("body must be a JSON object");
+            }
+            for (Object key : body.keySet()) {
+                if (!DEPS_FIELDS.contains(String.valueOf(key))) {
+                    throw new IllegalArgumentException("unknown field " + key);
+                }
+            }
+            String dir = MiniJson.str(body, "dir");
+            if (dir == null || dir.isBlank()) throw new IllegalArgumentException("missing \"dir\"");
+            String action = MiniJson.str(body, "action");
+            List<String> coords = new ArrayList<>();
+            for (Object c : MiniJson.list(body, "coords")) {
+                if (!(c instanceof String s)) throw new IllegalArgumentException("coords must be strings");
+                coords.add(s);
+            }
+            Object preview = body.get("preview");
+            if (preview != null && !(preview instanceof Boolean)) {
+                throw new IllegalArgumentException("preview must be true or false");
+            }
+            req = new ManifestEdit.Request(
+                    ManifestPaths.manifestIn(PathUtil.resolveUserPath(dir)),
+                    ManifestEdit.coordOps(action == null ? "add" : action, coords, MiniJson.str(body, "scope")),
+                    Boolean.TRUE.equals(preview),
+                    true);
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        ManifestEdit.Result result = ManifestEdit.run(req);
+        int status = result.error() != null || !result.lockOk() ? 422 : 200;
+        HttpResponses.sendJson(exchange, status, MiniJson.write(ManifestEdit.structured(result)));
     }
 
     void handleProjectGraph(HttpExchange exchange) throws IOException {

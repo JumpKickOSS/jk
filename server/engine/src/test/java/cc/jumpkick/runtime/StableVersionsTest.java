@@ -7,9 +7,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.http.mcp.McpManifest;
+import cc.jumpkick.engine.verbs.EditVerb;
+import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.runtime.base.EditOps;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -106,7 +106,7 @@ class StableVersionsTest {
     @Test
     void mcp_deps_writes_a_managed_coordinate_versionless_and_says_so(@TempDir Path tmp) throws Exception {
         Path dir = projectUnderBom(tmp);
-        Map<String, Object> out = McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing"), "main", false);
+        Map<String, Object> out = deps(dir.toString(), "add", List.of("com.acme:thing"), "main", false);
         assertThat(out.get("error")).isNull();
         assertThat(out.get("changed")).isEqualTo(true);
         assertThat((String) out.get("preview"))
@@ -151,18 +151,16 @@ class StableVersionsTest {
     void mcp_deps_preview_of_a_missing_version_is_an_error_and_writes_nothing(@TempDir Path tmp) throws Exception {
         Path dir = project(tmp);
         String before = Files.readString(dir.resolve(ManifestPaths.MANIFEST));
-        Map<String, Object> out =
-                McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:9.9.9"), "main", false);
+        Map<String, Object> out = deps(dir.toString(), "add", List.of("com.acme:thing:9.9.9"), "main", false);
         assertThat(String.valueOf(out.get("error")))
                 .contains("no com.acme:thing:9.9.9 in the configured repositories; the newest release is 1.2.0");
         assertThat(Files.readString(dir.resolve(ManifestPaths.MANIFEST))).isEqualTo(before);
 
-        assertThat(McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true)
+        assertThat(deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true)
                         .get("error"))
                 .isNull();
         String added = Files.readString(dir.resolve(ManifestPaths.MANIFEST));
-        Map<String, Object> pin =
-                McpManifest.deps(dir.toString(), "pin", List.of("com.acme:thing:9.9.9"), "main", true);
+        Map<String, Object> pin = deps(dir.toString(), "pin", List.of("com.acme:thing:9.9.9"), "main", true);
         assertThat(String.valueOf(pin.get("error"))).contains("no com.acme:thing:9.9.9");
         assertThat(Files.readString(dir.resolve(ManifestPaths.MANIFEST))).isEqualTo(added);
     }
@@ -170,8 +168,8 @@ class StableVersionsTest {
     @Test
     void add_dependency_edit_writes_the_coordinate_string_and_reports_the_version(@TempDir Path tmp) throws Exception {
         Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
-        EditOps.Result r =
-                EditOps.apply(manifest, "add-dependency", List.of("main", "thing", "com.acme", "thing", "1.2.0"));
+        ManifestEdit.Result r =
+                edit(manifest, "add-dependency", List.of("main", "thing", "com.acme", "thing", "1.2.0"));
         assertThat(r.error()).isNull();
         assertThat(r.detail()).isEqualTo("1.2.0");
         assertThat(Files.readString(manifest)).contains("thing = \"com.acme:thing:1.2.0\"");
@@ -180,7 +178,7 @@ class StableVersionsTest {
     @Test
     void mcp_deps_pins_a_versionless_coordinate_through_the_same_writer(@TempDir Path tmp) throws Exception {
         Path dir = project(tmp);
-        Map<String, Object> out = McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing"), "main", false);
+        Map<String, Object> out = deps(dir.toString(), "add", List.of("com.acme:thing"), "main", false);
         assertThat(out.get("error")).isNull();
         assertThat(out.get("changed")).isEqualTo(true);
         assertThat((String) out.get("preview"))
@@ -238,5 +236,20 @@ class StableVersionsTest {
     private static <T> T offline(Callable<T> body) throws Exception {
         return SessionContext.where(
                 Session.defaults().withConfig(JkConfig.empty().withOffline(true)), body);
+    }
+
+    /** One wire edit op through the shared edit, no relock. */
+    private static ManifestEdit.Result edit(Path manifest, String op, List<String> args) {
+        return ManifestEdit.run(new ManifestEdit.Request(manifest, List.of(EditVerb.op(op, args)), false, false));
+    }
+
+    /** MCP deps' coordinate edit through the shared edit, no relock. */
+    private static Map<String, Object> deps(
+            String dir, String action, List<String> coords, String scope, boolean apply) {
+        return ManifestEdit.structured(ManifestEdit.run(new ManifestEdit.Request(
+                Path.of(dir).resolve(ManifestPaths.MANIFEST),
+                ManifestEdit.coordOps(action, coords, scope),
+                !apply,
+                false)));
     }
 }

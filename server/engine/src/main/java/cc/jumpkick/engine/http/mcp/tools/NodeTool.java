@@ -10,6 +10,8 @@ import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.verbs.ManifestEdit;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
@@ -179,11 +181,11 @@ public final class NodeTool implements McpTool {
             return Map.of("error", ManifestPaths.noManifestToEdit(target.get().toString()));
         Path manifest = ManifestPaths.manifestIn(target.get());
         String text = Files.readString(manifest, StandardCharsets.UTF_8);
-        Files.writeString(manifest, NodePinEdit.apply(text, value), StandardCharsets.UTF_8);
+        AtomicWrites.replace(manifest, NodePinEdit.apply(text, value));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("manifest", manifest.toString());
         out.put("node", value);
-        out.put("lock", DepsLock.relock(LockPaths.lockOwnerDir(target.get())));
+        out.put("lock", ManifestEdit.relock(LockPaths.lockOwnerDir(target.get())));
         return out;
     }
 

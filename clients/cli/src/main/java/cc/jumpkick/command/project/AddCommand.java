@@ -209,22 +209,20 @@ public final class AddCommand implements CliCommand {
     }
 
     /**
-     * What happens to the written selector from here: an exact pin stays where it is until {@code
-     * jk update} moves it; a float is picked at the next lock; a managed version follows the
-     * platform BOM.
+     * What happens to the written selector from here, now that the edit has relocked: an exact
+     * pin stays where it is until {@code jk update} moves it; a float is re-picked by the next
+     * {@code jk lock}; a managed version follows the platform BOM.
      */
     static String settleLine(String version) {
-        String lock = Theme.colorize("jk lock", Theme.active().warning());
+        String update = Theme.colorize("jk update", Theme.active().warning());
         if (Dependency.MANAGED_KEYWORD.equals(version)) {
-            return "Version managed by the platform BOM; " + lock + " reads it there and "
-                    + Theme.colorize("jk update", Theme.active().warning()) + " moves the BOM";
+            return "Version managed by the platform BOM and locked; " + update + " moves the BOM";
         }
         if (VersionSelector.parse(version) instanceof VersionSelector.Exact) {
-            return "Pinned to " + version + "; " + lock + " keeps it and "
-                    + Theme.colorize("jk update", Theme.active().warning()) + " moves it";
+            return "Pinned to " + version + " and locked; " + update + " moves it";
         }
-        return "`" + version + "` floats: the next "
-                + Theme.colorize("jk build", Theme.active().warning()) + " / " + lock + " picks the newest match";
+        return "`" + version + "` floats: locked to its newest match, which "
+                + Theme.colorize("jk lock", Theme.active().warning()) + " re-picks";
     }
 
     /** The selected dependency scope, or {@code null} when the flags name more than one table. */

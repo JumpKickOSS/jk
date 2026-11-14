@@ -876,6 +876,20 @@ the journal row carry a `cancelReason` naming the deadline and the knob that set
 the CLI owns are unchanged: their EOF is the deadline, and `JK_ENGINE_JOB_DEADLINE_MS` stays off
 unless set.
 
+## Editing dependencies (`POST /api/project/deps`)
+
+`POST /api/project/deps {dir, action, coords, scope, preview}` adds, removes or pins
+`group:artifact[:version]` coordinates (`action` `add` (default), `remove` or `pin`; `scope` a
+canonical scope, `main` by default). It is the one manifest edit (`ManifestEdit`) `jk add`,
+`jk remove` and MCP `deps` run: a version no configured repository serves is refused, `latest`
+(no version) pins today's stable, the guard rules judge the proposed manifest, the write is atomic,
+and a written edit relocks; an add whose new lock trips the deny policy puts `jk.toml` and
+`jk-lock.toml` back. `preview: true` writes nothing and does not lock. An unknown field is a `400`.
+
+`{ changed, applied, notes: [...], preview?, detail?, lock?, denyHits?, error? }` — `preview` the
+proposed manifest when it differs, `lock` `lock ok` or the failed relock's lines, `error` why nothing
+was written. A refused edit or a failed lock answers `422`.
+
 ## Forecasting a job (`GET /api/explain`)
 
 `GET /api/explain?dir=<path>&modules=a,b&skip_tests=true` forecasts the build `POST /api/build`

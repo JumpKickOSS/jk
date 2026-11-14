@@ -3,19 +3,11 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpError;
-import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
-import cc.jumpkick.host.Errors;
+import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.runtime.base.PolicyOps;
-import cc.jumpkick.runtime.workspace.HeldFiles;
-import cc.jumpkick.wire.protocol.DenyReport;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -24,7 +16,8 @@ import java.util.Map;
  * {@code deps} — add, remove, or pin dependencies in {@code jk.toml}, then relock. {@code
  * preview=true} writes nothing and does not lock; an added or pinned version must still exist in the
  * configured repositories. An add whose lock trips the project's deny policy fails naming each rule
- * it trips, and {@code jk.toml} and {@code jk-lock.toml} are put back as they were.
+ * it trips, and {@code jk.toml} and {@code jk-lock.toml} are put back as they were: the one
+ * {@link ManifestEdit} {@code jk add} runs.
  */
 public final class DepsTool implements McpTool {
 
@@ -54,51 +47,31 @@ public final class DepsTool implements McpTool {
     @Override
     public Map<String, Object> call(McpCall in) {
         String action = in.action("add").toLowerCase(Locale.ROOT);
-        if (!action.equals("add") && !action.equals("remove") && !action.equals("pin")) {
-            throw new McpError(-32602, "deps action must be add, remove, or pin");
-        }
-        boolean preview = in.flag("preview");
-        String dir = in.requiredDir();
-        boolean gate = "add".equals(action) && !preview;
-        Path root = PathUtil.resolveUserPath(dir);
-        HeldFiles before;
+        ManifestEdit.Request req;
         try {
-            before = HeldFiles.of(List.of(ManifestPaths.manifestIn(root), LockPaths.lockFile(root)));
-        } catch (IOException e) {
-            return in.error(Errors.text(e) + "\n");
+            req = new ManifestEdit.Request(
+                    ManifestPaths.manifestIn(PathUtil.resolveUserPath(in.requiredDir())),
+                    ManifestEdit.coordOps(action, in.strings("coords"), in.str("scope")),
+                    in.flag("preview"),
+                    true);
+        } catch (IllegalArgumentException e) {
+            throw new McpError(-32602, "deps: " + e.getMessage());
         }
-        List<String> already = gate ? denyHits(root) : List.of();
-        Map<String, Object> data = McpManifest.deps(dir, action, in.strings("coords"), in.str("scope"), !preview);
-        if (data.get("error") != null) {
-            return in.error(data.get("error") + "\n");
-        }
-        String changed = DepsLock.changedLine(data);
-        if (preview || !Boolean.TRUE.equals(data.get("applied"))) {
-            String text = preview ? changed + "\npreview\n" : changed + "\n";
-            return in.text(text);
-        }
-        String lock = DepsLock.relock(root);
-        String text = changed + "\n" + lock + "\n";
-        if (!"lock ok".equals(lock)) return in.error(text);
-        List<String> hits = new ArrayList<>(gate ? denyHits(root) : List.of());
-        hits.removeAll(already);
-        if (hits.isEmpty()) return in.text(text);
-        try {
-            before.restore();
-        } catch (IOException e) {
-            return in.error(text + "could not put jk.toml back: " + Errors.text(e) + "\n");
-        }
-        return in.error("deny policy refuses the add; nothing written:\n" + String.join("\n", hits) + "\n");
+        return render(in, ManifestEdit.run(req), req.preview());
     }
 
-    /** What the deny policy says about the lock {@code root} now has, one line per hit. */
-    private static List<String> denyHits(Path root) {
-        DenyReport report = PolicyOps.denyCheck(root);
-        List<String> hits = new ArrayList<>();
-        for (int i = 0; i < report.violationCount(); i++) {
-            hits.add(report.modules().get(i) + " " + report.versions().get(i) + ": "
-                    + report.reasons().get(i));
-        }
-        return hits;
+    /**
+     * The agent's text for one edit: what {@code jk.toml} gained or lost, then {@code preview}, the
+     * relock line, or the refusal; an error or a failed lock is {@code isError}.
+     */
+    static Map<String, Object> render(McpCall in, ManifestEdit.Result result, boolean preview) {
+        if (result.error() != null) return in.error(result.error() + "\n");
+        String changed = result.notes().isEmpty()
+                ? (result.changed() ? "edited jk.toml" : "unchanged")
+                : String.join("; ", result.notes());
+        if (preview) return in.text(changed + "\npreview\n");
+        if (result.lock() == null) return in.text(changed + "\n");
+        String text = changed + "\n" + result.lock() + "\n";
+        return result.lockOk() ? in.text(text) : in.error(text);
     }
 }

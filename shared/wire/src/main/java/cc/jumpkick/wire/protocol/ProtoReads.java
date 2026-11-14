@@ -42,7 +42,12 @@ public final class ProtoReads {
     }
 
     public static String editAck(boolean changed, @Nullable String error, @Nullable String detail) {
-        return new EditAck(changed, error, detail).encode();
+        return editAck(changed, error, detail, null);
+    }
+
+    public static String editAck(
+            boolean changed, @Nullable String error, @Nullable String detail, @Nullable String warning) {
+        return new EditAck(changed, error, detail, warning).encode();
     }
 
     public static String freshenCatalogAck(boolean ok, @Nullable String error) {
