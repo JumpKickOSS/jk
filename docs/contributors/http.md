@@ -856,6 +856,8 @@ connection). The fields:
 | `affected` | boolean | Only the modules the working tree changed (and what depends on them) |
 | `skip_tests` | boolean | Skip the test phase, as `-S` on `build` |
 | `deadline_s` | integer | The job's wall deadline in seconds (`0` = none) |
+| `deps` | string array or `a,b` | `kind=update` only: the handles or `group:artifact`s to move (default: every pin) |
+| `major` | boolean | `kind=update` only: let a pin cross its major |
 
 A field outside the table (MCP `run` adds its own `goal`, `wait`, `timeout_s`, `jid`, `run`,
 `decision`) is refused, `400` naming it (`-32602` on MCP), as is a value of the wrong type. The

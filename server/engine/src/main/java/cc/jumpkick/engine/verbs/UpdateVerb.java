@@ -9,18 +9,13 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.lock.LockDiff;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.LockPlans;
-import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
-import cc.jumpkick.runtime.workspace.AddedPackages;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
@@ -32,7 +27,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -86,8 +80,8 @@ public final class UpdateVerb implements HostedVerb {
                         false,
                         false,
                         "",
-                        List.of(),
-                        false,
+                        spec.deps(),
+                        spec.major(),
                         false)
                 .encode();
     }
@@ -163,8 +157,7 @@ public final class UpdateVerb implements HostedVerb {
 
     /**
      * The planned pin moves as {@code update-rewrite} events, each naming the packages its relock
-     * would add to an existing lock; nothing is written or relocked. Those packages come from a
-     * resolve that reads the moved manifests from memory, under the lock dir's gate.
+     * would add to an existing lock; nothing is written or relocked.
      */
     private JobOutcome preview(
             Path entryDir,
@@ -176,31 +169,13 @@ public final class UpdateVerb implements HostedVerb {
             ManifestUpdates.Selection selection,
             @Nullable BufferedWriter writer) {
         try {
-            Path lockDir = LockPlans.lockScope(entryDir).lockDir();
-            synchronized (LockGate.monitorFor(lockDir)) {
-                ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, selection);
-                Map<ManifestUpdates.Rewrite, List<String>> adding = Map.of();
-                Lockfile before = LockDiff.current(lockDir);
-                if (before != null && !plan.isEmpty()) {
-                    try {
-                        adding = AddedPackages.byMove(
-                                before,
-                                AddedPackages.probe(
-                                        lockDir, plan.contents(), cache, repoUrl, features, withDefaults, mode),
-                                plan.rewrites());
-                    } catch (Exception e) {
-                        if (e instanceof InterruptedException)
-                            Thread.currentThread().interrupt();
-                        // The update itself meets the same failure and reports it.
-                        Log.debug("update: no probe of the packages the moves add", e);
-                    }
-                }
-                for (ManifestUpdates.Rewrite r : plan.rewrites()) {
-                    LockCascade.sendRewrite(host, writer, r, false, adding.getOrDefault(r, List.of()));
-                }
-                for (ManifestUpdates.Rewrite r : plan.available()) {
-                    LockCascade.sendRewrite(host, writer, r, true, List.of());
-                }
+            Updates.Preview preview =
+                    Updates.preview(entryDir, cache, repoUrl, features, withDefaults, mode, selection);
+            for (ManifestUpdates.Rewrite r : preview.rewrites()) {
+                LockCascade.sendRewrite(host, writer, r, false, preview.adding().getOrDefault(r, List.of()));
+            }
+            for (ManifestUpdates.Rewrite r : preview.available()) {
+                LockCascade.sendRewrite(host, writer, r, true, List.of());
             }
         } catch (RuntimeException | IOException e) {
             return LockCascade.fail(host, writer, Exit.CONFIG, Errors.text(e));

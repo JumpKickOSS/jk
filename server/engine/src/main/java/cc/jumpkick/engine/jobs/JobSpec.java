@@ -6,8 +6,8 @@ import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One HTTP/MCP job submission: kind plus optional module and test-tag selection, the wall
- * deadline the caller wants ({@code null} = the engine's detached default, {@code 0} = none), and
+ * One HTTP/MCP job submission: kind plus optional module and test-tag selection, an update's
+ * {@code deps} and {@code major}, the wall deadline the caller wants ({@code null} = the engine's detached default, {@code 0} = none), and
  * the {@link JobOrigin origin} that asked. Decoded into a wire request line by the owning verb
  * ({@code HostedVerb.decodeJob}); {@code EngineHttpJobs} is the single admission point and stamps
  * the origin onto that line.
@@ -23,6 +23,8 @@ public record JobSpec(
         boolean skipTests,
         boolean affected,
         @Nullable Long deadlineMs,
+        List<String> deps,
+        boolean major,
         JobOrigin origin) {
 
     public JobSpec {
@@ -34,6 +36,10 @@ public record JobSpec(
         excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
         suites = suites == null ? List.of() : List.copyOf(suites);
         classes = classes == null ? List.of() : List.copyOf(classes);
+        deps = deps == null ? List.of() : List.copyOf(deps);
+        if ((!deps.isEmpty() || major) && !"update".equals(kind)) {
+            throw new IllegalArgumentException("deps and major apply to kind=update only");
+        }
         if (deadlineMs != null && deadlineMs < 0) {
             throw new IllegalArgumentException("deadlineMs must be >= 0 (0 = no deadline)");
         }
@@ -47,7 +53,8 @@ public record JobSpec(
 
     public static JobSpec of(String kind, String dir, JobOrigin origin) {
         return new JobSpec(
-                kind, dir, List.of(), List.of(), List.of(), List.of(), List.of(), false, false, null, origin);
+                kind, dir, List.of(), List.of(), List.of(), List.of(), List.of(), false, false, null, List.of(), false,
+                origin);
     }
 
     /** Same spec with a normalized absolute {@code dir} (the admission point resolves it once). */
@@ -63,13 +70,27 @@ public record JobSpec(
                 skipTests,
                 affected,
                 deadlineMs,
+                deps,
+                major,
                 origin);
     }
 
     /** Same spec under {@code deadlineMs} ({@code null} = engine default, {@code 0} = none). */
     public JobSpec withDeadlineMs(@Nullable Long deadlineMs) {
         return new JobSpec(
-                kind, dir, modules, includeTags, excludeTags, suites, classes, skipTests, affected, deadlineMs, origin);
+                kind,
+                dir,
+                modules,
+                includeTags,
+                excludeTags,
+                suites,
+                classes,
+                skipTests,
+                affected,
+                deadlineMs,
+                deps,
+                major,
+                origin);
     }
 
     /** The transport this spec submits on: detached, under its own deadline when it named one. */

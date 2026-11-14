@@ -31,6 +31,8 @@ class WorkspaceBuildVerbDefaultsTest {
                         false,
                         false,
                         null,
+                        List.of(),
+                        false,
                         JobOrigin.WEB));
         assertThat(Jsonl.bool(line, "parallelTests", false))
                 .as("decodeJob must emit the CLI's default, not a serial one")
@@ -62,6 +64,8 @@ class WorkspaceBuildVerbDefaultsTest {
                 false,
                 false,
                 null,
+                List.of(),
+                false,
                 JobOrigin.WEB);
     }
 

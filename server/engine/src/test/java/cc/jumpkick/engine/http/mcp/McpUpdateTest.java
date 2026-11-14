@@ -9,14 +9,16 @@ import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.verbs.Updates;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -27,8 +29,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code update}: a preview lists the pin moves and the proposed manifest without writing;
- * apply writes {@code jk.toml} and relocks. Candidates come from the project's own declared
+ * {@code update}: a preview lists the pin moves, the majors left and the packages each move adds,
+ * without writing; apply starts the {@code update} job {@code jk update} runs, as the agent. Candidates come from the project's own declared
  * repositories.
  */
 @Tag("integration")
@@ -52,65 +54,32 @@ class McpUpdateTest {
     }
 
     @Test
-    void preview_reports_the_moves_without_writing_and_apply_writes_and_relocks(@TempDir Path dir) throws Exception {
+    void preview_reports_the_moves_and_the_majors_left_without_writing(@TempDir Path dir) throws Exception {
         project(dir);
-
-        Map<String, Object> preview = McpUpdate.run(dir.toString(), List.of(), false, false);
-        assertThat(preview).doesNotContainKey("error");
-        assertThat(preview.get("applied")).isEqualTo(false);
-        assertThat(preview.get("changed")).isEqualTo(true);
+        Map<String, Object> preview = Updates.structured(Updates.preview(dir.toString(), List.of(), false));
         assertThat(rows(preview, "rewrites"))
                 .extracting(r -> r.get("handle"), r -> r.get("from"), r -> r.get("to"))
                 .containsExactlyInAnyOrder(tuple("jackson", "2.18.0", "2.18.2"), tuple("other", "1.0.0", "1.1.0"));
-        assertThat(preview.get("available"))
+        assertThat(rows(preview, "available"))
                 .as("a newer major is reported, not planned")
-                .isEqualTo(List.of("jackson 2.18.2 → 3.0.0"));
-        assertThat(String.valueOf(preview.get("preview"))).contains("jackson = \"com.acme:jackson:2.18.2\"");
-        assertThat(rows(preview, "files"))
-                .extracting(r -> r.get("path"))
-                .containsExactly(dir.resolve("jk.toml").toString());
+                .extracting(r -> r.get("handle"), r -> r.get("to"))
+                .containsExactly(tuple("jackson", "3.0.0"));
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:jackson:2.18.0");
         assertThat(dir.resolve("jk-lock.toml")).doesNotExist();
 
-        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of("jackson"), false, true);
-        assertThat(applied).doesNotContainKey("error");
-        assertThat(applied.get("applied")).isEqualTo(true);
-        assertThat(rows(applied, "rewrites")).extracting(r -> r.get("handle")).containsExactly("jackson");
-        assertThat(Files.readString(dir.resolve("jk.toml")))
-                .contains("jackson = \"com.acme:jackson:2.18.2\"")
-                .contains("other = \"com.acme:other:1.0.0\"");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> lock = (Map<String, Object>) requireNonNull(applied.get("lock"));
-        assertThat(lock.get("success")).isEqualTo(true);
-        assertThat(locked(dir, "com.acme:jackson")).isEqualTo("2.18.2");
-        assertThat(locked(dir, "com.acme:other")).isEqualTo("1.0.0");
-        assertThat(rows(lock, "changes"))
-                .as("the first lock adds every package")
-                .allSatisfy(r -> assertThat(r.get("from")).isNull());
-
-        Map<String, Object> other = McpUpdate.run(dir.toString(), List.of("other"), false, true);
-        assertThat(other.get("applied"))
-                .as("1.0.0 → 1.1.0 crosses a minor and applies all the same")
-                .isEqualTo(true);
-        assertThat(Files.readString(dir.resolve("jk.toml"))).contains("other = \"com.acme:other:1.1.0\"");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> relock = (Map<String, Object>) requireNonNull(other.get("lock"));
-        assertThat(relock.get("updated")).isEqualTo(1);
-        assertThat(rows(relock, "changes"))
-                .extracting(r -> r.get("coordinate"), r -> r.get("from"), r -> r.get("to"))
-                .containsExactly(tuple("com.acme:other", "1.0.0", "1.1.0"));
-
-        Map<String, Object> major = McpUpdate.run(dir.toString(), List.of("jackson"), true, false);
+        Map<String, Object> major = Updates.structured(Updates.preview(dir.toString(), List.of("jackson"), true));
         assertThat(rows(major, "rewrites")).extracting(r -> r.get("to")).containsExactly("3.0.0");
-        assertThat(major).doesNotContainKey("available");
+        assertThat(rows(major, "available")).isEmpty();
     }
 
     @Test
-    void the_tool_is_registered_and_previews_by_default(@TempDir Path dir) throws Exception {
+    void the_tool_previews_by_default_and_apply_starts_the_update_job_as_the_agent(@TempDir Path dir) throws Exception {
         project(dir);
+        List<JobSpec> admitted = new ArrayList<>();
         EngineHttpJobs jobs = new EngineHttpJobs() {
             @Override
             public long trigger(JobSpec spec) {
+                admitted.add(spec);
                 return 1L;
             }
 
@@ -134,27 +103,26 @@ class McpUpdateTest {
                 + "\"params\":{\"name\":\"update\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"deps\":[\"other\"]}}}");
-        assertThat(reply)
-                .contains("\"type\":\"update\"")
-                .contains("\"applied\":false")
-                .contains("\"to\":\"1.1.0\"");
+        assertThat(reply).contains("\"type\":\"update\"").contains("\"to\":\"1.1.0\"");
         assertThat(reply).doesNotContain("2.18.2");
+        assertThat(admitted).as("a preview starts no job").isEmpty();
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:other:1.0.0");
 
         String applied = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"update\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
-                + ",\"deps\":[\"other\"],\"apply\":true}}}");
-        assertThat(applied)
-                .as("a move across a minor applies with no decision asked")
-                .contains("\"applied\":true")
-                .doesNotContain("decision")
-                .doesNotContain("NEEDS-YOU");
-        assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:other:1.1.0");
+                + ",\"deps\":[\"other\"],\"apply\":true,\"wait\":false}}}");
+        assertThat(applied).contains("RUNNING update jid=1");
+        assertThat(admitted).singleElement().satisfies(spec -> {
+            assertThat(spec.kind()).isEqualTo("update");
+            assertThat(spec.deps()).containsExactly("other");
+            assertThat(spec.major()).isFalse();
+            assertThat(spec.origin().trigger()).isEqualTo("mcp");
+        });
     }
 
     @Test
-    void an_apply_whose_relock_adds_a_package_writes_and_relocks(@TempDir Path dir) throws Exception {
+    void a_preview_names_the_packages_a_move_adds_to_the_lock(@TempDir Path dir) throws Exception {
         MavenStub upstream = new MavenStub(http);
         upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
         upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
@@ -167,8 +135,7 @@ class McpUpdateTest {
                   </dependency></dependencies>
                 </project>""");
         upstream.metadata("com.acme", "growing", "1.0.0", "1.0.1");
-        Path manifest = dir.resolve("jk.toml");
-        Files.writeString(manifest, """
+        Files.writeString(dir.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
@@ -180,20 +147,16 @@ class McpUpdateTest {
                 [dependencies]
                 growing = "com.acme:growing:1.0.0"
                 """.formatted(http.baseUrl()));
-        McpUpdate.run(dir.toString(), List.of("nothing-named-this"), false, true);
-        assertThat(dir.resolve("jk-lock.toml")).exists();
+        LockFlow.Result first = LockFlow.run(dir, isolated.resolve("cache"), List.of(), false, null);
+        assertThat(first.status()).as("the first lock: %s", first.error()).isZero();
 
-        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of(), false, true);
+        Map<String, Object> preview = Updates.structured(Updates.preview(dir.toString(), List.of(), false));
 
-        assertThat(applied).doesNotContainKey("error");
-        assertThat(applied.get("applied")).isEqualTo(true);
-        assertThat(Files.readString(manifest)).contains("com.acme:growing:1.0.1");
-        assertThat(locked(dir, "com.acme:extra")).isEqualTo("1.0");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> lock = (Map<String, Object>) requireNonNull(applied.get("lock"));
-        assertThat(rows(lock, "changes"))
-                .extracting(r -> r.get("coordinate"), r -> r.get("from"), r -> r.get("to"))
-                .contains(tuple("com.acme:extra", null, "1.0"), tuple("com.acme:growing", "1.0.0", "1.0.1"));
+        assertThat(rows(preview, "rewrites")).singleElement().satisfies(row -> {
+            assertThat(row.get("to")).isEqualTo("1.0.1");
+            assertThat(String.valueOf(row.get("adds"))).contains("com.acme:extra");
+        });
+        assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:growing:1.0.0");
     }
 
     // ---- fixture ---------------------------------------------------------------
@@ -201,16 +164,6 @@ class McpUpdateTest {
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> rows(Map<String, Object> data, String key) {
         return (List<Map<String, Object>>) requireNonNull(data.get(key));
-    }
-
-    private static String locked(Path project, String module) throws IOException {
-        LockfileReader.clearCache();
-        Lockfile lock = LockfileReader.read(project.resolve("jk-lock.toml"));
-        return lock.artifacts().stream()
-                .filter(a -> a.matchesModule(module))
-                .map(Lockfile.Artifact::version)
-                .findFirst()
-                .orElseThrow(() -> new AssertionError(module + " not in the lock"));
     }
 
     private void project(Path dir) throws IOException {

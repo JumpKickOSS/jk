@@ -42,7 +42,7 @@ public final class Forecasts {
 
     /** The job-request fields a forecast reads: the selection, never the kind or deadline. */
     public static final List<JobRequests.Field> FIELDS = JobRequests.FIELDS.stream()
-            .filter(f -> !"kind".equals(f.name()) && !"deadline_s".equals(f.name()))
+            .filter(f -> !Set.of("kind", "deadline_s", "deps", "major").contains(f.name()))
             .toList();
 
     /** A forecast: refused with the build's own errors, or ready with its report. */

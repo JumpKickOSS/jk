@@ -44,7 +44,9 @@ public final class JobRequests {
             new Field("exclude_tags", Type.LIST),
             new Field("affected", Type.BOOL),
             new Field("skip_tests", Type.BOOL),
-            new Field("deadline_s", Type.INT));
+            new Field("deadline_s", Type.INT),
+            new Field("deps", Type.LIST),
+            new Field("major", Type.BOOL));
 
     /** The module token {@code affected} stands for when the request names no modules. */
     static final String AFFECTED_MODULES = "affected-wip";
@@ -102,6 +104,8 @@ public final class JobRequests {
                 bool(fields, "skip_tests"),
                 affected,
                 deadlineS == null ? null : deadlineS * 1000L,
+                list(fields, "deps"),
+                bool(fields, "major"),
                 origin);
     }
 

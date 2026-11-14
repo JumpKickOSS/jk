@@ -6,13 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.jobs.JobOrigin;
+import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoJobs;
+import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -91,11 +95,35 @@ class HostedVerbDecodeJobTest {
                 false,
                 false,
                 null,
+                List.of(),
+                false,
                 JobOrigin.WEB));
         var sel = ProtoJobs.testSelectionOf(line);
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.classes()).containsExactly("RangeTest");
         assertThat(sel.excludeTags()).containsExactly("slow");
+    }
+
+    @Test
+    void an_update_job_carries_its_deps_and_major(@TempDir Path dir) throws Exception {
+        project(dir);
+        JobSpec spec = JobRequests.decode(
+                Map.of("dir", dir.toString(), "kind", "update", "deps", List.of("jackson"), "major", true),
+                JobOrigin.WEB,
+                "build",
+                null,
+                Set.of());
+        UpdateRequest req = UpdateRequest.decode(new UpdateVerb(new InertVerbHost()).decodeJob(spec));
+        assertThat(req.deps()).containsExactly("jackson");
+        assertThat(req.major()).isTrue();
+        assertThat(req.preview()).isFalse();
+        assertThatThrownBy(() -> JobRequests.decode(
+                        Map.of("dir", dir.toString(), "kind", "build", "deps", List.of("jackson")),
+                        JobOrigin.WEB,
+                        "build",
+                        null,
+                        Set.of()))
+                .hasMessageContaining("kind=update");
     }
 
     @Test

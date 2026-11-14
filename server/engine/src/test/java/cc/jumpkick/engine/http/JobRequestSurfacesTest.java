@@ -36,7 +36,8 @@ class JobRequestSurfacesTest extends HttpEngineServerHarness {
             "{\"dir\":\"/ws\",\"kind\":\"test\",\"modules\":[\"core\",\"app\"],\"suites\":[\"integration\"]}",
             "{\"dir\":\"/ws\",\"kind\":\"test\",\"include_tags\":[\"fast\"],\"exclude_tags\":[\"slow\"]}",
             "{\"dir\":\"/ws\",\"kind\":\"build\",\"affected\":true,\"skip_tests\":true,\"deadline_s\":90}",
-            "{\"dir\":\"/ws\",\"kind\":\"lock\",\"modules\":\"core,app\",\"classes\":\"A,B\"}");
+            "{\"dir\":\"/ws\",\"kind\":\"lock\",\"modules\":\"core,app\",\"classes\":\"A,B\"}",
+            "{\"dir\":\"/ws\",\"kind\":\"update\",\"deps\":[\"jackson\"],\"major\":true}");
 
     private final List<JobSpec> mcpAdmitted = new ArrayList<>();
 
@@ -69,6 +70,8 @@ class JobRequestSurfacesTest extends HttpEngineServerHarness {
         assertThat(triggeredSpecs.get(4).modules()).containsExactly("affected-wip");
         assertThat(triggeredSpecs.get(4).skipTests()).isTrue();
         assertThat(triggeredSpecs.get(4).deadlineMs()).isEqualTo(90_000L);
+        assertThat(triggeredSpecs.get(6).deps()).containsExactly("jackson");
+        assertThat(triggeredSpecs.get(6).major()).isTrue();
     }
 
     @Test
@@ -115,6 +118,8 @@ class JobRequestSurfacesTest extends HttpEngineServerHarness {
                 s.skipTests(),
                 s.affected(),
                 s.deadlineMs(),
+                s.deps(),
+                s.major(),
                 JobOrigin.WEB);
     }
 

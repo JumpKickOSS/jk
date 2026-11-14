@@ -10,6 +10,7 @@ import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.verbs.ManifestEdit;
+import cc.jumpkick.engine.verbs.Updates;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.RepoFixtures;
@@ -52,13 +53,14 @@ class McpManifestTest {
         for (Map<String, Object> out : List.of(
                 setJava(dir.toString(), 21, true),
                 deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true),
-                workspace(dir.toString(), "add_member", "api", true),
-                McpUpdate.run(dir.toString(), List.of(), false, false))) {
+                workspace(dir.toString(), "add_member", "api", true))) {
             assertThat(out.get("applied")).isEqualTo(false);
             assertThat(String.valueOf(out.get("error")))
                     .contains("no jk.toml in")
                     .contains("edit pom.xml or run jk import pom.xml");
         }
+        assertThatThrownBy(() -> Updates.preview(dir.toString(), List.of(), false))
+                .hasMessageContaining("edit pom.xml or run jk import pom.xml");
         try (var files = Files.list(dir)) {
             assertThat(files.map(p -> p.getFileName().toString())).containsExactly("pom.xml");
         }
