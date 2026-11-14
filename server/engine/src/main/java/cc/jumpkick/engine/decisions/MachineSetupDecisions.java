@@ -80,7 +80,7 @@ public final class MachineSetupDecisions {
         }
         boolean outstanding = queue.list().stream().anyMatch(d -> WindowsSetup.KIND.equals(d.kind()) && d.open());
         WindowsHostCheck check = WindowsSetup.check(project);
-        SetupPlan plan = WindowsSetup.plan(check, served()).unanswered(check.memo());
+        SetupPlan plan = WindowsSetup.unanswered(check, served());
         SetupConsent consent = WindowsSetup.consent();
         switch (SetupOffer.of(consent, plan, outstanding)) {
             case NONE -> {}

@@ -20,6 +20,7 @@ import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -74,10 +75,13 @@ public final class DoctorTool implements McpTool {
             }
             return in.text("DECLINED machine setup: " + consent.settledBy() + "; the user changes it there\n");
         }
-        SetupPlan whole = WindowsSetup.plan(check, MachineSetupDecisions.served());
-        if (whole.isEmpty()) return in.text("this machine is set up: nothing to change\n");
+        List<Path> served = MachineSetupDecisions.served();
         // An agent asks only about rows the user never answered; jk doctor --fix shows them all.
-        SetupPlan plan = in.str(McpDecisions.DECISION) == null ? whole.unanswered(check.memo()) : whole;
+        boolean asking = in.str(McpDecisions.DECISION) == null;
+        SetupPlan plan = asking ? WindowsSetup.unanswered(check, served) : WindowsSetup.plan(check, served);
+        if (plan.isEmpty() && (!asking || WindowsSetup.plan(check, served).isEmpty())) {
+            return in.text("this machine is set up: nothing to change\n");
+        }
         if (consent == SetupConsent.ASK && plan.isEmpty()) {
             return in.text("ANSWERED machine setup was " + check.memo().answered() + "; it is not asked again\n"
                     + "the user changes the answer with `jk doctor --fix`\n");

@@ -114,6 +114,26 @@ class MachineSetupTest {
         }
     };
 
+    /** An environment source that proposes {@code rows} and installs nothing. */
+    private static SetupEnvironment proposing(SetupChange... rows) {
+        return new SetupEnvironment() {
+            @Override
+            public List<SetupChange> rows(WindowsHostCheck check) {
+                return List.of(rows);
+            }
+
+            @Override
+            public boolean owns(SetupChange row) {
+                return false;
+            }
+
+            @Override
+            public MachineSetup.Result install(SetupChange row, Consumer<String> progress) {
+                return new MachineSetup.Result(row.id(), false, "not installed");
+            }
+        };
+    }
+
     private static SetupChange row(String name) {
         return new SetupChange(
                 "fake:" + name, "JumpKick in " + name, "why", "effect", SetupChange.Kind.ENVIRONMENT, "fake:" + name);
@@ -132,13 +152,19 @@ class MachineSetupTest {
         SetupMemo memo = SetupMemo.read(SetupMemo.file(state));
         assertThat(memo.answeredRows())
                 .containsExactlyInAnyOrder(SetupChange.GIT_LONG_PATHS, "fake:alpha", "fake:beta");
-        assertThat(withEnvironments.unanswered(memo).isEmpty())
+        WindowsHostCheck check = new WindowsHostCheck(new FakeHost(), memo, Path.of("C:\\Users\\ada\\.jk"), null);
+        assertThat(SetupPlan.unanswered(check, List.of(), folder -> 1L, List.of(environment))
+                        .isEmpty())
                 .as("beta was declined, not asked again")
                 .isTrue();
 
-        SetupPlan later = new SetupPlan(List.of(GIT, row("alpha"), row("beta"), row("gamma")));
-        assertThat(later.unanswered(memo).changes()).extracting(SetupChange::id).containsExactly("fake:gamma");
-        assertThat(WindowsSetup.items(later)).extracting(m -> m.get("id")).contains("fake:gamma");
+        SetupEnvironment grown = proposing(row("alpha"), row("beta"), row("gamma"));
+        assertThat(SetupPlan.unanswered(check, List.of(), folder -> 1L, List.of(grown))
+                        .changes())
+                .extracting(SetupChange::id)
+                .containsExactly("fake:gamma");
+        SetupPlan later = SetupPlan.of(check, List.of(), folder -> 1L, List.of(grown));
+        assertThat(WindowsSetup.items(later)).extracting(m -> m.get("id")).contains("fake:alpha", "fake:gamma");
     }
 
     @Test
