@@ -381,6 +381,9 @@ public record TestStampInputs(
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         List<String> userArgs = JvmOptions.suiteUserArgs();
         if (!userArgs.isEmpty()) extras.add("jvm-user-args:" + String.join(" ", userArgs));
+        // Whether a suite that reaches past the host may replay at all: a marker stored while it
+        // could must not replay once it may not, or the suite never runs again until a file moves.
+        if (build.testNetworkAllowed()) extras.add("network:allowed");
         // What the test JVM is handed of the environment changes what the suite sees, so it retests.
         extras.addAll(ModuleEnvKeys.testJvm(project, moduleDir));
         // [test] tools by identity — where the name resolves on the PATH the test JVM gets and what

@@ -996,7 +996,8 @@ for every variable the module still does not declare.
 
 A suite is replayed from its green marker only while everything it can see is unchanged. Most of
 that is keyed up front: its sources, classes, resources, runtime classpath, the JDK the tests run
-on (another install, or the same one updated in place), JVM flags, the
+on (another install, or the same one updated in place), JVM flags, whether `[test] network` is
+`"allowed"`, the
 values of its `[test] env` and `[env]` table (the declared names and `vars`), the locale variables of the shell running `jk` (`LANG`,
 `LANGUAGE`, `LC_*`; never the terminal: a test JVM's `TERM` is a fixed `dumb`), with `[env] inherit` the whole environment less the terminal and session variables, and JumpKick's test runner.
 
