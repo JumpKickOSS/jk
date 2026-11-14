@@ -8,10 +8,12 @@ import cc.jumpkick.util.FileLocks;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,6 +80,7 @@ public final class SectionedFile {
      * Replaces each section named in {@code edits} with its edit of that section's lines, every
      * edit in one locked read and rewrite; an edit's empty result drops its section. The file is
      * written only when its text changes. {@code header} is the comment line the file opens with.
+     * A file whose bytes no longer decode is moved aside and replaced, logged once as a warning.
      */
     public static void update(Path file, String header, Map<String, UnaryOperator<List<String>>> edits)
             throws IOException {
@@ -101,13 +104,26 @@ public final class SectionedFile {
         });
     }
 
+    /**
+     * The file's text; null when it is missing, or when its bytes no longer decode (a torn write, a
+     * foreign editor): then it is moved aside to {@code <name>.unreadable}, replacing an older one,
+     * so the next update starts from nothing and learns again.
+     */
     private static @Nullable String readText(Path file) throws IOException {
         try {
             return Files.readString(file, StandardCharsets.UTF_8);
         } catch (NoSuchFileException absent) {
             return null;
+        } catch (CharacterCodingException unreadable) {
+            Path aside = file.resolveSibling(file.getFileName() + UNREADABLE);
+            Files.move(file, aside, StandardCopyOption.REPLACE_EXISTING);
+            Log.warn("jk: warning: " + file + ": unreadable, moved to " + aside.getFileName());
+            return null;
         }
     }
+
+    /** The suffix of the one copy of an unreadable file kept beside it ({@link #update}). */
+    public static final String UNREADABLE = ".unreadable";
 
     private static String render(String header, Map<String, List<String>> all) {
         StringBuilder sb = new StringBuilder("# ").append(header).append('\n');

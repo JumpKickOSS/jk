@@ -347,6 +347,9 @@ Both stores are one text file of `[section]` headers, each followed by its lines
 and atomically under a lock beside the file. A finished run is folded in once, at its finish: one
 locked rewrite of its project store and one of the host store. Nothing scans the run directories
 to learn; they are kept for the record and reaped to the newest 50 runs, none older than 90 days.
+A store whose bytes no longer decode (a torn write, a foreign editor) is moved aside to
+`<name>.unreadable`, replacing an older one, with one warning in the engine log, and learning
+starts again from nothing.
 
 The project store holds:
 
