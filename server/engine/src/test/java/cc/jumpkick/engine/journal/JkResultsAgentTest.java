@@ -792,7 +792,7 @@ class JkResultsAgentTest {
         return record("/ws/rest-service", kind, success, cancelled, millis, tests, diags, steps);
     }
 
-    private static BuildRecord record(
+    static BuildRecord record(
             String dir,
             String kind,
             boolean success,

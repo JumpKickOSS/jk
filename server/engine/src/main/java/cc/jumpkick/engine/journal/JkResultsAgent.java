@@ -498,6 +498,8 @@ public final class JkResultsAgent {
                     && !d.dir().isBlank()) file = Path.of(d.dir()).resolve(file).toString();
             file = rel(file, r.dir());
             String text = JkResultsHints.firstLine(message);
+            // A banner (`Cannot resolve dependencies:`) names nothing: the line after it does.
+            if (text.strip().endsWith(":") && message.indexOf('\n') >= 0) text = firstRealLine(message);
             String step = d.step() == null ? "" : d.step();
             out.add(new Locus(d, file, line, col, text, test, step));
         }
@@ -539,6 +541,13 @@ public final class JkResultsAgent {
             if (!symbol.isEmpty()) sb.append(": ").append(symbol);
             sb.append('\n');
             appendRows(sb, rows(head.diag(), head.file(), head.line(), r.dir(), opt.fullSnippets));
+            String full = head.diag().message() == null ? "" : head.diag().message();
+            if (JkResultsHints.firstLine(full).strip().endsWith(":")) {
+                // A located explanation, such as the solver's, keeps the line that says what to do.
+                String action = secondLine(full, head.message());
+                if (action != null && !action.isBlank())
+                    sb.append("  ").append(one(action, r.dir())).append('\n');
+            }
             if (!more.isEmpty()) {
                 sb.append("  +")
                         .append(more.size())
