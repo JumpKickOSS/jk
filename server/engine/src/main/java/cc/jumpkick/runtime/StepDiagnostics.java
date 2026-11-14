@@ -2,11 +2,14 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What one plugin step or packager says as it runs, said and kept: each {@code diagnostic} reply
@@ -23,6 +26,7 @@ final class StepDiagnostics {
     private final String module;
     private final String step;
     private final List<String> said = new ArrayList<>();
+    private @Nullable SecretRedactor secrets;
 
     /** The diagnostics of {@code step} of the module {@code module} at {@code moduleDir}. */
     StepDiagnostics(TaskContext ctx, Path moduleDir, String module, String step) {
@@ -32,9 +36,16 @@ final class StepDiagnostics {
         this.step = step;
     }
 
-    /** One {@code diagnostic} reply from the worker: said now, and kept for the record. */
-    void forward(String line) {
+    /**
+     * One {@code diagnostic} reply from the worker, masked with the module's redactor: said now,
+     * and kept for the record, so the action record stores what the wire shows.
+     */
+    void forward(String raw) {
+        String line;
         synchronized (said) {
+            // Built at the first reply, after the worker's environment filed its credentials.
+            if (secrets == null) secrets = BuildEnv.secretsFor(moduleDir).forEscapedJson();
+            line = secrets.redact(raw);
             said.add(line);
         }
         PlannerPlugin.forwardStepDiagnostic(ctx, moduleDir, module, step, line);
