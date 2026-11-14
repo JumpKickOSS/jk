@@ -9,8 +9,8 @@ jk-avro.workspace = true
 
 # The Jackson the step parses documents with comes with jsonschema2pojo's closure at run time.
 [provided-dependencies]
-jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.21.0" }
-jackson-dataformat-yaml = { group = "com.fasterxml.jackson.dataformat", version = "2.21.0" }
+jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.22.4" }
+jackson-dataformat-yaml = { group = "com.fasterxml.jackson.dataformat", version = "2.22.4" }
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
