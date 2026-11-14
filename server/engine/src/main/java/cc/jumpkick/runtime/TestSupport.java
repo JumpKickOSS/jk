@@ -218,10 +218,12 @@ public final class TestSupport {
      * TestFacts#selected}): an integration run counted every unit test in jk-core and priced its
      * empty suite at 50 s.
      */
-    public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
+    public static int estimateSelectedSuiteTestCount(
+            Path moduleDir, boolean compact, TestSelection sessionSelection, @Nullable String profileName) {
+        TestSelection selection = TestStampInputs.effectiveSelection(sessionSelection, moduleDir, profileName);
         Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
         List<String> discovered = TestSuites.available(moduleDir, compact, declared);
-        var resolved = TestSuites.resolve(selection, moduleDir, compact, declared);
+        var resolved = TestStampInputs.resolveSuites(selection, moduleDir, profileName, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : discovered;
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (String suite : TestSuites.compiled(moduleDir, compact, suites, declared)) {
@@ -314,10 +316,14 @@ public final class TestSupport {
      * uses.
      */
     public static List<String> selectedSuites(
-            Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
+            Path moduleDir,
+            boolean compact,
+            BuildBlock build,
+            @Nullable TestSelection selection,
+            @Nullable String profileName) {
         List<String> discovered = TestSuites.available(moduleDir, compact, build.runSuites());
         if (selection != null) {
-            var resolved = TestSuites.resolve(selection, moduleDir, compact, build.runSuites());
+            var resolved = TestStampInputs.resolveSuites(selection, moduleDir, profileName, compact, build.runSuites());
             if (resolved.ok()) return resolved.suites();
         }
         return discovered;

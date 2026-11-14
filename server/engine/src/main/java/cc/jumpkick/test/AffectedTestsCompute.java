@@ -141,10 +141,10 @@ public final class AffectedTestsCompute {
             production.addAll(foreign.keySet());
             Map<String, ClassAbi.Fingerprint> pre =
                     u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
+            String profile = SessionContext.current().profile();
+            var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, sel, profile);
             // A selection with no resolved tags takes this module's tiers, as its test step would.
-            TestSelection modSel = TestStampInputs.effectiveSelection(
-                    sel, u.dir(), SessionContext.current().profile());
-            var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, modSel);
+            TestSelection modSel = TestStampInputs.effectiveSelection(sel, u.dir(), profile);
             String coord =
                     u.build().project().group() + ":" + u.build().project().name();
             String rel = root.relativize(u.dir()).toString();
@@ -220,12 +220,16 @@ public final class AffectedTestsCompute {
      * selected suites run, by class and tag.
      */
     static List<TestClassIndex.Entry> testsFor(
-            Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
+            Path moduleDir,
+            JkBuild build,
+            Path testClassesDir,
+            Set<String> production,
+            TestSelection sel,
+            @Nullable String profileName)
             throws IOException {
         boolean compact = ModuleLayout.isCompact(moduleDir);
         Map<String, DeclaredSuite> declared = build.build().runSuites();
-        TestSelection.Resolved resolved =
-                TestSuites.resolve(sel == null ? TestSelection.DEFAULT : sel, moduleDir, compact, declared);
+        TestSelection.Resolved resolved = TestStampInputs.resolveSuites(sel, moduleDir, profileName, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production);
         Map<String, ClassTags> tags = new HashMap<>();

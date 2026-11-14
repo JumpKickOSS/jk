@@ -1008,6 +1008,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G143 | a `CompileSupport.resolveLanguages` or `Languages.resolve` in server/engine outside `ModuleShape`: a raw language read forgets the javac a Kotlin module's processors or a plugin's generated Java need | ban; subsystems that key nothing (worker forks, the Kotlin warm-up, the headless builder, the IDE model) are allow entries | `module-languages-owner` (forbid) |
 | G144 | a `TestStampInputs.testStampExtras` call outside `TestStampInputs`: run-tests extras composed elsewhere are a stamp the forecast does not look up | ban, no allowlist | `test-stamp-extras-owner` (forbid) |
 | G145 | a `WorkspaceClasspath.resolve`, `ClasspathResolver.classpathFor` / `testRuntimeClasspathFor` or `ProvidedClasspath` derivation in server/engine outside `ModuleClasspaths` and the classpath step around it (`SetupSteps` and `SiblingWaits`: sibling requires, processor errors, the provided fetch) | ban; the forecast's provided fetch and subsystems that key nothing (exec, IDE, plugin closures, guard fixtures, build-logic, the headless builder) are allow entries | `module-classpath-owner` (forbid) |
+| G146 | a `TestSuites.resolve` or `TestSelection.resolve` in server/engine outside `TestStampInputs.resolveSuites`: suites resolved from the raw selection are suites a run stamps and does not run, or runs and does not stamp | ban, no allowlist | `test-suites-resolve-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1120,6 +1121,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | task-names | vocabulary | a step name typed by hand is an edge that quietly does not exist |
 | test-paths-from-checkout-root | text | a path from the working directory differs between a module-rooted test run and a workspace `jk build` |
 | test-stamp-extras-owner | forbid | stamp extras composed outside TestStampInputs are a run-tests key the forecast does not look up |
+| test-suites-resolve-owner | forbid | suites resolved apart from the stamp's derivation are suites a green marker vouches for without having run them |
 | tests-skip-symlinks-on-windows | text | a test that creates a symlink is red for every Windows contributor without Developer Mode |
 | thread-local-owner | forbid | a thread-local is left on a pool thread by one request and missing on the next thread the work hops to |
 | tree-copy-owner | text | a hand-rolled tree copy is the shape twelve callers got wrong the same three ways |

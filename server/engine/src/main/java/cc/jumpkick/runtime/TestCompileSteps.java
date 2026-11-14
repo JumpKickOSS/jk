@@ -640,7 +640,7 @@ final class TestCompileSteps {
     private static List<Path> groovyJointRoots(ForecastScope s, ForecastScope.Prepared prepared) {
         boolean compact = prepared.parsed().compact();
         List<String> selected = TestSupport.selectedSuites(
-                s.dir, compact, s.project.build(), SessionContext.current().testSelection());
+                s.dir, compact, s.project.build(), SessionContext.current().testSelection(), s.knobs.profile());
         List<Path> roots = new ArrayList<>();
         for (String suite :
                 TestSuites.compiled(s.dir, compact, selected, s.project.build().runSuites())) {
