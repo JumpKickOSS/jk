@@ -99,9 +99,14 @@ cat "$bridge.lock.log"
   cd "$bridge"
   jk build --skip-tests --no-ansi
   # The release's client stops after packaging the shelf; the bridge's own client, which the first
-  # pass installs, completes the second.
-  jk snapshot --skip-tests --no-ansi || echo "first snapshot pass incomplete; the bridge's client completes it"
-  jk snapshot --skip-tests --no-ansi
+  # pass installs, completes the second. A jk that still has `snapshot` installs a snapshot with it
+  # (its `install` would install the release); on a newer jk, `install` is the snapshot.
+  verb=install
+  if jk snapshot --help >/dev/null 2>&1; then verb=snapshot; fi
+  jk "$verb" --skip-tests --no-ansi || echo "first snapshot pass incomplete; the bridge's client completes it"
+  verb=install
+  if jk snapshot --help >/dev/null 2>&1; then verb=snapshot; fi
+  jk "$verb" --skip-tests --no-ansi
 )
 jk --version
 jk engine status --no-ansi

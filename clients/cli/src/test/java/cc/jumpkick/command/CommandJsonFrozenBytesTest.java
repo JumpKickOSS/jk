@@ -109,19 +109,19 @@ class CommandJsonFrozenBytesTest {
         assertThat(EngineStatusCommand.notRunningJson(777, List.of()))
                 .isEqualTo("{\"running\":false,\"unresponsivePid\":777,\"engines\":[]}");
         InstallLock.Holder snapshot = new InstallLock.Holder(
-                4242, InstallLock.Mode.EXCLUSIVE, "jk snapshot", "/w/jk", Instant.ofEpochMilli(1700000000000L));
+                4242, InstallLock.Mode.EXCLUSIVE, "jk install", "/w/jk", Instant.ofEpochMilli(1700000000000L));
         InstallLock.Holder waiting = new InstallLock.Holder(
                 4343, InstallLock.Mode.WAITING_SHARED, "jk test", "/w/jk2", Instant.ofEpochMilli(1700000001000L));
         assertThat(EngineStatusCommand.notRunningJson(0, List.of(), List.of(snapshot, waiting)))
                 .isEqualTo("{\"running\":false,\"installLock\":["
-                        + "{\"pid\":4242,\"mode\":\"exclusive\",\"purpose\":\"jk snapshot\",\"cwd\":\"/w/jk\",\"since\":1700000000000},"
+                        + "{\"pid\":4242,\"mode\":\"exclusive\",\"purpose\":\"jk install\",\"cwd\":\"/w/jk\",\"since\":1700000000000},"
                         + "{\"pid\":4343,\"mode\":\"waiting_shared\",\"purpose\":\"jk test\",\"cwd\":\"/w/jk2\",\"since\":1700000001000}"
                         + "],\"engines\":[]}");
         assertThat(EngineStatusCommand.runningJson(withVfs, 0, List.of(), "auto", List.of(snapshot)))
                 .endsWith("\"vfs\":{\"files\":3},\"installLock\":[{\"pid\":4242,\"mode\":\"exclusive\","
-                        + "\"purpose\":\"jk snapshot\",\"cwd\":\"/w/jk\",\"since\":1700000000000}],\"engines\":[]}");
+                        + "\"purpose\":\"jk install\",\"cwd\":\"/w/jk\",\"since\":1700000000000}],\"engines\":[]}");
         assertThat(EngineStatusCommand.installLockSummary(List.of(snapshot, waiting)))
-                .isEqualTo("lock held by jk snapshot (exclusive), 1 waiting");
+                .isEqualTo("lock held by jk install (exclusive), 1 waiting");
         EngineFleet.Member silent = new EngineFleet.Member(null, null, null, 99, false);
         EngineFleet.Member live = new EngineFleet.Member(null, null, withVfs, 1, true);
         assertThat(EngineStatusCommand.enginesJson(List.of(silent, live)))

@@ -36,7 +36,6 @@ public final class UsageGroups {
                             "selective",
                             "native",
                             "install",
-                            "snapshot",
                             "release",
                             "publish")),
             new CommandGroup(

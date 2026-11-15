@@ -15,7 +15,7 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 |---|---|---|
 | test | `jk -a test` | `run()` |
 | build | `jk -a build` | `run(kind=build)` |
-| install for a sibling project | `jk -a snapshot` | `run(kind=snapshot)` |
+| install for a sibling project | `jk -a install` | `run(kind=install)` |
 | add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why` (extended list) |
 | every problem, with lines | `jk results -A` | `diagnostics()` |
@@ -23,7 +23,7 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | rename a method with every override, call and doc link | `jk graph rename T.m new` | `rename(address=T.m, to=new)` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
-A sibling project that must see your edits to a library gets them through `jk -a snapshot`: the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk install` is for apps; `jk release` cuts a library.
+A sibling project that must see your edits to a library gets them through `jk -a install`: the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk release` cuts a version.
 
 A dependency edit relocks in the same call. Registered as `jk mcp`, tools take no `dir`; over HTTP, pass `dir` (the root) on the first call.
 

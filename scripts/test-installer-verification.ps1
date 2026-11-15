@@ -338,7 +338,7 @@ try {
     if (-not (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $true)) { throw "-Rc did not ask for the profile block on a private home" }
 
     # ---- a release dist over the home's snapshot line is refused before anything is written ----
-    # The shelved release would hide the snapshot, and every later `jk snapshot` in that home would
+    # The shelved release would hide the snapshot, and every later `jk install` in that home would
     # refuse; another version's snapshot line is no conflict.
     $dist = Join-Path $work "dist"
     $distModule = [IO.Path]::Combine($dist, "repos", "jk-local", "cc", "jumpkick", "jk-test-runner")
@@ -387,7 +387,7 @@ try {
     }
     if ($code -eq 0) { throw "a release dist over the home's snapshot line was installed: $refusal" }
     if (-not $refusal.Contains("holds release 1.0.0 of 1 module(s) (first: cc/jumpkick/jk-test-runner)")) { throw "the snapshot-line refusal did not name the module and version: $refusal" }
-    if (-not $refusal.Contains("'jk snapshot'")) { throw "the snapshot-line refusal did not name jk snapshot: $refusal" }
+    if (-not $refusal.Contains("'jk install'")) { throw "the snapshot-line refusal did not name jk install: $refusal" }
     if ([IO.File]::ReadAllText($priorClient) -cne "prior-install") { throw "the snapshot-line refusal replaced the client" }
     $homeEntries = @(Get-ChildItem -LiteralPath $snapshotHome -Recurse -Force | ForEach-Object { $_.FullName.Substring($snapshotHome.Length + 1) })
     if (($homeEntries -join ",") -cne (@("bin", (Join-Path "bin" "jk.exe")) -join ",")) { throw "the snapshot-line refusal wrote into the home: $($homeEntries -join ', ')" }

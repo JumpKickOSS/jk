@@ -2,7 +2,7 @@
 // jk: always
 //
 // The ship layout, assembled from what this build just produced: `target/dist/jk` beside
-// `target/dist/lib/jk-engine-<version>.jar` (`<version>-SNAPSHOT` under `jk snapshot`), `target/dist/lib/jk-<version>.jar` and the shelf
+// `target/dist/lib/jk-engine-<version>.jar` (`<version>-SNAPSHOT` under `jk install`), `target/dist/lib/jk-<version>.jar` and the shelf
 // `target/dist/repos/jk-local/` — every workspace module's thin jar and POM in Maven layout, the
 // same entries `jk install` puts under `<home>/store/repos/jk-local/`. That is the shape
 // `install.sh <binary>` reads — it takes the engine from `<dir-of-binary>/lib/` and shelves
@@ -213,7 +213,7 @@ if (!Files.isDirectory(target)) {
 
     val declared = declaredVersion()
     val clientSays = client?.let { clientVersion(it) }
-    // `jk build` builds the declared version and `jk snapshot` the same one plus -SNAPSHOT; the
+    // `jk build` builds the declared version and `jk install` the same one plus -SNAPSHOT; the
     // client says which, and the jars beside it carry the same name.
     val version = if (declared != null && clientSays == "$declared-SNAPSHOT") clientSays else declared
     val engine = version?.let { assembly(it) }

@@ -353,7 +353,7 @@ a repository happens to advertise.
 
 A `-SNAPSHOT` version names whatever its repository holds now, so every lock reads it again from
 there rather than from the copy the store took the first time: a `file://` repository's file (a
-`mvn install` or `jk snapshot` into `~/.m2/repository`) is compared with the stored copy, and a
+`mvn install` or `jk install` into `~/.m2/repository`) is compared with the stored copy, and a
 remote's published checksum must still match it, or the file is fetched again. A timestamped
 snapshot (`1.0-20260101.120000-1`) names one build and is kept like a release. `jk build` still
 reads what the lock pinned; `jk lock` is how a re-installed snapshot reaches the build.

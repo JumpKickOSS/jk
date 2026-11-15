@@ -812,17 +812,17 @@ if ($LocalPath) {
     # ---- a release over the home's snapshot line ---------------------------
     #
     # A plain `jk build` of jk's own tree writes a dist at the release version jk.toml names, while
-    # `jk snapshot` installs that version's -SNAPSHOT line. Shelving the release into a home whose
+    # `jk install` installs that version's -SNAPSHOT line. Shelving the release into a home whose
     # shelf holds <version>-SNAPSHOT of the same module is refused, not warned about: a release
     # slot is written once and never replaced, and a snapshot sorts below its release, so from then
-    # on every `jk snapshot` in that home refuses ("would be hidden by the release") until someone
+    # on every `jk install` in that home refuses ("would be hidden by the release") until someone
     # deletes the release from the shelf by hand. Nothing in the home has been written yet.
     $shadowed = Find-ShadowedSnapshotLine -SrcRepos $srcRepos -HomeShelf (Join-Path (Join-Path (Get-JkStoreRoot) "repos") "jk-local")
     if ($shadowed) {
         Die ("refusing to install $srcDist into ${JkHome}: it holds release $($shadowed.Version) of " +
             "$($shadowed.Count) module(s) (first: $($shadowed.Module)) whose $($shadowed.Version)-SNAPSHOT line this home's " +
-            "shelf already has. A release is shelved once and hides its snapshot, so every later 'jk snapshot' here " +
-            "would refuse. In jk's checkout run 'jk snapshot' to install the tree into this home, or install the dist " +
+            "shelf already has. A release is shelved once and hides its snapshot, so every later 'jk install' here " +
+            "would refuse. In jk's checkout run 'jk install' to install the tree into this home, or install the dist " +
             "into a private home (`$env:JK_HOME = 'C:\some\scratch\home'; .\install.cmd $LocalPath).")
     }
 

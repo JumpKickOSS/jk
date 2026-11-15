@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code --engine-server} on the slim client names {@code jk snapshot}, never an install of a {@code
+ * {@code --engine-server} on the slim client names {@code jk install}, never an install of a {@code
  * jk build} dist: that dist is release-versioned, and installed into the default home it hides every
  * later snapshot of the same version.
  */
@@ -17,7 +17,7 @@ class JkWireOnlyClientTest {
         assertThat(Jk.WIRE_ONLY_CLIENT)
                 .contains(
                         "wire-only client",
-                        "`jk snapshot`",
+                        "`jk install`",
                         "`jk self materialize`",
                         "`jk self update`",
                         "JK_ENGINE_EXE")

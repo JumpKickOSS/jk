@@ -252,7 +252,7 @@ class ReleaseCommandTest {
         assertThat(jar).exists();
         Files.writeString(tmp.resolve("jk.toml"), MANIFEST.formatted("1.4.7"));
         git(tmp, "commit", "-q", "-am", "Back to 1.4.7 by hand");
-        assertThat(jk(tmp, m2, "snapshot", "-S"))
+        assertThat(jk(tmp, m2, "install", "-S"))
                 .as("the installed release hides its snapshot")
                 .isNotZero();
         git(tmp, "reset", "-q", "--hard", "HEAD^");
@@ -266,7 +266,7 @@ class ReleaseCommandTest {
         assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("version   = \"1.4.7\"");
         assertThat(git(tmp, "status", "--porcelain")).isEmpty();
         assertThat(jar).as("the installed release is gone").doesNotExist();
-        assertThat(jk(tmp, m2, "snapshot", "-S")).isZero();
+        assertThat(jk(tmp, m2, "install", "-S")).isZero();
         assertThat(m2.resolve("repository/com/example/rel-lib/1.4.7-SNAPSHOT/rel-lib-1.4.7-SNAPSHOT.jar"))
                 .exists();
         assertThat(jk(tmp, m2, "release", "--undo"))

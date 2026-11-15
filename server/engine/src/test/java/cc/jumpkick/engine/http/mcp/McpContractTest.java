@@ -183,7 +183,7 @@ class McpContractTest {
                         "\"query\"",
                         "\"find\"",
                         "\"why\"",
-                        "\"snapshot\"");
+                        "\"install\"");
 
         mcp.surface(McpTools.Surface.ALL);
         String all = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");

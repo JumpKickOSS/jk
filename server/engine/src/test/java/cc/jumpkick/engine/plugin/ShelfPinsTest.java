@@ -147,7 +147,7 @@ class ShelfPinsTest {
                 .hasMessageContaining(Hashing.sha256Hex(compiler).substring(0, 12))
                 .hasMessageContaining(
                         tmp.resolve("tree-a").toAbsolutePath().normalize().toString())
-                .hasMessageContaining("run jk snapshot from that checkout");
+                .hasMessageContaining("run jk install from that checkout");
     }
 
     @Test
@@ -213,7 +213,7 @@ class ShelfPinsTest {
                 .hasMessageContaining("POM of " + COMPILER.toGav())
                 .hasMessageContaining(
                         tmp.resolve("tree-a").toAbsolutePath().normalize().toString())
-                .hasMessageContaining("run jk snapshot from that checkout");
+                .hasMessageContaining("run jk install from that checkout");
     }
 
     private static String workerPom(Coordinate dep) {

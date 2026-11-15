@@ -73,7 +73,7 @@ none. Bench sessions (`agent-loop-harness`, `scoreboard`) are rows of their own;
 - **Disk.** A finished run's sandbox is deleted once its row is written (its diff kept as
   `diff.patch`); only red and claimed runs keep theirs for `--reverify`. A matrix of kept sandboxes
   once filled a 1 TB disk. `/tmp` is a small tmpfs: scratch homes go under `~/.cache`.
-- **One heavy run per machine.** A bench, `jk snapshot -g` and an uncached full build
+- **One heavy run per machine.** A bench, `jk install -g` and an uncached full build
   never overlap; a build during a screen inflates its wall times. Install between screens, not during.
 - **Waiters.** Wait on a bench with `pgrep -f '^python3 -u ./screen-ff'` (the interpreter's command
   line), never a pattern your own shell's command line also matches.

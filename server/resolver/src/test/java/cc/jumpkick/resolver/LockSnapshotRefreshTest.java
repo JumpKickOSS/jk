@@ -35,7 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A {@code -SNAPSHOT} version is a name for whatever its source holds now: a {@code mvn install}
- * or {@code jk snapshot} into a Maven local repository, or a repository that republishes it in
+ * or {@code jk install} into a Maven local repository, or a repository that republishes it in
  * place. Every lock reads it again from there rather than from the copy the store took the first
  * time; a timestamped snapshot names one build and is kept like a release.
  */

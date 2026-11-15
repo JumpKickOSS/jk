@@ -75,7 +75,7 @@ class SiblingRulePackStagingTest {
     }
 
     /**
-     * Under {@code jk snapshot} every module builds and publishes as {@code <version>-SNAPSHOT}, so a
+     * Under {@code jk install} every module builds and publishes as {@code <version>-SNAPSHOT}, so a
      * scaffold's lock asks for the pack at that version, and the pack's jar carries it in its name.
      */
     @Test

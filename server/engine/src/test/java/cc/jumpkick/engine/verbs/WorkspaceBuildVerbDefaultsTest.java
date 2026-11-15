@@ -40,16 +40,14 @@ class WorkspaceBuildVerbDefaultsTest {
     }
 
     @Test
-    void a_snapshot_job_is_an_install_tail_that_carries_the_snapshot_flag() {
+    void an_install_job_is_an_install_tail_and_snapshot_is_no_job_kind() {
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
-        assertThat(verb.jobKinds()).contains("install", "snapshot");
+        assertThat(verb.jobKinds()).contains("install").doesNotContain("snapshot");
 
-        String snapshot = verb.decodeJob(job("snapshot"));
         String install = verb.decodeJob(job("install"));
 
-        assertThat(snapshot).contains("\"snapshot\":true");
         assertThat(install).doesNotContain("\"snapshot\"");
-        assertThat(Jsonl.nested(snapshot, "tail")).contains("\"kind\":\"install\"");
+        assertThat(Jsonl.nested(install, "tail")).contains("\"kind\":\"install\"");
     }
 
     private static JobSpec job(String kind) {

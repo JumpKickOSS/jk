@@ -404,10 +404,10 @@ main() {
   # ---- a release over the home's snapshot line -------------------------------
   #
   # A plain `jk build` of jk's own tree writes a dist at the release version jk.toml names, while
-  # `jk snapshot` installs that version's -SNAPSHOT line. Shelving the release into a home whose
+  # `jk install` installs that version's -SNAPSHOT line. Shelving the release into a home whose
   # shelf holds <version>-SNAPSHOT of the same module is refused, not warned about: a release
   # slot is written once and never replaced, and a snapshot sorts below its release, so from then
-  # on every `jk snapshot` in that home refuses ("would be hidden by the release") until someone
+  # on every `jk install` in that home refuses ("would be hidden by the release") until someone
   # deletes the release from the shelf by hand. A warning scrolls past in the install output; the
   # broken home outlives it. Nothing has been written yet.
   if [ -n "$LOCAL_FILE" ] && [ -d "$SRC_REPOS/jk-local" ]; then
@@ -435,8 +435,8 @@ main() {
       die "refusing to install $SRC_DIST into $JK_HOME_DIR: it holds release $SHADOWED_VERSION of" \
           "$SHADOWED_COUNT module(s) (first: $SHADOWED_MODULE) whose $SHADOWED_VERSION-SNAPSHOT line this home's" \
           "shelf already has. A release is shelved once and" \
-          "hides its snapshot, so every later 'jk snapshot' here would refuse. In jk's checkout run" \
-          "'jk snapshot' to install the tree into this home, or install the dist into a private home" \
+          "hides its snapshot, so every later 'jk install' here would refuse. In jk's checkout run" \
+          "'jk install' to install the tree into this home, or install the dist into a private home" \
           "(JK_HOME=/some/scratch/home bash install.sh $LOCAL_FILE)."
     fi
   fi

@@ -553,9 +553,12 @@ Training (`jk train`) is **not** part of `jk build`. See [Dynamic surface](dynam
 
 ## `jk install` (project)
 
-`jk install` puts an application or tool on this machine: `jk build` plus the install steps, the same
-plan, the same tests (unless `-S`) and guard lanes. Do not run `jk build` first. A library is refused
-with the verbs that fit it: `jk snapshot` while you edit, `jk release` to cut a version.
+`jk install` is the inner-loop install, for libraries and applications alike: `jk build` plus the
+install steps, the same plan, the same tests (unless `-S`) and guard lanes. Do not run `jk build`
+first. Every module goes in at its declared version plus `-SNAPSHOT`: a project at `1.0.0` installs
+as `1.0.0-SNAPSHOT`, and a snapshot JumpKick wrote is replaced each time. `jk.toml` and the lock keep
+the release version, so there is nothing to edit; `jk release` installs the declared version once and
+tags it ([Releasing](release.md)).
 
 The install writes the thin jar and POM once, to the Maven local repository (`~/.m2/repository`),
 with Maven's checksum sidecars, so Maven and Gradle builds on the machine see the artifact. An
@@ -563,10 +566,19 @@ application then also gets a launcher: a native binary in `~/.jk/bin` if one exi
 minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script
 over the repo jars. The settle line names the coordinate and where it went.
 
+In a workspace every member takes the suffix, and so does each member's dependency on a sibling, so
+the POMs it installs name `lib:1.0.0-SNAPSHOT`, not a release that was never installed. A version
+that already ends in `-SNAPSHOT` is installed as written. A snapshot sorts below its release, so
+`jk install` refuses, before it builds, when the release is already installed where the snapshot
+would go (`1.0.0` is there, so `1.0.0-SNAPSHOT` would never be chosen): raise the version in
+`jk.toml` first. The snapshot jar is built for its own version, so it is never a release jar
+renamed; `jk publish` still refuses a `-SNAPSHOT` version.
+
 `[install] destination = "jk"` (or `jk install --destination jk`, or the same key in `~/.jk/config.toml`)
 puts the jar and POM in JumpKick's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
 are always installed there: the engine rebuilds their runtime classpath from the installed POM.
-Outside a project, pass a coordinate (`jkx` mode).
+Outside a project, pass a coordinate (`jkx` mode). `jk snapshot` was this verb's name before
+JumpKick 0.51.1; it is refused now, naming `jk install`.
 
 ### Installing the same version twice
 
@@ -585,19 +597,6 @@ The comparison happens at the install step, after the build: a rebuild that repr
 engine over unchanged sources) is a no-op, and only other bytes are refused.
 The record lives in JumpKick's store, never in `~/.m2`: wiping the store makes JumpKick's earlier slots
 foreign, and deleting the slot's directory is the way back.
-
-## `jk snapshot`
-
-`jk snapshot` is the inner-loop install, for libraries and applications alike. It runs the same phases and tests (`-S` skips
-them) and installs to the same place, but every module goes in at its declared version plus
-`-SNAPSHOT`: a project at `1.0.0` installs as `1.0.0-SNAPSHOT`, and a snapshot JumpKick wrote is replaced
-each time. `jk.toml` and the lock keep the release version, so there is nothing to edit to move
-between the two, and a snapshot slot sits beside the release one.
-
-In a workspace every member takes the suffix, and so does each member's dependency on a sibling, so
-the POMs it installs name `lib:1.0.0-SNAPSHOT`, not a release that was never installed. A version
-that already ends in `-SNAPSHOT` is installed as written. A snapshot sorts below its release, so `jk snapshot` refuses, before it builds, when the release is already installed where the snapshot would go (`1.0.0` is there, so `1.0.0-SNAPSHOT` would never be chosen): raise the version in `jk.toml` first. The snapshot jar is built for its own
-version, so it is never a release jar renamed; `jk publish` still refuses a `-SNAPSHOT` version.
 
 ## Related
 

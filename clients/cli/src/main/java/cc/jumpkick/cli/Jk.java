@@ -45,11 +45,11 @@ public final class Jk {
 
     /**
      * What {@code --engine-server} on the slim client says. A dev client gets its engine from {@code
-     * jk snapshot}, which installs the client with the engine and workers built beside it.
+     * jk install}, which installs the client with the engine and workers built beside it.
      */
     static final String WIRE_ONLY_CLIENT = "jk: no engine in this binary (wire-only client)\n"
             + "  run `jk self update` or `jk self materialize`, or set JK_ENGINE_EXE\n"
-            + "  in JumpKick's checkout, `jk snapshot` installs the client with its engine";
+            + "  in JumpKick's checkout, `jk install` installs the client with its engine";
 
     /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code

@@ -30,7 +30,7 @@ class DoctorWorkersTest {
             + "jk-grails-0.13.3.pom|2|7||/store/repos/jk-local/cc/jumpkick/jk-grails/0.13.3/jk-grails-0.13.3.jar"
             + " is the jk-grails worker but its root jk-plugin.toml describes plugin `spring-boot` (table"
             + " [spring-boot], worker jk-spring-boot) — a vendored sibling's descriptor took the jar root; the"
-            + " jar is not registered. Reinstall it so its own descriptor sits at the root: `jk snapshot` from"
+            + " jar is not registered. Reinstall it so its own descriptor sits at the root: `jk install` from"
             + " the JumpKick checkout, or `jk storage clean -w` and let the next build fetch the published jar.";
 
     @Test
@@ -93,7 +93,7 @@ class DoctorWorkersTest {
                 .startsWith("warn:")
                 .contains("jk-grails 0.13.3 from jk-local")
                 .contains("describes plugin `spring-boot` (table [spring-boot], worker jk-spring-boot)")
-                .contains("`jk snapshot` from the JumpKick checkout, or `jk storage clean -w`");
+                .contains("`jk install` from the JumpKick checkout, or `jk storage clean -w`");
         assertThat(DoctorCommand.workersJson(workers))
                 .contains("\"refused\":\"")
                 .contains("describes plugin `spring-boot`");

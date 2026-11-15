@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * A client with no engine of its version names {@code jk snapshot}, never an install of a {@code jk
+ * A client with no engine of its version names {@code jk install}, never an install of a {@code jk
  * build} dist: that dist is release-versioned, and installed into the default home it hides every
  * later snapshot of the same version.
  */
@@ -17,7 +17,7 @@ class EngineSpawnNoEngineTest {
         String advice = EngineSpawn.noEngine("1.2.3-SNAPSHOT");
 
         assertThat(advice).startsWith("no build engine for JumpKick 1.2.3-SNAPSHOT");
-        assertThat(advice).contains("`jk snapshot`", "`jk self materialize …`", "`jk self update`", "JK_ENGINE_EXE");
+        assertThat(advice).contains("`jk install`", "`jk self materialize …`", "`jk self update`", "JK_ENGINE_EXE");
         assertThat(advice).doesNotContain("install.sh", "target/dist");
     }
 }

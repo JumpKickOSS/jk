@@ -46,7 +46,6 @@ class HostedVerbDecodeJobTest {
                         "test-compile",
                         "image",
                         "install",
-                        "snapshot",
                         "native",
                         "publish",
                         "upload",

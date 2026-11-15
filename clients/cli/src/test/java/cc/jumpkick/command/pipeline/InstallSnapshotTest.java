@@ -11,9 +11,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code jk snapshot}: the inner-loop install at the declared version plus {@code -SNAPSHOT}. */
+/** {@code jk install}: the inner-loop install at the declared version plus {@code -SNAPSHOT}. */
 @Tag("integration")
-class SnapshotCommandTest {
+class InstallSnapshotTest {
 
     private static final String MANIFEST = """
             group     = "com.example"
@@ -29,7 +29,7 @@ class SnapshotCommandTest {
         Files.writeString(dir.resolve("src/main/java/com/example/Lib.java"), "package com.example; " + body + "\n");
     }
 
-    /** An application, the shape {@code jk install} is for; {@code body} is added to {@code Lib}. */
+    /** An application; {@code body} is added to {@code Lib}. */
     private static void application(Path dir, String name, String body) throws IOException {
         library(dir, name, "public final class Lib { public static void main(String[] args) { } " + body + " }");
         Files.writeString(
@@ -58,16 +58,15 @@ class SnapshotCommandTest {
     }
 
     /**
-     * A build between two snapshots certifies the tree clean for the build, not for the snapshot,
-     * whose modules package to -SNAPSHOT jars. Trusted, the build's memo skipped every step of the
-     * second snapshot, which then installed the -SNAPSHOT jar the first one left (JK-MAG71).
+     * A build between two installs must not let the build's memo skip the second install's steps,
+     * which would install the -SNAPSHOT jar the first one left.
      */
     @Test
-    void a_snapshot_after_a_build_packages_its_own_jar(@TempDir Path tmp) throws Exception {
+    void an_install_after_a_build_packages_its_own_jar(@TempDir Path tmp) throws Exception {
         application(tmp, "snap-built", "");
         Path m2 = tmp.resolve("m2");
         Path jar = m2.resolve("repository/com/example/snap-built/1.0.0-SNAPSHOT/snap-built-1.0.0-SNAPSHOT.jar");
-        assertThat(jk(tmp, m2, "snapshot", "-S")).isEqualTo(0);
+        assertThat(jk(tmp, m2, "install", "-S")).isEqualTo(0);
         byte[] first = Files.readAllBytes(jar);
 
         application(tmp, "snap-built", "public static int two() { return 2; }");
@@ -79,37 +78,34 @@ class SnapshotCommandTest {
                         "--cache-dir",
                         tmp.resolve("cache").toString()))
                 .isEqualTo(0);
-        assertThat(jk(tmp, m2, "snapshot", "-S")).isEqualTo(0);
+        assertThat(jk(tmp, m2, "install", "-S")).isEqualTo(0);
         assertThat(Files.readAllBytes(jar))
-                .as("the second snapshot installs the edited source, not the first snapshot's jar")
+                .as("the second install installs the edited source, not the first install's jar")
                 .isNotEqualTo(first);
     }
 
     @Test
-    void a_snapshot_is_installed_and_replaced_by_snapshot_and_install_alike(@TempDir Path tmp) throws Exception {
+    void a_snapshot_is_installed_and_replaced_by_each_install(@TempDir Path tmp) throws Exception {
         application(tmp, "snap-lib", "");
         Path m2 = tmp.resolve("m2");
         Path snapshots = m2.resolve("repository/com/example/snap-lib/1.0.0-SNAPSHOT");
         Path release = m2.resolve("repository/com/example/snap-lib/1.0.0");
         String declared = Files.readString(tmp.resolve("jk.toml"));
 
-        assertThat(jk(tmp, m2, "snapshot")).isEqualTo(0);
+        assertThat(jk(tmp, m2, "install")).isEqualTo(0);
         assertThat(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar")).exists();
         assertThat(Files.readString(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.pom")))
                 .contains("<version>1.0.0-SNAPSHOT</version>");
         assertThat(release).as("a snapshot is not a release").doesNotExist();
         byte[] first = Files.readAllBytes(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar"));
 
-        // The inner loop: change the source, snapshot again, and the slot holds the new jar.
+        // The inner loop: change the source, install again, and the slot holds the new jar.
         application(tmp, "snap-lib", "public static int two() { return 2; }");
-        assertThat(jk(tmp, m2, "snapshot")).isEqualTo(0);
+        assertThat(jk(tmp, m2, "install")).isEqualTo(0);
         assertThat(Files.readAllBytes(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar")))
                 .isNotEqualTo(first);
 
-        // jk install builds what jk snapshot builds: the same snapshot slot, never the release.
-        assertThat(jk(tmp, m2, "install")).isEqualTo(0);
         assertThat(release).as("an install is not a release").doesNotExist();
-        assertThat(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar")).exists();
         assertThat(Files.readString(tmp.resolve("jk.toml"))).isEqualTo(declared);
         assertThat(tmp.resolve("jk-lock.toml"))
                 .as("a snapshot never writes the project's version into the lock")
@@ -119,7 +115,7 @@ class SnapshotCommandTest {
     }
 
     @Test
-    void a_workspace_snapshot_points_each_member_at_its_siblings_snapshot(@TempDir Path tmp) throws Exception {
+    void a_workspace_install_points_each_member_at_its_siblings_snapshot(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "snap-ws"
@@ -146,7 +142,7 @@ class SnapshotCommandTest {
                 "package com.example; public final class App { Core c; }\n");
         Path m2 = tmp.resolve("m2");
 
-        assertThat(jk(tmp, m2, "snapshot")).isEqualTo(0);
+        assertThat(jk(tmp, m2, "install")).isEqualTo(0);
 
         Path repo = m2.resolve("repository/com/example");
         assertThat(repo.resolve("snap-core/1.0.0-SNAPSHOT/snap-core-1.0.0-SNAPSHOT.jar"))
@@ -157,12 +153,17 @@ class SnapshotCommandTest {
     }
 
     @Test
-    void install_is_for_applications_and_names_the_library_verbs(@TempDir Path tmp) throws Exception {
+    void a_library_installs_as_a_snapshot_for_its_siblings(@TempDir Path tmp) throws Exception {
         library(tmp, "snap-flag", "public final class Lib { }");
         Path m2 = tmp.resolve("m2");
 
-        assertThat(jk(tmp, m2, "install")).isEqualTo(64);
+        assertThat(jk(tmp, m2, "install")).isEqualTo(0);
 
-        assertThat(m2.resolve("repository/com/example/snap-flag")).doesNotExist();
+        Path snapshots = m2.resolve("repository/com/example/snap-flag/1.0.0-SNAPSHOT");
+        assertThat(snapshots.resolve("snap-flag-1.0.0-SNAPSHOT.jar")).exists();
+        assertThat(snapshots.resolve("snap-flag-1.0.0-SNAPSHOT.pom")).exists();
+        assertThat(tmp.resolve("bin/snap-flag"))
+                .as("a library gets no launcher")
+                .doesNotExist();
     }
 }

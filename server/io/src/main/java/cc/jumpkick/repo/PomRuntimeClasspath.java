@@ -203,7 +203,7 @@ public final class PomRuntimeClasspath {
     private static List<Path> resolve(Path worker, @Nullable Path pom, RepoGroup repos) {
         if (pom == null) {
             throw new IllegalStateException(
-                    "worker " + worker + " has no POM; run jk snapshot to publish it to repos/jk-local");
+                    "worker " + worker + " has no POM; run jk install to publish it to repos/jk-local");
         }
         List<Path> out = new ArrayList<>();
         out.add(worker);
@@ -231,7 +231,7 @@ public final class PomRuntimeClasspath {
 
     /** What to do when a launch finds the store short of a POM the install should have staged. */
     static final String STAGING_REMEDY =
-            "run jk snapshot again with the network up, or jk storage clean -w to fetch the worker again";
+            "run jk install again with the network up, or jk storage clean -w to fetch the worker again";
 
     /**
      * Fetch the runtime closure of {@code root} (jar + POM per compile/runtime dependency, parents

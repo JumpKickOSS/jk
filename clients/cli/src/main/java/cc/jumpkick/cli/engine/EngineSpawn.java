@@ -502,13 +502,13 @@ public final class EngineSpawn {
 
     /**
      * What a client with no engine of its version says. A dev client is installed by {@code jk
-     * snapshot}, never by installing a {@code jk build} dist into the default home: that dist is
+     * install}, never by installing a {@code jk build} dist into the default home: that dist is
      * release-versioned, and its shelved release would hide every later snapshot of the same version.
      */
     static String noEngine(String clientVersion) {
         return "no build engine for JumpKick " + clientVersion + "\n"
                 + "  run `jk self update` or `jk self materialize …`, or set JK_ENGINE_EXE\n"
-                + "  in JumpKick's checkout, `jk snapshot` installs the client with its engine";
+                + "  in JumpKick's checkout, `jk install` installs the client with its engine";
     }
 
     /**

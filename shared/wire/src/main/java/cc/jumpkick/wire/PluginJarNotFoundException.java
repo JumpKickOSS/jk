@@ -49,7 +49,7 @@ public final class PluginJarNotFoundException extends RuntimeException {
         if (detail != null && !detail.isBlank()) {
             sb.append(detail).append('\n');
         }
-        sb.append("Run `jk snapshot` in JumpKick's own tree (it shelves ")
+        sb.append("Run `jk install` in JumpKick's own tree (it shelves ")
                 .append(artifactId)
                 .append(")");
         sb.append(" or set -D").append(jarProperty).append(" to override.");

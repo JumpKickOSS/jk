@@ -10,7 +10,7 @@ over every subset of the tag vocabulary, that each is run by exactly one suite, 
 (`test-tier-docs`) renders the same tables into the block below, so the two cannot drift
 ([self-host](self-host.md#test-tiers)).
 
-`jk build` runs every module's fast tier (the default suite: what no suite claims); `jk snapshot`,
+`jk build` runs every module's fast tier (the default suite: what no suite claims); `jk install`,
 which is that same build plus the reinstall, gates every local merge into `main`; `jk test -g`
 (`[test] guard-suites = ["test", "integration", "e2e"]`) is the push gate, run on the local `main`
 before it is pushed. The house rules run under `jk build` and `jk guard`
@@ -220,7 +220,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh ../jk-examples`.
-- Local gate: `jk guard` (it formats what changed), `jk snapshot` (the build plus the reinstall), `jk snapshot -g`;
+- Local gate: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk install -g`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` suite as a merge gate.
 

@@ -168,16 +168,16 @@ Install the released JumpKick and let it build the tree; the tree's own JumpKick
 curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci/ci-bootstrap-version)" bash
 export PATH="$HOME/.jk/bin:$PATH"
 jk engine status
-jk snapshot -S   # builds the tree; this checkout's client, engine and workers replace the release's
-jk snapshot -S   # once more: the release's client stops after the pass its engine ran
+jk install -S   # builds the tree; this checkout's client, engine and workers replace the release's
+jk install -S   # once more: the release's client stops after the pass its engine ran
 ```
 
-A released JumpKick that predates `jk snapshot` cannot run those lines, and its `jk install` would write the
-tree's version as a release that a later `jk snapshot` then refuses. Bootstrap it once with the root
+A released JumpKick whose `jk install` installs the declared version rather than its `-SNAPSHOT` would
+write the tree's version as a release that a later `jk install` then refuses. Bootstrap it once with the root
 `jk.toml` `version` written `<next>-SNAPSHOT` (do not commit that edit), `jk install -S`, then restore the
-version and continue with `jk snapshot`.
+version and continue with `jk install`.
 
-`jk snapshot` is what makes the checkout self-hosting rather than merely built: from then on the
+`jk install` is what makes the checkout self-hosting rather than merely built: from then on the
 engine running your builds is the one you just compiled ([Install JumpKick with JumpKick](#install-jumpkick-with-jumpkick)).
 The native client needs a GraalVM-capable JDK on the machine: `jk build` links it with the GraalVM
 `--graal` / `GRAALVM_HOME` names, else an installed one.
@@ -229,9 +229,9 @@ After `jk` is on `PATH`, stay in this checkout:
 
 ```bash
 jk lock
-jk snapshot                      # builds, runs the fast tier, then installs
+jk install                      # builds, runs the fast tier, then installs
 jk test                          # the fast tier, every module
-jk snapshot -g                   # the push gate
+jk install -g                   # the push gate
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
@@ -307,7 +307,7 @@ two suites, or claimed and excluded by every one, fails the build rather than ru
 One command installs everything the tree builds:
 
 ```bash
-jk snapshot           # or -S; the snapshot runs the suite like `jk build`
+jk install           # or -S; the install runs the suite like `jk build`
 ```
 
 | Module kind | What `jk install` does with it |
@@ -437,11 +437,11 @@ its own version, so the shelf is what makes a dist install run the workers built
 rather than the published ones of the same version. A dist with no `repos/` installs and says so;
 a binary with no engine jar beside it is refused.
 
-A `jk build` dist carries the release version `jk.toml` names; a `jk snapshot` dist carries the
+A `jk build` dist carries the release version `jk.toml` names; a `jk install` dist carries the
 `-SNAPSHOT` line it installs. Installed into a home that already runs this checkout, a release dist
 would shelve that release over the snapshot line, and a release hides its snapshot, so every later
-`jk snapshot` there would refuse. `install.sh` refuses that install before writing anything and names the module: install the tree into your own home
-with `jk snapshot`, and a dist into a private home.
+`jk install` there would refuse. `install.sh` refuses that install before writing anything and names the module: install the tree into your own home
+with `jk install`, and a dist into a private home.
 
 The release workflow assembles `target/dist` per platform (`scripts/assemble-release-dir.sh`);
 G75 (`ship-layout-installer-jk`) holds the installer and the dist script to the same `lib/` and

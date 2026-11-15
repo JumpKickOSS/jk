@@ -48,7 +48,6 @@ public final class AgentMode {
             "image",
             "publish",
             "install",
-            "snapshot",
             "release",
             "update",
             "sync",

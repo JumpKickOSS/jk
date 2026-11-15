@@ -43,7 +43,7 @@ class InstallLockStarvationTest {
             Thread.sleep(2 * HOLD_MS);
 
             long start = System.nanoTime();
-            InstallLock.Hold held = InstallLock.exclusive(lock, "jk snapshot (installing jk)");
+            InstallLock.Hold held = InstallLock.exclusive(lock, "jk install (installing jk)");
             Duration waited = Duration.ofNanos(System.nanoTime() - start);
             boolean loopsStillRunning = a.isAlive() || b.isAlive();
             held.close();

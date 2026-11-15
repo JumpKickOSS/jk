@@ -79,7 +79,7 @@ class ResourceFilterTest {
                 """);
         Session base = Session.defaults();
         assertThat(SessionContext.where(base, () -> ResourceFilter.values(build)))
-                .as("jk build, jk test and jk snapshot")
+                .as("jk build, jk test and jk install")
                 .containsEntry("project.version", "2.0-SNAPSHOT");
         assertThat(SessionContext.where(base.withRelease(true), () -> ResourceFilter.values(build)))
                 .as("jk release and jk publish ship the declared version")

@@ -37,7 +37,7 @@ ignore Done criteria. Break it *completely*.
 
 **A change that needs the new engine lands with it.** When the client,
 engine, workers or test runner must change together, change them
-together and reinstall: `jk snapshot -S && jk engine stop -A`, then run
+together and reinstall: `jk install -S && jk engine stop -A`, then run
 the tests and gates under the engine you just built. No stepping stone,
 no fallback, and never back a change out because the installed engine
 is older than the tree. Cache invalidation, a changed key, a changed
@@ -135,7 +135,7 @@ one run per cell, fail fast.
 
 Build with the installed JumpKick (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** JumpKick's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 
-**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk snapshot`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk snapshot && jk test -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
+**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk install`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk install && jk test -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
 
 ## Reinstall from this checkout
 
@@ -143,21 +143,21 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 (client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
-jk snapshot -S
+jk install -S
 ```
 
 JumpKick follows the flow it asks its users to follow. The root `jk.toml` `version` is the **next
-release** and is never written with `-SNAPSHOT`; `jk snapshot` installs the tree as
+release** and is never written with `-SNAPSHOT`; `jk install` installs the tree as
 `<version>-SNAPSHOT` (the build stamps that into `JkVersion.VERSION`), replaced on every run.
 `jk release` cuts a release: the version is installed once, tagged, and `jk.toml` moves to the
 next one (bump the installers' `RELEASE_FLOOR` with it). A snapshot of an installed release is refused.
 
-`jk snapshot` is `jk build` plus the install steps: the same plan, the same lanes, tests unless `-S`.
-Never run `jk build` first; it repeats work the snapshot does anyway.
+`jk install` is `jk build` plus the install steps: the same plan, the same lanes, tests unless `-S`.
+Never run `jk build` first; it repeats work the install does anyway.
 
 | Command | What it does |
 |---|---|
-| `jk snapshot -S` | Everything `jk build -S` does (every module compiled and packaged; `target/dist/jk` native CLI + `target/dist/lib/jk-engine-<version>.jar`), then shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
+| `jk install -S` | Everything `jk build -S` does (every module compiled and packaged; `target/dist/jk` native CLI + `target/dist/lib/jk-engine-<version>.jar`), then shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
 | `./install.sh target/dist/jk` | The same ship layout onto a machine with no JumpKick yet |
 | `scripts/reinstall-chain.sh` | The same install when the installed JumpKick is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
 
@@ -171,7 +171,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk snapshot`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk snapshot -g` is the push gate, run once before pushing `main` to `origin`.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk install`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk install -g` is the push gate, run once before pushing `main` to `origin`.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -208,8 +208,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 **Two gates** (keep the merge loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
 
 - **Merge gate** — before every local merge into `main`: `jk guard` (it formats what changed), then
-  `jk snapshot` (`jk build` plus the reinstall; never run `jk build` before it).
-- **Push gate** — before every `git push` of `main` to `origin`: `jk snapshot -g` on the
+  `jk install` (`jk build` plus the reinstall; never run `jk build` before it).
+- **Push gate** — before every `git push` of `main` to `origin`: `jk install -g` on the
   local `main` you are about to push (the test classpath and the installed JumpKick must report the same
   `-SNAPSHOT` version; `jk test -g` against a snapshot-installed JumpKick does not). One run covers every branch merged since the last push, so
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
@@ -229,8 +229,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 |---------|-----------|------|
 | `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit that touches code, and every local merge |
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
-| `jk snapshot` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
-| `jk snapshot -g` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
+| `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
+| `jk install -g` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
 | `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
@@ -240,16 +240,16 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` on the board until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
+   - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk install` (every module's fast tier, then the reinstall).
    - Mid-ticket, and before every long run, test by module and by class as **Prove it cheaply first** (under Two gates) says; never the full integration suite per merge.
    - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
-2. **Reinstall** — done by the merge gate's `jk snapshot`. Never run `jk build` and then `jk snapshot`; the install is the build.
+2. **Reinstall** — done by the merge gate's `jk install`. Never run `jk build` and then `jk install`; the install is the build.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
 Record failures on the ticket (`ka comment <ID> --type progress`, or `ka move <ID> blocked`); do not mark done on green unit tests alone if dist/install/dogfood is broken.
 
-**Before pushing `main` to `origin`** (the push gate): green `jk snapshot -g` on the exact
+**Before pushing `main` to `origin`** (the push gate): green `jk install -g` on the exact
 local `main` being pushed, plus `jk test -s slow` when any merged change touches a framework or
 language plugin. Never push a red or un-run push gate. When it fails, `main` stops: fix forward on
 `main` (re-running the merge gate), re-run the push gate, then push, and note the regression on the

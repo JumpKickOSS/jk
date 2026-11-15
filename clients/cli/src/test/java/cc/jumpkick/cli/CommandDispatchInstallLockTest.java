@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Two sessions sharing one install: a command that depends on the installed engine runs under the
  * install lock, so another session's install (a forked JVM taking the lock exclusively, as {@code jk
- * snapshot} does) waits for the run to finish, and a run started during an install waits for it.
+ * install} does) waits for the run to finish, and a run started during an install waits for it.
  * Either way the run's steps see one build of the engine.
  */
 @IsolatedState
@@ -57,14 +57,14 @@ class CommandDispatchInstallLockTest {
         CompletableFuture<Integer> run =
                 CompletableFuture.supplyAsync(() -> CommandDispatch.dispatch(job, "jk longrun", List.of(), false));
         assertThat(job.started.await(60, TimeUnit.SECONDS)).isTrue();
-        try (var install = InstallLockHolderMain.start(InstallLock.lockFile(), "exclusive", "jk snapshot")) {
-            assertThat(install.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk snapshot waits");
+        try (var install = InstallLockHolderMain.start(InstallLock.lockFile(), "exclusive", "jk install")) {
+            assertThat(install.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk install waits");
             assertThat(install.printsWithin(Duration.ofSeconds(1)))
                     .as("install ran under the job")
                     .isFalse();
             assertThat(InstallLock.holders())
                     .extracting(InstallLock.Holder::purpose)
-                    .contains("jk longrun", "jk snapshot");
+                    .contains("jk longrun", "jk install");
 
             job.finish.countDown();
             assertThat(run.get(60, TimeUnit.SECONDS)).isZero();
@@ -75,7 +75,7 @@ class CommandDispatchInstallLockTest {
 
     @Test
     void a_job_started_during_an_install_waits_for_it() throws Exception {
-        try (var install = InstallLockHolderMain.start(InstallLock.lockFile(), "exclusive", "jk snapshot")) {
+        try (var install = InstallLockHolderMain.start(InstallLock.lockFile(), "exclusive", "jk install")) {
             install.awaitHeld();
             LongRun job = new LongRun();
             CompletableFuture<Integer> run =

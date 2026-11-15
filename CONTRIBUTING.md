@@ -66,7 +66,7 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash   # the released jk, once per machine
 export PATH="$HOME/.jk/bin:$PATH"
-jk snapshot -S     # builds every module (native client + engine jar → target/dist/), then
+jk install -S     # builds every module (native client + engine jar → target/dist/), then
                    # this checkout's client, engine and workers take over ~/.jk, as <version>-SNAPSHOT
 ```
 
@@ -135,7 +135,7 @@ The repo is a JumpKick **workspace** (root `jk.toml` + per-module manifests unde
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
-no `[application]` table). `jk snapshot` shelves every module and takes the home over.
+no `[application]` table). `jk install` shelves every module and takes the home over.
 
 The client never embeds the engine. Spawning uses
 `~/.jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.
@@ -213,7 +213,7 @@ A multi-module workspace from [jk-examples](https://github.com/JumpKickOSS/jk-ex
 out beside this repository:
 
 ```bash
-jk snapshot -S
+jk install -S
 
 cd ../jk-examples/01-start/java-workspace
 jk build && jk test -m cli

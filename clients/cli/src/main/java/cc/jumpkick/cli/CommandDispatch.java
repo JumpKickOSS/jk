@@ -41,7 +41,6 @@ import cc.jumpkick.command.pipeline.JshellCommand;
 import cc.jumpkick.command.pipeline.PublishCommand;
 import cc.jumpkick.command.pipeline.ReleaseCommand;
 import cc.jumpkick.command.pipeline.SelectiveCommand;
-import cc.jumpkick.command.pipeline.SnapshotCommand;
 import cc.jumpkick.command.pipeline.WatchCommand;
 import cc.jumpkick.command.project.AddCommand;
 import cc.jumpkick.command.project.AuditCommand;
@@ -197,7 +196,6 @@ public final class CommandDispatch {
             // `run` and `install` are also mounted under `jk tool` (one implementation, two mounts).
             new ToolRunCommand(),
             new ToolInstallCommand(),
-            new SnapshotCommand(),
             new ReleaseCommand(),
             BuildVerbCommand.compile(),
             new DevCommand(),
@@ -255,6 +253,14 @@ public final class CommandDispatch {
         if (commandAt < 0) return null;
         String command = all.get(commandAt);
         Abbreviations.Result<CliCommand> r = Abbreviations.resolve(command, BY_NAME);
+        Optional<RetiredCommands.Retired> retired = RetiredCommands.named(command, r.kind() != Abbreviations.Kind.NONE);
+        if (retired.isPresent()) {
+            onErr(() -> System.err.println(
+                    HelpRenderer.paint("error:", Theme.active().errorLabel(), errAnsi())
+                            + " "
+                            + retired.get().refusal()));
+            return Exit.USAGE;
+        }
         if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
             onErr(() -> printAmbiguousCommand(command, r.candidates()));
             return Exit.USAGE;

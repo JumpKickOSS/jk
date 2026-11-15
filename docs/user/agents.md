@@ -171,7 +171,7 @@ call — that binds the connection — then omit it; `bind` switches.
 The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, `rename`, and `skill`: every
 card is paid on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which
 answers who calls a method, complete, in one call instead of a grep and reads, and `rename`, which
-renames a method and every use in one call instead of an edit per use. `run(kind=snapshot)` installs for a
+renames a method and every use in one call instead of an edit per use. `run(kind=install)` installs for a
 sibling project.
 `deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
 jdk, why, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:

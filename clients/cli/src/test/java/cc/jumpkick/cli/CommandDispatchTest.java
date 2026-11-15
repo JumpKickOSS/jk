@@ -104,6 +104,21 @@ class CommandDispatchTest {
     }
 
     @Test
+    void a_retired_verb_fails_in_one_line_naming_the_verb_that_replaced_it() throws Exception {
+        for (String typed : List.of("snapshot", "snap")) {
+            int[] exit = new int[1];
+            Capture.Streams retired = NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute(typed, "-S", "-g")));
+            assertThat(exit[0]).as("jk %s", typed).isEqualTo(Exit.USAGE);
+            assertThat(retired.out()).isEmpty();
+            assertThat(retired.err().strip())
+                    .as("jk %s", typed)
+                    .isEqualTo("error: jk snapshot was retired in JumpKick 0.51.1; run jk install");
+        }
+        assertThat(CommandDispatch.commands())
+                .noneMatch(c -> c.name().equals("snapshot") || c.aliases().contains("snapshot"));
+    }
+
+    @Test
     void an_unknown_command_is_a_usage_error_on_stderr_with_a_did_you_mean() throws Exception {
         int[] exit = new int[1];
         Capture.Streams typo = NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute("biuld")));

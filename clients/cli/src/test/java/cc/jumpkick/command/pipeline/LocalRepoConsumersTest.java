@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * What {@code jk install} and {@code jk snapshot} leave in a Maven local repository is something
+ * What {@code jk install} leaves in a Maven local repository is something
  * Maven and Gradle builds beside jk can resolve: the files, their checksums, and a provenance hint
  * that does not send a build without jk's repository looking for them elsewhere.
  */
@@ -48,8 +48,6 @@ class LocalRepoConsumersTest {
         Files.writeString(
                 lib.resolve("src/main/java/com/example/Lib.java"),
                 "package com.example; public final class Lib { public static String hi() { return \"hi\"; } }\n");
-        assertThat(jk(lib, "snapshot", "--cache-dir", lib.resolve("cache").toString(), "--m2-dir", m2.toString()))
-                .isEqualTo(0);
         assertThat(jk(lib, "install", "--cache-dir", lib.resolve("cache").toString(), "--m2-dir", m2.toString()))
                 .isEqualTo(0);
     }
@@ -72,35 +70,32 @@ class LocalRepoConsumersTest {
     }
 
     @Test
-    void maven_resolves_the_release_and_the_snapshot_from_the_repository_jk_wrote(@TempDir Path tmp) throws Exception {
+    void maven_resolves_the_snapshot_from_the_repository_jk_wrote(@TempDir Path tmp) throws Exception {
         Path m2 = tmp.resolve("m2");
         installLibrary(tmp, m2);
-        for (String version : new String[] {"1.0.0", "1.0.0-SNAPSHOT"}) {
-            Path app = mavenConsumer(tmp, version);
-            int exit =
-                    jk(app, "mvn", "-B", "-q", "-Dmaven.repo.local=" + m2.resolve("repository"), "dependency:resolve");
-            assertThat(exit).as("Maven resolves %s:%s", LIB, version).isEqualTo(0);
-        }
+        String version = "1.0.0-SNAPSHOT";
+        Path app = mavenConsumer(tmp, version);
+        int exit = jk(app, "mvn", "-B", "-q", "-Dmaven.repo.local=" + m2.resolve("repository"), "dependency:resolve");
+        assertThat(exit).as("Maven resolves %s:%s", LIB, version).isEqualTo(0);
     }
 
     @Test
-    void gradle_resolves_the_release_and_the_snapshot_from_maven_local(@TempDir Path tmp) throws Exception {
+    void gradle_resolves_the_snapshot_from_maven_local(@TempDir Path tmp) throws Exception {
         Path m2 = tmp.resolve("m2");
         installLibrary(tmp, m2);
-        for (String version : new String[] {"1.0.0", "1.0.0-SNAPSHOT"}) {
-            Path app = tmp.resolve("gradle-" + version);
-            Files.createDirectories(app);
-            Files.writeString(app.resolve("settings.gradle"), "rootProject.name = 'consumer'\n");
-            Files.writeString(app.resolve("build.gradle"), """
-                    plugins { id 'java-library' }
-                    repositories { mavenLocal() }
-                    dependencies { implementation 'com.example:consumed-lib:%s' }
-                    tasks.register('resolveLib') {
-                        doLast { configurations.compileClasspath.resolve().each { println it.name } }
-                    }
-                    """.formatted(version));
-            int exit = jk(app, "gradle", "-q", "-Dmaven.repo.local=" + m2.resolve("repository"), "resolveLib");
-            assertThat(exit).as("Gradle resolves %s:%s", LIB, version).isEqualTo(0);
-        }
+        String version = "1.0.0-SNAPSHOT";
+        Path app = tmp.resolve("gradle-" + version);
+        Files.createDirectories(app);
+        Files.writeString(app.resolve("settings.gradle"), "rootProject.name = 'consumer'\n");
+        Files.writeString(app.resolve("build.gradle"), """
+                plugins { id 'java-library' }
+                repositories { mavenLocal() }
+                dependencies { implementation 'com.example:consumed-lib:%s' }
+                tasks.register('resolveLib') {
+                    doLast { configurations.compileClasspath.resolve().each { println it.name } }
+                }
+                """.formatted(version));
+        int exit = jk(app, "gradle", "-q", "-Dmaven.repo.local=" + m2.resolve("repository"), "resolveLib");
+        assertThat(exit).as("Gradle resolves %s:%s", LIB, version).isEqualTo(0);
     }
 }

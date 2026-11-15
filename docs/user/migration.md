@@ -68,7 +68,7 @@ start to its end, since Maven's own summary times only whole modules — so the 
 says how long the failing `surefire:test` ran, not just that it failed.
 The jar is looked up in this order, first hit wins: the `jk.maven-spy.jar` system property;
 `~/.jk/lib/jk-maven-spy-<version>.jar` (where the installers put it from a dist); the store's
-`jk-local` shelf (`jk snapshot` from a checkout); `lib/` beside the `jk` binary (the `target/dist`
+`jk-local` shelf (`jk install` from a checkout); `lib/` beside the `jk` binary (the `target/dist`
 ship layout). A release install (`curl … | bash`, `install.ps1`, the JVM client) carries no spy
 until the first `jk mvn`, which fetches its own version's `jk-maven-spy-<version>.jar` from the
 release directory into `~/.jk/lib/` — the same directory, signed `SHA256SUMS` and checksum the

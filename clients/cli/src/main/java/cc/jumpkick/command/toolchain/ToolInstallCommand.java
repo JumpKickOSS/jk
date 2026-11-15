@@ -44,7 +44,6 @@ import cc.jumpkick.tool.TrustedSources;
 import cc.jumpkick.tool.UrlRewriter;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.wire.EnginePaths;
-import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -60,9 +59,10 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk tool install [<target>]} — install a catalog name, Maven coord, script/jar, project dir,
- * or git URL ({@code jk install} is the hidden alias). Resolve/fetch is engine-hosted; launcher
- * write under {@code <home>/bin} stays client-side.
+ * {@code jk install [<target>]} — install a catalog name, Maven coord, script/jar, project dir or
+ * git URL. With no target it is the inner-loop install of the current project: every module at its
+ * declared version plus {@code -SNAPSHOT}, replacing what the previous run left. Resolve/fetch is
+ * engine-hosted; launcher write under {@code <home>/bin} stays client-side.
  */
 public final class ToolInstallCommand implements CliCommand {
 
@@ -179,7 +179,7 @@ public final class ToolInstallCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        // --snapshot changes the process-wide session: leave it as this run found it.
+        // The build flags change the process-wide session: leave it as this run found it.
         this.global = GlobalOptions.from(in);
         Session before = SessionContext.current();
         try {
@@ -225,12 +225,6 @@ public final class ToolInstallCommand implements CliCommand {
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {
             if (Files.isRegularFile(ManifestPaths.manifestIn(base))) {
-                String library = libraryName(base);
-                if (library != null) {
-                    CommandWedge.printFail(
-                            "Install", library + " is a library; use `jk snapshot` or `jk release` instead");
-                    return Exit.USAGE;
-                }
                 return appInstallDelegate().runProjectInstallBuildPlan(base);
             }
             CommandWedge.printFail(
@@ -310,25 +304,6 @@ public final class ToolInstallCommand implements CliCommand {
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
         return 0;
-    }
-
-    /**
-     * The coordinate of the project in {@code dir} when it is a plain library (no application, no
-     * product install, not a workspace), else {@code null}. A project the engine cannot describe is
-     * left to the install, which reports it.
-     */
-    private static @Nullable String libraryName(Path dir) {
-        ProjectInfo info;
-        try {
-            info = EngineClient.projectInfo(EnginePaths.current(), dir);
-        } catch (IOException e) {
-            return null;
-        }
-        boolean installable = info.workspaceRoot()
-                || info.application()
-                || !info.productLib().isEmpty()
-                || !info.productBin().isEmpty();
-        return info.error() != null || installable ? null : info.coord();
     }
 
     /**
@@ -612,6 +587,7 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.destinationOverride = destinationOverride;
         delegate.jdksDir = jdksDir;
         delegate.repoUrl = repoUrl;
+        delegate.verb = skipTests ? "install -S" : "install";
         return delegate;
     }
 

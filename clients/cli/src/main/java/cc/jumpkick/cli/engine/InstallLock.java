@@ -110,7 +110,7 @@ public final class InstallLock {
     /** One live hold or wait, as its record names it. */
     public record Holder(long pid, Mode mode, String purpose, String cwd, Instant since) {
 
-        /** One line for a notice or a status row: {@code pid 4242 jk snapshot (exclusive) in /x since 10:12:03}. */
+        /** One line for a notice or a status row: {@code pid 4242 jk install (exclusive) in /x since 10:12:03}. */
         public String describe() {
             return "pid " + pid + " " + purpose + " (" + mode.label() + ") in " + cwd + " since " + since;
         }

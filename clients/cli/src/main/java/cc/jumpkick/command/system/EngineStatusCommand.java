@@ -447,7 +447,7 @@ public final class EngineStatusCommand implements CliCommand {
         }
     }
 
-    /** {@code lock held by 2 runs, 1 waiting}, or {@code lock held by jk snapshot (exclusive)}. */
+    /** {@code lock held by 2 runs, 1 waiting}, or {@code lock held by jk install (exclusive)}. */
     public static String installLockSummary(List<InstallLock.Holder> holders) {
         List<InstallLock.Holder> holding =
                 holders.stream().filter(h -> !h.mode().waiting()).toList();

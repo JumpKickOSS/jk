@@ -37,7 +37,7 @@ public final class GraphCompiles implements GraphRunner.Compiler {
 
     /** Build-like kinds another job of the same checkout would be compiling under. */
     private static final List<String> BUILDING =
-            List.of("build", "compile", "test", "install", "snapshot", "native", "publish", "image");
+            List.of("build", "compile", "test", "install", "native", "publish", "image");
 
     private final ToLongFunction<JobSpec> submit;
     private final Supplier<List<HttpLive.Run>> live;

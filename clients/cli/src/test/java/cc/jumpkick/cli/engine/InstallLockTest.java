@@ -55,13 +55,13 @@ class InstallLockTest {
         InstallLock.notices(notices::add);
         try (var run = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
             run.awaitHeld();
-            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk snapshot"));
+            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk install"));
             awaitWaiting(Mode.WAITING_EXCLUSIVE);
             assertThat(install.held()).isFalse();
             assertThat(notices)
                     .singleElement()
                     .asString()
-                    .contains("jk snapshot waits", "pid " + run.process().pid(), "jk test (shared)");
+                    .contains("jk install waits", "pid " + run.process().pid(), "jk test (shared)");
             assertThat(InstallLock.holders(lock()))
                     .extracting(InstallLock.Holder::pid, InstallLock.Holder::mode)
                     .contains(
@@ -81,12 +81,12 @@ class InstallLockTest {
     @Test
     void a_run_waits_out_an_install_in_progress() throws Exception {
         InstallLock.notices(notices::add);
-        try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk snapshot")) {
+        try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk install")) {
             install.awaitHeld();
             OnThread run = new OnThread(() -> InstallLock.shared(lock(), "jk test"));
             awaitWaiting(Mode.WAITING_SHARED);
             assertThat(run.held()).isFalse();
-            assertThat(notices).singleElement().asString().contains("jk test waits", "jk snapshot (exclusive)");
+            assertThat(notices).singleElement().asString().contains("jk test waits", "jk install (exclusive)");
             install.release();
             run.awaitHeld();
             run.close();
@@ -98,7 +98,7 @@ class InstallLockTest {
         InstallLock.turnstileWindow(Duration.ofMinutes(5));
         try (var first = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
             first.awaitHeld();
-            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk snapshot"));
+            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk install"));
             awaitWaiting(Mode.WAITING_EXCLUSIVE);
             try (var second = InstallLockHolderMain.start(lock(), "shared", "jk guard")) {
                 assertThatHolderWaits(second, "WAIT jk guard waits");
@@ -119,7 +119,7 @@ class InstallLockTest {
         InstallLock.turnstileWindow(Duration.ofSeconds(1));
         try (var outer = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
             outer.awaitHeld();
-            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk snapshot"));
+            OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk install"));
             awaitWaiting(Mode.WAITING_EXCLUSIVE);
             // Stands in for a jk the outer run waits for: it must get in without the outer run ending.
             try (var nested = InstallLockHolderMain.start(lock(), "shared", "jk build (nested)")) {
@@ -138,8 +138,8 @@ class InstallLockTest {
         InstallLock.turnstileWindow(Duration.ofMinutes(5));
         try (var first = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
             first.awaitHeld();
-            try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk snapshot")) {
-                assertThat(install.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk snapshot waits");
+            try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk install")) {
+                assertThat(install.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk install waits");
                 try (var second = InstallLockHolderMain.start(lock(), "shared", "jk guard")) {
                     assertThatHolderWaits(second, "WAIT jk guard waits");
                     install.process().destroyForcibly().waitFor(30, TimeUnit.SECONDS);
@@ -165,7 +165,7 @@ class InstallLockTest {
 
     @Test
     void a_dead_holder_is_broken_and_its_record_pruned() throws Exception {
-        try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk snapshot")) {
+        try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk install")) {
             install.awaitHeld();
             install.process().destroyForcibly().waitFor(30, TimeUnit.SECONDS);
             OnThread run = new OnThread(() -> InstallLock.shared(lock(), "jk test"));
@@ -189,15 +189,15 @@ class InstallLockTest {
         Path stale = records.resolve(gone.pid() + "-1.hold");
         Files.writeString(
                 stale,
-                "pid=" + gone.pid() + "\nmode=EXCLUSIVE\npurpose=jk snapshot\ncwd=/x\nsince=" + Instant.now() + "\n");
+                "pid=" + gone.pid() + "\nmode=EXCLUSIVE\npurpose=jk install\ncwd=/x\nsince=" + Instant.now() + "\n");
         assertThat(InstallLock.holders(lock())).isEmpty();
         assertThat(stale).doesNotExist();
     }
 
     @Test
     void an_exclusive_hold_inside_a_shared_run_sets_the_run_aside_and_resumes_it() throws Exception {
-        try (InstallLock.Hold run = InstallLock.shared(lock(), "jk snapshot")) {
-            try (InstallLock.Hold install = InstallLock.exclusive(lock(), "jk snapshot (installing jk)")) {
+        try (InstallLock.Hold run = InstallLock.shared(lock(), "jk install")) {
+            try (InstallLock.Hold install = InstallLock.exclusive(lock(), "jk install (installing jk)")) {
                 try (var other = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
                     // Another session's run cannot start while this one installs.
                     assertThatHolderWaits(other, "WAIT jk test waits");
@@ -214,8 +214,8 @@ class InstallLockTest {
     @Test
     void a_run_set_aside_for_its_own_install_is_not_listed_as_holding_the_lock_shared() throws Exception {
         long me = ProcessHandle.current().pid();
-        try (InstallLock.Hold run = InstallLock.shared(lock(), "jk snapshot")) {
-            try (InstallLock.Hold install = InstallLock.exclusive(lock(), "jk snapshot (installing jk)")) {
+        try (InstallLock.Hold run = InstallLock.shared(lock(), "jk install")) {
+            try (InstallLock.Hold install = InstallLock.exclusive(lock(), "jk install (installing jk)")) {
                 assertThat(InstallLock.holders(lock()))
                         .extracting(InstallLock.Holder::pid, InstallLock.Holder::mode)
                         .containsExactly(tuple(me, Mode.EXCLUSIVE));
@@ -233,7 +233,7 @@ class InstallLockTest {
         AtomicReference<FileChannel> intruder = new AtomicReference<>();
         try (var other = InstallLockHolderMain.start(lock(), "shared", "jk guard")) {
             other.awaitHeld();
-            InstallLock.Hold run = InstallLock.shared(lock(), "jk snapshot");
+            InstallLock.Hold run = InstallLock.shared(lock(), "jk install");
             InstallLock.notices(line -> {
                 try {
                     FileChannel ch = FileChannel.open(lock(), StandardOpenOption.WRITE, StandardOpenOption.READ);
@@ -243,7 +243,7 @@ class InstallLockTest {
                     throw new UncheckedIOException(e);
                 }
             });
-            assertThatThrownBy(() -> InstallLock.exclusive(lock(), "jk snapshot (installing jk)"))
+            assertThatThrownBy(() -> InstallLock.exclusive(lock(), "jk install (installing jk)"))
                     .isInstanceOf(OverlappingFileLockException.class);
             InstallLock.notices(line -> {});
             FileChannel conflicting = intruder.get();
@@ -252,7 +252,7 @@ class InstallLockTest {
             run.close();
         }
         try (InstallLock.Hold later = InstallLock.shared(lock(), "jk test");
-                var install = InstallLockHolderMain.start(lock(), "exclusive", "jk snapshot")) {
+                var install = InstallLockHolderMain.start(lock(), "exclusive", "jk install")) {
             assertThat(install.nextLine(Duration.ofSeconds(60)))
                     .as("an install waits for this JVM's run")
                     .startsWith("WAIT ");

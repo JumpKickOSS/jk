@@ -44,9 +44,9 @@ class InstallCommandHandoffTest {
         assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), null, "install"))
                 .as("no PATH client installed: the pass still belongs to a client of the tree's version")
                 .contains("run `jk install` as jk 0.13.6 once more");
-        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "snapshot -S"))
-                .as("a snapshot hands over a snapshot: `install` in jk's tree would install a release")
-                .contains("run `" + client + " snapshot -S` once more");
+        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "install -S"))
+                .as("an install that skipped the tests hands over one that skips them too")
+                .contains("run `" + client + " install -S` once more");
     }
 
     @Test

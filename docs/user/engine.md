@@ -42,9 +42,9 @@ with the same for the `jk` you ran, marked `(not the engine's build)` when the t
 `clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` prints the pair
 without starting an engine, `engine  not running` when none is up, and `jk doctor`'s `engine` row
 turns WARN with `not the client's build`). A side with no commit is never called a mismatch. A released native client carries its commit; a snapshot's native
-client does not, so `jk snapshot` records the checkout's commit beside it in `jk-engine.toml` and
+client does not, so `jk install` records the checkout's commit beside it in `jk-engine.toml` and
 the row says `(recorded at install)`, shown only while the client on disk is the one that install
-wrote. And, when the engine was installed from a checkout (`jk snapshot`), a `Source` row naming that checkout — the one whose workers this
+wrote. And, when the engine was installed from a checkout (`jk install`), a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
 [install](install.md#on-disk-layout)). Its `Updates` row says what JumpKick's own update does next —
 the mode and why, the last check, a download waiting to install, or a hold (`selfUpdate` in `-O
@@ -172,10 +172,10 @@ bound. `jk engine stop -n` stops a draining engine immediately.
 
 Every terminal, agent and worktree on a machine shares one installed JumpKick and the engine its
 state directory names, so JumpKick keeps an install from swapping the engine under a run in
-progress. `jk build`, `jk test`, `jk compile`, `jk guard`, `jk explain`, `jk install` and `jk
-snapshot` hold the **install lock** shared for their whole run. Swapping or stopping the engine
-holds it exclusively: an install that replaces JumpKick's own engine or client (`jk snapshot` /
-`jk install` of the JumpKick tree, from its copy step
+progress. `jk build`, `jk test`, `jk compile`, `jk guard`, `jk explain` and `jk install`
+hold the **install lock** shared for their whole run. Swapping or stopping the engine
+holds it exclusively: an install that replaces JumpKick's own engine or client (`jk install` of
+the JumpKick tree, from its copy step
 through the takeover), `jk self update` and `jk engine stop`. So an install waits for the runs in
 progress to finish, a run started during an install waits for it, and no run's steps span two
 builds of the engine. A run started while an install waits queues behind the install, so sessions
@@ -184,7 +184,7 @@ seconds, the install lets the queued runs in for a moment, so a run that another
 `jk` invoked from a test) is never deadlocked. A wait prints one line naming who holds the lock:
 
 ```
-jk: jk snapshot waits for the jk runs using the engine (install lock held by pid 41877 jk test (shared) in /home/me/jk-wt2 since …)
+jk: jk install waits for the jk runs using the engine (install lock held by pid 41877 jk test (shared) in /home/me/jk-wt2 since …)
 ```
 
 `jk engine status` shows the holders and waiters while there are any (`installLock` in `-O
@@ -192,8 +192,8 @@ jsonl`: `pid`, `mode` = `shared` | `exclusive` | `waiting_shared` | `waiting_exc
 `purpose`, `cwd`, `since`):
 
 ```
- Install..: lock held by jk snapshot (exclusive), 1 waiting
-            pid 41902 jk snapshot (exclusive) /home/me/jk · since 10:12
+ Install..: lock held by jk install (exclusive), 1 waiting
+            pid 41902 jk install (exclusive) /home/me/jk · since 10:12
             pid 41877 jk test (waiting (shared)) /home/me/jk-wt2 · since 10:13
 ```
 
@@ -203,7 +203,7 @@ stop -n` does not wait for the lock. Long-lived commands (`jk dev`, `jk watch`, 
 and BSP servers) do not hold it, since they would hold off every install for as long as they run.
 `JK_INSTALL_LOCK=off` turns the lock off for one process.
 
-The lock covers one command at a time. Between `jk snapshot` and a later `jk test` in the same
+The lock covers one command at a time. Between `jk install` and a later `jk test` in the same
 script, another session's install can still land; `jk engine status`'s `Source` row names the
 checkout the running engine came from.
 

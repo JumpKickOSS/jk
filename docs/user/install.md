@@ -81,7 +81,7 @@ the last install replaced, so an install that left a JumpKick that fails every c
 undone. A second rollback undoes the first. Like `jk self update <older>`, a rollback holds
 auto-update at the release it put back until `jk self update` resumes it, and it waits for other
 sessions' runs and holds new ones off while it swaps, as an install does. Every install records the client it pairs with its
-engine (the installers, `jk self update`, `jk snapshot` and `jk install`), native binary or JVM
+engine (the installers, `jk self update` and `jk install`), native binary or JVM
 client jar alike, so the client a rollback puts back is always the one that ran with that engine.
 
 `self-update` in `~/.jk/config.toml` (or env `JK_SELF_UPDATE`, which wins) picks the behaviour:

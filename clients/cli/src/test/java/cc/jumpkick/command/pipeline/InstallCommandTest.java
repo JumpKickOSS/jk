@@ -92,7 +92,7 @@ class InstallCommandTest {
         Path cache = tempDir.resolve("cache");
         Path m2 = tempDir.resolve("m2");
         int exit = Jk.execute(
-                "snapshot",
+                "install",
                 "-C",
                 tempDir.toString(),
                 "--cache-dir",

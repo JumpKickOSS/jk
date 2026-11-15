@@ -502,7 +502,7 @@ public final class InstallPlans {
 
     private static String releaseSlot(Coordinate coord, Path dir) {
         return coord.toGav() + " is already installed in " + dir + " with other contents;"
-                + " raise the version in jk.toml, or use jk snapshot while you iterate";
+                + " raise the version in jk.toml, or use jk install while you iterate";
     }
 
     private static String foreignSlot(Coordinate coord, Path dir) {

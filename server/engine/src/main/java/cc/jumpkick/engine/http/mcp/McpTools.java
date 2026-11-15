@@ -168,12 +168,6 @@ public final class McpTools {
                                 + "(stored credentials, signing from [publish]). Central stays on the CLI.",
                         McpSchemas.BOUND_ROOT,
                         Map.of("upload", McpSchemas.bool("Upload to the [publish] repository (default: dry run)"))),
-                new RunAliasTool(
-                        "snapshot",
-                        "snapshot",
-                        "Inner-loop install: the project goes to ~/.m2 as <version>-SNAPSHOT, replaced each run, "
-                                + "for a sibling to depend on. install is for a release.",
-                        McpSchemas.BOUND_ROOT),
                 new InstallTool(),
                 new RunAliasTool(
                         "import",

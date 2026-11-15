@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Every build but a release is a snapshot: {@code jk build}, {@code jk test} and {@code jk snapshot}
+ * Every build but a release is a snapshot: {@code jk build}, {@code jk test} and {@code jk install}
  * send the same session, so they name and stamp one tree and the next of them runs nothing. A
  * release names and stamps the declared version, and neither reuses what the other packaged.
  */

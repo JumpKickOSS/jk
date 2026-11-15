@@ -649,7 +649,7 @@ fi
 
 # A release-versioned dist into a home whose shelf already holds that version's -SNAPSHOT line is
 # refused before anything is written: the shelved release would hide the snapshot, and every later
-# `jk snapshot` in that home would refuse. The refusal names `jk snapshot` as the way forward.
+# `jk install` in that home would refuse. The refusal names `jk install` as the way forward.
 home="$WORK/home-snapshot-line"
 mkdir -p "$home/bin" "$home/store/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0-SNAPSHOT"
 printf 'prior-install' >"$home/bin/jk"
@@ -661,8 +661,8 @@ if ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG="$
 fi
 grep -qF -- "holds release 1.0.0 of 1 module(s) (first: cc/jumpkick/jk-test-runner)" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "the snapshot-line refusal did not name the module and version" >&2; exit 1; }
-grep -qF -- "'jk snapshot'" "$WORK/last-install.log" || {
-  cat "$WORK/last-install.log" >&2; echo "the snapshot-line refusal did not name jk snapshot" >&2; exit 1; }
+grep -qF -- "'jk install'" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "the snapshot-line refusal did not name jk install" >&2; exit 1; }
 [[ "$(cat "$home/bin/jk")" == "prior-install" ]] || { echo "the snapshot-line refusal replaced the client" >&2; exit 1; }
 [[ ! -e "$WORK/jk-calls" ]] || { cat "$WORK/jk-calls" >&2; echo "the snapshot-line refusal ran the client" >&2; exit 1; }
 pass "snapshot-line-refused"

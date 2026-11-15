@@ -3,7 +3,7 @@
 # commit and moves jk.toml to the next version, and the tag it pushes starts this workflow. The
 # release workflow (CD) starts only when this one finishes green and re-runs none of it; a red run
 # here is the end of that release. Day-to-day pushes and pull requests start nothing; the merge gate
-# (jk format, jk guard, jk snapshot) and the push gate (jk snapshot -g) run on the
+# (jk format, jk guard, jk install) and the push gate (jk install -g) run on the
 # developer's machine. A workflow_dispatch re-runs the gate on any ref; on a release tag, a green
 # dispatch releases it like the tag push would.
 

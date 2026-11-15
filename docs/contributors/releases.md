@@ -208,7 +208,7 @@ path, network-free, against a fixture release signed with a throwaway key.
 A release starts with `jk release` on the release commit: it checks the version `jk.toml` declares,
 tags the commit with the `[release] tag` template (`v<version>`, annotated), and commits the next
 version to `jk.toml`, the lock, the workspace members and the `[release] files` (the installers'
-floors). Local development then continues on the next version; `jk snapshot` is the inner loop
+floors). Local development then continues on the next version; `jk install` is the inner loop
 for it. `jk release --dry-run` says what it would do.
 
 Releases are cut **by hand**: each platform is built on a machine of that platform, the trees are
@@ -222,13 +222,13 @@ disabled for the length of a manual release, so a pushed tag cannot publish by i
 A release cut here and never pushed can be taken back and cut again. `jk release` left the home
 running the release (its engine, its client, its worker jars on the shelf, pinned in
 `jk-shelf.toml`), the tree at `Start <next>` and the tag `v<version>` on the commit before. A home
-in that state refuses `jk snapshot` of `<version>-SNAPSHOT`, since the release would hide it, and
+in that state refuses `jk install` of `<version>-SNAPSHOT`, since the release would hide it, and
 deleting the shelved release by hand leaves the installed engine without its workers. The way back:
 
 ```bash
 jk self rollback      # back to the install before the release: its engine, client and shelf
 jk release --undo     # drop "Start <next>", uninstall <version>, delete the tag
-jk snapshot           # <version>-SNAPSHOT installs and gates again
+jk install           # <version>-SNAPSHOT installs and gates again
 ```
 
 `jk release --undo` refuses while the installed JumpKick still runs the release's own worker jars
@@ -391,8 +391,8 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 
 | Step | Where | What |
 |------|-------|------|
-| 1 | release commit | `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; gates green (`jk guard`, `jk snapshot`, `jk snapshot -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
-| 1b | release commit, installed with `jk snapshot` | `scripts/release-check-routes.sh --examples <jk-examples checkout>`: every template, generated fresh, and every example builds twice with the candidate, the second build a no-op, and each template passes `CI=1 jk guard`; every row of `target/release-check-routes/summary.md` is green (`--skip` only a route this host cannot build, named in the release notes) |
+| 1 | release commit | `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; gates green (`jk guard`, `jk install`, `jk install -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
+| 1b | release commit, installed with `jk install` | `scripts/release-check-routes.sh --examples <jk-examples checkout>`: every template, generated fresh, and every example builds twice with the candidate, the second build a no-op, and each template passes `CI=1 jk guard`; every row of `target/release-check-routes/summary.md` is green (`--skip` only a route this host cannot build, named in the release notes) |
 | 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
 | 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag |

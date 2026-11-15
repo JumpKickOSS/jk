@@ -12,7 +12,7 @@ public final class JkVersion {
 
     /**
      * The effective project version of the build that produced this jar: {@code 1.2.3}, or {@code
-     * 1.2.3-SNAPSHOT} under {@code jk snapshot}. The build stamps it into {@value #RESOURCE} from
+     * 1.2.3-SNAPSHOT} under {@code jk install}. The build stamps it into {@value #RESOURCE} from
      * the root {@code jk.toml}; nothing writes it by hand.
      */
     public static final String VERSION = read();

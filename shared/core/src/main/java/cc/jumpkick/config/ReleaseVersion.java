@@ -94,7 +94,7 @@ public final class ReleaseVersion {
         if (m.matches()) return m;
         if (version.endsWith("-SNAPSHOT")) {
             throw new IllegalArgumentException("version `" + version + "` is a snapshot; write `"
-                    + version.substring(0, version.length() - 9) + "` and jk snapshot adds the suffix");
+                    + version.substring(0, version.length() - 9) + "` and jk install adds the suffix");
         }
         throw new IllegalArgumentException("version `" + version + "` is not MAJOR.MINOR.PATCH, e.g. 1.4.0");
     }

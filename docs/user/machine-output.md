@@ -165,7 +165,7 @@ export JK_OUTPUT=jsonl     # the same for every command that has machine output
   with a usage error that says what it prints; any other `-O` value it does not print (`-O xml`)
   is refused the same way. `JK_OUTPUT` is a preference: such a command prints its text.
 - Commands with machine output: the build verbs (`build`, `compile`, `test`, `native`, `train`,
-  `image`, `sync`, `assemble`, `javadoc`, `run`, `install`, `snapshot`, `release`, `publish`,
+  `image`, `sync`, `assemble`, `javadoc`, `run`, `install`, `release`, `publish`,
   `watch`, `dev`), `lock`, `update`, `audit`, `guard` (also `-O sarif`), `outdated`, `doctor`,
   `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`,
   `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`, and the

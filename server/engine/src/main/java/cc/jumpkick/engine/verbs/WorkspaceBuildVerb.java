@@ -102,7 +102,6 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 "test-compile",
                 "image",
                 "install",
-                "snapshot",
                 "native",
                 "publish",
                 "upload",
@@ -125,7 +124,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case "compile" -> WorkspaceTarget.COMPILE;
                     case "test-compile" -> WorkspaceTarget.TEST_COMPILE;
                     case "image" -> WorkspaceTarget.IMAGE;
-                    case "install", "snapshot" -> WorkspaceTarget.INSTALL;
+                    case "install" -> WorkspaceTarget.INSTALL;
                     case "native" -> WorkspaceTarget.NATIVE;
                     case "publish", "upload" -> WorkspaceTarget.PUBLISH;
                     case "sync" -> WorkspaceTarget.SYNC;
@@ -213,10 +212,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 null, // the admission point stamps who asked
                                 null)
                         .encode(),
-                Stream.of(
-                                spec.affected() ? "\"affected\":true" : "",
-                                guard ? "\"guard\":true" : "",
-                                "snapshot".equals(kind) ? "\"snapshot\":true" : "")
+                Stream.of(spec.affected() ? "\"affected\":true" : "", guard ? "\"guard\":true" : "")
                         .filter(field -> !field.isEmpty())
                         .collect(Collectors.joining(",")));
     }

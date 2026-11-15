@@ -75,7 +75,7 @@ harness that knows where Maven puts things finds them there:
 | Javadoc HTML | `target/site/apidocs/` |
 
 `<version>` is the declared version with `-SNAPSHOT` in every build but `jk release` and `jk
-publish`: in a project at `version = "1.4.7"`, `jk build`, `jk test`, `jk run` and `jk snapshot` all
+publish`: in a project at `version = "1.4.7"`, `jk build`, `jk test`, `jk run` and `jk install` all
 write `target/app-1.4.7-SNAPSHOT.jar`, and `jk release` writes `target/app-1.4.7.jar`
 ([Releasing](release.md)).
 

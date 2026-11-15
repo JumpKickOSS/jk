@@ -124,12 +124,12 @@ A workspace is released from the root; members that inherit its version follow i
 
 `jk release --undo` takes back a release cut on this machine and not yet pushed or published: it
 drops the `Start <next>` commit when it is HEAD, uninstalls the released version (from `~/.m2` only
-what JumpKick put there) and deletes the tag, so `jk snapshot` installs `<version>-SNAPSHOT` again.
+what JumpKick put there) and deletes the tag, so `jk install` installs `<version>-SNAPSHOT` again.
 It refuses when a git remote has the tag, a remote branch has the `Start <next>` commit, or the
 `[publish]` repository holds the version.
 
 [Releasing](release.md) has the CI recipes. CI usually does the upload: a developer runs `jk release --push`, and the tag triggers a job that
-runs `jk publish --tag "$GITHUB_REF_NAME"` ([above](#publishing-from-a-tag)). Locally, `jk snapshot`
+runs `jk publish --tag "$GITHUB_REF_NAME"` ([above](#publishing-from-a-tag)). Locally, `jk install`
 is the loop; `jk release` is the end of it.
 
 ## Maven Central

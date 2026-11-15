@@ -4,7 +4,7 @@ description = "Domain model: dependencies, build plans, and coordinates"
 [dependencies]
 jk-host.workspace = true
 
-# JkVersion reads the version the build stamps here: the project version, `-SNAPSHOT` under `jk snapshot`.
+# JkVersion reads the version the build stamps here: the project version, `-SNAPSHOT` under `jk install`.
 [resources]
 filtered = ["src/main/filtered"]
 
