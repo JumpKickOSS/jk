@@ -131,6 +131,66 @@ class SuiteDiscoveryE2eTest {
     }
 
     @Test
+    void a_suite_that_writes_beside_what_it_reads_stores_no_marker_and_says_so_on_every_run(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("suite-discovery-cache");
+        Path m = Files.createDirectories(tmp.resolve("ws").resolve("m"));
+        Files.writeString(Files.createDirectories(m.resolve("data")).resolve("fixture.txt"), "one");
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        // Reads a fixture, then adds an entry to the listing the fixture keys, as a test that keeps a
+        // cache beside its data does.
+        Files.writeString(
+                Files.createDirectories(m.resolve("src/test/java/demo")).resolve("WritesBesideTest.java"), """
+                package demo;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import java.nio.file.Files;
+                import java.nio.file.Path;
+                import org.junit.jupiter.api.Test;
+
+                class WritesBesideTest {
+                    @Test
+                    void writesBeside() throws Exception {
+                        assertEquals("one", Files.readString(Path.of("data/fixture.txt")));
+                        Files.writeString(Path.of("data/run-" + System.nanoTime() + ".txt"), "x");
+                    }
+                }
+                """);
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+        String said = "an input of " + TaskNames.RUN_TESTS + " changed while it ran: data/run-";
+
+        Steps first = build(m, cache);
+        assertThat(first.status(TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+
+        // The second run reads what the first found: the same discovered inputs, and a listing that
+        // moved under the key it was taken with.
+        for (int run = 2; run <= 3; run++) {
+            Steps again = build(m, cache);
+            assertThat(again.status(TaskNames.RUN_TESTS))
+                    .as("run %d: no marker vouches for a listing the suite moved", run)
+                    .isEqualTo(TaskStatus.SUCCESS);
+            assertThat(again.warnings)
+                    .as("run %d: a run that stores no marker because an input moved says so", run)
+                    .anySatisfy(w -> assertThat(w).startsWith(said));
+        }
+    }
+
+    @Test
     void a_suite_that_reaches_another_host_says_so_on_every_run_and_in_the_forecast(@TempDir Path tmp)
             throws Exception {
         String address = nonLoopbackAddress();

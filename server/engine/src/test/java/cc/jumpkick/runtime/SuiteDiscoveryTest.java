@@ -116,6 +116,18 @@ class SuiteDiscoveryTest {
                 .isNull();
     }
 
+    @Test
+    void the_moved_warning_names_the_input_when_one_carries_a_write(@TempDir Path tmp) throws Exception {
+        Path added =
+                Files.writeString(Files.createDirectories(tmp.resolve("data")).resolve("b.txt"), "b");
+
+        assertThat(SuiteDiscovery.movedWarning(added, tmp))
+                .isEqualTo("an input of run-tests changed while it ran: data/b.txt; the next build runs it again");
+        assertThat(SuiteDiscovery.movedWarning(null, tmp))
+                .as("the key moved and no input it was found to read carries a write")
+                .isEqualTo("an input of run-tests changed while it ran; the next build runs it again");
+    }
+
     /** A start time every file written so far precedes, on any clock grain. */
     private static long startAfterWrites() throws InterruptedException {
         Thread.sleep(1_100);

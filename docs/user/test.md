@@ -1005,7 +1005,11 @@ everything above — `../shared/fixture.json`, a file under `$HOME`, `jk.toml` r
 by content, together with the listing of the directory it sits in, so a file added beside it is
 seen too. A started program keys the suite by its executable. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
-it and is replayed from then on while it holds.
+it and is replayed from then on while it holds. A green marker is stored only when every input the
+key names, discovered ones and their listings included, still matches once the suite is done. When
+one moved while it ran (a test that writes beside a fixture it reads, say), the run keeps its
+outcome, stores no marker and warns `an input of run-tests changed while it ran: <file>; the next
+build runs it again`, on every such run.
 
 **A suite that reaches the network is never replayed.** "Reaches the network" means a test JVM
 read from or wrote to a socket whose address is not this machine's: loopback (`localhost`,

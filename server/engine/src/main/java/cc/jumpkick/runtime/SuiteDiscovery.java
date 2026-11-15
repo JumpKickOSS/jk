@@ -81,10 +81,12 @@ final class SuiteDiscovery {
 
     /**
      * The key the run's green marker is stored under, or null when none may be. A run that read
-     * nothing new keeps {@code stampKey}. A run that read new inputs keeps them, and its marker is
-     * stored under the key that folds them in when they held still while it ran and the rest of the
-     * key did too — then the next build replays it instead of running the suite again. A suite that
-     * reached past this host is never stored.
+     * nothing new keeps {@code stampKey} when the key, taken again, is still {@code stampKey}. A run
+     * that read new inputs keeps them, and its marker is stored under the key that folds them in when
+     * they held still while it ran and the rest of the key did too — then the next build replays it
+     * instead of running the suite again. Any input that moved while the suite ran stores no marker
+     * and warns {@link InputGuard#MOVED}: the suite read it at an unknown moment, so neither the key
+     * before nor the key after names what it read. A suite that reached past this host is never stored.
      */
     static @Nullable String settle(TaskContext ctx, Run run, @Nullable String stampKey, Rekey rekey) throws Exception {
         Path moduleDir = run.moduleDir();
@@ -118,13 +120,26 @@ final class SuiteDiscovery {
             ctx.warn(SuiteReads.NETWORK_WARNING, networkWarning(hosts));
             SettledReads.unreplayable(moduleDir);
         }
-        if (after.equals(before)) {
-            Log.debug(
-                    "suite reads: " + moduleDir + " read what it was keyed on" + (stampKey == null ? "; no key" : ""));
-            return reached ? null : stampKey;
-        }
         if (reached) {
-            SuiteReads.save(moduleDir, run.selection(), after);
+            if (!after.equals(before)) SuiteReads.save(moduleDir, run.selection(), after);
+            return null;
+        }
+        if (after.equals(before)) {
+            if (stampKey == null) {
+                Log.debug("suite reads: " + moduleDir + " read what it was keyed on; no key");
+                return null;
+            }
+            // The key taken again equal to the one taken before the run proves every input it names,
+            // the discovered files and their listings included, held still up to now.
+            String now = rekey.key();
+            if (stampKey.equals(now)) return stampKey;
+            if (now != null) {
+                warnMoved(
+                        ctx,
+                        moved(before.files(), before.commands(), Set.of(), workspace, run.startedMillis()),
+                        workspace);
+            }
+            Log.debug("suite reads: " + moduleDir + " not replayed, its key moved during the run");
             return null;
         }
         Set<Path> fresh = new TreeSet<>(read);
@@ -142,12 +157,16 @@ final class SuiteDiscovery {
         boolean held = stampKey != null && key != null && stampKey.equals(rekey.key());
         String readsBefore = SuiteReads.digest(moduleDir, run.selection(), workspace);
         SuiteReads.save(moduleDir, run.selection(), after);
-        Path moved = held
-                ? moved(fresh, freshCommands, listed(before.files(), workspace), workspace, run.startedMillis())
-                : null;
-        if (moved != null) {
-            held = false;
-            ctx.warn(InputGuard.MOVED, movedWarning(moved, workspace));
+        Path moved = null;
+        if (held) {
+            moved = moved(fresh, freshCommands, listed(before.files(), workspace), workspace, run.startedMillis());
+            if (moved != null) {
+                held = false;
+                warnMoved(ctx, moved, workspace);
+            }
+        } else if (key != null) {
+            moved = moved(before.files(), before.commands(), Set.of(), workspace, run.startedMillis());
+            warnMoved(ctx, moved, workspace);
         }
         if (held) SettledReads.record(moduleDir, readsBefore, readsAfter);
         Log.debug("suite reads: " + moduleDir + " keys " + fresh.size() + " more file(s) and " + freshCommands.size()
@@ -187,11 +206,18 @@ final class SuiteDiscovery {
     /** The warning code of {@link #jkStateWarning}. */
     static final String JK_STATE = "suite-jk-state";
 
+    private static void warnMoved(TaskContext ctx, @Nullable Path moved, Path workspace) {
+        ctx.warn(InputGuard.MOVED, movedWarning(moved, workspace));
+    }
+
     /**
      * The warning for a green run whose marker is not stored because {@code moved}, an input it was
-     * found to read or an entry beside one, was written once it began.
+     * found to read or an entry beside one, was written once it began; null when the key moved and
+     * no input it was found to read carries a write since then.
      */
-    static String movedWarning(Path moved, Path workspace) {
+    static String movedWarning(@Nullable Path moved, Path workspace) {
+        if (moved == null)
+            return "an input of " + TaskNames.RUN_TESTS + " changed while it ran; the next build runs it again";
         Path p = real(moved);
         Path root = real(workspace);
         String shown = p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : p.toString();
