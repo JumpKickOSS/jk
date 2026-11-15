@@ -126,7 +126,13 @@ class BuildCacheTest {
         deleteRecursively(tempDir.resolve("target"));
 
         String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
-        assertThat(stdout).contains("Built");
+        // Every step hits, so nothing is reported built; the restore still lays the jar down.
+        assertThat(stdout).contains("Build successful");
+        try (var jars = Files.list(tempDir.resolve("target"))) {
+            assertThat(jars.filter(f -> f.getFileName().toString().endsWith(".jar")))
+                    .as("the jar restored from the action cache")
+                    .isNotEmpty();
+        }
     }
 
     /**
