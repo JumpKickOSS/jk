@@ -51,7 +51,8 @@ import org.jspecify.annotations.Nullable;
  * (metaspace, thread stacks, direct buffers) outgrows its lease holds back new grants by what it
  * really uses, and is named in the run's warnings, {@code jk engine status} and the engine log.
  *
- * <p>A {@linkplain Resident resident} helper holds its lease between requests. When the head of the
+ * <p>A {@linkplain Resident resident} helper (the build-script host, a warm plugin worker, a
+ * lingering Java compiler worker) holds its lease between requests and takes no JVM slot. When the head of the
  * queue would fit once residents let go, the ledger asks them to exit; they finish the request in
  * flight, exit, and start again on their next use. So the head waits only on forks that are doing
  * work, never on an idle holder.
@@ -207,7 +208,7 @@ public final class WorkerLeases {
             String overLease) {}
 
     /**
-     * A helper that stays resident between requests (the build-script host). {@code yield} is called
+     * A helper that stays resident between requests. {@code yield} is called
      * off the ledger's lock when the head of the queue needs this lease back; it lets the request in
      * flight finish, then makes the process exit, which closes the grant. It may block.
      */
@@ -475,6 +476,17 @@ public final class WorkerLeases {
             long leasedBytes = Math.min(Math.max(1, bytes), Math.max(1, cap));
             boolean clamped = leasedBytes < bytes;
             return acquire(new Demand(leasedBytes, 0, jvm, clamped, false, false), requestId);
+        }
+
+        /**
+         * As {@link #acquireBytes} for a resident helper whose memory is measured while it runs: it
+         * takes no JVM slot, belongs to no request, and {@code resident} is asked to give the lease
+         * back when the head of the queue needs its memory.
+         */
+        public Grant acquireResidentBytes(long bytes, Resident resident) throws InterruptedException {
+            long leasedBytes = Math.min(Math.max(1, bytes), Math.max(1, capacityBytes()));
+            Demand demand = new Demand(leasedBytes, 0, true, leasedBytes < bytes, false, false).resident();
+            return acquire(new Waiter(demand, null, Objects.requireNonNull(resident, "resident")));
         }
 
         /**

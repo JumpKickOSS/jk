@@ -317,6 +317,34 @@ class CompilerPoolTest {
         assertThat(late.compile).isCompletedExceptionally();
     }
 
+    @Test
+    void a_resident_pool_asked_for_its_lease_retires_once_its_last_item_answers(@TempDir Path dir) throws Exception {
+        Fakes fakes = new Fakes(1);
+        String key = "yield-" + job();
+        CompileWork w = item(dir, "busy", job());
+        CompilerPool pool = CompilerPool.forKey(
+                key,
+                null,
+                () -> new CompilerPool(
+                        key, null, fakes, req -> Files.createTempFile(dir, "spec", ".spec"), Duration.ofMillis(50)),
+                w);
+        pool.enqueue(w);
+        Fake worker = fakes.await(0);
+        awaitTrue(() -> worker.dispatched().size() == 1, "in flight");
+        worker.exitOnDone = true;
+
+        worker.worker().yieldLease();
+        assertThat(CompilerPool.get(key))
+                .as("a pool with a compile on it stays")
+                .isSameAs(pool);
+        assertThat(worker.sentOps()).doesNotContain(PluginProtocol.OP_DONE);
+
+        worker.frame(result(w.id, "OK"));
+        assertThat(w.compile.get(10, TimeUnit.SECONDS).success()).isTrue();
+        awaitTrue(() -> CompilerPool.get(key) == null, "the pool retires once idle");
+        awaitTrue(() -> worker.sentOps().contains(PluginProtocol.OP_DONE), "its worker is told to finish");
+    }
+
     // ---- fakes --------------------------------------------------------------------------------
 
     /** Starts {@link Fake} workers that answer hello with {@code threads}, or never when it is 0. */

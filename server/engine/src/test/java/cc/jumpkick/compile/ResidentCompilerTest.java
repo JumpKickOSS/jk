@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.run.JkThreads;
@@ -34,7 +35,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The resident compiler worker as a real JVM: modules submitted together compile at once in one
  * process, each with its own diagnostics; the next job compiles on the worker the last one left; a
- * warm worker reads a rewritten jar again; a forecast uses a warm worker and never starts one.
+ * warm worker reads a rewritten jar again; a forecast uses a warm worker and never starts one; a
+ * lingering worker holds no JVM slot and gives its memory back to a fork that needs it.
  */
 @Tag("integration")
 class ResidentCompilerTest {
@@ -184,6 +186,50 @@ class ResidentCompilerTest {
         ForkedJavac.Plan plan =
                 requireNonNull(inJob(9323L, () -> ForkedJavac.planIfWarm(req)), "the build's worker is still warm");
         assertThat(plan.sources()).contains(req.sources().getFirst());
+    }
+
+    /**
+     * A lingering worker belongs to no build: it must neither hold one of the ledger's JVM slots nor
+     * keep a fork from memory it is not using. With one slot, a fork queued behind it would wait out
+     * the whole linger.
+     */
+    @Test
+    void a_lingering_worker_takes_no_jvm_slot_and_exits_for_a_fork_that_needs_its_memory(@TempDir Path dir)
+            throws Exception {
+        Path worker = workerJar();
+        long budget = 4L << 30;
+        WorkerLeases.Ledger ledger = new WorkerLeases.Ledger(() -> budget, () -> 1, id -> false);
+        WorkerLeases.engineForTests(ledger);
+        try {
+            ForkedJavac.Request req = moduleRequest(dir, worker, "leased");
+            assertThat(compileInJob(9331L, req).success()).isTrue();
+            String key = JavaCompilerHost.residentKey(req);
+            CompilerPool pool = requireNonNull(CompilerPool.get(key), "the worker lingers");
+            assertThat(ledger.snapshot().leasedBytes())
+                    .as("the lingering worker holds its lease")
+                    .isPositive();
+
+            try (WorkerLeases.Grant fork = onThread(() -> ledger.acquireBytes(64L << 20, true, 9332L))) {
+                assertThat(fork.jvm()).isTrue();
+            }
+            assertThat(CompilerPool.get(key))
+                    .as("a fork that fits beside it leaves the worker warm")
+                    .isSameAs(pool);
+
+            try (WorkerLeases.Grant all = onThread(() -> ledger.acquireBytes(budget, false, 9333L))) {
+                assertThat(all.bytes()).isEqualTo(budget);
+            }
+            assertThat(CompilerPool.get(key))
+                    .as("the worker gave the memory back")
+                    .isNull();
+        } finally {
+            WorkerLeases.engineForTests(null);
+        }
+    }
+
+    /** {@code acquire} on another thread, failing when the lease is not granted within a minute. */
+    private static WorkerLeases.Grant onThread(Callable<WorkerLeases.Grant> acquire) throws Exception {
+        return JkThreads.io().submit(acquire).get(60, TimeUnit.SECONDS);
     }
 
     private static <T extends @Nullable Object> T inJob(long job, Callable<T> work) throws Exception {

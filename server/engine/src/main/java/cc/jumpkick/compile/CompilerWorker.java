@@ -341,6 +341,11 @@ final class CompilerWorker {
                 .finish());
     }
 
+    /** The lease ledger needs this worker's memory: its pool retires once nothing is on it. */
+    void yieldLease() {
+        pool.yieldLease();
+    }
+
     /** Finish what is in flight and exit. */
     void retire() {
         retiring = true;

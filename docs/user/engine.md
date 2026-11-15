@@ -446,10 +446,12 @@ Over lease line while it lasts. While any worker is far over its lease, nothing 
 overbooked. JumpKick does not kill it; the per-worker cgroup cap above is what bounds it.
 
 A lease that does not fit waits, first in line first. The first in line waits only on
-forks that are working: when it would fit once the build-script host let go of its lease,
-the host is asked to exit, finishes the script it is running, and starts again on the next
-script. A fork also waits when every JVM slot is taken (one per logical processor); that
-is ordinary queueing and writes nothing. While none of a step's forks runs and its next one
+forks that are working: when it would fit once a warm helper let go of its lease (the
+build-script host, a warm plugin worker or a lingering Java compiler worker), the helper is
+asked to exit, finishes what it is running, and starts again on its next use. A fork also
+waits when every JVM slot is taken (one per logical processor); that is ordinary queueing
+and writes nothing. A warm helper takes no JVM slot, so only forks that are working fill
+them. While none of a step's forks runs and its next one
 waits, the terminal dims its row and says why: `Waiting for a free slot…` or
 `Waiting for memory…`. A memory wait of 5 seconds or more is recorded on the step as
 `waited Ns for memory`. Several waits on one step add up to that one line. `target/jk-results.md` and the agent report each carry it, and they carry
@@ -499,7 +501,8 @@ The Java compiler worker is leased by what it holds, not by what it may grow to:
 when it starts, then its committed heap plus the usual overhead each time it reports, about once
 a second. When it runs out of compiles it collects at once and its heap shrinks to what it keeps
 between builds, so an idle worker holds little of the budget and a test JVM is not kept waiting
-for a reservation. It runs every compile of its JDK on its own threads, one per core it sees;
+for a reservation. A worker lingering between builds takes no JVM slot and exits when a fork
+needs the memory it holds. It runs every compile of its JDK on its own threads, one per core it sees;
 `JK_COMPILE_CONCURRENCY` pins the count for measurement.
 
 Forked JVMs that are actually running are also capped at the machine's online processors,

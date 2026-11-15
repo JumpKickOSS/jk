@@ -124,6 +124,10 @@ final class CompilerPool {
     private long halvedUntilNanos = CLOCK.nanos();
 
     private boolean closed;
+
+    /** The lease ledger asked for this pool's memory back. */
+    private volatile boolean yielding;
+
     private volatile long lastUsedNanos = CLOCK.nanos();
 
     /** The source directories this pool compiled, and the projects they belong to: what keeps it warm. */
@@ -709,12 +713,22 @@ final class CompilerPool {
         if (project != null) projects.add(project);
     }
 
-    /** One of this pool's items was answered. */
+    /** One of this pool's items was answered; a pool asked for its lease retires once none is left. */
     private void settled() {
         synchronized (this) {
             items = Math.max(0, items - 1);
         }
         lastUsedNanos = CLOCK.nanos();
+        if (yielding) retireIfIdle();
+    }
+
+    /**
+     * The lease ledger needs this pool's memory for a waiting fork: retire now when nothing is on the
+     * pool, else as soon as its last item answers. The next compile of its key starts a fresh pool.
+     */
+    void yieldLease() {
+        yielding = true;
+        retireIfIdle();
     }
 
     /** Retire when no item is on this pool, and say whether it did. Closed off the caller's thread. */

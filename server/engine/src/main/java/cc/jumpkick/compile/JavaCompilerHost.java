@@ -166,8 +166,8 @@ public final class JavaCompilerHost {
      * Fork the worker JVM on {@code home} under {@code env} and {@code tuning}, captured from the
      * request that made the pool, and serve it until it exits. Its heap ceiling and cgroup cap come
      * from {@link CompilerBudget}; its lease starts at {@link CompilerWorker#FIRST_LEASE_BYTES} and
-     * follows the heap it reports, charged to {@code owner}'s job or, for a resident worker, the
-     * engine.
+     * follows the heap it reports, charged to {@code owner}'s job or, for a resident worker, held as a
+     * {@linkplain WorkerLeases.Resident resident} lease that gives its memory back when a fork needs it.
      */
     private static void converse(
             CompilerWorker worker,
@@ -204,6 +204,7 @@ public final class JavaCompilerHost {
                             CompilerWorker.FIRST_LEASE_BYTES,
                             heap.capBytes(),
                             owner,
+                            owner == null ? new WorkerLeases.Resident(WORKER_NAME, worker::yieldLease) : null,
                             WORKER_NAME,
                             true,
                             worker::leased);

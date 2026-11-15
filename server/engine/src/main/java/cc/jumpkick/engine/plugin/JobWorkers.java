@@ -148,16 +148,18 @@ public final class JobWorkers {
      * command: it is leased {@code bytes} to begin with, its command is never resized, and {@code
      * onGrant} receives the lease so the caller can move it to what the worker reports using. Its
      * cgroup cap is {@code capBytes}, chosen with its heap ceiling, or the shared group when that is
-     * not positive. The lease takes a JVM slot, is charged to {@code leaseRequest} (null: the engine,
-     * for a worker that outlives requests) under the name {@code what}, and is released when the
-     * process is gone. {@code track} registers the process with the current request, so that
-     * request's cancel stops it.
+     * not positive. A worker of {@code leaseRequest} takes a JVM slot and is charged to that request;
+     * with {@code resident} (and no request) it outlives requests, takes no slot, and is asked to exit
+     * when the head of the lease queue needs its memory. Either way it is named {@code what} and its
+     * lease is released when the process is gone. {@code track} registers the process with the
+     * current request, so that request's cancel stops it.
      */
     public static Process startMeasured(
             ProcessBuilder pb,
             long bytes,
             long capBytes,
             @Nullable Long leaseRequest,
+            WorkerLeases.@Nullable Resident resident,
             String what,
             boolean track,
             Consumer<WorkerLeases.Grant> onGrant)
@@ -167,7 +169,9 @@ public final class JobWorkers {
         if (leaseRequest != null && scope != null) scope.awaitReleased();
         WorkerLeases.Grant grant;
         try {
-            grant = leases.acquireBytes(bytes, true, leaseRequest);
+            grant = resident != null
+                    ? leases.acquireResidentBytes(bytes, resident)
+                    : leases.acquireBytes(bytes, true, leaseRequest);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");
