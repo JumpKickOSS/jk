@@ -553,8 +553,14 @@ class McpHandlerTest {
     void skill_topic_that_names_a_tool_points_at_the_tool() {
         String tool = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":35,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"callers\"}}}");
-        assertThat(tool).contains("`callers` is an MCP tool", "Topics: graph, dependencies");
+        assertThat(tool).contains("`callers` is an MCP tool", "call it directly", "Topics: graph, dependencies");
         assertThat(tool).doesNotContain("\"isError\":true", "\"error\"");
+        String hidden = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":37,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"explain\"}}}");
+        assertThat(hidden)
+                .as("a tool off the default list is not one most clients can call")
+                .contains("`explain` is an MCP tool", "extended=true", "jk CLI verb", "(jk explain)")
+                .doesNotContain("call it directly");
         String none = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"nope\"}}}");
         assertThat(none).contains("No skill topic `nope`", "Topics: graph, dependencies");

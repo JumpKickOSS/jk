@@ -57,8 +57,15 @@ out of a store.
 **Generic wording beats coercion.** A plain sentence in a tool answer moves every agent at once; a
 rule written for one agent rarely transfers and is often worse than none. Prefer changing the answer.
 
-**Budgets.** The `AGENTS.md` section stays under 1000 bytes and each MCP tool card under its budget
-(`McpToolRegistryTest`); every word is paid for on every agent turn.
+**Budgets.** The `AGENTS.md` section stays under 1280 bytes (`AgentsGuideTest`) and each MCP tool
+card under its budget (`McpToolRegistryTest`); every word is paid for on every agent turn.
+
+**One table, held to the registry.** The `AGENTS.md` section is a "to do X, call Y" table: the MCP
+tool first, the CLI as fallback, one row per task an agent meets. Its MCP column names only tools on
+the default `tools/list` (most clients never ask for the extended one), every default tool appears,
+and each `run(…)` it spells takes arguments and a `kind` the server hosts. `McpSteeringTest` holds
+the section, the server instructions, the files `jk agents` writes and the agent hook to that, so a
+renamed tool or argument fails a test instead of misleading an agent.
 
 ## Per-agent facts
 

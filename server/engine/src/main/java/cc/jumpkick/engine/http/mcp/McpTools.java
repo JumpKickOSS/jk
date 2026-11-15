@@ -129,10 +129,14 @@ public final class McpTools {
         this.loop = List.copyOf(loop);
         for (McpTool tool : tools) {
             if (tool instanceof SkillTool skill) {
-                skill.tools(name -> {
-                    McpTool named = map.get(name);
-                    return named == null || named == skill ? null : named.spec().description();
-                });
+                skill.tools(
+                        name -> {
+                            McpTool named = map.get(name);
+                            return named == null || named == skill
+                                    ? null
+                                    : named.spec().description();
+                        },
+                        name -> this.loop.isEmpty() || this.loop.contains(name));
             }
         }
     }

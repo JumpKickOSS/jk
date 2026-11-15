@@ -5,7 +5,7 @@ visual CLI; **agents should not scrape it.**
 
 **First:** run `jk skill` (or MCP `skill` / resource `jk://skill`). That is the
 system prompt for JumpKick — models have not been trained on this tool. A project's
-`AGENTS.md` says the same thing in [JumpKick's section](#jks-section-of-agentsmd).
+`AGENTS.md` says the same thing in [JumpKick's section](#jumpkicks-section-of-agentsmd).
 
 Product stance and event names: [Machine output](machine-output.md). MCP tool reference:
 [MCP](mcp.md). The “fix my failing build” recipe: [Troubleshooting](troubleshooting.md).
@@ -37,6 +37,14 @@ whatever the engine's environment shows; an unrecognised client gets the engine'
 when the calling shell belongs to it, or when its CLI is on `PATH` (`claude`, `cursor-agent`,
 `gemini`, `opencode`, `agy`, `codex`).
 
+### JumpKick's section of AGENTS.md
+
+The section is one short table, "to do X, call Y": the MCP tool first and the CLI as the fallback, for
+running the tests, one class or suite, a build, every error, a dependency, who calls a method or
+renaming it, what a build would run, and the gate (`run(kind=gate)`, `jk test -g`) that says the work
+is done. It names only the six tools of the default `tools/list`; `skill` has the rest. With
+`[format] enforce` the gate's row says it formats; without it, the section asks for no formatting.
+
 ### What you still do by hand
 
 | Situation | Command |
@@ -59,8 +67,9 @@ Any other agent reads `AGENTS.md` and needs the one MCP command above.
 | `.claude/settings.json` | `mcp__jk` and `Bash(jk *)` allowed, the `jk` server pre-approved, and one `PreToolUse` hook on `Bash` and `Grep` |
 
 The hook is `jk agent-hook`, so its behaviour changes with JumpKick, not with the file. It denies `mvn` and
-`gradle` (with the `jk` command to use instead) and answers a grep for a symbol, such as `OrderService`
-or `Order.total`, with a pointer to `jk graph callers` / `read` / `rename`. It never blocks a grep.
+`gradle` (naming MCP `run`, with `jk -a test` as the fallback) and answers a grep for a symbol, such as
+`OrderService` or `Order.total`, with a pointer to MCP `callers` / `rename` and `jk graph callers` /
+`read` / `rename`. It never blocks a grep.
 Text searches pass untouched.
 
 ### Cursor, VS Code, Gemini CLI, opencode
@@ -93,11 +102,12 @@ them by hand.
 0. Playbook                  jk skill             or MCP skill
 1. Name the project          register MCP as `jk mcp` (pinned to the project; no dir), or cd and use the CLI
 2. What happened?            MCP run (the reply is the verdict) or jk -a test
-3. Past the cap              jk results -A      or MCP diagnostics
-4. Raw step log (optional)   jk results -d  or MCP details
+3. Past the cap              MCP diagnostics    or jk results -A
+4. Raw step log (optional)   MCP details        or jk results -d
 5. Rebuild                   same selection as the failure (jk test, not -A)
-6. Graph / ETA               jk why / jk explain   or MCP why / explain (extended tools/list)
-7. Stalled                   jk jobs / jk cancel   or MCP status, then cancel (extended tools/list)
+6. Done?                     MCP run(kind=gate) or jk -a test -g; "· up to date" means nothing was left to run
+7. Graph / ETA               jk why / jk explain   or MCP why / explain (extended tools/list)
+8. Stalled                   jk jobs / jk cancel   or MCP status, then cancel (extended tools/list)
 ```
 
 Before changing a method, ask who calls it: MCP `callers` or `jk graph callers Type.method`
@@ -121,13 +131,13 @@ That file is not the last-job report. `--affected` and `--affected-since` cannot
 Default **`jk test` is the unit suite only.** That is the inner loop. Do not pass
 `--all` as a habit.
 
-| When | Command |
-|------|---------|
-| Which tests did this edit touch? | `jk test -f` / `--affected-since` (table; does not run) |
-| Editing a class / fixing a unit assertion | `jk test` |
-| About to push, or the change crossed DB / HTTP / FS | `jk test -g` |
-| UI / compose / contract change, or reproducing CI | `jk test -s e2e` |
-| Never as a habit | `jk test -A` |
+| When | Command | MCP |
+|------|---------|-----|
+| Which tests did this edit touch? | `jk test -f` / `--affected-since` (table; does not run) | `affected_tests` |
+| Editing a class / fixing a unit assertion | `jk test` (`-S Class` for one) | `run()` (`classes=[…]`) |
+| Before handing work back, or the change crossed DB / HTTP / FS | `jk test -g` | `run(kind=gate)` |
+| UI / compose / contract change, or reproducing CI | `jk test -s e2e` | `run(suites=["e2e"])` |
+| Never as a habit | `jk test -A` | |
 
 Write new tests in the lowest suite that can fail for the reason you care about
 (`src/test`, `src/integration`, `src/e2e` — or the simple-layout columns). Tag cost
@@ -171,8 +181,8 @@ call — that binds the connection — then omit it; `bind` switches.
 The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, `rename`, and `skill`: every
 card is paid on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which
 answers who calls a method, complete, in one call instead of a grep and reads, and `rename`, which
-renames a method and every use in one call instead of an edit per use. `run(kind=install)` installs for a
-sibling project.
+renames a method and every use in one call instead of an edit per use. `run(kind=gate)` is the bar
+before work is handed back; `run(kind=install)` installs for a sibling project.
 `deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
 jdk, why, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:
 run → read the verdict → edit → run.

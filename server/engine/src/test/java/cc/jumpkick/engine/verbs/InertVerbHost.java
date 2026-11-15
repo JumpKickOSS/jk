@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * need a host reference, and nothing on this one is ever called. A test that records what a verb
  * sends overrides the few calls it watches.
  */
-class InertVerbHost implements VerbHost {
+public class InertVerbHost implements VerbHost {
     @Override
     public long eventRequestId() {
         return -1;

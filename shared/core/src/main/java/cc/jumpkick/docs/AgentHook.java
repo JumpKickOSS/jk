@@ -92,8 +92,9 @@ public final class AgentHook {
                 "permissionDecision",
                 "deny",
                 "permissionDecisionReason",
-                "This project builds with jk, not `" + program + "`. Use `jk -a test` or `jk -a build`;"
-                        + " `jk add g:a` / `jk remove g:a` edit dependencies. `jk skill` has the rest.");
+                "This project builds with jk, not `" + program + "`. Call MCP `run` (`run(kind=build)` builds),"
+                        + " else `jk -a test`; `deps` or `jk add g:a` / `jk remove g:a` edit dependencies."
+                        + " `skill` has the rest.");
     }
 
     private static @Nullable String nudgeFor(@Nullable String symbol) {
@@ -101,10 +102,10 @@ public final class AgentHook {
         return reply(
                 "additionalContext",
                 "`" + symbol + "` looks like a symbol. The code graph answers symbol questions completely, from"
-                        + " the compiled classes, so use it instead of grepping and reading each match:"
-                        + " `jk graph callers " + symbol + "` (who calls it; add -t for everything that reaches it),"
-                        + " `jk graph read " + symbol + "` (its source alone),"
-                        + " `jk graph rename " + symbol + " <new>` (every edit in one call). MCP: `callers`, `rename`."
+                        + " the compiled classes, so use it instead of grepping and reading each match: MCP `callers`"
+                        + " (who calls it; transitive=true for everything that reaches it) and `rename` (every edit"
+                        + " in one call); in a shell `jk graph callers " + symbol + "`, `jk graph read " + symbol
+                        + "` (its source alone), `jk graph rename " + symbol + " <new>`."
                         + " Grep is still right for text that is not a symbol.",
                 null,
                 null);

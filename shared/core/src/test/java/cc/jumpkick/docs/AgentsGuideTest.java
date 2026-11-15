@@ -91,21 +91,23 @@ class AgentsGuideTest {
     }
 
     /**
-     * Every byte is paid on every turn. The callers line repays its bytes for an agent that checks
-     * every answer by hand: told the list is complete, it answers a who-calls question in a fraction of
-     * the turns it otherwise spends walking the calls itself.
+     * Every byte is paid on every turn. The table costs about 260 bytes over the bullet list it
+     * replaced and buys a first-time tool for each task an agent meets: a build, one class or suite,
+     * the gate, every error, a dependency, a symbol, a forecast. The callers line repays its bytes for
+     * an agent that checks every answer by hand.
      */
     @Test
     void the_section_points_at_the_skill_and_callers_and_stays_short() {
         assertThat(AgentsGuide.SECTION)
                 .contains("jk skill")
                 .contains("jk graph callers")
+                .contains("| To | MCP | CLI |")
                 .endsWith("\n");
-        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1000);
+        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1280);
         assertThat(AgentsGuide.ENFORCED_SECTION.getBytes(StandardCharsets.UTF_8).length)
-                .isLessThanOrEqualTo(1000);
+                .isLessThanOrEqualTo(1280);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
-        assertThat(AgentsGuide.SECTION).doesNotContain("jk format");
+        assertThat(AgentsGuide.SECTION + AgentsGuide.ENFORCED_SECTION).doesNotContain("jk format");
     }
 
     @Test
@@ -119,7 +121,7 @@ class AgentsGuideTest {
                 enforce = true
                 """);
         assertThat(AgentsGuide.sync(dir)).isEqualTo(Change.CREATED);
-        assertThat(read(dir)).isEqualTo(AgentsGuide.newFile(true)).contains("it formats what you changed");
+        assertThat(read(dir)).isEqualTo(AgentsGuide.newFile(true)).contains("| finish: format, tests + guards |");
 
         Files.writeString(dir.resolve("jk.toml"), "name = \"app\"\ngroup = \"com.example\"\nversion = \"0.1.0\"\n");
         assertThat(AgentsGuide.refresh(dir)).isEqualTo(Change.UPDATED);

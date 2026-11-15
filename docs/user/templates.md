@@ -79,7 +79,7 @@ comma-separated ids), `true|false` a bool and `text` a text, with its pattern be
 `(advanced)` one the form does not ask.
 
 A standalone template scaffold gets what a plain `jk new` gets: [JumpKick's section of
-**`AGENTS.md`**](agents.md#jks-section-of-agentsmd) (into the template's own `AGENTS.md` when it
+**`AGENTS.md`**](agents.md#jumpkicks-section-of-agentsmd) (into the template's own `AGENTS.md` when it
 shipped one), the files of each [agent in use](agents.md) and a first code graph, and JumpKick's
 `.gitignore` unless the template ships its own. Workspace modules get none of these — the root
 owns them. A template scaffolded inside a project is listed in the root's `[workspace].modules`,

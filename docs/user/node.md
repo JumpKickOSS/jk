@@ -175,7 +175,7 @@ output.
 Node.js and writes the `jk.toml` that pins it ([Templates](templates.md#node-front-ends---lang-node)).
 `jk new -t webapp -f <framework>` swaps the webapp template's front end.
 
-A standalone project gets [JumpKick's section of `AGENTS.md`](agents.md#jks-section-of-agentsmd). When the
+A standalone project gets [JumpKick's section of `AGENTS.md`](agents.md#jumpkicks-section-of-agentsmd). When the
 generator wrote an `AGENTS.md` of its own, JumpKick's section goes below its title and the generator's text
 stays below that; Next.js's managed block keeps its markers, so `next dev` finds it and leaves the
 file alone (`agentRules: false` in `next.config` stops Next writing it).

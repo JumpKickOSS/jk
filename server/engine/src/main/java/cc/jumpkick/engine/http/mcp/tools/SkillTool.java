@@ -7,6 +7,7 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /** {@code skill} — the JumpKick skill core, or one topic. Same bytes as {@code jk skill}. */
@@ -18,9 +19,13 @@ public final class SkillTool implements McpTool {
     /** Another registered tool's description by name: agents ask for a tool's name as a topic. */
     private volatile Function<String, @Nullable String> tools = name -> null;
 
+    /** Whether a tool is on the default {@code tools/list}, the only one most clients show the model. */
+    private volatile Predicate<String> listed = name -> true;
+
     /** Wired by the registry once every tool is known. */
-    public void tools(Function<String, @Nullable String> descriptions) {
+    public void tools(Function<String, @Nullable String> descriptions, Predicate<String> onDefaultList) {
         this.tools = descriptions;
+        this.listed = onDefaultList;
     }
 
     @Override
@@ -42,7 +47,10 @@ public final class SkillTool implements McpTool {
         String topics = "Topics: " + String.join(", ", JkSkill.TOPICS) + "; no topic gives the core.\n";
         String tool = tools.apply(name);
         if (tool != null) {
-            return in.text("`" + name + "` is an MCP tool, not a topic: call it directly. " + tool + "\n" + topics);
+            String how = listed.test(name)
+                    ? "call it directly. "
+                    : "call it if your client lists it (tools/list extended=true); otherwise run its jk CLI verb. ";
+            return in.text("`" + name + "` is an MCP tool, not a topic: " + how + tool + "\n" + topics);
         }
         return in.text("No skill topic `" + name + "`. " + topics);
     }
