@@ -9,6 +9,7 @@
 #   ./scripts/dogfood-wall-measure.sh                 # full: rebuild + no-op + touched
 #   ./scripts/dogfood-wall-measure.sh rebuild         # only the --redo row
 #   ./scripts/dogfood-wall-measure.sh noop touched    # pick rows
+#   ./scripts/dogfood-wall-measure.sh fresh           # a fresh clone's second build
 #
 # Env:
 #   JK_BIN   — jk binary (default: ~/.jk/bin/jk, else PATH)
@@ -28,6 +29,11 @@
 #            A `touch` is not enough: jk keys its action cache on CONTENT, so bumping mtime
 #            leaves the build a no-op and the row silently measures nothing. The row appends a
 #            unique comment line and restores the original bytes afterwards.
+#   fresh    a fresh clone of HEAD: one `jk build` under JK_KEY_AUDIT=warn (untimed), then the
+#            second `jk build`, timed, with the productive steps it ran counted. A key that
+#            depends on what its own build writes misses exactly here and nowhere else: the no-op
+#            row runs after a rebuild and a warm-up that have already absorbed the re-run
+#            (JK-875KR: 2m25s on a fresh clone of v0.51.0, 3 s after the fix).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -41,7 +47,7 @@ RUNS="${RUNS:-2}"
 OUT_DIR="${OUT_DIR:-$ROOT/target/dogfood-wall}"
 TOUCH="${TOUCH:-shared/core/src/main/java/cc/jumpkick/config/WorkspaceClasspath.java}"
 ROWS=("$@")
-[[ ${#ROWS[@]} -eq 0 ]] && ROWS=(rebuild noop touched)
+[[ ${#ROWS[@]} -eq 0 ]] && ROWS=(rebuild noop touched fresh)
 
 mkdir -p "$OUT_DIR"
 ROW_FILE="$OUT_DIR/row.md"
@@ -230,6 +236,26 @@ print()
 PY
 }
 
+# The productive steps the latest run ran (a cache hit is SKIPPED): compiles, suites, packaging,
+# plugin and node steps, guard lanes. Zero on the second build of a fresh clone.
+fresh_steps() {
+  local runs_root="$HOME/.jk/state/builds/projects" latest
+  latest="$(find "$runs_root" -name details.jsonl -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR==1{sub(/^[^ ]* /,""); print}')"
+  [[ -z "$latest" ]] && { echo "?"; return 0; }
+  python3 - "$latest" <<'PY'
+import json, sys
+PRODUCTIVE = ("compile", "run-tests", "package", "native", "plugin-", "generate-", "node-", "guard", "ksp")
+n = 0
+for line in open(sys.argv[1], errors="replace"):
+    if '"task-finish"' not in line:
+        continue
+    e = json.loads(line)
+    if e.get("status") == "SUCCESS" and e.get("task", "").startswith(PRODUCTIVE):
+        n += 1
+print(n)
+PY
+}
+
 # ---------------------------------------------------------------------------
 env_block
 
@@ -315,7 +341,24 @@ for row in "${ROWS[@]}"; do
       trap - EXIT
       echo >> "$ROW_FILE"
       ;;
-    *) echo "unknown row: $row (want: rebuild noop touched)" >&2; exit 2 ;;
+    fresh)
+      echo "### Row: second build of a fresh clone" >> "$ROW_FILE"; echo >> "$ROW_FILE"
+      echo "| side | command | wall (s) | steps run | keys moved in build 1 |" >> "$ROW_FILE"
+      echo "|---|---|---|---|---|" >> "$ROW_FILE"
+      clone="$OUT_DIR/fresh-clone"
+      rm -rf "$clone"
+      git clone -q --no-hardlinks "$ROOT" "$clone"
+      ( cd "$clone" && JK_KEY_AUDIT=warn "$JK" build -x > "$OUT_DIR/jk-fresh-1.log" 2>&1 ) || true
+      moved="$(grep -c "key-moved" "$OUT_DIR/jk-fresh-1.log" || true)"
+      w="$(cd "$clone" && timed "$OUT_DIR/jk-fresh-2.log" "$JK" build -x)"
+      steps="$(fresh_steps)"
+      printf '  %-46s %s s, %s steps, %s keys moved\n' "jk fresh clone, second build" "$w" "$steps" "$moved" >&2
+      echo "| jk | \`jk build\` twice on a fresh clone, the second timed | $w | $steps | $moved |" >> "$ROW_FILE"
+      emit_json measurement "row=fresh" "side=jk" "command=jk build" "walls_s=$w" "steps=$steps" "key_moved=$moved"
+      rm -rf "$clone"
+      echo >> "$ROW_FILE"
+      ;;
+    *) echo "unknown row: $row (want: rebuild noop touched fresh)" >&2; exit 2 ;;
   esac
 done
 

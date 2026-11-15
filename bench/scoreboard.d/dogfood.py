@@ -6,6 +6,9 @@ Night and release tiers only: a rebuild of this tree is minutes of every core. S
 
   dogfood.<row>          `jk build` raw (`[guards] on-build = false`), the published number
   dogfood.<row>.guards   the same build as contributors run it, guards on (its own series)
+  dogfood.fresh          the second `jk build` of a fresh clone of the tree (one timed run)
+  dogfood.fresh.steps    the productive steps that second build ran: 0, or a key depends on
+                         what its own build writes (JK-875KR)
 
 The first run of each row warms the engine and is left out of the median.
 """
@@ -29,7 +32,11 @@ RUNS = 3
 def measure(ctx) -> list[dict]:
     out = ctx.out / "dogfood"
     env = dict(os.environ, JK_BIN=ctx.jk, OUT_DIR=str(out), RUNS=str(min(ctx.runs, RUNS)))
-    rows_wanted = [r for r in ("rebuild", "noop", "touched") if ctx.wants(f"dogfood.{r}") or ctx.wants(f"dogfood.{r}.guards")]
+    rows_wanted = [
+        r
+        for r in ("rebuild", "noop", "touched", "fresh")
+        if ctx.wants(f"dogfood.{r}") or ctx.wants(f"dogfood.{r}.guards") or ctx.wants(f"dogfood.{r}.steps")
+    ]
     if not rows_wanted:
         return []
     res = subprocess.run(["bash", str(SCRIPT), *rows_wanted], cwd=JK_TREE, env=env)
@@ -48,4 +55,8 @@ def measure(ctx) -> list[dict]:
         rows.append({"dim": "dogfood", "subject": subject, "project": "jk", "tool": "jk", "kind": KIND,
                      "value": round(statistics.median(timed), 2), "unit": "s", "band": BAND, "runs": len(timed),
                      "command": m.get("command", ""), "samples": timed})
+        if m["row"] == "fresh" and str(m.get("steps", "")).isdigit():
+            rows.append({"dim": "dogfood", "subject": "dogfood.fresh.steps", "project": "jk", "tool": "jk",
+                         "kind": "count", "value": int(m["steps"]), "unit": "steps", "band": 0, "runs": 1,
+                         "command": m.get("command", ""), "key_moved": m.get("key_moved", "")})
     return rows
