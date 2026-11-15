@@ -176,7 +176,7 @@ class McpRunWaitTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"dir\":"
                 + MiniJson.write(ws.toString()) + ",\"timeout_s\":2}}}");
-        assertThat(textOf(body)).startsWith("OK build a · 30ms · up to date").doesNotContain("9.0s");
+        assertThat(textOf(body)).startsWith("OK build a · up to date · 30ms").doesNotContain("9.0s");
     }
 
     @Test

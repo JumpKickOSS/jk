@@ -245,7 +245,10 @@ class NoopJournalTest {
         writer.register(62, "build", project.toString(), "cli", null, true, false, 2, locator);
         requireNonNull(sessions.accumulator(62)).stamp(JobOutcome.SUCCEEDED);
 
-        assertThat(writer.write(62, false, 90, null)).startsWith("OK build").endsWith(" · up to date\n");
+        assertThat(writer.write(62, false, 90, null))
+                .startsWith("OK build")
+                .contains(" · up to date · ")
+                .doesNotContain("up to date · 90ms · up to date");
         assertThat(journal.runDir("g:a", project.toString(), 2)).isEmpty();
         assertThat(journal.rawFinishedRecordByRequestId(62))
                 .as("an MCP wait reads the no-op as one")
