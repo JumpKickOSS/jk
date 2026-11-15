@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -12,9 +13,18 @@ import org.junit.jupiter.api.Test;
 /** A worker's wait returns only once the work its exit started (lease, learned heap) is done. */
 class SettledProcessTest {
 
+    /** A process that exits 0 on every OS: the running JVM's own launcher, asked its version. */
+    private static Process exitsZero() throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return new ProcessBuilder(java, "-version")
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+    }
+
     @Test
     void a_wait_returns_after_the_exit_work_not_before() throws Exception {
-        Process exited = new ProcessBuilder("true").start();
+        Process exited = exitsZero();
         exited.waitFor();
         CountDownLatch release = new CountDownLatch(1);
         AtomicBoolean recorded = new AtomicBoolean();
@@ -41,7 +51,7 @@ class SettledProcessTest {
 
     @Test
     void exit_work_that_fails_still_ends_the_wait() throws Exception {
-        Process exited = new ProcessBuilder("true").start();
+        Process exited = exitsZero();
         SettledProcess process =
                 new SettledProcess(exited, CompletableFuture.failedFuture(new IllegalStateException("gc log")));
         assertThat(process.waitFor()).isZero();

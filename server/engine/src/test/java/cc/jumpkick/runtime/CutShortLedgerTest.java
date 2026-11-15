@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 class CutShortLedgerTest {
 
     private static final String STAMP = "c".repeat(64);
-    private static final String TASK = "run-tests:/ws/app/target/test-classes";
+    private static final String TASK = "run-tests@" + "c".repeat(12); // the shape ActionKey.qualifiedTaskId gives
 
     @TempDir
     Path tmp;

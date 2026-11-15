@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 class TestClassLedgerLaunchesTest {
 
     private static final String STAMP = "a".repeat(64);
-    private static final String TASK = "run-tests:/ws/app/target/test-classes";
+    private static final String TASK = "run-tests@" + "c".repeat(12); // the shape ActionKey.qualifiedTaskId gives
     private static final String UNIT = "test:test";
     private static final String INTEG = "test:integration";
 
