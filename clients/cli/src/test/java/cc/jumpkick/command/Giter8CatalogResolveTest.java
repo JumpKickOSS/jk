@@ -46,9 +46,23 @@ class Giter8CatalogResolveTest {
         Path extract = tmp.resolve("extract");
         // No network: offline config with bogus official URL
         var cfg = new JkTemplatesConfig("https://example.invalid/nope", List.of());
-        Optional<Path> hit = Giter8Catalog.resolveShortName("cli", cwd, extract, cfg, List.of());
+        Optional<Path> hit = Giter8Catalog.resolveShortName("cli", cwd, extract, cfg, List.of(), null);
         assertThat(hit).isPresent();
         assertThat(hit.get()).isEqualTo(g8.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_templates_root_handed_in_answers_before_the_walk_up(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("checkout");
+        Files.createDirectories(root.resolve("templates/java/cli.g8/src/main/g8"));
+        Path cwd = Files.createDirectories(root.resolve("examples/demo"));
+        Path env = tmp.resolve("env-templates");
+        Path mine = env.resolve("java/cli.g8");
+        Files.createDirectories(mine.resolve("src/main/g8"));
+        Files.writeString(mine.resolve("default.properties"), "name=mine\n");
+        var cfg = new JkTemplatesConfig("https://example.invalid/nope", List.of());
+        assertThat(Giter8Catalog.resolveShortName("cli", cwd, tmp.resolve("extract"), cfg, List.of(), env))
+                .contains(mine.toAbsolutePath().normalize());
     }
 
     @Test

@@ -126,9 +126,6 @@ final class TestEnvRules {
             in = "server/engine/src/test/java/cc/jumpkick/runtime/KeyProbesTest.java | PROBE_SECRET",
             reason = "read by the key-probe child process the test forks, from the environment the test hands it")
     @Allow(
-            in = "clients/cli/src/test/java/cc/jumpkick/command/Giter8Catalog.java | JK_TEMPLATES",
-            reason = "a developer's template override must not steer the catalogue under test; unset by design")
-    @Allow(
             in = "server/io/src/test/java/cc/jumpkick/repo/SettingsXmlCredentialStubTest.java | JK_SETTINGS_STUB_PW",
             reason = "the test asserts the serving process does not have it; only the requesting shell does")
     void testEnvForwarded(Model model, Text text, Violations v) {

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Giter8 short-name catalog and resolution.
@@ -52,7 +53,7 @@ public final class Giter8Catalog {
      * sources.
      */
     public static Optional<Path> resolveShortName(String ref, Path cwd, Path extractRoot) throws IOException {
-        return resolveShortName(ref, cwd, extractRoot, JkTemplatesConfig.resolve(), List.of());
+        return resolveShortName(ref, cwd, extractRoot, JkTemplatesConfig.resolve(), List.of(), null);
     }
 
     /**
@@ -60,9 +61,16 @@ public final class Giter8Catalog {
      * owner/repo}).
      *
      * @param extraSources git refs tried before the official monorepo (after config sources)
+     * @param templatesRoot the {@code $JK_TEMPLATES} root, tried first; null when there is none. It
+     *     is passed in, never read here, so no test depends on the environment it runs in.
      */
     public static Optional<Path> resolveShortName(
-            String ref, Path cwd, Path extractRoot, JkTemplatesConfig config, List<String> extraSources)
+            String ref,
+            Path cwd,
+            Path extractRoot,
+            JkTemplatesConfig config,
+            List<String> extraSources,
+            @Nullable Path templatesRoot)
             throws IOException {
         if (!isShortName(ref)) return Optional.empty();
         String dirName = ref + ".g8";
@@ -71,9 +79,8 @@ public final class Giter8Catalog {
         List<String> extras = extraSources == null ? List.of() : extraSources;
 
         // 1) $JK_TEMPLATES
-        String env = System.getenv("JK_TEMPLATES");
-        if (env != null && !env.isBlank()) {
-            Optional<Path> hit = langKindOrFlat(Path.of(env), ref, dirName);
+        if (templatesRoot != null) {
+            Optional<Path> hit = langKindOrFlat(templatesRoot, ref, dirName);
             if (hit.isPresent()) return hit;
         }
 
