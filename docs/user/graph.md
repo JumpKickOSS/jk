@@ -272,6 +272,14 @@ answer then says it is not complete and why, in one line.
 | An extension function, a property accessor called from Java (`getBalance()`) | Exact: the classes call them by name |
 | An `inline` function | kotlinc copies its body into each caller, so the classes hold no call: each line of a Kotlin source that calls it by name is listed `(inferred)`, and the answer is not complete |
 
+**Groovy.** A class compiled `@CompileStatic` binds its calls, so its callers are exact. Groovy that
+is not binds its calls at run time, by name: its classes hold no call to the method. While a Groovy
+source like that can see the method (its module sees the declaring one, as the build does), the
+answer is not complete, and each of its lines that calls the method by name is listed `(inferred)`:
+`name(…)`, a command call or method pointer `.name`, and for an accessor the property, `store.size`
+for `getSize()`. A call through a computed name (`obj."$name"()`) or `methodMissing` is not matched.
+A workspace with no Groovy, or only `@CompileStatic` Groovy, answers as before.
+
 ### Uses of a field, a type, an annotation or a constructor
 
 `callers` answers for any symbol a type declares, in the same shape: each use under the declaration
@@ -321,7 +329,8 @@ is never touched. They count a method's calls, not each call's line, so a file i
 the uses of the name in its source are exactly the ones the classes count; where another method of
 the name is called too, uses are told apart by method body and by argument count. Anything that
 still cannot be told apart (a method reference to the class's own method, a call in a `finally`
-block, which the compiler copies) is left alone and quoted under the answer, as are the uses of the
+block, which the compiler copies, a call from Groovy that is not `@CompileStatic`, which its classes
+make by name at run time) is left alone and quoted under the answer, as are the uses of the
 name in a module that may call it but has no compiled classes, so the agent edits those few by hand.
 A module may call it when it sees, as the build does, a module declaring the method or one it
 overrides: through any dependency table, a variant value's included, or a published POM a

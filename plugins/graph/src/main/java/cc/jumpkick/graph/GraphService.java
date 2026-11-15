@@ -16,9 +16,12 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.BiPredicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -214,8 +217,7 @@ public final class GraphService {
         if ("callers".equals(r.op())) {
             CodeGraph g = build.graph();
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
-            GraphTools tools = new GraphTools(
-                    g, scope, rel -> source(w.root(), rel), w.uncompiled().isEmpty());
+            GraphTools tools = tools(w, g, scope);
             Reply uses = GraphUses.answer(w, g, scope, tools, arg(r.args(), 0, "a method"), r.budget());
             if (uses != null) return uses;
         }
@@ -225,8 +227,7 @@ public final class GraphService {
     private static String said(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         CodeGraph g = build.graph();
         Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
-        GraphTools tools = new GraphTools(
-                g, scope, rel -> source(w.root(), rel), w.uncompiled().isEmpty());
+        GraphTools tools = tools(w, g, scope);
         List<String> a = r.args();
         return switch (r.op()) {
             case "build" -> "";
@@ -256,6 +257,23 @@ public final class GraphService {
                                 r.budget());
             default -> throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
         };
+    }
+
+    /** The read tools over {@code g}, quoting from the tree and seeing modules as the build does. */
+    private static GraphTools tools(Workspace w, CodeGraph g, Scope scope) {
+        Map<String, @Nullable Set<String>> reaching = new HashMap<>();
+        BiPredicate<String, String> sees = (from, to) -> {
+            Set<String> r = reaching.computeIfAbsent(
+                    prefix(g.modules(), to), home -> w.reach().reaching(List.of(home), g.modules()));
+            return r == null || r.contains(prefix(g.modules(), from));
+        };
+        return new GraphTools(
+                g, scope, rel -> source(w.root(), rel), w.uncompiled().isEmpty(), sees);
+    }
+
+    private static String prefix(Modules modules, String rel) {
+        Modules.Module m = modules.of(rel);
+        return m == null ? "" : m.prefix();
     }
 
     /** Workspace declarations, or with {@code libraries=true} the locked jars' types by name glob and kind. */

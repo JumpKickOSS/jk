@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -50,6 +51,8 @@ final class GraphRename {
 
     /** The widest quoted line, in characters. */
     static final int QUOTE_WIDTH = 160;
+
+    private static final Pattern COMPILE_STATIC = Pattern.compile("@(?:groovy\\.transform\\.)?CompileStatic\\b");
 
     private static final Set<String> OBJECT_METHODS = Set.of("equals", "hashCode", "toString", "clone", "finalize");
 
@@ -172,6 +175,7 @@ final class GraphRename {
         run.tally();
         run.unchecked(indexes, w.uncompiled(), w.reach());
         run.edit();
+        run.dynamicGroovy(w.reach());
         if (run.annotated > run.overriding) {
             return GraphService.Reply.of(
                     w,
@@ -362,6 +366,31 @@ final class GraphRename {
             return modules.reaching(homes, graph.modules());
         }
 
+        /**
+         * Quotes, for review, the uses of the name in each Groovy source that can call the method and
+         * is not {@code @CompileStatic}: it binds its calls at run time, by name, so its classes count
+         * none of them, and a rename that skipped them would leave calls that fail when they run.
+         */
+        void dynamicGroovy(ModuleReach edges) {
+            Set<String> reaching = reach(edges);
+            Modules modules = graph.modules();
+            for (String rel : jvmFiles) {
+                if (!rel.endsWith(".groovy") || edited.containsKey(rel) || unsettled.containsKey(rel)) continue;
+                if (unchecked.containsKey(rel)) continue;
+                Modules.Module m = modules.of(rel);
+                if (reaching != null && !reaching.contains(m == null ? "" : m.prefix())) continue;
+                String text = read(root, rel);
+                if (text == null
+                        || !text.contains(old)
+                        || COMPILE_STATIC.matcher(text).find()) continue;
+                JvmTokens tokens = JvmTokens.of(text);
+                List<Integer> uses = tokens.uses(old).stream()
+                        .filter(i -> !tokens.declares(i))
+                        .toList();
+                if (!uses.isEmpty()) unsettled.put(rel, quote(text, tokens, uses));
+            }
+        }
+
         /** Chooses each file's edits; nothing is written yet. */
         void edit() {
             for (Map.Entry<String, Tally> e : tallies.entrySet()) {
@@ -467,7 +496,8 @@ final class GraphRename {
             }
             if (!unsettled.isEmpty() || !unplaced.isEmpty()) {
                 lines.add("Not renamed: the lines below also use another " + old + ", or hold a use the classes count"
-                        + " differently (a method reference in its own class, a finally block). Edit the ones that"
+                        + " differently (a method reference in its own class, a finally block, a dynamic Groovy call). Edit the"
+                        + " ones that"
                         + " use " + display(target) + " to " + to + ", then build and test:");
                 unsettled.forEach((rel, quoted) -> {
                     lines.add("  " + rel);

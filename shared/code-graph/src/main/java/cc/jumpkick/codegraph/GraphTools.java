@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -13,7 +14,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -36,6 +39,7 @@ public final class GraphTools {
     private final Scope scope;
     private final Function<String, @Nullable String> files;
     private final boolean complete;
+    private final BiPredicate<String, String> sees;
     private final Map<String, @Nullable List<String>> read = new HashMap<>();
 
     public GraphTools(CodeGraph graph) {
@@ -54,10 +58,25 @@ public final class GraphTools {
      * has no compiled classes, so a callers answer is missing the calls made there.
      */
     public GraphTools(CodeGraph graph, Scope scope, Function<String, @Nullable String> files, boolean complete) {
+        this(graph, scope, files, complete, (from, to) -> true);
+    }
+
+    /**
+     * As above, with {@code sees}: whether the source at the first path can call what the source at
+     * the second declares, as the build's module graph says. Only a source that can is searched for a
+     * call the compiled classes cannot hold.
+     */
+    public GraphTools(
+            CodeGraph graph,
+            Scope scope,
+            Function<String, @Nullable String> files,
+            boolean complete,
+            BiPredicate<String, String> sees) {
         this.graph = graph;
         this.scope = scope;
         this.files = files;
         this.complete = complete;
+        this.sees = sees;
     }
 
     /** A resolved node id, or the message explaining why there is none. */
@@ -221,14 +240,24 @@ public final class GraphTools {
                                 ? ", stopped at " + depth + " hops: more lie beyond, raise max_hops (-L) for them."
                                 : ", every one: the chain ends after " + deepest
                                         + (deepest == 1 ? " hop." : " hops.")));
-        List<String> guessed = inline.isEmpty() ? List.of() : inlineUses(inline, found.keySet());
+        List<String> dynamic = dynamicGroovy(targets);
+        List<String> guessed = new ArrayList<>();
+        if (!inline.isEmpty()) {
+            guessed.addAll(namedUses(inline, kotlinCall(inline), kotlinSources(), found.keySet()));
+        }
+        if (!dynamic.isEmpty()) guessed.addAll(namedUses(targets, groovyCall(targets), dynamic, found.keySet()));
         lines.add((!inline.isEmpty()
                         ? "Not complete: " + GraphQuery.clean(graph.display(inline.getFirst())) + " is a Kotlin inline"
                                 + " function, and kotlinc copies its body into each caller, so the classes hold no call to"
                                 + " it; the lines that call it by name are listed (inferred)."
-                        : complete
-                                ? "Complete from the compiled classes; no search needed unless a note below says otherwise."
-                                : "Not complete: the note below names the modules with no compiled classes.")
+                        : !dynamic.isEmpty()
+                                ? "Not complete: dynamic Groovy (" + dynamic.size()
+                                        + (dynamic.size() == 1 ? " source" : " sources")
+                                        + " that can see it, not @CompileStatic) calls methods by name at run time, so its"
+                                        + " classes hold no call to it; the lines that call it by name are listed (inferred)."
+                                : complete
+                                        ? "Complete from the compiled classes; no search needed unless a note below says otherwise."
+                                        : "Not complete: the note below names the modules with no compiled classes.")
                 + " Every method listed reaches it, its receiver typed by the compiler whatever the variable is called: a"
                 + " lambda's call counts for its method, and one marked through calls a supertype method that"
                 + " dispatches to it.");
@@ -269,7 +298,8 @@ public final class GraphTools {
     }
 
     /** {@code @JvmName("sumOf")} on the lines a Kotlin declaration starts with. */
-    private static final Pattern JVM_NAME = Pattern.compile("@(?:get:|set:)?JvmName\\(\\s*\"([A-Za-z_$][\\w$]*)\"\\s*\\)");
+    private static final Pattern JVM_NAME =
+            Pattern.compile("@(?:get:|set:)?JvmName\\(\\s*\"([A-Za-z_$][\\w$]*)\"\\s*\\)");
 
     /** A line holding only annotations and modifiers, which belong to the declaration below it. */
     private static final Pattern PREAMBLE = Pattern.compile(
@@ -304,7 +334,9 @@ public final class GraphTools {
     /** Whether {@code id} is a Kotlin {@code inline} function, as its declaration's lines say. */
     private boolean inline(String id) {
         GraphNode n = graph.node(id);
-        return n != null && n.sourceFile().endsWith(".kt") && INLINE.matcher(String.join("\n", preamble(n))).find();
+        return n != null
+                && n.sourceFile().endsWith(".kt")
+                && INLINE.matcher(String.join("\n", preamble(n))).find();
     }
 
     /**
@@ -320,25 +352,102 @@ public final class GraphTools {
         return text.subList(from, line);
     }
 
+    /** A call of one of {@code methods} as Kotlin writes it: {@code name(}, {@code name {}, {@code name<T>(}. */
+    private Pattern kotlinCall(List<String> methods) {
+        return Pattern.compile("(?<![\\w$])" + alternatives(names(methods)) + "\\s*(?:<[^>]*>\\s*)?[({]");
+    }
+
     /**
-     * The lines of Kotlin sources in scope that call one of {@code inline} by name, each under the
-     * declaration holding it, quoted and marked inferred; none under a method {@code listed} already.
+     * A call of one of {@code methods} as dynamic Groovy writes it: {@code name(}, {@code .name} (a
+     * command call or a method pointer), and for an accessor the property, {@code .size} for {@code
+     * getSize}.
      */
-    private List<String> inlineUses(List<String> inline, Set<String> listed) {
-        Set<String> names = new TreeSet<>();
-        Set<String> declared = new java.util.HashSet<>();
-        for (String id : inline) {
-            GraphNode n = graph.node(id);
-            if (n == null) continue;
-            names.add(bare(n.label()));
-            declared.add(n.sourceFile() + ":" + Decl.line(n));
+    private Pattern groovyCall(List<String> methods) {
+        Set<String> properties = new TreeSet<>();
+        for (String name : names(methods)) {
+            Matcher accessor = ACCESSOR.matcher(name);
+            if (accessor.matches()) {
+                String p = accessor.group(2);
+                properties.add(Character.toLowerCase(p.charAt(0)) + p.substring(1));
+            }
         }
-        Pattern call = Pattern.compile("(?<![\\w$])(?:" + String.join("|", names.stream().map(Pattern::quote).toList())
-                + ")\\s*(?:<[^>]*>\\s*)?[({]");
-        Map<String, List<GraphNode>> byFile = new TreeMap<>();
+        String calls = alternatives(names(methods));
+        return Pattern.compile("(?<![\\w$])" + calls + "\\s*\\(|\\." + calls + "(?![\\w$])"
+                + (properties.isEmpty() ? "" : "|\\.\\??" + alternatives(properties) + "(?![\\w$(])"));
+    }
+
+    private static final Pattern ACCESSOR = Pattern.compile("(get|set|is)([A-Z]\\w*)");
+
+    private Set<String> names(List<String> methods) {
+        Set<String> names = new TreeSet<>();
+        for (String id : methods) {
+            GraphNode n = graph.node(id);
+            if (n != null) names.add(bare(n.label()));
+        }
+        return names;
+    }
+
+    private static String alternatives(Set<String> names) {
+        return "(?:" + String.join("|", names.stream().map(Pattern::quote).toList()) + ")";
+    }
+
+    private List<String> kotlinSources() {
+        return sources(rel -> rel.endsWith(".kt"));
+    }
+
+    /**
+     * The Groovy sources in scope that can call one of {@code methods} and do not compile statically:
+     * their calls are bound at run time, by name, so their classes hold none of them.
+     */
+    private List<String> dynamicGroovy(List<String> methods) {
+        List<String> homes = methods.stream()
+                .map(graph::node)
+                .filter(n -> n != null)
+                .map(GraphNode::sourceFile)
+                .distinct()
+                .toList();
+        return sources(rel -> {
+            if (!rel.endsWith(".groovy") || homes.stream().noneMatch(home -> sees.test(rel, home))) return false;
+            List<String> text = text(rel);
+            return text != null
+                    && text.stream().noneMatch(l -> COMPILE_STATIC.matcher(l).find());
+        });
+    }
+
+    private static final Pattern COMPILE_STATIC = Pattern.compile("@(?:groovy\\.transform\\.)?CompileStatic\\b");
+
+    private List<String> sources(Predicate<String> wanted) {
+        Set<String> out = new TreeSet<>();
         for (GraphNode n : graph.nodes()) {
             String rel = n.sourceFile();
-            if (rel.endsWith(".kt") && scope.containsPath(rel)) byFile.computeIfAbsent(rel, k -> new ArrayList<>()).add(n);
+            if (!rel.isEmpty() && scope.containsPath(rel) && !out.contains(rel) && wanted.test(rel)) out.add(rel);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * The lines of {@code sources} that {@code call} matches, outside comments and {@code methods}'
+     * own declarations, each under the declaration holding it, quoted and marked inferred; none under
+     * a method {@code listed} already.
+     */
+    private List<String> namedUses(List<String> methods, Pattern call, List<String> sources, Set<String> listed) {
+        Set<String> declared = new HashSet<>();
+        Set<String> homes = new HashSet<>();
+        for (String id : methods) {
+            GraphNode n = graph.node(id);
+            if (n == null) continue;
+            declared.add(n.sourceFile() + ":" + Decl.line(n));
+            homes.add(n.sourceFile());
+        }
+        // A compiled method sits at its body's first line: in its own file, the line declaring it is
+        // found by its shape.
+        Pattern declaration = Pattern.compile("(?:\\bdef|\\bfun|[\\w>\\]?])\\s+" + alternatives(names(methods))
+                + "\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*(?::\\s*[\\w<>?,. ]+)?\\s*(?:\\{|=|$)");
+        Map<String, List<GraphNode>> byFile = new TreeMap<>();
+        Set<String> wanted = Set.copyOf(sources);
+        for (GraphNode n : graph.nodes()) {
+            if (wanted.contains(n.sourceFile()))
+                byFile.computeIfAbsent(n.sourceFile(), k -> new ArrayList<>()).add(n);
         }
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, List<GraphNode>> file : byFile.entrySet()) {
@@ -347,16 +456,22 @@ public final class GraphTools {
             Map<String, List<Integer>> byHolder = new LinkedHashMap<>();
             for (int i = 0; i < text.size(); i++) {
                 String code = text.get(i).strip();
-                if (code.startsWith("//") || code.startsWith("*") || !call.matcher(text.get(i)).find()) continue;
+                if (code.startsWith("//")
+                        || code.startsWith("*")
+                        || !call.matcher(text.get(i)).find()) continue;
                 if (declared.contains(file.getKey() + ":" + (i + 1))) continue;
+                if (homes.contains(file.getKey())
+                        && declaration.matcher(text.get(i)).find()) continue;
                 String holder = holder(file.getValue(), i + 1);
                 if (holder != null && listed.contains(holder)) continue;
-                byHolder.computeIfAbsent(holder == null ? "" : holder, k -> new ArrayList<>()).add(i + 1);
+                byHolder.computeIfAbsent(holder == null ? "" : holder, k -> new ArrayList<>())
+                        .add(i + 1);
             }
             for (Map.Entry<String, List<Integer>> h : byHolder.entrySet()) {
                 List<Integer> at = h.getValue();
                 out.add("  " + (h.getKey().isEmpty() ? "" : GraphQuery.clean(graph.display(h.getKey())) + "  ")
-                        + file.getKey() + ":" + String.join(",", at.stream().map(String::valueOf).toList())
+                        + file.getKey() + ":"
+                        + String.join(",", at.stream().map(String::valueOf).toList())
                         + " (inferred)");
                 for (int n : at.subList(0, Math.min(at.size(), 2))) {
                     String line = text.get(n - 1).strip();
@@ -368,20 +483,30 @@ public final class GraphTools {
         return out;
     }
 
-    /** The innermost method, function or type among {@code nodes} whose span holds {@code line}. */
+    /**
+     * The innermost method, function or type among {@code nodes} whose span holds {@code line}; when
+     * that is a type, or nothing, a member of the file starting nearer above the line (a compiled
+     * method knows its first line, not its last).
+     */
     private static @Nullable String holder(List<GraphNode> nodes, int line) {
-        String best = null;
+        GraphNode best = null;
         int width = Integer.MAX_VALUE;
+        GraphNode above = null;
         for (GraphNode n : nodes) {
             int from = Decl.line(n);
+            if (from < 1 || from > line) continue;
             int to = Decl.end(n);
-            if (Decl.kind(n) == null || from < 1 || to < from || line < from || line > to) continue;
-            if (to - from < width) {
+            if (Decl.kind(n) != null && to >= line && to - from < width) {
                 width = to - from;
-                best = n.id();
+                best = n;
+            }
+            if (n.label().startsWith(".") && n.label().endsWith("()") && (above == null || from > Decl.line(above))) {
+                above = n;
             }
         }
-        return best;
+        if (above != null && (best == null || Decl.isType(best) && Decl.line(above) > Decl.line(best)))
+            return above.id();
+        return best == null ? null : best.id();
     }
 
     private @Nullable List<String> text(String rel) {
