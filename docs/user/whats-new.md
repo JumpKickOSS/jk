@@ -4,6 +4,23 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
+## 0.51.1
+
+- **The second build after a fresh checkout does nothing.** Cache keys no longer move under the
+  build, so a clean clone builds and tests once and the next `jk build` ends with
+  `Build successful. Build up to date` instead of repeating the work.
+- **Packaged outputs follow their dependencies.** A fat jar, war, lib-dir or jlink image is rebuilt
+  when a sibling module it bundles changes, instead of keeping the old classes and reporting up to date.
+- **Breaking: retired manifest keys are refused and name their replacement.** `java-opts` is now
+  `jvm-args`, and `[test] parallel`, `[build] test-workers` and `[build] test-parallel` are now
+  `[test] workers`; rename them where `jk` points.
+- **Breaking: `jk snapshot` is retired; `jk install` replaces it.** A clean git checkout whose
+  HEAD carries the tag `v<version>` builds the release under any verb, and any other tree builds a
+  snapshot. `jk release` and `jk publish` work without `.git`; `jk self rollback` restores the
+  client that ran with the engine.
+- **Errors, cancels and warnings go to stderr.** With stdout redirected they still reach you, and
+  `jk web` and some twenty other commands now print JSON lines under `-O jsonl`.
+
 ## 0.51.0
 
 - **Suites pick your tests; profiles no longer do.** `include-tags`, `exclude-tags` and `all-suites`
