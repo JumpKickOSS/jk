@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.UpdateRequest;
@@ -41,6 +42,7 @@ class HostedVerbDecodeJobTest {
                         "build",
                         "assemble",
                         "test",
+                        "gate",
                         "guard",
                         "compile",
                         "test-compile",
@@ -101,6 +103,27 @@ class HostedVerbDecodeJobTest {
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.classes()).containsExactly("RangeTest");
         assertThat(sel.excludeTags()).containsExactly("slow");
+    }
+
+    /** {@code kind=gate} is {@code jk test -g}: the guard suites with their lanes and tests, journaled as a guard run. */
+    @Test
+    void a_gate_job_runs_the_guard_suites_with_their_tests(@TempDir Path dir) throws Exception {
+        project(dir);
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
+        String gate = verb.decodeJob(JobSpec.of("gate", dir.toString()));
+        var sel = ProtoJobs.testSelectionOf(gate);
+        assertThat(sel.guard()).isTrue();
+        assertThat(sel.suites()).containsExactlyElementsOf(TestSuites.GUARD_SUITES);
+        assertThat(Jsonl.bool(gate, "skipTests", false)).isFalse();
+        assertThat(Jsonl.bool(gate, "testOnly", false)).isTrue();
+        assertThat(verb.toJobRequest(gate).verb()).isEqualTo("guard");
+
+        String guard = verb.decodeJob(JobSpec.of("guard", dir.toString()));
+        assertThat(ProtoJobs.testSelectionOf(guard).guard()).isTrue();
+        assertThat(Jsonl.bool(guard, "skipTests", false))
+                .as("jk guard runs no tests")
+                .isTrue();
+        assertThat(verb.toJobRequest(guard).verb()).isEqualTo("guard");
     }
 
     @Test

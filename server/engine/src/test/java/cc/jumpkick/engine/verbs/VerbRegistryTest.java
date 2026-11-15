@@ -30,6 +30,7 @@ class VerbRegistryTest {
                         "build",
                         "assemble",
                         "test",
+                        "gate",
                         "guard",
                         "compile",
                         "test-compile",

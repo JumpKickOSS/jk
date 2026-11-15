@@ -23,7 +23,8 @@ import org.jspecify.annotations.Nullable;
 public final class RunTool implements McpTool {
 
     static final String DESCRIPTION =
-            "Run and wait; the reply is the verdict. kind=test|build|lock|…; jid=N waits; run=<id> rereads.";
+            "Run and wait; the reply is the verdict. kind=test (default)|build|gate (tests + guards, before done)|guard|format|lock;"
+                    + " jid=N waits; run=<id> rereads.";
 
     /**
      * The job fields {@code run}'s card names: the ones an agent's loop uses. The decoder accepts

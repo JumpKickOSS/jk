@@ -97,6 +97,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 "build",
                 "assemble",
                 "test",
+                "gate",
                 "guard",
                 "compile",
                 "test-compile",
@@ -110,17 +111,20 @@ public final class WorkspaceBuildVerb implements HostedVerb {
 
     /**
      * A dashboard, agent or graph job. Image and native jobs deliver an artifact and skip tests; a
-     * {@code test-compile} job, a graph question's, compiles the tests and runs none; a publish
-     * job is a dry run; an {@code upload} job sends the release to the repository {@code [publish]} names.
+     * {@code test-compile} job, a graph question's, compiles the tests and runs none; a {@code gate}
+     * job is {@code jk test -g} (the root's guard suites with the guard lanes and scripts) and a
+     * {@code guard} job is {@code jk guard} (the same lanes, no tests); a publish job is a dry run; an
+     * {@code upload} job sends the release to the repository {@code [publish]} names.
      */
     @Override
     public String decodeJob(JobSpec spec) {
         Path entryDir = Path.of(spec.dir());
         String kind = spec.kind();
         boolean guard = "guard".equals(kind);
+        boolean guardSelection = guard || "gate".equals(kind);
         WorkspaceTarget target =
                 switch (kind) {
-                    case "test" -> WorkspaceTarget.TEST;
+                    case "test", "gate" -> WorkspaceTarget.TEST;
                     case "compile" -> WorkspaceTarget.COMPILE;
                     case "test-compile" -> WorkspaceTarget.TEST_COMPILE;
                     case "image" -> WorkspaceTarget.IMAGE;
@@ -189,7 +193,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 false,
                                 target == WorkspaceTarget.TEST,
                                 null,
-                                guard
+                                guardSelection
                                         ? TestSelection.of(
                                                 TestSelection.guardSuites(WorkspaceScan.owningRoot(entryDir)
                                                         .orElse(entryDir)),

@@ -163,20 +163,19 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(2_732);
+                .isLessThanOrEqualTo(2_784);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 
     /**
      * The tools that start work require {@code goal}, in one wording, and each card stays within its
-     * budget: the bytes it had before plus the argument, 134 bytes of property and its place in
-     * {@code required} (20 bytes where the list is new, 7 on {@code rename}). Without it and with
-     * it: run 459 → 613, deps 373 → 527, rename 364 → 505, update 799 → 953,
-     * and the default list 2,259 → 2,708.
+     * budget: 134 bytes of {@code goal} property and its place in {@code required} on top of the
+     * card's own. {@code run}'s card names the kinds an agent picks ({@code gate}, {@code guard},
+     * {@code format} among them), 54 bytes over the elided list it had.
      */
     @Test
     void the_tools_that_start_work_require_a_goal_within_their_card_budgets() {
-        Map<String, Integer> budget = Map.of("run", 613, "deps", 527, "rename", 505, "update", 953);
+        Map<String, Integer> budget = Map.of("run", 667, "deps", 527, "rename", 505, "update", 953);
         Map<String, Map<String, Object>> cards = new HashMap<>();
         for (Map<String, Object> row : objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools")) {
             cards.put(String.valueOf(row.get("name")), row);
