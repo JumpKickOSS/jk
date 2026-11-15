@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -133,6 +134,49 @@ class UnchangedRebuildE2eTest {
                 .isIn(null, TaskStatus.SKIPPED);
     }
 
+    @Test
+    void a_suite_that_reads_jks_own_state_is_warned_and_not_keyed_on_it(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("unchanged-rebuild-cache");
+        Path endpoint = Files.createDirectories(JkDirs.state().resolve("engine"))
+                .resolve("e2e-" + Long.toHexString(System.nanoTime()) + ".endpoint");
+        Files.writeString(endpoint, "k.gen1.sock\n");
+        try {
+            Path ws = Files.createDirectories(tmp.resolve("ws"));
+            Files.writeString(ws.resolve("jk.toml"), """
+                    group   = "com.example"
+                    name    = "ws"
+                    version = "1.0.0"
+                    java    = 25
+
+                    [workspace]
+                    modules = ["d"]
+                    """);
+            module(ws, "d", "", """
+                    class DTest {
+                        @Test
+                        void reads_the_engine_endpoint() throws Exception {
+                            Files.readString(Path.of("%s"));
+                        }
+                    }
+                    """.formatted(endpoint.toString().replace('\\', '/')));
+            lock(ws, cache);
+
+            Steps first = build(ws, cache);
+            assertThat(first.status("d", TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+            assertThat(first.notes).as("a read of jk's own state is named").anySatisfy(n -> assertThat(n)
+                    .startsWith("tests read jk's own state, not keyed: engine/e2e-"));
+
+            // A new engine generation takes over the endpoint.
+            Files.writeString(endpoint, "k.gen2.sock\n");
+            Steps second = build(ws, cache);
+            assertThat(second.status("d", TaskNames.RUN_TESTS))
+                    .as("an engine takeover is no input of the suite; ran: " + second.ran())
+                    .isIn(null, TaskStatus.SKIPPED);
+        } finally {
+            Files.deleteIfExists(endpoint);
+        }
+    }
+
     /** A module {@code name} under {@code ws} with one main class and the test class {@code test}. */
     private static Path module(Path ws, String name, String dependency, String test) throws IOException {
         Path m = Files.createDirectories(ws.resolve(name));
@@ -183,9 +227,10 @@ class UnchangedRebuildE2eTest {
         return steps;
     }
 
-    /** Each module's step statuses, keyed {@code module/step}, and the {@link InputGuard#MOVED} warnings. */
+    /** Each module's step statuses, keyed {@code module/step}, every warning, and the {@link InputGuard#MOVED} ones. */
     private static final class Steps implements WorkspaceBuildListener {
         final List<String> warnings = new ArrayList<>();
+        final List<String> notes = new ArrayList<>();
         private final Map<String, TaskStatus> statuses = new TreeMap<>();
 
         @Override
@@ -194,9 +239,9 @@ class UnchangedRebuildE2eTest {
             return new BuildPlanListener() {
                 @Override
                 public void warn(String step, String code, String message) {
-                    if (!code.equals(InputGuard.MOVED)) return;
                     synchronized (Steps.this) {
-                        warnings.add(message);
+                        notes.add(message);
+                        if (code.equals(InputGuard.MOVED)) warnings.add(message);
                     }
                 }
 

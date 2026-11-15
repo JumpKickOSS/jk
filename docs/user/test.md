@@ -1011,7 +1011,10 @@ by content, together with the listing of the directory it sits in, so a file add
 seen too. A started program keys the suite by its executable. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
 it and is replayed from then on while it holds. A suite that talks to anything but this host
-(loopback is fine) stores no marker and runs on every build.
+(loopback is fine) stores no marker and runs on every build. A file under JumpKick's own state directory
+(`~/.jk/state`: the engine's endpoint, pid and log files) is never keyed, since it changes with
+every engine restart; the build warns `tests read jk's own state, not keyed: <file>`, because a
+test that reads it is reaching past its sandbox.
 
 What this does not see: a directory listed where nothing was then read, the clock, and, under a
 suite JDK older than 22, file channel reads. `jk clean` forgets the discovered inputs with the rest

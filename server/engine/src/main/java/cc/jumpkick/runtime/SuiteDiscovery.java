@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
@@ -99,6 +100,11 @@ final class SuiteDiscovery {
         roots.add(TestHomes.root());
         Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
         Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, run.startedMillis());
+        Set<Path> jkState = SuiteReads.under(read, JkDirs.state());
+        if (!jkState.isEmpty()) {
+            read.removeAll(jkState);
+            ctx.warn(JK_STATE, jkStateWarning(jkState, JkDirs.state()));
+        }
         Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, run.startedMillis());
         boolean reached = seen.network() && !run.networkAllowed();
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
@@ -154,6 +160,23 @@ final class SuiteDiscovery {
                                 : "; not replayed, the rest of its key moved during the run"));
         return held ? key : null;
     }
+
+    /**
+     * The warning for a suite that read jk's own state directory (engine endpoints, pids, logs)
+     * outside its sandbox. That state moves with every engine generation, so it is never keyed:
+     * keying it would rerun the suite after every engine restart and prove nothing.
+     */
+    static String jkStateWarning(Set<Path> read, Path state) {
+        Path first = read.iterator().next();
+        Path root = real(state);
+        Path p = real(first);
+        String shown = p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : p.toString();
+        String more = read.size() > 1 ? " (+" + (read.size() - 1) + ")" : "";
+        return "tests read jk's own state, not keyed: " + shown + more;
+    }
+
+    /** The warning code of {@link #jkStateWarning}. */
+    static final String JK_STATE = "suite-jk-state";
 
     /**
      * The warning for a green run whose marker is not stored because {@code moved}, an input it was

@@ -273,6 +273,17 @@ public final class SuiteReads {
         return false;
     }
 
+    /** The files of {@code files} that lie under {@code dir}, by either spelling of either path. */
+    public static Set<Path> under(Set<Path> files, Path dir) {
+        List<Path> roots = new ArrayList<>(List.of(dir.toAbsolutePath().normalize()));
+        real(dir).ifPresent(roots::add);
+        Set<Path> out = new TreeSet<>();
+        for (Path f : files) {
+            if (under(f, roots) || real(f).filter(r -> under(r, roots)).isPresent()) out.add(f);
+        }
+        return out;
+    }
+
     private static Optional<Path> real(Path p) {
         try {
             return Optional.of(p.toRealPath());

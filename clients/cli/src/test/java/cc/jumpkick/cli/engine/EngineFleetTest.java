@@ -4,10 +4,17 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.Sleepers;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
+import java.io.IOException;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -222,7 +229,7 @@ class EngineFleetTest {
                 assertThat(m.otherHome()).isTrue();
                 assertThat(m.home()).isEqualTo(otherHome.toAbsolutePath().normalize());
             });
-            assertThat(EngineFleet.list(tmp.resolve("state"), "abcd1234", false))
+            assertThat(EngineFleet.list(tmp.resolve("state"), "abcd1234", EngineFleet.OtherHomes.LEFT_OUT))
                     .extracting(EngineFleet.Member::pid)
                     .doesNotContain(foreign.pid());
 
@@ -236,6 +243,45 @@ class EngineFleetTest {
         } finally {
             foreign.destroyForcibly();
             foreign.waitFor();
+        }
+    }
+
+    @Test
+    void stop_all_names_another_homes_engine_without_reading_its_state(@TempDir Path tmp) throws Exception {
+        // The suite may run on loopback TCP; the stand-in listens on the Unix socket the endpoint names.
+        String transport = System.getProperty(EngineTransport.TRANSPORT_PROPERTY);
+        System.setProperty(EngineTransport.TRANSPORT_PROPERTY, "unix");
+        Path engineDir = Files.createDirectories(tmp.resolve("other-home/state/engine"));
+        Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen1.sock\n");
+        Path socket = EnginePaths.reachableSocketDir(engineDir).resolve("abcd1234.gen1.sock");
+        Process foreign = SleepMain.spawn(30_000, SleepMain.ENGINE_MAIN, "-XX:HeapDumpPath=" + engineDir);
+        AtomicInteger dialled = new AtomicInteger();
+        try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
+            server.bind(UnixDomainSocketAddress.of(socket));
+            Thread.ofVirtual().start(() -> {
+                try {
+                    while (true) {
+                        server.accept();
+                        dialled.incrementAndGet();
+                    }
+                } catch (IOException closed) {
+                    // the test is over
+                }
+            });
+
+            EngineFleet.FleetStop stop = EngineFleet.stopAll(tmp.resolve("state"), "ffff0000", /* now= */ true);
+
+            assertThat(stop.otherHomes()).extracting(EngineFleet.Member::pid).contains(foreign.pid());
+            assertThat(dialled.get())
+                    .as("a stop never reads or dials another home's engine")
+                    .isZero();
+            assertThat(foreign.isAlive()).isTrue();
+        } finally {
+            if (transport == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
+            else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, transport);
+            foreign.destroyForcibly();
+            foreign.waitFor();
+            Files.deleteIfExists(socket);
         }
     }
 

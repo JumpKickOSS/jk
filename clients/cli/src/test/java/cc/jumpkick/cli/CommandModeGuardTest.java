@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * unknown verb fails, a redirected, {@code -u} or agent run writes no escape byte, {@code -u} writes
  * only ASCII, and under {@code -O jsonl} every stdout line is an envelope object or the command
  * refuses the flag. A command runs in-process against a temporary home and an empty working
- * directory, offline, with no engine (the fast tier forbids spawning one); the commands that cannot
+ * directory and user home, offline, with no engine (the fast tier forbids spawning one); the commands that cannot
  * run that way are in {@link #NOT_RUN}, each with its reason, and that list is checked against the
  * registry too.
  */
@@ -90,8 +90,14 @@ class CommandModeGuardTest {
 
     private InputStream stdin;
 
+    private String userHome;
+
     @BeforeEach
     void isolate() throws Exception {
+        // jk doctor reads the shell rc files under the user home: a run must never read the real ones.
+        userHome = System.getProperty("user.home");
+        System.setProperty(
+                "user.home", Files.createDirectories(tmp.resolve("user-home")).toString());
         for (String dir : ISOLATED) {
             System.setProperty(
                     "jk.env." + dir, Files.createDirectories(tmp.resolve(dir)).toString());
@@ -104,6 +110,7 @@ class CommandModeGuardTest {
 
     @AfterEach
     void restore() {
+        System.setProperty("user.home", userHome);
         System.setIn(stdin);
         for (String dir : ISOLATED) System.clearProperty("jk.env." + dir);
         System.clearProperty("jk.env." + SecretVault.ENV);

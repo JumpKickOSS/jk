@@ -132,7 +132,7 @@ public final class EngineFleet {
      * socket and is listed with its status.
      */
     public static List<Member> list() {
-        return list(JkDirs.state(), EnginePaths.current().key(), true);
+        return list(JkDirs.state(), EnginePaths.current().key(), OtherHomes.PROBED);
     }
 
     /**
@@ -140,15 +140,25 @@ public final class EngineFleet {
      * that are not {@link Member#otherHome()}, the set {@link #stopAll} stops.
      */
     public static List<Member> listThisHome() {
-        return list(JkDirs.state(), EnginePaths.current().key(), false);
+        return list(JkDirs.state(), EnginePaths.current().key(), OtherHomes.LEFT_OUT);
     }
 
-    /** Test seam: enumerate against an explicit state dir (all homes). */
+    /**
+     * What a listing does with an engine of another home: leave it out, name it by its process
+     * alone, or also read its state directory and ask it for its status.
+     */
+    enum OtherHomes {
+        LEFT_OUT,
+        NAMED,
+        PROBED
+    }
+
+    /** Test seam: enumerate against an explicit state dir (all homes, probed). */
     static List<Member> list(Path stateDir, String currentKey) {
-        return list(stateDir, currentKey, true);
+        return list(stateDir, currentKey, OtherHomes.PROBED);
     }
 
-    static List<Member> list(Path stateDir, String currentKey, boolean allHomes) {
+    static List<Member> list(Path stateDir, String currentKey, OtherHomes otherHomes) {
         List<Member> out = new ArrayList<>();
         Set<Long> known = new HashSet<>();
         for (EnginePaths.Paths paths : EnginePaths.identitiesIn(stateDir)) {
@@ -168,7 +178,7 @@ public final class EngineFleet {
             }
         }
         addGenerationPids(stateDir, known, out);
-        out.addAll(untracked(known, allHomes));
+        out.addAll(untracked(known, otherHomes));
         return List.copyOf(out);
     }
 
@@ -210,14 +220,14 @@ public final class EngineFleet {
     /**
      * Resident engine JVMs this user owns that no on-disk pointer named. Match is the engine
      * main class or {@code /lib/jk-engine/} on the command line. Other users' processes are
-     * excluded. {@code allHomes} includes other {@code JK_HOME}s (status);
-     * {@code false} keeps stop scoped to this home.
+     * excluded. {@code otherHomes} says whether other {@code JK_HOME}s are listed, and whether
+     * their state is read (status) or only their process is named (stop, which leaves them up).
      *
      * <p>A process whose command line cannot be read is never claimed here: this pass has no
      * jk-owned state corroborating it, so the executable alone ({@code java.exe} — every Gradle
      * daemon on the machine) would be a licence to kill unrelated JVMs.
      */
-    private static List<Member> untracked(Set<Long> known, boolean allHomes) {
+    private static List<Member> untracked(Set<Long> known, OtherHomes otherHomes) {
         long self = ProcessHandle.current().pid();
         String me = ProcessHandle.current().info().user().orElse("");
         Path home = JkDirs.home();
@@ -232,8 +242,8 @@ public final class EngineFleet {
                 String cmd = commandLineOf(h, scan);
                 if (!isResidentEngineProcess(h, cmd)) return;
                 boolean ours = belongsToThisHome(cmd, home, state);
-                if (!allHomes && !ours) return;
-                out.add(memberForProcess(pid, cmd, !ours));
+                if (otherHomes == OtherHomes.LEFT_OUT && !ours) return;
+                out.add(memberForProcess(pid, cmd, !ours, ours || otherHomes == OtherHomes.PROBED));
             });
         } catch (RuntimeException e) {
             return List.of(); // process enumeration is best-effort; never fail a status over it
@@ -313,10 +323,10 @@ public final class EngineFleet {
         return inside ? opening + 1 : -1;
     }
 
-    private static Member memberForProcess(long pid, String cmd, boolean otherHome) {
+    private static Member memberForProcess(long pid, String cmd, boolean otherHome, boolean probe) {
         Path home = otherHome ? engineHome(cmd) : null;
         Path stateDir = otherHome ? stateFromCommandLine(cmd) : null;
-        for (Path state : candidateStateDirs(cmd)) {
+        for (Path state : probe ? candidateStateDirs(cmd) : List.<Path>of()) {
             for (EnginePaths.Paths paths : EnginePaths.identitiesIn(state)) {
                 Path socket = EnginePaths.activeSocket(paths);
                 Optional<EngineProbe.Status> status = EngineProbe.status(socket);
@@ -548,9 +558,15 @@ public final class EngineFleet {
      * Stop every engine that belongs to this {@code JK_HOME} / state dir. Other homes stay up, so a
      * nested test suite cannot kill the host engine running {@code jk build}; they come back in
      * {@link FleetStop#otherHomes()} for the caller to name, and {@code --pid} stops them explicitly.
+     * Their state is never read: what another home's engine answers is not this stop's business.
      */
     public static FleetStop stopAll(boolean now) {
-        return stopAll(list(), now);
+        return stopAll(JkDirs.state(), EnginePaths.current().key(), now);
+    }
+
+    /** As {@link #stopAll(boolean)}, for the engines under an explicit state dir. */
+    static FleetStop stopAll(Path stateDir, String currentKey, boolean now) {
+        return stopAll(list(stateDir, currentKey, OtherHomes.NAMED), now);
     }
 
     /** As {@link #stopAll(boolean)}, over an explicit fleet. */
@@ -569,7 +585,7 @@ public final class EngineFleet {
      */
     public static List<StopResult> retireOldDefaultLayoutEngines() {
         RetiredEngineLayouts.Layout layout = RetiredEngineLayouts.currentPlatformDefault();
-        List<Member> candidates = list(layout.stateDir(), "", true);
+        List<Member> candidates = list(layout.stateDir(), "", OtherHomes.PROBED);
         return retireOldDefaultLayoutEngines(candidates, JkDirs.home(), layout);
     }
 
