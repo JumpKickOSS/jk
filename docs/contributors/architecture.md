@@ -601,6 +601,18 @@ under `strict`, `jk explain` forecasts nothing, build again and no productive st
 module reads as built. Give each fixture content no cache has seen (`SecondBuild.nonce`, or the
 test's own cache), or a key that moved hits a record an earlier run stored.
 
+**An output is never older than the sibling jars it carries.** The preflight calls a module clean
+on its own inputs and on what its siblings' steps say they will do, so a sibling jar that moved
+while the module stayed out of the run (`jk build -m lib`, a `jk test` that packaged the sibling
+for its consumers) is invisible to both. Each tail that copies sibling jars into its output (the
+fat jar, the lib-dir layout, the war, the jlink image) writes `target/.jk/bundled/<step>` once its
+output is in place, packaged or restored: the digest of every workspace jar it was built from
+(`PackagingCache.recordBundled`). The preflight's stale-output check
+(`ModuleInputProvenance.outputsFromOtherInputs`, on the memo hit, the cone and the full walk alike)
+schedules a module one of whose recorded jars now holds other bytes, and `jk explain` asks the same
+preflight, so it shows the module with the reason. A source-less member that assembles (a
+distribution over its siblings) is forecast like any other: its fat jar is its whole output.
+
 **Two storage tiers** (separate roots, separate budgets):
 
 | Tier | Root | Contents |

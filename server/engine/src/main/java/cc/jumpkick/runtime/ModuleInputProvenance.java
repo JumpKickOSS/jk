@@ -218,7 +218,8 @@ public final class ModuleInputProvenance {
                 Path file = target.resolve(e.getKey());
                 if (Files.isRegularFile(file) && !e.getValue().equals(FileHashMemo.contentHash(file))) return true;
             }
-            return false;
+            // A packaging step built its output from a sibling jar that has moved since.
+            return PackagingCache.bundledMoved(target);
         } catch (IOException | RuntimeException unreadable) {
             return true;
         }

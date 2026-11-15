@@ -237,9 +237,10 @@ public final class BuildForecasting {
                 // restoreNeeded alone → restore path (no full rebuild forecast).
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
                 Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
-                withStaleOutputs(graph, entryDir, cache, memo.get().fingerprints(), memoDirty);
+                Map<Path, String> stale =
+                        withStaleOutputs(graph, entryDir, cache, memo.get().fingerprints(), memoDirty);
                 return new Preflight(
-                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
+                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of(), stale);
             }
             Optional<Preflight> cone = coneIfPartial(graph, cache, entryDir, knobs, persistMemo, all, partial);
             if (cone.isPresent()) return cone.get();
@@ -278,11 +279,10 @@ public final class BuildForecasting {
             // company whenever content returns to a state the cache has seen: every step is
             // cached, nothing is missing so nothing restores, and the artifacts are the previous
             // run's. See ModuleInputProvenance.
-            withStaleOutputs(graph, entryDir, cache, fps, dirty);
+            Map<Path, String> reasons = new LinkedHashMap<>(withStaleOutputs(graph, entryDir, cache, fps, dirty));
             // A module the preflight could not fingerprint is scheduled on that fact alone: no
             // memo can vouch for it, and the walk above may have priced it against inputs it
             // could not see either. Explain carries the reason; the build log says it once.
-            Map<Path, String> reasons = new LinkedHashMap<>();
             for (var e : uncertain.entrySet()) {
                 dirty.add(e.getKey());
                 reasons.put(e.getKey(), REBUILT_BECAUSE + e.getValue().reason());
@@ -400,7 +400,7 @@ public final class BuildForecasting {
                 }
             }
         }
-        withStaleOutputs(graph, entryDir, cache, partial.fingerprints(), dirty);
+        Map<Path, String> stale = withStaleOutputs(graph, entryDir, cache, partial.fingerprints(), dirty);
         if (persistMemo) {
             PreflightMemo.storeDirty(
                     entryDir, graph, knobs.skipTests(), knobs.profile(), dirty, partial.fingerprints());
@@ -408,7 +408,7 @@ public final class BuildForecasting {
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             if (!dirty.contains(u.dir()) && BuildLogicScripts.anyAlways(u.dir())) dirty.add(u.dir());
         }
-        return new Preflight(dirty, restoreNeeded, partial.fingerprints(), modules, Map.of());
+        return new Preflight(dirty, restoreNeeded, partial.fingerprints(), modules, stale);
     }
 
     /**
@@ -458,15 +458,17 @@ public final class BuildForecasting {
      * <p>Conservative on purpose: a module with no record is left alone (see
      * {@link ModuleInputProvenance}), and a module already dirty is unaffected. Only a record that
      * positively names other inputs forces work, so the cost is one rebuild of a module that was
-     * going to produce wrong bytes.
+     * going to produce wrong bytes. Returns each module it added with the reason explain shows,
+     * since every step of such a module may still read cached.
      */
-    private static void withStaleOutputs(
+    private static Map<Path, String> withStaleOutputs(
             BuildGraph.Result graph,
             @Nullable Path entryDir,
             Path cache,
             Map<Path, String> fingerprints,
             Set<Path> dirty) {
-        if (graph == null || entryDir == null || fingerprints == null || fingerprints.isEmpty()) return;
+        if (graph == null || entryDir == null || fingerprints == null || fingerprints.isEmpty()) return Map.of();
+        Map<Path, String> added = new LinkedHashMap<>();
         Path root = entryDir.toAbsolutePath().normalize();
         ModuleInputProvenance.RunTrees runTrees = ModuleInputProvenance.RunTrees.transforms(cache);
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
@@ -475,9 +477,14 @@ public final class BuildForecasting {
             String fp = fingerprints.get(dir);
             if (ModuleInputProvenance.outputsFromOtherInputs(root, dir, unit.manifest(), fp, runTrees)) {
                 dirty.add(dir);
+                added.put(dir, STALE_OUTPUTS);
             }
         }
+        return added;
     }
+
+    /** Why the preflight scheduled a module whose outputs on disk are not the ones its inputs produce. */
+    static final String STALE_OUTPUTS = REBUILT_BECAUSE + "its outputs on disk were built from other inputs";
 
     /** True when the only material non-cached step is the synthetic restore gate. */
     static boolean isRestoreOnly(TaskForecast.Module m) {
@@ -524,38 +531,14 @@ public final class BuildForecasting {
      * Forecast from an already-resolved graph under the request's {@code knobs} — the same
      * {@link TaskForecaster} walk {@code jk build} uses for its countdown seed so explain and build
      * never price different step sets. With {@code entryDir}, the dirty memo stored under the same
-     * profile is the fast path: when a prior build recorded an empty dirty set and sources are still
-     * unchanged, skip the multi-second walk (same shortcut as fully-cached {@code jk build}). ETA is
-     * 0; the plan is "Fully Cached" for every module.
+     * profile is the fast path, taken inside the preflight exactly as {@code jk build} takes it, its
+     * stale-output check included: a memo hit with nothing scheduled skips the walk and reads
+     * "Fully Cached" for every module.
      */
     public static ExplainPlan explainFromGraph(
             BuildGraph.Result graph, Path cache, @Nullable Path entryDir, BuildKnobs knobs) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
-        }
-        // Same fully-cached shortcut as buildWorkspace: empty dirty memo ⇒ no TaskForecaster.
-        // The memo vouches for inputs, not outputs: it survives `jk clean` by design and comes back
-        // with the modules whose jars, trees or binaries are gone in `restoreNeeded`. Those the
-        // build schedules and restores, so the shortcut holds only when that set is empty too —
-        // otherwise a wiped target/ read as "0 rebuild, <1s" on the one command that prices it.
-        if (entryDir != null
-                && !SessionContext.current().config().rebuildOr(false)
-                && !SessionContext.current().config().forceOr(false)) {
-            var memo = PreflightMemo.tryLoadDirty(
-                    entryDir,
-                    graph,
-                    knobs.skipTests(),
-                    knobs.profile(),
-                    new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
-            if (memo.isPresent()
-                    && memo.get().dirty().isEmpty()
-                    && memo.get().restoreNeeded().isEmpty()) {
-                Perf.note(
-                        "explain preflight-memo hit fully-cached",
-                        "units",
-                        graph.topoOrder().size());
-                return fullyCachedExplainPlan(graph);
-            }
         }
         // Which modules will `jk build` actually schedule? That is the question explain answers, so
         // it has to ask it the same way the build does — through the memo-aware preflight, read-only

@@ -300,6 +300,7 @@ public final class PlannerTails {
                                     assemblySbom)
                             .key());
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
+                        PackagingCache.recordBundled(layout, TaskNames.PACKAGE_ASSEMBLY, depJars);
                         ctx.label(assemblyJar.getFileName() + " up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -332,6 +333,7 @@ public final class PlannerTails {
                             List.of(assemblyJar),
                             persist,
                             List.of());
+                    PackagingCache.recordBundled(layout, TaskNames.PACKAGE_ASSEMBLY, depJars);
                     ctx.progress(1);
                 })
                 .build();

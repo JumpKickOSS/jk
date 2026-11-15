@@ -43,10 +43,11 @@ final class ForecastPackagingTails {
             boolean compileDirty)
             throws IOException {
         BuildLayout layout = prepared.parsed().layout();
-        boolean noSources = prepared.parsed().mainSrc().isEmpty()
-                && prepared.parsed().ktSrc().isEmpty()
-                && prepared.parsed().gvSrc().isEmpty();
-        if (!project.assembly() || noSources) return null;
+        // A workspace root plans no tails. A member with no sources of its own is a distribution
+        // when it assembles: the fat jar over its siblings is its whole output, so it is priced
+        // like any other. Returning nothing for it forecast a module with no steps, which a
+        // sibling's edit never reached, while the build repackaged it.
+        if (!project.assembly() || project.isWorkspaceRoot()) return null;
         if (compileDirty) {
             return new TaskForecast.Task(
                     TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage · compile changed", null);

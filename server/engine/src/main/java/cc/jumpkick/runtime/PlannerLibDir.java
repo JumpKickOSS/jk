@@ -84,6 +84,7 @@ final class PlannerLibDir {
                     libs.forEach(lib -> names.add(lib.name()));
                     if (restorePackaged(cache, key, base)) {
                         LibDirLayout.prune(libDir, names);
+                        PackagingCache.recordBundled(layout, TaskNames.PACKAGE_LIB_DIR, guarded);
                         ctx.label(appJar.getFileName() + " up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -93,6 +94,7 @@ final class PlannerLibDir {
                     List<Path> outputs = LibDirLayout.write(thinJar, appJar, libDir, config.dir(), libs, mainClass);
                     ctx.put(BUILD_OUTCOME, "built");
                     storePackaged(ctx, guard, cache, task, key, tokens, base, outputs, persist, List.of());
+                    PackagingCache.recordBundled(layout, TaskNames.PACKAGE_LIB_DIR, guarded);
                     ctx.progress(1);
                 })
                 .build();

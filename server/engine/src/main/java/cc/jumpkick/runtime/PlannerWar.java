@@ -98,6 +98,7 @@ final class PlannerWar {
                     Path base = layout.artifactDir();
                     if (restorePackaged(cache, key, base)) {
                         pruneExploded(warFile, exploded);
+                        PackagingCache.recordBundled(layout, TaskNames.PACKAGE_WAR, libs);
                         ctx.label(warFile.getFileName() + " up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -124,6 +125,7 @@ final class PlannerWar {
                     List<Path> outputs = new ArrayList<>(files(exploded));
                     outputs.add(warFile);
                     storePackaged(ctx, guard, cache, task, key, tokens, base, outputs, persist, List.of());
+                    PackagingCache.recordBundled(layout, TaskNames.PACKAGE_WAR, libs);
                     ctx.progress(1);
                 })
                 .build();

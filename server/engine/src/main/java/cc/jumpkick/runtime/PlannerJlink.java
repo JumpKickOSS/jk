@@ -104,6 +104,7 @@ final class PlannerJlink {
                     if (restorePackaged(cache, key, base)) {
                         // A restore writes fresh times, and the cache is judged by them.
                         JlinkImage.stamp(image);
+                        PackagingCache.recordBundled(layout, TaskNames.PACKAGE_JLINK, guarded);
                         ctx.label(image.getFileName() + " up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -137,6 +138,7 @@ final class PlannerJlink {
                             };
                     ctx.label(summary);
                     storePackaged(ctx, guard, cache, task, key, tokens, base, result.files(), persist, List.of());
+                    PackagingCache.recordBundled(layout, TaskNames.PACKAGE_JLINK, guarded);
                     ctx.progress(1);
                 })
                 .build();

@@ -9,6 +9,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -22,8 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The dirty memo vouches for a module's inputs, not its outputs: it survives {@code jk clean} on
  * purpose, and comes back naming the modules whose outputs are gone. The whole-workspace {@code jk
- * explain} may take its shortcut only when nothing is dirty <em>and</em> nothing needs restoring
- * — otherwise a wiped {@code target/} reads as a fully cached build.
+ * explain} reads fully cached only when nothing is dirty <em>and</em> nothing needs restoring —
+ * otherwise a wiped {@code target/} reads as a fully cached build.
  */
 class ExplainAfterCleanMemoTest {
 
@@ -47,7 +48,10 @@ class ExplainAfterCleanMemoTest {
         BuildLayout layout =
                 BuildLayout.of(tmp, tmp, graph.topoOrder().getFirst().manifest());
 
-        // The outputs a build leaves, then the memo it stores: nothing dirty.
+        // The outputs a build leaves, then the two records a clean build certifies (WorkspaceFinalPhase
+        // .certifyClean): the memo that vouches for the inputs, and the provenance that vouches for
+        // the outputs. Explain asks the build's preflight, which holds outputs nothing vouched for
+        // to be stale.
         Path classFile = layout.classesDir().resolve("App.class");
         Files.createDirectories(classFile.getParent());
         Files.writeString(classFile, "bytecode");
@@ -55,6 +59,7 @@ class ExplainAfterCleanMemoTest {
         Files.writeString(layout.mainJar(), "jar");
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
+        ModuleInputProvenance.record(tmp, graph, fps.fingerprints());
         Path cache = tmp.resolve("cache");
 
         ExplainPlan warm = BuildForecasting.explainFromGraph(graph, cache, tmp, BuildKnobs.DEFAULTS);

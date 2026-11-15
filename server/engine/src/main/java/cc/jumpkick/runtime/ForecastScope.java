@@ -725,8 +725,11 @@ public final class ForecastScope implements StepForecast.Scope {
         } else if (!project.isWorkspaceRoot()) {
             // Source-less member: the build still packages its jar, and a resources-only
             // module's classes tree (copied resources) is consumed straight off sibling
-            // classpaths, so either missing is a missing output too.
-            outputsAbsent = (packages && !Files.isRegularFile(layout.mainJar()))
+            // classpaths, so either missing is a missing output too. A source-less distribution's
+            // assembly is its whole output.
+            outputsAbsent = (packages
+                            && (!Files.isRegularFile(layout.mainJar())
+                                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))))
                     || (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()
                             && !TaskForecaster.classesDirHasContent(layout.classesDir()));
         }
