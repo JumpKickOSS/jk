@@ -4,13 +4,17 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.NodePin;
 import cc.jumpkick.model.JkVersion;
@@ -21,7 +25,9 @@ import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.NodeOutput;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.LoopbackHttp;
@@ -170,6 +176,36 @@ class NodeBuildStepsTest {
     }
 
     @Test
+    void a_file_the_build_writes_outside_out_is_no_input_of_the_next_build() throws Exception {
+        // As Next.js writes next-env.d.ts into the module and Angular 3rdpartylicenses.txt beside out.
+        write("build.js", Files.readString(web.resolve("build.js")) + """
+                fs.writeFileSync(path.join(__dirname, 'next-env.d.ts'), '/// generated\\n');
+                fs.writeFileSync(path.join(__dirname, 'licenses.txt'), 'MIT\\n');
+                """);
+        Session session = session(Map.of());
+        assertThat(run(plan(session), session).errors()).isEmpty();
+        assertThat(web.resolve("next-env.d.ts")).exists();
+        assertThat(lines("builds.log")).isEqualTo(1);
+        assertThat(lines("tests.log")).isEqualTo(1);
+
+        assertThat(forecast(session))
+                .as("explain before the second build")
+                .allMatch(t -> t.status() == TaskForecast.Status.CACHED);
+        BuildPlan again = plan(session);
+        assertThat(run(again, session).errors()).isEmpty();
+        assertThat(lines("builds.log")).as("the build is not run again").isEqualTo(1);
+        assertThat(lines("tests.log")).as("nor the tests beside it").isEqualTo(1);
+
+        write("src/main.js", "module.exports = 5;\n");
+        assertThat(run(plan(session), session).errors()).isEmpty();
+        assertThat(lines("builds.log")).as("a source edit still rebuilds").isEqualTo(2);
+        assertThat(lines("tests.log")).isEqualTo(2);
+        assertThat(run(plan(session), session).errors()).isEmpty();
+        assertThat(lines("builds.log")).as("and the build after it does not").isEqualTo(2);
+        assertThat(lines("tests.log")).isEqualTo(2);
+    }
+
+    @Test
     void skip_node_runs_no_node_step_and_keeps_the_output_there_is() throws Exception {
         Session session = session(Map.of());
         assertThat(run(plan(session), session).errors()).isEmpty();
@@ -240,6 +276,20 @@ class NodeBuildStepsTest {
         BuildPlanResult noScript = run(plan(session), session);
         assertThat(noScript.errors())
                 .anyMatch(d -> d.message() != null && d.message().contains("package.json has no `bundle` script"));
+    }
+
+    private List<TaskForecast.Task> forecast(Session session) throws Exception {
+        return SessionContext.where(
+                session,
+                () -> NodeForecast.forecast(
+                        JkBuildParser.parse(web.resolve("jk.toml")),
+                        web,
+                        web,
+                        LockfileReader.read(web.resolve("jk-lock.toml")),
+                        new ActionCache(
+                                JkStores.cacheCas(tmp.resolve("cache")), CacheTree.ACTIONS.under(tmp.resolve("cache"))),
+                        false,
+                        false));
     }
 
     private Session session(Map<String, String> clientEnv) {

@@ -21,16 +21,16 @@ class NodeKeysScopeTest {
         Files.writeString(root.resolve("core/src/main/java/A.java"), "class A {}");
         List<String> scope = List.of("package.json", "src/main/js");
 
-        var before = NodeKeys.scoped(root, scope, List.of("dist"));
+        var before = NodeKeys.scoped(root, root, scope, List.of("dist"));
         Files.writeString(root.resolve("core/src/main/java/A.java"), "class A { int x; }");
-        assertThat(NodeKeys.scoped(root, scope, List.of("dist")))
+        assertThat(NodeKeys.scoped(root, root, scope, List.of("dist")))
                 .as("a Java edit elsewhere in the workspace is not the front end's input")
                 .isEqualTo(before)
                 .containsKeys("input:package.json", "input:src/main/js/app.js")
                 .doesNotContainKey("input:core/src/main/java/A.java");
         Files.writeString(root.resolve("src/main/js/app.js"), "b");
-        assertThat(NodeKeys.scoped(root, scope, List.of("dist"))).isNotEqualTo(before);
-        assertThat(NodeKeys.scoped(root, List.of(), List.of("dist")))
+        assertThat(NodeKeys.scoped(root, root, scope, List.of("dist"))).isNotEqualTo(before);
+        assertThat(NodeKeys.scoped(root, root, List.of(), List.of("dist")))
                 .as("unscoped, the build reads the whole tree")
                 .containsKey("core/src/main/java/A.java");
     }

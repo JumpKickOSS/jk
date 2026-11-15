@@ -98,6 +98,7 @@ final class NodeForecast {
         if (command != null) {
             NodeKeys.Keyed build = NodeKeys.build(
                     nodeDir,
+                    moduleDir,
                     node,
                     command,
                     NodeEnv.keyed(project, node, moduleDir, true),
@@ -111,6 +112,7 @@ final class NodeForecast {
         if (!skipTests && node.test() != null && NodeProject.script(nodeDir, node.test()) != null) {
             NodeKeys.Keyed test = NodeKeys.test(
                     nodeDir,
+                    moduleDir,
                     node,
                     node.test(),
                     NodeEnv.keyed(project, node, moduleDir, false),

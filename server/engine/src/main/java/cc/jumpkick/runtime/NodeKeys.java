@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
@@ -20,6 +21,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
@@ -101,6 +103,7 @@ final class NodeKeys {
     @KeyOwner(step = TaskNames.NODE_BUILD)
     static Keyed build(
             Path nodeDir,
+            Path moduleDir,
             NodeProject project,
             NodeTable.Command command,
             Map<String, String> env,
@@ -109,7 +112,7 @@ final class NodeKeys {
             List<String> later,
             List<String> scope)
             throws IOException {
-        Map<String, String> inputs = scoped(nodeDir, scope, withOut(project, later));
+        Map<String, String> inputs = scoped(nodeDir, moduleDir, scope, withOut(project, later));
         inputs.put("command:", command.kind().key() + " " + command.value());
         inputs.put("out:", project.out());
         envInputs(inputs, env, project.envPrefixes());
@@ -139,7 +142,8 @@ final class NodeKeys {
             throws IOException {
         // A step that names what it reads is keyed on that alone; one that names nothing reads what
         // the build reads.
-        Map<String, String> inputs = step.inputs().isEmpty() ? scoped(nodeDir, scope, outputs) : new TreeMap<>();
+        Map<String, String> inputs =
+                step.inputs().isEmpty() ? scoped(nodeDir, moduleDir, scope, outputs) : new TreeMap<>();
         inputs.putAll(inputFiles(moduleDir, step.inputs()));
         inputs.put(
                 "command:", step.command().kind().key() + " " + step.command().value());
@@ -267,6 +271,7 @@ final class NodeKeys {
     @KeyOwner(step = TaskNames.NODE_TEST)
     static Keyed test(
             Path nodeDir,
+            Path moduleDir,
             NodeProject project,
             String script,
             Map<String, String> env,
@@ -275,7 +280,7 @@ final class NodeKeys {
             List<String> later,
             List<String> scope)
             throws IOException {
-        Map<String, String> inputs = scoped(nodeDir, scope, withOut(project, later));
+        Map<String, String> inputs = scoped(nodeDir, moduleDir, scope, withOut(project, later));
         inputs.put("test:", script);
         envInputs(inputs, env, project.envPrefixes());
         inputs.put("installed:", installed);
@@ -293,19 +298,71 @@ final class NodeKeys {
     }
 
     /**
+     * What a node step reads when it names nothing itself: {@code [node] inputs} ({@code scope})
+     * when set — a build whose directory is a workspace root reads its front end, not the
+     * workspace — else the whole node tree less {@code outputs}; either less every file a node step
+     * of {@code moduleDir} {@linkplain NodeWrites wrote} outside the declared outputs, which is that
+     * step's output and no step's input.
+     */
+    static Map<String, String> scoped(Path nodeDir, Path moduleDir, List<String> scope, List<String> outputs)
+            throws IOException {
+        Map<String, String> files = scope.isEmpty() ? tree(nodeDir, outputs) : inputFiles(nodeDir, scope);
+        Set<String> written = written(moduleDir);
+        if (!written.isEmpty()) files.keySet().removeIf(name -> isWritten(name, written));
+        return files;
+    }
+
+    /** The ledger's name under the module's {@code target/}: the files {@link NodeWrites} recorded. */
+    static final String WRITTEN = "node-written.txt";
+
+    /** The ledger of files {@code moduleDir}'s node steps wrote: node-directory-relative paths, empty for none. */
+    static Set<String> written(Path moduleDir) throws IOException {
+        Set<String> paths = new TreeSet<>();
+        try {
+            for (String line : AtomicWrites.readString(writtenLedger(moduleDir)).split("\n")) {
+                if (!line.isBlank()) paths.add(line.strip());
+            }
+        } catch (NoSuchFileException absent) {
+            return Set.of();
+        }
+        return paths;
+    }
+
+    static Path writtenLedger(Path moduleDir) {
+        return BuildLayout.moduleTargetDir(moduleDir).resolve(WRITTEN);
+    }
+
+    private static boolean isWritten(String name, Set<String> written) {
+        String file = filePath(name);
+        return file != null && written.contains(file);
+    }
+
+    /**
+     * The file an inputs-map name stands for, relative to the node directory with forward slashes,
+     * or {@code null} for a name that is no file ({@code command:}, {@code env:NAME}, ...).
+     */
+    static @Nullable String filePath(String name) {
+        if (name.startsWith(INPUT)) {
+            return Path.of(name.substring(INPUT.length()))
+                    .normalize()
+                    .toString()
+                    .replace(File.separatorChar, '/');
+        }
+        return name.contains(":") ? null : name;
+    }
+
+    /** {@code inputs} less the files in {@code written}: what a key reads once they are known to be output. */
+    static Map<String, String> withoutWritten(Map<String, String> inputs, Set<String> written) {
+        Map<String, String> kept = new TreeMap<>(inputs);
+        kept.keySet().removeIf(name -> isWritten(name, written));
+        return kept;
+    }
+
+    /**
      * Every file under {@code nodeDir} by its path relative to it, valued by content: dot-files
      * included ({@code .env}, a framework's config), {@link #NEVER_INPUT} and {@code outputs}
      * (files or directories relative to {@code nodeDir}) left out.
      */
-    /**
-     * What a node step reads when it names nothing itself: {@code [node] inputs} ({@code scope})
-     * when set — a build whose directory is a workspace root reads its front end, not the
-     * workspace — else the whole node tree less {@code outputs}.
-     */
-    static Map<String, String> scoped(Path nodeDir, List<String> scope, List<String> outputs) throws IOException {
-        return scope.isEmpty() ? tree(nodeDir, outputs) : inputFiles(nodeDir, scope);
-    }
-
     static Map<String, String> tree(Path nodeDir, List<String> outputs) throws IOException {
         Map<String, String> files = new TreeMap<>();
         Set<Path> skipped = new HashSet<>();

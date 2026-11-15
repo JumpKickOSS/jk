@@ -41,10 +41,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -69,6 +66,9 @@ final class NodeArm {
     private final NodeProject node;
     private final ActionCache actionCache;
 
+    /** What this build's node steps write outside their declared outputs. */
+    private final NodeWrites writes;
+
     /** The plan runs the test tier: neither {@code jk compile} nor skipped tests. */
     private final boolean tests;
 
@@ -79,6 +79,7 @@ final class NodeArm {
         this.nodeDir = nodeDir;
         this.node = NodeProject.infer(nodeDir, project.node());
         this.actionCache = actionCache;
+        this.writes = new NodeWrites(in.dir(), nodeDir, actionCache);
         this.tests = tests;
     }
 
@@ -274,21 +275,17 @@ final class NodeArm {
                         + " — fix the step or its outputs");
             }
         }
-        // The tree the key hashed, hashed again: a source the tool read that moved while it ran
-        // is not what the key names, so the outputs stand for this build and are not recorded.
-        Map<String, String> after = key(ctx, step, fetched).inputs();
-        List<Path> moved = new ArrayList<>();
-        for (String name : union(keyed.inputs().keySet(), after.keySet())) {
-            if (!Objects.equals(keyed.inputs().get(name), after.get(name))) moved.add(Path.of(name));
-        }
-        if (!moved.isEmpty()) {
-            ctx.warn(InputGuard.MOVED, InputGuard.describe(step.name(), moved));
+        if (!settled(ctx, step.name(), keyed, key(ctx, step, fetched))) {
             ctx.progress(1);
             return;
         }
-        if (files.isEmpty()) actionCache.storeWithOutputs(keyed.taskId(), keyed.key(), keyed.inputs(), Map.of());
-        else if (PackagingCache.admitted(ctx, actionCache.root(), files, keyed.taskId()))
+        if (files.isEmpty()) {
+            actionCache.storeWithOutputs(keyed.taskId(), keyed.key(), keyed.inputs(), Map.of());
+            writes.stored(keyed, () -> key(ctx, step, fetched));
+        } else if (PackagingCache.admitted(ctx, actionCache.root(), files, keyed.taskId())) {
             actionCache.storeArtifacts(keyed.taskId(), keyed.key(), keyed.inputs(), nodeDir, files);
+            writes.stored(keyed, () -> key(ctx, step, fetched));
+        }
         ctx.progress(1);
     }
 
@@ -306,10 +303,18 @@ final class NodeArm {
                 project.node().inputs());
     }
 
-    private static Set<String> union(Set<String> a, Set<String> b) {
-        Set<String> all = new TreeSet<>(a);
-        all.addAll(b);
-        return all;
+    /**
+     * The tree the key hashed, hashed again once the step ended ({@code after}): the files it wrote
+     * join the {@linkplain NodeWrites ledger}, and a source the tool read that changed or went while
+     * it ran is not what the key names, so the outputs stand for this build and are not recorded.
+     * False, having warned, when a source moved.
+     */
+    private boolean settled(TaskContext ctx, String step, NodeKeys.Keyed before, NodeKeys.Keyed after)
+            throws IOException {
+        NodeWrites.Moves moves = writes.settle(before, after);
+        if (moves.moved().isEmpty()) return true;
+        ctx.warn(InputGuard.MOVED, InputGuard.describe(step, moves.moved()));
+        return false;
     }
 
     /**
@@ -556,15 +561,7 @@ final class NodeArm {
                         if (!NodeCommands.locked(nodeDir, pkg)) throw unlocked(pkg, null);
                     }
                     NodeHome home = ctx.require(NODE_HOME);
-                    NodeKeys.Keyed keyed = NodeKeys.build(
-                            nodeDir,
-                            node,
-                            command,
-                            NodeEnv.keyed(project, node, moduleDir, true),
-                            ctx.require(NODE_INSTALLED),
-                            PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
-                            NodeKeys.afterBuild(project),
-                            project.node().inputs());
+                    NodeKeys.Keyed keyed = buildKey(ctx, command);
                     Path out = out();
                     Optional<ActionCache.ActionRecord> hit =
                             rebuild() ? Optional.empty() : actionCache.lookup(keyed.key());
@@ -594,7 +591,10 @@ final class NodeArm {
                         throw new IOException(NodeCommands.describe(command) + " wrote no " + node.out()
                                 + "/; set [node] out to the directory it writes");
                     }
-                    actionCache.store(keyed.taskId(), keyed.key(), keyed.inputs(), out);
+                    if (settled(ctx, TaskNames.NODE_BUILD, keyed, buildKey(ctx, command))) {
+                        actionCache.store(keyed.taskId(), keyed.key(), keyed.inputs(), out);
+                        writes.stored(keyed, () -> buildKey(ctx, command));
+                    }
                     publish(ctx, out);
                     ctx.put(BUILD_OUTCOME, "built");
                     ctx.progress(1);
@@ -619,15 +619,7 @@ final class NodeArm {
                         return;
                     }
                     NodeHome home = ctx.require(NODE_HOME);
-                    NodeKeys.Keyed keyed = NodeKeys.test(
-                            nodeDir,
-                            node,
-                            script,
-                            NodeEnv.keyed(project, node, moduleDir, false),
-                            ctx.require(NODE_INSTALLED),
-                            PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
-                            NodeKeys.afterTest(project),
-                            project.node().inputs());
+                    NodeKeys.Keyed keyed = testKey(ctx, script);
                     boolean coverage = in.session().coverage();
                     if (!rebuild() && !coverage && replayGreen(ctx, actionCache, keyed.key())) {
                         ctx.progress(1);
@@ -652,11 +644,14 @@ final class NodeArm {
                             NodeTestReport.summary(NodeTestReport.read(xml, module()), r, module(), script);
                     ctx.put(TEST_RUN, TestRun.of(summary));
                     if (summary.allPassed() && r.ok()) {
-                        actionCache.storeWithOutputs(
-                                keyed.taskId(),
-                                keyed.key(),
-                                keyed.inputs(),
-                                TestStamp.outcome(summary.total(), summary.succeeded(), summary.skipped(), 0));
+                        if (settled(ctx, TaskNames.NODE_TEST, keyed, testKey(ctx, script))) {
+                            actionCache.storeWithOutputs(
+                                    keyed.taskId(),
+                                    keyed.key(),
+                                    keyed.inputs(),
+                                    TestStamp.outcome(summary.total(), summary.succeeded(), summary.skipped(), 0));
+                            writes.stored(keyed, () -> testKey(ctx, script));
+                        }
                         ctx.progress(1);
                         return;
                     }
@@ -664,6 +659,32 @@ final class NodeArm {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    private NodeKeys.Keyed buildKey(TaskContext ctx, NodeTable.Command command) throws IOException {
+        return NodeKeys.build(
+                nodeDir,
+                moduleDir,
+                node,
+                command,
+                NodeEnv.keyed(project, node, moduleDir, true),
+                ctx.require(NODE_INSTALLED),
+                PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
+                NodeKeys.afterBuild(project),
+                project.node().inputs());
+    }
+
+    private NodeKeys.Keyed testKey(TaskContext ctx, String script) throws IOException {
+        return NodeKeys.test(
+                nodeDir,
+                moduleDir,
+                node,
+                script,
+                NodeEnv.keyed(project, node, moduleDir, false),
+                ctx.require(NODE_INSTALLED),
+                PlannerNodeSetup.token(ctx.require(PARSED_BUILD).lockfile()),
+                NodeKeys.afterTest(project),
+                project.node().inputs());
     }
 
     /** The counts of a passing run stored on its key, replayed; false when there is no green record. */

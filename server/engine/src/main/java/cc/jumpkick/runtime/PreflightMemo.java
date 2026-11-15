@@ -734,7 +734,11 @@ public final class PreflightMemo {
         Path out = NodeShape.scannedOutputDir(moduleDir);
         List<String> outputs =
                 out == null ? List.of() : List.of(nodeDir.relativize(out).toString());
-        for (Map.Entry<String, String> e : NodeKeys.tree(nodeDir, outputs).entrySet()) {
+        // Less the files a node step wrote outside its outputs, as every node key leaves them out: the
+        // memo the first build certifies was taken before they existed.
+        Map<String, String> tree =
+                NodeKeys.withoutWritten(NodeKeys.tree(nodeDir, outputs), NodeKeys.written(moduleDir));
+        for (Map.Entry<String, String> e : tree.entrySet()) {
             feed(md, "node:" + e.getKey());
             feed(md, e.getValue());
         }

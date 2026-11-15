@@ -437,6 +437,19 @@ public final class ActionCache {
     }
 
     /**
+     * Store the record held under {@code fromKey} again under {@code actionKey}, with {@code inputs}:
+     * the same outputs, executables and words, for a step whose inputs the next build reads without
+     * files the build itself wrote. Nothing is stored when {@code fromKey} holds no record (a store
+     * the disk guard refused), so an alias never names outputs the cache does not have.
+     */
+    public void storeAlias(String fromKey, String actionKey, Map<String, String> inputs) throws IOException {
+        Optional<ActionRecord> from = lookup(fromKey);
+        if (from.isEmpty()) return;
+        ActionRecord r = from.get();
+        storeWithOutputs(r.taskId(), actionKey, inputs, r.outputs(), r.executables(), null, r.said());
+    }
+
+    /**
      * The store every path funnels through: the record, then the task pointer, then the Class-C
      * generation trim. {@code executables} are the outputs a restore gives the bit back to; {@code
      * outputRoot} is the tree the outputs were written under, which names the checkout a Class-C
