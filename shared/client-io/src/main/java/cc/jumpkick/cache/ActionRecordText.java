@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -305,7 +306,8 @@ public final class ActionRecordText {
      * machine (a module-relative path, a fact such as {@code jdk} or {@code options}). An input
      * named by an absolute path (a store jar, a JDK, a file declared by absolute path) or whose
      * value holds one stays home, and so does every {@code SAID} line: a compiler's warning names
-     * the source by its absolute path. No key hashes either, so the hit it serves is the same.
+     * the source by its absolute path. Environment values a key hashed leave as their names only
+     * ({@link #withoutEnvValues}). No key hashes either, so the hit it serves is the same.
      */
     public static String renderShared(Parsed record) {
         if (!shareable(record)) {
@@ -318,7 +320,7 @@ public final class ActionRecordText {
         Map<String, String> portable = new TreeMap<>();
         for (Map.Entry<String, String> e : record.inputs().entrySet()) {
             if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()))
-                portable.put(e.getKey(), e.getValue());
+                portable.put(withoutEnvValues(e.getKey()), withoutEnvValues(e.getValue()));
         }
         return render(
                 record.taskId(),
@@ -341,6 +343,22 @@ public final class ActionRecordText {
         }
         return Kind.OUTPUTS;
     }
+
+    /**
+     * Environment tokens a key hashes ({@code env:NAME=<digest>}, {@code plugin-env:}, {@code
+     * test-env:}, {@code inherited-env:<digest>}) with their values withheld: a digest of a short
+     * secret can be brute-forced from a record that leaves the machine. The names stay, so a miss
+     * can still say which variable moved; the key, which hashed the values here, is unchanged.
+     */
+    static String withoutEnvValues(String text) {
+        if (!text.contains("env:")) return text;
+        String named = ENV_TOKEN.matcher(text).replaceAll("$1:$2=-");
+        return INHERITED_ENV.matcher(named).replaceAll("inherited-env:-");
+    }
+
+    private static final Pattern ENV_TOKEN = Pattern.compile("\\b((?:plugin-|test-)?env):([^=,;\\s]+)=[^,;\\s]*");
+
+    private static final Pattern INHERITED_ENV = Pattern.compile("\\binherited-env:[^,;\\s]*");
 
     /** {@code text} as one space-free word, so a header line reads back whole. */
     private static String oneWord(String text) {

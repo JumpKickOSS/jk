@@ -54,7 +54,9 @@ with one limit: a checkout without a committed `jk-lock.toml` takes its project 
 remote, or outside git from its absolute path, so two machines share its keys only when it has a
 lock. A record that leaves the machine keeps its outputs and its module-relative inputs; an input
 named by an absolute path (a store jar under your home, a JDK) and what the step said as it ran,
-which names sources by absolute path, stay local. Every record also says when it was made, by
+which names sources by absolute path, stay local. Of the environment, only the names of the
+variables a key read leave the machine (`env:DB_PIN=-`): no value, and no digest of one, since a
+digest of a short secret can be guessed; the key itself, hashed here from the values, is unchanged. Every record also says when it was made, by
 which JumpKick version, on which platform (`linux-x86_64`, `macos-aarch64`, ...), and how many bytes each output
 holds, and how long the step that made it worked; the platform is a statement about the record,
 not part of its key. A hit on a machine with no history of the step (a fresh checkout, a record
