@@ -11,6 +11,7 @@ import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -419,6 +420,12 @@ public final class FactsExtractor {
         @Override
         public void visit(@Nullable String name, Object value) {
             if (value instanceof Type t) refType.accept(t.getDescriptor());
+            if (value.getClass().isArray()) {
+                // ASM hands a primitive array value (int[] mv(), Kotlin's @Metadata) over whole, and
+                // its toString is an identity hash, different in every JVM: record it element-wise.
+                for (int i = 0, n = Array.getLength(value); i < n; i++) add(name, String.valueOf(Array.get(value, i)));
+                return;
+            }
             add(name, value instanceof Type t ? t.getInternalName() : String.valueOf(value));
         }
 

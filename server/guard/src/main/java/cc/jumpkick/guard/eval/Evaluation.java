@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -22,7 +23,7 @@ public record Evaluation(
         List<String> tools) {
 
     public Evaluation {
-        population = Map.copyOf(new TreeMap<>(population));
+        population = Collections.unmodifiableMap(new TreeMap<>(population));
         observations = List.copyOf(observations);
         tools = List.copyOf(tools);
     }

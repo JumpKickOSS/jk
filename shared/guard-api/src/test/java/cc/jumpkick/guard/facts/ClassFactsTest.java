@@ -90,4 +90,17 @@ class ClassFactsTest {
         assertThat(a.superName()).isNull();
         assertThat(Map.of(a, 1)).containsKey(b);
     }
+
+    /**
+     * The facts digest writes type refs in iteration order, so the order is part of the facts: sorted,
+     * never the per-JVM salted order a {@code Set.copyOf} iterates in (JK-E5WNZ).
+     */
+    @Test
+    void type_refs_iterate_sorted_whatever_order_they_were_given_in() {
+        List<String> refs = new ArrayList<>();
+        for (int i = 0; i < 24; i++) refs.add("p" + (i * 7 % 24) + "/T" + i);
+        ClassFacts c =
+                new ClassFacts("a/C", 1, null, List.of(), null, List.of(), List.of(), List.of(), new HashSet<>(refs));
+        assertThat(List.copyOf(c.typeRefs())).isEqualTo(List.copyOf(new TreeSet<>(refs)));
+    }
 }

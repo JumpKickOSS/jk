@@ -60,4 +60,12 @@ class AnnotationFactsTest {
         assertThat(new AnnotationFacts("La/A;", true, reversed)).isEqualTo(a);
         assertThat(new AnnotationFacts("La/A;", false, reversed)).isNotEqualTo(a);
     }
+
+    @Test
+    void values_iterate_by_attribute_name() {
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        for (String k : List.of("xi", "d2", "mv", "bv", "k", "d1", "pn", "xs")) values.put(k, List.of(k));
+        AnnotationFacts a = new AnnotationFacts("Lkotlin/Metadata;", true, values);
+        assertThat(List.copyOf(a.values().keySet())).containsExactly("bv", "d1", "d2", "k", "mv", "pn", "xi", "xs");
+    }
 }

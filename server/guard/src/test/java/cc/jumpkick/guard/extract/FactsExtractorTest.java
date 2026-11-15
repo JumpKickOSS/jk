@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.extract.fixture.Statics;
+import cc.jumpkick.guard.extract.fixture.Versioned;
+import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
@@ -14,10 +16,13 @@ import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.Fingerprints;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -183,6 +188,60 @@ class FactsExtractorTest {
                         "java/lang/NumberFormatException");
         assertThat(Fingerprints.normalise("a.B#lambda$run$3()V")).isEqualTo("a.B#lambda$run$()V");
         assertThat(Fingerprints.normalise("a.B$1#run()V")).isEqualTo("a.B$#run()V");
+    }
+
+    @Test
+    void a_primitive_array_annotation_value_is_recorded_element_wise() throws IOException {
+        ClassFacts c = FactsExtractor.extract(classBytes(Versioned.class));
+        AnnotationFacts meta = c.annotations().stream()
+                .filter(a -> a.typeName().equals(Versioned.Meta.class.getName()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(meta.values().get("mv")).containsExactly("2", "1", "0");
+        assertThat(meta.values().get("flags")).containsExactly("true", "false");
+        assertThat(meta.values().get("d1")).containsExactly("a", "b");
+        assertThat(meta.values().get("k")).containsExactly("1");
+    }
+
+    /**
+     * A guard lane keys on the facts digest, so the digest is a function of the class bytes alone:
+     * the same in a fresh JVM, whose identity hashes and {@code Set.copyOf} salt are its own
+     * (JK-E5WNZ: an {@code int[]} annotation value read as {@code [I@3e36122f}, type refs written in
+     * a per-JVM order).
+     */
+    @Test
+    void the_facts_digest_is_the_same_in_a_fresh_jvm() throws Exception {
+        String here = DigestInFreshJvm.digest();
+        List<String> there = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Path java = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java");
+            Processes.Captured run = Processes.capture(
+                    List.of(
+                            java.toString(),
+                            "-cp",
+                            System.getProperty("java.class.path"),
+                            DigestInFreshJvm.class.getName()),
+                    Duration.ofSeconds(60));
+            assertThat(run.exit()).as(run.output() + run.error()).isZero();
+            there.add(run.output().strip());
+        }
+        assertThat(there).containsOnly(here);
+    }
+
+    /** Prints the facts digest of the fixture classes; run in a JVM of its own. */
+    static final class DigestInFreshJvm {
+        static String digest() throws IOException {
+            Map<String, ClassFacts> classes = new HashMap<>();
+            for (Class<?> c : List.of(Sample.class, Sample.Inner.class, Statics.class, Versioned.class)) {
+                ClassFacts f = FactsExtractor.extract(classBytes(c));
+                classes.put(f.name(), f);
+            }
+            return FactsFormat.digestOf(new FactsIndex(classes, Map.of(), ""));
+        }
+
+        public static void main(String[] args) throws IOException {
+            System.out.println(digest());
+        }
     }
 
     @Test

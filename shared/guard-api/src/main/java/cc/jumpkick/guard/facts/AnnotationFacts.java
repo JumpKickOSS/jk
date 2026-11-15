@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.facts;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * One annotation as the class file carries it. {@code SOURCE}-retention annotations are not in the
@@ -18,7 +20,10 @@ import java.util.Map;
 public record AnnotationFacts(String desc, boolean runtimeVisible, Map<String, List<String>> values) {
 
     public AnnotationFacts {
-        values = Map.copyOf(values);
+        // Sorted by attribute name: Map.copyOf iterates in a per-JVM order.
+        TreeMap<String, List<String>> sorted = new TreeMap<>();
+        values.forEach((k, v) -> sorted.put(k, List.copyOf(v)));
+        values = Collections.unmodifiableMap(sorted);
     }
 
     /** {@code org.junit.jupiter.api.Tag} for {@code Lorg/junit/jupiter/api/Tag;}. */

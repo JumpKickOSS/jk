@@ -252,7 +252,8 @@ public final class FactsFormat {
                 out.writeInt(m.branches());
                 out.writeInt(m.firstLine());
             }
-            strings(new ArrayList<>(c.typeRefs()));
+            // Sorted here too: the digest is a function of the facts, never of a set's iteration order.
+            strings(new ArrayList<>(new TreeSet<>(c.typeRefs())));
         }
 
         void annotations(List<AnnotationFacts> list) throws IOException {

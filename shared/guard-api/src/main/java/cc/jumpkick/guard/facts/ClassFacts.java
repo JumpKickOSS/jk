@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.facts;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -11,7 +12,8 @@ import org.jspecify.annotations.Nullable;
  *
  * @param name internal name, {@code cc/jumpkick/host/Hashing}
  * @param typeRefs every other internal name the class refers to (supers, members, instructions,
- *     annotations) — the package-edge source
+ *     annotations) — the package-edge source; sorted, so the facts digest that keys a guard lane
+ *     iterates it the same way in every JVM
  * @param sourceFile the {@code SourceFile} attribute, when compiled with debug info
  */
 public record ClassFacts(
@@ -30,7 +32,7 @@ public record ClassFacts(
         annotations = List.copyOf(annotations);
         fields = List.copyOf(fields);
         methods = List.copyOf(methods);
-        typeRefs = Set.copyOf(new TreeSet<>(typeRefs));
+        typeRefs = Collections.unmodifiableSortedSet(new TreeSet<>(typeRefs));
     }
 
     public String binaryName() {
