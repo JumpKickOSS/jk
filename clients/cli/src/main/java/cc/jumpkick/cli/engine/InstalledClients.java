@@ -43,6 +43,33 @@ public final class InstalledClients {
         return Optional.empty();
     }
 
+    /** A client's bytes and kind. */
+    public record Self(Path bytes, ClientKind kind) {}
+
+    /**
+     * This process when it is the installed PATH client: the JVM client its launcher names, or this
+     * native image when it is the binary {@link EngineInstall#pathClient} names under {@code binDir}.
+     * A client run from anywhere else (a build's dist, a test) is no installed client.
+     */
+    public static Optional<Self> installedSelf(Path binDir) {
+        Optional<Path> jar = JvmClient.jar();
+        if (jar.isPresent()) {
+            return Files.isRegularFile(jar.get()) ? Optional.of(new Self(jar.get(), ClientKind.JVM)) : Optional.empty();
+        }
+        if (!EngineSpawn.isNativeImage()) return Optional.empty();
+        Optional<String> exe = ProcessHandle.current().info().command();
+        if (exe.isEmpty()) return Optional.empty();
+        Path self = Path.of(exe.get());
+        Path onPath = EngineInstall.pathClient(binDir);
+        try {
+            return Files.isRegularFile(onPath) && Files.isSameFile(self, onPath)
+                    ? Optional.of(new Self(self, ClientKind.NATIVE))
+                    : Optional.empty();
+        } catch (IOException unreadable) {
+            return Optional.empty();
+        }
+    }
+
     private static InstalledClient ingest(Cas cas, Path client, ClientKind kind) throws IOException {
         String sha = Hashing.sha256Hex(client);
         cas.putFile(client, sha);

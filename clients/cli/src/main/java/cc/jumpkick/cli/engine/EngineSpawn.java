@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.StartupPulse;
@@ -14,6 +15,7 @@ import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
@@ -477,7 +479,25 @@ public final class EngineSpawn {
         if (engine.kind() != EngineArtifact.Kind.JAR) {
             return new EngineTarget(engine, null);
         }
+        recordInstalledClient(clientVersion);
         return new EngineTarget(engine, resolveEngineJdk().home());
+    }
+
+    /**
+     * Pair the PATH client with the engine of its version it starts: an installer that placed this
+     * client over that engine installed no engine, so the pointer still names the client it replaced.
+     * Never fails a spawn.
+     */
+    private static void recordInstalledClient(String clientVersion) {
+        try {
+            Optional<InstalledClients.Self> self = InstalledClients.installedSelf(JkDirs.binDir());
+            if (self.isEmpty()) return;
+            EngineInstall.current()
+                    .recordPathClient(
+                            clientVersion, self.get().bytes(), self.get().kind(), JkStores.storeCas());
+        } catch (IOException | RuntimeException unrecorded) {
+            Log.debug("engine spawn: the PATH client was not recorded beside its engine", unrecorded);
+        }
     }
 
     /**

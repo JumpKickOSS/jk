@@ -232,7 +232,11 @@ public final class EngineInstall {
         return currentInstall().map(Materialized::engineJar).orElse(engineHome().resolve("jk-engine.jar"));
     }
 
-    /** The live engine when the pointer + jar are present, or a single inferable jar. */
+    /**
+     * The live engine: the jar the pointer names, when both are present. A jar the pointer does not
+     * name is a leftover (a removed home's, a drained engine's), never the install: a home with no
+     * pointer has none, so nothing in it refuses an install.
+     */
     public Optional<Materialized> currentInstall() {
         return readLive();
     }
@@ -790,6 +794,22 @@ public final class EngineInstall {
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
     }
 
+    /**
+     * Name the PATH client whose bytes are {@code client} beside the live engine, when the pointer
+     * names the engine of that client's {@code version} and pairs it with other bytes: an installer
+     * that put a client in place over an engine of its version installs no engine, so nothing else
+     * records it. Returns whether the pointer changed.
+     */
+    public boolean recordPathClient(String version, Path client, ClientKind kind, Cas cas) throws IOException {
+        Optional<Materialized> live = currentInstall();
+        if (live.isEmpty() || !live.get().version().equals(version)) return false;
+        String sha = Hashing.sha256Hex(client);
+        if (liveClient().filter(c -> c.sha256().equalsIgnoreCase(sha)).isPresent()) return false;
+        cas.putFile(client, sha);
+        recordClient(new InstalledClient(sha, kind, null));
+        return true;
+    }
+
     /** The PATH client the pointer pairs with the live engine, when it names one. */
     public Optional<InstalledClient> liveClient() {
         return Optional.ofNullable(liveClient(pointerKeys()));
@@ -869,16 +889,12 @@ public final class EngineInstall {
 
     private Optional<Materialized> readLive() {
         Path pointer = configFile();
-        if (Files.isRegularFile(pointer)) {
-            try {
-                Map<String, String> cfg = AppInstallConfig.parse(Files.readString(pointer));
-                Optional<Materialized> named = fromPointer(cfg);
-                if (named.isPresent()) return named;
-            } catch (IOException ignored) {
-                // fall through to directory inference
-            }
+        if (!Files.isRegularFile(pointer)) return Optional.empty();
+        try {
+            return fromPointer(AppInstallConfig.parse(Files.readString(pointer)));
+        } catch (IOException | RuntimeException unreadable) {
+            return Optional.empty();
         }
-        return inferNewest();
     }
 
     private Optional<Materialized> fromPointer(Map<String, String> cfg) {
@@ -897,10 +913,6 @@ public final class EngineInstall {
             if (version == null) return Optional.empty();
         }
         return Optional.of(new Materialized(version, engineHome(), jar, sha));
-    }
-
-    private Optional<Materialized> inferNewest() {
-        return newestEngineJar().flatMap(this::materializedFromJar);
     }
 
     private Optional<Materialized> inferVersion(String version) {
@@ -930,26 +942,6 @@ public final class EngineInstall {
         String version = versionFromJarName(jar.getFileName().toString()).orElse(null);
         if (version == null) return Optional.empty();
         return Optional.of(new Materialized(version, engineHome(), jar, ""));
-    }
-
-    private Optional<Path> newestEngineJar() {
-        Path home = engineHome();
-        if (!Files.isDirectory(home)) return Optional.empty();
-        Path best = null;
-        long bestMtime = Long.MIN_VALUE;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(home, "jk-engine-*.jar")) {
-            for (Path p : entries) {
-                if (!Files.isRegularFile(p) || !isEngineJarName(p.getFileName().toString())) continue;
-                long mtime = mtime(p);
-                if (best == null || mtime >= bestMtime) {
-                    best = p;
-                    bestMtime = mtime;
-                }
-            }
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(best);
     }
 
     private Materialized confirmLive(Materialized m, String version, String sha) throws IOException {

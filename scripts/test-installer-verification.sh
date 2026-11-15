@@ -291,6 +291,7 @@ if command -v gzip >/dev/null 2>&1; then
   }
   latest_hash="$(openssl dgst -sha256 "$RELEASE/$LATEST_ARTIFACT" | awk '{print tolower($NF)}')"
   write_evidence "$latest_hash  $LATEST_ARTIFACT"$'\n'
+  rm -f "$WORK/jk-calls"
   run_installer "$WORK/home-latest" || {
     cat "$WORK/last-install.log" >&2
     echo "latest/LATEST install failed" >&2
@@ -300,8 +301,18 @@ if command -v gzip >/dev/null 2>&1; then
     echo "latest/LATEST install did not unpack the host artifact" >&2
     exit 1
   }
-  rm -f "$RELEASE/$LATEST_ARTIFACT"
 pass "latest-pointer-install"
+  # A download install places the client and fetches no engine: the engine it already has, when
+  # that is the client's version, is restarted by the new client, and that start is what pairs the
+  # client with it in the install record. Stop, then start, after the client is in place.
+  if ! awk '$0 == "engine stop --now" { stopped = NR } $0 == "engine start" && stopped { started = 1 } END { exit !started }' \
+      "$WORK/jk-calls"; then
+    cat "$WORK/jk-calls" >&2
+    echo "a download install did not restart the engine through the new client" >&2
+    exit 1
+  fi
+pass "download-install-restarts-engine"
+  rm -f "$RELEASE/$LATEST_ARTIFACT"
 fi
 
 # Every pointer refusal happens before the version directory is even named, so these cases need

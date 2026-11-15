@@ -199,6 +199,43 @@ class EngineInstallTest {
     }
 
     /**
+     * An installer that places a client over the engine of its version installs no engine; the
+     * client starting that engine records itself in place of the client it replaced.
+     */
+    @Test
+    void a_path_client_over_an_engine_of_its_version_replaces_the_recorded_client(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        store.materializeFromFiles(
+                "0.51.0",
+                cas,
+                Files.writeString(tmp.resolve("e.jar"), "engine"),
+                false,
+                nativeClient("57b81e", "snapshot-commit"));
+        Path released = Files.writeString(tmp.resolve("jk"), "released-client");
+        String releasedSha = Hashing.sha256Hex(released);
+
+        assertThat(store.recordPathClient("0.51.1", released, EngineInstall.ClientKind.NATIVE, cas))
+                .as("a client of another version is not this engine's")
+                .isFalse();
+        assertThat(store.liveClient().orElseThrow().sha256()).isEqualTo("57b81e");
+
+        assertThat(store.recordPathClient("0.51.0", released, EngineInstall.ClientKind.NATIVE, cas))
+                .isTrue();
+        Map<String, String> pointer = AppInstallConfig.parse(Files.readString(store.configFile()));
+        assertThat(pointer)
+                .containsEntry(EngineInstall.CLIENT_SHA, releasedSha)
+                .doesNotContainKey(EngineInstall.CLIENT_COMMIT)
+                .doesNotContainKey(EngineInstall.PREVIOUS_CLIENT_SHA);
+        assertThat(cas.pathFor(releasedSha)).as("rollback can put it back").hasContent("released-client");
+
+        assertThat(store.recordPathClient("0.51.0", released, EngineInstall.ClientKind.NATIVE, cas))
+                .as("the recorded client again changes nothing")
+                .isFalse();
+    }
+
+    /**
      * A rollback puts back the engine of the install before; that engine launches its workers by
      * the shelf manifest it was installed with, which the later install kept as the previous one.
      */
@@ -282,16 +319,46 @@ class EngineInstallTest {
         Files.delete(store.configFile());
         assertThat(store.configFile()).doesNotExist();
 
-        var recovered = store.currentInstall();
-        assertThat(recovered).as("engine still resolves after pointer deletion").isPresent();
+        assertThat(store.currentInstall()).as("no pointer, no live install").isEmpty();
+        var recovered = store.resolve("0.12.0");
+        assertThat(recovered)
+                .as("the client of that version still finds its jar")
+                .isPresent();
         assertThat(recovered.orElseThrow().version()).isEqualTo("0.12.0");
         assertThat(recovered.orElseThrow().engineJar()).hasContent("engine-bytes");
 
         var healed = store.materializeFromFiles("0.12.0", cas, jar);
-        assertThat(healed.engineJar()).isEqualTo(recovered.orElseThrow().engineJar());
-        assertThat(store.configFile()).exists();
+        assertThat(healed.engineJar()).hasContent("engine-bytes");
+        assertThat(store.currentInstall().orElseThrow().engineJar()).isEqualTo(healed.engineJar());
         assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
-                .containsEntry("jar", "jk-engine-0.12.0.jar");
+                .containsEntry("jar", healed.engineJar().getFileName().toString());
+        try (var jars = Files.list(store.engineHome())) {
+            assertThat(jars.filter(p -> p.getFileName().toString().endsWith(".jar")))
+                    .as("the jar no pointer named is swept")
+                    .containsExactly(healed.engineJar());
+        }
+    }
+
+    /**
+     * A jar left in the engine home of a removed install (a snapshot's timestamped sibling) is not
+     * an install: a release installed into that home is not refused as older, and the leftover goes.
+     */
+    @Test
+    void a_leftover_jar_with_no_pointer_does_not_refuse_an_install(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Files.createDirectories(store.engineHome());
+        Path leftover = Files.writeString(
+                store.engineHome().resolve("jk-engine-0.51.1-SNAPSHOT.1794708392274.jar"), "snapshot-engine");
+        assertThat(store.currentInstall()).isEmpty();
+
+        Path release = Files.writeString(tmp.resolve("jk-engine-0.51.0.jar"), "release-engine");
+        var m = store.materializeFromFiles("0.51.0", cas, release);
+
+        assertThat(m.engineJar().getFileName().toString()).isEqualTo("jk-engine-0.51.0.jar");
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.51.0");
+        assertThat(leftover).doesNotExist();
     }
 
     @Test
