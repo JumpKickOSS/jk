@@ -58,7 +58,7 @@ class LockfilePropertyTest {
                 new JdkPin("", "", "corretto", "21.0.5"),
                 new JdkPin("temurin", "25", "temurin", ""));
         Arbitrary<@Nullable String> kotlin = Arbitraries.of("2.4.10", "2.3.0").injectNull(0.6);
-        Arbitrary<@Nullable String> jkMin = Arbitraries.of("0.12.0", "0.13.0").injectNull(0.5);
+        Arbitrary<@Nullable String> jkMin = Arbitraries.of("0.12.0", "9.13.0").injectNull(0.5);
         Arbitrary<@Nullable String> digest = hex(64).injectNull(0.5);
         Arbitrary<@Nullable String> projectId = hex(32).injectNull(0.5);
         return Combinators.combine(arts, jdk.injectNull(0.3), kotlin, jkMin, digest, projectId)
@@ -116,7 +116,7 @@ class LockfilePropertyTest {
             assertThat(got.scopes()).containsExactlyInAnyOrderElementsOf(want.scopes());
             assertThat(got.deps()).containsExactlyInAnyOrderElementsOf(want.deps()); // the writer sorts deps
         }
-        assertThat(parsed.jkMin()).isEqualTo(lock.jkMin() == null ? LockfileWriter.FORMAT_FLOOR : lock.jkMin());
+        assertThat(parsed.jkMin()).isEqualTo(LockfileWriter.floor(lock.jkMin()));
         assertThat(parsed.kotlin()).isEqualTo(lock.kotlin());
         assertThat(parsed.projectId()).isEqualTo(lock.projectId());
     }

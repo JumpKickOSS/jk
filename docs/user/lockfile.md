@@ -809,6 +809,12 @@ lock with the running JumpKick anyway. A newer JumpKick always may relock, and a
 never in question. A key whose *meaning* changed is not this check's to catch: the lock's `jk-min`
 floor refuses a JumpKick too old to read it right.
 
+`jk-min` is the oldest JumpKick that reads the lock and the manifests it locks. Every write sets it
+to the highest of the floor the lock held, the floor of each first-party plugin the project
+configures, and the format floor of the JumpKick writing it (0.51.0, the release whose manifests
+carry `[test.suites.*]`). A relock never lowers it and never leaves it below the format floor, so a
+project whose lock says `0.10` reads `0.51.0` after its next `jk lock` or build.
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

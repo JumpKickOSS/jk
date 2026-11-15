@@ -32,12 +32,33 @@ class LockfileRoundTripTest {
         assertThat(rendered).doesNotContain("jk = {");
     }
 
+    /**
+     * A lock read with a floor below the format floor (written before the manifest shape it now
+     * locks) is rewritten at the format floor: an older jk must refuse the project, not misread it.
+     */
+    @Test
+    void a_rewritten_lock_never_keeps_a_floor_below_the_format_floor() {
+        String old = """
+                version = 1
+                generated-by = "jk 0.10.0"
+                resolution-algorithm = "pubgrub-v1"
+                jk-min = "0.10"
+                """;
+        Lockfile read = LockfileReader.parse(old);
+        assertThat(read.jkMin()).isEqualTo("0.10");
+
+        String rewritten = LockfileWriter.render(read);
+
+        assertThat(rewritten).contains("\njk-min = \"" + LockfileWriter.FORMAT_FLOOR + "\"\n");
+        assertThat(LockfileReader.parse(rewritten).jkMin()).isEqualTo(LockfileWriter.FORMAT_FLOOR);
+    }
+
     @Test
     void jk_floor_round_trips_and_the_retired_artifact_pin_is_refused() {
-        Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT").withJkMin("0.11.0");
+        Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT").withJkMin("9.1.0");
         String rendered = LockfileWriter.render(lock);
-        assertThat(rendered).contains("jk-min = \"0.11.0\"");
-        assertThat(LockfileReader.parse(rendered).jkMin()).isEqualTo("0.11.0");
+        assertThat(rendered).contains("jk-min = \"9.1.0\"");
+        assertThat(LockfileReader.parse(rendered).jkMin()).isEqualTo("9.1.0");
 
         // `jk-min` is the only spelling of the floor; the retired `jk = { version, sha256 }` table is
         // an unknown key, not a fallback.

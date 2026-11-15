@@ -10,6 +10,7 @@ import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -112,13 +113,22 @@ public final class LockfileWriter {
     }
 
     /**
-     * The floor stamped into locks that have none (every new project's): the oldest jk that reads
+     * The lowest floor any written lock carries: the oldest jk that reads
      * this writer's output and the manifests it locks, so an older jk refuses the project with "run
      * jk self update" instead of misreading it. 0.51.0: test tiers are [test.suites.*] tables, which
      * older releases do not read. Bumped by hand only when the format or the manifest shape needs a
      * newer reader, never to the writing jk's own version.
      */
     static final String FORMAT_FLOOR = "0.51.0";
+
+    /**
+     * The {@code jk-min} a written lock carries: the higher of the floor it holds (a plugin's compat
+     * floor, or one a newer jk wrote) and {@link #FORMAT_FLOOR}, so a rewrite never leaves a floor
+     * below what this writer's output needs.
+     */
+    static String floor(@Nullable String held) {
+        return Objects.requireNonNull(PluginDescriptors.maxFloor(held, FORMAT_FLOOR));
+    }
 
     public static String render(Lockfile lockfile) {
         StringBuilder out = new StringBuilder(256);
@@ -170,8 +180,7 @@ public final class LockfileWriter {
         if (lockfile.scala() != null) {
             out.append("scala = ").append(quote(lockfile.scala())).append('\n');
         }
-        // The jk floor is preserved, never auto-bumped; a floor-less lock gets the format floor.
-        String jkMin = lockfile.jkMin() != null && !lockfile.jkMin().isBlank() ? lockfile.jkMin() : FORMAT_FLOOR;
+        String jkMin = floor(lockfile.jkMin());
         out.append("jk-min = ").append(quote(jkMin)).append('\n');
         if (lockfile.manifestsSha256() != null && !lockfile.manifestsSha256().isBlank()) {
             out.append("manifests-sha256 = ")
