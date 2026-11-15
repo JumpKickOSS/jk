@@ -176,14 +176,19 @@ public final class BuildEnv {
     }
 
     /**
-     * {@link #SHELL} values the request carried — the shell running {@code jk}, and nothing of the
-     * engine's own — omitting names it did not. What a forked worker is handed
-     * over the engine's inherited values, so a developer who moves networks and re-exports {@code
-     * https_proxy} has the next build, and its compilers, plugins and test JVMs, go through the new
-     * one, and a suite opens the display of the terminal running {@code jk}. Empty off a request.
+     * {@link #SHELL} values and the {@code PATH} the request carried — the shell running {@code
+     * jk}, and nothing of the engine's own — omitting names it did not. What every forked worker is
+     * handed over the engine's inherited values, so a developer who moves networks and re-exports
+     * {@code https_proxy} has the next build, and its compilers, plugins and test JVMs, go through
+     * the new one, a suite opens the display of the terminal running {@code jk}, and a tool
+     * installed into a new {@code PATH} entry is found by a guard suite as by a test JVM, without an
+     * engine restart. Empty off a request.
      */
     public static Map<String, String> fromRequest() {
-        return Collections.unmodifiableMap(resolve(SHELL, clientEnv()::get));
+        Map<String, String> out = new LinkedHashMap<>(resolve(SHELL, clientEnv()::get));
+        String path = clientEnv().get("PATH");
+        if (path != null) out.put("PATH", path);
+        return Collections.unmodifiableMap(out);
     }
 
     /**

@@ -404,7 +404,9 @@ Every worker JumpKick forks for a module — the compiler, each test JVM, a plug
 an allow-list, not from a shell. A token exported in the shell that started the engine does
 not reach a compiler worker or your test code by accident. Workers inherit only:
 
-- `PATH`, `HOME`, `JAVA_HOME`, `TMPDIR` / `TMP` / `TEMP`, `LANG` / `LANGUAGE` / `LC_*`; a test
+- `PATH`, `HOME`, `JAVA_HOME`, `TMPDIR` / `TMP` / `TEMP`, `LANG` / `LANGUAGE` / `LC_*`. Every
+  worker, the guard suite's JVM included, gets the `PATH` of the shell running `jk` over the
+  engine's, so a tool you just installed is found without restarting the engine; a test
   JVM gets the locale ones of the shell running `jk` over the engine's, and its suite is keyed on
   them, so `LC_TIME=de_DE.UTF-8 jk test` runs the suite under that locale. A test JVM's `TERM` is
   always `dumb` and no other terminal variable (`COLORTERM`, `NO_COLOR`, `FORCE_COLOR`,

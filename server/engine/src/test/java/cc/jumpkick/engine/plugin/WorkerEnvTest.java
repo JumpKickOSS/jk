@@ -4,12 +4,15 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -225,6 +228,29 @@ class WorkerEnvTest {
         assertThat(WorkerEnv.strict().environment())
                 .as("a strict worker never sees the caller's other variables")
                 .doesNotContainKey("JK_CALLER_ONLY");
+    }
+
+    /**
+     * Every worker finds its tools on the PATH of the shell running jk, as a test JVM does: the
+     * guard suite's JVM is one, and a tool installed into a new PATH entry reaches it without an
+     * engine restart.
+     */
+    @Test
+    void a_strict_worker_gets_the_requests_path_over_the_engines() throws Exception {
+        Map<String, String> engine = new LinkedHashMap<>(ENGINE);
+        AtomicReference<Map<String, String>> seen = new AtomicReference<>();
+        SessionContext.runWhere(
+                Session.defaults().withVariant(null, Map.of("PATH", "/shell/new-tools:/usr/bin")), () -> {
+                    try {
+                        seen.set(WorkerEnv.withEngineEnvironment(engine, WorkerEnv.strict()::environment));
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+        assertThat(seen.get()).containsEntry("PATH", "/shell/new-tools:/usr/bin");
+        assertThat(WorkerEnv.withEngineEnvironment(engine, WorkerEnv.strict()::environment))
+                .as("off a request the engine's PATH answers")
+                .containsEntry("PATH", "/usr/bin");
     }
 
     @Test

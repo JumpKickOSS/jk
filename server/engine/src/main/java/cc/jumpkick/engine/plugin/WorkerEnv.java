@@ -53,9 +53,9 @@ public final class WorkerEnv {
      * per-platform subset the client forwards on a request. {@code LC_*} is a prefix, matched in
      * {@link #allowed}. The proxy the machine talks through is part of how it talks:
      * {@link BuildEnv#SHELL} (proxy, display, container runtime) passes too, and
-     * {@link #environment()} lays the request's values over the engine's, so a worker goes through
-     * the proxy, draws on the display and reaches the container runtime of the shell running
-     * {@code jk}.
+     * {@link #environment()} lays the request's values of those and of {@code PATH} over the
+     * engine's ({@link BuildEnv#fromRequest}), so a worker goes through the proxy, draws on the
+     * display, reaches the container runtime and finds the tools of the shell running {@code jk}.
      */
     static final Set<String> MACHINE = Set.of(
             "PATH",
@@ -207,8 +207,8 @@ public final class WorkerEnv {
     }
 
     /**
-     * The child's complete environment: inherited names first, the request's proxy and display
-     * variables over the engine's, then {@link #extras()}. Under {@code inherit} the inherited names
+     * The child's complete environment: inherited names first, the request's {@code PATH}, proxy and
+     * display variables over the engine's, then {@link #extras()}. Under {@code inherit} the inherited names
      * are the caller's whole shell ({@link BuildEnv#callerEnv}), not the daemon's.
      */
     public Map<String, String> environment() {
