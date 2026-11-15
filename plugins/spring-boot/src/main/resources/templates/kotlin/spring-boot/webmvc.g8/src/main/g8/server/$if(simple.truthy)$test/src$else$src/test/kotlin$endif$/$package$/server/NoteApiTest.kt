@@ -2,8 +2,8 @@ package $package$.server
 
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic
 import org.springframework.test.web.servlet.MockMvc
@@ -15,8 +15,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 @SpringBootTest
 @AutoConfigureMockMvc
 class NoteApiTest {
-    @Autowired
-    lateinit var mvc: MockMvc
+    @Autowired lateinit var mvc: MockMvc
 
     @Test
     fun apiRequiresAuth() {
@@ -36,7 +35,7 @@ class NoteApiTest {
                 post("/api/notes")
                     .with(httpBasic("user", "password"))
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"body":"from test"}"""),
+                    .content("""{"body":"from test"}""")
             )
             .andExpect(status().isCreated())
             .andExpect(jsonPath("\u0024.body").value("from test"))

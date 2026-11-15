@@ -13,11 +13,9 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api/notes")
 class NoteController(private val notes: NoteService) {
-    @GetMapping
-    fun all(): List<NoteView> = notes.all()
+    @GetMapping fun all(): List<NoteView> = notes.all()
 
-    @GetMapping("/{id}")
-    fun one(@PathVariable id: Long): NoteView = notes.one(id)
+    @GetMapping("/{id}") fun one(@PathVariable id: Long): NoteView = notes.one(id)
 
     @PostMapping
     fun create(@Valid @RequestBody input: NewNote): ResponseEntity<NoteView> {

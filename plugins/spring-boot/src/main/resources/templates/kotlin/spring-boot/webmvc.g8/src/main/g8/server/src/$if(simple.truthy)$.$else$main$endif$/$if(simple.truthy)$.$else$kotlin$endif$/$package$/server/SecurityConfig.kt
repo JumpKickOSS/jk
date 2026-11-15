@@ -10,8 +10,10 @@ import org.springframework.security.web.SecurityFilterChain
 class SecurityConfig {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain =
-        http.authorizeHttpRequests { auth ->
-                auth.requestMatchers("/", "/index.html", "/favicon.ico")
+        http
+            .authorizeHttpRequests { auth ->
+                auth
+                    .requestMatchers("/", "/index.html", "/favicon.ico")
                     .permitAll()
                     .requestMatchers("/api/**")
                     .authenticated()

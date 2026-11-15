@@ -28,6 +28,33 @@ starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-start
 [dev-dependencies]
 devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
 
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
+exclude-tags = ["integration"]
+
+[test.suites.slow]
+tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[test.suites.bench]
+tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
+
 === layout=simple
 layout = simple
 --- files
@@ -55,3 +82,30 @@ starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-start
 
 [dev-dependencies]
 devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
+# integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
+# claims one more cost tag, so every tagged test runs in exactly one tier.
+[test.suites.network]
+tags = ["network"]
+exclude-tags = ["integration"]
+
+[test.suites.slow]
+tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[test.suites.bench]
+tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true

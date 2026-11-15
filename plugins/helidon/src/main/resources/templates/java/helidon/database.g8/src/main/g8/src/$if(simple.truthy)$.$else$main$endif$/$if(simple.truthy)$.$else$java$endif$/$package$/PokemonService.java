@@ -1,9 +1,5 @@
 package $package$;
 
-import java.lang.System.Logger;
-import java.lang.System.Logger.Level;
-import java.util.Map;
-
 import io.helidon.common.context.Contexts;
 import io.helidon.common.media.type.MediaTypes;
 import io.helidon.config.Config;
@@ -19,7 +15,6 @@ import io.helidon.webserver.http.HttpRules;
 import io.helidon.webserver.http.HttpService;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
-
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
@@ -27,6 +22,9 @@ import jakarta.json.JsonBuilderFactory;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 import jakarta.json.JsonValue;
+import java.lang.System.Logger;
+import java.lang.System.Logger.Level;
+import java.util.Map;
 
 /**
  * An {@link HttpService} that uses {@link DbClient}.
@@ -45,9 +43,7 @@ public class PokemonService implements HttpService {
      */
     PokemonService() {
         Config config = Services.get(Config.class).get("db");
-        this.dbClient = Contexts.globalContext()
-                .get(DbClient.class)
-                .orElseGet(() -> DbClient.create(config));
+        this.dbClient = Contexts.globalContext().get(DbClient.class).orElseGet(() -> DbClient.create(config));
 
         initSchema = config.get("init-schema").asBoolean().orElse(true);
         initData = config.get("init-data").asBoolean().orElse(true);
@@ -95,9 +91,7 @@ public class PokemonService implements HttpService {
             JsonArray types = reader.readArray();
             for (JsonValue typeValue : types) {
                 JsonObject type = typeValue.asJsonObject();
-                exec.namedInsert("insert-type",
-                                 type.getInt("id"),
-                                 type.getString("name"));
+                exec.namedInsert("insert-type", type.getInt("id"), type.getString("name"));
             }
         }
     }
@@ -107,10 +101,8 @@ public class PokemonService implements HttpService {
             JsonArray pokemons = reader.readArray();
             for (JsonValue pokemonValue : pokemons) {
                 JsonObject pokemon = pokemonValue.asJsonObject();
-                exec.namedInsert("insert-pokemon",
-                                 pokemon.getInt("id"),
-                                 pokemon.getString("name"),
-                                 pokemon.getInt("idType"));
+                exec.namedInsert(
+                        "insert-pokemon", pokemon.getInt("id"), pokemon.getString("name"), pokemon.getInt("idType"));
             }
         }
     }
@@ -194,7 +186,8 @@ public class PokemonService implements HttpService {
      * @param response the server response
      */
     private void listPokemons(ServerRequest request, ServerResponse response) {
-        JsonArray jsonArray = dbClient.execute().namedQuery("select-all-pokemons")
+        JsonArray jsonArray = dbClient.execute()
+                .namedQuery("select-all-pokemons")
                 .map(row -> row.as(JsonObject.class))
                 .collect(JSON_FACTORY::createArrayBuilder, JsonArrayBuilder::add, JsonArrayBuilder::addAll)
                 .build();
@@ -208,15 +201,14 @@ public class PokemonService implements HttpService {
      * @param response server response
      */
     private void getPokemonById(ServerRequest request, ServerResponse response) {
-        int pokemonId = Integer.parseInt(request.path()
-                                                 .pathParameters()
-                                                 .get("id"));
+        int pokemonId = Integer.parseInt(request.path().pathParameters().get("id"));
 
-        response.send(dbClient.execute().createNamedGet("select-pokemon-by-id")
-                              .addParam("id", pokemonId)
-                              .execute()
-                              .orElseThrow(() -> new NotFoundException("Pokemon " + pokemonId + " not found"))
-                              .as(JsonObject.class));
+        response.send(dbClient.execute()
+                .createNamedGet("select-pokemon-by-id")
+                .addParam("id", pokemonId)
+                .execute()
+                .orElseThrow(() -> new NotFoundException("Pokemon " + pokemonId + " not found"))
+                .as(JsonObject.class));
     }
 
     /**
@@ -227,9 +219,10 @@ public class PokemonService implements HttpService {
      */
     private void getPokemonByName(ServerRequest request, ServerResponse response) {
         String pokemonName = request.path().pathParameters().get("name");
-        response.send(dbClient.execute().namedGet("select-pokemon-by-name", pokemonName)
-                              .orElseThrow(() -> new NotFoundException("Pokemon " + pokemonName + " not found"))
-                              .as(JsonObject.class));
+        response.send(dbClient.execute()
+                .namedGet("select-pokemon-by-name", pokemonName)
+                .orElseThrow(() -> new NotFoundException("Pokemon " + pokemonName + " not found"))
+                .as(JsonObject.class));
     }
 
     /**
@@ -239,11 +232,11 @@ public class PokemonService implements HttpService {
      * @param response the server response
      */
     private void insertPokemon(Pokemon pokemon, ServerResponse response) {
-        long count = dbClient.execute().createNamedInsert("insert-pokemon")
+        long count = dbClient.execute()
+                .createNamedInsert("insert-pokemon")
                 .indexedParam(pokemon)
                 .execute();
-        response.status(Status.CREATED_201)
-                .send("Inserted: " + count + " values\n");
+        response.status(Status.CREATED_201).send("Inserted: " + count + " values\n");
     }
 
     /**
@@ -254,7 +247,8 @@ public class PokemonService implements HttpService {
      * @param response the server response
      */
     private void updatePokemon(Pokemon pokemon, ServerResponse response) {
-        long count = dbClient.execute().createNamedUpdate("update-pokemon-by-id")
+        long count = dbClient.execute()
+                .createNamedUpdate("update-pokemon-by-id")
                 .namedParam(pokemon)
                 .execute();
         response.send("Updated: " + count + " values\n");
@@ -269,12 +263,13 @@ public class PokemonService implements HttpService {
     private void deletePokemonById(ServerRequest request, ServerResponse response) {
         int id = request.path()
                 .pathParameters()
-                .first("id").map(Integer::parseInt)
+                .first("id")
+                .map(Integer::parseInt)
                 .orElseThrow(() -> new BadRequestException("No pokemon id"));
-        dbClient.execute().createNamedDelete("delete-pokemon-by-id")
+        dbClient.execute()
+                .createNamedDelete("delete-pokemon-by-id")
                 .addParam("id", id)
                 .execute();
-        response.status(Status.NO_CONTENT_204)
-                .send();
+        response.status(Status.NO_CONTENT_204).send();
     }
 }

@@ -46,6 +46,12 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
+
 === deps=[guava,commons-lang,commons-io] assembly=true
 layout = traditional
 deps = [guava,commons-lang,commons-io]
@@ -96,6 +102,12 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
+
 === layout=simple deps=[commons-lang] assembly=true
 layout = simple
 deps = [commons-lang]
@@ -143,6 +155,12 @@ exclude-tags = ["integration", "network"]
 [test.suites.bench]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
+
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
 
 === layout=simple deps=[guava,commons-io]
 layout = simple
@@ -192,6 +210,12 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
+
 === deps=[commons-io] assembly=true
 layout = traditional
 deps = [commons-io]
@@ -240,6 +264,12 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
+
 === deps=[guava]
 layout = traditional
 deps = [guava]
@@ -287,6 +317,12 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true
+
 === deps=[commons-lang]
 layout = traditional
 deps = [commons-lang]
@@ -333,3 +369,9 @@ exclude-tags = ["integration", "network"]
 [test.suites.bench]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
+
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
+[format]
+style   = "standard"
+enforce = true

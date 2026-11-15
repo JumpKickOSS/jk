@@ -79,7 +79,8 @@ $if(health.truthy)$
 
     @Test
     void no_deadlock() {
-        try (Http1ClientResponse response = client.get("/observe/health/live/deadlock").request()) {
+        try (Http1ClientResponse response =
+                client.get("/observe/health/live/deadlock").request()) {
             assertThat(response.status(), is(Status.NO_CONTENT_204));
         }
     }

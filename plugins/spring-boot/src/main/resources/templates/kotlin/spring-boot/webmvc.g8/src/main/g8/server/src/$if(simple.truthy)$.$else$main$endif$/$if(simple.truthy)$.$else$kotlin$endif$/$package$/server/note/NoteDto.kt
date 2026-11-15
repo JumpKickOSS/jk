@@ -6,6 +6,4 @@ import java.time.LocalDateTime
 
 data class NoteView(val id: Long, val body: String, val createdAt: LocalDateTime)
 
-data class NewNote(
-    @field:NotBlank @field:Size(max = 2000) val body: String,
-)
+data class NewNote(@field:NotBlank @field:Size(max = 2000) val body: String)

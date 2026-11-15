@@ -22,3 +22,9 @@ devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
 starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
 starter-webmvc-test = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc-test" }
 spring-security-test = { group = "org.springframework.security", name = "spring-security-test" }
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "$name$-server"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true

@@ -1,10 +1,9 @@
 package $package$;
 
-import java.util.Optional;
-
 import io.helidon.common.Weight;
 import io.helidon.dbclient.DbMapper;
 import io.helidon.dbclient.spi.DbMapperProvider;
+import java.util.Optional;
 
 /**
  * {@link java.util.ServiceLoader} provider implementation for DB mapper provider.

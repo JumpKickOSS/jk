@@ -321,8 +321,9 @@ ships a small `jk-guards.toml` of its own — a file-size ratchet and one ban wi
 
 Every template also declares test tiers (a `[test.suites.<name>]` per cost tag beside the built-in
 `integration` suite), a
-`[format]` style, and, for a runnable app on the JVM, an `[image]` table (`cli-native` has none: its
-native binary ships as itself). Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
+`[format]` style with `enforce = true` (so `jk guard` formats what changed and CI checks it), and,
+for a runnable app on the JVM, an `[image]` table (`cli-native` has none: its native binary ships as
+itself). None writes a key JumpKick has retired ([Projects](projects.md#retired-keys)). Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
 and marks each package it generates `@NullMarked`, so NullAway checks the project from the first
 build. Nullness is Java's alone: the Kotlin, Scala and Groovy templates carry no JSpecify, no
 `package-info` and no NullAway, and the `library` pack asks `@NullMarked` only of a package that

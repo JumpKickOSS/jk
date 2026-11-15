@@ -309,6 +309,7 @@ class NewProjectCorpusTest {
                                     : List.of(String.valueOf(value))));
             Path project = scaffold(template, v.answers(), scratch.resolve(id.replace('/', '-') + "-" + n++));
             noRetiredKeys(id + " " + v.label(), project);
+            declaresTheDocumentedDefaults(id, v.label(), project);
             out.append("\n=== ").append(v.label()).append('\n');
             settled.forEach((k, value) -> out.append(k)
                     .append(" = ")
@@ -338,6 +339,54 @@ class NewProjectCorpusTest {
                 assertThat(RetiredKeys.found(Toml.parse(text)))
                         .as("%s writes a retired key in %s:%n%s", vector, project.relativize(manifest), text)
                         .isEmpty();
+            }
+        }
+    }
+
+    /** The three cost suites every template declares beside the built-in integration suite. */
+    private static final List<String> SUITES = List.of("network", "slow", "bench");
+
+    /**
+     * Templates that do not yet declare a default {@code docs/user/templates.md} promises, by id and
+     * the table they lack.
+     */
+    private static final Map<String, Set<String>> CONTRACT_GAPS = Map.of(
+            // A native CLI ships as its binary; templates.md says it has no [image].
+            "java/cli-native", Set.of("image"),
+            // TODO(JK-KCN9Z): [image] once jk image is proven on a Grails app.
+            "groovy/grails/hello", Set.of("image"));
+
+    /**
+     * What {@code docs/user/templates.md} and {@code format.md} say every template writes: the root
+     * manifest declares the three cost suites and {@code [format]} with {@code enforce = true}, and with
+     * the template's defaults every manifest with an {@code [application]} that is neither native nor
+     * Android ships an {@code [image]} (an answer may opt out of it).
+     */
+    private static void declaresTheDocumentedDefaults(String id, String label, Path project) throws IOException {
+        String vector = id + " " + label;
+        var root = Toml.parse(Files.readString(project.resolve("jk.toml")));
+        for (String suite : SUITES) {
+            assertThat(root.isTable(List.of("test", "suites", suite)))
+                    .as("%s: jk.toml declares no [test.suites.%s]", vector, suite)
+                    .isTrue();
+        }
+        assertThat(root.getBoolean(List.of("format", "enforce")))
+                .as("%s: jk.toml has no [format] enforce = true", vector)
+                .isTrue();
+        Set<String> gaps = CONTRACT_GAPS.getOrDefault(id, Set.of());
+        try (Stream<Path> walk = Files.walk(project)) {
+            for (Path manifest : walk.filter(p -> p.getFileName().toString().equals("jk.toml"))
+                    .toList()) {
+                var module = Toml.parse(Files.readString(manifest));
+                boolean runnable = module.isTable("application")
+                        && !module.isTable("native")
+                        && !module.isTable("android")
+                        && !Boolean.TRUE.equals(module.getBoolean(List.of("application", "native")));
+                if (runnable && label.equals("defaults") && !gaps.contains("image")) {
+                    assertThat(module.isTable("image"))
+                            .as("%s: %s is a runnable app with no [image]", vector, project.relativize(manifest))
+                            .isTrue();
+                }
             }
         }
     }

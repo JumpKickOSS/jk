@@ -39,8 +39,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === deps=[commons-lang,commons-io]
 deps = [commons-lang,commons-io]
@@ -86,8 +89,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === deps=[guava,commons-io]
 deps = [guava,commons-io]
@@ -133,8 +139,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === deps=[guava,commons-lang]
 deps = [guava,commons-lang]
@@ -180,5 +189,8 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true

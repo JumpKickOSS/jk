@@ -9,8 +9,7 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 class Application {
 
-    @GetMapping("/")
-    fun hello(): String = "Hello from jk + Spring Boot!"
+    @GetMapping("/") fun hello(): String = "Hello from jk + Spring Boot!"
 }
 
 fun main(args: Array<String>) {

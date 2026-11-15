@@ -1,16 +1,15 @@
 package $package$;
 
+import io.helidon.dbclient.DbColumn;
+import io.helidon.dbclient.DbMapper;
+import io.helidon.dbclient.DbRow;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import io.helidon.dbclient.DbColumn;
-import io.helidon.dbclient.DbMapper;
-import io.helidon.dbclient.DbRow;
-
 /**
- * Maps database statements to {@link com.example.db.Pokemon} class.
+ * Maps database statements to {@link $package$.db.Pokemon} class.
  */
 public class PokemonMapper implements DbMapper<Pokemon> {
 

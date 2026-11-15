@@ -82,8 +82,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === metrics=false health=false docker=false k8s=false
 layout = traditional
@@ -154,8 +157,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === media=json tracing=true jlink=true
 layout = traditional
@@ -251,8 +257,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === layout=simple health=false tracing=true docker=false jlink=true k8s=false
 layout = simple
@@ -337,8 +346,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === layout=simple media=json metrics=false
 layout = simple
@@ -420,8 +432,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === metrics=false tracing=true docker=false
 layout = traditional
@@ -499,8 +514,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === media=json metrics=false health=false docker=false jlink=true k8s=false
 layout = traditional
@@ -579,8 +597,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === metrics=false health=false k8s=false
 layout = traditional
@@ -659,8 +680,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === health=false docker=false
 layout = traditional
@@ -734,8 +758,11 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
 
 === metrics=false docker=false k8s=false
 layout = traditional
@@ -808,5 +835,8 @@ exclude-tags = ["integration", "network"]
 tags = ["bench"]
 exclude-tags = ["integration", "network", "slow"]
 
+# `jk guard` formats the sources that changed before it checks; under CI it fails naming each one
+# that is not formatted.
 [format]
-style = "standard"
+style   = "standard"
+enforce = true
