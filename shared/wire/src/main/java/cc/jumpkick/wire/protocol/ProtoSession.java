@@ -72,6 +72,7 @@ public final class ProtoSession {
                 .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withSnapshot(Jsonl.bool(request, "snapshot", false))
+                .withRelease(Jsonl.bool(request, "release", false))
                 .withJavadoc(Jsonl.bool(request, "javadoc", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))
@@ -269,6 +270,7 @@ public final class ProtoSession {
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
         if (!Jsonl.has(request, "snapshot")) f.optionalTrue("snapshot", session.snapshot());
+        if (!Jsonl.has(request, "release")) f.optionalTrue("release", session.release());
         if (!Jsonl.has(request, "javadoc")) f.optionalTrue("javadoc", session.javadoc());
         String body = f.body();
         return body.isEmpty() ? request : Jsonl.append(request, body);

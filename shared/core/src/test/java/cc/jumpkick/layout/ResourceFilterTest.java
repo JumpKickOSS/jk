@@ -4,6 +4,8 @@ package cc.jumpkick.layout;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -66,6 +68,25 @@ class ResourceFilterTest {
         Map<String, String> values = ResourceFilter.values(build);
         assertThat(values).containsEntry("project.groupId", "org.ex").containsEntry("project.artifactId", "core");
         assertThat(values).containsEntry("project.version", "2.0-custom").containsEntry("remoting.version", "3391");
+    }
+
+    @Test
+    void every_build_but_a_release_stamps_the_snapshot_of_the_declared_version() throws Exception {
+        JkBuild build = JkBuildParser.parse("""
+                group = "org.ex"
+                name = "core"
+                version = "2.0"
+                """);
+        Session base = Session.defaults();
+        assertThat(SessionContext.where(base, () -> ResourceFilter.values(build)))
+                .as("jk build and jk test")
+                .containsEntry("project.version", "2.0-SNAPSHOT");
+        assertThat(SessionContext.where(base.withSnapshot(true), () -> ResourceFilter.values(build)))
+                .as("jk snapshot stamps what jk build stamps")
+                .containsEntry("project.version", "2.0-SNAPSHOT");
+        assertThat(SessionContext.where(base.withRelease(true), () -> ResourceFilter.values(build)))
+                .as("jk release and jk publish ship the declared version")
+                .containsEntry("project.version", "2.0");
     }
 
     /** Spring Boot's shape: {@code @} alone, so {@code ${name}} stays for the application to read at run time. */

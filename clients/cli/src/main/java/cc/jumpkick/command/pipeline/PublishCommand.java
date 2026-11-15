@@ -12,6 +12,8 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.RepositoriesScan;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.JkDirs;
@@ -134,6 +136,18 @@ public final class PublishCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
+        this.global = GlobalOptions.from(in);
+        // A publish ships the declared version: its build stamps it as declared, not as a snapshot.
+        Session before = SessionContext.current();
+        SessionContext.install(before.withRelease(true));
+        try {
+            return publish(in);
+        } finally {
+            SessionContext.install(before);
+        }
+    }
+
+    private int publish(Invocation in) throws IOException, InterruptedException {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.username = in.value("user").orElse(null);
         this.password = in.value("password").orElse(null);
@@ -151,7 +165,6 @@ public final class PublishCommand implements CliCommand {
         this.central = in.isSet(RepositorySpec.CENTRAL);
         this.skipTests = in.isSet("skip-tests");
         this.publishingType = in.value("publishing-type").orElse(null);
-        this.global = GlobalOptions.from(in);
 
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);

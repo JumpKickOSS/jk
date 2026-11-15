@@ -106,6 +106,9 @@ filtered = ["src/filter/resources"]     # ${name} and @name@ become the value of
 
 A filtered file's `${name}` and `@name@` take their value from `[resources.properties]`, then
 from `project.groupId`, `project.artifactId` and `project.version`, which JumpKick sets itself.
+`project.version` is the declared version with `-SNAPSHOT` in every build but `jk release` and
+`jk publish`, which ship the declared version as written ([Releasing](release.md)): `jk.toml` holds
+the next release, so `jk build`, `jk test` and `jk snapshot` stamp one value and share one cache.
 `delimiters` names the placeholders that are expanded, as Maven's resources plugin writes them:
 `<begin>*<end>` (`${*}`, `#{*}`) or one token that both begins and ends the name (`@`). Spring
 Boot's `["@"]` leaves `${name}` as written for Spring to resolve at run time.

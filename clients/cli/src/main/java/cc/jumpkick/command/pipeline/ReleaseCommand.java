@@ -218,6 +218,8 @@ public final class ReleaseCommand implements CliCommand {
             return Exit.CONFIG;
         }
         flags.installSession();
+        // The build ships the declared version: filtered resources stamp it as declared.
+        SessionContext.install(SessionContext.current().withRelease(true));
         BuildOptions buildOpts = new BuildOptions();
         buildOpts.skipTests = flags.skipTests();
         InstallCommand install = new InstallCommand(global, buildOpts);

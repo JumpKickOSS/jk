@@ -27,7 +27,7 @@ class FilteredResourcesE2eTest {
         Path copied = project.resolve("target/classes/info/remoting.properties");
         assertThat(copied).hasContent("""
                 remoting=3391
-                version=1.2.3
+                version=1.2.3-SNAPSHOT
                 literal=${kept}
                 """);
 
@@ -104,7 +104,7 @@ class FilteredResourcesE2eTest {
                     @Test
                     void reads_the_expanded_values() throws Exception {
                         assertEquals("3391", Info.load().getProperty("remoting"));
-                        assertEquals("1.2.3", Info.load().getProperty("version"));
+                        assertEquals("1.2.3-SNAPSHOT", Info.load().getProperty("version"));
                     }
                 }
                 """);

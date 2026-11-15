@@ -65,7 +65,9 @@ class SiblingRulePackStagingTest {
         SiblingJars.stageSiblingRulePacks(root.resolve("host"), host, env);
 
         Path store = JkDirs.of(env::get, tmp.toString()).storeDir();
-        Path staged = store.resolve("repos/jk-local/cc/jumpkick/guards/quarkus/1.2.3/quarkus-1.2.3.jar");
+        // Under the version a jk build stamps, which a scaffold of the tree names the pack by.
+        Path staged =
+                store.resolve("repos/jk-local/cc/jumpkick/guards/quarkus/1.2.3-SNAPSHOT/quarkus-1.2.3-SNAPSHOT.jar");
         assertThat(staged).exists().hasBinaryContent(new byte[] {1, 2, 3, 4});
         assertThat(store.resolve("repos/jk-local/cc/jumpkick/jk-test-runner"))
                 .as("a worker is wired by property, not staged")

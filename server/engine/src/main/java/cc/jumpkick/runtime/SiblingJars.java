@@ -113,12 +113,15 @@ final class SiblingJars {
             var proj = sibling.manifest().project();
             Path jar = BuildLayout.of(sibling.dir(), sibling.manifest()).mainJar();
             if (!Files.isRegularFile(jar)) continue;
+            // Under the version the build stamps (SnapshotQualifier.stamp), which a scaffold names
+            // the pack by, not the bare version a jk build names the jar file with.
+            String version = SnapshotQualifier.stamp(proj.version());
             Path shelf = store.resolve("repos")
                     .resolve(RepoArtifactResolver.JK_LOCAL)
                     .resolve(proj.group().replace('.', '/'))
                     .resolve(proj.name())
-                    .resolve(proj.version());
-            Path staged = shelf.resolve(proj.name() + "-" + proj.version() + ".jar");
+                    .resolve(version);
+            Path staged = shelf.resolve(proj.name() + "-" + version + ".jar");
             // By content: a sibling jar restored under an older mtime is still a new jar.
             if (Files.isRegularFile(staged)
                     && Files.size(staged) == Files.size(jar)

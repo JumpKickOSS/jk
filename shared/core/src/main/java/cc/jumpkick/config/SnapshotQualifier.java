@@ -33,6 +33,17 @@ public final class SnapshotQualifier {
     }
 
     /**
+     * The version a build stamps into what it outputs for a module declared at {@code version}: as
+     * declared under {@code jk release} and {@code jk publish}, which ship it, and {@code
+     * <version>-SNAPSHOT} in every other build, which builds the next release before it is cut. One
+     * stamp per tree, whichever of the other verbs builds it.
+     */
+    public static String stamp(String version) {
+        if (SessionContext.current().release() || version.endsWith(SUFFIX)) return version;
+        return version + SUFFIX;
+    }
+
+    /**
      * {@code module} with its version and its edges onto the workspace members in {@code siblings}
      * ({@code group:artifact}) qualified. Unchanged when the session did not ask for snapshots.
      */

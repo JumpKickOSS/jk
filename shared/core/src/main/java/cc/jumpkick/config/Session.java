@@ -132,6 +132,13 @@ public record Session(
          */
         @With boolean snapshot,
         /**
+         * {@code jk release} / {@code jk publish}: the declared version is the one shipped, so a
+         * filtered resource's {@code ${project.version}} is stamped as declared. Every other build
+         * of the tree builds the next release before it is cut and stamps {@code <version>-SNAPSHOT}
+         * ({@link SnapshotQualifier#stamp}).
+         */
+        @With boolean release,
+        /**
          * {@code jk publish} / {@code jk javadoc}: write the javadoc jar of every library whose
          * manifest leaves {@code javadoc} unset ({@link cc.jumpkick.model.JavadocMode#PUBLISH}). A
          * plain {@code jk build} leaves it off, so only a module that opted in documents itself on
@@ -196,6 +203,7 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
+                release,
                 javadoc,
                 revalidate,
                 keyAudit);
@@ -321,6 +329,7 @@ public record Session(
                 false,
                 false,
                 false,
+                false,
                 KeyAuditMode.OFF);
     }
 
@@ -361,6 +370,7 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
+                release,
                 javadoc,
                 revalidate,
                 keyAudit);
@@ -398,6 +408,7 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
+                release,
                 javadoc,
                 revalidate,
                 keyAudit);
@@ -440,6 +451,7 @@ public record Session(
                 affectedChanged,
                 io,
                 snapshot,
+                release,
                 javadoc,
                 revalidate,
                 keyAudit);
