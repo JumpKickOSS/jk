@@ -3,7 +3,7 @@ package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.OutputDirs;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,12 +25,19 @@ final class ReferenceIndex {
 
     private ReferenceIndex() {}
 
-    static final String HEADER = "# jk-refs 2 ";
+    static final String HEADER = "# jk-refs 3 ";
 
-    /** The source sets' index directories, as the writer names them after the class outputs. */
-    private static final List<String> SETS = List.of("classes-refs", "test-classes-refs");
+    /**
+     * Where a module's index directories sit, as the writer names them after each class output
+     * ({@code <classes dir>-refs} beside its parent's {@code incremental}): the build's and the guard
+     * suite's.
+     */
+    private static final List<String> HOMES = List.of("target/incremental", "target/guard/incremental");
 
-    /** One recorded name: {@code d} declaration, {@code r} reference, {@code j} Javadoc reference. */
+    /**
+     * One recorded name: {@code d} declaration, {@code r} reference, {@code w} a field assigned
+     * there, {@code j} Javadoc reference.
+     */
     record Span(char kind, String symbol, int start, int end, int line) {}
 
     /** The symbol of method {@code name} with {@code desc} declared by internal name {@code owner}. */
@@ -55,7 +62,7 @@ final class ReferenceIndex {
                 .filter(sp -> symbols.contains(sp.symbol()))
                 .sorted(Comparator.comparingInt(Span::start))
                 .toList();
-        if (mine.stream().filter(sp -> sp.kind() == 'r').count() < recordedCalls) return null;
+        if (mine.stream().filter(sp -> sp.kind() == 'r' || sp.kind() == 'w').count() < recordedCalls) return null;
         int last = 0;
         for (Span sp : mine) {
             if (sp.start() < last || sp.end() - sp.start() != old.length() || !text.startsWith(old, sp.start())) {
@@ -148,22 +155,60 @@ final class ReferenceIndex {
      * {@code null} when no index file describes it as it is.
      */
     static @Nullable List<Span> of(Path root, Modules modules, String rel, String text) {
+        Path file = file(root, modules, rel);
+        if (file == null) return null;
+        try {
+            return of(Files.readAllLines(file, StandardCharsets.UTF_8), text);
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
+
+    /** The spans of an index file's {@code lines} when its header vouches for {@code text}; else {@code null}. */
+    static @Nullable List<Span> of(List<String> lines, String text) {
+        String header = HEADER + Hashing.sha256Hex(text.getBytes(StandardCharsets.UTF_8));
+        if (lines.isEmpty() || !lines.getFirst().equals(header)) return null;
+        try {
+            return decode(lines.subList(1, lines.size()), text);
+        } catch (RuntimeException unreadable) {
+            return null;
+        }
+    }
+
+    /** The index file a compile wrote for root-relative {@code rel}, whatever it describes; {@code null} for none. */
+    static @Nullable Path file(Path root, Modules modules, String rel) {
         Modules.Module m = modules.of(rel);
         String prefix = m == null ? "" : m.prefix();
-        if (!rel.startsWith(prefix)) return null;
-        Path incremental = root.resolve(prefix).resolve(OutputDirs.TARGET).resolve("incremental");
-        String header = HEADER + Hashing.sha256Hex(text.getBytes(StandardCharsets.UTF_8));
-        for (String set : SETS) {
-            Path file = incremental.resolve(set).resolve(rel.substring(prefix.length()) + ".refs");
-            if (!Files.isRegularFile(file)) continue;
-            try {
-                List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-                if (lines.isEmpty() || !lines.getFirst().equals(header)) return null;
-                return decode(lines.subList(1, lines.size()), text);
-            } catch (IOException | RuntimeException unreadable) {
-                return null;
-            }
+        return rel.startsWith(prefix) ? file(dirs(root, prefix), rel.substring(prefix.length())) : null;
+    }
+
+    /** The index file for module-relative {@code rel} in the first of {@code dirs} that holds one. */
+    static @Nullable Path file(List<Path> dirs, String rel) {
+        for (Path dir : dirs) {
+            Path file = dir.resolve(rel + ".refs");
+            if (Files.isRegularFile(file)) return file;
         }
         return null;
+    }
+
+    /** The index directories of the module at {@code prefix}, one per class output that wrote one. */
+    static List<Path> dirs(Path root, String prefix) {
+        List<Path> out = new ArrayList<>();
+        for (String home : HOMES) {
+            Path dir = root.resolve(prefix).resolve(home);
+            if (!Files.isDirectory(dir)) continue;
+            List<Path> sets = new ArrayList<>();
+            try {
+                PathUtil.forEachChild(dir, (child, attrs) -> {
+                    if (attrs.isDirectory() && child.getFileName().toString().endsWith("-refs")) sets.add(child);
+                    return true;
+                });
+            } catch (IOException unreadable) {
+                // An unlistable directory holds no index we can read.
+            }
+            sets.sort(null);
+            out.addAll(sets);
+        }
+        return out;
     }
 }

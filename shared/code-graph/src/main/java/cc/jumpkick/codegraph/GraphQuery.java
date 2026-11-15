@@ -331,7 +331,7 @@ public final class GraphQuery {
         return a.compareTo(b) <= 0 ? a + '\u0000' + b : b + '\u0000' + a;
     }
 
-    static String clean(String text) {
+    public static String clean(String text) {
         StringBuilder out = new StringBuilder(Math.min(text.length(), MAX_LABEL));
         text.codePoints().filter(cp -> !Character.isISOControl(cp)).forEach(out::appendCodePoint);
         return out.length() > MAX_LABEL ? out.substring(0, MAX_LABEL) : out.toString();

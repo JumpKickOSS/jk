@@ -414,7 +414,7 @@ public final class GraphTools {
      * whose label is the address's last type segment (qualifiers before it must match the end of
      * the type's source path), to a node labelled {@code member}. Empty when the address has no dot.
      */
-    List<String> members(String address) {
+    public List<String> members(String address) {
         String wanted = address.endsWith("()") ? address.substring(0, address.length() - 2) : address;
         int dot = wanted.lastIndexOf('.');
         if (dot <= 0 || dot == wanted.length() - 1) return List.of();

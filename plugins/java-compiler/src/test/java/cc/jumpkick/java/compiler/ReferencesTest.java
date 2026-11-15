@@ -85,10 +85,20 @@ class ReferencesTest {
 
     /** Each recorded span's text, by symbol: what a rename would replace. */
     private static Map<String, List<String>> compile(Path dir) throws Exception {
+        return compile(
+                dir,
+                Map.of(
+                        "demo/shapes/Shape.java", SHAPES,
+                        "demo/shapes/Area.java", AREA,
+                        "demo/shapes/impl/Square.java", SQUARE));
+    }
+
+    private static Map<String, List<String>> compile(Path dir, Map<String, String> sources) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src/main/java"));
-        Path shapes = write(src, "demo/shapes/Shape.java", SHAPES);
-        Path area = write(src, "demo/shapes/Area.java", AREA);
-        Path square = write(src, "demo/shapes/impl/Square.java", SQUARE);
+        List<Path> files = new ArrayList<>();
+        for (Map.Entry<String, String> e : new TreeMap<>(sources).entrySet()) {
+            files.add(write(src, e.getKey(), e.getValue()));
+        }
         Path classes = Files.createDirectories(dir.resolve("target/classes"));
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
@@ -99,14 +109,14 @@ class ReferencesTest {
                     null,
                     List.of("-proc:none", "-d", classes.toString()),
                     null,
-                    fm.getJavaFileObjects(shapes, area, square));
+                    fm.getJavaFileObjects(files.toArray(Path[]::new)));
             References refs = new References(task);
             task.addTaskListener(refs);
             assertThat(task.call()).as(err.toString(StandardCharsets.UTF_8)).isTrue();
             refs.write(classes, dir);
         }
         Map<String, List<String>> out = new TreeMap<>();
-        for (Path file : List.of(shapes, area, square)) {
+        for (Path file : files) {
             String text = Files.readString(file);
             Path index = References.dirFor(classes).resolve(References.relative(dir, file) + ".refs");
             List<String> lines = Files.readAllLines(index);
@@ -181,6 +191,46 @@ class ReferencesTest {
         Files.createDirectories(f.getParent());
         Files.writeString(f, text);
         return f;
+    }
+
+    private static final String COUNTER = """
+            package demo.count;
+
+            public class Counter {
+                int count;
+                int[] slots = new int[2];
+
+                void step(Counter other) {
+                    count = 1;
+                    this.count += 2;
+                    other.count++;
+                    --count;
+                    slots[count] = count;
+                    int read = other.count + count;
+                    slots = null;
+                }
+            }
+            """;
+
+    /**
+     * A field's writes are told from its reads: the target of {@code =}, a compound assignment,
+     * {@code ++} or {@code --} is {@code w}; an array element assigned through the field reads it.
+     */
+    @Test
+    void a_fields_writes_are_recorded_apart_from_its_reads(@TempDir Path dir) throws Exception {
+        Map<String, List<String>> refs = compile(dir, Map.of("demo/count/Counter.java", COUNTER));
+        assertThat(refs.get("F demo.count.Counter#count"))
+                .containsExactly(
+                        "d:count@4",
+                        "w:count@8",
+                        "w:count@9",
+                        "w:count@10",
+                        "w:count@11",
+                        "r:count@12",
+                        "r:count@12",
+                        "r:count@13",
+                        "r:count@13");
+        assertThat(refs.get("F demo.count.Counter#slots")).containsExactly("d:slots@5", "r:slots@12", "w:slots@14");
     }
 
     @Test

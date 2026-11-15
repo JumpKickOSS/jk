@@ -38,14 +38,15 @@ public final class CodeGraphTool implements McpTool {
     }
 
     /**
-     * {@code callers}: who calls a method, complete, in one call. The one graph tool on the default
-     * list — measured to answer caller questions in fewer tokens than grep and reads.
+     * {@code callers}: who calls a method, or uses a field, a type, an annotation or a constructor,
+     * complete, in one call. The one graph tool on the default list — measured to answer caller
+     * questions in fewer tokens than grep and reads.
      */
     public static McpTool callers() {
         return new CodeGraphTool(
                 spec(
                         "callers",
-                        "Who calls Type.method, every overload, at file:line, complete from the compiled classes."
+                        "Who calls Type.method or uses Type.field, Type or @Annotation, at file:line, complete."
                                 + " transitive=true: all that reach it. Call it first, before any search.",
                         scoped(Map.of(
                                 "address", McpSchemas.string(),

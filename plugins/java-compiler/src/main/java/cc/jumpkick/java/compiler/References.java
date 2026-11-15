@@ -6,14 +6,17 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import com.sun.source.doctree.DocCommentTree;
 import com.sun.source.doctree.ReferenceTree;
+import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.DocSourcePositions;
 import com.sun.source.util.DocTreePath;
@@ -61,10 +64,11 @@ import org.jspecify.annotations.Nullable;
  * only for a compile that passed; a failure to index is logged by the caller and never fails the
  * compile.
  *
- * <p>Format, after the header line {@code # jk-refs 2 <sha256>}: one line per name, in source order,
+ * <p>Format, after the header line {@code # jk-refs 3 <sha256>}: one line per name, in source order,
  * {@code <kind><id>\t<delta>} — kind {@code d} (the declaration's own name; a constructor's name
- * records its class), {@code r} (a reference in code, imports included) or {@code j} (a Javadoc
- * reference); {@code id} the symbol's number in the file; {@code delta} the name's start, in
+ * records its class), {@code r} (a reference in code, imports included), {@code w} (a field or
+ * variable assigned there: the target of {@code =}, a compound assignment, {@code ++} or {@code --})
+ * or {@code j} (a Javadoc reference); {@code id} the symbol's number in the file; {@code delta} the name's start, in
  * characters of the source as javac read it, after the previous line's start. A symbol's first use
  * is preceded by its line {@code =<symbol>}, which gives it the next number. Symbols: {@code T
  * <binary name>}, {@code M <owner>#<name><descriptor>} (constructors as {@code <init>}), {@code F
@@ -74,7 +78,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class References implements TaskListener {
 
-    static final String HEADER = "# jk-refs 2 ";
+    static final String HEADER = "# jk-refs 3 ";
 
     /** On unless {@code jk.java.references=false}: what its cost is measured against. */
     static final boolean ENABLED =
@@ -321,6 +325,28 @@ final class References implements TaskListener {
             refs.add(new Ref(kind, symbol, start, end, cu.getLineMap().getLineNumber(start)));
         }
 
+        /** {@code w} when {@code node}, the current path's leaf, is what its parent assigns; else {@code r}. */
+        private char use(Tree node) {
+            TreePath parent = getCurrentPath().getParentPath();
+            Tree up = parent == null ? null : parent.getLeaf();
+            boolean written;
+            if (up instanceof AssignmentTree a) {
+                written = a.getVariable() == node;
+            } else if (up instanceof CompoundAssignmentTree c) {
+                written = c.getVariable() == node;
+            } else if (up instanceof UnaryTree u) {
+                Tree.Kind k = u.getKind();
+                written = u.getExpression() == node
+                        && (k == Tree.Kind.PREFIX_INCREMENT
+                                || k == Tree.Kind.PREFIX_DECREMENT
+                                || k == Tree.Kind.POSTFIX_INCREMENT
+                                || k == Tree.Kind.POSTFIX_DECREMENT);
+            } else {
+                written = false;
+            }
+            return written ? 'w' : 'r';
+        }
+
         @Override
         public Void visitIdentifier(IdentifierTree node, Void unused) {
             // `this(…)` and `super(…)` resolve to constructors, but the word is not the class's name.
@@ -329,7 +355,7 @@ final class References implements TaskListener {
             }
             int start = (int) positions.getStartPosition(cu, node);
             add(
-                    'r',
+                    use(node),
                     trees.getElement(getCurrentPath()),
                     start,
                     start + node.getName().length());
@@ -341,7 +367,7 @@ final class References implements TaskListener {
             if (node.getIdentifier().contentEquals("class")) return super.visitMemberSelect(node, unused);
             int end = (int) positions.getEndPosition(cu, node);
             add(
-                    'r',
+                    use(node),
                     trees.getElement(getCurrentPath()),
                     end - node.getIdentifier().length(),
                     end);

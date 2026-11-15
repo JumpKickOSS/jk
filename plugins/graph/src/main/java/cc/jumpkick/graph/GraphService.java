@@ -211,6 +211,14 @@ public final class GraphService {
             List<String> a = r.args();
             return GraphRename.rename(w, build.graph(), arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
         }
+        if ("callers".equals(r.op())) {
+            CodeGraph g = build.graph();
+            Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
+            GraphTools tools = new GraphTools(
+                    g, scope, rel -> source(w.root(), rel), w.uncompiled().isEmpty());
+            Reply uses = GraphUses.answer(w, g, scope, tools, arg(r.args(), 0, "a method"), r.budget());
+            if (uses != null) return uses;
+        }
         return Reply.of(w, said(w, build, r));
     }
 

@@ -13,6 +13,8 @@ jk graph read OrderService -w structure    # the type's declarations without bod
 jk graph find -t interface -I Repository   # declarations by kind, supertype, annotation, name
 jk graph callers OrderService.total        # who calls it, every overload, complete
 jk graph callers OrderService.total -t     # everything that reaches it
+jk graph callers Order.status              # every read and write of a field, at its line
+jk graph callers Order                     # every use of a type (@Audited for an annotation)
 jk graph neighbors OrderService            # its direct connections
 jk graph path OrderService PriceCalculator -U
 jk graph rules src/main/java/com/acme/shop/OrderService.java
@@ -255,6 +257,42 @@ there is no need to grep for the name afterwards. A method reached only by refle
 a string is not a call, so it is not listed; the note under the answer says when a module's calls
 are missing.
 
+### Uses of a field, a type, an annotation or a constructor
+
+`callers` answers for any symbol a type declares, in the same shape: each use under the declaration
+holding it, `Owner.member()` at `file:line` with the line quoted, main sources before tests, and a
+count.
+
+| Address | Lists |
+|---|---|
+| `Order.status` | Every use of the field, writes (`=`, a compound assignment, `++`, `--`) apart from reads |
+| `Order`, `shop.Order`, `Order.Line` | Every use of the type: declarations, `new`, casts, generics, `Order.class`, static calls through it. An import is listed only for a file that uses it nowhere else |
+| `@Audited` or `Audited` | Every declaration it annotates (an annotation is a type) |
+| `Order.Order`, `Order.new` | Every call of its constructors: a `new`, a subclass's `super(…)`, `Order::new` |
+
+A Java use comes from the reference index javac writes during every compile, so it is the use
+javac resolved, at its exact line, whatever the variable is called; a constant javac copied into
+another class is still listed where it is written. A `{@link}` to the symbol is counted and listed
+apart as a doc link. A constructor's calls come from the compiled classes, as a method's do, in
+every language.
+
+What is exact, and what is not:
+
+- **Java, compiled as it stands:** exact.
+- **Kotlin and Groovy:** their compilers write no reference index yet, so a Kotlin or Groovy source
+  that can see the symbol is searched for its name, and each line that spells it is listed
+  `(inferred)`. Outside its own class a Kotlin property is used through its getter and setter, so
+  `callers Type.getName` lists those uses from the compiled classes; a Groovy property is only
+  matched by name.
+- **A Java source edited since its compile, or in a module with no compiled classes:** searched for
+  the name the same way, `(inferred)`.
+
+The answer says it is complete only when no such source spells the name: then every use is one javac
+resolved, and no search is needed. Otherwise its second line says how many sources were matched by
+name, and the rest of the list is still exact. An unused field, type or annotation is answered
+`Nothing uses it.` under the same rule, so "no uses" is a fact you can delete on, not a missed
+search. Reflection and names in strings are not uses.
+
 ## Rename
 
 `jk graph rename Type.method newName` (MCP `rename`) renames a method in one call: its declaration,
@@ -310,7 +348,8 @@ On JumpKick (679,533 lines), asked who calls a method, what implements or overri
 
 ## MCP
 
-JumpKick's MCP server lists one graph tool by default, `callers`: every card an agent's host shows is paid
+JumpKick's MCP server lists one graph tool by default, `callers` (methods, and every use of a
+field, type, annotation or constructor): every card an agent's host shows is paid
 on every turn, and in measured agent runs `callers` and `rename` are the ones that repay it.
 
 <!-- agents-claims:begin -->
