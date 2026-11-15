@@ -531,8 +531,12 @@ and exclusions stay GA-scoped.
    lines as they are read, so no jar's size decides whether a build fits the engine's heap. **Package, test, native and image** keys hash full bytes
    (`ClasspathFingerprint`), so the same change re-packages the producer and re-runs every suite
    whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
-   (`BuildIdentity.buildId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
-   build-logic and packaging once and never restores what the previous engine produced.
+   (`BuildIdentity.keyId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
+   build-logic and packaging once and never restores what the previous engine produced. That
+   identity is the engine's code, not its jar file: the commit and build time the packaging stamps
+   into the jar's manifest are left out, so an engine repackaged for a new commit with the same
+   code (a test-only edit to its module) keeps every key, and the next build of an unchanged tree
+   is a no-op.
    A compile key and the freshness stamp's instant are both taken before the compiler reads its
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads

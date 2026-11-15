@@ -437,7 +437,7 @@ public final class ActionKey {
      * manifest, build args, toolchain version, …). The caller MUST include every input that affects
      * the produced bytes; a missing token risks serving a stale artifact.
      *
-     * <p>The producer's identity is {@link BuildIdentity#buildId()}, the running engine archive.
+     * <p>The producer's identity is {@link BuildIdentity#keyId()}, the running engine archive's code.
      * The rules a packager applies — what it excludes, how it merges, what it writes at the root —
      * are engine code, and a version string alone does not name them: two engines built from
      * different sources under one version would otherwise share a key, and the second would
@@ -448,7 +448,7 @@ public final class ActionKey {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
-        sb.append("producer:").append(BuildIdentity.buildId()).append('\n');
+        sb.append("producer:").append(BuildIdentity.keyId()).append('\n');
         List<String> sorted = new ArrayList<>(inputTokens);
         sorted.sort(Comparator.naturalOrder());
         for (String t : sorted) sb.append("in:").append(t).append('\n');

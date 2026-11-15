@@ -3,10 +3,19 @@ package cc.jumpkick.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Hashing;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class BuildIdentityTest {
 
@@ -31,12 +40,13 @@ class BuildIdentityTest {
                         BuildIdentity.compose("1.0.0-SNAPSHOT", "abc123def456", BuildIdentity.CACHE_KEY_SALT + 1));
         // The salt reaches cacheKeyVersion() through the same composition rule.
         assertThat(BuildIdentity.cacheKeyVersion())
-                .isEqualTo(BuildIdentity.compose(JkVersion.VERSION, BuildIdentity.buildId()));
+                .isEqualTo(BuildIdentity.compose(JkVersion.VERSION, BuildIdentity.keyId()));
     }
 
     @Test
     void unit_tests_run_from_a_classes_dir_and_get_no_jar_identity() {
         assertThat(BuildIdentity.buildId()).isEmpty();
+        assertThat(BuildIdentity.keyId()).isEmpty();
         assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(JkVersion.VERSION + SALTED);
     }
 
@@ -45,6 +55,7 @@ class BuildIdentityTest {
         try {
             BuildIdentity.overrideBuildIdForTests("feedfacecafe");
             assertThat(BuildIdentity.buildId()).isEqualTo("feedfacecafe");
+            assertThat(BuildIdentity.keyId()).isEqualTo("feedfacecafe");
         } finally {
             BuildIdentity.overrideBuildIdForTests(null);
         }
@@ -97,5 +108,54 @@ class BuildIdentityTest {
     @Test
     void unit_tests_run_from_a_classes_dir_and_have_no_commit() {
         assertThat(BuildIdentity.builtFrom()).isNull();
+    }
+
+    /**
+     * The engine jar of each commit carries that commit and its time in its manifest, so an engine
+     * module repackaged for a test-only edit is another file with the same code. Keyed by the whole
+     * file, every action key of the next build moved after such an install and the push gate ran
+     * every suite again (JK-E7GKJ); the code's identity holds, and a changed class or another
+     * manifest attribute still moves it.
+     */
+    @Test
+    void the_code_identity_ignores_the_packaging_stamps_and_nothing_else(@TempDir Path dir) throws IOException {
+        Path one = jar(dir.resolve("one.jar"), "4ee07400a592deadbeef4ee07400a592deadbeef", "2026-11-15T16:27:23Z", "A");
+        Path two = jar(
+                dir.resolve("two.jar"), "a2136bc4924d9b3e8afce29e25e8ce72a48d060e-dirty", "2026-11-15T16:31:51Z", "A");
+        assertThat(Hashing.sha256Hex(one)).isNotEqualTo(Hashing.sha256Hex(two));
+        assertThat(BuildIdentity.codeIdentity(one)).isEqualTo(BuildIdentity.codeIdentity(two));
+
+        Path code =
+                jar(dir.resolve("code.jar"), "4ee07400a592deadbeef4ee07400a592deadbeef", "2026-11-15T16:27:23Z", "B");
+        assertThat(BuildIdentity.codeIdentity(code)).isNotEqualTo(BuildIdentity.codeIdentity(one));
+
+        Path main = dir.resolve("main.jar");
+        Manifest m = manifest("4ee07400a592deadbeef4ee07400a592deadbeef", "2026-11-15T16:27:23Z");
+        m.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "cc.jumpkick.engine.Other");
+        write(main, m, "A");
+        assertThat(BuildIdentity.codeIdentity(main)).isNotEqualTo(BuildIdentity.codeIdentity(one));
+    }
+
+    private static Path jar(Path at, String commit, String time, String body) throws IOException {
+        write(at, manifest(commit, time), body);
+        return at;
+    }
+
+    private static Manifest manifest(String commit, String time) {
+        Manifest m = new Manifest();
+        m.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        m.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "cc.jumpkick.engine.EngineMain");
+        m.getMainAttributes().putValue(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, commit);
+        m.getMainAttributes().putValue(BuildIdentity.BUILD_TIME_ATTRIBUTE, time);
+        return m;
+    }
+
+    private static void write(Path at, Manifest m, String body) throws IOException {
+        try (OutputStream out = Files.newOutputStream(at);
+                JarOutputStream jar = new JarOutputStream(out, m)) {
+            jar.putNextEntry(new JarEntry("cc/jumpkick/engine/EngineMain.class"));
+            jar.write(body.getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
     }
 }

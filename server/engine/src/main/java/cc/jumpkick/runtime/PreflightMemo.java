@@ -362,7 +362,7 @@ public final class PreflightMemo {
             sb.append("cacheKeyVersion=")
                     .append(BuildIdentity.cacheKeyVersion())
                     .append('\n');
-            sb.append("producer=").append(BuildIdentity.buildId()).append('\n');
+            sb.append("producer=").append(BuildIdentity.keyId()).append('\n');
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
             sb.append("profile=").append(profileHeader(profile)).append('\n');
@@ -947,7 +947,7 @@ public final class PreflightMemo {
     private static boolean headerMisses(
             MemoFile memo, boolean skipTests, @Nullable String profile, @Nullable String wantJdk) {
         String wantVersion = BuildIdentity.cacheKeyVersion();
-        String wantProducer = BuildIdentity.buildId();
+        String wantProducer = BuildIdentity.keyId();
         String wantSkip = skipTests ? "1" : "0";
         String gotVersion = memo.got("cacheKeyVersion");
         String gotProducer = memo.header().getOrDefault("producer", "");

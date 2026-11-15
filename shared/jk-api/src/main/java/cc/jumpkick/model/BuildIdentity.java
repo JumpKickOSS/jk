@@ -2,19 +2,30 @@
 package cc.jumpkick.model;
 
 import cc.jumpkick.host.Hashing;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Running jk identity for cache keys and engine election. Releases key by {@link JkVersion#VERSION}
- * plus the cache-key salt; {@code -SNAPSHOT} builds also fold in the jar sha256 (12 hex). Empty
- * {@link #buildId()} means no jar identity.
+ * plus the cache-key salt; {@code -SNAPSHOT} builds also fold in the code's {@link #keyId()} (12
+ * hex). Empty {@link #buildId()} means no jar identity.
  */
 public final class BuildIdentity {
 
@@ -54,21 +65,46 @@ public final class BuildIdentity {
     /**
      * Pretend the running code is the archive {@code id} names; {@code null} returns to the
      * derived identity. A test uses it to be "another engine" for one build and watch a packaging
-     * key miss; unit tests otherwise run from a classes dir and have no identity to move.
+     * key miss; unit tests otherwise run from a classes dir and have no identity to move. It stands
+     * in for {@link #keyId()} too.
      */
     public static void overrideBuildIdForTests(@Nullable String id) {
         overrideBuildId = id;
     }
 
+    private static volatile @Nullable String cachedKeyId;
+
+    /**
+     * The running code's identity as action keys name their producer: {@link #buildId()} without
+     * the stamps the packaging writes into the archive's manifest ({@value #BUILD_COMMIT_ATTRIBUTE}
+     * and {@value #BUILD_TIME_ATTRIBUTE}), 12 hex, or {@code ""} when no archive is derivable. Those
+     * stamps name the checkout the jar was packaged from and move with every commit that repackages
+     * the engine, a test-only edit to its module included, while the code that keys, compiles and
+     * packages stays byte for byte what it was: keyed by the whole archive, every action key of the
+     * next build moved after each such install, and the push gate ran every suite again (JK-E7GKJ).
+     * {@link #buildId()} stays the whole archive's: a client tells one installed engine from another
+     * by it.
+     */
+    public static String keyId() {
+        String override = overrideBuildId;
+        if (override != null) return override;
+        String local = cachedKeyId;
+        if (local != null) return local;
+        synchronized (BuildIdentity.class) {
+            if (cachedKeyId == null) cachedKeyId = computeKeyId();
+            return cachedKeyId;
+        }
+    }
+
     /**
      * The version string to key caches by: {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT}
-     * for releases; {@code -SNAPSHOT} builds also fold the build id in so a rebuilt engine never
-     * restores an older engine's results under the same key.
+     * for releases; {@code -SNAPSHOT} builds also fold the code's {@link #keyId()} in so a rebuilt
+     * engine never restores an older engine's results under the same key.
      */
     public static String cacheKeyVersion() {
         String pinned = overrideKeyVersion;
         if (pinned != null) return pinned;
-        return compose(JkVersion.VERSION, buildId());
+        return compose(JkVersion.VERSION, keyId());
     }
 
     private static volatile @Nullable String overrideKeyVersion;
@@ -224,6 +260,51 @@ public final class BuildIdentity {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static String computeKeyId() {
+        Path location = codeArchive();
+        if (location == null) return "";
+        try {
+            return codeIdentity(location).substring(0, 12);
+        } catch (IOException | RuntimeException e) {
+            // Best-effort, as the whole archive's sha is: the whole archive then names it.
+            return buildId();
+        }
+    }
+
+    /**
+     * The sha256 of what {@code jar} holds, its packaging stamps aside: each entry by name, CRC-32
+     * and size as the archive's central directory records them, in name order, and the manifest by
+     * its content without {@value #BUILD_COMMIT_ATTRIBUTE} and {@value #BUILD_TIME_ATTRIBUTE}. The
+     * central directory answers without inflating an entry, so this costs a few milliseconds on a
+     * 20 MB engine where hashing every entry's bytes costs a few hundred, on the first key of every
+     * engine start.
+     */
+    static String codeIdentity(Path jar) throws IOException {
+        MessageDigest md = Hashing.newSha256();
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            List<ZipEntry> entries = new ArrayList<>(Collections.list(zip.entries()));
+            entries.sort(Comparator.comparing(ZipEntry::getName));
+            for (ZipEntry e : entries) {
+                String line;
+                if (e.getName().equalsIgnoreCase(JarFile.MANIFEST_NAME)) {
+                    Manifest m;
+                    try (InputStream in = zip.getInputStream(e)) {
+                        m = new Manifest(in);
+                    }
+                    m.getMainAttributes().remove(new Attributes.Name(BUILD_COMMIT_ATTRIBUTE));
+                    m.getMainAttributes().remove(new Attributes.Name(BUILD_TIME_ATTRIBUTE));
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    m.write(out);
+                    line = e.getName() + " manifest " + Hashing.sha256Hex(out.toByteArray());
+                } else {
+                    line = e.getName() + " " + Long.toHexString(e.getCrc()) + " " + e.getSize();
+                }
+                md.update((line + "\n").getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        return Hashing.hex(md.digest());
     }
 
     private static String computeCodeSha() {

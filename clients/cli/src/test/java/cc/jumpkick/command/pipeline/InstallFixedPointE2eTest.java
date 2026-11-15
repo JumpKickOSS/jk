@@ -88,7 +88,7 @@ class InstallFixedPointE2eTest {
     }
 
     /** A root with a library and an application that depends on it; nothing external to resolve. */
-    private static Path workspace(Path root) throws IOException {
+    static Path workspace(Path root) throws IOException {
         int java = Runtime.version().feature();
         Files.createDirectories(root.resolve("lib/src/main/java/com/example"));
         Files.createDirectories(root.resolve("app/src/main/java/com/example"));
