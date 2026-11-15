@@ -229,7 +229,6 @@ final class JvmFacts {
             Map<String, Set<String>> signatures,
             Map<String, Set<String>> delegates,
             Map<String, Map<String, Object>> facts) {
-        if (m.name().equals("<clinit>")) return;
         String name = m.name();
         Matcher lambda = LAMBDA.matcher(name);
         boolean synthetic = (m.access() & (ACC_SYNTHETIC | ACC_BRIDGE)) != 0 || name.contains("$");
@@ -239,8 +238,13 @@ final class JvmFacts {
                     : lambda.group(2) != null ? lambda.group(2) : lambda.group(3);
         }
         if (owner.facade()) name = property(c, name);
+        // A constructor, a static initializer and the lambdas in their bodies (javac names those
+        // lambda$new$N and lambda$static$N) run as the type: their calls are the type's.
+        boolean initializer = name.equals("<init>")
+                || name.equals("<clinit>")
+                || lambda.matches() && (name.equals("new") || name.equals("static"));
         String from;
-        if (name.equals("<init>") || !owner.named() && !owner.facade() || synthetic && !lambda.matches()) {
+        if (initializer || !owner.named() && !owner.facade() || synthetic && !lambda.matches()) {
             from = owner.id();
         } else {
             from = GraphIds.member(owner.id(), name);
