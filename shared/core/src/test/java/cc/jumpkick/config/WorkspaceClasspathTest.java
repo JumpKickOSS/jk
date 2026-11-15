@@ -14,6 +14,7 @@ import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -299,6 +300,55 @@ class WorkspaceClasspathTest {
                 WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
         assertThat(withFixtures.jars()).anyMatch(p -> p.endsWith(Path.of("test-fixtures/classes")));
         assertThat(withFixtures.missingSiblingJars()).isEmpty();
+    }
+
+    /**
+     * The closure walks a module's tables in {@link Scope} order, whatever set names them: a
+     * {@code Set.of} iterates in an order salted per JVM, so the fixtures sibling a test table names
+     * sat before or after the main siblings from one engine to the next, and compile-test-fixtures
+     * and compile-guard keyed two classpaths for one tree (JK-F6SS0). Main edges come first, as
+     * Maven puts compile dependencies ahead of test ones.
+     */
+    @Test
+    void the_sibling_closure_takes_main_edges_before_test_edges_whatever_order_the_scope_set_iterates(
+            @TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["model", "host", "core"]
+                """);
+        module(root, "model", "");
+        module(root, "host", """
+                [test]
+                fixtures = true
+                """);
+        module(root, "core", """
+                [dependencies]
+                model = { workspace = true }
+                host = { workspace = true }
+
+                [test-dependencies]
+                host = { workspace = true, fixtures = true }
+                """);
+        JkBuild core = JkBuildParser.parse(root.resolve("core/jk.toml"));
+        Set<Scope> testFirst =
+                new LinkedHashSet<>(List.of(Scope.TEST_DEV, Scope.TEST, Scope.PROVIDED, Scope.MAIN, Scope.EXPORT));
+        List<String> expected =
+                List.of("model/target/classes", "host/target/classes", "host/target/test-fixtures/classes");
+        for (Set<Scope> scopes : List.of(WorkspaceClasspath.TEST_SCOPES, testFirst)) {
+            var result = WorkspaceClasspath.resolve(root.resolve("core"), core, scopes);
+            assertThat(result.siblingClosureClasses().stream()
+                            .map(p -> root.relativize(p).toString().replace('\\', '/'))
+                            .toList())
+                    .as("closure classes for scopes iterated as %s", scopes)
+                    .containsExactlyElementsOf(expected);
+        }
+        assertThat(List.copyOf(WorkspaceClasspath.TEST_SCOPES))
+                .containsExactly(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
     }
 
     @Test

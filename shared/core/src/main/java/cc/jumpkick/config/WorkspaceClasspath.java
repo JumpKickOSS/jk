@@ -17,6 +17,8 @@ import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -66,14 +68,15 @@ public final class WorkspaceClasspath {
      * Maven's compile classpath holds a {@code provided} dependency. Packaging and running read
      * {@link #RUNTIME_SCOPES}, where a provided sibling is absent, the platform supplying it.
      */
-    public static final Set<Scope> COMPILE_SCOPES = Set.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED);
+    public static final Set<Scope> COMPILE_SCOPES =
+            Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED));
 
     /** The direct edges a module's test compile and test run read: {@link #COMPILE_SCOPES} plus the test scopes. */
-    public static final Set<Scope> TEST_SCOPES =
-            Set.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
+    public static final Set<Scope> TEST_SCOPES = Collections.unmodifiableSet(
+            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV));
 
     /** The direct edges whose jars ride into a module's package, run and native image. */
-    public static final Set<Scope> RUNTIME_SCOPES = Set.of(Scope.EXPORT, Scope.MAIN);
+    public static final Set<Scope> RUNTIME_SCOPES = Collections.unmodifiableSet(EnumSet.of(Scope.EXPORT, Scope.MAIN));
 
     private WorkspaceClasspath() {}
 
@@ -481,6 +484,19 @@ public final class WorkspaceClasspath {
         return List.copyOf(out);
     }
 
+    /**
+     * {@code scopes} in {@link Scope}'s declaration order, whatever set holds them: main edges
+     * before test edges, so a sibling both a main and a test table name sits where its main edge
+     * puts it, and the closure, and so every classpath and key built from it, is the same in every
+     * JVM. A {@code Set.of} iterates in an order salted per JVM, which put a fixtures sibling
+     * before or after the main siblings from one engine to the next.
+     */
+    static List<Scope> declarationOrder(Set<Scope> scopes) {
+        List<Scope> out = new ArrayList<>(scopes.size());
+        for (Scope scope : Scope.values()) if (scopes.contains(scope)) out.add(scope);
+        return out;
+    }
+
     /** The transitive workspace closure in discovery order, plus the direct tests/fixtures asks. */
     private record Closure(LinkedHashSet<String> visited, Set<String> testsKinds, Set<String> fixturesKinds) {}
 
@@ -499,7 +515,7 @@ public final class WorkspaceClasspath {
         Set<String> testsKinds = new HashSet<>();
         Set<String> fixturesKinds = new HashSet<>();
         Queue<String> queue = new ArrayDeque<>();
-        for (Scope scope : scopes) {
+        for (Scope scope : declarationOrder(scopes)) {
             for (Dependency dep : project.dependencies().of(scope)) {
                 String module = resolveWorkspaceRef(dep.module(), siblingCoordByName);
                 if (!siblingJarByModule.containsKey(module)) continue;
@@ -548,7 +564,8 @@ public final class WorkspaceClasspath {
     private static Closure substitutedMembers(
             Path root, JkBuild project, Set<Scope> scopes, Closure closure, Siblings sib) {
         List<Dependency> declared = new ArrayList<>();
-        for (Scope scope : scopes) declared.addAll(project.dependencies().of(scope));
+        for (Scope scope : declarationOrder(scopes))
+            declared.addAll(project.dependencies().of(scope));
         Set<String> behind = PomSubstitution.membersBehindPublishedEdges(
                 root, declared, sib.jarByModule().keySet());
         if (behind.isEmpty()) return closure;
