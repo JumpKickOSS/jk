@@ -13,6 +13,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
@@ -171,6 +172,7 @@ final class TestSteps {
                         TestGates.acquire(ctx.require(MODULE).layout().workspaceRoot(), SessionCancel::cancelled));
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
+        boolean launcherFailed = false;
         TagExcludedCapture tagExcluded;
         try {
             // Module pin ([test] workers) wins over CLI for
@@ -206,22 +208,24 @@ final class TestSteps {
                                 (one, cp, l) -> TestLaunch.launch(
                                         ctx, in, one, cp, testWorkers, workerJars, testEnv, l, tagExcluded));
             } catch (TestLauncherFailure e) {
+                launcherFailed = true;
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;
             }
         } finally {
             HeapNotes.flush(ctx);
             if (gate[0] != null) gate[0].close();
-            // A run stopped part way keeps the classes it got through, under the stamp it started with.
-            if (result == null) ledger.store(actionCache, testTaskId, stampKey);
+            if (result == null)
+                storeCutShort(ledger, launcherFailed, actionCache, suiteGuard, rekey, testTaskId, stampKey);
         }
         // Green once every launch has run: the sandbox has nothing left to show. Red keeps it for a look.
         if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
+        String startedKey = stampKey;
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         // The marker is stored under the key that folds in what the suite was found to read.
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
-        result = ledger.finish(ctx, actionCache, testTaskId, stampKey, result);
+        result = ledger.finish(ctx, actionCache, testTaskId, startedKey, stampKey, result);
         List<String> said = EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(
                 ctx,
@@ -380,6 +384,38 @@ final class TestSteps {
         for (String jar : workerJars.values()) roots.add(Path.of(jar));
         roots.addAll(WorkerClosure.paths(PluginJar.TEST_RUNNER));
         return roots;
+    }
+
+    /**
+     * The class ledger of a run that never returned a summary. A launcher that failed is red for a
+     * reason no class owns, so no class stays settled under {@code stampKey}. A run cancelled part
+     * way keeps the classes it got through when the suite's inputs held while it ran and its key,
+     * taken again, is still {@code stampKey}; otherwise the classes that passed prove nothing a later
+     * build under that key may skip. Safe on an interrupted thread.
+     */
+    static void storeCutShort(
+            TestClassLedger ledger,
+            boolean launcherFailed,
+            ActionCache actionCache,
+            InputGuard suiteGuard,
+            SuiteDiscovery.Rekey rekey,
+            String testTaskId,
+            @Nullable String stampKey) {
+        if (stampKey == null) return;
+        if (launcherFailed) {
+            TestClassLedger.clear(actionCache, testTaskId, stampKey);
+            return;
+        }
+        boolean interrupted = Thread.interrupted();
+        try {
+            if (suiteGuard.moved().isEmpty() && stampKey.equals(rekey.key()))
+                ledger.store(actionCache, testTaskId, stampKey);
+            else Log.debug("cut-short suite: an input moved while it ran; class ledger not stored");
+        } catch (Exception e) {
+            Log.debug("cut-short suite: class ledger not stored", e);
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
     }
 
     /**

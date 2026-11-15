@@ -232,7 +232,7 @@ public final class PreflightMemo {
             @Nullable String profile,
             @Nullable ActionCache actionCache,
             boolean allowChanged) {
-        Path file = DirtyMemoVariants.resolve(entryDir, DirtyMemoVariants.variant(entryDir, graph, skipTests, profile));
+        Path file = DirtyMemoVariants.resolve(entryDir, graph, skipTests, profile);
         if (file == null || !Files.isRegularFile(file)) return Optional.empty();
         try {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
@@ -401,8 +401,7 @@ public final class PreflightMemo {
             }
             String body = sb.toString();
             // Dual-write: durable cache survives jk clean; in-tree copy stays for local inspection.
-            Path durable =
-                    DirtyMemoVariants.file(entryDir, DirtyMemoVariants.variant(entryDir, graph, skipTests, profile));
+            Path durable = DirtyMemoVariants.file(entryDir, graph, skipTests, profile);
             Files.createDirectories(durable.getParent());
             if (!AtomicWrites.replaceIfChanged(durable, body))
                 Files.setLastModifiedTime(durable, FileTime.fromMillis(Clock.SYSTEM.millis()));
@@ -414,6 +413,11 @@ public final class PreflightMemo {
             // fail-open
             Log.debug("storeDirty: fail-open", e);
         }
+    }
+
+    /** As {@link DirtyMemoVariants#markDirty}: every memo of {@code entryDir} schedules {@code dirs}. */
+    public static void markDirty(Path entryDir, Set<Path> dirs) {
+        DirtyMemoVariants.markDirty(entryDir, dirs);
     }
 
     /**

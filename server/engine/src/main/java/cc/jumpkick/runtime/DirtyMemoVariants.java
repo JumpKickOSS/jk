@@ -2,15 +2,20 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.SnapshotQualifier;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /** Where {@link PreflightMemo}'s dirty memo lives: one durable file per request variant, a bounded set. */
@@ -26,6 +31,11 @@ final class DirtyMemoVariants {
      */
     static Path file(Path entryDir, String variant) {
         return PreflightMemo.durablePreflightDir(entryDir).resolve("dirty-memo-" + variant + ".txt");
+    }
+
+    /** The durable memo of a request's {@link #variant}. */
+    static Path file(Path entryDir, BuildGraph.Result graph, boolean skipTests, @Nullable String profile) {
+        return file(entryDir, variant(entryDir, graph, skipTests, profile));
     }
 
     /** How many request variants' memos one entry dir keeps; the least recently written go first. */
@@ -54,6 +64,11 @@ final class DirtyMemoVariants {
         return Hashing.sha256Hex(key.toString()).substring(0, 16);
     }
 
+    /** The memo a request reads: its {@link #variant}'s durable one, else the in-tree one. */
+    static @Nullable Path resolve(Path entryDir, BuildGraph.Result graph, boolean skipTests, @Nullable String profile) {
+        return resolve(entryDir, variant(entryDir, graph, skipTests, profile));
+    }
+
     /** The variant's durable memo (survives clean), else the in-tree target memo. */
     static @Nullable Path resolve(Path entryDir, String variant) {
         Path durable = file(entryDir, variant);
@@ -68,6 +83,49 @@ final class DirtyMemoVariants {
         if (!variants.isEmpty()) return variants.getFirst();
         Path local = PreflightMemo.memoFile(entryDir);
         return Files.isRegularFile(local) ? local : null;
+    }
+
+    /** A memo row's third column for a module the next build schedules. */
+    private static final String DIRTY_BIT = "1";
+
+    /**
+     * Mark {@code dirs} dirty in every memo of {@code entryDir}, whichever request wrote it. A build
+     * that did not finish a module green proved nothing about it, so a memo an earlier green build
+     * certified must not skip it on the next: the failure stays red until a build passes it.
+     */
+    static void markDirty(Path entryDir, Set<Path> dirs) {
+        if (dirs.isEmpty()) return;
+        Path root = entryDir.toAbsolutePath().normalize();
+        Set<String> rels = new HashSet<>();
+        for (Path d : dirs)
+            rels.add(PreflightMemo.relKey(root, d.toAbsolutePath().normalize()));
+        List<Path> memos = new ArrayList<>(variantFiles(entryDir));
+        Path local = PreflightMemo.memoFile(entryDir);
+        if (Files.isRegularFile(local)) memos.add(local);
+        for (Path file : memos) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                boolean changed = false;
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    // A row: the module, its fingerprint, its dirty bit, its logic token.
+                    String[] parts = line.split("\t", 4);
+                    if (parts.length >= 3 && rels.contains(parts[0]) && !DIRTY_BIT.equals(parts[2])) {
+                        parts[2] = DIRTY_BIT;
+                        line = String.join("\t", parts);
+                        changed = true;
+                    }
+                    sb.append(line).append('\n');
+                }
+                if (changed) AtomicWrites.replaceIfChanged(file, sb.toString());
+            } catch (IOException | RuntimeException e) {
+                // A memo that cannot be marked cannot be trusted either.
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException gone) {
+                    Log.debug("markDirty: memo neither marked nor removed", "memo", file, "cause", gone);
+                }
+            }
+        }
     }
 
     /** The entry dir's durable variant memos, newest first. */

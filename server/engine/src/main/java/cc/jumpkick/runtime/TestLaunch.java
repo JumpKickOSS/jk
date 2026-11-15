@@ -552,13 +552,7 @@ final class TestLaunch {
             List<String> said)
             throws Exception {
         if (!result.allPassed()) {
-            if (stampKey != null) {
-                actionCache.storeWithOutputs(
-                        testTaskId,
-                        stampKey,
-                        Map.of(),
-                        TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), result.failed()));
-            }
+            recordRed(actionCache, testTaskId, stampKey, result);
             for (String line : TestSupport.renderFailures(result, in.dir(), snippets)) ctx.output(line);
             if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
             String failed = result.failed() + " test failure" + (result.failed() == 1 ? "" : "s");
@@ -580,6 +574,17 @@ final class TestLaunch {
             case NO_TESTS -> actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.noTestsOutcome());
             case NONE -> {}
         }
+    }
+
+    /** A red marker for {@code result} under {@code stampKey}, none when it failed open: the next build under it runs the suite. */
+    static void recordRed(ActionCache actionCache, String testTaskId, @Nullable String stampKey, TestSummary result)
+            throws IOException {
+        if (stampKey == null) return;
+        actionCache.storeWithOutputs(
+                testTaskId,
+                stampKey,
+                Map.of(),
+                TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), result.failed()));
     }
 
     /** The run's {@code --test-failures} / {@code JK_TEST_FAILURES}, else the module's {@code [test] failures}. */

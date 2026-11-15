@@ -4,13 +4,19 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.TestProgressListener;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -190,12 +196,102 @@ class TestClassLedgerTest {
         first.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(3, 1, 2, 0, List.of()));
         assertThat(load().settledClasses(ONE)).containsExactly("demo.OkTest");
 
-        // A second failure beyond the red class's two, such as a lost-tests shortfall row, stores nothing new.
+        // A failure beyond what the red class owns, such as a lost-tests shortfall row, settles nothing.
         TestClassLedger second = load();
         run(second.recording(TestProgressListener.noop()), "demo.RedTest", "SUCCESSFUL", "SUCCESSFUL");
         second.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(3, 2, 1, 0, List.of()));
         assertThat(load().settledClasses(ONE))
-                .as("RedTest stays red until a run vouches for it")
-                .containsExactly("demo.OkTest");
+                .as("RedTest stays red until a run vouches for it, and the next run runs every class")
+                .isEmpty();
+    }
+
+    @Test
+    void a_run_red_beyond_its_classes_clears_what_an_earlier_green_run_settled() {
+        TestClassLedger green = load();
+        TestProgressListener l = green.recording(TestProgressListener.noop());
+        run(l, "demo.OkTest", "SUCCESSFUL");
+        run(l, "demo.DiesTest", "SUCCESSFUL");
+        green.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(2, 2, 0, 0, List.of()));
+        assertThat(load().settledClasses(ONE)).containsExactly("demo.DiesTest", "demo.OkTest");
+
+        // A forced re-run under the same stamp: OkTest passes, the JVM dies inside DiesTest, whose
+        // class never finishes, so the one failure belongs to no class.
+        TestClassLedger forced = load();
+        run(forced.recording(TestProgressListener.noop()), "demo.OkTest", "SUCCESSFUL");
+        forced.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(2, 1, 1, 0, List.of()));
+
+        assertThat(load().settledClasses(ONE))
+                .as("the class the dead JVM was running is not settled by the green run before it")
+                .isEmpty();
+    }
+
+    @Test
+    void a_red_run_settled_under_another_key_clears_the_ledger_of_the_key_it_started_with() throws Exception {
+        String started = STAMP;
+        String settled = "b".repeat(64);
+        TestClassLedger green = load();
+        run(green.recording(TestProgressListener.noop()), "demo.FlakyTest", "SUCCESSFUL");
+        green.storeUnlessSuiteRed(cache, TASK, started, new TestSummary(1, 1, 0, 0, List.of()));
+
+        TestClassLedger red = load();
+        run(red.recording(TestProgressListener.noop()), "demo.FlakyTest", "FAILED");
+        red.finish(quiet(), cache, TASK, started, settled, new TestSummary(1, 0, 1, 0, List.of()));
+        assertThat(load().settledClasses(ONE))
+                .as("the key the red run started with settles nothing it once did")
+                .isEmpty();
+        assertThat(cache.lookup(started).map(TestStamp::green))
+                .as("and holds a red marker")
+                .contains(false);
+
+        TestClassLedger unsettled = load();
+        run(unsettled.recording(TestProgressListener.noop()), "demo.FlakyTest", "FAILED");
+        unsettled.finish(quiet(), cache, TASK, started, null, new TestSummary(1, 0, 1, 0, List.of()));
+        assertThat(load().settledClasses(ONE))
+                .as("nor when its key moved and nothing was settled")
+                .isEmpty();
+    }
+
+    /** A step context that keeps nothing. */
+    private static TaskContext quiet() {
+        return new TaskContext() {
+            @Override
+            public void progress(int delta) {}
+
+            @Override
+            public void updateTicks(int additional) {}
+
+            @Override
+            public void label(@Nullable String description) {}
+
+            @Override
+            public void output(@Nullable String line) {}
+
+            @Override
+            public void waited(Duration blocked) {}
+
+            @Override
+            public void warn(String code, String message) {}
+
+            @Override
+            public void error(String code, String message) {}
+
+            @Override
+            public boolean cancelled() {
+                return false;
+            }
+
+            @Override
+            public <T> void put(BuildPlanKey<T> key, T value) {}
+
+            @Override
+            public <T> Optional<T> get(BuildPlanKey<T> key) {
+                return Optional.empty();
+            }
+
+            @Override
+            public <T> T require(BuildPlanKey<T> key) {
+                throw new IllegalStateException(key.toString());
+            }
+        };
     }
 }

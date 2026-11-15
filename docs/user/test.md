@@ -440,12 +440,17 @@ prints every flag the JVM started with as `test JVM flags: …`; its `javac` lis
 ([Projects](projects.md#features-profiles-variants)). Suites, tags and the test JVM's flags are
 part of the test stamp: changing any of them re-runs tests even if sources are unchanged. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
-`jk explain` prices it as a suite rather than as a stale stamp.
+`jk explain` prices it as a suite rather than as a stale stamp. That holds after `--redo` too: a
+forced run that fails replaces the green marker it ran over, and the module stays on the next
+build's plan until a run passes it.
 
 Under one stamp the inputs are identical, so a class that passed still stands. Each class's outcome
 is kept under the stamp as the class finishes, and a run whose stamp matches runs only the classes
 that have not passed under it: a red suite re-runs its failed classes, and a run stopped part way
-(cancelled, or cut short when another module failed) runs only the classes it never finished. A
+(cancelled, or cut short when another module failed) runs only the classes it never finished, as
+long as nothing the suite reads moved while it ran. A run that failed for a reason no class owns (a
+test JVM that died, tests announced and never reported) settles no class: the next run runs them
+all. A
 class counts as passed only when it and every class nested in it passed. The run says so with a
 `tests-not-rerun` warning (`6 test classes passed earlier under these same inputs and are not run
 again`), its counts and `jk results` include the classes not re-run, and once every class has

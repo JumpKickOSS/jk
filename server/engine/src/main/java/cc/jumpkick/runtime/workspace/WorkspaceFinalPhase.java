@@ -42,13 +42,26 @@ final class WorkspaceFinalPhase {
 
     static WorkspaceResult complete(WorkspaceRunPhase.Run run) {
         Decision decision = aggregate(run.outcomes(), run.scheduleFailure(), run.cancelled());
-        if (!decision.learn()) return decision.result();
+        if (!decision.learn()) {
+            PreflightMemo.markDirty(run.prepared().resources().request().entryDir(), unfinished(run));
+            return decision.result();
+        }
         WorkspaceResult noMatch = noClassMatched(run);
         if (noMatch != null) return noMatch;
         WorkspaceResult diverged = cacheDivergence(run);
         if (diverged != null) return diverged;
         learn(run);
         return decision.result();
+    }
+
+    /** The modules the run did not finish green: failed, cancelled, or the one the scheduler failed. */
+    static Set<Path> unfinished(WorkspaceRunPhase.Run run) {
+        Set<Path> out = new HashSet<>();
+        for (ModuleOutcome o : run.outcomes()) {
+            if (!o.success()) out.add(o.dir());
+        }
+        run.scheduleFailure().ifPresent(o -> out.add(o.dir()));
+        return out;
     }
 
     /**

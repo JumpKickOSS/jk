@@ -147,11 +147,24 @@ final class TestClassLedger {
      * After a run that finished: store the ledger under the settled {@code stampKey} unless the run
      * was red for a reason no class owns, warn {@link #PASSED_ON_RERUN} for a class that went from
      * red to green with nothing changed, and answer {@code ran} as the whole suite, the classes left
-     * out counted in.
+     * out counted in. A red run settled under another key than {@code startedKey}, the one it
+     * started with, is red under that key too, whatever settling decided: it leaves a red marker
+     * there and clears the ledger, so neither a green marker nor a class an earlier run passed under
+     * it answers the next build for this one.
      */
     TestSummary finish(
-            TaskContext ctx, ActionCache cache, String testTaskId, @Nullable String stampKey, TestSummary ran) {
+            TaskContext ctx,
+            ActionCache cache,
+            String testTaskId,
+            @Nullable String startedKey,
+            @Nullable String stampKey,
+            TestSummary ran)
+            throws IOException {
         storeUnlessSuiteRed(cache, testTaskId, stampKey, ran);
+        if (!ran.allPassed() && startedKey != null && !startedKey.equals(stampKey)) {
+            TestLaunch.recordRed(cache, testTaskId, startedKey, ran);
+            clear(cache, testTaskId, startedKey);
+        }
         List<String> flaky = passedOnRerun();
         if (!flaky.isEmpty()) {
             ctx.warn(
@@ -320,19 +333,33 @@ final class TestClassLedger {
 
     /**
      * {@link #store} when every failure in {@code ran} belongs to a class this run recorded red.
-     * A failure no class owns (a worker that died after its classes finished, tests discovery
-     * announced that were never reported) leaves the ledger as it was: the classes it would record
-     * green may be the ones that lost tests, and settling them would turn the suite green with
-     * those tests never run.
+     * A failure no class owns (a worker that died mid-class or after its classes finished, tests
+     * discovery announced that were never reported) clears the ledger instead: the classes it would
+     * record green, or that an earlier run recorded green, may be the ones that lost tests, and
+     * settling them would turn the suite green with those tests never run.
      */
     void storeUnlessSuiteRed(ActionCache cache, String testTaskId, @Nullable String stampKey, TestSummary ran) {
         long owned = 0;
         for (Entry e : recorded.values()) owned += e.failed();
         if (ran.failed() > owned) {
-            Log.debug("test run red beyond its classes; class ledger not stored");
+            Log.debug("test run red beyond its classes; class ledger cleared");
+            clear(cache, testTaskId, stampKey);
             return;
         }
         store(cache, testTaskId, stampKey);
+    }
+
+    /** Leave no class settled under {@code stampKey}: the next run under it runs every class. */
+    static void clear(ActionCache cache, String testTaskId, @Nullable String stampKey) {
+        if (stampKey == null) return;
+        boolean interrupted = Thread.interrupted();
+        try {
+            cache.storeWithOutputs(testTaskId + TASK_SUFFIX, key(stampKey), Map.of(), Map.of());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("test class ledger not cleared", e);
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
     }
 
     /**

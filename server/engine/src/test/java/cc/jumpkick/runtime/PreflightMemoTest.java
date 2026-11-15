@@ -115,6 +115,33 @@ class PreflightMemoTest {
         assertThat(hit.get().dirty()).isEqualTo(dirty);
     }
 
+    /** A build that failed a module marks it dirty in every memo, the one its own request read and any other. */
+    @Test
+    void a_failed_module_is_marked_dirty_in_every_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        Path module = graph.topoOrder().getFirst().dir().toAbsolutePath().normalize();
+        storeDirty(tmp, graph, Set.of());
+        PreflightMemo.storeDirty(
+                tmp,
+                graph,
+                true,
+                Set.of(),
+                PreflightMemo.snapshotFingerprints(graph, true).fingerprints());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false).orElseThrow().dirty())
+                .isEmpty();
+
+        PreflightMemo.markDirty(tmp, Set.of(module));
+
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false).orElseThrow().dirty())
+                .as("the build's own request")
+                .containsExactly(module);
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, true).orElseThrow().dirty())
+                .as("another request's memo")
+                .containsExactly(module);
+    }
+
     /**
      * A guarded workspace salts every stored row with its rule files; the load must recompute
      * with the same salt or the memo misses on every build and the walk is paid each time.
