@@ -15,11 +15,11 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.LockPlans;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -90,7 +90,7 @@ public final class UpdateVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             UpdateRequest body = UpdateRequest.decode(requestLine);
-            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+            Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
             URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
             String platformOverride = body.platform();
             if (platformOverride != null && platformOverride.isBlank()) platformOverride = null;

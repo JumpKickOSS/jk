@@ -17,7 +17,20 @@ The root `jk.toml` `version` is the one place the version is written, and it alw
 next release. `JkVersion.VERSION` is stamped from it by the build (`jk-version.properties` in
 `jk-model`, filtered from `${project.version}`), so every build of the tree but `jk release` and
 `jk publish` reports `<version>-SNAPSHOT` everywhere — `-V`, the wire handshake, worker
-coordinates, jar names under `target/` — and a release reports `<version>`. Bump the manifest and the installers'
+coordinates, jar names under `target/` — and a release reports `<version>`.
+
+Which a build is, the tree and the verb decide ([user docs](../user/release.md)): in a git checkout,
+a clean tree whose HEAD carries `v<version>` builds the release and every other tree a snapshot
+(`jk release` creates that state, `jk publish` requires it); outside git, `jk release` and `jk
+publish` are releases and every other verb builds a snapshot. `ReleaseSession` in the engine is the
+one owner; every engine verb takes its session from it (guard `release-session-owner`). It reads
+the tag from the refs in process and pays for the clean-tree check (the worktree read that stamps
+`Build-Commit`) only when HEAD carries the tag, so a no-op build costs what it did. The shipped
+tree, built on each platform from a checkout of the tag, is the release with no flag, and a
+shallow or tagless checkout silently builds a snapshot: `scripts/release-session.sh` asserts the
+checkout is the release before anything builds, and the lane, the takeover's `--release`, the
+workflow and the Central build call it first. `release-sbom.sh` refuses a snapshot's engine and
+`publish-maven-repo.sh` a snapshot version. Bump the manifest and the installers'
 pointer floor (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
 `hosting/public/`) together — search for the old version string, which also finds the third-party
 plugin sample (`docs/user/examples/third-party-plugin`) and the SDK pin in `plugins.md`. `InstallerCopyTest` fails when the
@@ -223,7 +236,10 @@ A release cut here and never pushed can be taken back and cut again. `jk release
 running the release (its engine, its client, its worker jars on the shelf, pinned in
 `jk-shelf.toml`), the tree at `Start <next>` and the tag `v<version>` on the commit before. A home
 in that state refuses `jk install` of `<version>-SNAPSHOT`, since the release would hide it, and
-deleting the shelved release by hand leaves the installed engine without its workers. The way back:
+deleting the shelved release by hand leaves the installed engine without its workers. A home that ran
+`jk install` on a clean checkout of a tag is in the same state (lane homes are private and thrown
+away), and the refusal names the way back: the same, with `jk release --undo` refused once the tag
+is on a remote, where the version is spent anyway. The way back:
 
 ```bash
 jk self rollback      # back to the install before the release: its engine, client and shelf
@@ -278,10 +294,13 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 1. CI is green on the tag `v0.14.0` (`jk release --push`). The version must equal what `jk.toml` declares;
    `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with JumpKick itself (`jk build`, the layout
-   under `target/dist`). The JumpKick that builds is the hosted release `.jk/ci/ci-bootstrap-version` pins,
-   installed as a user installs it: the native client on every row. The linux-x86_64
-   lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
-   own.
+   under `target/dist`), from the checkout of the tag, which the job fetches and asserts
+   (`scripts/release-session.sh`); a dry run is therefore dispatched on the tag. The JumpKick that
+   builds is the hosted release `.jk/ci/ci-bootstrap-version` pins, installed as a user installs it:
+   the native client on every row; the tree's own JumpKick then takes the home over
+   (`scripts/ci-takeover.sh --release`: a snapshot install by the pinned release, then the tree's
+   `jk install`, the release), so the first-party plugins the linux-x86_64 lane stages for `repo/`
+   are the commit's own release jars.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
    the client archive(s), the engine jar, the JVM client jar, the Maven spy jar,
    `jk-whats-new-<version>.md` and `jk-repo-<version>.sha256` (the digests of the dist's shelf,
@@ -395,7 +414,7 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 | 1b | release commit, installed with `jk install` | `scripts/release-check-routes.sh --examples <jk-examples checkout>`: every template, generated fresh, and every example builds twice with the candidate, the second build a no-op, and each template passes `CI=1 jk guard`; every row of `target/release-check-routes/summary.md` is green (`--skip` only a route this host cannot build, named in the release notes) |
 | 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
-| 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag |
+| 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag: it ends `== lane <os>-<arch> done`, its engine jar is `jk-engine-<version>.jar`, its `jk --version` says `jk <version>`, and no file under `out/` names a `SNAPSHOT` (the lane checks the last two) |
 | 5 | the signing machine | copy every lane's `out/` over, `scripts/release-merge.sh <staging> <out>` |
 | 6 | the signing machine | `scripts/release-publish.sh sign <out> <release-key.pem>` |
 | 7 **outward** | the signing machine, gcloud | `scripts/release-publish.sh upload <out>`, then `pointer <out> <release-key.pem>` (live here), then `verify <out> <public-key.pem>` |
@@ -428,8 +447,11 @@ alone, ports and benchmarks are reported as skipped. The report is `target/examp
 machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
 same Mac (`container machine run`), one heavy lane per machine at a time. Each clones the tag into
 `<work-dir>/src`, bootstraps a home of its own (`<work-dir>/home`) from the pinned release with
-`scripts/ci-bootstrap.sh`, lets the tree's own JumpKick take it over with `scripts/ci-takeover.sh`, builds
-the dist and assembles `out/release-<version>-<os>-<arch>/`. The engine jar's `Build-Commit` must be
+`scripts/ci-bootstrap.sh`, asserts the clone is the release (`scripts/release-session.sh`), lets the
+tree's own JumpKick take it over with `scripts/ci-takeover.sh --release` (the first install a
+snapshot, so an older JumpKick never holds the release's shelf slots, the second the release),
+builds the dist with `jk build` and assembles `out/release-<version>-<os>-<arch>/`. The lane fails unless the dist's `jk --version` is exactly
+`jk <version>` and no file it wrote (the tree and the staged `repo/`) names a `SNAPSHOT`. The engine jar's `Build-Commit` must be
 the tag's commit — the bridge a bootstrap builds reports the release's version too, so the version
 alone does not prove which JumpKick packaged the dist. The linux-x86_64 lane is canonical: it also stages
 `out/repo/` and lists it in `jk-repo-<version>.sha256`. Every lane uses the same pinned bootstrap,
@@ -522,7 +544,8 @@ alone; Central serves plugin authors who build with Maven or Gradle.
 
 A Central version is immutable. To prove a key, a token or the POM metadata without publishing,
 run the first two steps by hand against the real Portal with `JK_CENTRAL_VALIDATE_ONLY=1`: each
-deployment is parked user-managed, polled to `VALIDATED` and then dropped.
+deployment is parked user-managed, polled to `VALIDATED` and then dropped. Run them from a clean checkout of
+the release tag: in git, `jk publish` builds and bundles only a release.
 
 ```bash
 jk build -S -m shared/plugin-sdk

@@ -105,6 +105,12 @@ jobs:
       - name: Bootstrap fixtures
         run: bash scripts/test-ci-bootstrap.sh
 
+      - name: Takeover fixtures
+        run: bash scripts/test-ci-takeover.sh
+
+      - name: Release-session fixtures
+        run: bash scripts/test-release-session.sh
+
       - name: Manual release merge and publish fixtures
         run: bash scripts/test-release-publish.sh
 

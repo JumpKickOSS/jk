@@ -428,7 +428,7 @@ def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
         elif short in EDITS:
             counts["edits"] += 1
         elif name.startswith(("mcp__jk__", "mcp__results__")) or short in ("run", "diagnostics", "deps", "why",
-                                                                            "snapshot", "results", "skill"):
+                                                                            "results", "skill"):
             counts["build"] += 1
         else:
             counts["other"] += 1

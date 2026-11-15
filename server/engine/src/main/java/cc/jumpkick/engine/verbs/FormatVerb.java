@@ -13,6 +13,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.base.FormatPlans;
@@ -20,7 +21,6 @@ import cc.jumpkick.runtime.base.FormatWorker;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.FormatRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
@@ -105,7 +105,7 @@ public final class FormatVerb implements HostedVerb {
         try {
             try {
                 FormatRequest body = FormatRequest.decode(requestLine);
-                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+                Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = FormatPlans.formatBuildPlan(
                         session.workingDir(),

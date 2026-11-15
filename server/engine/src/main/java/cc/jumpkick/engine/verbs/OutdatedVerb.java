@@ -6,12 +6,12 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
 import cc.jumpkick.wire.protocol.ProtoReads;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -56,7 +56,7 @@ public final class OutdatedVerb implements HostedVerb {
                 Path dir = Path.of(req.dir());
                 Path cache = Path.of(req.cache());
                 String repoUrl = req.repoUrl();
-                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+                Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
                 report = SessionContext.where(
                         session,
                         () -> OutdatedPlans.compute(

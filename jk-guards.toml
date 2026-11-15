@@ -448,6 +448,22 @@ why      = "a concurrently-parsing build must never see a torn jk.toml"
 in     = "plugins/android/src/main/java/cc/jumpkick/android/ManifestStep.java"
 reason = "writes a stub AndroidManifest.xml into the build's own output, which nothing else reads while it is written"
 
+# G154. Whether a build is the release is decided from the tree in one place: ReleaseSession takes
+# the request's session from ProtoSession.sessionOf and makes it a release exactly when the checkout
+# is clean at the declared version's tag. An engine verb that read the session straight off the
+# wire would build a snapshot of a tagged tree while every other verb built its release.
+[guards.release-session-owner]
+kind     = "text"
+files    = ["server/*/src/main/java/**/*.java", "plugins/*/src/main/java/**/*.java"]
+blank    = "comments"
+patterns = ['\bProtoSession\.sessionOf\(']
+owner    = "server/engine/src/main/java/cc/jumpkick/runtime/ReleaseSession.java"
+fixture  = "server/guard/fixtures/release-session-owner"
+hit      = 'Session session = ProtoSession.sessionOf(requestLine, cancelToken);'
+miss     = 'Session session = ReleaseSession.sessionOf(requestLine, cancelToken);'
+instead  = "ReleaseSession.sessionOf(requestLine, cancel)"
+why      = "a session read off the wire alone builds a snapshot of a tagged tree the other verbs build as the release"
+
 # G153. A jk.toml key that used to work and is now refused is an entry in RetiredKeys: the parser
 # refuses from that list, the writers' tests check every scaffold and import against it, and the
 # docs print it. A refusal typed anywhere else in the parser is a retired key the list, the tests

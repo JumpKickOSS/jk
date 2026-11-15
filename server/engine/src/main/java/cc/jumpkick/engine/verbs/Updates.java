@@ -10,11 +10,11 @@ import cc.jumpkick.lock.LockDiff;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.LockPlans;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.workspace.AddedPackages;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.io.IOException;
 import java.net.URI;
@@ -70,7 +70,7 @@ public final class Updates {
                         major,
                         true)
                 .encode();
-        Session session = ProtoSession.sessionOf(line, Session.CancelToken.NONE);
+        Session session = ReleaseSession.sessionOf(line, Session.CancelToken.NONE);
         return SessionContext.where(
                 session,
                 () -> preview(

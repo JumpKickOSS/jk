@@ -10,11 +10,11 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ForecastRequest;
 import cc.jumpkick.wire.protocol.ProtoReads;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -58,7 +58,7 @@ public final class ForecastVerb implements HostedVerb {
                 Path entryDir = Path.of(req.dir());
                 Path cache = Path.of(req.cache());
                 boolean skipTests = req.skipTests();
-                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+                Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
                 JkBuild entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;

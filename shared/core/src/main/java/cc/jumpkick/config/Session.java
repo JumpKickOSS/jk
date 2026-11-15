@@ -127,11 +127,16 @@ public record Session(
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
         @With IoLedger io,
         /**
-         * {@code jk release} / {@code jk publish}: the build ships the declared version. Every other
-         * build is a snapshot of the next release: each module's effective version is its declared
-         * one plus {@code -SNAPSHOT} ({@link SnapshotQualifier}).
+         * The build ships the declared version; otherwise it is a snapshot of the next release, each
+         * module's effective version its declared one plus {@code -SNAPSHOT} ({@link
+         * SnapshotQualifier}). The engine decides it from the tree and {@link #releaseVerb}.
          */
         @With boolean release,
+        /**
+         * {@code jk release} / {@code jk publish}, else {@link ReleaseVerb#NONE}: what the engine's
+         * release rule needs besides the tree to decide {@link #release}.
+         */
+        @With ReleaseVerb releaseVerb,
         /**
          * {@code jk publish} / {@code jk javadoc}: write the javadoc jar of every library whose
          * manifest leaves {@code javadoc} unset ({@link cc.jumpkick.model.JavadocMode#PUBLISH}). A
@@ -163,6 +168,7 @@ public record Session(
         affectedChanged = (affectedChanged == null) ? new AffectedChanged() : affectedChanged;
         io = (io == null) ? new IoLedger() : io;
         keyAudit = keyAudit == null ? KeyAuditMode.OFF : keyAudit;
+        releaseVerb = releaseVerb == null ? ReleaseVerb.NONE : releaseVerb;
     }
 
     /** A copy carrying the given variant selection + client-resolved env — two components, one fact. */
@@ -197,6 +203,7 @@ public record Session(
                 affectedChanged,
                 io,
                 release,
+                releaseVerb,
                 javadoc,
                 revalidate,
                 keyAudit);
@@ -320,6 +327,7 @@ public record Session(
                 new AffectedChanged(),
                 requestIo(),
                 false,
+                ReleaseVerb.NONE,
                 false,
                 false,
                 KeyAuditMode.OFF);
@@ -362,6 +370,7 @@ public record Session(
                 affectedChanged,
                 io,
                 release,
+                releaseVerb,
                 javadoc,
                 revalidate,
                 keyAudit);
@@ -399,6 +408,7 @@ public record Session(
                 affectedChanged,
                 io,
                 release,
+                releaseVerb,
                 javadoc,
                 revalidate,
                 keyAudit);
@@ -441,6 +451,7 @@ public record Session(
                 affectedChanged,
                 io,
                 release,
+                releaseVerb,
                 javadoc,
                 revalidate,
                 keyAudit);

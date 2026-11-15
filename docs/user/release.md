@@ -6,14 +6,45 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 |------|-------------|--------------|
 | `jk install` | the developer, every edit | installs `<version>-SNAPSHOT` into `~/.m2` for sibling projects, and an application or tool on this machine; offline |
 | `jk release` | the developer, once per version | builds, tests, installs and tags the declared version, then starts the next one |
-| `jk publish` | CI, or `jk release --publish` | uploads the release to the `[publish]` repository |
+| `jk publish` | CI on the tag, or `jk release --publish` | uploads the release to the `[publish]` repository; in git, only from a clean checkout of the tag |
 
 `jk.toml` always holds the **next release**. A snapshot is a build-time suffix, never written down.
-Every build but `jk release` and `jk publish` is a snapshot: at `version = "1.4.7"`, `jk build`,
-`jk test`, `jk run` and `jk install` name and stamp every jar `1.4.7-SNAPSHOT`
-(`target/app-1.4.7-SNAPSHOT.jar`), so they build one tree and the next of them rebuilds nothing.
-`jk release` and `jk publish` build `target/app-1.4.7.jar` beside it, stamped `1.4.7`; neither
-reuses a jar the other packaged.
+
+**The tree decides which a build is.** In a git checkout, every build verb (`jk build`, `jk test`,
+`jk run`, `jk install`, `jk explain`) builds the release of the version `jk.toml` declares exactly
+when the working tree is clean and HEAD carries the tag `jk release` writes for that version
+(`[release] tag`, `v1.4.7` by default; annotated or lightweight); anything else is a snapshot. At
+`version = "1.4.7"`:
+
+| The tree | A build writes | Stamped |
+|----------|----------------|---------|
+| any commit but the tag | `target/app-1.4.7-SNAPSHOT.jar` | `1.4.7-SNAPSHOT` |
+| a clean checkout of `v1.4.7` | `target/app-1.4.7.jar` | `1.4.7` |
+| `v1.4.7` with uncommitted changes | `target/app-1.4.7-SNAPSHOT.jar` | `1.4.7-SNAPSHOT` |
+| no git at all (a source archive) | `target/app-1.4.7-SNAPSHOT.jar` | `1.4.7-SNAPSHOT` |
+
+The sources jar, the javadoc jar, the fat jar and the POM (its own version and its siblings') always
+carry the main jar's version. A release build says so under its result
+(`✓ Release 1.4.7 (tag v1.4.7)`), and so does `jk explain`; a tagged tree with changes prints one
+note that it built a snapshot because the tree differs from the tag. Snapshot builds name and stamp
+one tree whichever verb runs, so the next of them rebuilds nothing; a release build and a snapshot
+build never reuse each other's jars. No flag or environment variable changes this: to build a
+release on another machine, check out its tag.
+
+`jk release` builds and installs the commit it is about to tag as the release, then tags it.
+`jk publish` uploads only a release: in a git checkout, only a clean checkout of the tag, and on any
+other tree it refuses and says why (no tag at HEAD, the tag of another version, uncommitted changes).
+
+**Outside git** (a source archive), `jk release` and `jk publish` are releases by themselves: `jk
+release` runs the tests, builds and installs the plain version and moves `jk.toml` to the next one by
+editing it, with nothing to tag, commit or push (`--push` is refused); `jk release --undo` cannot
+tell which release to take back there, and says what to undo by hand. Every other verb builds a
+snapshot.
+
+An installed release hides its snapshot: once a release build has installed `1.4.7` into a
+repository, installing `1.4.7-SNAPSHOT` there is refused, since resolution would always prefer the
+release. The branch has moved on to the next version by then, so its snapshots install as they did;
+at a tag never pushed, `jk release --undo` takes the release back, as the refusal says.
 
 ## Tag-triggered CI (recommended)
 

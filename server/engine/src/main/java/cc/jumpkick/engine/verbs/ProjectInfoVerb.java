@@ -6,11 +6,11 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.base.ProjectInfoPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -51,12 +51,14 @@ public final class ProjectInfoVerb implements HostedVerb {
                 // Under the request's session — see ExecPlanVerb. projectInfo resolves this
                 // project's layout, lock freshness and test tags, and every one of those reads the
                 // ambient session; without this they read the daemon's.
-                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+                Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
                 ProjectInfoRequest req = ProjectInfoRequest.decode(requestLine);
                 info = SessionContext.where(
                         session,
                         () -> ProjectInfoPlans.projectInfo(
                                 Path.of(req.dir()), req.modules(), req.affectedSince(), req.affected(), req.counts()));
+                if (info.error() == null)
+                    info = info.withReleaseLine(ReleaseSession.verdict(session).line());
             } catch (Exception e) {
                 info = ProjectInfo.error(Errors.text(e));
             }

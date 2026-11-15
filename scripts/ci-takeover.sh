@@ -8,9 +8,22 @@
 #
 # Each install builds the tree first; no job runs a separate `jk build` before this.
 #
-# Usage: scripts/ci-takeover.sh [--install-only] [--yes]
+# The first install must be a snapshot, so an older jk's build of the tree never holds a release's
+# shelf slots, which the tree's own install then refuses to overwrite ("already installed … with
+# other contents"). Whichever jk is on PATH is probed for the retired `jk snapshot` verb:
+#   - it has the verb (an older pin): `jk snapshot` in the checkout;
+#   - it has not, and the checkout is a clean one at its tag: `jk install` would build and install
+#     the release, so the first install runs in a copy of the tag's files without .git, which jk
+#     builds as a snapshot (a tree outside git is always one);
+#   - it has not, and the checkout is anything else: `jk install` is already a snapshot.
+# The second is the tree's own `jk install`, which builds the release when the checkout is a clean
+# one at the version's tag and a snapshot otherwise.
+#
+# Usage: scripts/ci-takeover.sh [--install-only] [--yes] [--release]
 #   --install-only   the two installs and nothing else (jobs that check the home their own way)
-#   --yes            passed to jk install
+#   --yes            passed to both installs
+#   --release        the install must be the release: the checkout is asserted to be one before
+#                    anything builds (scripts/release-session.sh), and the installed jk to report it
 # Any failure prints the tail of jk's client log, which records each failed command's stack, and
 # of the newest engine log, so a red run names its cause.
 set -euo pipefail
@@ -22,10 +35,12 @@ case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) JK_HOME="$(cygpath -u "$JK_HOME"
 
 checks=1
 yes=()
+release=0
 for arg in "$@"; do
   case "$arg" in
     --install-only) checks=0 ;;
     --yes) yes=(--yes) ;;
+    --release) release=1 ;;
     *)
       echo "ci-takeover: unknown argument $arg" >&2
       exit 64
@@ -80,6 +95,7 @@ on_exit() {
     dump_logs
   fi
   rm -f "${state_log:-}"
+  if [[ -n "${first_dir:-}" && "$first_dir" != "$ROOT" ]]; then rm -rf "$first_dir"; fi
   exit "$status"
 }
 trap on_exit EXIT
@@ -109,8 +125,21 @@ case "$(uname -s)" in
     run jk engine stop --now --no-ansi
     ;;
 esac
-install_pass jk install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
+if ((release)); then version="$(bash "$ROOT/scripts/release-session.sh")"; fi
+verb=install
+first_dir="$ROOT"
+if jk snapshot --help >/dev/null 2>&1; then
+  verb=snapshot
+elif bash "$ROOT/scripts/release-session.sh" >/dev/null 2>&1; then
+  first_dir="$(mktemp -d)"
+  git -C "$ROOT" archive HEAD | tar -x -C "$first_dir"
+fi
+(cd "$first_dir" && install_pass jk "$verb" --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi)
 install_pass "$JK_HOME/bin/jk" install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
+if ((release)); then
+  reported="$("$JK_HOME/bin/jk" --version --no-ansi | head -1 | tr -d '\r')"
+  [[ "$reported" == "jk $version" ]] || { echo "ci-takeover: the installed jk reports '$reported', not the release jk $version" >&2; exit 1; }
+fi
 ((checks)) || exit 0
 run cmp target/dist/jk "$JK_HOME/bin/jk"
 engine_sha="$(sha256sum target/dist/lib/jk-engine-*.jar | cut -c1-64)"

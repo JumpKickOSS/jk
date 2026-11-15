@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.engine.BuildStamps;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.GlobalSuspend;
@@ -175,6 +176,8 @@ public final class Jk {
         // `--list` is an undocumented synonym for `--help`. Rewrite it before any
         // arg scan so both the config loader and the dispatcher only ever see `--help`.
         args = rewriteListToHelp(args);
+        // Engine summaries are memoized for one invocation; an embedding process runs many.
+        ProjectInfos.forget();
         // The home and state roots are owner-only before anything writes into them: the engine
         // socket under state/ is trusted on those permissions alone.
         JkDirs.current().secureRoots();

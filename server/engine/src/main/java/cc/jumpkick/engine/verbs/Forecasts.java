@@ -15,10 +15,10 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.wire.protocol.ExplainRequest;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.runtime.BuildKnobs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -82,7 +82,7 @@ public final class Forecasts {
 
     /** {@link #forecast(ExplainRequest, Session, Calibration.ProbeAnnouncer)} under a hosted job's session. */
     public static Forecast forecast(ExplainRequest req) throws Exception {
-        Session session = ProtoSession.sessionOf(req.encode(), Session.CancelToken.NONE);
+        Session session = ReleaseSession.sessionOf(req.encode(), Session.CancelToken.NONE);
         return forecast(req, session, (stage, done, total, label) -> {});
     }
 

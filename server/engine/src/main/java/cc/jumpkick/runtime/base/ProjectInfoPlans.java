@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -371,7 +372,9 @@ public final class ProjectInfoPlans {
                 orEmpty(build.pomMetadata().keyFile()),
                 release.tag(),
                 release.files(),
-                upstreams);
+                upstreams,
+                SessionContext.current().release(),
+                "");
     }
 
     private static String sanitizeIdentity(String value) {

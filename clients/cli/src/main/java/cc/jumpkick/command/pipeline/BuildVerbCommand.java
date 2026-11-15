@@ -198,9 +198,13 @@ public final class BuildVerbCommand implements CliCommand {
         if (early >= 0) return early;
         refreshAgentsGuide(
                 info != null && info.workspaceRoot() ? dir : scope.workspaceMember() ? scope.workspaceRoot() : dir);
-        if (info != null && info.workspaceRoot()) return workspace(verb, run, dir, info);
-        if (scope.workspaceMember()) return workspace(verb, run, scope.workspaceRoot(), null);
-        return standalone(verb, run, dir);
+        int code = info != null && info.workspaceRoot()
+                ? workspace(verb, run, dir, info)
+                : scope.workspaceMember()
+                        ? workspace(verb, run, scope.workspaceRoot(), null)
+                        : standalone(verb, run, dir);
+        ReleaseLine.print(info, run.global());
+        return code;
     }
 
     /**

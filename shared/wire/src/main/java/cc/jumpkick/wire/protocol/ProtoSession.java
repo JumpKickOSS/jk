@@ -4,6 +4,7 @@ package cc.jumpkick.wire.protocol;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.KeyAuditMode;
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.ReleaseVerb;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.TestFailureMode;
@@ -72,6 +73,7 @@ public final class ProtoSession {
                 .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withRelease(Jsonl.bool(request, "release", false))
+                .withReleaseVerb(ReleaseVerb.parse(Jsonl.str(request, "releaseVerb")))
                 .withJavadoc(Jsonl.bool(request, "javadoc", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))
@@ -269,6 +271,9 @@ public final class ProtoSession {
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
         if (!Jsonl.has(request, "release")) f.optionalTrue("release", session.release());
+        if (!Jsonl.has(request, "releaseVerb") && session.releaseVerb() != ReleaseVerb.NONE) {
+            f.string("releaseVerb", session.releaseVerb().wireName());
+        }
         if (!Jsonl.has(request, "javadoc")) f.optionalTrue("javadoc", session.javadoc());
         String body = f.body();
         return body.isEmpty() ? request : Jsonl.append(request, body);

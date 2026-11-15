@@ -11,9 +11,11 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.VariantSelection;
+import cc.jumpkick.config.ReleaseVerb;
 import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.JkDirs;
@@ -137,14 +139,34 @@ public final class PublishCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.global = GlobalOptions.from(in);
-        // A publish ships the declared version: its build stamps it as declared, not as a snapshot.
+        // The release rule makes a publish a release outside git and holds it to the tag inside;
+        // within `jk release` the release verb stands. Leave the session as found.
         Session before = SessionContext.current();
-        SessionContext.install(before.withRelease(true));
+        if (before.releaseVerb() == ReleaseVerb.NONE)
+            SessionContext.install(before.withReleaseVerb(ReleaseVerb.PUBLISH));
         try {
             return publish(in);
         } finally {
             SessionContext.install(before);
         }
+    }
+
+    /**
+     * Why {@code dir} is not a release to publish: a publish ships only what a release build makes,
+     * a clean checkout at the declared version's tag (or the commit {@code jk release} is tagging).
+     */
+    static String notARelease(ProjectInfo info, Path dir) {
+        if (!info.releaseLine().isEmpty()) return info.releaseLine() + "; commit or stash, then publish";
+        String declared = info.version().endsWith(SnapshotQualifier.SUFFIX)
+                ? info.version().substring(0, info.version().length() - SnapshotQualifier.SUFFIX.length())
+                : info.version();
+        String tag = ReleaseTag.render(info.releaseTag(), declared);
+        ReleaseCommand.Git git = new ReleaseCommand.Git(dir);
+        String other = git.output("tag", "--points-at", "HEAD");
+        String head = other == null || other.isEmpty()
+                ? "HEAD carries no tag " + tag
+                : "HEAD carries " + other.lines().findFirst().orElse("") + ", not " + tag;
+        return head + ", so this is a snapshot; publish from a clean checkout of " + tag;
     }
 
     private int publish(Invocation in) throws IOException, InterruptedException {
@@ -180,6 +202,10 @@ public final class PublishCommand implements CliCommand {
         ProjectInfo info = projectInfo(projectDir);
         if (info.error() != null) {
             CommandWedge.printFail("Publish", info.error());
+            return Exit.CONFIG;
+        }
+        if (!info.releaseBuild()) {
+            CommandWedge.printFail("Publish", notARelease(info, projectDir));
             return Exit.CONFIG;
         }
         // [publish] names the target, so the same bare `jk publish` works on a laptop and in CI; a

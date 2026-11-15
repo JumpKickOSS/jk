@@ -29,6 +29,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.FailureLocation;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.RunNotices;
@@ -395,7 +396,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             .collect(Collectors.toUnmodifiableSet());
                 }
             }
-            Session session = forTarget(ProtoSession.sessionOf(requestLine, cancelToken), target);
+            Session session = forTarget(ReleaseSession.sessionOf(requestLine, cancelToken), target);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             // The client found a GraalVM home for each module whose build links a native image, or
             // decided one is installed: that install is the run's, here, under the request's session

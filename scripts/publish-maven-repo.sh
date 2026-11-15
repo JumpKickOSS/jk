@@ -47,6 +47,10 @@ BUCKET="${JK_MAVEN_BUCKET:-jumpkick}"
 PREFIX="${JK_MAVEN_PREFIX:-repo}"
 LOCAL="$STORE/repos/jk-local/cc/jumpkick"
 
+if [[ "$VERSION" == *-SNAPSHOT ]]; then
+  echo "publish-maven-repo: $VERSION is a snapshot; the repository serves releases only" >&2
+  exit 2
+fi
 if [[ ! -d "$LOCAL" ]]; then
   echo "publish-maven-repo: missing $LOCAL — run jk install first" >&2
   exit 2
@@ -113,7 +117,7 @@ while IFS= read -r -d '' jar; do
 done < <(find "$LOCAL" -type f -name "*.jar" -print0 | sort -z)
 
 if [[ "$count" -eq 0 ]]; then
-  echo "publish-maven-repo: no jars at $VERSION under $LOCAL — run jk install at that version, or set JK_MAVEN_STAGE_ALL=1 to stage every version the store holds" >&2
+  echo "publish-maven-repo: no jars at $VERSION under $LOCAL — jk install from a clean checkout at tag v$VERSION installs them (any other tree installs $VERSION-SNAPSHOT), or set JK_MAVEN_STAGE_ALL=1 to stage every version the store holds" >&2
   exit 2
 fi
 

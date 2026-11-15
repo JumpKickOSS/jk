@@ -5,12 +5,27 @@
 #
 # Usage:
 #   scripts/release-sbom.sh <jk-engine-<version>.jar> <out.cdx.json>
-# Refuses a document that is not CycloneDX 1.6 naming jk-engine with at least one component.
+# Refuses a snapshot's engine, and a document that is not CycloneDX 1.6 naming jk-engine with at
+# least one component.
 set -euo pipefail
 
 JAR="${1:?usage: release-sbom.sh <engine-jar> <out.cdx.json>}"
 OUT="${2:?usage: release-sbom.sh <engine-jar> <out.cdx.json>}"
 [[ -f "$JAR" ]] || { echo "release-sbom: no engine jar at $JAR" >&2; exit 2; }
+# A release's engine, never a snapshot's: jk builds the release only from a clean checkout at the
+# version's tag, and a tagless or changed checkout silently builds a -SNAPSHOT.
+stamp_entry=cc/jumpkick/model/jk-version.properties
+if command -v unzip >/dev/null 2>&1; then
+  stamp="$(unzip -p "$JAR" "$stamp_entry" 2>/dev/null || true)"
+else
+  stamp="$(python3 -c 'import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+print(z.read(sys.argv[2]).decode() if sys.argv[2] in z.namelist() else "")' "$JAR" "$stamp_entry")"
+fi
+if [[ "$(basename "$JAR")$stamp" == *SNAPSHOT* ]]; then
+  echo "release-sbom: $JAR is a snapshot build ($(tr -d '\r\n' <<<"$stamp")); build the release from a clean checkout of its tag" >&2
+  exit 1
+fi
 mkdir -p "$(dirname "$OUT")"
 if command -v unzip >/dev/null 2>&1; then
   unzip -p "$JAR" META-INF/sbom/application.cdx.json >"$OUT"

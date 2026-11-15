@@ -37,7 +37,9 @@ import org.jspecify.annotations.Nullable;
  * {@code [publish]} target: a repository URL (or {@code central}) when the table's {@code
  * repository} names a declared repository, else the name as written; empty when none is named.
  * {@code releaseTag} and {@code releaseFiles} are the workspace root's {@code [release]} tag template
- * and its {@code path → pattern} version-carrying files.
+ * and its {@code path → pattern} version-carrying files. {@code releaseBuild} says the tree is the
+ * release a build of it ships (a clean checkout at the declared version's tag), and {@code
+ * releaseLine} is the line that says so, or why a tagged tree builds a snapshot; empty otherwise.
  *
  * <p>{@code upstreams} is, for each selected module when a selector ({@code -m}, {@code
  * --affected-since}) was given, every workspace sibling it depends on through any scope,
@@ -105,7 +107,9 @@ public record ProjectInfo(
         String publishKeyFile,
         String releaseTag,
         Map<String, String> releaseFiles,
-        Map<String, String> upstreams) {
+        Map<String, String> upstreams,
+        boolean releaseBuild,
+        String releaseLine) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -138,6 +142,73 @@ public record ProjectInfo(
         var out = new LinkedHashMap<String, Toolchain>();
         for (var e : toolchains.entrySet()) out.put(e.getKey(), Toolchain.decode(e.getValue()));
         return out;
+    }
+
+    /** This summary with {@link #releaseLine} set. */
+    public ProjectInfo withReleaseLine(String line) {
+        return new ProjectInfo(
+                error,
+                group,
+                name,
+                version,
+                jdk,
+                javaRelease,
+                kotlin,
+                kotlinVersion,
+                groovy,
+                groovyVersion,
+                layoutSimple,
+                workspaceRoot,
+                workspaceRootDir,
+                moduleDirs,
+                application,
+                mainClass,
+                assembly,
+                applicationConfig,
+                nativeMode,
+                graal,
+                springBoot,
+                springBootVersion,
+                formatStyle,
+                formatJava,
+                formatKotlin,
+                formatOptimizeImports,
+                formatImportOrder,
+                formatRemoveUnusedImports,
+                hasLock,
+                lockJdk,
+                mainJarPath,
+                assemblyJarPath,
+                nativeBinPath,
+                nativeLibPath,
+                pathDeps,
+                sourcesJarPath,
+                javadocJarPath,
+                envRefs,
+                moduleNames,
+                sourceCount,
+                testCount,
+                nativeExplicitlyDisabled,
+                classesDir,
+                testClassesDir,
+                kotlinClassesDir,
+                groovyClassesDir,
+                testResultsDir,
+                lockStale,
+                scala,
+                scalaVersion,
+                coordinatorOnly,
+                productLib,
+                productBin,
+                toolchains,
+                publishRepository,
+                publishSign,
+                publishKeyFile,
+                releaseTag,
+                releaseFiles,
+                upstreams,
+                releaseBuild,
+                line);
     }
 
     /** The siblings {@code dir} depends on ({@link #upstreams}), as absolute directories; empty for none. */
@@ -212,7 +283,9 @@ public record ProjectInfo(
                 "",
                 "",
                 Map.of(),
-                Map.of());
+                Map.of(),
+                false,
+                "");
     }
 
     public String encode() {
@@ -276,6 +349,8 @@ public record ProjectInfo(
                 .string("releaseTag", releaseTag)
                 .map("releaseFiles", releaseFiles)
                 .map("upstreams", upstreams)
+                .bool("releaseBuild", releaseBuild)
+                .string("releaseLine", releaseLine)
                 .finish();
     }
 
@@ -341,7 +416,9 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "publishKeyFile")),
                 orEmpty(Jsonl.str(line, "releaseTag")),
                 Jsonl.strMap(line, "releaseFiles"),
-                Jsonl.strMap(line, "upstreams"));
+                Jsonl.strMap(line, "upstreams"),
+                Jsonl.bool(line, "releaseBuild", false),
+                orEmpty(Jsonl.str(line, "releaseLine")));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

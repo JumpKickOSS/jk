@@ -74,10 +74,10 @@ harness that knows where Maven puts things finds them there:
 | JaCoCo | `target/jacoco.exec`, report in `target/site/jacoco/` |
 | Javadoc HTML | `target/site/apidocs/` |
 
-`<version>` is the declared version with `-SNAPSHOT` in every build but `jk release` and `jk
-publish`: in a project at `version = "1.4.7"`, `jk build`, `jk test`, `jk run` and `jk install` all
-write `target/app-1.4.7-SNAPSHOT.jar`, and `jk release` writes `target/app-1.4.7.jar`
-([Releasing](release.md)).
+`<version>` is the declared version with `-SNAPSHOT` in every build but a release build: in a
+project at `version = "1.4.7"`, every build verb writes `target/app-1.4.7-SNAPSHOT.jar`, except on a
+clean checkout of the tag `v1.4.7` (and in `jk release` and `jk publish`), where it writes
+`target/app-1.4.7.jar` ([Releasing](release.md)).
 
 JumpKick's own working state sits beside them (`kotlin/`, `groovy/`, `incremental/`, `plugin/`, …),
 and its reports (`jk-results.md`, `jk-guards.*`) in the `target/` of the directory a build ran

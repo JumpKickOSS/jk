@@ -26,6 +26,12 @@ false`, even though a plain `jk build` leaves it out. A Kotlin library's javadoc
 carries real API docs rather than an empty jar.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
 
+`jk publish` uploads only a release ([Releasing](release.md)). In a git checkout that is a clean
+checkout whose HEAD carries the version's tag (`[release] tag`, `v1.4.7` by default); on any other
+commit, or with uncommitted changes, it refuses before building and says which. In a tree with no
+git (a source archive) a publish is a release by itself, and every artifact it uploads carries the
+plain version.
+
 A `-SNAPSHOT` version publishes only with `--allow-snapshot`, in Maven's unique form: each run uploads
 `name-1.0.1-20261025.201500-3.jar` and rewrites the version's `maven-metadata.xml` to name the newest
 build, so a snapshot repository that refuses redeploys takes every run and consumers resolve the latest.
@@ -111,13 +117,17 @@ The segment flag picks what moves **after** the release. In order, `jk release`:
 
 1. refuses unless the git tree is clean, the declared version is `MAJOR.MINOR.PATCH`, the tag
    (`[release] tag`, default `v{version}`) does not exist, and the `[publish]` repository does not
-   already hold the version (an unreachable repository is no objection);
+   already hold the version (an unreachable repository is no objection); outside git only the last
+   two apply;
 2. builds, tests and installs the version into `~/.m2` once;
 3. with `--publish`, runs `jk publish` against the `[publish]` target — a failed upload leaves no
    tag and no bump, and a re-run finishes what is missing;
 4. tags the commit (annotated), then rewrites the version in `jk.toml` (and in every workspace
    member that declares the same literal), relocks, and commits it as `Start <next>`;
 5. with `--push`, pushes the branch and the tag; otherwise it prints the push command.
+
+Outside git, steps 4 and 5 shrink to rewriting the version in `jk.toml` and relocking: there is
+nothing to tag, commit or push, and `--push` is refused.
 
 When a later step fails, the message says what was done and the command that finishes the rest.
 A workspace is released from the root; members that inherit its version follow it.

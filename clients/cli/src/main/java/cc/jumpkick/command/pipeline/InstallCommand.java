@@ -502,6 +502,7 @@ public final class InstallCommand {
             if (reshelved == Exit.SUCCESS) WireStream.reportJob(built);
             return reshelved;
         }
+        if (!reshelving) ReleaseLine.print(root, global);
         String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
         if (notice != null && !json) {
             Theme t = Theme.active();

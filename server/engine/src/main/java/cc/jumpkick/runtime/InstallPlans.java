@@ -542,7 +542,8 @@ public final class InstallPlans {
         }
         if (!installed) return null;
         return snapshot.toGav() + " would be hidden by the release " + release.toGav()
-                + " already installed; raise the version in jk.toml";
+                + " already installed; raise the version in jk.toml, or, at the release tag never pushed,"
+                + " take the release back with `jk release --undo`";
     }
 
     /**

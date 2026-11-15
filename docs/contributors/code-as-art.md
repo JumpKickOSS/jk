@@ -1016,6 +1016,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G151 | a CLI command printing a hand-typed `error:`, `usage:` or `jk <verb>:` prefix instead of the failure wedge, the bang chip or the parser's usage error: a second failure style with no stream, colour or chip rule | text, the literal as the first argument of a print under `command/` | `one-failure-style` (text) |
 | G152 | a `Files.write`/`Files.writeString` of a manifest variable in main source: a build parsing `jk.toml` while it is truncated and rewritten reads half a manifest | text over main sources, comment- and string-blind; one exemption (the Android stub `AndroidManifest.xml` in the build's own output) | `manifest-writes-atomic` (text) |
 | G153 | a parser message in `cc.jumpkick.config` or `cc.jumpkick.plugin.manifest` that refuses a key as retired, moved or no longer read, outside `RetiredKeys`: a retired key the writers' test and the docs table never hear of | text over those main sources, comment-blind (strings count); the owner is `RetiredKeys` | `retired-keys-one-list` (text) |
+| G154 | an engine verb taking its session from `ProtoSession.sessionOf` instead of `ReleaseSession.sessionOf`: the wire alone cannot say whether the tree is a clean checkout at its release tag, so that verb would build a snapshot of a tree every other verb builds as the release | text over server and plugin main sources, comment-blind; the owner is `ReleaseSession` | `release-session-owner` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1114,6 +1115,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | published-installer-sh | parity | a published installer that drifts from the repo copy installs JumpKick where the CLI does not look |
 | published-poms | output | a POM with an unspecified coordinate is an artifact nobody can depend on |
 | redactor-owner | forbid | a sink with a redactor of its own masks less than the wire, and a CI job that publishes it leaks what the terminal hid |
+| release-session-owner | text | a session read off the wire alone builds a snapshot of a tagged tree the other verbs build as the release |
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
 | request-thread-carries-session | forbid | a bare thread reads the default session, not the request's |
 | retired-keys-one-list | text | a retired key refused outside the one list is missing from the writers' check and the docs table |

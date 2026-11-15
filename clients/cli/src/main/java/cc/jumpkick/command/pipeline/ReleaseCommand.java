@@ -12,6 +12,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.ReleaseVerb;
 import cc.jumpkick.config.ReleaseVersion;
 import cc.jumpkick.config.ReleaseVersion.Segment;
 import cc.jumpkick.config.Session;
@@ -129,10 +130,10 @@ public final class ReleaseCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        // A release reads, builds, installs and withdraws the declared version, never a snapshot:
-        // leave the session as found.
+        // A release reads, builds, installs and withdraws the declared version, never a snapshot: the
+        // engine's release rule makes the release verb's session a release. Leave the session as found.
         Session before = SessionContext.current();
-        SessionContext.install(before.withRelease(true));
+        SessionContext.install(before.withReleaseVerb(ReleaseVerb.RELEASE));
         try {
             return release(in);
         } finally {
@@ -169,6 +170,18 @@ public final class ReleaseCommand implements CliCommand {
             CommandWedge.printFail(CHIP, "this jk.toml inherits its version; run `jk release` where `version` is set");
             return Exit.CONFIG;
         }
+        boolean inGit = Git.present(dir);
+        if (undo && !inGit) {
+            CommandWedge.printFail(
+                    CHIP,
+                    "no git here, so jk cannot tell which release to take back; set `version` in jk.toml back"
+                            + " and delete that version's installed jars by hand");
+            return Exit.CONFIG;
+        }
+        if (push && !inGit) {
+            CommandWedge.printFail(CHIP, "--push needs git; this tree has none, so there is nothing to push");
+            return Exit.USAGE;
+        }
         if (undo) {
             return withdraw(
                     dir, version, dryRun, in.value("m2-dir").map(CliPaths::abs).orElse(null));
@@ -189,7 +202,8 @@ public final class ReleaseCommand implements CliCommand {
         String tag = ReleaseTag.render(info.releaseTag(), version);
 
         Git git = new Git(dir);
-        String refusal = preflight(git, tag, manifest);
+        // Outside git a release is the verb's alone: no clean-tree check, no tag, no commit, no push.
+        String refusal = inGit ? preflight(git, tag, manifest) : null;
         if (refusal != null) {
             CommandWedge.printFail(CHIP, refusal);
             return Exit.CONFIG;
@@ -208,7 +222,7 @@ public final class ReleaseCommand implements CliCommand {
             CommandWedge.printOk(
                     CHIP,
                     "Would release " + info.group() + ":" + info.name() + ":" + version + (publish ? ", publish" : "")
-                            + ", tag " + tag + ", move jk.toml to " + next + (push ? ", push" : ""));
+                            + (inGit ? ", tag " + tag : "") + ", move jk.toml to " + next + (push ? ", push" : ""));
             return Exit.SUCCESS;
         }
 
@@ -220,8 +234,6 @@ public final class ReleaseCommand implements CliCommand {
             return Exit.CONFIG;
         }
         flags.installSession();
-        // The build ships the declared version: filtered resources stamp it as declared.
-        SessionContext.install(SessionContext.current().withRelease(true));
         BuildOptions buildOpts = new BuildOptions();
         buildOpts.skipTests = flags.skipTests();
         InstallCommand install = new InstallCommand(global, buildOpts);
@@ -245,7 +257,33 @@ public final class ReleaseCommand implements CliCommand {
             }
         }
 
+        if (!inGit) return startOutsideGit(info, dir, manifest, text, version, next);
         return tagAndStart(info, git, dir, manifest, text, version, next, tag, push);
+    }
+
+    /** Outside git: move the manifests to {@code next} by editing them, and relock. Nothing is tagged or committed. */
+    private static int startOutsideGit(
+            ProjectInfo info, Path dir, Path manifest, String text, String version, String next) throws IOException {
+        List<Path> bumped = new ArrayList<>();
+        try {
+            bump(info, dir, manifest, text, version, next, bumped);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            CommandWedge.printFail(
+                    CHIP, "released " + version + " but could not move jk.toml to " + next + ": " + e.getMessage());
+            return Exit.CONFIG;
+        }
+        int relocked = relock(dir);
+        if (relocked != 0) {
+            CommandWedge.printFail(
+                    CHIP,
+                    "released " + version + " and moved jk.toml to " + next + ", but relocking failed; run `jk lock`");
+            return relocked;
+        }
+        CommandWedge.printOk(
+                CHIP,
+                "Released " + info.group() + ":" + info.name() + ":" + version + ", next " + next
+                        + " (no git here: nothing tagged or committed)");
+        return Exit.SUCCESS;
     }
 
     /** Tag the release commit, move the manifests to {@code next}, commit that, and push when asked. */
@@ -551,6 +589,14 @@ public final class ReleaseCommand implements CliCommand {
      * {@code push}) gets {@link #HOOK_CAP}; every other one {@link #CAP}.
      */
     record Git(Path dir) {
+
+        /** Whether {@code dir} is in a git checkout: an ancestor holds a {@code .git}, read without running git. */
+        static boolean present(Path dir) {
+            for (Path d = dir.toAbsolutePath().normalize(); d != null; d = d.getParent()) {
+                if (Files.exists(d.resolve(".git"))) return true;
+            }
+            return false;
+        }
 
         static final Duration CAP = Duration.ofSeconds(120);
 

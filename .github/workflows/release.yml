@@ -152,6 +152,8 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The tag too: jk builds the release only from a clean checkout whose HEAD carries
+      # v<version>, and anything else is a -SNAPSHOT. A dry run is therefore dispatched on the tag.
       - name: Resolve version
         shell: bash
         run: |
@@ -159,6 +161,9 @@ jobs:
           VER="$(scripts/release-version.sh "${RELEASE_TAG#v}")"
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building release $VER (${{ matrix.arch_label }})"
+          git fetch --no-tags --depth=1 origin "+refs/tags/v$VER:refs/tags/v$VER" \
+            || { echo "::error::no tag v$VER: a release is built from its tag; dispatch the dry run on it"; exit 1; }
+          bash scripts/release-session.sh
 
       # The shipped artifacts are what jk builds of itself. The jk that builds them is the one
       # scripts/ci-bootstrap.sh installs: the hosted release .jk/ci/ci-bootstrap-version pins, or the
@@ -188,13 +193,14 @@ jobs:
             jk engine stop --now --no-ansi
           fi
           # Every lane packages with the same jk, the tree's own: the bootstrap installs the tree,
-          # the tree's client takes the home over and shelves this commit's plugins, and that jk
-          # builds the dist. The engine jar embeds an SBOM naming its packager, and the three
-          # lanes' jars must be byte-identical for the flatten.
-          bash scripts/ci-takeover.sh --install-only
-          packager="$(jk --version --no-ansi | head -1)"
-          if [[ "$packager" != *" $JK_VERSION"* ]]; then
-            echo "::error::the dist must be built by jk $JK_VERSION, the tree's own; jk on PATH is: $packager"
+          # the tree's client takes the home over and installs this commit as the release (a clean
+          # checkout at its tag, which --release asserts), and that jk builds the dist. The engine
+          # jar embeds an SBOM naming its packager, and the lanes' jars must be byte-identical for
+          # the flatten.
+          bash scripts/ci-takeover.sh --install-only --release
+          packager="$(jk --version --no-ansi | head -1 | tr -d '\r')"
+          if [[ "$packager" != "jk $JK_VERSION" ]]; then
+            echo "::error::the dist must be built by jk $JK_VERSION, the tree's own release; jk on PATH is: $packager"
             exit 1
           fi
           jk build --skip-tests --no-ansi
@@ -409,8 +415,9 @@ jobs:
           ls -la "out/${JK_VERSION}/SHA256SUMS"*
 
       # jk runs firebase-tools below (`jk node exec`) and builds the two SDK modules the Central
-      # bundles come from. The pinned release builds them: they are platform-neutral jars, and the
-      # next step refuses a build whose jars differ from the staged repository's.
+      # bundles come from. The pinned release builds them from the checkout of the tag, so as the
+      # release: they are platform-neutral jars, and the next step refuses a build whose jars differ
+      # from the staged repository's.
       - name: Bootstrap jk from the hosted release
         shell: bash
         run: |
@@ -428,6 +435,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "${JK_CENTRAL_GPG_KEY:-}" ]] || { echo "::error::JK_CENTRAL_GPG_KEY is not set in the release environment — Central refuses unsigned bundles"; exit 1; }
+          bash scripts/release-session.sh
           jk build --skip-tests --no-ansi -m shared/host -m shared/plugin-sdk
           # The jar Central gets is the jar jumpkick.build serves, byte for byte.
           for module in host:jk-host plugin-sdk:jk-plugin-sdk; do

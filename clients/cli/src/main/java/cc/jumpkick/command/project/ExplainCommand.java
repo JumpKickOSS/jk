@@ -29,6 +29,7 @@ import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
+import cc.jumpkick.command.pipeline.ReleaseLine;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
@@ -258,6 +259,7 @@ public final class ExplainCommand implements CliCommand {
                 etaOut[3],
                 criticalPath,
                 scopeLabel(modulesSpec, affectedSince, affectedWip));
+        ReleaseLine.print(ProjectInfos.orNull(startDir), global);
         return 0;
     }
 

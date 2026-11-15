@@ -198,7 +198,7 @@ final class PlannerBuildInfo {
         return read;
     }
 
-    private static @Nullable Path checkoutRoot(Path dir) {
+    static @Nullable Path checkoutRoot(Path dir) {
         for (Path d = dir.toAbsolutePath().normalize(); d != null; d = d.getParent()) {
             if (Files.exists(d.resolve(".git"))) return d;
         }

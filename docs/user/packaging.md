@@ -7,8 +7,8 @@ Quarkus, Grails) still own it — a Boot jar is not “thin plus extras.”
 R8 minification is **opt-in**, never the default.
 
 `<version>` below is the declared version with `-SNAPSHOT` (`app-1.4.7-SNAPSHOT.jar`) in every build
-but `jk release` and `jk publish`, which write the declared version (`app-1.4.7.jar`) — see
-[Releasing](release.md).
+but a release build — a clean checkout of the version's tag, `jk release` or `jk publish` — which
+writes the declared version (`app-1.4.7.jar`); see [Releasing](release.md).
 
 | Artifact | Config | Command |
 |----------|--------|---------|

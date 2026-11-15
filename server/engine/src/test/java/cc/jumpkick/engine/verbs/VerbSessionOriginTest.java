@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A verb that plans, builds or forecasts from a request runs under the session {@code
- * ProtoSession.sessionOf} derives from that request, never one it assembled itself.
+ * ReleaseSession.sessionOf} derives from that request, never one it assembled itself.
  *
  * <p>Textual, because the defect is an omission and nothing fails when a hand-built session merely
  * lacks a field: a forecast keyed against a selection the build never used, the daemon's
@@ -62,7 +62,7 @@ class VerbSessionOriginTest {
         }
         assertThat(offenders)
                 .as("verbs assembling a Session by hand — every field the chain forgets is one the build"
-                        + " and its forecast can disagree on; take it from ProtoSession.sessionOf")
+                        + " and its forecast can disagree on; take it from ReleaseSession.sessionOf")
                 .isEmpty();
     }
 
@@ -70,11 +70,11 @@ class VerbSessionOriginTest {
     void a_planning_verb_runs_under_the_request_session() throws IOException {
         List<String> offenders = new ArrayList<>();
         for (Path f : planningVerbs()) {
-            if (!Files.readString(f).contains("ProtoSession.sessionOf("))
+            if (!Files.readString(f).contains("ReleaseSession.sessionOf("))
                 offenders.add(f.getFileName().toString());
         }
         assertThat(offenders)
-                .as("verbs that plan from a requestLine without ProtoSession.sessionOf — every toolchain"
+                .as("verbs that plan from a requestLine without ReleaseSession.sessionOf — every toolchain"
                         + " and env resolver they reach would read the daemon's own state")
                 .isEmpty();
     }

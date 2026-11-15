@@ -11,10 +11,10 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.FailureLocation;
+import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -85,7 +85,7 @@ public final class LockVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             LockRequest body = LockRequest.decode(requestLine);
-            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+            Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
             URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
             return SessionContext.where(
                     session,

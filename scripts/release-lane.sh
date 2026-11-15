@@ -55,6 +55,12 @@ build_commit() {
   } | tr -d '\r' | sed -n 's/^Build-Commit: //p'
 }
 
+# The engine a lane's home started: stopped before the work dir is replaced and after a failed lane,
+# or it keeps writing into the home a rerun deletes.
+stop_engine() {
+  if [[ -x "$1/home/bin/jk" ]]; then JK_HOME="$1/home" "$1/home/bin/jk" engine stop --now --no-ansi >/dev/null 2>&1 || true; fi
+}
+stop_engine "$W"
 rm -rf "$W"
 mkdir -p "$W/out"
 W="$(cd "$W" && pwd)"
@@ -71,9 +77,14 @@ set +e
   set -e
   echo "== $LABEL $VER from $(git rev-parse HEAD)"
   echo "== bootstrap"; bash scripts/ci-bootstrap.sh
-  echo "== takeover"; bash scripts/ci-takeover.sh --install-only --yes
+  # The shipped tree is the release, never a snapshot: jk builds one only from a clean checkout at
+  # the tag, so that is asserted first, and the takeover asserts the release it installed.
+  echo "== release session"; bash scripts/release-session.sh
+  echo "== takeover"; bash scripts/ci-takeover.sh --install-only --yes --release
   echo "== dist"; jk build --skip-tests --yes --no-ansi
   ls -la target/dist target/dist/lib
+  reported="$(target/dist/jk --version --no-ansi | head -1 | tr -d '\r')"
+  [[ "$reported" == "jk $VER" ]] || { echo "the dist's jk reports '$reported', not jk $VER"; exit 1; }
   stage_env=()
   if [[ "$LABEL" == linux-x86_64 ]]; then
     echo "== repo"; JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR="$W/out/repo" bash scripts/publish-maven-repo.sh
@@ -85,6 +96,8 @@ set +e
   commit="$(build_commit "$out/jk-engine-$VER.jar")"
   [[ "$commit" == "$(git rev-parse HEAD)" ]] \
     || { echo "the engine jar's Build-Commit is '$commit', not $(git rev-parse HEAD): the dist was not packaged by this tree's jk"; exit 1; }
+  snapshots="$(find "$out" ${stage_env[@]+"$W/out/repo"} -name '*SNAPSHOT*')"
+  [[ -z "$snapshots" ]] || { echo "a release tree names a snapshot:"; echo "$snapshots"; exit 1; }
   if [[ "$LABEL" == linux-x86_64 ]]; then
     echo "== repo vs jk-repo"
     sums="$out/jk-repo-$VER.sha256"
@@ -99,6 +112,7 @@ set +e
 status=$?
 set -e
 if [[ "$status" -ne 0 ]]; then
+  stop_engine "$W"
   tail -60 "$log" >&2
   echo "release-lane: $LABEL failed (exit $status); log: $log" >&2
   exit 1
