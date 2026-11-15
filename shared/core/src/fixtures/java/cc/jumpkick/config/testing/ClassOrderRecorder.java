@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config.testing;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -13,17 +14,17 @@ import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.TestPlan;
 
 /**
- * Writes the order this JVM ran its test classes in, to {@code build/reports/jk-class-order.txt}.
+ * Writes the order this JVM ran its test classes in, one file per test JVM under {@code
+ * target/reports/class-order/}, appended.
  *
  * <p>An order-dependent failure is only investigable if the order is known, and the runner does
  * not record it: workers pull classes off a shared queue, so the assignment is decided by whichever
- * worker asks first and is gone the moment the run ends. That is why's flake could only be
- * described statistically and's writer was never identified.
+ * worker asks first and is gone the moment the run ends.
  *
- * <p>One file per test JVM under {@code build/reports/class-order/}, appended. A runner may run
- * several test plans per JVM, each in its own classloader with a fresh listener, so writing the file whole
- * left only the last batch — 14 of 155 classes, measured — and a static "already truncated" flag
- * did not survive the classloader either.
+ * <p>A runner may run several test plans per JVM, each in its own classloader with a fresh
+ * listener, so the file is appended, never written whole. It lives in the module's build output:
+ * a new entry beside the module's sources while the suite runs would move the listing its stamp
+ * keys, and the suite would run again on the next build.
  *
  * <p>Deliberately always on and deliberately dumb — an append-only list of class names, one file per
  * test JVM's working directory. It records what happened; it does not try to make it repeatable.
@@ -50,12 +51,12 @@ public final class ClassOrderRecorder implements TestExecutionListener {
     public void testPlanExecutionFinished(TestPlan testPlan) {
         if (order.isEmpty()) return;
         try {
-            // One file per test JVM, always appended. A static "have I truncated yet" flag does
-            // not survive: a runner may run each test plan in its own classloader, so the flag reset and
-            // every plan truncated, leaving 14 of 155 classes. The pid is stable across those
-            // classloaders; the directory goes away with build/.
+            // The pid is stable across the classloaders of one JVM's test plans.
             Path f = Path.of(
-                    "build", "reports", "class-order", ProcessHandle.current().pid() + ".txt");
+                    BuildLayout.TARGET,
+                    "reports",
+                    "class-order",
+                    ProcessHandle.current().pid() + ".txt");
             Files.createDirectories(f.getParent());
             Files.writeString(f, String.join("\n", order) + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (Exception ignored) {

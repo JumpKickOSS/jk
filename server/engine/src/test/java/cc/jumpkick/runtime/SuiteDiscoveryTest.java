@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.test.SuiteReads;
 import java.nio.file.Files;
@@ -97,6 +98,22 @@ class SuiteDiscoveryTest {
         assertThat(SuiteReads.keysListing(module.resolve("target/classes/a"), ws))
                 .isFalse();
         assertThat(SuiteReads.keysListing(outside, ws)).isFalse();
+    }
+
+    @Test
+    void git_swapping_its_index_while_a_suite_runs_moves_nothing_it_is_keyed_on(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path git = Files.createDirectories(ws.resolve(".git"));
+        Path head = Files.writeString(git.resolve("HEAD"), "ref: refs/heads/main\n");
+        Files.writeString(git.resolve("index"), "one");
+        long started = startAfterWrites();
+        Path lock = Files.writeString(git.resolve("index.lock"), "two");
+        AtomicWrites.moveInto(lock, git.resolve("index"));
+
+        assertThat(SuiteReads.keysListing(git, ws)).isFalse();
+        assertThat(SuiteReads.keysListing(git.resolve("refs/heads"), ws)).isFalse();
+        assertThat(SuiteDiscovery.moved(Set.of(head), Set.of(), Set.of(), ws, started))
+                .isNull();
     }
 
     /** A start time every file written so far precedes, on any clock grain. */

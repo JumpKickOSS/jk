@@ -282,7 +282,7 @@ final class NodeArm {
             if (!Objects.equals(keyed.inputs().get(name), after.get(name))) moved.add(Path.of(name));
         }
         if (!moved.isEmpty()) {
-            ctx.warn("inputs-moved", InputGuard.describe(step.name(), moved));
+            ctx.warn(InputGuard.MOVED, InputGuard.describe(step.name(), moved));
             ctx.progress(1);
             return;
         }

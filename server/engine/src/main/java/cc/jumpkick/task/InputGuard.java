@@ -26,6 +26,9 @@ import java.util.Objects;
  */
 public final class InputGuard {
 
+    /** The warning code of a step whose result is not recorded because an input moved while it ran. */
+    public static final String MOVED = "inputs-moved";
+
     private final Map<Path, String> before;
 
     private InputGuard(Map<Path, String> before) {

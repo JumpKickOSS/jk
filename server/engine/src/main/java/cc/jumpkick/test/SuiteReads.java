@@ -418,7 +418,7 @@ public final class SuiteReads {
             }
             out.add("read:" + spell(root, f) + "=" + content);
             Path parent = f.getParent();
-            if (parent != null && parent.startsWith(root) && !inBuildOutput(parent, root, outputs)) dirs.add(parent);
+            if (parent != null && keysListing(parent, root, outputs)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
         for (String c : d.commands())
@@ -480,15 +480,29 @@ public final class SuiteReads {
 
     /**
      * Whether a suite that reads a file in {@code dir} is keyed on the directory's listing too: only
-     * in the workspace's own tree, outside every module's build output. A build output's listing
-     * moves as the build writes it, and a directory outside the workspace (the home directory, a
-     * store) as any other process writes there; there a read file is keyed by its content alone.
+     * in the workspace's own tree, outside every module's build output and outside git's database.
+     * A build output's listing moves as the build writes it, git's as every git command swaps its
+     * index and lock files, and a directory outside the workspace (the home directory, a store) as
+     * any other process writes there; there a read file is keyed by its content alone.
      */
     public static boolean keysListing(Path dir, Path workspaceRoot) {
-        Path d = dir.toAbsolutePath().normalize();
-        Path root = workspaceRoot.toAbsolutePath().normalize();
-        return d.startsWith(root) && !inBuildOutput(d, root, new HashMap<>());
+        return keysListing(
+                dir.toAbsolutePath().normalize(), workspaceRoot.toAbsolutePath().normalize(), new HashMap<>());
     }
+
+    private static boolean keysListing(Path dir, Path root, Map<Path, Boolean> outputs) {
+        return dir.startsWith(root) && !inGitDir(root.relativize(dir)) && !inBuildOutput(dir, root, outputs);
+    }
+
+    /** Whether {@code rel}, a path under the workspace root, lies in a {@code .git} directory. */
+    private static boolean inGitDir(Path rel) {
+        for (Path name : rel) {
+            if (name.toString().equals(GIT_DIR)) return true;
+        }
+        return false;
+    }
+
+    private static final String GIT_DIR = ".git";
 
     /**
      * Whether {@code path} (absolute, normalized) lies in a workspace module's build output. {@code

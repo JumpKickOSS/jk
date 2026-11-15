@@ -375,7 +375,7 @@ final class TestSteps {
         if (stampKey == null) return null;
         List<Path> moved = guard.moved();
         if (moved.isEmpty()) return stampKey;
-        ctx.warn("inputs-moved", InputGuard.describe(TaskNames.RUN_TESTS, moved));
+        ctx.warn(InputGuard.MOVED, InputGuard.describe(TaskNames.RUN_TESTS, moved));
         return null;
     }
 

@@ -86,7 +86,7 @@ final class PackagingCache {
         // key names: the artifact stands for this build, but no record vouches for it.
         List<Path> moved = guard.moved();
         if (!moved.isEmpty()) {
-            ctx.warn("inputs-moved", InputGuard.describe(taskId.split("@", 2)[0], moved));
+            ctx.warn(InputGuard.MOVED, InputGuard.describe(taskId.split("@", 2)[0], moved));
             return;
         }
         if (!admitted(ctx, cacheRoot, artifacts, taskId)) return;

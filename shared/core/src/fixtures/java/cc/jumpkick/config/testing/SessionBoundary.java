@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config.testing;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -128,14 +129,13 @@ public final class SessionBoundary implements TestExecutionListener {
     }
 
     /**
-     * Also write the summary to a file. The listener runs inside the test JVM, whose stdout a runner
-     * may discard — an attribution report nobody reads is not a guard. The path is relative to the
-     * JVM's working directory, so it lands beside wherever the worker was started, which is fine
-     * because the file is looked up, not watched.
+     * Also write the summary to {@code target/reports/jk-global-boundary.txt} under the JVM's working
+     * directory: a runner may discard the test JVM's stdout. The module's build output, because a new
+     * entry beside its sources would move the listing the suite's stamp keys.
      */
     private static void report(String text) {
         try {
-            Path f = Path.of("build", "reports", "jk-global-boundary.txt");
+            Path f = Path.of(BuildLayout.TARGET, "reports", "jk-global-boundary.txt");
             Files.createDirectories(f.getParent());
             Files.writeString(f, text);
         } catch (Exception ignored) {

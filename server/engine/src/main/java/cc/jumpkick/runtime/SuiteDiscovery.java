@@ -7,6 +7,8 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -138,7 +140,10 @@ final class SuiteDiscovery {
         Path moved = held
                 ? moved(fresh, freshCommands, listed(before.files(), workspace), workspace, run.startedMillis())
                 : null;
-        if (moved != null) held = false;
+        if (moved != null) {
+            held = false;
+            ctx.warn(InputGuard.MOVED, movedWarning(moved, workspace));
+        }
         if (held) SettledReads.record(moduleDir, readsBefore, readsAfter);
         Log.debug("suite reads: " + moduleDir + " keys " + fresh.size() + " more file(s) and " + freshCommands.size()
                 + " more program(s)"
@@ -148,6 +153,27 @@ final class SuiteDiscovery {
                                 ? "; not replayed, written during the run: " + moved
                                 : "; not replayed, the rest of its key moved during the run"));
         return held ? key : null;
+    }
+
+    /**
+     * The warning for a green run whose marker is not stored because {@code moved}, an input it was
+     * found to read or an entry beside one, was written once it began.
+     */
+    static String movedWarning(Path moved, Path workspace) {
+        Path p = real(moved);
+        Path root = real(workspace);
+        String shown = p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : p.toString();
+        return "an input of " + TaskNames.RUN_TESTS + " changed while it ran: " + shown
+                + "; the next build runs it again";
+    }
+
+    /** {@code p} with its links resolved (macOS's /var is /private/var), or as given once gone. */
+    private static Path real(Path p) {
+        try {
+            return p.toRealPath();
+        } catch (IOException gone) {
+            return p.toAbsolutePath().normalize();
+        }
     }
 
     /** The directories whose listings the stamp keys for {@code files}. */
