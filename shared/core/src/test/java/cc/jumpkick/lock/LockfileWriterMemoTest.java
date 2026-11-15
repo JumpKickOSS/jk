@@ -43,6 +43,24 @@ class LockfileWriterMemoTest {
                 .isEqualTo("2.0.0");
     }
 
+    /** docs/user/lockfile.md: a relock never lowers {@code jk-min}, though the lock it resolves carries none. */
+    @Test
+    void a_relock_keeps_the_floor_the_file_held(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("p/jk-lock.toml");
+        LockfileWriter.write(lock("1.0.0").withJkMin("9.2.0"), file);
+        assertThat(LockfileReader.read(file).jkMin()).isEqualTo("9.2.0");
+
+        LockfileWriter.write(lock("2.0.0"), file);
+
+        assertThat(LockfileReader.read(file).jkMin())
+                .as("the raised floor survives a rewrite whose resolve found a lower one")
+                .isEqualTo("9.2.0");
+        LockfileWriter.write(lock("2.0.0").withJkMin("9.3.0"), file);
+        assertThat(LockfileReader.read(file).jkMin())
+                .as("and a higher floor still raises it")
+                .isEqualTo("9.3.0");
+    }
+
     private static Lockfile lock(String version) {
         Lockfile.Artifact artifact = new Lockfile.Artifact(
                 "com.example:lib",

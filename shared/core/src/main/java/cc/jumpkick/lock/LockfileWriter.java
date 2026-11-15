@@ -54,6 +54,11 @@ public final class LockfileWriter {
         // The writer is whoever writes the file: the running build, or none from a classes directory.
         Lockfile stamped =
                 lockfile.withManifestsSha256(manifestsSha256).withWriterBuild(LockRewriteGuard.runningBuild());
+        // A relock never lowers the floor: the lock in hand is freshly resolved and carries only the
+        // floors this resolve found, so a floor the file held (raised by hand, or by a newer jk) is
+        // kept from the file itself, scanned from its head like the project id below.
+        String held = heldFloor(file);
+        if (held != null) stamped = stamped.withJkMin(PluginDescriptors.maxFloor(held, stamped.jkMin()));
         // Preserve / mint durable project-id: never drop on rewrite. The id an earlier lock recorded
         // is scanned from its head — a torn or unreadable lock with an intact head keeps its id.
         Path owner = ownerOf(file);
@@ -92,6 +97,17 @@ public final class LockfileWriter {
         } catch (Exception e) {
             // best-effort; lock is already durable
             Log.debug("write: best-effort", e);
+        }
+    }
+
+    /** The {@code jk-min} the lock at {@code file} holds; null when there is none or no lock. */
+    static @Nullable String heldFloor(Path file) {
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            String floor = TomlScan.scanScalarHead(file, "jk-min").get("jk-min");
+            return floor == null || floor.isBlank() ? null : floor;
+        } catch (RuntimeException unreadable) {
+            return null;
         }
     }
 
