@@ -197,9 +197,16 @@ final class SecondBuild {
         return new Observed(result, ran, moved, errors);
     }
 
-    /** The session a client sends beside a request under {@code knobs}: its variant and env. */
+    /**
+     * The session a client sends beside a request under {@code knobs}: its variant and env, and the
+     * {@code GRAALVM_HOME} the caller's session carries (a native-image fixture names the GraalVM it
+     * found).
+     */
     private static Session session(Path cache, BuildKnobs knobs) {
-        return Session.defaults().withCacheDir(cache).withVariant(knobs.variant(), knobs.clientEnv());
+        return Session.defaults()
+                .withCacheDir(cache)
+                .withVariant(knobs.variant(), knobs.clientEnv())
+                .withToolchainSpecs(null, null, SessionContext.current().graalHome(), null);
     }
 
     /** Each dirty module with the steps that are not cached and why. */

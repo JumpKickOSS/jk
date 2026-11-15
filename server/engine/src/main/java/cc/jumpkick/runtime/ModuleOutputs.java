@@ -8,6 +8,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.NodeShape;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -70,10 +71,23 @@ public final class ModuleOutputs {
         } else if (resourcesOnlyOutputsMissing(moduleDir, build, layout)) {
             return true;
         }
+        return tailsMissing(build, layout);
+    }
+
+    /**
+     * A declared packaging tail whose output is gone: the fat jar, the minified jar, the lib-dir layout's jar, the war,
+     * the runtime image, or an always-native module's binary or library. One list for the build's
+     * preflight and {@code jk explain}'s forecast, so neither restores a tail the other leaves
+     * missing.
+     */
+    static boolean tailsMissing(JkBuild build, BuildLayout layout) {
         if (build.assembly() && !Files.isRegularFile(layout.assemblyJar())) return true;
+        if (build.minified() && !Files.isRegularFile(layout.minifiedJar())) return true;
+        if (build.libDir() != null && !Files.isRegularFile(layout.libDirJar())) return true;
+        BuildBlock.War war = build.build().war();
+        if (war != null && !Files.isRegularFile(layout.warFile(war))) return true;
         if (jlinkImageMissing(build, layout)) return true;
-        if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build)) return true;
-        return false;
+        return build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build);
     }
 
     /** A declared {@code [jlink]} image whose launcher or application jar is gone. */

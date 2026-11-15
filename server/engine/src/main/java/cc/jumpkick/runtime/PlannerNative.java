@@ -154,6 +154,7 @@ public final class PlannerNative {
             // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
             // (bar must not jump; accurate native weight is reserved up front).
             ctx.reweight(EffortWeights.RESTORE);
+            PackagingCache.recordBundled(layout, TaskNames.NATIVE_IMAGE, classpath);
             ctx.label(out.getFileName() + " up-to-date");
             ctx.cached();
             ctx.progress(1);
@@ -192,6 +193,9 @@ public final class PlannerNative {
                     persist,
                     List.of());
         }
+        // A shared library is linked on every run of the step, but only a scheduled module runs it:
+        // the record is what schedules it once a sibling jar it linked has moved.
+        PackagingCache.recordBundled(layout, TaskNames.NATIVE_IMAGE, classpath);
     }
 
     /**
@@ -912,9 +916,10 @@ public final class PlannerNative {
             List<String> extra,
             boolean allowShared)
             throws Exception {
-        ForecastScope.Prepared p = s.prepared();
-        if (p.parsed().noSources()) return null;
-        BuildLayout layout = p.parsed().layout();
+        // A workspace root links no image. A member with no sources of its own still links its
+        // siblings' jars when it declares one: a distribution, priced like any other.
+        if (s.project.isWorkspaceRoot()) return null;
+        BuildLayout layout = s.prepared().parsed().layout();
         TaskForecast.Task step = forecastImage(s, layout, jdksDir, graalHome, mainOverride, extra, allowShared);
         s.nativeBinaryToRestore = step.cached() && !ForecastPackagingTails.nativeBinaryPresent(layout);
         return step;

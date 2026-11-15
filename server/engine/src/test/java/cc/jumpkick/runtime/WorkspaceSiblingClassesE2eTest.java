@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -38,7 +39,6 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -49,8 +49,6 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * End-to-end: a workspace consumer compiles against its sibling's classes tree and is scheduled
@@ -432,97 +430,15 @@ class WorkspaceSiblingClassesE2eTest {
                 .isTrue();
     }
 
-    /**
-     * A build of the sibling alone moves its jar while the distribution over it stays out of the
-     * run; the next whole build has to repackage the distribution, not report it up to date over
-     * the old bytes. Found end to end: {@code jk build -m lib} then {@code jk build} left dist's fat
-     * jar holding lib's previous classes, and every build after it said OK. The same holds for every
-     * tail whose inputs are its siblings' jars: the fat jar, and the copy the lib-dir layout, the war
-     * and the runtime image each carry.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = {"assembly", "lib-dir", "war", "jlink"})
-    void a_build_of_the_sibling_alone_does_not_leave_the_distribution_stale(String tail, @TempDir Path tmp)
-            throws Exception {
-        Path cache = TestCaches.dir("sibling-classes-cache");
-        Path ws = distributionWorkspace(
-                tmp,
-                switch (tail) {
-                    case "war" -> "\n[war]";
-                    case "jlink" -> "\n[jlink]\naot-cache = false\ntest-start = false";
-                    default -> tail + " = true";
-                });
-        SecondBuild.nonce(ws);
-        lock(ws, cache, "lib", "dist");
-
-        Probe first = new Probe(false);
-        assertThat(build(ws, cache, first).success())
-                .as("initial build; failed steps " + first.failed())
-                .isTrue();
-        assertThat(distLibClass(ws, tail)).contains("lib-v1");
-
-        Path libSource = ws.resolve("lib/src/com/example/Lib.java");
-        Files.writeString(libSource, Files.readString(libSource).replace("lib-v1", "lib-v2"));
-        // As the build verb sends jk build -m lib: the selection as the dirty hint, and its tokens.
-        Set<Path> libOnlyHint = Set.of(BuildGraph.canonicalPath(ws.resolve("lib")));
-        Probe libOnly = new Probe(false);
-        assertThat(WorkspaceExecute.buildWorkspace(
-                                new WorkspaceRequest(
-                                                ws, cache, null, 0, null, true, false, 2, libOnlyHint, false, false)
-                                        .withModules(List.of("lib")),
-                                libOnly)
-                        .success())
-                .as("jk build -m lib; failed steps " + libOnly.failed())
-                .isTrue();
-        assertThat(distLibClass(ws, tail)).as("dist was not in that run").contains("lib-v1");
-
-        Path distDir = ws.resolve("dist").toRealPath();
-        assertThat(dirty(ws, cache)).as("the build's own check schedules dist").contains(distDir);
-        assertThat(explainDirty(ws, cache))
-                .as("jk explain predicts dist's work")
-                .contains("dist");
-
-        Probe whole = new Probe(false);
-        assertThat(build(ws, cache, whole).success())
-                .as("jk build; failed steps " + whole.failed())
-                .isTrue();
-        assertThat(distLibClass(ws, tail))
-                .as("dist's " + tail + " carries lib's new bodies")
-                .contains("lib-v2")
-                .doesNotContain("lib-v1");
-        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
-        assertThat(distLibClass(ws, tail)).contains("lib-v2");
-    }
-
-    /** lib's class as dist's {@code tail} ships it: nested in the fat jar, or in the copy of lib's jar the tail carries. */
-    private static String distLibClass(Path ws, String tail) throws IOException {
-        JkBuild project = JkBuildParser.parse(ws.resolve("dist/jk.toml"));
-        BuildLayout dist = BuildLayout.of(ws, ws.resolve("dist"), project);
-        if (tail.equals("assembly")) return nestedLibClass(dist.assemblyJar());
-        Path libs =
-                switch (tail) {
-                    case "war" ->
-                        dist.explodedWarDir(
-                                        Objects.requireNonNull(project.build().war()))
-                                .resolve("WEB-INF/lib");
-                    case "jlink" -> dist.jlinkImage().resolve("app/libs");
-                    default -> dist.libDir(Objects.requireNonNull(project.libDir()));
-                };
-        try (var jars = Files.list(libs)) {
-            Path jar = jars.filter(j -> j.getFileName().toString().startsWith("lib-"))
-                    .findFirst()
-                    .orElseThrow(() -> new AssertionError("no copy of lib's jar in " + libs));
-            return nestedLibClass(jar);
-        }
-    }
-
     /** The modules {@code jk explain} forecasts work for, through the memo-aware preflight the build asks. */
-    private static List<String> explainDirty(Path ws, Path cache) throws Exception {
+    static List<String> explainDirty(Path ws, Path cache) throws Exception {
         ExplainReport report = ExplainReport.compute(
                 ws,
                 JkBuildParser.parse(ws.resolve("jk.toml")),
                 cache,
-                Session.defaults().withCacheDir(cache),
+                Session.defaults()
+                        .withCacheDir(cache)
+                        .withToolchainSpecs(null, null, SessionContext.current().graalHome(), null),
                 BuildKnobs.DEFAULTS,
                 0);
         assertThat(report.plan().errors()).as("explain errors").isEmpty();
@@ -533,13 +449,13 @@ class WorkspaceSiblingClassesE2eTest {
     }
 
     /** The modules the preflight schedules for {@code ws}, as a build's own check reads them. */
-    private static Set<Path> dirty(Path ws, Path cache) throws IOException {
+    static Set<Path> dirty(Path ws, Path cache) throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
         return BuildService.forecastDirtyDirsReadOnly(graph, cache, true, ws);
     }
 
-    private static List<TaskForecast.Module> forecast(Path ws, Path cache) throws IOException {
+    static List<TaskForecast.Module> forecast(Path ws, Path cache) throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
@@ -547,14 +463,14 @@ class WorkspaceSiblingClassesE2eTest {
         return ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
     }
 
-    private static TaskForecast.Module module(List<TaskForecast.Module> plan, String module) {
+    static TaskForecast.Module module(List<TaskForecast.Module> plan, String module) {
         return plan.stream()
                 .filter(m -> m.dir().getFileName().toString().equals(module))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("no forecast for " + module));
     }
 
-    private static TaskForecast.Task step(List<TaskForecast.Module> plan, String module, String step) {
+    static TaskForecast.Task step(List<TaskForecast.Module> plan, String module, String step) {
         TaskForecast.Module m = module(plan, module);
         return m.steps().stream()
                 .filter(s -> s.name().equals(step))
@@ -562,7 +478,7 @@ class WorkspaceSiblingClassesE2eTest {
                 .orElseThrow(() -> new AssertionError(module + " forecasts no " + step + ": " + m.steps()));
     }
 
-    private static WorkspaceResult build(Path ws, Path cache, Probe probe) {
+    static WorkspaceResult build(Path ws, Path cache, Probe probe) {
         return build(ws, cache, probe, 2);
     }
 
@@ -618,7 +534,7 @@ class WorkspaceSiblingClassesE2eTest {
     }
 
     /** As above, dist's {@code [application]} table packaging with {@code tail}. */
-    private static Path distributionWorkspace(Path tmp, String tail) throws IOException {
+    static Path distributionWorkspace(Path tmp, String tail) throws IOException {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(ws.resolve("jk.toml"), """
                 group   = "com.example"
@@ -641,7 +557,9 @@ class WorkspaceSiblingClassesE2eTest {
         Files.writeString(
                 lib.resolve("src/com/example/Lib.java"),
                 LIB_SOURCE.replace(
-                        "private Lib() {}", "private Lib() {}\n\n    public static void main(String[] args) {}"));
+                        "private Lib() {}",
+                        "private Lib() {}\n\n    public static void main(String[] args) {\n"
+                                + "        System.out.println(version());\n    }"));
         Path dist = Files.createDirectories(ws.resolve("dist"));
         Files.writeString(dist.resolve("jk.toml"), """
                 group   = "com.example"
@@ -658,12 +576,16 @@ class WorkspaceSiblingClassesE2eTest {
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
-                """.formatted(tail));
+                %s
+                """.formatted(
+                        tail,
+                        // r8, the minifier's tool, publishes to Google Maven.
+                        tail.contains("[minified]") ? "google = \"https://dl.google.com/dl/android/maven2/\"" : ""));
         return ws;
     }
 
     /** The text of lib's class as nested in {@code jar}, for the string constants its bodies carry. */
-    private static String nestedLibClass(Path jar) throws IOException {
+    static String nestedLibClass(Path jar) throws IOException {
         assertThat(jar).isRegularFile();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry entry = zip.getEntry("com/example/Lib.class");
@@ -678,7 +600,7 @@ class WorkspaceSiblingClassesE2eTest {
         lock(ws, cache, "lib", "app");
     }
 
-    private static void lock(Path ws, Path cache, String... members) throws Exception {
+    static void lock(Path ws, Path cache, String... members) throws Exception {
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
@@ -692,7 +614,7 @@ class WorkspaceSiblingClassesE2eTest {
      * Watches both modules. With {@code holdLibJar}, lib's package-jar is held at its start until
      * app's compile has started (or the window closes), and whether app got there first is recorded.
      */
-    private static final class Probe implements WorkspaceBuildListener {
+    static final class Probe implements WorkspaceBuildListener {
         private final boolean holdLibJar;
         private final CountDownLatch appCompileStarted = new CountDownLatch(1);
         private final AtomicBoolean appCompiledBeforeLibPackaged = new AtomicBoolean();

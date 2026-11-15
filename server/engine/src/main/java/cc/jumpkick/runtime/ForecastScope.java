@@ -712,24 +712,20 @@ public final class ForecastScope implements StepForecast.Scope {
         // The jar and what is packaged beside it are outputs of a plan that packages: a compile or
         // a test run that packages nothing (a sibling reads none of its jar) never brings them back.
         boolean packages = knobs.target().packages() || verdicts.containsKey(TaskNames.PACKAGE_JAR);
+        // The jar and every tail packaged beside it, as the build's preflight judges them.
+        boolean packagedAbsent =
+                (packages && (!Files.isRegularFile(layout.mainJar()) || ModuleOutputs.tailsMissing(project, layout)))
+                        || nativeBinaryToRestore;
         if (!p.parsed().noSources()) {
             boolean present = classesTreePresent(layout);
             incomplete = present && !compileOutputsOnDisk(layout.classesDir());
-            outputsAbsent = !present
-                    || incomplete
-                    || (packages
-                            && (!Files.isRegularFile(layout.mainJar())
-                                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
-                                    || ModuleOutputs.jlinkImageMissing(project, layout)))
-                    || nativeBinaryToRestore;
+            outputsAbsent = !present || incomplete || packagedAbsent;
         } else if (!project.isWorkspaceRoot()) {
             // Source-less member: the build still packages its jar, and a resources-only
             // module's classes tree (copied resources) is consumed straight off sibling
             // classpaths, so either missing is a missing output too. A source-less distribution's
-            // assembly is its whole output.
-            outputsAbsent = (packages
-                            && (!Files.isRegularFile(layout.mainJar())
-                                    || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))))
+            // tails (fat jar, lib-dir, war, runtime image, native binary) are its whole output.
+            outputsAbsent = packagedAbsent
                     || (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()
                             && !TaskForecaster.classesDirHasContent(layout.classesDir()));
         }
