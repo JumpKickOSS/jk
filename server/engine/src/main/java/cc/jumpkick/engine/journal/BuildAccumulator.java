@@ -249,7 +249,8 @@ public final class BuildAccumulator {
      * Whether the run proved the tree up to date and did nothing else: it succeeded unforced, and
      * every step it ran was a skip or bookkeeping rather than productive work ({@link
      * BuildService#isProductiveStep}, the test the client's "all up to date" uses), with no
-     * diagnostic, publish or ranking to keep. Such a run's record would repeat the last one.
+     * diagnostic, publish or ranking to keep. A run with no step at all is one too: the preflight
+     * proved every module current before planning. Such a run's record would repeat the last one.
      */
     public boolean isNoop() {
         if (!NOOP_KINDS.contains(kind) || !succeeded() || userCancelled || discarded || rebuild) return false;
@@ -257,11 +258,9 @@ public final class BuildAccumulator {
         for (ModuleOutcome m : moduleSnapshot()) {
             if (m.didWork() || !m.success()) return false;
         }
-        boolean ran = false;
         for (Map<String, BuildRecord.Task> steps : stepsByDir.values()) {
             synchronized (steps) {
                 for (BuildRecord.Task t : steps.values()) {
-                    ran = true;
                     String status = t.status() == null ? "" : t.status().trim().toUpperCase(Locale.ROOT);
                     // A skip that restored its outputs from the action cache rewrote them: the run
                     // is a build of an earlier state, not an up-to-date tree, and its report says so.
@@ -270,7 +269,7 @@ public final class BuildAccumulator {
                 }
             }
         }
-        return ran;
+        return true;
     }
 
     /** True when the runner already stamped success or failure via {@link #stamp}. */

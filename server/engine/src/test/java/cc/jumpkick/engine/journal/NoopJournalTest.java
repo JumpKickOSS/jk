@@ -230,6 +230,23 @@ class NoopJournalTest {
         assertThat(log).isEmpty();
     }
 
+    /** The preflight proves every module current before planning, so a settled rebuild runs no step at all. */
+    @Test
+    void a_rebuild_the_preflight_proved_current_with_no_step_is_a_log_line_that_says_up_to_date() throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("proj"));
+        BuildJournal journal = new BuildJournal(tmp.resolve("builds"), HOUR);
+        JobSessions sessions = new JobSessions(() -> 0L);
+        JournalWriter writer = writer(journal, sessions, new ArrayList<>());
+        run(writer, sessions, journal, project, 61, 1, "SUCCESS", JobOutcome.SUCCEEDED);
+
+        String locator = requireNonNull(journal.beginLater(running(2, 62, project)));
+        writer.register(62, "build", project.toString(), "cli", null, true, false, 2, locator);
+        requireNonNull(sessions.accumulator(62)).stamp(JobOutcome.SUCCEEDED);
+
+        assertThat(writer.write(62, false, 90, null)).startsWith("OK build").endsWith(" · up to date\n");
+        assertThat(journal.runDir("g:a", project.toString(), 2)).isEmpty();
+    }
+
     @Test
     void an_up_to_date_run_after_a_failure_is_journaled_whole() throws Exception {
         Path project = Files.createDirectories(tmp.resolve("proj"));
