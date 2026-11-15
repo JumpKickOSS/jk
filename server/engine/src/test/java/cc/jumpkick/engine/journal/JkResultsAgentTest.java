@@ -7,6 +7,7 @@ import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
+import cc.jumpkick.test.SuiteReads;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -38,6 +39,24 @@ class JkResultsAgentTest {
                 OK test rest-service · 1 test · 500ms
                 waited 12s for memory
                 waited 2s for memory (JK_WORKER_BUDGET_MB)
+                """);
+    }
+
+    @Test
+    void an_ok_run_says_why_its_suite_runs_again_on_the_next_build() {
+        BuildRecord.Diag network = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                "run-tests",
+                SuiteReads.NETWORK_WARNING,
+                "tests reached repo.example.com, so they rerun; [test] network = \"allowed\" caches them",
+                null,
+                null);
+        BuildRecord r =
+                record("test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(network), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                tests reached repo.example.com, so they rerun; [test] network = "allowed" caches them
                 """);
     }
 

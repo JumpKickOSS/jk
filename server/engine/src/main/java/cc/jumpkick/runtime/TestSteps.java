@@ -37,6 +37,7 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.SuiteFilter;
+import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -621,13 +622,21 @@ final class TestSteps {
         // The same key with a red record is the one shape a live run never skips: say so, or the
         // ETA reads "only the suite is dirty" as stamp drift.
         boolean red = marker.isPresent() && !hit;
+        // As the run decides it (SuiteDiscovery.settle): a suite found to reach another host stores
+        // no marker, so its miss is that and not a stamp that moved.
+        boolean network = !hit
+                && !red
+                && !s.project.build().testNetworkAllowed()
+                && SuiteReads.load(s.dir, SessionContext.current().testSelection())
+                        .network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
         return hit
                 ? new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null)
                 : new TaskForecast.Task(
                         TaskNames.RUN_TESTS,
                         TaskForecast.Status.RUN,
-                        "run tests · " + tests + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
+                        "run tests · " + (network ? TaskForecast.TESTS_USE_NETWORK + " · " : "") + tests
+                                + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
                         null);
     }
 }

@@ -1005,8 +1005,17 @@ everything above — `../shared/fixture.json`, a file under `$HOME`, `jk.toml` r
 by content, together with the listing of the directory it sits in, so a file added beside it is
 seen too. A started program keys the suite by its executable. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
-it and is replayed from then on while it holds. A suite that talks to anything but this host
-(loopback is fine) stores no marker and runs on every build. A file under JumpKick's own state directory
+it and is replayed from then on while it holds.
+
+**A suite that reaches the network is never replayed.** "Reaches the network" means a test JVM
+read from or wrote to a socket whose address is not this machine's: loopback (`localhost`,
+`127.0.0.1`, `::1`) and Unix-domain sockets do not count, and neither does a program the tests
+start (only the JVM's own sockets are recorded). Such a suite stores no green marker, so every build
+runs it, and every such run says why with the host it reached: `tests reached repo.example.com,
+so they rerun; [test] network = "allowed" caches them`. `jk explain` forecasts its run as `run
+tests · tests use the network`. Serve what the test needs from a stub on loopback, move the test to
+a suite such as `network` that the gate does not run, or set `[test] network = "allowed"` when its
+result depends on nothing the remote can change. A file under JumpKick's own state directory
 (`~/.jk/state`: the engine's endpoint, pid and log files) is never keyed, since it changes with
 every engine restart; the build warns `tests read jk's own state, not keyed: <file>`, because a
 test that reads it is reaching past its sandbox.

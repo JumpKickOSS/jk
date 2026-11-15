@@ -106,26 +106,25 @@ final class SuiteDiscovery {
             ctx.warn(JK_STATE, jkStateWarning(jkState, JkDirs.state()));
         }
         Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, run.startedMillis());
-        boolean reached = seen.network() && !run.networkAllowed();
+        Set<String> hosts = run.networkAllowed() ? Set.of() : seen.hosts();
+        boolean reached = !hosts.isEmpty();
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
         // A whole run's reads are all the suite reads now: what it no longer reads drops out. A run
         // of only the affected classes adds to what the whole suite was found to read.
-        SuiteReads.Discovered after = run.whole()
-                ? SuiteReads.Discovered.NONE.with(read, started, reached)
-                : before.with(read, started, reached);
+        SuiteReads.Discovered after =
+                run.whole() ? SuiteReads.Discovered.NONE.with(read, started, hosts) : before.with(read, started, hosts);
+        // Every run that stores no marker for it says so, not only the one that first found it.
+        if (reached) {
+            ctx.warn(SuiteReads.NETWORK_WARNING, networkWarning(hosts));
+            SettledReads.unreplayable(moduleDir);
+        }
         if (after.equals(before)) {
-            Log.debug("suite reads: " + moduleDir + " read what it was keyed on"
-                    + (reached ? "; not replayed, it reached another host" : stampKey == null ? "; no key" : ""));
+            Log.debug(
+                    "suite reads: " + moduleDir + " read what it was keyed on" + (stampKey == null ? "; no key" : ""));
             return reached ? null : stampKey;
         }
         if (reached) {
             SuiteReads.save(moduleDir, run.selection(), after);
-            if (!before.network()) {
-                ctx.warn(
-                        "suite-network",
-                        "tests use the network, so they rerun on every build; set [test] network = \"allowed\""
-                                + " to cache their result");
-            }
             return null;
         }
         Set<Path> fresh = new TreeSet<>(read);
@@ -159,6 +158,16 @@ final class SuiteDiscovery {
                                 ? "; not replayed, written during the run: " + moved
                                 : "; not replayed, the rest of its key moved during the run"));
         return held ? key : null;
+    }
+
+    /**
+     * The warning for a run whose marker is not stored because its tests reached {@code hosts}, the
+     * hosts past this one they read from or wrote to.
+     */
+    static String networkWarning(Set<String> hosts) {
+        String first = hosts.iterator().next();
+        String more = hosts.size() > 1 ? " (+" + (hosts.size() - 1) + ")" : "";
+        return "tests reached " + first + more + ", so they rerun; [test] network = \"allowed\" caches them";
     }
 
     /**

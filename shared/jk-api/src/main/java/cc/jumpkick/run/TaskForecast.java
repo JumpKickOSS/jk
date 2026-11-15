@@ -21,6 +21,12 @@ public final class TaskForecast {
     public static final String LAST_RUN_FAILED = "last run failed";
 
     /**
+     * Detail suffix on a {@code run-tests} step whose suite was found to reach past this host: it
+     * stores no green marker, so every build runs it.
+     */
+    public static final String TESTS_USE_NETWORK = "tests use the network";
+
+    /**
      * Lead of a compile step held to run only because a compile-scope dependency is rebuilding,
      * when every such dependency's edit is body-only: its key is expected to hold.
      */

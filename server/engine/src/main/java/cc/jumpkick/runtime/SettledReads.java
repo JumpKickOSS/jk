@@ -5,6 +5,7 @@ import cc.jumpkick.config.Request;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -28,6 +29,27 @@ public final class SettledReads {
     private record Settled(String before, String after) {}
 
     private final Map<Path, Settled> settled = new ConcurrentHashMap<>();
+
+    /** Modules whose suite stored no marker because it reached another host. */
+    private final Set<Path> unreplayable = ConcurrentHashMap.newKeySet();
+
+    /**
+     * The module's suite reached past this host and stored no marker: the clean memo the build
+     * certifies records it dirty, so the next build schedules it and its forecast says why.
+     */
+    public static void unreplayable(Path moduleDir) {
+        SettledReads mine = current();
+        if (mine != null) mine.unreplayable.add(moduleDir.toAbsolutePath().normalize());
+    }
+
+    /** The modules {@link #unreplayable} named this build; spent by the call. */
+    public static Set<Path> takeUnreplayable() {
+        SettledReads mine = current();
+        if (mine == null) return Set.of();
+        Set<Path> out = Set.copyOf(mine.unreplayable);
+        mine.unreplayable.removeAll(out);
+        return out;
+    }
 
     /**
      * The module's suite stored its marker under a key whose discovered inputs digest to {@code

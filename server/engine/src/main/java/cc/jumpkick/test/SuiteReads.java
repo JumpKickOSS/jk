@@ -111,18 +111,23 @@ public final class SuiteReads {
     }
 
     /**
-     * What one run observed: files read and not written by the run itself, commands started,
-     * whether it reached past this host, and whether every recording read back ({@code complete}
-     * false vouches for nothing this run).
+     * What one run observed: files read and not written by the run itself, commands started, the
+     * hosts past this one it read from or wrote to, and whether every recording read back ({@code
+     * complete} false vouches for nothing this run).
      */
-    public record Observed(Set<Path> files, Set<String> commands, boolean network, boolean complete) {}
+    public record Observed(Set<Path> files, Set<String> commands, Set<String> hosts, boolean complete) {
+        /** Whether the run reached past this host. */
+        public boolean network() {
+            return !hosts.isEmpty();
+        }
+    }
 
     /** Every recording under {@code dir}, relative paths resolved against {@code cwd}. */
     public static Observed collect(Path dir, Path cwd) {
         Set<Path> files = new TreeSet<>();
         Set<Path> written = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
-        boolean network = false;
+        Set<String> hosts = new TreeSet<>();
         boolean complete = true;
         List<Path> recordings = new ArrayList<>();
         try {
@@ -131,7 +136,7 @@ public final class SuiteReads {
                 return true;
             });
         } catch (IOException none) {
-            return new Observed(files, commands, false, false);
+            return new Observed(files, commands, hosts, false);
         }
         for (Path jfr : recordings) {
             try (RecordingFile in = new RecordingFile(jfr)) {
@@ -152,7 +157,10 @@ public final class SuiteReads {
                             String c = e.getString("command");
                             if (c != null && !c.isBlank()) commands.add(executable(c));
                         }
-                        case "jdk.SocketRead", "jdk.SocketWrite" -> network |= !local(e.getString("address"));
+                        case "jdk.SocketRead", "jdk.SocketWrite" -> {
+                            String address = e.getString("address");
+                            if (!local(address)) hosts.add(hostName(e.getString("host"), address));
+                        }
                         default -> {}
                     }
                 }
@@ -164,7 +172,13 @@ public final class SuiteReads {
         }
         // A file the run wrote is its own output: reading it back depends on nothing outside.
         files.removeAll(written);
-        return new Observed(files, commands, network, complete);
+        return new Observed(files, commands, hosts, complete);
+    }
+
+    /** The name a remote endpoint is shown by: the host name the socket was opened with, else its address. */
+    static String hostName(@Nullable String host, @Nullable String address) {
+        String name = host != null && !host.isBlank() ? host : String.valueOf(address);
+        return name.strip().replace('\n', ' ');
     }
 
     private static void resolve(Path cwd, String raw, Set<Path> into) {
@@ -331,22 +345,32 @@ public final class SuiteReads {
         return s.startsWith("/proc/") || s.startsWith("/sys/") || s.startsWith("/dev/");
     }
 
-    /** The inputs a suite was found to read, kept beside its outputs. */
-    public record Discovered(Set<Path> files, Set<String> commands, boolean network) {
-        public static final Discovered NONE = new Discovered(Set.of(), Set.of(), false);
+    /**
+     * The inputs a suite was found to read, kept beside its outputs, and the hosts past this one it
+     * reached, by name; any host at all keeps the suite from replaying unless the network is allowed.
+     */
+    public record Discovered(Set<Path> files, Set<String> commands, Set<String> hosts) {
+        public static final Discovered NONE = new Discovered(Set.of(), Set.of(), Set.of());
 
         /** This set with {@code more} added: discovered inputs only ever grow until the target dir goes. */
-        public Discovered with(Set<Path> moreFiles, Set<String> moreCommands, boolean moreNetwork) {
+        public Discovered with(Set<Path> moreFiles, Set<String> moreCommands, Set<String> moreHosts) {
             Set<Path> f = new TreeSet<>(files);
             f.addAll(moreFiles);
             Set<String> c = new TreeSet<>(commands);
             c.addAll(moreCommands);
-            return new Discovered(f, c, network || moreNetwork);
+            Set<String> h = new TreeSet<>(hosts);
+            h.addAll(moreHosts);
+            return new Discovered(f, c, h);
+        }
+
+        /** Whether the suite was found to reach past this host. */
+        public boolean network() {
+            return !hosts.isEmpty();
         }
 
         /** Whether {@code observed} read, started or reached anything beyond this set. */
-        public boolean covers(Set<Path> readFiles, Set<String> started, boolean reached) {
-            return files.containsAll(readFiles) && commands.containsAll(started) && (network || !reached);
+        public boolean covers(Set<Path> readFiles, Set<String> started, Set<String> reached) {
+            return files.containsAll(readFiles) && commands.containsAll(started) && hosts.containsAll(reached);
         }
     }
 
@@ -376,19 +400,28 @@ public final class SuiteReads {
         if (!Files.isRegularFile(file)) return Discovered.NONE;
         Set<Path> files = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
-        boolean network = false;
+        Set<String> hosts = new TreeSet<>();
         try {
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("file ")) files.add(Path.of(line.substring(5)));
                 else if (line.startsWith("command ")) commands.add(line.substring(8));
-                else if (line.equals("network")) network = true;
+                else if (line.startsWith(NETWORK_LINE)) hosts.add(line.substring(NETWORK_LINE.length()));
             }
         } catch (IOException | RuntimeException unreadable) {
             // Unknown is not "none": key the suite as one that reaches past the host.
-            return new Discovered(Set.of(), Set.of(), true);
+            return new Discovered(Set.of(), Set.of(), Set.of(UNKNOWN_HOST));
         }
-        return new Discovered(files, commands, network);
+        return new Discovered(files, commands, hosts);
     }
+
+    /** The warning code of a run that stores no marker because its tests reached another host. */
+    public static final String NETWORK_WARNING = "suite-network";
+
+    /** The discovered file's line prefix for one host a suite reached. */
+    private static final String NETWORK_LINE = "network ";
+
+    /** The host a suite is taken to reach when its discovered file cannot be read. */
+    static final String UNKNOWN_HOST = "an unknown host";
 
     /** Keep {@code d} for the module's suites under {@code selection}. Best-effort. */
     public static void save(Path moduleDir, TestSelection selection, Discovered d) {
@@ -396,7 +429,7 @@ public final class SuiteReads {
         for (Path f : d.files()) sb.append("file ").append(f).append('\n');
         for (String c : d.commands())
             sb.append("command ").append(c.replace('\n', ' ')).append('\n');
-        if (d.network()) sb.append("network\n");
+        for (String h : d.hosts()) sb.append(NETWORK_LINE).append(h).append('\n');
         try {
             Path file = discoveredFile(moduleDir, selection);
             Files.createDirectories(file.getParent());

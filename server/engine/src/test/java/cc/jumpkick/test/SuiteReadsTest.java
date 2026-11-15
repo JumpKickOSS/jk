@@ -4,14 +4,20 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Processes;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -56,11 +62,57 @@ class SuiteReadsTest {
     void a_discovered_set_covers_a_run_that_read_nothing_new() {
         Path a = Path.of("/w/a.txt");
         Path b = Path.of("/w/b.txt");
-        SuiteReads.Discovered d = SuiteReads.Discovered.NONE.with(Set.of(a), Set.of(), false);
-        assertThat(d.covers(Set.of(a), Set.of(), false)).isTrue();
-        assertThat(d.covers(Set.of(a, b), Set.of(), false)).isFalse();
-        assertThat(d.covers(Set.of(), Set.of("git status"), false)).isFalse();
-        assertThat(d.covers(Set.of(), Set.of(), true)).isFalse();
+        SuiteReads.Discovered d = SuiteReads.Discovered.NONE.with(Set.of(a), Set.of(), Set.of());
+        assertThat(d.covers(Set.of(a), Set.of(), Set.of())).isTrue();
+        assertThat(d.covers(Set.of(a, b), Set.of(), Set.of())).isFalse();
+        assertThat(d.covers(Set.of(), Set.of("git status"), Set.of())).isFalse();
+        assertThat(d.covers(Set.of(), Set.of(), Set.of("repo.example.com"))).isFalse();
+    }
+
+    @Test
+    void a_recorded_jvm_names_the_host_past_this_one_it_talked_to(@TempDir Path tmp) throws Exception {
+        String address = nonLoopbackAddress();
+        Assumptions.assumeTrue(address != null, "this host has no address but loopback");
+        Path probe = Files.writeString(tmp.resolve("Probe.java"), """
+                import java.net.*;
+                class Probe {
+                    public static void main(String[] a) throws Exception {
+                        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName(a[0]));
+                                Socket client = new Socket(InetAddress.getByName(a[0]), server.getLocalPort());
+                                Socket accepted = server.accept()) {
+                            client.getOutputStream().write(1);
+                            accepted.getInputStream().read();
+                            accepted.getOutputStream().write(2);
+                            client.getInputStream().read();
+                        }
+                    }
+                }
+                """);
+        Path recordings = tmp.resolve("rec");
+        String flag = SuiteReads.prepare(recordings);
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(java.toString(), flag, probe.toString(), address)
+                        .directory(tmp.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofMinutes(2));
+        assertThat(run.exit()).as(run.output()).isZero();
+
+        SuiteReads.Observed seen = SuiteReads.collect(recordings, tmp);
+        assertThat(seen.network()).isTrue();
+        assertThat(seen.hosts()).contains(address);
+    }
+
+    /** An address of an interface that is up and not loopback, or null when there is none. */
+    private static @Nullable String nonLoopbackAddress() throws Exception {
+        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+            if (!nic.isUp() || nic.isLoopback()) continue;
+            for (InetAddress a : Collections.list(nic.getInetAddresses())) {
+                if (a instanceof Inet4Address && !a.isLoopbackAddress() && !a.isLinkLocalAddress())
+                    return a.getHostAddress();
+            }
+        }
+        return null;
     }
 
     /**

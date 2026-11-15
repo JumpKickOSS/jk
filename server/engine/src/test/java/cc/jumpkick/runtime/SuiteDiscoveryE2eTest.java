@@ -4,25 +4,34 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -119,6 +128,103 @@ class SuiteDiscoveryE2eTest {
         assertThat(unread.status(TaskNames.RUN_TESTS))
                 .as("a file the suite no longer reads keys nothing")
                 .isIn(null, TaskStatus.SKIPPED);
+    }
+
+    @Test
+    void a_suite_that_reaches_another_host_says_so_on_every_run_and_in_the_forecast(@TempDir Path tmp)
+            throws Exception {
+        String address = nonLoopbackAddress();
+        Assumptions.assumeTrue(address != null, "this host has no address but loopback");
+        Path cache = TestCaches.dir("suite-discovery-cache");
+        Path m = Files.createDirectories(tmp.resolve("ws").resolve("m"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        // Talks to this machine through an address that is not loopback: past the host, as far as
+        // the recording can tell, and still hermetic.
+        Files.writeString(
+                Files.createDirectories(m.resolve("src/test/java/demo")).resolve("TalksTest.java"),
+                """
+                package demo;
+
+                import java.net.InetAddress;
+                import java.net.ServerSocket;
+                import java.net.Socket;
+                import org.junit.jupiter.api.Test;
+
+                class TalksTest {
+                    @Test
+                    void talks() throws Exception {
+                        InetAddress at = InetAddress.getByName("%s");
+                        try (ServerSocket server = new ServerSocket(0, 1, at);
+                                Socket client = new Socket(at, server.getLocalPort());
+                                Socket accepted = server.accept()) {
+                            client.getOutputStream().write(1);
+                            accepted.getInputStream().read();
+                        }
+                    }
+                }
+                """.formatted(address));
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+        String said = "tests reached " + address + ", so they rerun; [test] network = \"allowed\" caches them";
+
+        Steps first = buildAsTheEngine(m, cache);
+        assertThat(first.status(TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(first.warnings).contains(said);
+
+        Steps second = buildAsTheEngine(m, cache);
+        assertThat(second.status(TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(second.warnings)
+                .as("a run that stores no marker because the suite reached another host says so every time")
+                .contains(said);
+
+        ExplainReport report = ExplainReport.compute(
+                m,
+                JkBuildParser.parse(m.resolve("jk.toml")),
+                cache,
+                Session.defaults().withCacheDir(cache));
+        List<String> forecast = report.plan().modules().stream()
+                .flatMap(mod -> mod.steps().stream())
+                .map(step -> step.name() + " " + step.status() + " " + step.text())
+                .toList();
+        assertThat(forecast)
+                .as("the forecast says why the suite runs again: "
+                        + report.plan().modules().stream()
+                                .map(mod -> mod.dir() + " dirty=" + mod.dirty() + " reason=" + mod.reason())
+                                .toList()
+                        + " errors=" + report.plan().errors())
+                .anySatisfy(step -> assertThat(step)
+                        .startsWith(TaskNames.RUN_TESTS + " ")
+                        .contains(TaskForecast.TESTS_USE_NETWORK));
+    }
+
+    /** An address of an interface that is up and not loopback, or null when there is none. */
+    private static @Nullable String nonLoopbackAddress() throws Exception {
+        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+            if (!nic.isUp() || nic.isLoopback()) continue;
+            for (InetAddress a : Collections.list(nic.getInetAddresses())) {
+                if (a instanceof Inet4Address && !a.isLoopbackAddress() && !a.isLinkLocalAddress())
+                    return a.getHostAddress();
+            }
+        }
+        return null;
+    }
+
+    /** As {@link #build}, under a request holding what its suites settle, as the engine's job runs every build. */
+    private static Steps buildAsTheEngine(Path dir, Path cache) throws Exception {
+        return Request.detached().with(SettledReads.SLOT, new SettledReads()).call(() -> build(dir, cache));
     }
 
     private static Steps build(Path dir, Path cache) {

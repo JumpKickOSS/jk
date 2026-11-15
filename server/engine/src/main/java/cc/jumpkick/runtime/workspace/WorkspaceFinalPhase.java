@@ -154,7 +154,8 @@ final class WorkspaceFinalPhase {
     }
 
     /**
-     * Record every module clean under the fingerprints the preflight captured before the walk.
+     * Record every module clean under the fingerprints the preflight captured before the walk, but
+     * one whose suite reached another host and stored no marker, which is recorded dirty.
      *
      * <p>Those are the only inputs this build is known to have consumed. A source saved while the
      * build ran is not among them, so the next preflight misses the memo and schedules the module;
@@ -187,7 +188,8 @@ final class WorkspaceFinalPhase {
                 forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of());
         Map<Path, String> fingerprints = SettledReads.amend(preflight);
         if (fingerprints.isEmpty()) return;
-        PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, Set.of(), fingerprints);
+        // A suite that reached another host stored no marker: its module stays dirty.
+        PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, SettledReads.takeUnreplayable(), fingerprints);
         MemoAudit.auditCertified(skipTests, preflight, fingerprints);
         // One set of fingerprints, two records: the memo says these inputs are clean, and this
         // says the outputs on disk are the ones they produce. The second is what lets preflight
