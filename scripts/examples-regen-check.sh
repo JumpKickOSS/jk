@@ -14,7 +14,7 @@
 # The template an example was started from is read from the example: its framework table
 # ([spring-boot], [quarkus], [micronaut], [helidon], [grails], [android]), a Ktor dependency, a
 # library (no [application]) or an app, in the language of its sources; TEMPLATE_OF below names
-# the ones the reading gets wrong. A workspace root, a front end alone, a port and a benchmark are
+# the ones the reading gets wrong (a value of "<id> <lang>" fixes the language too). A workspace root, a front end alone, a port and a benchmark are
 # not one template's output and are reported as skipped, with the reason.
 #
 # Prints a Markdown report (also <out>/report.md): one row per example, then each finding. Exits 1
@@ -43,6 +43,7 @@ TEMPLATE_OF=(
   "01-start/java-cli=cli"
   "01-start/kotlin-cli=cli"
   "01-start/groovy-cli=app"
+  "05-recipes/build-logic/line-count=app java"
   "05-recipes/plugins/jk-plugin/hello-plugin=plugin"
 )
 
@@ -75,7 +76,7 @@ template_of() {
   elif [[ -n "$(find "$dir" -path "$dir/target" -prune -o -name '*.kt' -print -quit)" ]]; then lang="kotlin"
   fi
   for entry in "${TEMPLATE_OF[@]}"; do
-    [[ "${entry%%=*}" == "$rel" ]] && { echo "${entry#*=} $lang"; return; }
+    [[ "${entry%%=*}" == "$rel" ]] && { [[ "${entry#*=}" == *" "* ]] && echo "${entry#*=}" || echo "${entry#*=} $lang"; return; }
   done
   if grep -qE '^\[workspace\]' "$toml"; then echo "skip a workspace root"; return; fi
   if grep -qE '^\[spring-boot\]' "$toml"; then echo "spring-boot/hello $lang"; return; fi
