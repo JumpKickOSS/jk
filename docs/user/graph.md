@@ -168,6 +168,13 @@ doc summary). `-w` picks one.
 | `src/**/*Service.java;!**/legacy/**` | Every matching file |
 | `…#line=40,60` | Only those lines |
 
+A Kotlin function or property that writes no type (`fun find(id: Long) = repo.findById(id)`) shows
+the type the compiler gave it in the `structure` and `headline` views, marked:
+`fun find(id: Long): Optional<Owner> (inferred)`. It comes from the compiled class, generics
+included, with `?` only where kotlinc marked the result nullable; where the class does not say, no
+nullability is claimed. A source edited since its classes were built, or a module with no compiled
+classes, shows the declaration as written, with no type claimed.
+
 A name several files declare is refused with the candidates; qualify it. A type no workspace file
 declares is read from the jars `jk-lock.toml` pins, at the version the lock pins:
 `jk graph read ObjectMapper.readValue` shows that method's public overloads with their generic

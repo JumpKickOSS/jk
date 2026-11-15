@@ -3,6 +3,7 @@ package cc.jumpkick.codegraph;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -64,6 +65,10 @@ public final class SymbolReader {
     private final Scope scope;
     private final Function<String, @Nullable String> files;
     private final Function<String, @Nullable String> library;
+    private final Function<GraphNode, @Nullable String> inferred;
+
+    /** The Kotlin sources a headline view read to see whether a declaration writes its type. */
+    private final Map<String, List<String>> kotlinText = new HashMap<>();
 
     /** A reader over {@code graph} whose source text {@code files} returns by repo-relative path. */
     public SymbolReader(CodeGraph graph, Scope scope, Function<String, @Nullable String> files) {
@@ -79,10 +84,25 @@ public final class SymbolReader {
             Scope scope,
             Function<String, @Nullable String> files,
             Function<String, @Nullable String> library) {
+        this(graph, scope, files, library, n -> null);
+    }
+
+    /**
+     * As above, with {@code inferred}: the type the compiler gave a Kotlin function or property that
+     * writes none, as its compiled class records it ({@code Optional<Owner>}, {@code String?}), or
+     * {@code null} when the class cannot vouch for the source as it stands.
+     */
+    public SymbolReader(
+            CodeGraph graph,
+            Scope scope,
+            Function<String, @Nullable String> files,
+            Function<String, @Nullable String> library,
+            Function<GraphNode, @Nullable String> inferred) {
         this.graph = graph;
         this.scope = scope;
         this.files = files;
         this.library = library;
+        this.inferred = inferred;
     }
 
     /** One span to show: a node, or a whole file when {@code node} is null, cut to {@code from..to}. */
@@ -406,7 +426,8 @@ public final class SymbolReader {
         List<String> ann = Decl.annotations(n);
         if (!ann.isEmpty()) out.add(" ".repeat(width + 2) + indent + "@" + String.join(" @", ann));
         String where = indent.isEmpty() ? "  " + n.sourceFile() + ":" + line + "-" + end(n) : "";
-        out.add(number(line, width) + indent + header(n, line, lines) + where);
+        String head = header(n, line, lines);
+        out.add(number(line, width) + indent + head + typed(n, head) + where);
         for (int[] more : Decl.more(n)) out.add(number(more[0], width) + indent + header(n, more[0], lines));
         String kind = Decl.kind(n);
         if (kind != null && !Decl.isType(n)) return;
@@ -452,8 +473,25 @@ public final class SymbolReader {
         // Overloads share one node: each span prints at its own lines, and the doc is the first one's.
         int line = Math.max(Decl.line(n), 1);
         String doc = s.from() <= line && line <= s.to() ? Decl.doc(n) : null;
-        out.add(qualified(n) + facts + "  " + n.sourceFile() + ":" + s.from() + "-" + s.to()
+        String typed = n.sourceFile().endsWith(".kt") ? typed(n, header(n, line, lines(s.file(), kotlinText))) : "";
+        out.add(qualified(n) + typed + facts + "  " + n.sourceFile() + ":" + s.from() + "-" + s.to()
                 + (doc == null ? "" : "  " + doc));
+    }
+
+    /** A Kotlin declaration that writes no type: {@code fun find(id: Long)}, {@code val name}. */
+    private static final Pattern UNTYPED_FUN = Pattern.compile("\\bfun\\b.*\\)\\s*$");
+
+    private static final Pattern UNTYPED_PROPERTY = Pattern.compile("\\b(?:val|var)\\s+[\\w`]+\\s*$");
+
+    /**
+     * {@code ": Type (inferred)"} for a Kotlin function or property whose declaration {@code head}
+     * writes no type and whose compiled class says what it is; empty otherwise.
+     */
+    private String typed(GraphNode n, String head) {
+        if (!n.sourceFile().endsWith(".kt") || Decl.isType(n)) return "";
+        if (!UNTYPED_FUN.matcher(head).find() && !UNTYPED_PROPERTY.matcher(head).find()) return "";
+        String type = inferred.apply(n);
+        return type == null ? "" : ": " + type + " (inferred)";
     }
 
     private String title(Span s, int from, int to) {

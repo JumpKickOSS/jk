@@ -250,7 +250,8 @@ public final class GraphService {
                                 g,
                                 scope,
                                 rel -> source(w.root(), rel),
-                                new LibraryApi(w.libraries(), w.apiCache())::describe)
+                                new LibraryApi(w.libraries(), w.apiCache())::describe,
+                                KotlinTypes.of(w, g))
                         .read(
                                 String.join(";", a.isEmpty() ? List.of(arg(a, 0, "an address")) : a),
                                 SymbolReader.View.of(r.options().get("view")),
