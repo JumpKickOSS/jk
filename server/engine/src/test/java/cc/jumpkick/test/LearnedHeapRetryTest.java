@@ -16,9 +16,9 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -65,7 +65,7 @@ class LearnedHeapRetryTest {
         assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         String heaps = Files.readString(home.resolve("heaps"));
         assertThat(heaps).contains("-Xmx128m", "-Xmx256m");
-        long peak = awaitPeak(forced, dir, 180L << 20);
+        long peak = peakNow(forced, dir);
         assertThat(peak).isEqualTo(180L << 20);
 
         Files.writeString(home.resolve("heaps"), "");
@@ -81,7 +81,7 @@ class LearnedHeapRetryTest {
         assertThat(Files.readString(home.resolve("heaps")))
                 .contains("-Xmx" + (next >> 20) + "m")
                 .doesNotContain("-Xmx128m");
-        awaitPeaks(state, 3);
+        assertPeaks(state, 3);
     }
 
     @Test
@@ -113,7 +113,7 @@ class LearnedHeapRetryTest {
         assertThat(second.failed()).isZero();
         assertThat(HeapNotes.drain()).isEmpty();
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx512m").doesNotContain("-Xmx256m");
-        awaitPeaks(state, 4);
+        assertPeaks(state, 2);
     }
 
     @Test
@@ -132,7 +132,7 @@ class LearnedHeapRetryTest {
         assertThat(first.classes()).isEqualTo(1);
         assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
-        awaitPeaks(dir.resolve("state"), 2);
+        assertPeaks(dir.resolve("state"), 1);
     }
 
     /**
@@ -168,7 +168,7 @@ class LearnedHeapRetryTest {
             assertThat(RunSnapshots.testOutcomes(runs))
                     .containsEntry("demo.Big#alloc()", RunSnapshots.PASS)
                     .doesNotContainValue(RunSnapshots.FAIL);
-            awaitPeaks(dir.resolve("state"), 2);
+            assertPeaks(dir.resolve("state"), 1);
         });
     }
 
@@ -188,7 +188,7 @@ class LearnedHeapRetryTest {
                 launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop(), reports);
         assertThat(summary.succeeded()).isEqualTo(1);
         assertThat(Files.readString(reports.resolve("TEST-demo.Big.xml"))).contains("tests=\"1\"");
-        awaitPeaks(dir.resolve("state"), 2);
+        assertPeaks(dir.resolve("state"), 1);
     }
 
     @Test
@@ -227,7 +227,7 @@ class LearnedHeapRetryTest {
         assertThat(first.succeeded()).isEqualTo(1);
         assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
-        awaitPeaks(dir.resolve("state"), 2);
+        assertPeaks(dir.resolve("state"), 1);
     }
 
     /**
@@ -253,7 +253,7 @@ class LearnedHeapRetryTest {
                         .good(new HeapScope.Key(
                                 dir, "g:app", HeapScope.TEST, Runtime.version().feature())))
                 .isEqualTo(256L << 20);
-        awaitPeaks(state, 2);
+        assertPeaks(state, 1);
     }
 
     @Test
@@ -314,48 +314,26 @@ class LearnedHeapRetryTest {
     }
 
     /**
-     * Wait until {@code g:app}'s test row holds {@code count} peaks, so a GC log folded in after
-     * {@code run} returned does not write into a temp directory that is being deleted.
+     * {@code g:app}'s test row holds {@code count} peaks as soon as {@code run} returns: a fork's GC
+     * log is folded in before the wait for it ends, so nothing writes under the temp directory after.
      */
-    private static void awaitPeaks(Path state, int count) throws Exception {
-        for (int i = 0; i < 100; i++) {
-            if (Files.isDirectory(state)) {
-                try (var files = Files.list(state)) {
-                    for (Path file : files.toList()) {
-                        // An atomic write's temp file can be listed and renamed away before it is read.
-                        if (file.getFileName().toString().startsWith(".")) continue;
-                        List<String> lines;
-                        try {
-                            lines = Files.readAllLines(file);
-                        } catch (NoSuchFileException gone) {
-                            continue;
-                        }
-                        for (String line : lines) {
-                            String[] fields = line.split("\t", -1);
-                            if (fields.length > 3
-                                    && fields[0].equals("g:app")
-                                    && fields[1].equals(HeapScope.TEST)
-                                    && fields[3].split(",").length >= count) {
-                                return;
-                            }
-                        }
-                    }
+    private static void assertPeaks(Path state, int count) throws Exception {
+        List<Integer> rows = new ArrayList<>();
+        try (var files = Files.list(state)) {
+            for (Path file : files.toList()) {
+                for (String line : Files.readAllLines(file)) {
+                    String[] fields = line.split("\t", -1);
+                    if (fields.length > 3 && fields[0].equals("g:app") && fields[1].equals(HeapScope.TEST))
+                        rows.add(fields[3].split(",").length);
                 }
             }
-            Thread.sleep(50);
         }
+        assertThat(rows).as("peaks recorded when run returned").containsExactly(count);
     }
 
-    /** The GC log is folded in when the process exits, which can land just after {@code run} returns. */
-    private static long awaitPeak(LearnedHeaps heaps, Path project, long atLeast) throws InterruptedException {
-        long peak = 0;
-        for (int i = 0; i < 50; i++) {
-            peak = heaps.peak(
-                    project, "g:app", HeapScope.TEST, Runtime.version().feature());
-            if (peak >= atLeast) return peak;
-            Thread.sleep(20);
-        }
-        return peak;
+    /** The learned peak once {@code run} has returned. */
+    private static long peakNow(LearnedHeaps heaps, Path project) {
+        return heaps.peak(project, "g:app", HeapScope.TEST, Runtime.version().feature());
     }
 
     /** A {@code java} that exits 3 below 256 MiB and passes, logging a 180 MiB peak, at 256 MiB. */

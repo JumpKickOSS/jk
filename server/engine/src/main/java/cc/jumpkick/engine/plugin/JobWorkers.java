@@ -234,22 +234,23 @@ public final class JobWorkers {
         WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps);
         List<String> command = gc.command();
         if (command != pb.command()) pb.command(command);
-        Process process;
+        Process started;
         try {
-            process = pb.start();
+            started = pb.start();
         } catch (IOException | RuntimeException e) {
             grant.close();
             gc.finish();
             throw e;
         }
-        ExecutionSpeed.child(process);
+        ExecutionSpeed.child(started);
         // Released when the process is gone, including a crash or a kill. onExit runs if it has
-        // already exited. The GC log is read after the process has flushed it.
-        process.onExit().whenComplete((code, error) -> {
+        // already exited. The GC log is read after the process has flushed it, and a caller's wait
+        // returns once this is done.
+        Process process = new SettledProcess(started, started.onExit().whenComplete((code, error) -> {
             grant.close();
             gc.finish();
             WorkerContainment.sweep();
-        });
+        }));
         String what = resident != null ? resident.name() : WorkerRss.describe(command);
         if (what.equals(WorkerRss.TEST_JVM)) TestJvmFlags.note(command);
         WorkerContainment.contain(process, WorkerRss.workerCapBytes(grant.bytes(), leases.capacityBytes()), what);
