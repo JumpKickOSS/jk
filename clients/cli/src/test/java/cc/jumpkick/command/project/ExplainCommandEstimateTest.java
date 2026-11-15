@@ -118,6 +118,40 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
+    void a_module_dirty_only_for_its_assembly_rebuilds_none_of_its_sources_or_tests() {
+        var assemblyOnly = TaskForecast.Module.fromWire(
+                Path.of("/tmp/cli"),
+                "com.example:cli",
+                List.of(
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "x"),
+                        new TaskForecast.Task("compile-test", TaskForecast.Status.CACHED, "", "y"),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.CACHED, "", "z"),
+                        new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", "w"),
+                        new TaskForecast.Task("package-assembly", TaskForecast.Status.RUN, "repackage", null)),
+                942,
+                1948,
+                true,
+                false);
+        var suiteOnly = TaskForecast.Module.fromWire(
+                Path.of("/tmp/lib"),
+                "com.example:lib",
+                List.of(
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "x"),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~7 tests", null)),
+                10,
+                7,
+                true,
+                false);
+        String table = TestAnsi.strip(String.join(
+                "\n",
+                ExplainCommand.renderSummaryTable(
+                        List.of(assemblyOnly, suiteOnly), 3_000, 60_000, false, null, Theme.active(), false)));
+        assertThat(table).containsPattern("Modules\\s*\\|\\s*2 in workspace\\s*\\|\\s*2\\s*\\|");
+        assertThat(table).containsPattern("Sources\\s*\\|\\s*952 files\\s*\\|\\s*0\\s*\\|");
+        assertThat(table).containsPattern("Tests\\s*\\|\\s*1,955 methods\\s*\\|\\s*7\\s*\\|");
+    }
+
+    @Test
     void buildGraph_uses_bright_cyan_rebuild_names_and_skips_index() {
         var dirty = TaskForecast.Module.fromWire(
                 Path.of("/tmp/a"),

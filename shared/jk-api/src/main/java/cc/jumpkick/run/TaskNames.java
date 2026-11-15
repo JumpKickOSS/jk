@@ -193,6 +193,10 @@ public final class TaskNames {
      * branch conditions: a module's wall is its compile prefix plus the longer of its test branch
      * and this tail, not the sum of its steps.
      */
+    /** The steps that compile a module's main sources, under the names a forecast or a plan gives them. */
+    public static final Set<String> MAIN_COMPILES =
+            Set.of(COMPILE_JAVA, COMPILE_MAIN, COMPILE_KOTLIN, COMPILE_GROOVY, COMPILE_VERSIONS);
+
     public static final Set<String> PACKAGING_TAILS = Set.of(
             PACKAGE_ASSEMBLY,
             PACKAGE_MINIFIED,

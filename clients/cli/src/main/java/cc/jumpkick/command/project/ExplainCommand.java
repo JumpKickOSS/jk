@@ -41,6 +41,7 @@ import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -55,6 +56,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -665,12 +667,14 @@ public final class ExplainCommand implements CliCommand {
                 (int) modules.stream().filter(TaskForecast.Module::restoreOnly).count();
         int dirtyModules =
                 (int) modules.stream().filter(ExplainCommand::rebuilds).count();
+        // A module's sources count as rebuilt when its main compile runs, its tests when its suite
+        // does: a module dirty only for its assembly rebuilds neither.
         int dirtySources = modules.stream()
-                .filter(ExplainCommand::rebuilds)
+                .filter(m -> runs(m, TaskNames.MAIN_COMPILES::contains))
                 .mapToInt(TaskForecast.Module::sourceCount)
                 .sum();
         int dirtyTests = modules.stream()
-                .filter(ExplainCommand::rebuilds)
+                .filter(m -> runs(m, TaskNames::isRunTests))
                 .mapToInt(TaskForecast.Module::testCount)
                 .sum();
         int dirtyJars = (int)
@@ -766,6 +770,11 @@ public final class ExplainCommand implements CliCommand {
     /** A dirty module that is not merely restored: the build compiles, tests or packages something of it. */
     private static boolean rebuilds(TaskForecast.Module m) {
         return m.dirty() && !m.restoreOnly();
+    }
+
+    /** Whether the forecast runs a step of {@code m} that {@code step} accepts by name. */
+    static boolean runs(TaskForecast.Module m, Predicate<String> step) {
+        return rebuilds(m) && m.steps().stream().anyMatch(s -> !s.cached() && step.test(s.name()));
     }
 
     private static String boldNum(int n, Theme t, boolean ansi) {
