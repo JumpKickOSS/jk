@@ -392,6 +392,7 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 | Step | Where | What |
 |------|-------|------|
 | 1 | release commit | `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; gates green (`jk guard`, `jk snapshot`, `jk snapshot -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
+| 1b | release commit, installed with `jk snapshot` | `scripts/release-check-routes.sh --examples <jk-examples checkout>`: every template, generated fresh, and every example builds twice with the candidate, the second build a no-op, and each template passes `CI=1 jk guard`; every row of `target/release-check-routes/summary.md` is green (`--skip` only a route this host cannot build, named in the release notes) |
 | 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
 | 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag |
@@ -403,6 +404,17 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 | 10 **outward** | the signing machine, `gh` | `scripts/release-publish.sh github <out>` |
 | 11 | any | `scripts/release-publish.sh install-check`, then the post-publish matrix below |
 | 12 **outward** | any | once the CI run on the tag has finished (or is cancelled), `gh workflow enable Release`; commit the bootstrap pin and push `main` |
+
+**Routes** (`scripts/release-check-routes.sh`). The routes users reach a project by — `jk new` with
+each template of `templates/` and of each first-party plugin, and each project of jk-examples — are
+built by the candidate before it is tagged, so a release cannot ship a parser that refuses what a
+template writes or an example carries. Each template is generated with its defaults into
+`target/release-check-routes/templates/`, each example copied (its working tree, ignored files left
+out) into `examples/` and committed there as a fresh clone; each builds with the arguments of the
+first `jk build` its `scenario.toml` runs (`--args` gives others, e.g. a variant), `jk explain` is
+kept in its log, and the second build must name no module to build. A ported checkout's `overlay/`
+needs its `setup.sh` and is left out. A failed row names its log. Run it again once a fix lands; the examples repository
+takes its own fix before the release, never after.
 
 **Lanes** (`scripts/release-lane.sh`). One per platform: linux-x86_64 and windows-x86_64 on
 machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
