@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.SessionCancel;
@@ -37,6 +38,7 @@ import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
+import cc.jumpkick.test.StampTokens;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestLauncherFailure;
@@ -241,6 +243,21 @@ final class TestSteps {
                 !testSrcs.isEmpty(),
                 snippets,
                 said);
+        keepTokens(effectiveSel, stampKey, result, affected, rekey);
+    }
+
+    /**
+     * What a whole suite's green marker key was taken over, for a later forecast that misses it to
+     * name what moved ({@link StampTokens}).
+     */
+    private void keepTokens(
+            TestSelection selection,
+            @Nullable String stampKey,
+            TestSummary result,
+            AffectedTestRun.@Nullable Outcome affected,
+            SuiteDiscovery.Rekey rekey) {
+        if (stampKey != null && result.allPassed() && affected == null)
+            StampTokens.keep(in.dir(), selection, stampKey, rekey::key);
     }
 
     /**
@@ -620,9 +637,13 @@ final class TestSteps {
             // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
             // change, so why-rebuilt can tell the two apart.
             boolean jarOnly = !s.testDirty && !s.compileDirty && (s.compileDepDirty || s.testDepDirty);
-            String why = jarOnly
-                    ? "run tests · " + TaskForecast.DEPENDENCY_JAR_CHANGED + " · " + tests
-                    : "run tests · " + tests;
+            String jk = StampTokens.jkMoved(
+                    s.dir, SessionContext.current().testSelection(), BuildIdentity.cacheKeyVersion());
+            String why = jk != null
+                    ? "run tests · " + jk + " · " + tests
+                    : jarOnly
+                            ? "run tests · " + TaskForecast.DEPENDENCY_JAR_CHANGED + " · " + tests
+                            : "run tests · " + tests;
             return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, why, null);
         }
         TestStampInputs stamp = TestStampInputs.of(
@@ -649,7 +670,8 @@ final class TestSteps {
                         s.dir, compact, layout, s.project, s.actionCache, s.compileMainKey, null);
             if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
         }
-        String stampKey = stamp.forecastKey(compact, layout.classesDir(), mainFp, s.lockFile);
+        String finalMainFp = mainFp;
+        String stampKey = stamp.forecastKey(compact, layout.classesDir(), finalMainFp, s.lockFile);
         Perf.end("  test-stamp-key", ts);
         var marker = stampKey == null
                 ? Optional.<ActionCache.ActionRecord>empty()
@@ -666,13 +688,20 @@ final class TestSteps {
                 && SuiteReads.load(s.dir, SessionContext.current().testSelection())
                         .network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
-        return hit
-                ? new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null)
-                : new TaskForecast.Task(
-                        TaskNames.RUN_TESTS,
-                        TaskForecast.Status.RUN,
-                        "run tests · " + (network ? TaskForecast.TESTS_USE_NETWORK + " · " : "") + tests
-                                + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
-                        null);
+        if (hit) return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
+        // A miss for none of the reasons above says which input of the last green run's key moved.
+        String moved = red || network
+                ? null
+                : StampTokens.reason(
+                        s.dir,
+                        SessionContext.current().testSelection(),
+                        () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp, s.lockFile));
+        return new TaskForecast.Task(
+                TaskNames.RUN_TESTS,
+                TaskForecast.Status.RUN,
+                "run tests · " + (network ? TaskForecast.TESTS_USE_NETWORK + " · " : "")
+                        + (moved != null ? moved + " · " : "") + tests
+                        + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
+                null);
     }
 }

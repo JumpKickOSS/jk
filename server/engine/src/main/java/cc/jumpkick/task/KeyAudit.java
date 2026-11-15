@@ -327,7 +327,7 @@ public final class KeyAudit {
     }
 
     /** The tokens that differ between {@code was} and {@code now}, in name order. */
-    static List<Token> diff(Map<String, String> was, Map<String, String> now) {
+    public static List<Token> diff(Map<String, String> was, Map<String, String> now) {
         TreeSet<String> names = new TreeSet<>(was.keySet());
         names.addAll(now.keySet());
         List<Token> out = new ArrayList<>();

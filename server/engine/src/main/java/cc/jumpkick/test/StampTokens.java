@@ -1,0 +1,155 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.test;
+
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.Log;
+import cc.jumpkick.task.KeyAudit;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * The named tokens of the key a module's last green suite run was stored under, kept beside what
+ * its suites were found to read, so a forecast whose key misses can say which input moved instead
+ * of a bare "run tests". Written once per real green run and read only on a miss: a replay neither
+ * writes nor reads it.
+ */
+public final class StampTokens {
+
+    private StampTokens() {}
+
+    /** The reason for a key whose jk moved: every step's key folds in the jk that runs it. */
+    public static final String JK_CHANGED = "jk changed";
+
+    /** The extras token every stamp carries for the jk that took it ({@code TestStampInputs}). */
+    private static final String JK_TOKEN = "x:jk:";
+
+    /** Where the tokens of the module's last green run under {@code selection} are kept. */
+    static Path file(Path moduleDir, TestSelection selection) {
+        Path discovered = SuiteReads.discoveredFile(moduleDir, selection);
+        return discovered.resolveSibling(discovered.getFileName().toString().replace("test-inputs-", "stamp-tokens-"));
+    }
+
+    /**
+     * Keep the tokens of {@code stampKey} as {@code source} derives it now, when it still derives
+     * that key: a green marker was just stored under it. Best-effort.
+     */
+    public static void keep(Path moduleDir, TestSelection selection, String stampKey, KeyAudit.KeySource source) {
+        try {
+            KeyAudit.Keyed now = KeyAudit.tapped(source);
+            if (now == null || !now.key().equals(stampKey)) return;
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, String> t : now.tokens().entrySet()) {
+                sb.append(t.getKey().replace('\n', ' '))
+                        .append('\t')
+                        .append(t.getValue().replace('\n', ' '))
+                        .append('\n');
+            }
+            Path file = file(moduleDir, selection);
+            Files.createDirectories(file.getParent());
+            AtomicWrites.replaceIfChanged(file, sb.toString());
+        } catch (Exception unkept) {
+            Log.debug("stamp tokens: not kept for " + moduleDir, unkept);
+        }
+    }
+
+    /** The tokens kept for the module's last green run under {@code selection}; null when none are. */
+    static @Nullable Map<String, String> load(Path moduleDir, TestSelection selection) {
+        Path file = file(moduleDir, selection);
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            Map<String, String> out = new LinkedHashMap<>();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                int tab = line.indexOf('\t');
+                if (tab > 0) out.put(line.substring(0, tab), line.substring(tab + 1));
+            }
+            return out;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
+
+    /**
+     * Why the suite's key, as {@code source} derives it now, is not the key of its last green run:
+     * {@link #JK_CHANGED} when the jk that keys it moved, else the first input that moved and how
+     * many more did. Null when no green run is on record (nothing to compare: a suite never run, a
+     * cache cleaned), when the tokens kept and the tokens now agree, or when the key will not
+     * derive: the caller says nothing more.
+     */
+    public static @Nullable String reason(Path moduleDir, TestSelection selection, KeyAudit.KeySource source) {
+        Map<String, String> was = load(moduleDir, selection);
+        if (was == null) return null;
+        KeyAudit.Keyed now;
+        try {
+            now = KeyAudit.tapped(source);
+        } catch (Exception unkeyed) {
+            Log.debug("stamp tokens: no key to compare for " + moduleDir, unkeyed);
+            return null;
+        }
+        if (now == null) return null;
+        return reason(was, now.tokens());
+    }
+
+    /**
+     * {@link #JK_CHANGED} when the module's last green run under {@code selection} was keyed by
+     * another jk than {@code keyVersion} names, else null: a forecast that cannot take the suite's key
+     * yet (its compile is dirty) still says the jk moved, which is why every step of the tree reruns.
+     */
+    public static @Nullable String jkMoved(Path moduleDir, TestSelection selection, String keyVersion) {
+        Map<String, String> was = load(moduleDir, selection);
+        if (was == null) return null;
+        for (String name : was.keySet()) {
+            if (name.startsWith(JK_TOKEN)) return name.equals(JK_TOKEN + keyVersion) ? null : JK_CHANGED;
+        }
+        return null;
+    }
+
+    /** As {@link #reason(Path, TestSelection, KeyAudit.KeySource)} over the two token maps. */
+    static @Nullable String reason(Map<String, String> was, Map<String, String> now) {
+        List<KeyAudit.Token> moved = KeyAudit.diff(was, now);
+        if (moved.isEmpty()) return null;
+        for (KeyAudit.Token t : moved) {
+            if (t.name().startsWith(JK_TOKEN)) return JK_CHANGED;
+        }
+        String first = describe(moved.getFirst().name());
+        return moved.size() == 1 ? first : first + " (+" + (moved.size() - 1) + " more)";
+    }
+
+    /** One token's name as the reason reads it. */
+    static String describe(String name) {
+        if (name.startsWith("src:")) return "test source " + tail(name.substring(4)) + " changed";
+        if (name.startsWith("main")) return "main classes changed";
+        if (name.startsWith("res:")) return "test resources changed";
+        if (name.startsWith("lock")) return "lockfile changed";
+        if (name.startsWith("cp")) return "runtime classpath changed";
+        if (name.startsWith("x:read:")) return tail(name.substring(7)) + " changed";
+        if (name.startsWith("x:list:")) return "the listing of " + tail(name.substring(7)) + " changed";
+        if (name.startsWith("x:proc:")) return "program " + tail(name.substring(7)) + " changed";
+        if (name.startsWith("x:worker:")) return "worker " + upTo(name.substring(9), '=') + " changed";
+        if (name.startsWith("x:test-jdk")) return "test JDK changed";
+        if (name.startsWith("x:compile-test")) return "test compile changed";
+        String bare = name.startsWith("x:") ? name.substring(2) : name;
+        int colon = bare.indexOf(':');
+        return (colon > 0 ? bare.substring(0, colon) : bare) + " changed";
+    }
+
+    private static String upTo(String s, char c) {
+        int at = s.indexOf(c);
+        return at > 0 ? s.substring(0, at) : s;
+    }
+
+    /** A path token by its last two segments, which name the file without the whole path. */
+    private static String tail(String path) {
+        int eq = path.indexOf('=');
+        String p = eq > 0 ? path.substring(0, eq) : path;
+        int last = p.lastIndexOf('/');
+        int before = last > 0 ? p.lastIndexOf('/', last - 1) : -1;
+        return before >= 0 ? p.substring(before + 1) : p;
+    }
+}

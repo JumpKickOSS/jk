@@ -1029,6 +1029,15 @@ result depends on nothing the remote can change. A file under JumpKick's own sta
 every engine restart; the build warns `tests read jk's own state, not keyed: <file>`, because a
 test that reads it is reaching past its sandbox.
 
+**`jk explain` says what moved.** A green run keeps the inputs its marker's key was taken over
+(beside the discovered inputs, in JumpKick's cache). When the forecast's key misses, `jk explain`
+names the first input that differs and how many more do: `run tests · test source a/FooTest.java
+changed (+1 more)`, `run tests · runtime classpath changed`, `run tests · agent-loop/README.md
+changed`. `run tests · jk changed` means the build runs on another build of JumpKick than the one
+that ran the suite green: a release upgrade, or a snapshot of JumpKick's own tree whose code
+differs (the commit and build time stamped into its jar do not count). A suite with no green run
+on record forecasts as `run tests` alone.
+
 What this does not see: a directory listed where nothing was then read, the clock, and, under a
 suite JDK older than 22, file channel reads. `jk clean` forgets the discovered inputs with the rest
 of `target/`.
