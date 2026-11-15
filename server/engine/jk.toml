@@ -111,6 +111,13 @@ jvm-args = [
   "--add-opens=java.base/sun.nio.fs=ALL-UNNAMED",
   "-Djdk.http.auth.tunneling.disabledSchemes=",
 ]
+# The integration tier's end-to-end builds resolve through the real Maven Central and Google Maven,
+# provision JDKs from the JetBrains feed and GitHub release assets, and read the library registry.
+# A release does not change under its version and jk resolves the lowest version every edge
+# accepts, so its green result is kept knowingly; the feed and the registry can move under it,
+# which this accepts. The fast tier is walled off from remotes. Loopback stand-ins for these
+# remotes would let it drop this.
+network = "allowed"
 env = [
   # In-process engines under test share this module's sandbox JK_HOME store, and the resident
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible

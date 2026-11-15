@@ -20,6 +20,7 @@ import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -296,7 +297,7 @@ class KotlinAbiAvoidanceE2eTest {
     }
 
     private static Path cache() {
-        return Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        return TestCaches.dir("android-spike-cache");
     }
 
     /** The action key app's {@code compile-kotlin} record points at, straight from the cache. */

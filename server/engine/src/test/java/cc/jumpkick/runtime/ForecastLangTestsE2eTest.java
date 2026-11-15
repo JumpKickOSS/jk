@@ -14,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.io.IOException;
@@ -78,7 +79,7 @@ class ForecastLangTestsE2eTest {
     }
 
     private static void editedTestCompiles(Path ws, String testFile, String edited, String text) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
         lock(ws, cache);
         build(ws, cache);
         assertThat(forecast(ws, cache).cached())

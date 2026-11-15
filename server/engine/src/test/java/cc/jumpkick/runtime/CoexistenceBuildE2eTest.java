@@ -19,6 +19,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.TestRun;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -439,7 +440,7 @@ class CoexistenceBuildE2eTest {
     }
 
     private static Path cache() throws Exception {
-        return Files.createDirectories(Path.of("build/test-cache/coexistence"));
+        return TestCaches.dir("coexistence");
     }
 
     private static BuildPlan plan(Path project, Path cache, boolean skipTests) {

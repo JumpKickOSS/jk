@@ -41,7 +41,7 @@ import org.junit.jupiter.api.io.TempDir;
  * nothing, and {@link #assertMinifiedStep} is the only place this test can rule it out.
  *
  * <p>Network test (Maven Central: commons-lang3 + the r8 jar). The CAS and the fetched repos persist
- * under {@code build/android-spike-cache}, so repeat runs skip the downloads — but the packaging
+ * in the shared test cache ({@code TestCaches}), so repeat runs skip the downloads — but the packaging
  * ACTION records there cannot be replayed across runs: every action id is qualified by the
  * artifact's absolute path ({@code ActionKey.qualifiedTaskId}) and the project lives in a per-method
  * {@code @TempDir}. The warm part is the network, not the work.

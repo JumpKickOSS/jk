@@ -17,6 +17,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.TestStoreSeed;
 import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.TestCaches;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -71,7 +72,7 @@ class CoexistenceMirrorE2eTest {
     private static final String METADATA_PATH = "/" + GROUP_PATH + "/" + ARTIFACT + "/maven-metadata.xml";
 
     /** The build's store: warm with the JUnit Platform from this engine's, like a suite's sandbox. */
-    private static final Path CACHE = Path.of("build/test-cache/coexistence-mirror");
+    private static final Path CACHE = TestCaches.dir("coexistence-mirror");
 
     /** The corporate repository. It answers for Central; the build never addresses Central itself. */
     private final Nexus nexus = new Nexus();

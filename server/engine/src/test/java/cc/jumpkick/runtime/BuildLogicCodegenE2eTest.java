@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -88,7 +89,7 @@ class BuildLogicCodegenE2eTest {
     }
 
     private static Path cache() throws Exception {
-        return Files.createDirectories(Path.of("build/test-cache/build-logic-codegen"));
+        return TestCaches.dir("build-logic-codegen");
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {

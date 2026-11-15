@@ -8,6 +8,7 @@ import cc.jumpkick.config.PomReactorScan;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -38,7 +39,7 @@ class CoexistenceInactiveProfileE2eTest {
         Path root = writeReactor(tmp.resolve("reactor"));
         Path core = root.resolve("core");
         Path extra = root.resolve("extra");
-        Path cache = Files.createDirectories(Path.of("build/test-cache/coexistence"));
+        Path cache = TestCaches.dir("coexistence");
 
         assertThat(PomReactorScan.profilesListing(root, extra)).containsExactly("extras");
         assertThat(PomReactorScan.profilesListing(root, core)).isEmpty();

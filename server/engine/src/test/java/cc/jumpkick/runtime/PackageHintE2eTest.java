@@ -11,6 +11,7 @@ import cc.jumpkick.engine.journal.JkResultsMarkdown;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,7 +35,7 @@ class PackageHintE2eTest {
     void the_hint_names_the_lock_row_that_provides_the_package(@TempDir Path tmp) throws Exception {
         Path project = write(tmp.resolve("scoped"));
 
-        BuildPlanResult result = build(project, Files.createDirectories(Path.of("build/test-cache/package-hint")));
+        BuildPlanResult result = build(project, TestCaches.dir("package-hint"));
         assertThat(result.success())
                 .as("the main compile fails on the missing package")
                 .isFalse();

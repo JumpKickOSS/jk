@@ -132,6 +132,11 @@ test-plugin-jars = [
 # test into the sandbox JK_HOME and stops it at the end, and the @TempDir deletion strategy. Every
 # suite's classpath carries it, src/test's and src/e2e's alike.
 fixtures = true
+# Its end-to-end builds resolve compilers and libraries through the real Maven Central into the
+# shared test cache, so whenever that cache's metadata is stale a run asks Central again. A release
+# does not change under its version, so its green result is kept knowingly; loopback stand-ins for
+# the remotes would let it drop this, as for jk-engine.
+network = "allowed"
 # Two files out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
 # wire model and its JSON reader need no platform SDK (java.util + org.jetbrains.annotations),
 # while their neighbours do — so this names the files, not the directory. Their package-info.java

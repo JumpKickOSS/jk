@@ -8,9 +8,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.testing.SysProps;
-import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -388,6 +388,9 @@ class InstallExecCommandTest {
                     public static void main(String[] args) { System.exit(0); }
                 }
                 """);
+        // Nothing to resolve: its tests would lock JUnit from Central, and a suite that reaches
+        // another host is never replayed.
+        PathUtil.deleteRecursively(tempDir.resolve("proj/src/test"));
 
         Path bin = tempDir.resolve("bin");
         int exit = run(
@@ -396,7 +399,7 @@ class InstallExecCommandTest {
                 "--m2-dir",
                 tempDir.resolve("m2").toString(),
                 "--cache-dir",
-                TestCaches.dir("shared-cache").toString(),
+                tempDir.resolve("cache").toString(),
                 "--state-dir",
                 tempDir.toString(),
                 "--bin-dir",
