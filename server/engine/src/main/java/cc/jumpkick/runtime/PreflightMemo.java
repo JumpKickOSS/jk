@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.ModuleEnvKeys;
+import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
@@ -25,6 +26,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -709,6 +711,7 @@ public final class PreflightMemo {
                 }
             }
             feedNodeBuild(md, moduleDir);
+            if (project != null) feedBuildInfo(md, moduleDir, project);
             // What the workers and plugins read of the environment keys a -S build's steps too.
             if (project != null) {
                 for (String token : ModuleEnvKeys.module(project, moduleDir)) feed(md, token);
@@ -747,6 +750,27 @@ public final class PreflightMemo {
             feed(md, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
         }
         feed(md, "skip-node=" + SessionContext.current().skipNode());
+    }
+
+    /**
+     * What {@code [build-info]} writes into the classes tree, when the module declares it: the files
+     * as the checkout renders them now (its commit, branch, dirty state, the time they carry). A new
+     * commit changes no source, yet the jar must carry it, so a memo that vouched for the files alone
+     * would leave the module unscheduled and the old commit in its jar.
+     */
+    private static void feedBuildInfo(MessageDigest md, Path moduleDir, JkBuild project) throws IOException {
+        BuildBlock.BuildInfo info = project.build().buildInfo();
+        if (info == null) return;
+        Optional<GitFetcher.Worktree> worktree = PlannerBuildInfo.worktree(moduleDir);
+        if (worktree.isEmpty()) {
+            feed(md, "build-info=none");
+            return;
+        }
+        for (Map.Entry<String, byte[]> e : PlannerBuildInfo.render(project, info, worktree.get(), Clock.SYSTEM)
+                .entrySet()) {
+            feed(md, "build-info:" + e.getKey());
+            feed(md, Hashing.sha256Hex(e.getValue()));
+        }
     }
 
     /**

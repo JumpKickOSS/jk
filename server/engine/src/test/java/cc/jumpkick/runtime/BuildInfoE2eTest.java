@@ -86,6 +86,20 @@ class BuildInfoE2eTest {
                 .as("a commit is not a source change")
                 .isEqualTo(TaskStatus.SKIPPED);
         assertThat(gitProperties(lib.mainJar()).getProperty("git.commit.id")).isEqualTo(second.getName());
+
+        // The preflight decides alone from here: once a build has certified the module clean, a new
+        // commit (no source moved) still reaches the jar, and the build after it is a no-op.
+        Steps settled = build(ws, cache, "fourth", null);
+        assertThat(settled.status("lib", TaskNames.BUILD_INFO)).isNotEqualTo(TaskStatus.SUCCESS);
+        RevCommit third = commit(ws, "three");
+        Steps build5 = build(ws, cache, "fifth", null);
+        assertThat(build5.status("lib", TaskNames.BUILD_INFO))
+                .as("a new commit schedules the module")
+                .isEqualTo(TaskStatus.SUCCESS);
+        assertThat(gitProperties(lib.mainJar()).getProperty("git.commit.id")).isEqualTo(third.getName());
+        Steps build6 = build(ws, cache, "sixth", null);
+        assertThat(build6.status("lib", TaskNames.BUILD_INFO)).isNotEqualTo(TaskStatus.SUCCESS);
+        assertThat(build6.status("lib", TaskNames.PACKAGE_JAR)).isNotEqualTo(TaskStatus.SUCCESS);
     }
 
     private static Properties gitProperties(Path jar) throws IOException {
