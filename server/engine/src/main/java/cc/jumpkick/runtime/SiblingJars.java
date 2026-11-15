@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -111,11 +110,10 @@ final class SiblingJars {
             Sibling sibling = siblings.get(entry);
             if (sibling == null) continue;
             var proj = sibling.manifest().project();
-            Path jar = BuildLayout.of(sibling.dir(), sibling.manifest()).mainJar();
+            BuildLayout layout = BuildLayout.of(sibling.dir(), sibling.manifest());
+            Path jar = layout.mainJar();
             if (!Files.isRegularFile(jar)) continue;
-            // Under the version the build stamps (SnapshotQualifier.stamp), which a scaffold names
-            // the pack by, not the bare version a jk build names the jar file with.
-            String version = SnapshotQualifier.stamp(proj.version());
+            String version = layout.version();
             Path shelf = store.resolve("repos")
                     .resolve(RepoArtifactResolver.JK_LOCAL)
                     .resolve(proj.group().replace('.', '/'))
@@ -171,23 +169,13 @@ final class SiblingJars {
      * The members of the workspace {@code moduleDir} belongs to, by directory, as the build loads
      * them: one module list per request ({@link WorkspaceLoader#loadModules}) rather than a full
      * parse of every member per call. Empty when the module is not in a workspace.
-     *
-     * <p>Each member carries the version it builds at: the loader's members are as declared, and
-     * under {@code jk snapshot} a sibling's jar and its staged coordinate are {@code -SNAPSHOT}.
      */
     private static Map<Path, JkBuild> members(Path moduleDir) throws IOException {
         var root = WorkspaceLocator.findRoot(moduleDir);
         if (root.isEmpty()) return Map.of();
         // parseLocal for the root, as the loader's own callers read it: its members carry the root's inherits.
         JkBuild rootManifest = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root.get()));
-        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root.get(), rootManifest);
-        if (!SnapshotQualifier.active()) return members;
-        Map<Path, JkBuild> built = new LinkedHashMap<>();
-        members.forEach((dir, m) -> built.put(
-                dir,
-                m.withProject(m.project()
-                        .withVersion(SnapshotQualifier.version(m.project().version())))));
-        return built;
+        return WorkspaceLoader.loadModules(root.get(), rootManifest);
     }
 
     /** A sibling's manifest, or null when it does not parse; a config.toml that does not parse is thrown. */

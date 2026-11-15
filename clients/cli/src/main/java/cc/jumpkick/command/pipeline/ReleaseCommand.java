@@ -129,8 +129,10 @@ public final class ReleaseCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        // A release installs the declared version, never a snapshot: leave the session as found.
+        // A release reads, builds, installs and withdraws the declared version, never a snapshot:
+        // leave the session as found.
         Session before = SessionContext.current();
+        SessionContext.install(before.withRelease(true));
         try {
             return release(in);
         } finally {

@@ -188,32 +188,32 @@ class PreflightMemoTest {
     }
 
     /**
-     * A snapshot's modules package to -SNAPSHOT jars, so a memo certified clean by a build must not
-     * answer {@code jk snapshot}: it skipped every step of the snapshot, which installed the
-     * -SNAPSHOT jars an earlier snapshot left (JK-MAG71). Nor the other way round.
+     * A release packages plain-version jars and every other build -SNAPSHOT ones, so a memo a
+     * snapshot build certified clean must not answer a release: it would skip every step and ship
+     * the -SNAPSHOT jars on disk. Nor the other way round.
      */
     @Test
-    void a_memo_stored_by_a_build_is_a_miss_for_a_snapshot(@TempDir Path tmp) throws Exception {
+    void a_memo_stored_by_a_snapshot_build_is_a_miss_for_a_release(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
         Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
-        Session build = SessionContext.current();
-        Session snapshot = build.withSnapshot(true);
+        Session snapshot = SessionContext.current();
+        Session release = snapshot.withRelease(true);
 
         PreflightMemo.storeDirty(tmp, graph, false, null, Set.of(), fps);
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null)).isPresent();
-        assertThat(SessionContext.where(snapshot, () -> PreflightMemo.tryLoadDirty(tmp, graph, false, null)))
-                .as("the build's memo does not answer a snapshot")
+        assertThat(SessionContext.where(release, () -> PreflightMemo.tryLoadDirty(tmp, graph, false, null)))
+                .as("a snapshot build's memo does not answer a release")
                 .isEmpty();
 
-        SessionContext.where(snapshot, () -> {
+        SessionContext.where(release, () -> {
             PreflightMemo.storeDirty(tmp, graph, false, null, Set.of(), fps);
             return null;
         });
-        assertThat(SessionContext.where(snapshot, () -> PreflightMemo.tryLoadDirty(tmp, graph, false, null)))
+        assertThat(SessionContext.where(release, () -> PreflightMemo.tryLoadDirty(tmp, graph, false, null)))
                 .isPresent();
-        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null))
+        assertThat(SessionContext.where(snapshot, () -> PreflightMemo.tryLoadDirty(tmp, graph, false, null)))
                 .as("each keeps its own memo: alternating them misses neither")
                 .isPresent();
     }

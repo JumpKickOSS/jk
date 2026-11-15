@@ -12,11 +12,18 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A snapshot run reads every version as its declared one plus {@code -SNAPSHOT}; the files never change. */
+/**
+ * Every build but a release reads every version as its declared one plus {@code -SNAPSHOT}; a release
+ * reads it as declared; the files never change.
+ */
 class SnapshotQualifierTest {
 
     private static JkBuild parseAsSnapshot(Path manifest) throws Exception {
-        return SessionContext.where(Session.defaults().withSnapshot(true), () -> JkBuildParser.parse(manifest));
+        return SessionContext.where(Session.defaults(), () -> JkBuildParser.parse(manifest));
+    }
+
+    private static JkBuild parseAsRelease(Path manifest) throws Exception {
+        return SessionContext.where(Session.defaults().withRelease(true), () -> JkBuildParser.parse(manifest));
     }
 
     private static Path write(Path file, String body) throws Exception {
@@ -26,7 +33,7 @@ class SnapshotQualifierTest {
     }
 
     @Test
-    void a_standalone_module_gains_the_suffix_and_a_plain_run_does_not(@TempDir Path tmp) throws Exception {
+    void a_standalone_module_gains_the_suffix_and_a_release_does_not(@TempDir Path tmp) throws Exception {
         Path manifest = write(tmp.resolve("jk.toml"), """
                 group = "ex"
                 name = "money"
@@ -36,7 +43,7 @@ class SnapshotQualifierTest {
         String before = Files.readString(manifest);
 
         assertThat(parseAsSnapshot(manifest).project().version()).isEqualTo("1.0.0-SNAPSHOT");
-        assertThat(JkBuildParser.parse(manifest).project().version()).isEqualTo("1.0.0");
+        assertThat(parseAsRelease(manifest).project().version()).isEqualTo("1.0.0");
         assertThat(Files.readString(manifest)).as("jk.toml is never rewritten").isEqualTo(before);
     }
 
@@ -72,7 +79,7 @@ class SnapshotQualifierTest {
                 """);
 
         JkBuild snapshot = parseAsSnapshot(app);
-        JkBuild release = JkBuildParser.parse(app);
+        JkBuild release = parseAsRelease(app);
 
         assertThat(snapshot.project().version()).isEqualTo("1.0.0-SNAPSHOT");
         assertThat(release.project().version()).isEqualTo("1.0.0");

@@ -57,7 +57,7 @@ class TestStampWorkerJarsParityTest {
                 [workspace]
                 modules = ["clients/cli", "server/engine"]
                 """);
-        Path engineJar = tmp.resolve("server/engine/target/jk-engine-0.0.1.jar");
+        Path engineJar = tmp.resolve("server/engine/target/jk-engine-0.0.1-SNAPSHOT.jar");
         Files.createDirectories(engineJar.getParent());
         writeMinimalJar(engineJar);
 
@@ -168,7 +168,8 @@ class TestStampWorkerJarsParityTest {
         Map<String, String> workers = TestStampInputs.testStampWorkerJars(cli, project);
         assertThat(Path.of(workers.get("jk.engine.jar")))
                 .as("the suite runs the workspace engine's assembly, never a host or installed engine")
-                .isEqualTo(engine.resolve("target/jk-engine-0.0.1-all.jar").normalize());
+                .isEqualTo(engine.resolve("target/jk-engine-0.0.1-SNAPSHOT-all.jar")
+                        .normalize());
     }
 
     /** Minimal zip so the sibling's jar is a real file. */

@@ -12,7 +12,7 @@ src/main/java/.../$name;format="Camel"$Plugin.java   # the code layer jk forks a
 
 ```bash
 jk test          # unit tier
-jk build         # target/$name$-0.1.0.jar is the plugin
+jk build         # target/$name$-0.1.0-SNAPSHOT.jar is the plugin
 ```
 
 `jk-plugin.toml` is data jk reads itself: the schema validates a consumer's `[$name$]` table, and

@@ -62,7 +62,7 @@ class RunCommandTest {
                 "--cache-dir",
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(tempDir.resolve("target/widget-0.1.0.jar")).exists();
+        assertThat(tempDir.resolve("target/widget-0.1.0-SNAPSHOT.jar")).exists();
 
         // App args follow the `.` target, or a `--` with no target before it.
         int withArgs = run(
@@ -241,11 +241,11 @@ class RunCommandTest {
         String output = TestAnsi.strip(runCapturingOutput(
                 ws, exit -> assertThat(exit).as("app saw its two args").isEqualTo(2), "-m", "app", "--", "a", "b"));
 
-        assertThat(ws.resolve("app/target/app-0.1.0.jar")).exists();
-        assertThat(ws.resolve("fixtures/target/fixtures-0.1.0.jar"))
+        assertThat(ws.resolve("app/target/app-0.1.0-SNAPSHOT.jar")).exists();
+        assertThat(ws.resolve("fixtures/target/fixtures-0.1.0-SNAPSHOT.jar"))
                 .as("a test-only sibling is not on the run's path: %s", output)
                 .doesNotExist();
-        assertThat(ws.resolve("other/target/other-0.1.0.jar")).doesNotExist();
+        assertThat(ws.resolve("other/target/other-0.1.0-SNAPSHOT.jar")).doesNotExist();
     }
 
     @Test

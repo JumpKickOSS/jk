@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Rewrite a workspace member's {@code workspace:<name>} dependency placeholders into the siblings'
@@ -34,13 +35,24 @@ public final class WorkspaceResolve {
      * {@code moduleDir} is not part of a workspace (or the workspace cannot be read).
      */
     public static JkBuild applyWorkspace(Path moduleDir, JkBuild module) {
-        JkBuild resolved = resolveWorkspace(moduleDir, module);
-        return SnapshotQualifier.active()
-                ? SnapshotQualifier.qualify(resolved, siblingCoordinates(moduleDir))
-                : resolved;
+        Resolved resolved = resolveWorkspace(moduleDir, module);
+        if (!SnapshotQualifier.active()) return resolved.module();
+        JkBuild out = resolved.module();
+        // The sibling set only qualifies pinned edges; reuse the list the merge loaded when it did.
+        Set<String> siblings = resolved.siblings() != null
+                ? resolved.siblings()
+                : SnapshotQualifier.hasPinnedEdge(out) ? siblingCoordinates(moduleDir) : Set.of();
+        return SnapshotQualifier.qualify(out, siblings);
     }
 
-    private static JkBuild resolveWorkspace(Path moduleDir, JkBuild module) {
+    /** A member after the merge, and the workspace's unit coordinates when the merge loaded them. */
+    private record Resolved(JkBuild module, @Nullable Set<String> siblings) {
+        Resolved(JkBuild module) {
+            this(module, null);
+        }
+    }
+
+    private static Resolved resolveWorkspace(Path moduleDir, JkBuild module) {
         try {
             var rootDir = WorkspaceLocator.findRoot(moduleDir);
             if (rootDir.isEmpty()) {
@@ -51,9 +63,9 @@ public final class WorkspaceResolve {
                             + " lists this module; set them directly");
                 }
                 if (module.project().inheritsFromWorkspace()) {
-                    return module.withProject(module.project().droppingOptionalInherits());
+                    return new Resolved(module.withProject(module.project().droppingOptionalInherits()), Set.of());
                 }
-                return module;
+                return new Resolved(module, Set.of());
             }
             // Failure scope matters: a member is only entitled to fail for problems in the
             // pieces it actually needs. Root errors hit members with pending project
@@ -72,9 +84,9 @@ public final class WorkspaceResolve {
                         || WorkspaceMerge.hasWorkspaceDeps(module)) {
                     throw e;
                 }
-                return module;
+                return new Resolved(module);
             }
-            if (!root.isWorkspaceRoot()) return module;
+            if (!root.isWorkspaceRoot()) return new Resolved(module, Set.of());
             // loadModules already rewrites project.*.workspace / omitted-field inherits.
             module = WorkspaceLoader.inheritFromRoot(module, root);
             module = WorkspaceLoader.inheritProfiles(module, root);
@@ -86,19 +98,28 @@ public final class WorkspaceResolve {
             module = JkBuildParser.reapplyPlatformContributions(moduleDir, module);
             // Only workspace:<name> placeholders need the sibling list, and only a member naming one
             // is entitled to fail for a sibling's error; a member naming none is done.
-            if (!WorkspaceMerge.hasWorkspaceDeps(module)) return module;
+            if (!WorkspaceMerge.hasWorkspaceDeps(module)) return new Resolved(module);
             Collection<JkBuild> siblings =
                     WorkspaceLoader.loadModules(rootDir.get(), root).values();
             // resolveSiblingCoordinates, NOT applyToModule: the latter is the lock-orchestration
             // fold, which strips sibling edges entirely. A published POM has to keep them.
-            return WorkspaceMerge.resolveSiblingCoordinates(root, module, siblings);
+            return new Resolved(
+                    WorkspaceMerge.resolveSiblingCoordinates(root, module, siblings), coordinates(root, siblings));
         } catch (JkBuildParseException e) {
             throw e;
         } catch (Exception e) {
             // Best-effort: a standalone project has no workspace to merge, and a malformed root is
             // surfaced by the build itself rather than here.
-            return module;
+            return new Resolved(module);
         }
+    }
+
+    private static Set<String> coordinates(JkBuild root, Collection<JkBuild> members) {
+        Set<String> out = new LinkedHashSet<>();
+        out.add(root.project().group() + ":" + root.project().name());
+        for (JkBuild m : members)
+            out.add(m.project().group() + ":" + m.project().name());
+        return out;
     }
 
     /**
@@ -114,12 +135,8 @@ public final class WorkspaceResolve {
             if (rootDir.isEmpty()) return Set.of();
             JkBuild root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(rootDir.get()));
             if (!root.isWorkspaceRoot()) return Set.of();
-            Set<String> out = new LinkedHashSet<>();
-            out.add(root.project().group() + ":" + root.project().name());
-            for (JkBuild m : WorkspaceLoader.loadModules(rootDir.get(), root).values()) {
-                out.add(m.project().group() + ":" + m.project().name());
-            }
-            return out;
+            return coordinates(
+                    root, WorkspaceLoader.loadModules(rootDir.get(), root).values());
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {

@@ -206,7 +206,7 @@ class JkBuildWorkspaceTest {
 
         JkBuild parsed = JkBuildParser.parse(good.resolve("jk.toml"));
         assertThat(parsed.project().group()).isEqualTo("com.example");
-        assertThat(parsed.project().version()).isEqualTo("1.0.0");
+        assertThat(parsed.project().version()).isEqualTo("1.0.0-SNAPSHOT");
     }
 
     @Test
@@ -245,7 +245,7 @@ class JkBuildWorkspaceTest {
 
         JkBuild parsed = JkBuildParser.parse(thin.resolve("jk.toml"));
         assertThat(parsed.project().group()).isEqualTo("com.example");
-        assertThat(parsed.project().version()).isEqualTo("1.0.0");
+        assertThat(parsed.project().version()).isEqualTo("1.0.0-SNAPSHOT");
     }
 
     @Test
@@ -273,7 +273,7 @@ class JkBuildWorkspaceTest {
 
         JkBuild parsed = JkBuildParser.parse(pinned.resolve("jk.toml"));
         assertThat(parsed.project().group()).isEqualTo("com.other");
-        assertThat(parsed.project().version()).isEqualTo("9.9.9");
+        assertThat(parsed.project().version()).isEqualTo("9.9.9-SNAPSHOT");
         assertThat(parsed.project().javaRelease()).isEqualTo(25);
     }
 
@@ -427,8 +427,8 @@ class JkBuildWorkspaceTest {
                 .toList();
         assertThat(jars)
                 .containsExactly(
-                        tempDir.resolve("common/edqs/target/edqs-4.4.0.jar"),
-                        tempDir.resolve("edqs/target/edqs-4.4.0.jar"));
+                        tempDir.resolve("common/edqs/target/edqs-4.4.0-SNAPSHOT.jar"),
+                        tempDir.resolve("edqs/target/edqs-4.4.0-SNAPSHOT.jar"));
     }
 
     /** An edge to a name two members carry cannot pick one silently: it is refused, naming both. */
@@ -541,7 +541,7 @@ class JkBuildWorkspaceTest {
         JkBuild resolved = JkBuildParser.parse(application.resolve("jk.toml"));
         assertThat(resolved.dependencies().of(Scope.MAIN)).singleElement().satisfies(d -> {
             assertThat(d.module()).isEqualTo("org.tb.common:edqs");
-            assertThat(d.version().raw()).isEqualTo("=4.4.0");
+            assertThat(d.version().raw()).isEqualTo("=4.4.0-SNAPSHOT");
         });
     }
 

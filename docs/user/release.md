@@ -10,6 +10,11 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 | `jk install` | an application's owner | puts an application or tool on this machine |
 
 `jk.toml` always holds the **next release**. A snapshot is a build-time suffix, never written down.
+Every build but `jk release` and `jk publish` is a snapshot: at `version = "1.4.7"`, `jk build`,
+`jk test`, `jk run`, `jk install` and `jk snapshot` name and stamp every jar `1.4.7-SNAPSHOT`
+(`target/app-1.4.7-SNAPSHOT.jar`), so they build one tree and the next of them rebuilds nothing.
+`jk release` and `jk publish` build `target/app-1.4.7.jar` beside it, stamped `1.4.7`; neither
+reuses a jar the other packaged.
 
 ## Tag-triggered CI (recommended)
 

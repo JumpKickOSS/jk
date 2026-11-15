@@ -67,18 +67,41 @@ public final class WorkspaceLoader {
         if (root.project().inheritsFromWorkspace()) {
             throw new JkBuildParseException("workspace root cannot use `workspace = true`; set the values");
         }
-        MemoKey key = MemoKey.of(workspaceRoot, root);
-        if (key == null) return Collections.unmodifiableMap(load(workspaceRoot, root));
+        JkBuild declared = declared(workspaceRoot, root);
+        MemoKey key = MemoKey.of(workspaceRoot, declared);
+        if (key == null) return Collections.unmodifiableMap(load(workspaceRoot, declared));
         try {
             return RequestScope.current().getOnce(key, k -> {
                 try {
-                    return Collections.unmodifiableMap(load(workspaceRoot, root));
+                    return Collections.unmodifiableMap(load(workspaceRoot, declared));
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
             });
         } catch (UncheckedIOException e) {
             throw e.getCause();
+        }
+    }
+
+    /**
+     * {@code root} at its declared version. A root read through {@link JkBuildParser#parse} carries
+     * the snapshot version, and members inherit the version of the root they are loaded from: the
+     * list is one whichever way its caller read the root, its members as declared.
+     */
+    private static JkBuild declared(Path workspaceRoot, JkBuild root) {
+        String version = root.project().version();
+        if (!SnapshotQualifier.active() || !version.endsWith(SnapshotQualifier.SUFFIX)) return root;
+        try {
+            String local = JkBuildParser.parseLocal(ManifestPaths.manifestIn(workspaceRoot))
+                    .project()
+                    .version();
+            return local.equals(version)
+                    ? root
+                    : root.withProject(root.project().withVersion(local));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
+        } catch (IOException | RuntimeException unreadable) {
+            return root;
         }
     }
 

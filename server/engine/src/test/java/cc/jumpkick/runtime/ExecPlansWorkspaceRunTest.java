@@ -37,7 +37,7 @@ class ExecPlansWorkspaceRunTest {
         assertThat(plan.argv()).isNotEmpty();
         // Declared main may launch as java -jar … or java -cp … Main depending on deps/classpath.
         String joined = String.join(" ", plan.argv()) + " " + plan.display();
-        assertThat(joined).containsAnyOf("com.example.App", "app-0.1.0.jar");
+        assertThat(joined).containsAnyOf("com.example.App", "app-0.1.0-SNAPSHOT.jar");
     }
 
     @Test

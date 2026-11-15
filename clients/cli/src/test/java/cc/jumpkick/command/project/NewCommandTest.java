@@ -55,7 +55,7 @@ class NewCommandTest {
         assertThat(target.resolve("src/main/java/com/example/Main.java")).isRegularFile();
         assertThat(target.resolve("src/test/java/com/example/MainTest.java")).isRegularFile();
         assertThat(target.resolve("AGENTS.md")).isRegularFile();
-        JkBuild parsed = JkBuildParser.parse(buildFile);
+        JkBuild parsed = JkBuildParser.parseLocal(buildFile);
         assertThat(parsed.project().group()).isEqualTo("com.example");
         assertThat(parsed.project().name()).isEqualTo("widget");
         assertThat(parsed.project().version()).isEqualTo("0.1.0");

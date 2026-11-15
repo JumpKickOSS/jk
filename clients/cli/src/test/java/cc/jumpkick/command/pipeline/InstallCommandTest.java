@@ -159,7 +159,7 @@ class InstallCommandTest {
 
         Path launcher = bin.resolve("widget");
         assertThat(launcher).exists();
-        assertThat(lib.resolve("widget/widget-0.1.0.jar")).doesNotExist();
+        assertThat(lib.resolve("widget/widget-0.1.0-SNAPSHOT.jar")).doesNotExist();
         String script = Files.readString(launcher);
         // The application-launcher shape: a classpath and a main class, not a tool env.
         assertThat(script).contains("com.example.Main");
@@ -206,9 +206,9 @@ class InstallCommandTest {
                 m2.toString());
         assertThat(exit).isEqualTo(0);
 
-        Path repo = m2.resolve("repository/com/example/lib-m2/0.1.0");
-        assertThat(repo.resolve("lib-m2-0.1.0.jar")).exists();
-        assertThat(repo.resolve("lib-m2-0.1.0.pom")).exists();
+        Path repo = m2.resolve("repository/com/example/lib-m2/0.1.0-SNAPSHOT");
+        assertThat(repo.resolve("lib-m2-0.1.0-SNAPSHOT.jar")).exists();
+        assertThat(repo.resolve("lib-m2-0.1.0-SNAPSHOT.pom")).exists();
         assertThat(JkStores.resolve("repos").resolve("jk-local/com/example/lib-m2"))
                 .as("the bytes are written once, not copied to the private repository too")
                 .doesNotExist();
@@ -249,7 +249,8 @@ class InstallCommandTest {
                 "jk");
         assertThat(exit).isEqualTo(0);
 
-        assertThat(JkStores.resolve("repos").resolve("jk-local/com/example/lib-flag/0.1.0/lib-flag-0.1.0.jar"))
+        assertThat(JkStores.resolve("repos")
+                        .resolve("jk-local/com/example/lib-flag/0.1.0-SNAPSHOT/lib-flag-0.1.0-SNAPSHOT.jar"))
                 .exists();
         assertThat(m2.resolve("repository/com/example/lib-flag")).doesNotExist();
     }

@@ -71,7 +71,6 @@ public final class ProtoSession {
                 .withKeepGoing(Jsonl.bool(request, "keepGoing", false))
                 .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
                 .withAffected(Jsonl.bool(request, "affected", false))
-                .withSnapshot(Jsonl.bool(request, "snapshot", false))
                 .withRelease(Jsonl.bool(request, "release", false))
                 .withJavadoc(Jsonl.bool(request, "javadoc", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
@@ -242,7 +241,7 @@ public final class ProtoSession {
 
     /**
      * The options every build verb shares — profile, workers, keep-going, parallel tests, the test
-     * selection, the failure mode, skip-node, coverage, snapshot — onto a request that does not name them
+     * selection, the failure mode, skip-node, coverage, release — onto a request that does not name them
      * itself, so every verb's engine half reads them through {@link #sessionOf} the same way.
      */
     static String withBuildOptions(String request, Session session) {
@@ -269,7 +268,6 @@ public final class ProtoSession {
         }
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
-        if (!Jsonl.has(request, "snapshot")) f.optionalTrue("snapshot", session.snapshot());
         if (!Jsonl.has(request, "release")) f.optionalTrue("release", session.release());
         if (!Jsonl.has(request, "javadoc")) f.optionalTrue("javadoc", session.javadoc());
         String body = f.body();

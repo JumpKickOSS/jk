@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
@@ -42,8 +42,8 @@ final class DirtyMemoVariants {
                 .append('\0')
                 .append(PreflightMemo.profileHeader(profile))
                 .append('\0')
-                // A snapshot's memo is its own: its modules package to -SNAPSHOT jars (JK-MAG71).
-                .append(SessionContext.current().snapshot() ? '1' : '0')
+                // A release's memo is its own: its modules package to plain-version jars.
+                .append(SnapshotQualifier.active() ? '1' : '0')
                 .append('\0');
         key.append(MemoInputs.selectionHeader()).append('\0');
         List<String> rels = new ArrayList<>();

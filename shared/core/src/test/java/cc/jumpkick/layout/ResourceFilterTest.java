@@ -79,10 +79,7 @@ class ResourceFilterTest {
                 """);
         Session base = Session.defaults();
         assertThat(SessionContext.where(base, () -> ResourceFilter.values(build)))
-                .as("jk build and jk test")
-                .containsEntry("project.version", "2.0-SNAPSHOT");
-        assertThat(SessionContext.where(base.withSnapshot(true), () -> ResourceFilter.values(build)))
-                .as("jk snapshot stamps what jk build stamps")
+                .as("jk build, jk test and jk snapshot")
                 .containsEntry("project.version", "2.0-SNAPSHOT");
         assertThat(SessionContext.where(base.withRelease(true), () -> ResourceFilter.values(build)))
                 .as("jk release and jk publish ship the declared version")

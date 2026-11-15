@@ -209,7 +209,7 @@ class NewModuleTest {
         }
 
         // A standalone project: its own identity, and the workspace above the ceiling untouched.
-        JkBuild built = JkBuildParser.parse(app.resolve("jk.toml"));
+        JkBuild built = JkBuildParser.parseLocal(app.resolve("jk.toml"));
         assertThat(built.project().group()).isEqualTo("com.solo");
         assertThat(built.project().version()).isEqualTo("0.1.0");
         assertThat(Files.readString(tempDir.resolve("jk.toml"))).isEqualTo(rootBefore);

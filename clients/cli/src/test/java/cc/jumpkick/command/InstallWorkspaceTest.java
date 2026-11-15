@@ -36,7 +36,8 @@ class InstallWorkspaceTest {
         assertThat(out)
                 .as("the root packages nothing, so claiming it installed is a lie")
                 .doesNotContain("installed ex:ws");
-        assertThat(tmp.resolve("m2/repository/ex/lib/1.0/lib-1.0.jar")).exists();
+        assertThat(tmp.resolve("m2/repository/ex/lib/1.0-SNAPSHOT/lib-1.0-SNAPSHOT.jar"))
+                .exists();
         assertThat(JkStores.resolve("repos").resolve("jk-local/ex/lib"))
                 .as("a library goes to the Maven local repository only")
                 .doesNotExist();

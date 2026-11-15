@@ -218,7 +218,7 @@ class WorkspaceClasspathTest {
                 lib = { workspace = true, kind = "tests" }
                 """);
         // Materialize the products WorkspaceClasspath looks for.
-        Path libMain = root.resolve("lib/target/lib-0.1.0.jar");
+        Path libMain = root.resolve("lib/target/lib-0.1.0-SNAPSHOT.jar");
         Path libTestClasses = root.resolve("lib/target/test-classes");
         Files.createDirectories(libMain.getParent());
         Files.createDirectories(libTestClasses);
@@ -284,7 +284,7 @@ class WorkspaceClasspathTest {
                 [test-dependencies]
                 lib = { workspace = true, fixtures = true }
                 """);
-        Path libMain = root.resolve("lib/target/lib-0.1.0.jar");
+        Path libMain = root.resolve("lib/target/lib-0.1.0-SNAPSHOT.jar");
         Path libFixtures = root.resolve("lib/target/test-fixtures/classes");
         Files.createDirectories(libMain.getParent());
         Files.createDirectories(libFixtures);
@@ -409,7 +409,7 @@ class WorkspaceClasspathTest {
                 .singleElement()
                 .asString()
                 .contains("expected its relocating jar at")
-                .contains("lib-0.1.0-all.jar");
+                .contains("lib-0.1.0-SNAPSHOT-all.jar");
 
         Files.createDirectories(requireNonNull(lib.assemblyJar().getParent()));
         Files.writeString(lib.assemblyJar(), "jar");

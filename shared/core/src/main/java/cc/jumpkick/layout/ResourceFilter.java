@@ -166,14 +166,14 @@ public final class ResourceFilter {
 
     /**
      * What a module's filtered resources expand with: the values jk knows ({@code project.groupId},
-     * {@code project.artifactId}, {@code project.version} as {@link SnapshotQualifier#stamp} spells
+     * {@code project.artifactId}, {@code project.version} as {@link SnapshotQualifier#version} spells
      * it) under {@code [resources.properties]}, which wins.
      */
     public static Map<String, String> values(JkBuild build) {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("project.groupId", build.project().group());
         values.put("project.artifactId", build.project().name());
-        values.put("project.version", SnapshotQualifier.stamp(build.project().version()));
+        values.put("project.version", SnapshotQualifier.version(build.project().version()));
         values.putAll(build.build().resources().properties());
         return values;
     }

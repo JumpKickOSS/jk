@@ -46,7 +46,7 @@ class WorkspaceShadedSiblingE2eTest {
         assertThat(result.success())
                 .as("app imports com.example.shaded.lib.Util, which only lib's -all.jar carries")
                 .isTrue();
-        Path shaded = ws.resolve("lib/target/lib-1.0.0-all.jar");
+        Path shaded = ws.resolve("lib/target/lib-1.0.0-SNAPSHOT-all.jar");
         assertThat(shaded).isRegularFile();
         try (JarFile jar = new JarFile(shaded.toFile())) {
             assertThat(jar.getEntry("com/example/shaded/lib/Util.class")).isNotNull();

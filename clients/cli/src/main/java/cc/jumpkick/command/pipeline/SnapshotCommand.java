@@ -70,7 +70,7 @@ public final class SnapshotCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         // The session is process-wide: leave it as this run found it, or a later command in the
-        // same process would install at snapshot versions too.
+        // same process would inherit this run's build flags.
         Session before = SessionContext.current();
         try {
             return snapshot(in);
@@ -89,8 +89,6 @@ public final class SnapshotCommand implements CliCommand {
             return Exit.CONFIG;
         }
         flags.installSession();
-        // Every request this run sends the engine names the snapshot version, the product install's too.
-        SessionContext.install(SessionContext.current().withSnapshot(true));
 
         String destinationWord = in.value(InstallDestination.KEY).orElse(null);
         InstallDestination destination = destinationWord == null

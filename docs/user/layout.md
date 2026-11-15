@@ -74,6 +74,11 @@ harness that knows where Maven puts things finds them there:
 | JaCoCo | `target/jacoco.exec`, report in `target/site/jacoco/` |
 | Javadoc HTML | `target/site/apidocs/` |
 
+`<version>` is the declared version with `-SNAPSHOT` in every build but `jk release` and `jk
+publish`: in a project at `version = "1.4.7"`, `jk build`, `jk test`, `jk run` and `jk snapshot` all
+write `target/app-1.4.7-SNAPSHOT.jar`, and `jk release` writes `target/app-1.4.7.jar`
+([Releasing](release.md)).
+
 JumpKick's own working state sits beside them (`kotlin/`, `groovy/`, `incremental/`, `plugin/`, …),
 and its reports (`jk-results.md`, `jk-guards.*`) in the `target/` of the directory a build ran
 from.
@@ -106,9 +111,9 @@ filtered = ["src/filter/resources"]     # ${name} and @name@ become the value of
 
 A filtered file's `${name}` and `@name@` take their value from `[resources.properties]`, then
 from `project.groupId`, `project.artifactId` and `project.version`, which JumpKick sets itself.
-`project.version` is the declared version with `-SNAPSHOT` in every build but `jk release` and
-`jk publish`, which ship the declared version as written ([Releasing](release.md)): `jk.toml` holds
-the next release, so `jk build`, `jk test` and `jk snapshot` stamp one value and share one cache.
+`project.version` is the version the jar is named with: the declared version with `-SNAPSHOT` in
+every build but `jk release` and `jk publish`, which ship the declared version as written
+([Releasing](release.md)).
 `delimiters` names the placeholders that are expanded, as Maven's resources plugin writes them:
 `<begin>*<end>` (`${*}`, `#{*}`) or one token that both begins and ends the name (`@`). Spring
 Boot's `["@"]` leaves `${name}` as written for Spring to resolve at run time.

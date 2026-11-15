@@ -81,7 +81,7 @@ class InstallAndBuildTest {
         assertThat(run("build", "-C", projectDir.toString(), "--cache-dir=" + cache))
                 .isEqualTo(0);
 
-        assertThat(projectDir.resolve("target/app-0.1.0.jar")).exists();
+        assertThat(projectDir.resolve("target/app-0.1.0-SNAPSHOT.jar")).exists();
     }
 
     @Test

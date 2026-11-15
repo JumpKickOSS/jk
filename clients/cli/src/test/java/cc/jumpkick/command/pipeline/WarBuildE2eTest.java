@@ -60,11 +60,11 @@ class WarBuildE2eTest {
         assertThat(exit).isEqualTo(0);
 
         Path target = ws.resolve("web/target");
-        assertThat(target.resolve("web-1.0.0.jar")).exists();
+        assertThat(target.resolve("web-1.0.0-SNAPSHOT.jar")).exists();
         assertThat(target.resolve("ROOT/index.html")).hasContent("<html/>");
         assertThat(target.resolve("ROOT/WEB-INF/classes/web/Home.class")).exists();
-        assertThat(target.resolve("ROOT/WEB-INF/lib/model-1.0.0.jar")).exists();
-        assertThat(target.resolve("ROOT/WEB-INF/lib/api-1.0.0.jar")).doesNotExist();
+        assertThat(target.resolve("ROOT/WEB-INF/lib/model-1.0.0-SNAPSHOT.jar")).exists();
+        assertThat(target.resolve("ROOT/WEB-INF/lib/api-1.0.0-SNAPSHOT.jar")).doesNotExist();
         try (JarFile war = new JarFile(target.resolve("ROOT.war").toFile())) {
             List<String> entries = Collections.list(war.entries()).stream()
                     .map(ZipEntry::getName)
@@ -74,8 +74,8 @@ class WarBuildE2eTest {
                             "index.html",
                             "WEB-INF/web.xml",
                             "WEB-INF/classes/web/Home.class",
-                            "WEB-INF/lib/model-1.0.0.jar")
-                    .doesNotContain("WEB-INF/lib/api-1.0.0.jar");
+                            "WEB-INF/lib/model-1.0.0-SNAPSHOT.jar")
+                    .doesNotContain("WEB-INF/lib/api-1.0.0-SNAPSHOT.jar");
         }
 
         // A second build restores the war from the cache and leaves the exploded tree as it was.
@@ -89,7 +89,7 @@ class WarBuildE2eTest {
                         ws.resolve("cache").toString()))
                 .isEqualTo(0);
         assertThat(Files.readAllBytes(target.resolve("ROOT.war"))).isEqualTo(first);
-        assertThat(target.resolve("ROOT/WEB-INF/lib/model-1.0.0.jar")).exists();
+        assertThat(target.resolve("ROOT/WEB-INF/lib/model-1.0.0-SNAPSHOT.jar")).exists();
     }
 
     private static void module(Path dir, String name, String pkg, String cls, String extra) throws IOException {

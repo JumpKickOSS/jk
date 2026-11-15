@@ -63,7 +63,7 @@ class KotlinCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Path jar = tempDir.resolve("target/widget-0.1.0.jar");
+        Path jar = tempDir.resolve("target/widget-0.1.0-SNAPSHOT.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             // Top-level Kotlin function -> <FilenameKt> class.
@@ -199,7 +199,8 @@ class KotlinCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf = new JarFile(tempDir.resolve("target/mixed-0.1.0.jar").toFile())) {
+        try (JarFile jf =
+                new JarFile(tempDir.resolve("target/mixed-0.1.0-SNAPSHOT.jar").toFile())) {
             assertThat(jf.getJarEntry("example/Hub.class")).isNotNull();
             assertThat(jf.getJarEntry("example/GreeterKt.class")).isNotNull();
         }
@@ -235,7 +236,8 @@ class KotlinCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf = new JarFile(tempDir.resolve("target/mixed-0.1.0.jar").toFile())) {
+        try (JarFile jf =
+                new JarFile(tempDir.resolve("target/mixed-0.1.0-SNAPSHOT.jar").toFile())) {
             assertThat(jf.getJarEntry("example/Greeter.class")).isNotNull();
             assertThat(jf.getJarEntry("example/App.class")).isNotNull();
         }

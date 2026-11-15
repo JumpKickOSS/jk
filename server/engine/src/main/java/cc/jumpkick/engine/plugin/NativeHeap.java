@@ -44,9 +44,9 @@ public final class NativeHeap {
 
         /**
          * The inputs of a build of {@code classpath} with {@code metadataDirs}. A jar of the build's
-         * own {@code version} is named without it, with or without {@code -SNAPSHOT}: {@code jk build}
-         * and {@code jk snapshot} stamp the workspace's jars differently, and a release bump renames
-         * them all, while what the builder reads stays the same.
+         * own {@code version} is named without it, with or without {@code -SNAPSHOT}: a release and a
+         * snapshot name the workspace's jars differently, and a release bump renames them all, while
+         * what the builder reads stays the same.
          */
         public static Inputs of(List<Path> classpath, List<Path> metadataDirs, String version) {
             long bytes = 0;

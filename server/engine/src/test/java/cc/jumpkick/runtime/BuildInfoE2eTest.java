@@ -67,7 +67,7 @@ class BuildInfoE2eTest {
         Properties git = gitProperties(lib.mainJar());
         assertThat(git.getProperty("git.commit.id")).isEqualTo(first.getName());
         assertThat(git.getProperty("git.branch")).isEqualTo("main");
-        assertThat(git.getProperty("git.build.version")).isEqualTo("1.0.0");
+        assertThat(git.getProperty("git.build.version")).isEqualTo("1.0.0-SNAPSHOT");
         byte[] jarOnce = Files.readAllBytes(lib.mainJar());
 
         Steps build2 = build(ws, cache, "second", Set.of(ws.resolve("lib")));

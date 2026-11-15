@@ -4,6 +4,8 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
@@ -54,12 +56,15 @@ class WorkspacePreflightInstallRefusalTest {
 
     @Test
     void a_release_that_is_already_installed_is_left_to_the_install_step() throws Exception {
-        BuildGraph.BuildUnit unit = module("1.0.0");
-        occupy("1.0.0");
+        SessionContext.where(Session.defaults().withRelease(true), () -> {
+            BuildGraph.BuildUnit unit = module("1.0.0");
+            occupy("1.0.0");
 
-        assertThat(WorkspacePreflightPhase.installRefusals(request(null), List.of(unit)))
-                .as("a rebuild can reproduce the bytes; the install compares them")
-                .isEmpty();
+            assertThat(WorkspacePreflightPhase.installRefusals(request(null), List.of(unit)))
+                    .as("a rebuild can reproduce the bytes; the install compares them")
+                    .isEmpty();
+            return null;
+        });
     }
 
     @Test

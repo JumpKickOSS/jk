@@ -40,7 +40,7 @@ class NodePackageForecastTest {
         TaskForecast.Task before = NodeForecast.forecastPackage(project, web, web, cache, false);
         assertThat(before.name()).isEqualTo(TaskNames.NODE_PACKAGE);
         assertThat(before.status()).isEqualTo(TaskForecast.Status.RUN);
-        assertThat(before.text()).contains("package web-1.0.0.jar").endsWith("· start: node server.js");
+        assertThat(before.text()).contains("package web-1.0.0-SNAPSHOT.jar").endsWith("· start: node server.js");
 
         Path jar = BuildLayout.of(web, project).mainJar();
         Path jarDir = Files.createDirectories(web.resolve("target"));
@@ -51,7 +51,7 @@ class NodePackageForecastTest {
 
         TaskForecast.Task after = NodeForecast.forecastPackage(project, web, web, cache, false);
         assertThat(after.status()).isEqualTo(TaskForecast.Status.CACHED);
-        assertThat(after.text()).isEqualTo("web-1.0.0.jar up-to-date · start: node server.js");
+        assertThat(after.text()).isEqualTo("web-1.0.0-SNAPSHOT.jar up-to-date · start: node server.js");
 
         assertThat(NodeForecast.forecastPackage(project, web, web, cache, true).status())
                 .as("a build that runs repackages")

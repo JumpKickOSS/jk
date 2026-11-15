@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -318,8 +319,18 @@ public final class BuildGraph {
         }
 
         /** Add every module of a workspace as a unit, then wire module-order edges. */
-        void addWorkspace(Path wsRoot, JkBuild root, Origin moduleOrigin) throws IOException {
-            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(wsRoot, root);
+        void addWorkspace(Path wsRoot, JkBuild declaredRoot, Origin moduleOrigin) throws IOException {
+            // Every unit at the version its jars are named and stamped with, as a parse of it reads.
+            Map<Path, JkBuild> declared = WorkspaceLoader.loadModules(wsRoot, declaredRoot);
+            Set<String> coords = new LinkedHashSet<>();
+            coords.add(declaredRoot.project().group() + ":"
+                    + declaredRoot.project().name());
+            declared.values()
+                    .forEach(m ->
+                            coords.add(m.project().group() + ":" + m.project().name()));
+            JkBuild root = SnapshotQualifier.qualify(declaredRoot, coords);
+            Map<Path, JkBuild> modules = new LinkedHashMap<>();
+            declared.forEach((dir, m) -> modules.put(dir, SnapshotQualifier.qualify(m, coords)));
             // A workspace root that carries its own sources is itself a build unit — it
             // compiles and locks like any module (its coordinate is already in the
             // collision set). A pure coordinator root (no src/) is not built; its merged

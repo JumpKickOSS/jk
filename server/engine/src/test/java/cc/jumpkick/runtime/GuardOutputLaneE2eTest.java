@@ -34,7 +34,7 @@ class GuardOutputLaneE2eTest {
         assertThat(first.success()).as("errors: " + first.errors()).isTrue();
         assertThat(status(first, TaskNames.GUARD_OUTPUT)).isEqualTo(TaskStatus.SUCCESS);
         try (var files = Files.walk(project.resolve("target"))) {
-            assertThat(files.filter(f -> f.getFileName().toString().equals("proj-1.0.0.jar"))
+            assertThat(files.filter(f -> f.getFileName().toString().equals("proj-1.0.0-SNAPSHOT.jar"))
                             .findFirst())
                     .as("the jar the lane read")
                     .isPresent();

@@ -127,15 +127,9 @@ public record Session(
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
         @With IoLedger io,
         /**
-         * {@code jk snapshot}: every module's effective version is its declared one plus {@code
-         * -SNAPSHOT}, in the model the build plans from; {@code jk.toml} is never touched.
-         */
-        @With boolean snapshot,
-        /**
-         * {@code jk release} / {@code jk publish}: the declared version is the one shipped, so a
-         * filtered resource's {@code ${project.version}} is stamped as declared. Every other build
-         * of the tree builds the next release before it is cut and stamps {@code <version>-SNAPSHOT}
-         * ({@link SnapshotQualifier#stamp}).
+         * {@code jk release} / {@code jk publish}: the build ships the declared version. Every other
+         * build is a snapshot of the next release: each module's effective version is its declared
+         * one plus {@code -SNAPSHOT} ({@link SnapshotQualifier}).
          */
         @With boolean release,
         /**
@@ -202,7 +196,6 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot,
                 release,
                 javadoc,
                 revalidate,
@@ -329,7 +322,6 @@ public record Session(
                 false,
                 false,
                 false,
-                false,
                 KeyAuditMode.OFF);
     }
 
@@ -369,7 +361,6 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot,
                 release,
                 javadoc,
                 revalidate,
@@ -407,7 +398,6 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot,
                 release,
                 javadoc,
                 revalidate,
@@ -450,7 +440,6 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot,
                 release,
                 javadoc,
                 revalidate,

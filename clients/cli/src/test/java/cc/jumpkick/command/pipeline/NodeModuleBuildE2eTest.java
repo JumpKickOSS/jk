@@ -73,7 +73,7 @@ class NodeModuleBuildE2eTest {
                         "--cache-dir",
                         ws.resolve("cache").toString()))
                 .isZero();
-        assertThat(ws.resolve("api/target/api-1.0.0.jar")).exists();
+        assertThat(ws.resolve("api/target/api-1.0.0-SNAPSHOT.jar")).exists();
         assertThat(web.resolve("dist/index.html")).hasContent("<h1>web</h1>");
         assertThat(web.resolve("target/node-install.stamp")).exists();
 

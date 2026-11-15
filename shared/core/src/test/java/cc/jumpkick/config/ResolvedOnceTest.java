@@ -67,11 +67,11 @@ class ResolvedOnceTest {
         Path manifest = members(root).get(1);
 
         inRequest(() -> {
-            assertThat(parse(manifest).project().version()).isEqualTo("1.0.0");
+            assertThat(parse(manifest).project().version()).isEqualTo("1.0.0-SNAPSHOT");
             write(root.resolve("jk.toml"), read(root.resolve("jk.toml")).replace("1.0.0", "2.0.0"));
             assertThat(parse(manifest).project().version())
                     .as("the member inherits the root's new version")
-                    .isEqualTo("2.0.0");
+                    .isEqualTo("2.0.0-SNAPSHOT");
         });
     }
 

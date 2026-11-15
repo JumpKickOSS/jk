@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.OutputDirs;
@@ -88,7 +89,8 @@ public final class BuildLayout {
         this.workspaceRoot = Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         this.moduleRoot = Objects.requireNonNull(moduleRoot, "moduleRoot");
         this.artifact = Objects.requireNonNull(artifact, "artifact");
-        this.version = Objects.requireNonNull(version, "version");
+        // Every manifest view names the jar the build writes: as declared in a release, else -SNAPSHOT.
+        this.version = SnapshotQualifier.version(Objects.requireNonNull(version, "version"));
         this.hasMain = hasMain;
         this.pluginWorker = pluginWorker;
         this.nativeName = nativeName;
@@ -148,6 +150,7 @@ public final class BuildLayout {
         return artifact;
     }
 
+    /** The module's effective version, which every artifact name here carries ({@link SnapshotQualifier}). */
     public String version() {
         return version;
     }

@@ -15,9 +15,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 The root `jk.toml` `version` is the one place the version is written, and it always names the
 next release. `JkVersion.VERSION` is stamped from it by the build (`jk-version.properties` in
-`jk-model`, filtered from `${project.version}`), so a `jk snapshot` of the tree reports
-`<version>-SNAPSHOT` everywhere — `-V`, the wire handshake, worker coordinates, first-party lock
-pins — and `jk install` of the same tree reports `<version>`. Bump the manifest and the installers'
+`jk-model`, filtered from `${project.version}`), so every build of the tree but `jk release` and
+`jk publish` reports `<version>-SNAPSHOT` everywhere — `-V`, the wire handshake, worker
+coordinates, jar names under `target/` — and a release reports `<version>`. Bump the manifest and the installers'
 pointer floor (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
 `hosting/public/`) together — search for the old version string, which also finds the third-party
 plugin sample (`docs/user/examples/third-party-plugin`) and the SDK pin in `plugins.md`. `InstallerCopyTest` fails when the

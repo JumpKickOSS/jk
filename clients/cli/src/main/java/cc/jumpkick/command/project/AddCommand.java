@@ -15,6 +15,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.EngineEdits;
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
@@ -284,7 +285,13 @@ public final class AddCommand implements CliCommand {
             CommandWedge.printFail("Add", "no jk.toml in " + PathDisplay.styledRaw(target));
             return Exit.CONFIG;
         }
-        var module = ProjectInfos.orNull(target);
+        // As declared: the pin written into jk.toml never carries a build's -SNAPSHOT.
+        ProjectInfo module;
+        try {
+            module = SnapshotQualifier.asDeclared(() -> ProjectInfos.orNull(target));
+        } catch (Exception e) {
+            module = null;
+        }
         if (module == null) {
             CommandWedge.printFail("Add", "could not read " + PathDisplay.styledRaw(targetToml));
             return 1;

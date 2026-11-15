@@ -89,7 +89,7 @@ class ThirdPartyPluginExampleTest {
         assertThat(lockExit[0]).as(lockOut).isEqualTo(0);
         assertThat(Files.readString(plugin.resolve("jk-lock.toml"))).contains("jk-plugin-sdk");
         assertThat(run("build", "-C", plugin.toString(), "--skip-tests")).isEqualTo(0);
-        Path jar = plugin.resolve("target/hello-plugin-0.1.0.jar");
+        Path jar = plugin.resolve("target/hello-plugin-0.1.0-SNAPSHOT.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             assertThat(jf.getEntry("jk-plugin.toml"))
@@ -153,7 +153,7 @@ class ThirdPartyPluginExampleTest {
         assertThat(run("trust", "plugin", "path:hello")).isEqualTo(64);
         assertThat(run("trust", "plugin", "sha256:" + Hashing.sha256Hex(jar))).isEqualTo(0);
         buildGreen(app, "first build");
-        assertThat(app.resolve("target/app-0.1.0.jar")).exists();
+        assertThat(app.resolve("target/app-0.1.0-SNAPSHOT.jar")).exists();
         // The plugin's [[contribute.compiler-args]] adds -parameters: the consumer's compile step
         // honours a path-pinned plugin's javac contribution, on the first build and on the cached
         // second one alike.

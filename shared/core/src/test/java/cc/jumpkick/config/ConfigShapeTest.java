@@ -154,7 +154,6 @@ class ConfigShapeTest {
                 new Wither("withProfile", new Object[] {"ci"}, List.of("profile")),
                 new Wither("withKeepGoing", new Object[] {true}, List.of("keepGoing")),
                 new Wither("withLanesOnly", new Object[] {true}, List.of("lanesOnly")),
-                new Wither("withSnapshot", new Object[] {true}, List.of("snapshot")),
                 new Wither("withRelease", new Object[] {true}, List.of("release")),
                 new Wither("withJavadoc", new Object[] {true}, List.of("javadoc")),
                 new Wither("withRevalidate", new Object[] {true}, List.of("revalidate")),

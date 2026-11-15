@@ -784,7 +784,7 @@ public final class ExecPlans {
     private static List<Path> thinClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
         Path store = JkStores.store();
         var p = project.project();
-        Path repoJar = shelfJar(store, Coordinate.of(p.group(), p.name(), p.version()));
+        Path repoJar = shelfJar(store, Coordinate.of(p.group(), p.name(), layout.version()));
         if (!Files.isRegularFile(repoJar)) {
             repoJar = layout.mainJar();
         }
@@ -828,12 +828,10 @@ public final class ExecPlans {
             for (var member : WorkspaceLoader.loadModules(root, rootManifest).entrySet()) {
                 JkBuild unit = member.getValue();
                 var up = unit.project();
-                Path shelf = shelfJar(store, Coordinate.of(up.group(), up.name(), up.version()));
+                BuildLayout layout = BuildLayout.of(member.getKey(), unit);
+                Path shelf = shelfJar(store, Coordinate.of(up.group(), up.name(), layout.version()));
                 if (!Files.isRegularFile(shelf)) continue;
-                Path built = BuildLayout.of(member.getKey(), unit)
-                        .mainJar()
-                        .toAbsolutePath()
-                        .normalize();
+                Path built = layout.mainJar().toAbsolutePath().normalize();
                 out.put(built, shelf.toAbsolutePath().normalize());
             }
             return out;

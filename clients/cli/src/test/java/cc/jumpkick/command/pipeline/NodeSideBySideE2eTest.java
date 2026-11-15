@@ -52,7 +52,7 @@ class NodeSideBySideE2eTest {
         nodeBuild(dir.resolve("src/main/node"));
 
         assertThat(build(dir)).isZero();
-        Path jar = dir.resolve("target/app-1.0.0.jar");
+        Path jar = dir.resolve("target/app-1.0.0-SNAPSHOT.jar");
         assertThat(entry(jar, "static/index.html")).isEqualTo("<h1>one</h1>");
         assertThat(builds(dir)).isEqualTo(1);
 
@@ -75,7 +75,7 @@ class NodeSideBySideE2eTest {
         nodeBuild(dir.resolve("src/main/frontend"));
 
         assertThat(build(dir)).isZero();
-        assertThat(entry(dir.resolve("target/app-1.0.0.jar"), "public/index.html"))
+        assertThat(entry(dir.resolve("target/app-1.0.0-SNAPSHOT.jar"), "public/index.html"))
                 .isEqualTo("<h1>one</h1>");
     }
 
@@ -85,9 +85,10 @@ class NodeSideBySideE2eTest {
         nodeBuild(dir.resolve("src/main/node"));
 
         assertThat(build(dir)).isZero();
-        Path war = dir.resolve("target/app-1.0.0.war");
+        Path war = dir.resolve("target/app-1.0.0-SNAPSHOT.war");
         assertThat(entry(war, "jsbundles/index.html")).isEqualTo("<h1>one</h1>");
-        assertThat(dir.resolve("target/app-1.0.0/jsbundles/index.html")).hasContent("<h1>one</h1>");
+        assertThat(dir.resolve("target/app-1.0.0-SNAPSHOT/jsbundles/index.html"))
+                .hasContent("<h1>one</h1>");
     }
 
     @Test
@@ -101,7 +102,7 @@ class NodeSideBySideE2eTest {
                 () -> assertThat(run("build", "--skip-node", "-C", dir.toString(), "--cache-dir", cache(dir)))
                         .isZero());
         assertThat(builds(dir)).as(skipped.out() + skipped.err()).isEqualTo(1);
-        assertThat(entry(dir.resolve("target/app-1.0.0.jar"), "static/index.html"))
+        assertThat(entry(dir.resolve("target/app-1.0.0-SNAPSHOT.jar"), "static/index.html"))
                 .isEqualTo("<h1>one</h1>");
 
         deleteTree(dir.resolve("src/main/node/dist"));

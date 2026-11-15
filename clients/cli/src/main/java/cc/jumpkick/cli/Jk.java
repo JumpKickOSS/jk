@@ -45,8 +45,7 @@ public final class Jk {
 
     /**
      * What {@code --engine-server} on the slim client says. A dev client gets its engine from {@code
-     * jk snapshot}: a {@code jk build} dist installed into the default home is release-versioned, and
-     * its shelved release would hide every later snapshot of the same version.
+     * jk snapshot}, which installs the client with the engine and workers built beside it.
      */
     static final String WIRE_ONLY_CLIENT = "jk: no engine in this binary (wire-only client)\n"
             + "  run `jk self update` or `jk self materialize`, or set JK_ENGINE_EXE\n"

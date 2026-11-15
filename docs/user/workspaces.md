@@ -72,8 +72,8 @@ under test.
 
 Two members may carry the same `name` when their `group` differs, the shape Maven's reactor
 allows (`org.thingsboard.common:edqs` under `common/edqs` and `org.thingsboard:edqs` under
-`edqs`). Each member's output lives in its own `target/`, so `common/edqs/target/edqs-4.4.0.jar`
-and `edqs/target/edqs-4.4.0.jar` never meet. One
+`edqs`). Each member's output lives in its own `target/`, so `common/edqs/target/edqs-4.4.0-SNAPSHOT.jar`
+and `edqs/target/edqs-4.4.0-SNAPSHOT.jar` never meet. One
 `group:name:version` declared by two members is refused (`` `com.acme:edqs:1.0` is declared by both
 `a` and `b` ``): a workspace publishes one artifact per coordinate.
 

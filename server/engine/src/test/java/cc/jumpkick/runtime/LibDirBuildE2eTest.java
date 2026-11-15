@@ -46,13 +46,13 @@ class LibDirBuildE2eTest {
         assertThat(built.success()).isTrue();
 
         Path target = ws.resolve("app/target");
-        assertThat(target.resolve("app-1.0.0.jar"))
+        assertThat(target.resolve("app-1.0.0-SNAPSHOT.jar"))
                 .as("the thin jar is still written")
                 .isRegularFile();
-        assertThat(target.resolve("libs/lib-1.0.0.jar")).isRegularFile();
+        assertThat(target.resolve("libs/lib-1.0.0-SNAPSHOT.jar")).isRegularFile();
         try (JarFile jar = new JarFile(target.resolve("app.jar").toFile())) {
             Attributes main = jar.getManifest().getMainAttributes();
-            assertThat(main.getValue(Attributes.Name.CLASS_PATH)).isEqualTo("libs/lib-1.0.0.jar");
+            assertThat(main.getValue(Attributes.Name.CLASS_PATH)).isEqualTo("libs/lib-1.0.0-SNAPSHOT.jar");
             assertThat(main.getValue(Attributes.Name.MAIN_CLASS)).isEqualTo("com.example.app.Main");
         }
         assertThat(runJar(target, "app.jar")).isEqualTo("from lib");

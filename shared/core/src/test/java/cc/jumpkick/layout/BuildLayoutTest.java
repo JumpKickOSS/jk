@@ -4,6 +4,8 @@ package cc.jumpkick.layout;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.io.IOException;
@@ -108,22 +110,36 @@ class BuildLayoutTest {
         assertThat(layout.apidocsDir()).isEqualTo(dir.resolve("target/site/apidocs"));
     }
 
+    /** Every build but a release names its artifacts -SNAPSHOT, whichever manifest view it reads. */
+    @Test
+    void a_release_names_artifacts_as_declared_and_every_other_build_as_a_snapshot(@TempDir Path dir) throws Exception {
+        JkBuild declared = project("widget", "1.2.3");
+
+        assertThat(BuildLayout.of(dir, declared).mainJar()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT.jar"));
+        assertThat(BuildLayout.of(dir, project("widget", "1.2.3-SNAPSHOT")).mainJar())
+                .as("a version already a snapshot is not suffixed twice")
+                .isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT.jar"));
+        assertThat(SessionContext.where(Session.defaults().withRelease(true), () -> BuildLayout.of(dir, declared)
+                        .mainJar()))
+                .isEqualTo(dir.resolve("target/widget-1.2.3.jar"));
+    }
+
     @Test
     void a_library_s_artifacts_live_at_the_target_root(@TempDir Path dir) {
         BuildLayout layout = BuildLayout.of(dir, project("widget", "1.2.3"));
 
         assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target"));
-        assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/widget-1.2.3.jar"));
-        assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/widget-1.2.3-all.jar"));
-        assertThat(layout.minifiedJar()).isEqualTo(dir.resolve("target/widget-1.2.3-min.jar"));
-        assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/widget-1.2.3-sources.jar"));
-        assertThat(layout.javadocJar()).isEqualTo(dir.resolve("target/widget-1.2.3-javadoc.jar"));
+        assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT.jar"));
+        assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT-all.jar"));
+        assertThat(layout.minifiedJar()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT-min.jar"));
+        assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT-sources.jar"));
+        assertThat(layout.javadocJar()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT-javadoc.jar"));
         assertThat(layout.nativeBinary())
                 .isEqualTo(dir.resolve("target").resolve(BuildLayout.nativeExecutableFileName("widget")));
         assertThat(layout.nativeLibrary()).isEqualTo(dir.resolve("target/libwidget"));
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/widget.oci.tar"));
         assertThat(layout.sbomDir()).isEqualTo(dir.resolve("target/sbom"));
-        assertThat(layout.provenanceDir()).isEqualTo(dir.resolve("target/widget-1.2.3-provenance"));
+        assertThat(layout.provenanceDir()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT-provenance"));
     }
 
     @Test
@@ -134,7 +150,7 @@ class BuildLayoutTest {
         assertThat(layout.classesDir())
                 .isEqualTo(module.toAbsolutePath().normalize().resolve("target/classes"));
         assertThat(layout.mainJar())
-                .isEqualTo(module.toAbsolutePath().normalize().resolve("target/jk-core-0.7.0.jar"));
+                .isEqualTo(module.toAbsolutePath().normalize().resolve("target/jk-core-0.7.0-SNAPSHOT.jar"));
         assertThat(BuildLayout.moduleTargetDir(module))
                 .isEqualTo(module.toAbsolutePath().normalize().resolve("target"));
     }
@@ -162,7 +178,7 @@ class BuildLayoutTest {
 
         assertThat(layout.workspaceRoot()).isEqualTo(workspace.toAbsolutePath().normalize());
         assertThat(layout.moduleRoot()).isEqualTo(module);
-        assertThat(layout.mainJar()).isEqualTo(module.resolve("target/core-1.0.0.jar"));
+        assertThat(layout.mainJar()).isEqualTo(module.resolve("target/core-1.0.0-SNAPSHOT.jar"));
         assertThat(layout.classesDir()).isEqualTo(module.resolve("target/classes"));
     }
 
@@ -171,7 +187,7 @@ class BuildLayoutTest {
         BuildLayout layout = BuildLayout.of(workspace, workspaceRootProject("ws-root", "1.0.0"));
         assertThat(layout.workspaceRoot()).isEqualTo(workspace);
         assertThat(layout.moduleRoot()).isEqualTo(workspace);
-        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/ws-root-1.0.0.jar"));
+        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/ws-root-1.0.0-SNAPSHOT.jar"));
     }
 
     private static JkBuild workspaceRootProject(String artifact, String version) {
@@ -203,7 +219,7 @@ class BuildLayoutTest {
         assertThat(layout.pluginWorker()).isTrue();
         assertThat(layout.packagedAtRoot()).isTrue();
         assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target"));
-        assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/jk-x-1.0.0.jar"));
+        assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/jk-x-1.0.0-SNAPSHOT.jar"));
     }
 
     @Test

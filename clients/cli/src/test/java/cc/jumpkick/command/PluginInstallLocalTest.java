@@ -100,9 +100,9 @@ class PluginInstallLocalTest {
      */
     private static void assertInstalled(Path dir, Path worker) {
         Path jar = JkStores.resolve("repos")
-                .resolve("jk-local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
+                .resolve("jk-local/cc/jumpkick/jk-test-runner/0.12.0-SNAPSHOT/jk-test-runner-0.12.0-SNAPSHOT.jar");
         assertThat(jar).isRegularFile();
-        assertThat(jar.resolveSibling("jk-test-runner-0.12.0.pom")).isRegularFile();
+        assertThat(jar.resolveSibling("jk-test-runner-0.12.0-SNAPSHOT.pom")).isRegularFile();
         assertThat(dir.resolve("m2"))
                 .as("an install to jk-local must leave the Maven local repo alone")
                 .doesNotExist();

@@ -40,7 +40,7 @@ class GroovyCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Path jar = tempDir.resolve("target/widget-0.1.0.jar");
+        Path jar = tempDir.resolve("target/widget-0.1.0-SNAPSHOT.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             assertThat(jf.getJarEntry("com/example/Calc.class")).isNotNull();
@@ -162,7 +162,8 @@ class GroovyCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf = new JarFile(tempDir.resolve("target/mixed-0.1.0.jar").toFile())) {
+        try (JarFile jf =
+                new JarFile(tempDir.resolve("target/mixed-0.1.0-SNAPSHOT.jar").toFile())) {
             assertThat(jf.getJarEntry("com/example/Util.class")).isNotNull();
             assertThat(jf.getJarEntry("com/example/Greeter.class")).isNotNull();
             assertThat(jf.getJarEntry("com/example/App.class")).isNotNull();
@@ -226,7 +227,7 @@ class GroovyCompilationTest {
         assertThat(exit).isEqualTo(0);
 
         // The boot-jar packager replaces the main artifact ([application] → target/, no lib/).
-        Path jar = tempDir.resolve("target/bootapp-0.1.0.jar");
+        Path jar = tempDir.resolve("target/bootapp-0.1.0-SNAPSHOT.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             var attrs = jf.getManifest().getMainAttributes();

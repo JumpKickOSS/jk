@@ -118,7 +118,7 @@ class IncrementalCycleTest {
      * distinctive name makes a substring scan an honest test without a bytecode parser.
      */
     private static boolean appCallsBeta(Path dir) throws IOException {
-        Path jar = dir.resolve("app/target/app-1.0.0.jar");
+        Path jar = dir.resolve("app/target/app-1.0.0-SNAPSHOT.jar");
         assertThat(jar).as("app's packaged jar").isRegularFile();
         try (JarFile jf = new JarFile(jar.toFile())) {
             var entry = jf.getJarEntry("ex/App.class");

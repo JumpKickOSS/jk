@@ -50,7 +50,7 @@ class ExecPlansProductBinTest {
         assertThat(plan.launcherScript())
                 .contains("cc.jumpkick.cli.Jk")
                 .contains("-cp")
-                .contains("jk-cli-0.1.0.jar");
+                .contains("jk-cli-0.1.0-SNAPSHOT.jar");
     }
 
     @Test
@@ -123,7 +123,7 @@ class ExecPlansProductBinTest {
 
         assertThat(plan.error()).isNull();
         assertThat(plan.launcherScript())
-                .contains("jk-cli-0.1.0.jar")
+                .contains("jk-cli-0.1.0-SNAPSHOT.jar")
                 .contains(cli.toString())
                 .contains(leaf.toString())
                 .doesNotContain("noise-9.0.jar");
@@ -200,10 +200,10 @@ class ExecPlansProductBinTest {
                 version = "0.1.0"
                 java = 25
                 """);
-        Path builtCore = root.resolve("core/target/core-0.1.0.jar");
+        Path builtCore = root.resolve("core/target/core-0.1.0-SNAPSHOT.jar");
         Files.createDirectories(builtCore.getParent());
         Files.writeString(builtCore, "core built");
-        Path unshelvedOnly = root.resolve("cli/target/jk-cli-0.1.0.jar");
+        Path unshelvedOnly = root.resolve("cli/target/jk-cli-0.1.0-SNAPSHOT.jar");
         Files.createDirectories(unshelvedOnly.getParent());
         Files.writeString(unshelvedOnly, "cli built");
         LockfileWriter.write(
@@ -217,7 +217,7 @@ class ExecPlansProductBinTest {
                 .as("until the shelf has the sibling, its target/ jar is the entry")
                 .contains(builtCore.toAbsolutePath().normalize().toString());
 
-        Path shelvedCore = putJar(store, "jk-local", "cc/jumpkick/core/0.1.0/core-0.1.0.jar");
+        Path shelvedCore = putJar(store, "jk-local", "cc/jumpkick/core/0.1.0-SNAPSHOT/core-0.1.0-SNAPSHOT.jar");
         ExecPlan after = ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
         assertThat(after.launcherScript())
                 .contains(shelvedCore.toString())

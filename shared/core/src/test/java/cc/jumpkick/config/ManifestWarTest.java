@@ -36,8 +36,8 @@ class ManifestWarTest {
         BuildBlock.War war = Objects.requireNonNull(build.build().war());
         assertThat(war).isEqualTo(new BuildBlock.War(null, "src/main/webapp"));
         BuildLayout layout = BuildLayout.of(tmp, build);
-        assertThat(layout.warFile(war)).isEqualTo(tmp.resolve("target/web-1.0.war"));
-        assertThat(layout.explodedWarDir(war)).isEqualTo(tmp.resolve("target/web-1.0"));
+        assertThat(layout.warFile(war)).isEqualTo(tmp.resolve("target/web-1.0-SNAPSHOT.war"));
+        assertThat(layout.explodedWarDir(war)).isEqualTo(tmp.resolve("target/web-1.0-SNAPSHOT"));
     }
 
     @Test

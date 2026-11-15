@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -119,7 +120,9 @@ public final class ProjectInfos {
     private static String key(
             Path dir, @Nullable String modules, @Nullable String affectedSince, boolean affectedWip, boolean counts) {
         return WorkingDirectory.resolve(dir) + "\0" + (modules == null ? "" : modules) + "\0"
-                + (affectedSince == null ? "" : affectedSince) + "\0" + affectedWip + "\0" + counts;
+                + (affectedSince == null ? "" : affectedSince) + "\0" + affectedWip + "\0" + counts + "\0"
+                // The versions a summary reports are a snapshot's or a release's.
+                + SnapshotQualifier.active();
     }
 
     /** The coordinate the engine knows {@code dir} by, else its directory name — the build's display target. */

@@ -62,12 +62,13 @@ class ImageRegistryE2eTest {
         Path tarball = ws.resolve("out/app.tar");
         assertThat(image(ws, "app", "--tarball", tarball.toString())).isZero();
         OciImages.Image built = OciImages.fromTarball(tarball);
-        assertThat(built.files()).anyMatch(f -> f.endsWith("app-1.0.0.jar") || f.contains("example/Main.class"));
+        assertThat(built.files())
+                .anyMatch(f -> f.endsWith("app-1.0.0-SNAPSHOT.jar") || f.contains("example/Main.class"));
         assertThat(built.config()).contains("java").contains("\"amd64\"");
 
         assertThat(image(ws, "app", "--registry", registry.hostPort())).isZero();
-        assertThat(registry.holdsManifest("acme/app", "1.0.0")).isTrue();
-        OciImages.Image pushed = OciImages.fromRegistry(registry, "acme/app", "1.0.0");
+        assertThat(registry.holdsManifest("acme/app", "1.0.0-SNAPSHOT")).isTrue();
+        OciImages.Image pushed = OciImages.fromRegistry(registry, "acme/app", "1.0.0-SNAPSHOT");
         assertThat(pushed.files()).containsExactlyInAnyOrderElementsOf(built.files());
     }
 
@@ -101,8 +102,9 @@ class ImageRegistryE2eTest {
         assertThat(built.config()).contains("server.js").contains("PORT=3000").contains("65532");
 
         assertThat(image(ws, "web", "--registry", registry.hostPort())).isZero();
-        assertThat(registry.holdsManifest("acme/web", "1.0.0")).isTrue();
-        assertThat(OciImages.fromRegistry(registry, "acme/web", "1.0.0").files())
+        assertThat(registry.holdsManifest("acme/web", "1.0.0-SNAPSHOT")).isTrue();
+        assertThat(OciImages.fromRegistry(registry, "acme/web", "1.0.0-SNAPSHOT")
+                        .files())
                 .contains("app/server.js");
     }
 

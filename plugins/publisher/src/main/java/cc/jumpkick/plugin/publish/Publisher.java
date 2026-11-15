@@ -105,6 +105,8 @@ public final class Publisher implements Plugin, PublishExtension {
         // uploads. The value comes off the spec, never off this process's environment: a worker
         // inherits the engine daemon's env, not the job's.
         SessionContext.installConfig(JkConfig.empty().withOffline(spec.offline()));
+        // A publish ships the declared version: the manifest this worker parses is read as a release.
+        SessionContext.install(SessionContext.current().withRelease(true));
 
         try {
             PublishResult result = publish(new SpecPublishContext(spec, out));

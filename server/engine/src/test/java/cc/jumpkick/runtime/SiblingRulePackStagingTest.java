@@ -106,7 +106,7 @@ class SiblingRulePackStagingTest {
         Map<String, String> env = Map.of(TestEnv.JK_HOME, home.toString());
         Path packDir = root.resolve("packs/quarkus");
 
-        SessionContext.where(Session.defaults().withSnapshot(true), () -> {
+        SessionContext.where(Session.defaults(), () -> {
             Path packJar = BuildLayout.of(packDir, JkBuildParser.parse(packDir.resolve("jk.toml")))
                     .mainJar();
             Files.createDirectories(packJar.getParent());

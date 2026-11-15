@@ -6,6 +6,7 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.ModuleEnvKeys;
@@ -416,12 +417,12 @@ public final class PreflightMemo {
     }
 
     /**
-     * The header's spelling of the session's snapshot flag: {@code 1} under {@code jk snapshot},
-     * else {@code 0}. A snapshot's modules package to -SNAPSHOT jars, so a clean claim one makes
-     * says nothing of the other (JK-MAG71).
+     * The header's spelling of whether the session is a snapshot: {@code 0} under {@code jk release}
+     * and {@code jk publish}, else {@code 1}. A release packages plain-version jars, so a clean claim
+     * a snapshot makes says nothing of a release, nor the reverse.
      */
     static String snapshotHeader() {
-        return SessionContext.current().snapshot() ? "1" : "0";
+        return SnapshotQualifier.active() ? "1" : "0";
     }
 
     /** The header's spelling of a request profile: its name, or empty for the default build. */
@@ -976,12 +977,11 @@ public final class PreflightMemo {
             miss("profile", "want", wantProfile, "got", gotProfile);
             return true;
         }
-        // A snapshot's modules are versioned -SNAPSHOT and package to other jars than the build's:
-        // a tree the build certified clean says nothing of them. Trusted, the regular build's memo
-        // skipped every step of `jk snapshot` and installed the -SNAPSHOT jars left on disk by the
-        // snapshot before it (JK-MAG71). A memo with no snapshot line is a regular build's.
+        // A release's modules carry the declared version and package to other jars than a
+        // snapshot's: a tree one certified clean says nothing of the other, and trusted it would
+        // ship or install the jars the other left on disk.
         String wantSnapshot = snapshotHeader();
-        String gotSnapshot = memo.header().getOrDefault("snapshot", "0");
+        String gotSnapshot = memo.got("snapshot");
         if (!wantSnapshot.equals(gotSnapshot)) {
             miss("snapshot", "want", wantSnapshot, "got", gotSnapshot);
             return true;

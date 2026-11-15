@@ -86,7 +86,7 @@ class SnapshotCommandTest {
     }
 
     @Test
-    void a_snapshot_is_installed_replaced_and_kept_beside_the_release(@TempDir Path tmp) throws Exception {
+    void a_snapshot_is_installed_and_replaced_by_snapshot_and_install_alike(@TempDir Path tmp) throws Exception {
         application(tmp, "snap-lib", "");
         Path m2 = tmp.resolve("m2");
         Path snapshots = m2.resolve("repository/com/example/snap-lib/1.0.0-SNAPSHOT");
@@ -106,9 +106,9 @@ class SnapshotCommandTest {
         assertThat(Files.readAllBytes(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar")))
                 .isNotEqualTo(first);
 
-        // The release is installed once, beside the snapshot, from the same unedited manifest.
+        // jk install builds what jk snapshot builds: the same snapshot slot, never the release.
         assertThat(jk(tmp, m2, "install")).isEqualTo(0);
-        assertThat(Files.readString(release.resolve("snap-lib-1.0.0.pom"))).contains("<version>1.0.0</version>");
+        assertThat(release).as("an install is not a release").doesNotExist();
         assertThat(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar")).exists();
         assertThat(Files.readString(tmp.resolve("jk.toml"))).isEqualTo(declared);
         assertThat(tmp.resolve("jk-lock.toml"))
@@ -116,14 +116,6 @@ class SnapshotCommandTest {
                 .satisfies(lock -> {
                     if (Files.exists(lock)) assertThat(Files.readString(lock)).doesNotContain("1.0.0-SNAPSHOT");
                 });
-
-        // The release is installed, so its snapshot would sort below it and never be chosen.
-        assertThat(jk(tmp, m2, "snapshot")).isNotEqualTo(0);
-
-        // Editing the source and installing the release again is refused, with the way out.
-        application(tmp, "snap-lib", "public static int three() { return 3; }");
-        assertThat(jk(tmp, m2, "install")).isNotEqualTo(0);
-        assertThat(Files.readString(release.resolve("snap-lib-1.0.0.pom"))).contains("<version>1.0.0</version>");
     }
 
     @Test

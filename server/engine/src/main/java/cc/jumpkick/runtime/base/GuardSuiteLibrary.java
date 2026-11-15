@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Hashing;
@@ -63,12 +64,23 @@ public final class GuardSuiteLibrary {
                     .relativize(own.dir().toAbsolutePath().normalize())
                     .toString()
                     .replace(File.separatorChar, '/');
-            return Lockfile.PluginEntry.workspace(
-                    COORDINATE, own.manifest().project().version(), rel);
+            return Lockfile.PluginEntry.workspace(COORDINATE, declaredVersion(root, own), rel);
         }
         Path jar = stored(cas);
         if (jar == null) return null;
         return new Lockfile.PluginEntry(COORDINATE, JkVersion.VERSION, "sha256:" + Hashing.sha256Hex(jar));
+    }
+
+    /** The library module's version as declared, which the lock records whichever verb locks. */
+    private static String declaredVersion(Path root, Module own) throws IOException {
+        try {
+            Module declared = SnapshotQualifier.asDeclared(() -> workspaceModule(root));
+            return (declared != null ? declared : own).manifest().project().version();
+        } catch (IOException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 
     /** The library for a suite under {@code root}, or a message saying what to do when there is none. */

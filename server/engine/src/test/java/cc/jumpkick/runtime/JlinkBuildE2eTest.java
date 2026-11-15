@@ -57,7 +57,7 @@ class JlinkBuildE2eTest {
                 .as("jdeps found java.logging in the sibling jar")
                 .contains("java.logging");
         assertThat(image.resolve("app/app.jar")).isRegularFile();
-        assertThat(image.resolve("app/libs/lib-1.0.0.jar")).isRegularFile();
+        assertThat(image.resolve("app/libs/lib-1.0.0-SNAPSHOT.jar")).isRegularFile();
         assertThat(image.resolve("app/app.aot")).isRegularFile();
         assertThat(first.of("app", TaskNames.PACKAGE_JLINK))
                 .startsWith("app-jri: ")

@@ -81,7 +81,7 @@ class NodePackagingE2eTest {
         lock(ws);
 
         assertThat(build(ws)).isZero();
-        Path jar = ws.resolve("web/target/web-1.0.0.jar");
+        Path jar = ws.resolve("web/target/web-1.0.0-SNAPSHOT.jar");
         assertThat(entries(jar)).contains("static/index.html");
 
         Path seen = ws.resolve("app/target/seen.txt");
@@ -128,8 +128,8 @@ class NodePackagingE2eTest {
         lock(ws);
 
         assertThat(build(ws)).isZero();
-        assertThat(entries(ws.resolve("web/target/web-1.0.0.jar"))).contains("public/index.html");
-        assertThat(ws.resolve("site/target/site-1.0.0.jar"))
+        assertThat(entries(ws.resolve("web/target/web-1.0.0-SNAPSHOT.jar"))).contains("public/index.html");
+        assertThat(ws.resolve("site/target/site-1.0.0-SNAPSHOT.jar"))
                 .as("nothing depends on site and it names no classpath root")
                 .doesNotExist();
         assertThat(ws.resolve("site/dist/index.html")).exists();
@@ -138,7 +138,7 @@ class NodePackagingE2eTest {
         assertThat(explain)
                 .as("explain forecasts node-package behind the build it waits on:\n%s", explain)
                 .contains("node-package")
-                .contains("package web-1.0.0.jar after node-build");
+                .contains("package web-1.0.0-SNAPSHOT.jar after node-build");
     }
 
     @Test
@@ -160,12 +160,12 @@ class NodePackagingE2eTest {
         lock(ws);
 
         assertThat(build(ws)).isZero();
-        Path exploded = ws.resolve("shop/target/shop-1.0.0");
+        Path exploded = ws.resolve("shop/target/shop-1.0.0-SNAPSHOT");
         assertThat(exploded.resolve("ui/index.html")).hasContent("<h1>web</h1>");
-        assertThat(exploded.resolve("WEB-INF/lib/web-1.0.0.jar"))
+        assertThat(exploded.resolve("WEB-INF/lib/web-1.0.0-SNAPSHOT.jar"))
                 .as("web content, not a library")
                 .doesNotExist();
-        assertThat(entries(ws.resolve("shop/target/shop-1.0.0.war")))
+        assertThat(entries(ws.resolve("shop/target/shop-1.0.0-SNAPSHOT.war")))
                 .contains("ui/index.html", "WEB-INF/classes/shop/Home.class");
     }
 
