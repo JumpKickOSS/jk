@@ -123,6 +123,9 @@ jobs:
       - name: Example lock-drift fixtures
         run: bash scripts/test-examples-lock-drift.sh
 
+      - name: Example regenerate-and-diff fixtures
+        run: bash scripts/test-examples-regen-check.sh
+
       - name: Template catalog sync fixtures
         run: bash scripts/test-templates-sync.sh
 

@@ -416,6 +416,14 @@ kept in its log, and the second build must name no module to build. A ported che
 needs its `setup.sh` and is left out. A failed row names its log. Run it again once a fix lands; the examples repository
 takes its own fix before the release, never after.
 
+**Examples as scaffolds** (`scripts/examples-regen-check.sh <jk-examples checkout>`). Each example
+is regenerated as a user would start it today, `jk new` with the template it was started from or
+`jk import` of the build a converted one (`05-recipes/migrate/*`) carries, and its manifest diffed
+against the committed one: a key the scaffold writes and the example lacks, or the reverse, or a
+different value, is a finding unless the example's README names the key or its table. Identity,
+the example's own dependencies and its main class are never compared; workspace roots, front ends
+alone, ports and benchmarks are reported as skipped. The report is `target/examples-regen-check/report.md`.
+
 **Lanes** (`scripts/release-lane.sh`). One per platform: linux-x86_64 and windows-x86_64 on
 machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
 same Mac (`container machine run`), one heavy lane per machine at a time. Each clones the tag into
