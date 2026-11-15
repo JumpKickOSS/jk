@@ -8,6 +8,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -318,7 +319,7 @@ public final class SuiteReads {
         Set<String> out = new TreeSet<>();
         for (String c : observed.commands()) {
             try {
-                Path program = Path.of(executable(c));
+                Path program = Path.of(c);
                 if (program.isAbsolute() && under(program.normalize(), roots)) continue;
                 if (program.isAbsolute()
                         && workspace != null
@@ -465,8 +466,7 @@ public final class SuiteReads {
             if (parent != null && keysListing(parent, root, outputs)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
-        for (String c : d.commands())
-            out.add("proc:" + executable(c) + "=" + programIdentity(executable(c), moduleDir));
+        for (String c : d.commands()) out.add("proc:" + c + "=" + programIdentity(c, moduleDir));
         if (d.network()) out.add("network");
         return out;
     }
@@ -608,10 +608,31 @@ public final class SuiteReads {
         return ToolIdentity.of(program, BuildEnv.machine().get("PATH"), moduleDir);
     }
 
-    /** The program a recorded command line started: its first word. */
-    private static String executable(String command) {
+    /**
+     * The program a recorded command line started. JFR records the command as its words joined by
+     * spaces, so a program whose path holds a space ({@code C:/Program Files/...}) cannot be told
+     * from its arguments by the first word: the program is the shortest run of words that names an
+     * absolute file that is there (on Windows also with {@code .exe} added), else the first word.
+     * What this answers is a program, kept and read back whole; nothing downstream splits it again.
+     */
+    static String executable(String command) {
         String c = command.strip();
         int space = c.indexOf(' ');
-        return space < 0 ? c : c.substring(0, space);
+        if (space < 0) return c;
+        for (int at = space; at >= 0; at = c.indexOf(' ', at + 1)) {
+            String words = c.substring(0, at);
+            if (namesProgram(words)) return words;
+        }
+        return namesProgram(c) ? c : c.substring(0, space);
+    }
+
+    private static boolean namesProgram(String words) {
+        try {
+            Path p = Path.of(words);
+            if (!p.isAbsolute()) return false;
+            return Files.isRegularFile(p) || (Os.isWindows() && Files.isRegularFile(Path.of(words + ".exe")));
+        } catch (InvalidPathException notAPath) {
+            return false;
+        }
     }
 }

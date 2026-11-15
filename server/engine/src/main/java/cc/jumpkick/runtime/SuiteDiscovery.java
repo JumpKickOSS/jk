@@ -264,9 +264,9 @@ final class SuiteDiscovery {
             Set<Path> files, Set<String> commands, Set<Path> proven, Path workspace, long startedMillis) {
         Set<Path> paths = new TreeSet<>(files);
         for (String c : commands) {
-            String program = c.strip().split(" ", 2)[0];
             try {
-                Path p = Path.of(program);
+                // A recorded command is its program alone (SuiteReads.executable), spaces and all.
+                Path p = Path.of(c);
                 if (p.isAbsolute()) paths.add(p);
             } catch (InvalidPathException bareName) {
                 // Keyed by what the PATH resolves it to.

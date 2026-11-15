@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -16,6 +18,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -26,6 +29,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,6 +38,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -42,6 +47,7 @@ import org.junit.jupiter.api.io.TempDir;
  * the file runs the suite again; once the suite stops reading the file, it keys it no more.
  */
 @Tag("integration")
+@ExtendWith(SysProps.class)
 class SuiteDiscoveryE2eTest {
 
     @Test
@@ -128,6 +134,89 @@ class SuiteDiscoveryE2eTest {
         assertThat(unread.status(TaskNames.RUN_TESTS))
                 .as("a file the suite no longer reads keys nothing")
                 .isIn(null, TaskStatus.SKIPPED);
+    }
+
+    /**
+     * Spaces in every path the build and the suite touch, on every OS: the project, the cache, the
+     * jk home the suite's sandbox home and temp root sit under, a file the suite reads and a program
+     * it starts with an argument that holds a space. The run keys the program whole, so the next
+     * build replays the suite, and an edit to the program runs it again.
+     */
+    @Test
+    void a_suite_under_paths_with_spaces_replays_and_keys_the_program_it_starts(@TempDir Path tmp) throws Exception {
+        Path spaced = Files.createDirectories(tmp.resolve("with space"));
+        String store = JkDirs.store().toString();
+        System.setProperty("jk.env.JK_HOME", spaced.resolve("jk home").toString());
+        System.setProperty("jk.env.JK_STORE_DIR", store);
+        Path cache = Files.createDirectories(spaced.resolve("jk cache"));
+        Path ws = Files.createDirectories(spaced.resolve("my ws"));
+        Files.writeString(Files.createDirectories(ws.resolve("data dir")).resolve("fixture.txt"), "one");
+        Path tools = Files.createDirectories(ws.resolve("tools dir"));
+        Path tool = Os.isWindows()
+                ? Files.writeString(tools.resolve("tool.cmd"), "@exit /b 0\r\n")
+                : Files.writeString(tools.resolve("tool"), "#!/bin/sh\nexit 0\n");
+        if (!Os.isWindows()) Files.setPosixFilePermissions(tool, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Path m = Files.createDirectories(ws.resolve("my module"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        Files.writeString(
+                Files.createDirectories(m.resolve("src/test/java/demo")).resolve("SpacedTest.java"),
+                """
+                package demo;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import java.nio.file.Files;
+                import java.nio.file.Path;
+                import org.junit.jupiter.api.Test;
+
+                class SpacedTest {
+                    @Test
+                    void readsAndStarts() throws Exception {
+                        assertEquals("one", Files.readString(Path.of("../data dir/fixture.txt")));
+                        Path tool = Path.of("../tools dir").toRealPath().resolve(TOOL);
+                        Process p = new ProcessBuilder(tool.toString(), "an arg", "../data dir")
+                                .redirectErrorStream(true)
+                                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                                .start();
+                        assertEquals(0, p.waitFor());
+                        Path own = Files.createTempFile("own ", ".txt");
+                        Files.writeString(own, "x");
+                        assertEquals("x", Files.readString(own));
+                    }
+                }
+                """.replace("TOOL", "\"" + tool.getFileName() + "\""));
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+
+        Steps first = build(m, cache);
+        assertThat(first.status(TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(first.warnings)
+                .as("nothing it read or started moved while it ran")
+                .isEmpty();
+
+        Steps second = build(m, cache);
+        assertThat(second.status(TaskNames.RUN_TESTS))
+                .as("the program and the file it read held still: the suite replays")
+                .isIn(null, TaskStatus.SKIPPED);
+
+        Files.writeString(tool, Files.readString(tool) + (Os.isWindows() ? "rem edited\r\n" : "# edited\n"));
+        Steps edited = build(m, cache);
+        assertThat(edited.status(TaskNames.RUN_TESTS))
+                .as("the program it starts is keyed by its whole path's content")
+                .isEqualTo(TaskStatus.SUCCESS);
     }
 
     @Test

@@ -37,11 +37,24 @@ class SuiteDiscoveryTest {
         Path tool = Files.writeString(tmp.resolve("tool"), "#!/bin/sh\n");
         long earlier = Clock.SYSTEM.millis() - 60_000;
 
-        assertThat(SuiteDiscovery.settledBefore(Set.of(), Set.of(tool + " --flag"), Set.of(), tmp, earlier))
+        assertThat(SuiteDiscovery.settledBefore(Set.of(), Set.of(tool.toString()), Set.of(), tmp, earlier))
                 .isFalse();
         assertThat(SuiteDiscovery.settledBefore(Set.of(), Set.of("git status"), Set.of(), tmp, earlier))
                 .as("a bare name is keyed by what the PATH resolves it to")
                 .isTrue();
+    }
+
+    @Test
+    void a_program_whose_path_holds_a_space_that_held_still_moved_nothing(@TempDir Path tmp) throws Exception {
+        Path tool = Files.writeString(
+                Files.createDirectories(tmp.resolve("Program Files").resolve("bin"))
+                        .resolve("tool"),
+                "#!/bin/sh\n");
+        long started = startAfterWrites();
+
+        assertThat(SuiteDiscovery.moved(Set.of(), Set.of(tool.toString()), Set.of(), tmp, started))
+                .as("the recorded program is read whole, not cut at its space")
+                .isNull();
     }
 
     @Test

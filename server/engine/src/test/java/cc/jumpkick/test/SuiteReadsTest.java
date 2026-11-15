@@ -3,7 +3,10 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.task.FileHashMemo;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -11,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -56,6 +60,63 @@ class SuiteReadsTest {
         assertThat(undeclared).contains(data.toAbsolutePath().normalize());
         assertThat(undeclared)
                 .doesNotContain(covered.resolve("in.txt").toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_recorded_jvm_names_a_program_whose_path_holds_a_space_whole(@TempDir Path tmp) throws Exception {
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        Path bin = Files.createDirectories(tmp.resolve("Program Files").resolve("bin"));
+        // A program that exits 0, started by its path: a batch file on Windows, a script elsewhere.
+        Path tool = Os.isWindows()
+                ? Files.writeString(bin.resolve("tool.cmd"), "@exit /b 0\r\n")
+                : Files.writeString(bin.resolve("tool"), "#!/bin/sh\nexit 0\n");
+        if (!Os.isWindows()) Files.setPosixFilePermissions(tool, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Path probe = Files.writeString(tmp.resolve("Probe.java"), """
+                class Probe {
+                    public static void main(String[] a) throws Exception {
+                        Process p = new ProcessBuilder(a[0], "--flag", a[1])
+                                .redirectErrorStream(true)
+                                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                                .start();
+                        System.exit(p.waitFor());
+                    }
+                }
+                """);
+        Path recordings = tmp.resolve("rec");
+        String flag = SuiteReads.prepare(recordings);
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(
+                                java.toString(),
+                                flag,
+                                probe.toString(),
+                                tool.toString(),
+                                tmp.resolve("an arg").toString())
+                        .directory(tmp.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofMinutes(2));
+        assertThat(run.exit()).as(run.output()).isZero();
+
+        assertThat(SuiteReads.collect(recordings, tmp).commands())
+                .as("JFR joins the words with spaces; the program is the words that name its file")
+                .contains(tool.toString());
+    }
+
+    @Test
+    void a_program_whose_path_holds_a_space_is_kept_and_keyed_whole(@TempDir Path tmp) throws Exception {
+        Path tool = Files.writeString(
+                Files.createDirectories(tmp.resolve("Program Files").resolve("bin"))
+                        .resolve("tool"),
+                "#!/bin/sh\n");
+        assertThat(SuiteReads.executable(tool + " --flag " + tmp.resolve("an arg")))
+                .isEqualTo(tool.toString());
+        assertThat(SuiteReads.executable("git status --short")).isEqualTo("git");
+
+        Path module = Files.createDirectories(tmp.resolve("module"));
+        SuiteReads.Discovered d = SuiteReads.Discovered.NONE.with(Set.of(), Set.of(tool.toString()), Set.of());
+        SuiteReads.save(module, TestSelection.DEFAULT, d);
+        assertThat(SuiteReads.load(module, TestSelection.DEFAULT).commands()).containsExactly(tool.toString());
+        assertThat(SuiteReads.tokens(module, TestSelection.DEFAULT, tmp))
+                .containsExactly("proc:" + tool + "=" + FileHashMemo.contentHash(tool));
     }
 
     @Test
