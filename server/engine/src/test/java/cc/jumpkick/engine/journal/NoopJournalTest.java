@@ -222,7 +222,7 @@ class NoopJournalTest {
 
         String verdict = run(writer, sessions, journal, project, 23, 3, "SKIPPED", JobOutcome.SUCCEEDED);
 
-        assertThat(verdict).startsWith("OK build").endsWith(" · up to date\n");
+        assertThat(verdict).startsWith("OK build").contains(" · up to date · ").endsWith("\n");
         assertThat(journal.runDir("g:a", project.toString(), 1)).isPresent();
         assertThat(journal.runDir("g:a", project.toString(), 3)).isEmpty();
         assertThat(Files.getLastModifiedTime(report)).isEqualTo(written);
@@ -262,7 +262,7 @@ class NoopJournalTest {
         a.stamp(JobOutcome.SUCCEEDED);
 
         assertThat(writer.write(52, false, 90, null))
-                .as("a restore rewrote target/classes: the tree was not up to date")
+                .as("a restore rewrote target/classes: the run is journaled, not folded into the last one")
                 .isNull();
         assertThat(journal.runDir("g:a", project.toString(), 2)).isPresent();
     }

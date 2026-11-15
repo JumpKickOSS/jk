@@ -35,6 +35,20 @@ public record WorkspaceResult(
         this(success, exitCode, modules, errors, false);
     }
 
+    /**
+     * Whether the run was up to date: it succeeded and no module did productive work ({@link
+     * ModuleOutcome#didWork}), a run that entered no module included. The one test every output
+     * mode reads to say so: the settle line, {@code workspace-finish}'s {@code upToDate} and the
+     * agent report.
+     */
+    public boolean upToDate() {
+        if (!success || cancelled || !errors.isEmpty()) return false;
+        for (ModuleOutcome m : modules) {
+            if (!m.success() || m.didWork()) return false;
+        }
+        return true;
+    }
+
     /** This result with what the sync settled. */
     public WorkspaceResult withSync(SyncCounts counts) {
         return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts);

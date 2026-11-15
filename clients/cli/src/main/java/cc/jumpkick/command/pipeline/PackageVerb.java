@@ -105,9 +105,9 @@ final class PackageVerb implements BuildVerb {
     public WorkspaceRunView.Tails tails(BuildRun run, WorkspaceRunView view, long startNanos) {
         return new WorkspaceRunView.Tails(
                 (r, planned) -> run.standalone()
-                        ? BuildTails.projectTail(r.modules(), run.global().workingDir()) + " "
+                        ? BuildTails.projectTail(r, run.global().workingDir()) + " "
                                 + BuildTails.elapsedSince(startNanos)
-                        : BuildTails.successTail(r.modules(), planned, startNanos),
+                        : BuildTails.successTail(r, planned, startNanos),
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "build"), startNanos));
     }
 

@@ -110,7 +110,7 @@ class JkResultsAgentEnvTest {
                 "0.14.0",
                 tests,
                 List.of(),
-                List.of(),
+                List.of(JkResultsAgentTest.RAN_TESTS),
                 diags,
                 "cli",
                 null,

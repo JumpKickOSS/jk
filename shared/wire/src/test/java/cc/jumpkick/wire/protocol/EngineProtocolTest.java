@@ -413,7 +413,7 @@ class EngineProtocolTest {
     @Test
     void a_sync_runs_workspace_finish_carries_what_it_settled() {
         WorkspaceFinishEvent synced =
-                new WorkspaceFinishEvent(true, 0, List.of(), false, new WorkspaceResult.SyncCounts(7, 42));
+                new WorkspaceFinishEvent(true, 0, List.of(), false, new WorkspaceResult.SyncCounts(7, 42), false);
         assertThat(WorkspaceFinishEvent.decode(synced.encode())).isEqualTo(synced);
         WorkspaceFinishEvent build = new WorkspaceFinishEvent(true, 0, List.of(), false);
         assertThat(build.encode()).doesNotContain("\"sync\"");

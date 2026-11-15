@@ -10,6 +10,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -108,22 +109,20 @@ final class BuildTails {
      * <li>some productive work → {@code built K modules} (optionally {@code , checked M})
      * </ul>
      *
-     * @param modules outcomes from this run (may be empty on the fully-cached shortcut)
+     * @param result this run's result; its modules may be empty on the fully-cached shortcut
      * @param planned entered-module count from the execute plan (0 when fully cached)
      * @param start wall-clock start, {@link System#nanoTime}
      */
-    static String successTail(List<ModuleOutcome> modules, int planned, long start) {
-        if (planned == 0) {
+    static String successTail(WorkspaceResult result, int planned, long start) {
+        if (planned == 0 && result.upToDate()) {
             return upToDateTail("all modules", start);
         }
         int built = 0;
         int checked = 0;
-        if (modules != null) {
-            for (var m : modules) {
-                if (!m.success()) continue;
-                if (m.didWork()) built++;
-                else checked++;
-            }
+        for (var m : result.modules()) {
+            if (!m.success()) continue;
+            if (m.didWork()) built++;
+            else checked++;
         }
         // Older engines omit didWork (defaults true) — fall back to planned count as "built".
         if (built == 0 && checked == 0) {
@@ -178,8 +177,8 @@ final class BuildTails {
      * work (every one a cache hit), else {@code Build successful. Built <artifact>} naming the
      * headline output.
      */
-    static String projectTail(List<ModuleOutcome> modules, Path projectDir) {
-        if (modules.stream().noneMatch(ModuleOutcome::didWork)) return buildOk() + ". Build up to date";
+    static String projectTail(WorkspaceResult result, Path projectDir) {
+        if (result.upToDate()) return buildOk() + ". Build up to date";
         ProjectInfo info = ProjectInfos.orNull(projectDir);
         String art = info == null ? "" : builtArtifact(projectDir, info);
         return buildOk() + (art.isEmpty() ? ", project built" : art);

@@ -281,7 +281,10 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.workspaceFinish(
                         false, 2, SecretRedactor.of(List.of("s3cret")).redactAll(List.of("m1", "m2")), true))
                 .isEqualTo(
-                        "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":2,\"errors\":[\"m1\",\"m2\"],\"cancelled\":true}");
+                        "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":2,\"errors\":[\"m1\",\"m2\"],\"cancelled\":true,\"upToDate\":false}");
+        assertThat(ProtoEvents.workspaceFinish(true, 0, List.of(), false, null, true))
+                .isEqualTo(
+                        "{\"type\":\"workspace-finish\",\"success\":true,\"exitCode\":0,\"errors\":[],\"cancelled\":false,\"upToDate\":true}");
         assertThat(ProtoEvents.withCancelled(ProtoEvents.planFinish("a/b", true, "up-to-date", -1, 0, 0, 0), true))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":true,\"buildOutcome\":\"up-to-date\",\"cancelled\":true}");

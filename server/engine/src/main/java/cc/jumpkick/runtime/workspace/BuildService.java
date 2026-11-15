@@ -389,10 +389,18 @@ public final class BuildService {
      */
     public static boolean moduleDidWork(BuildPlanResult r) {
         for (BuildPlanResult.StepReport s : r.steps()) {
-            if (s.status() != TaskStatus.SUCCESS) continue;
-            if (isProductiveStep(s.name())) return true;
+            if (didWork(s.name(), s.status().name())) return true;
         }
         return false;
+    }
+
+    /**
+     * Whether step {@code name}, finished with {@code status} (a {@link TaskStatus} name), did
+     * work: a productive step that succeeded. The one test behind {@link #moduleDidWork} and a
+     * journal record's up-to-date verdict.
+     */
+    public static boolean didWork(String name, String status) {
+        return status != null && TaskStatus.SUCCESS.name().equalsIgnoreCase(status.strip()) && isProductiveStep(name);
     }
 
     /** Steps whose real work (not a no-op/cache hit) means the module was "built", not just checked. */

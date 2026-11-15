@@ -47,6 +47,14 @@ class BuildCacheTest {
         // even hashing source content for an action-key lookup.
         String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).contains("Build up to date");
+
+        // The plain run report and the jsonl terminal say the same fact in their own shapes.
+        String plain =
+                Capture.stdout(() -> run("build", "-a", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        assertThat(plain).containsPattern("OK build widget · up to date · \\S+");
+        String jsonl = Capture.stdout(
+                () -> run("build", "-O", "jsonl", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        assertThat(jsonl).containsPattern("\"type\":\"workspace-finish\"[^\\n]*\"upToDate\":true");
     }
 
     /**

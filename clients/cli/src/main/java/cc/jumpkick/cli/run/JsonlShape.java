@@ -514,14 +514,24 @@ public final class JsonlShape {
 
     /** As above, with why it failed: the reason a client has, in the result's {@code errors}. */
     public static String workspaceFinish(boolean success, long millis, int modules, List<String> errors) {
-        return console(
-                new WorkspaceFinishEvent(success, success ? 0 : 1, errors, false, null, millis, modules).encode());
+        return console(new WorkspaceFinishEvent(success, success ? 0 : 1, errors, false, null, millis, modules, false)
+                .encode());
     }
 
-    /** Workspace graph finished: the engine's result, with the run's wall time and module count. */
+    /**
+     * Workspace graph finished: the engine's result, with the run's wall time and module count, and
+     * whether it was up to date ({@link WorkspaceResult#upToDate}).
+     */
     public static String workspaceFinish(WorkspaceResult result, boolean success, long millis, int modules) {
         return console(new WorkspaceFinishEvent(
-                        success, result.exitCode(), result.errors(), result.cancelled(), result.sync(), millis, modules)
+                        success,
+                        result.exitCode(),
+                        result.errors(),
+                        result.cancelled(),
+                        result.sync(),
+                        millis,
+                        modules,
+                        success && result.upToDate())
                 .encode());
     }
 

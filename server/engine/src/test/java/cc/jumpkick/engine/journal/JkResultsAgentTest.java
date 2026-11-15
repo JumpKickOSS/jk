@@ -564,7 +564,7 @@ class JkResultsAgentTest {
         BuildRecord r = record("build", true, false, 400, null, base.diagnostics(), base.steps());
 
         assertThat(JkResultsAgent.render(r)).isEqualTo("""
-                        OK build rest-service · 400ms
+                        OK build rest-service · up to date · 400ms
                         W the `jk repo login nexus` secret is in the Secret Service, which did not give it up \
                         (the default keyring is locked); the repository is tried without it.
                         W a second note
@@ -776,6 +776,9 @@ class JkResultsAgentTest {
                 key);
     }
 
+    /** The step a run that ran its suite records; a record with test counts and no steps given ran it. */
+    static final BuildRecord.Task RAN_TESTS = new BuildRecord.Task("run-tests", "TEST", "SUCCESS", 400, 0);
+
     private static BuildRecord workspace(List<BuildRecord.Module> modules, List<BuildRecord.Diag> diags) {
         return new BuildRecord(
                 "id",
@@ -794,7 +797,7 @@ class JkResultsAgentTest {
                 "0.14.0",
                 new BuildRecord.Tests(1, 1, 0, 0),
                 modules,
-                List.of(),
+                List.of(RAN_TESTS),
                 diags,
                 "cli",
                 null,
@@ -844,7 +847,7 @@ class JkResultsAgentTest {
                 "0.14.0",
                 tests,
                 List.of(),
-                steps,
+                steps.isEmpty() && tests != null ? List.of(RAN_TESTS) : steps,
                 diags,
                 "cli",
                 null,

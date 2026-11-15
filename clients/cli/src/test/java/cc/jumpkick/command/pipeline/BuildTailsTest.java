@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -16,9 +17,13 @@ import org.junit.jupiter.api.io.TempDir;
 @ExtendWith(ForcedAnsi.class)
 class BuildTailsTest {
 
+    private static WorkspaceResult ok(List<ModuleOutcome> modules) {
+        return new WorkspaceResult(true, 0, modules, List.of());
+    }
+
     @Test
     void empty_plan_is_all_up_to_date() {
-        String t = BuildTails.successTail(List.of(), 0, System.nanoTime());
+        String t = BuildTails.successTail(ok(List.of()), 0, System.nanoTime());
         assertThat(t).contains("all modules up to date");
         assertThat(t).doesNotContain("for ");
         assertThat(t).doesNotContain("checked");
@@ -29,7 +34,7 @@ class BuildTailsTest {
         var modules = List.of(
                 new ModuleOutcome("a:b", Path.of("/a"), true, 0, 10, false),
                 new ModuleOutcome("a:c", Path.of("/c"), true, 0, 12, false));
-        String t = BuildTails.successTail(modules, 2, System.nanoTime());
+        String t = BuildTails.successTail(ok(modules), 2, System.nanoTime());
         assertThat(t).contains("checked");
         assertThat(t).contains("all up to date");
         assertThat(t).doesNotContain("for ");
@@ -39,7 +44,7 @@ class BuildTailsTest {
     @Test
     void all_built_modules() {
         var modules = List.of(new ModuleOutcome("a:b", Path.of("/a"), true, 0, 100, true));
-        String t = BuildTails.successTail(modules, 1, System.nanoTime());
+        String t = BuildTails.successTail(ok(modules), 1, System.nanoTime());
         assertThat(t).contains("for ");
         assertThat(t).contains("1");
         assertThat(t).doesNotContain("checked");
@@ -48,11 +53,11 @@ class BuildTailsTest {
     @Test
     void a_project_whose_steps_all_hit_is_up_to_date_not_built(@TempDir Path dir) {
         var checked = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, false));
-        assertThat(BuildTails.projectTail(checked, dir))
+        assertThat(BuildTails.projectTail(ok(checked), dir))
                 .contains("Build up to date")
                 .doesNotContain("Built");
         var built = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, true));
-        assertThat(BuildTails.projectTail(built, dir)).doesNotContain("up to date");
+        assertThat(BuildTails.projectTail(ok(built), dir)).doesNotContain("up to date");
     }
 
     @Test
@@ -60,7 +65,7 @@ class BuildTailsTest {
         var modules = List.of(
                 new ModuleOutcome("a:b", Path.of("/a"), true, 0, 100, true),
                 new ModuleOutcome("a:c", Path.of("/c"), true, 0, 10, false));
-        String t = TestAnsi.strip(BuildTails.successTail(modules, 2, System.nanoTime()));
+        String t = TestAnsi.strip(BuildTails.successTail(ok(modules), 2, System.nanoTime()));
         assertThat(t).contains("built 1 module");
         assertThat(t).contains("checked 1 module");
         assertThat(t).doesNotContain("all up to date");

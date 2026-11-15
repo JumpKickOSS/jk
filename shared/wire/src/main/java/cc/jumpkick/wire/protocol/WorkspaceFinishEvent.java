@@ -8,7 +8,8 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Workspace terminal; {@code cancelled} is additive so a client settles as cancelled rather than
+ * Workspace terminal; {@code upToDate} is {@link WorkspaceResult#upToDate}: the run succeeded and
+ * did no work. {@code cancelled} is additive so a client settles as cancelled rather than
  * crashed. The rows in {@code errors} are plain strings here: the mint is the {@link
  * ProtoEvents#workspaceFinish} factory, whose {@link cc.jumpkick.config.Redacted} parameter is what
  * makes forgetting to mask a compile error — nothing constructs this record from raw worker output
@@ -21,11 +22,12 @@ public record WorkspaceFinishEvent(
         boolean cancelled,
         WorkspaceResult.@Nullable SyncCounts sync,
         long millis,
-        int modules) {
+        int modules,
+        boolean upToDate) {
 
     /** No sync counts: every goal but {@code jk sync}. */
     public WorkspaceFinishEvent(boolean success, int exitCode, List<String> errors, boolean cancelled) {
-        this(success, exitCode, errors, cancelled, null);
+        this(success, exitCode, errors, cancelled, null, false);
     }
 
     /** The engine's terminal: the run's wall time and module count are the client's ({@code -1}, left out). */
@@ -34,8 +36,9 @@ public record WorkspaceFinishEvent(
             int exitCode,
             List<String> errors,
             boolean cancelled,
-            WorkspaceResult.@Nullable SyncCounts sync) {
-        this(success, exitCode, errors, cancelled, sync, -1, -1);
+            WorkspaceResult.@Nullable SyncCounts sync,
+            boolean upToDate) {
+        this(success, exitCode, errors, cancelled, sync, -1, -1, upToDate);
     }
 
     public String encode() {
@@ -44,6 +47,7 @@ public record WorkspaceFinishEvent(
                 .number("exitCode", exitCode)
                 .array("errors", errors)
                 .bool("cancelled", cancelled)
+                .bool("upToDate", upToDate)
                 .optionalToken(
                         "sync",
                         sync == null
@@ -65,7 +69,8 @@ public record WorkspaceFinishEvent(
                 Jsonl.bool(json, "cancelled", false),
                 syncOf(Jsonl.nested(json, "sync")),
                 Jsonl.longValue(json, "millis", -1),
-                Jsonl.intValue(json, "modules", -1));
+                Jsonl.intValue(json, "modules", -1),
+                Jsonl.bool(json, "upToDate", false));
     }
 
     private static WorkspaceResult.@Nullable SyncCounts syncOf(@Nullable String sync) {

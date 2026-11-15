@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -237,6 +238,23 @@ class JsonlShapeTest {
         assertThat(ws).contains("\"modules\":3");
         String done = JsonlShape.workspaceFinish(true, 100, 3);
         assertThat(done).contains("\"type\":\"workspace-finish\"");
+    }
+
+    @Test
+    void workspace_finish_says_whether_the_run_was_up_to_date() {
+        ModuleOutcome checked = new ModuleOutcome("g:a", Path.of("/w/a"), true, 0, 5, false);
+        ModuleOutcome built = new ModuleOutcome("g:b", Path.of("/w/b"), true, 0, 900, true);
+        assertThat(JsonlShape.workspaceFinish(new WorkspaceResult(true, 0, List.of(), List.of()), true, 24, 0))
+                .as("a run that entered no module")
+                .contains("\"upToDate\":true");
+        assertThat(JsonlShape.workspaceFinish(new WorkspaceResult(true, 0, List.of(checked), List.of()), true, 30, 1))
+                .as("a run whose modules all hit the cache")
+                .contains("\"upToDate\":true");
+        assertThat(JsonlShape.workspaceFinish(
+                        new WorkspaceResult(true, 0, List.of(checked, built), List.of()), true, 900, 2))
+                .contains("\"upToDate\":false");
+        assertThat(JsonlShape.workspaceFinish(new WorkspaceResult(false, 1, List.of(), List.of("boom")), false, 9, 0))
+                .contains("\"upToDate\":false");
     }
 
     private static GlobalOptions optsWithOutput(@Nullable String output) {

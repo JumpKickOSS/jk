@@ -650,18 +650,19 @@ public final class ProtoEvents {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
-        return workspaceFinish(success, exitCode, errors, cancelled, null);
+        return workspaceFinish(success, exitCode, errors, cancelled, null, false);
     }
 
-    /** As above, with what a {@code jk sync} run settled. */
+    /** As above, with what a {@code jk sync} run settled and whether the run was up to date. */
     public static String workspaceFinish(
             boolean success,
             int exitCode,
             List<Redacted> errors,
             boolean cancelled,
-            WorkspaceResult.@Nullable SyncCounts sync) {
+            WorkspaceResult.@Nullable SyncCounts sync,
+            boolean upToDate) {
         return new WorkspaceFinishEvent(
-                        success, exitCode, errors.stream().map(Redacted::text).toList(), cancelled, sync)
+                        success, exitCode, errors.stream().map(Redacted::text).toList(), cancelled, sync, upToDate)
                 .encode();
     }
 

@@ -90,6 +90,9 @@ public final class JkResultsAgent {
     /** A coordinate: {@code jk add} in prose ({@code jk add the dependency}) is not one. */
     private static final Pattern JK_ADD = Pattern.compile("jk add\\s+([A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+)");
 
+    /** What an OK headline says of a run that did no work ({@link RecordUpToDate}). */
+    static final String UP_TO_DATE = "up to date";
+
     private JkResultsAgent() {}
 
     /** The headline report. An OK run is that one line. */
@@ -303,6 +306,7 @@ public final class JkResultsAgent {
         if (!name.isEmpty()) sb.append(' ').append(name);
         String counts = counts(r, loci, tests);
         if (!counts.isEmpty()) sb.append(" · ").append(counts);
+        if (RecordUpToDate.of(r)) sb.append(" · ").append(UP_TO_DATE);
         // The time the engine was not running (the machine slept, the engine was stopped) is named
         // apart from the time the work took.
         long suspended = r.suspendedMillis();
