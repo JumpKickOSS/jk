@@ -568,6 +568,7 @@ final class NodeArm {
                     Optional<ActionCache.ActionRecord> hit =
                             rebuild() ? Optional.empty() : actionCache.lookup(keyed.key());
                     if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
+                        actionCache.pointAt(hit.get());
                         publish(ctx, out);
                         ctx.label(node.out() + "/ up-to-date");
                         ctx.cached();

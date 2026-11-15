@@ -437,6 +437,20 @@ public final class ActionCache {
     }
 
     /**
+     * Point {@code record}'s task at it: a restore laid its outputs down, so {@link #lastFor} names
+     * what is on disk rather than the last record a run stored, which may be another key's with
+     * other files (a Next.js build names its chunks by content), and a check that every file of the
+     * last record is there would schedule the module on every build.
+     */
+    public void pointAt(ActionRecord record) throws IOException {
+        String task = Objects.requireNonNull(record.taskId(), "taskId");
+        String key = Objects.requireNonNull(record.actionKey(), "actionKey");
+        if (HeavyActionPolicy.generations(task) != Integer.MAX_VALUE) return;
+        Files.createDirectories(tasksDir());
+        AtomicWrites.replace(tasksDir().resolve(task), key);
+    }
+
+    /**
      * Store the record held under {@code fromKey} again under {@code actionKey}, with {@code inputs}:
      * the same outputs, executables and words, for a step whose inputs the next build reads without
      * files the build itself wrote. Nothing is stored when {@code fromKey} holds no record (a store

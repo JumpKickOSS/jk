@@ -206,6 +206,33 @@ class NodeBuildStepsTest {
     }
 
     @Test
+    void a_restore_of_an_earlier_build_leaves_its_outputs_whole_for_the_next_build() throws Exception {
+        // As Next.js names its chunks by content: each source writes a file the other's build lacks.
+        write("build.js", Files.readString(web.resolve("build.js")) + """
+                const src = fs.readFileSync(path.join(__dirname, 'src', 'main.js'), 'utf8');
+                fs.writeFileSync(path.join(__dirname, 'dist', 'chunk-' + src.length + '.js'), src);
+                """);
+        Session session = session(Map.of());
+        assertThat(run(plan(session), session).errors()).isEmpty();
+        write("src/main.js", "module.exports = 'a longer source';\n");
+        assertThat(run(plan(session), session).errors()).isEmpty();
+        assertThat(lines("builds.log")).isEqualTo(2);
+
+        write("src/main.js", "module.exports = 1;\n");
+        deleteTree(web.resolve("dist"));
+        assertThat(run(plan(session), session).errors()).isEmpty();
+        assertThat(lines("builds.log")).as("the first source's build, restored").isEqualTo(2);
+        ActionCache cache =
+                new ActionCache(JkStores.cacheCas(tmp.resolve("cache")), CacheTree.ACTIONS.under(tmp.resolve("cache")));
+        assertThat(SessionContext.where(
+                        session,
+                        () -> ModuleOutputs.nodeOutputsMissing(
+                                web, JkBuildParser.parse(web.resolve("jk.toml")), cache)))
+                .as("what the preflight asks before the next build: the restored outputs are all there")
+                .isFalse();
+    }
+
+    @Test
     void skip_node_runs_no_node_step_and_keeps_the_output_there_is() throws Exception {
         Session session = session(Map.of());
         assertThat(run(plan(session), session).errors()).isEmpty();
