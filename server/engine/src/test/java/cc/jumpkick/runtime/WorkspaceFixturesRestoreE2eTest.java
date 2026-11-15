@@ -30,10 +30,10 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>lib declares {@code [test] fixtures = true}; app takes them with {@code fixtures = true} on
  * its test edge. A tests-enabled build produces both test views. With {@code target/} wiped, a
- * {@code jk install -S} restores the main outputs and, by design, no test view. The next
- * tests-enabled build then finds every record hitting and lib's main outputs current — and must
- * still schedule lib, so its fixtures tree is restored before app's test compile is admitted
- * against it, and app, so its own tests are compiled. Through the real preflight, planner, action
+ * {@code jk install -S} restores the main outputs and every module's fixtures (a sibling's guard
+ * suite or fixtures compile against them), and no test classes. The next tests-enabled build then
+ * finds every record hitting and lib's main outputs current — and must still schedule app, so its
+ * own tests are compiled against lib's fixtures. Through the real preflight, planner, action
  * cache and workspace scheduler.
  *
  * <p>The skip-tests pass is an install, as in the sequence a fresh checkout of jk's own tree goes
@@ -66,13 +66,13 @@ class WorkspaceFixturesRestoreE2eTest {
         WorkspaceSpec install = WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null);
         build(ws, cache, true, install, "the install --skip-tests on an empty target/");
         assertThat(lib.mainJar()).as("main outputs come back").isRegularFile();
-        assertThat(libFixture).as("--skip-tests produces no test view").doesNotExist();
-        assertThat(appTest).doesNotExist();
+        assertThat(libFixture)
+                .as("--skip-tests compiles every module's fixtures")
+                .isRegularFile();
+        assertThat(appTest).as("--skip-tests compiles no test classes").doesNotExist();
 
         build(ws, cache, false, WorkspaceSpec.DEFAULT, "the tests-enabled build after it");
-        assertThat(libFixture)
-                .as("lib is scheduled on its absent test view alone and restores its fixtures")
-                .isRegularFile();
+        assertThat(libFixture).as("lib's fixtures are still there").isRegularFile();
         assertThat(appTest)
                 .as("app's tests are compiled against the restored fixtures")
                 .isRegularFile();

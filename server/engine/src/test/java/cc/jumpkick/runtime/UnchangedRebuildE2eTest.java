@@ -133,6 +133,67 @@ class UnchangedRebuildE2eTest {
     }
 
     @Test
+    void a_skip_tests_build_compiles_the_sibling_fixtures_a_guard_suite_module_compiles_against(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("unchanged-rebuild-cache");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+                java    = 25
+
+                [workspace]
+                modules = ["guards", "a", "b"]
+                """);
+        Files.createDirectories(ws.resolve("guards/src/main/java/rules"));
+        Files.writeString(ws.resolve("guards/jk.toml"), """
+                group   = "cc.jumpkick"
+                name    = "%s"
+                version = "1.0.0"
+                java    = 25
+                javadoc = false
+                """.formatted(GuardSuiteLibrary.ARTIFACT));
+        Files.writeString(ws.resolve("guards/src/main/java/rules/Rule.java"), "package rules; public class Rule {}\n");
+        String test = """
+                class XTest {
+                    @Test
+                    void passes() {
+                        assertEquals(1, 1);
+                    }
+                }
+                """;
+        Path a = module(ws, "a", "", test);
+        Files.writeString(a.resolve("jk.toml"), Files.readString(a.resolve("jk.toml")) + "\n[test]\nfixtures = true\n");
+        Files.writeString(
+                Files.createDirectories(a.resolve("src/fixtures/java/demo/a")).resolve("AFx.java"),
+                "package demo.a; public final class AFx { public static final String N = \"a\"; }\n");
+        Path b = module(ws, "b", "", test);
+        Files.writeString(
+                b.resolve("jk.toml"),
+                Files.readString(b.resolve("jk.toml"))
+                                .replace(
+                                        "[test-dependencies]\n",
+                                        "[test-dependencies]\na = { workspace = true, fixtures = true }\n")
+                        + "\n[test]\nfixtures = true\n");
+        // b's own fixtures compile against a's: under --skip-tests a's fixtures must be there too.
+        Files.writeString(
+                Files.createDirectories(b.resolve("src/fixtures/java/demo/b")).resolve("BFx.java"),
+                "package demo.b; public final class BFx { public static final String N = demo.a.AFx.N; }\n");
+        Files.writeString(
+                Files.createDirectories(b.resolve("src/guard/java/demo/b")).resolve("GuardCheck.java"),
+                "package demo.b; final class GuardCheck {}\n");
+        lock(ws, cache);
+
+        WorkspaceResult result = WorkspaceExecute.buildWorkspace(
+                new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, null, false, false),
+                new WorkspaceBuildListener() {});
+        assertThat(result.success())
+                .as("--skip-tests build: " + result.errors())
+                .isTrue();
+    }
+
+    @Test
     void under_the_key_audit_a_suite_that_writes_beside_its_sources_fails_naming_what_moved(@TempDir Path tmp)
             throws Exception {
         Path cache = TestCaches.dir("unchanged-rebuild-cache");

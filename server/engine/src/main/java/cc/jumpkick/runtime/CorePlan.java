@@ -526,15 +526,17 @@ final class CorePlan {
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         if (s.buildInfo() != null) b.addTask(s.buildInfo());
         if (s.moduleServices() != null) b.addTask(s.moduleServices());
-        if (!skipJUnit) {
-            if (s.hasFixtures()) b.addTask(s.compileTestFixtures());
-            b.addTask(s.compileTest()).addTask(s.runTests());
+        // Fixtures compile whether or not tests are skipped: a guard suite, this module's or a
+        // sibling's, and a sibling's own fixtures compile against them, and a classpath that named
+        // an empty fixtures tree would key differently from the full build's.
+        if (s.hasFixtures()) {
+            b.addTask(s.compileTestFixtures());
+            if (skipJUnit) b.alsoKeep(TaskNames.COMPILE_TEST_FIXTURES);
         }
+        if (!skipJUnit) b.addTask(s.compileTest()).addTask(s.runTests());
         // The guard suite is not a test: it compiles whether or not tests are skipped, and stays in
         // the plan when a target closure would otherwise prune it.
         if (s.hasGuardSuite()) {
-            // Its classpath names the module's own fixtures: they compile before it, tests or not.
-            if (skipJUnit && s.hasFixtures()) b.addTask(s.compileTestFixtures());
             b.addTask(s.compileGuard());
             b.alsoKeep(TaskNames.COMPILE_GUARD);
         }
