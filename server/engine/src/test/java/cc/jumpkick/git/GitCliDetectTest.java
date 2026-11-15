@@ -36,7 +36,9 @@ class GitCliDetectTest {
                     .hasValueSatisfying(g -> assertThat(g.minor()).isEqualTo(47));
 
             Files.delete(git);
-            fakeGit(git, "git version 2.48.0");
+            // Another size: a same-size rewrite inside one clock tick can reuse the inode and every
+            // stamp, and the settled clock above tells the memo to trust it.
+            fakeGit(git, "git version 2.48.10");
             assertThat(RequestShell.where(shell, GitCliExtension::detect))
                     .as("a replaced git is probed again")
                     .hasValueSatisfying(g -> assertThat(g.minor()).isEqualTo(48));

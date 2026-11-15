@@ -4,8 +4,13 @@ package cc.jumpkick.engine.journal;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.ProjectBuilds;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,6 +88,51 @@ class JournalIndexTest {
         theirs.complete(locator, finished("/b", 1_700_000_002_000L).withBuildNumber(7), BuildJournal.Snapshot.NONE);
         assertThat(mine.list()).as("its finish rewrote the record").noneMatch(BuildRecord::running);
         assertThat(mine.heads(1).getFirst().record().dir()).isEqualTo("/b");
+    }
+
+    @Test
+    void another_engines_finish_inside_the_tick_of_the_last_read_is_seen() throws IOException {
+        BuildJournal mine = new BuildJournal(dir);
+        BuildJournal theirs = new BuildJournal(dir);
+        String locator = requireNonNull(
+                theirs.begin(BuildRecord.running(7, "build", "/b", "g:a", null, 1_700_000_001_000L, "9.9", "cli")));
+        assertThat(mine.list()).anyMatch(BuildRecord::running);
+        Path run = onlyDir(locator);
+        FileTime read = Files.getLastModifiedTime(run);
+
+        theirs.complete(locator, finished("/b", 1_700_000_002_000L).withBuildNumber(7), BuildJournal.Snapshot.NONE);
+        // A clock that ticks every few milliseconds stamps the rewrite with the mtime mine read.
+        Files.setLastModifiedTime(run, read);
+
+        assertThat(mine.list()).as("its finish rewrote the record").noneMatch(BuildRecord::running);
+    }
+
+    @Test
+    void another_engines_new_run_inside_the_tick_of_the_last_scan_is_seen() throws IOException {
+        BuildJournal mine = new BuildJournal(dir);
+        BuildJournal theirs = new BuildJournal(dir);
+        mine.append(finished("/a", 1_700_000_000_000L), BuildJournal.Snapshot.NONE);
+        assertThat(mine.heads(10)).hasSize(1);
+        Path runs = onlyDir(ProjectBuilds.RUNS);
+        FileTime scanned = Files.getLastModifiedTime(runs);
+
+        theirs.begin(BuildRecord.running(7, "build", "/a", "g:a", null, 1_700_000_001_000L, "9.9", "cli"));
+        Files.setLastModifiedTime(runs, scanned);
+
+        assertThat(mine.heads(10))
+                .as("a run written by another journal on the root")
+                .hasSize(2);
+    }
+
+    /** The one directory named {@code name} under the builds root. */
+    private Path onlyDir(String name) throws IOException {
+        try (Stream<Path> walk = Files.walk(dir)) {
+            List<Path> found = walk.filter(p ->
+                            Files.isDirectory(p) && p.getFileName().toString().equals(name))
+                    .toList();
+            assertThat(found).hasSize(1);
+            return found.getFirst();
+        }
     }
 
     @Test

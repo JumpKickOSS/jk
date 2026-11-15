@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.host.Settled;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +27,9 @@ import org.jspecify.annotations.Nullable;
  * home whose listing moved, reusing every run whose directory did not change. A run still marked
  * running is re-checked by its own directory's mtime, so one another engine finished on the same
  * root is seen. The journal's own writes mark the run they touched, so a rewrite inside one clock
- * tick is not missed.
+ * tick is not missed; another engine's write cannot be marked, so an mtime younger than {@link
+ * Settled#WINDOW_MS} vouches for nothing and the listing or running record is read again until it
+ * settles.
  */
 final class JournalIndex {
 
@@ -112,7 +115,7 @@ final class JournalIndex {
             long runsMillis = millis(home.resolve(ProjectBuilds.RUNS));
             Home state = homes.get(home);
             if (state == null || state.runsMillis() != runsMillis) {
-                homes.put(home, scan(home, runsMillis, state));
+                homes.put(home, scan(home, vouched(runsMillis), state));
                 changed = true;
             } else if (recheckRunning(state)) {
                 changed = true;
@@ -160,15 +163,16 @@ final class JournalIndex {
         String text = head.text();
         long sort = BuildJournal.scanLong(text, "finishedAt");
         if (sort <= 0) sort = BuildJournal.scanLong(text, "startedAt");
+        boolean running = BuildJournal.scanTrue(text, "running");
         return new Entry(
                 dir,
                 text,
                 head.complete(),
-                dirMillis,
+                running ? vouched(dirMillis) : dirMillis,
                 BuildJournal.scanString(text, "id"),
                 BuildJournal.scanLong(text, "requestId"),
                 sort,
-                BuildJournal.scanTrue(text, "running"),
+                running,
                 BuildRecord.isSyntheticTrigger(BuildJournal.scanString(text, "trigger")));
     }
 
@@ -199,6 +203,14 @@ final class JournalIndex {
     private static @Nullable Path homeOf(Path runDir) {
         Path runs = runDir.toAbsolutePath().normalize().getParent();
         return runs == null ? null : runs.getParent();
+    }
+
+    /**
+     * {@code millis} when it is old enough to vouch for what was read under it, else a stamp no
+     * directory has, so the next ask reads again: a write inside the same tick leaves the mtime as it was.
+     */
+    private static long vouched(long millis) {
+        return Settled.since(millis) ? millis : Long.MIN_VALUE;
     }
 
     private static long millis(Path p) {

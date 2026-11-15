@@ -25,6 +25,11 @@ public final class Settled {
         return at(identity, clock.millis());
     }
 
+    /** Whether a file whose last write is stamped {@code lastWriteMillis} has settled by now. */
+    public static boolean since(long lastWriteMillis) {
+        return clock.millis() - lastWriteMillis >= WINDOW_MS;
+    }
+
     /** As {@link #is}, judged at {@code nowMillis}. */
     public static boolean at(StatIdentity identity, long nowMillis) {
         return nowMillis - identity.lastTouchedMillis() >= WINDOW_MS;
