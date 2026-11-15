@@ -1,18 +1,15 @@
 # Tests
 
-Default `jk test` and `run(kind=test)` run the unit suite only. That is the inner loop.
+Suites choose tests; a profile never does. `jk test` and `run()` run the unit suite: the inner loop.
 
-- Fixing a unit: `jk test`
-- About to push, or the change touches DB, HTTP, or the filesystem: `jk test -g`
-- One named suite: `jk test -s integration`
-- Not as a habit: `jk test -A`
+- One class: `jk test -S C`, `run(classes=["C"])`. One suite: `-s integration`, `run(suites=["integration"])`
+- Before handing work back, or after a DB, HTTP or filesystem change: `jk test -g`, `run(kind=gate)` (the `[test] guard-suites`, unit and integration by default, with the guard lanes)
+- Never as a habit: `jk test -A`. After a failure, replay the same selection
 
-MCP climbs with `suites=["integration"]`. Do not pass every suite. Replay the same selection after a failure.
+`modules` on `run` (CLI `-m`) limits modules. Roots: `src/test`, `src/integration`, `src/e2e` (simple layout: `test/src`, …). A tag tier is `[test.suites.<name>] tags = [...]`; `jk new` writes `network`, `slow`, `bench`.
 
-Traditional roots are `src/test`. Simple layout uses `test/src`. Named suites are `src/integration` and `src/e2e` (or `integration/src` and `e2e/src`). Tag expensive tests `slow`, `network`, or `bench`.
-
-`only` on `run` limits modules. The CLI flag is `-m`.
+A green suite replays while its inputs hold. `W tests reached <host>`: it reruns every time; stub it on loopback, move it to `network`, or `[test] network = "allowed"` when the remote cannot change its result.
 
 ## Slow tests
 
-`jk test` ends with its slowest classes and methods (1s or more), each with module and tier: on the terminal, as a `slowest-tests` line under `-O jsonl`, and in `jk results`. Speed one up: share the costly fixture (`@BeforeAll`, one container per class), seam the wait (a clock or latch, not `sleep`), or tag it `integration` or `slow`. `[test] fast-method-budget = "1s"` warns on a fast-tier method over it.
+`jk test` ends with its slowest classes and methods (1s or more). Share the costly fixture (`@BeforeAll`), seam the wait (a clock or latch, not `sleep`), or tag it `slow`. `[test] fast-method-budget = "1s"` warns on a fast-tier method over it.

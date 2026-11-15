@@ -6,4 +6,4 @@
 
 `jk lock` rewrites the lock and keeps pins. `jk update` moves declared pins to the newest stable on the same major, then relocks. A missing `manifests-sha256`, or one that does not match the manifests, means the lock is stale.
 
-A resolve failure is the verdict. Fix the coordinate or the repository. Read `why(coord)` for the path and the rule that picked the version. Do not delete the lock to skip a conflict.
+A resolve failure is the verdict. Fix the coordinate or the repository. Read `jk why g:a` (MCP `why`, extended list) for the path and the rule that picked the version. Do not delete the lock to skip a conflict.

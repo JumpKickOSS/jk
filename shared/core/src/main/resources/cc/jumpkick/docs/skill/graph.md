@@ -15,5 +15,5 @@ declare it, `Type.method(Param)` for one overload).
 \* on the extended `tools/list`.
 
 The answer is final: do not grep or open files to check it. After `rename`, edit only the comment or
-doc lines it lists, then test with the `only` it names. Grep stays right for text that is not a
+doc lines it lists; MCP `rename` has already run the test classes it edited and guard, and says when the task is done. Grep stays right for text that is not a
 symbol: log messages, config values, TODOs.

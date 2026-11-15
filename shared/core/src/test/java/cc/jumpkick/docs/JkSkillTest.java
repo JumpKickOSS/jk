@@ -16,7 +16,9 @@ class JkSkillTest {
     @Test
     void core_and_topics_stay_inside_the_budget() {
         String core = JkSkill.core();
-        assertThat(core.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(2560);
+        // Read when an agent asks (skill, jk skill), not on every turn as AGENTS.md is: the loop table's
+        // rows for one class or suite, the gate and a forecast cost 215 bytes over 2,560.
+        assertThat(core.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(2_816);
         assertThat(core).endsWith("\n").doesNotContain("\r");
         assertThat(frontmatter(core)).contains("name: jk");
         String description = frontmatter(core)

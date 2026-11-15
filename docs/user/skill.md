@@ -24,7 +24,7 @@ The same bytes are the MCP tool **`skill`** (`topic` optional) and the resource 
 default directory is `<project>/.agents/skills`, the project-level location clients share. The
 skill's `name` matches the `jk/` directory it is installed into.
 
-Topics: `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`, `guards`,
+Topics: `graph`, `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`, `guards`,
 `layout`, `jdk`, `engine`.
 
 ## What an agent does
@@ -35,7 +35,8 @@ Topics: `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`,
 3. Detail past the cap is MCP **`diagnostics`** (`file=`). Over `jk mcp` the tools take no `dir`;
    over HTTP, pass `dir` on the first call and it binds the connection.
 4. Edit dependencies with **`deps`** (it relocks) or `jk add` / `jk remove`. Then `run()`.
-5. Before handing work back: `jk guard` (MCP `run(kind=guard)`); with `[format] enforce` it also formats what you changed.
+5. Before handing work back: `jk test -g` (MCP `run(kind=gate)`), the tests with the guard lanes; with
+   `[format] enforce` it also formats what you changed. A verdict ending `· up to date` ran nothing.
 
 Other tools (history, explain, graph, jdk, …) are a `tools/list` with `{"extended": true}`.
 

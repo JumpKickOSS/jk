@@ -4,12 +4,15 @@ package cc.jumpkick.engine.http.mcp;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RetiredKeys;
 import cc.jumpkick.docs.AgentHook;
 import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.docs.AgentsGuide;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.verbs.InertVerbHost;
 import cc.jumpkick.engine.verbs.VerbRegistry;
+import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,7 +33,8 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code AGENTS.md} section, the server instructions, the per-agent rule files and the agent hook
  * name is on the default {@code tools/list} (the only one most clients ever ask for), and every
  * {@code run(…)} they spell takes arguments and a {@code kind} the server accepts. The section's
- * table names every default tool, so a tool added to the loop is taught or this fails.
+ * table names every default tool, so a tool added to the loop is taught or this fails. The skill
+ * pages and every tool card name no retired manifest key ({@link RetiredKeys}).
  */
 class McpSteeringTest {
 
@@ -81,11 +85,73 @@ class McpSteeringTest {
         named.forEach(McpSteeringTest::assertCallable);
     }
 
+    /**
+     * The skill pages may name a tool off the default list (marked so), but every call they spell is
+     * a registered tool taking those arguments, so a renamed argument cannot outlive its field.
+     */
+    @Test
+    void the_skill_pages_spell_only_registered_tools_with_accepted_arguments() {
+        Map<String, List<String>> calls = new LinkedHashMap<>();
+        for (String page : skillPages()) {
+            Matcher m = TICKED.matcher(page);
+            while (m.find()) {
+                if (m.group(2) == null && TOOLS.tool(m.group(1)) == null) continue;
+                List<String> args = calls.computeIfAbsent(m.group(1), k -> new ArrayList<>());
+                if (m.group(3) != null && !m.group(3).isBlank()) args.add(m.group(3));
+            }
+        }
+        assertThat(calls).as("tool calls in the skill").containsKeys("run", "deps", "callers", "rename");
+        calls.forEach(McpSteeringTest::assertAccepted);
+        for (String page : skillPages()) {
+            Matcher on = ARGUMENT_ON.matcher(page);
+            while (on.find()) {
+                assertThat(properties(on.group(2)))
+                        .as("`%s` on `%s` is an argument of its card", on.group(1), on.group(2))
+                        .containsKey(on.group(1));
+            }
+        }
+    }
+
+    /** An argument named in prose: {@code `modules` on `run`}. */
+    private static final Pattern ARGUMENT_ON = Pattern.compile("`([a-z_]+)` on `([a-z_]+)`");
+
+    /** A key the parser refuses must not be taught by any text an agent reads. */
+    @Test
+    void no_agent_text_names_a_retired_manifest_key() {
+        List<String> texts = new ArrayList<>(skillPages());
+        texts.add(AgentsGuide.SECTION);
+        texts.add(AgentsGuide.ENFORCED_SECTION);
+        texts.add(McpTools.INSTRUCTIONS);
+        texts.add(MiniJson.write(TOOLS.listing(McpTools.Surface.ALL)));
+        for (RetiredKeys.Retired r : RetiredKeys.ALL) {
+            List<String> spellings = r.key() == null
+                    ? List.of("[" + r.table() + "]")
+                    : List.of("`" + r.key() + "`", r.key() + " =", r.key() + "=");
+            for (String text : texts) {
+                for (String spelling : spellings) {
+                    assertThat(text).as("retired %s, as %s", r.name(), spelling).doesNotContain(spelling);
+                }
+            }
+        }
+    }
+
+    private static List<String> skillPages() {
+        List<String> pages = new ArrayList<>();
+        pages.add(JkSkill.core());
+        for (String topic : JkSkill.TOPICS) pages.add(requireNonNull(JkSkill.topic(topic), topic));
+        return pages;
+    }
+
     /** {@code name} is on the default list, and each {@code run} argument list is one the server takes. */
     static void assertCallable(String name, List<String> argLists) {
         assertThat(TOOLS.loopNames())
                 .as("`%s` is on the default tools/list", name)
                 .contains(name);
+        assertAccepted(name, argLists);
+    }
+
+    /** {@code name} is a registered tool and each argument list names its arguments and a hosted kind. */
+    static void assertAccepted(String name, List<String> argLists) {
         Map<String, Object> props = properties(name);
         for (String args : argLists) {
             for (String arg : args.split(",\\s*")) {
