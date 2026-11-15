@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.StepCache;
+import cc.jumpkick.task.IoLedger;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -722,7 +724,12 @@ public record BuildRecord(
      * {@code down} restored back out of it. Every number is stat'ed off files at rest, never counted
      * through a stream. See {@link cc.jumpkick.task.IoLedger}.
      */
-    public record Io(long remoteUp, long remoteDown, long localUp, long localDown) {}
+    public record Io(long remoteUp, long remoteDown, long localUp, long localDown, long cacheUp, long cacheDown) {
+        /** The row for a run's {@code totals}. */
+        static Io of(IoLedger.Totals t) {
+            return new Io(t.remoteUp(), t.remoteDown(), t.localUp(), t.localDown(), t.cacheUp(), t.cacheDown());
+        }
+    }
 
     /**
      * The cache's estimated wall-clock benefit for the run, or {@code null} for a build that didn't
@@ -761,6 +768,7 @@ public record BuildRecord(
      *     {@code ""} when it set none
      * @param suspendedMillis how long the engine was not running while the step ran (the run's
      *     {@link Suspension}s it spanned), {@code 0} for a step that ran throughout
+     * @param cache what the action cache did for the step ({@link StepCache}); null when it did nothing
      */
     public record Task(
             String name,
@@ -769,7 +777,8 @@ public record BuildRecord(
             long millis,
             long waitMillis,
             String detail,
-            long suspendedMillis) {
+            long suspendedMillis,
+            @Nullable StepCache cache) {
         public Task {
             stage = stage == null ? "" : stage;
             waitMillis = Math.max(0, waitMillis);
@@ -779,7 +788,7 @@ public record BuildRecord(
 
         /** A task that ran with its engine running throughout. */
         public Task(String name, String stage, String status, long millis, long waitMillis, String detail) {
-            this(name, stage, status, millis, waitMillis, detail, 0);
+            this(name, stage, status, millis, waitMillis, detail, 0, null);
         }
 
         /** A task with no label. */

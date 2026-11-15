@@ -177,6 +177,11 @@ final class DefaultTaskContext implements TaskContext {
         this.cached = true;
     }
 
+    @Override
+    public void cache(StepCache cache) {
+        if (cache != null) plan.emit(l -> l.stepCache(step, cache));
+    }
+
     /** Whether the step marked itself a cache hit / up-to-date via {@link #cached()}. */
     boolean wasCached() {
         return cached;

@@ -32,6 +32,9 @@ public interface BuildPlanListener {
 
     default void label(String step, String label) {}
 
+    /** What the action cache did for {@code step}, told once as it finishes. */
+    default void stepCache(String step, StepCache cache) {}
+
     default void output(String step, String line) {}
 
     /** {@code step} waits for a worker lease ({@code "slot"} or {@code "memory"}), or works again ({@code null}). */

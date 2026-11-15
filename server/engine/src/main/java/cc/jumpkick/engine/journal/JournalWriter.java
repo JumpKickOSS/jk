@@ -18,6 +18,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.mvn.PomCoord;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.SourceLocation;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -211,6 +212,12 @@ public final class JournalWriter {
     public void accStepLabel(long requestId, String dir, String step, String label) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.noteLabel(dir, step, label);
+    }
+
+    /** What the action cache did for a step; the accumulator puts it on the step's row. */
+    public void accStepCache(long requestId, String dir, String step, StepCache cache) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.noteCache(dir, step, cache);
     }
 
     /** A line a step's fork printed; the accumulator keeps the last of them while the step runs. */

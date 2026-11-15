@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HistoryShowRequest;
@@ -139,13 +140,22 @@ public final class HistoryShowVerb implements HostedVerb {
     }
 
     private static String stepLine(SecretRedactor r, BuildRecord.Task p, @Nullable String module) {
-        return JsonOut.object()
+        JsonOut out = JsonOut.object()
                 .put("type", EngineProtocol.HISTORY_TASK)
                 .put("module", module)
                 .put("name", redactSafe(r, p.name()))
                 .put("status", p.status())
-                .put("millis", p.millis())
-                .toString();
+                .put("millis", p.millis());
+        StepCache c = p.cache();
+        if (c != null) {
+            out.put("cache", c.outcome().word());
+            if (c.reason() != null) out.put("missReason", c.reason().word());
+            if (c.changed() != null) out.put("changed", redactSafe(r, c.changed()));
+            if (c.key() != null) out.put("key", c.key());
+            out.put("bytesIn", c.bytesIn());
+            out.put("bytesOut", c.bytesOut());
+        }
+        return out.toString();
     }
 
     private static SecretRedactor replayRedactor(String dir) {

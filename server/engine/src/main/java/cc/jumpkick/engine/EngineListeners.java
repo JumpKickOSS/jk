@@ -21,6 +21,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.SourceLocation;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -259,6 +260,11 @@ public final class EngineListeners {
             @Override
             public void stepLabel(String d, String step, String label) {
                 journal.accStepLabel(rid, d, step, label);
+            }
+
+            @Override
+            public void stepCache(String d, String step, StepCache cache) {
+                journal.accStepCache(rid, d, step, cache);
             }
 
             @Override

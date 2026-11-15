@@ -88,6 +88,27 @@ naming the step and the file or setting that moved with its old and new value;
 `JK_KEY_AUDIT=strict` fails the build instead. It costs one more key derivation per step, so it is
 off by default. Report what it names: it is a JumpKick defect, or a plugin's.
 
+## Why did a step run? (the run's history)
+
+Every step that consulted the action cache records what it did in the run's history: `local-hit`,
+`remote-hit` or `miss`, the action key, the bytes it restored and stored, and for a miss one reason
+from a closed set. `jk history show <id>` prints it after the step (`· ran: inputs changed
+(src/main/java/A.java)`), and `GET /api/history` carries it on each step as `cache`.
+
+| Reason | Meaning |
+|--------|---------|
+| `no-record` | No earlier record of the step: a first build, or after the cache was cleaned |
+| `inputs-changed` | A source, dependency or setting moved; `changed` names up to five of them |
+| `toolchain-changed` | Only the compiler, the JDK or JumpKick changed |
+| `key-changed` | The inputs the last record names are the same; something else the key hashes moved |
+| `outputs-gone` | A record under this very key was there, its outputs were not |
+| `record-refused` | A record was refused as untrusted |
+| `remote-unreachable` | The build's remote cache stopped answering |
+| `forced` | `--force`, `--redo` or `--rebuild`, or a whole record was run anyway |
+
+The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from
+repository downloads and uploads (`remoteUp`, `remoteDown`).
+
 ## Hygiene
 
 ```bash

@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.JkThreads;
@@ -98,17 +99,21 @@ public final class RemoteTier {
      */
     void offer(String key, String sharedText, Map<String, Path> blobs) {
         if (!writes() || drained.get()) return;
-        uploads.add(JkThreads.platform().submit(() -> upload(key, sharedText, blobs)));
+        IoLedger io = SessionContext.current().io();
+        uploads.add(JkThreads.platform().submit(() -> upload(key, sharedText, blobs, io)));
     }
 
-    private void upload(String key, String sharedText, Map<String, Path> blobs) {
+    private void upload(String key, String sharedText, Map<String, Path> blobs, IoLedger io) {
         if (!writes()) return;
         try {
             for (String sha : backend.missing(blobs.keySet())) {
                 Path blob = blobs.get(sha);
-                if (blob != null) backend.putBlob(sha, blob);
+                if (blob == null) continue;
+                backend.putBlob(sha, blob);
+                io.cacheUp(IoLedger.sizeOf(blob));
             }
             backend.putRecord(key, sharedText);
+            io.cacheUp(sharedText.length());
             uploaded.incrementAndGet();
         } catch (IOException | RuntimeException e) {
             if (writesOff.compareAndSet(false, true)) {
@@ -208,6 +213,7 @@ public final class RemoteTier {
             try (InputStream in = backend.open(sha)) {
                 Cas.Stored stored = into.putVerified(in, sha);
                 bytesDown.addAndGet(stored.size());
+                SessionContext.current().io().cacheDown(stored.size());
             } catch (Cas.DigestMismatch tampered) {
                 Log.warn("jk: remote cache blob refused", "digest", sha, "cause", tampered.getMessage());
                 return false;

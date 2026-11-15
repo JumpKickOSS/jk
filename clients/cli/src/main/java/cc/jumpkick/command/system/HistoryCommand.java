@@ -335,7 +335,7 @@ public final class HistoryCommand extends GroupCommand {
                     "Steps",
                     p -> "  "
                             + Jsonl.str(p, "status") + "  " + Jsonl.str(p, "name")
-                            + "  " + duration(Jsonl.longValue(p, "millis", -1)));
+                            + "  " + duration(Jsonl.longValue(p, "millis", -1)) + cacheNote(p));
             printRows(lines, EngineProtocol.HISTORY_DIAG, "Diagnostics", d -> {
                 StringBuilder b = new StringBuilder("  [")
                         .append(Jsonl.str(d, "severity"))
@@ -360,6 +360,20 @@ public final class HistoryCommand extends GroupCommand {
                 return b.append(msg == null ? "" : msg).toString();
             });
             return success ? 0 : 1;
+        }
+
+        /**
+         * {@code "  · ran: inputs changed (src/A.java)"} for a step that missed the action cache,
+         * {@code "  · remote hit"} for one restored from a remote cache, else nothing.
+         */
+        static String cacheNote(String step) {
+            String cache = Jsonl.str(step, "cache");
+            if ("remote-hit".equals(cache)) return "  · remote hit";
+            if (!"miss".equals(cache)) return "";
+            String reason = Jsonl.str(step, "missReason");
+            if (reason == null) return "";
+            String changed = Jsonl.str(step, "changed");
+            return "  · ran: " + reason.replace('-', ' ') + (changed == null ? "" : " (" + changed + ")");
         }
 
         private static void printRows(List<String> lines, String type, String header, Function<String, String> render) {

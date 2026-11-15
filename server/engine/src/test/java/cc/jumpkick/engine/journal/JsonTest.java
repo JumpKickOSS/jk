@@ -65,7 +65,7 @@ class JsonTest {
                 "abc1234",
                 new BuildRecord.CacheBenefit(9000, 6000, 3, 4),
                 false,
-                new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096),
+                new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096, 0, 0),
                 42L,
                 null,
                 List.of());

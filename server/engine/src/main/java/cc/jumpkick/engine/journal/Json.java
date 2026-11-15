@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.util.ArrayList;
@@ -108,6 +109,8 @@ final class Json {
             io.put("remoteDown", r.io().remoteDown());
             io.put("localUp", r.io().localUp());
             io.put("localDown", r.io().localDown());
+            if (r.io().cacheUp() > 0) io.put("cacheUp", r.io().cacheUp());
+            if (r.io().cacheDown() > 0) io.put("cacheDown", r.io().cacheDown());
             o.put("io", io);
         }
 
@@ -282,6 +285,17 @@ final class Json {
             if (p.waitMillis() > 0) pm.put("waitMillis", p.waitMillis());
             if (!p.detail().isEmpty()) pm.put("detail", p.detail());
             if (p.suspendedMillis() > 0) pm.put("suspendedMillis", p.suspendedMillis());
+            StepCache c = p.cache();
+            if (c != null) {
+                Map<String, Object> cm = new LinkedHashMap<>();
+                cm.put("outcome", c.outcome().word());
+                if (c.reason() != null) cm.put("reason", c.reason().word());
+                if (c.changed() != null) cm.put("changed", c.changed());
+                if (c.key() != null) cm.put("key", c.key());
+                cm.put("bytesIn", c.bytesIn());
+                cm.put("bytesOut", c.bytesOut());
+                pm.put("cache", cm);
+            }
             out.add(pm);
         }
         return out;
@@ -385,7 +399,13 @@ final class Json {
         BuildRecord.Io io = null;
         if (o.get("io") instanceof Map<?, ?> im) {
             Map<String, Object> i = (Map<String, Object>) im;
-            io = new BuildRecord.Io(lng(i, "remoteUp"), lng(i, "remoteDown"), lng(i, "localUp"), lng(i, "localDown"));
+            io = new BuildRecord.Io(
+                    lng(i, "remoteUp"),
+                    lng(i, "remoteDown"),
+                    lng(i, "localUp"),
+                    lng(i, "localDown"),
+                    lng(i, "cacheUp"),
+                    lng(i, "cacheDown"));
         }
 
         BuildRecord.Publish publish = null;
@@ -533,8 +553,25 @@ final class Json {
                     pm.get("millis") instanceof Number n ? n.longValue() : -1L,
                     pm.get("waitMillis") instanceof Number w ? w.longValue() : 0L,
                     text(pm, "detail"),
-                    lng(pm, "suspendedMillis")));
+                    lng(pm, "suspendedMillis"),
+                    stepCache(pm.get("cache"))));
         }
         return steps;
+    }
+
+    /** A step's {@code "cache"} object, or null when it has none or names an outcome this jk does not know. */
+    @SuppressWarnings("unchecked")
+    private static @Nullable StepCache stepCache(@Nullable Object o) {
+        if (!(o instanceof Map<?, ?> raw)) return null;
+        Map<String, Object> cm = (Map<String, Object>) raw;
+        StepCache.Outcome outcome = StepCache.outcome(cm.get("outcome") instanceof String s ? s : null);
+        if (outcome == null) return null;
+        return new StepCache(
+                outcome,
+                StepCache.reason(cm.get("reason") instanceof String s ? s : null),
+                cm.get("changed") instanceof String s ? s : null,
+                cm.get("key") instanceof String s ? s : null,
+                lng(cm, "bytesIn"),
+                lng(cm, "bytesOut"));
     }
 }

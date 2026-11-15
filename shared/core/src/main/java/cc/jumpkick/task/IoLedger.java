@@ -41,6 +41,8 @@ public final class IoLedger {
     private final LongAdder remoteDown = new LongAdder();
     private final LongAdder localUp = new LongAdder();
     private final LongAdder localDown = new LongAdder();
+    private final LongAdder cacheUp = new LongAdder();
+    private final LongAdder cacheDown = new LongAdder();
 
     /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
     private final TransferBoard transfers;
@@ -57,14 +59,21 @@ public final class IoLedger {
         this.transfers = new TransferBoard(clock);
     }
 
-    /** One run's totals, in bytes. */
-    public record Totals(long remoteUp, long remoteDown, long localUp, long localDown) {
+    /**
+     * One run's totals, in bytes. {@code remote*} is repository traffic; {@code cache*} is traffic
+     * with a remote build cache, kept apart from it.
+     */
+    public record Totals(long remoteUp, long remoteDown, long localUp, long localDown, long cacheUp, long cacheDown) {
 
-        public static final Totals ZERO = new Totals(0, 0, 0, 0);
+        public static final Totals ZERO = new Totals(0, 0, 0, 0, 0, 0);
+
+        public Totals(long remoteUp, long remoteDown, long localUp, long localDown) {
+            this(remoteUp, remoteDown, localUp, localDown, 0, 0);
+        }
 
         /** True when the run moved no bytes at all — nothing worth showing. */
         public boolean isEmpty() {
-            return remoteUp == 0 && remoteDown == 0 && localUp == 0 && localDown == 0;
+            return remoteUp == 0 && remoteDown == 0 && localUp == 0 && localDown == 0 && cacheUp == 0 && cacheDown == 0;
         }
     }
 
@@ -81,6 +90,16 @@ public final class IoLedger {
     /** As {@link #remoteDown(long)}, taking the size of a file already on disk. */
     public void remoteDown(Path file) {
         remoteDown(sizeOf(file));
+    }
+
+    /** Bytes uploaded to a remote build cache (records and blobs this run shared). */
+    public void cacheUp(long bytes) {
+        if (bytes > 0) cacheUp.add(bytes);
+    }
+
+    /** Bytes fetched from a remote build cache (blobs of records this run restored). */
+    public void cacheDown(long bytes) {
+        if (bytes > 0) cacheDown.add(bytes);
     }
 
     /** Bytes written into the local build cache (this run's action outputs). */
@@ -112,7 +131,8 @@ public final class IoLedger {
 
     /** A snapshot of the totals so far; consistent enough for reporting, not an atomic read. */
     public Totals totals() {
-        return new Totals(remoteUp.sum(), remoteDown.sum(), localUp.sum(), localDown.sum());
+        return new Totals(
+                remoteUp.sum(), remoteDown.sum(), localUp.sum(), localDown.sum(), cacheUp.sum(), cacheDown.sum());
     }
 
     /** A file's size on disk, or {@code 0} when it can't be stat'ed (vanished, unreadable, null). */

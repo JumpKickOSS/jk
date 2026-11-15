@@ -6,6 +6,7 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
@@ -47,6 +48,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
         /** A step's label, redacted, as it goes to the wire. */
         default void stepLabel(String dir, String step, String label) {}
+
+        /** What the action cache did for {@code step}. */
+        default void stepCache(String dir, String step, StepCache cache) {}
 
         /** A line a step's fork printed outside its protocol; journal-only, never a wire event. */
         default void forkOutput(String dir, String step, String line) {}
@@ -168,6 +172,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
         String safe = redact(label);
         sink.emit(new EngineEvent.Label(dir, step, safe));
         hooks.stepLabel(dir, step, safe);
+    }
+
+    @Override
+    public void stepCache(String step, StepCache cache) {
+        hooks.stepCache(dir, step, cache);
     }
 
     @Override

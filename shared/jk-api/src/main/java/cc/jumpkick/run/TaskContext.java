@@ -44,6 +44,9 @@ public interface TaskContext {
     /** Mark outputs already up-to-date/cached; recorded as {@link TaskStatus#SKIPPED}. Idempotent. */
     default void cached() {}
 
+    /** What the action cache did for this step ({@link StepCache}); told once, as the step's scope closes. */
+    default void cache(StepCache cache) {}
+
     /**
      * Time this step spent blocked on a shared resource — a compiler worker's queue, a slot — as
      * opposed to doing its own work. Journaled beside the step's wall ({@code wait-ms} next to

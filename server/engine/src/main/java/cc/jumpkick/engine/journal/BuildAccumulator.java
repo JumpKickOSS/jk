@@ -10,6 +10,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.SourceLocation;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
@@ -48,6 +49,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class BuildAccumulator {
     private final Map<String, String> lastLabels = new ConcurrentHashMap<>();
+    private final Map<String, StepCache> lastCaches = new ConcurrentHashMap<>();
     private final String kind;
     private final String dir;
     private final @Nullable String coord;
@@ -579,7 +581,9 @@ public final class BuildAccumulator {
                 long millis = started == null ? 0L : Math.max(0L, finishedAt - started);
                 synchronized (m) {
                     long suspended = Objects.requireNonNullElse(stepSuspended.remove(key), 0L);
-                    m.put(t.name(), new BuildRecord.Task(t.name(), t.stage(), "CANCELLED", millis, 0L, "", suspended));
+                    m.put(
+                            t.name(),
+                            new BuildRecord.Task(t.name(), t.stage(), "CANCELLED", millis, 0L, "", suspended, null));
                 }
                 ArrayDeque<String> tail = forkTails.remove(key);
                 List<String> lines;
@@ -703,6 +707,12 @@ public final class BuildAccumulator {
         addDiag(locatedError(null, "run-error", error, at));
     }
 
+    /** What the action cache did for a step; it rides the step's row when the step finishes. */
+    public void noteCache(String dir, String step, StepCache cache) {
+        if (step == null || step.isBlank() || cache == null) return;
+        lastCaches.put(stepKey(dirKey(dir), step), cache);
+    }
+
     /** A step's latest label; the last one it set before finishing is its {@code detail}. */
     public void noteLabel(String dir, String step, String label) {
         if (step == null || step.isBlank() || label == null) return;
@@ -726,9 +736,10 @@ public final class BuildAccumulator {
         String d = dirKey(dir);
         String detail = Objects.requireNonNullElse(lastLabels.remove(stepKey(d, step)), "");
         long suspended = Objects.requireNonNullElse(stepSuspended.remove(stepKey(d, step)), 0L);
+        StepCache cache = lastCaches.remove(stepKey(d, step));
         stepsByDir
                 .computeIfAbsent(d, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
-                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis, detail, suspended));
+                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis, detail, suspended, cache));
         stepStartedAt.remove(stepKey(d, step));
         forkTails.remove(stepKey(d, step));
         if (timeline != null) {
@@ -1079,9 +1090,7 @@ public final class BuildAccumulator {
                         benefit.coveredSkips(),
                         benefit.totalSkips());
         IoLedger.Totals bytes = io.totals();
-        BuildRecord.Io ioRow = bytes.isEmpty()
-                ? null
-                : new BuildRecord.Io(bytes.remoteUp(), bytes.remoteDown(), bytes.localUp(), bytes.localDown());
+        BuildRecord.Io ioRow = bytes.isEmpty() ? null : BuildRecord.Io.of(bytes);
         long wall = toolWallMillis > 0 ? toolWallMillis : millis;
         return new BuildRecord(
                         null,

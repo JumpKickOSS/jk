@@ -15,6 +15,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.util.FileLocks;
 import java.io.File;
 import java.io.IOException;
@@ -182,7 +183,17 @@ public final class ActionCache {
      */
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
         Optional<ActionRecord> here = lookupLocal(actionKey);
-        return here.isPresent() ? here : lookupRemote(actionKey);
+        boolean remote = here.isEmpty();
+        Optional<ActionRecord> found = remote ? lookupRemote(actionKey) : here;
+        if (found.isPresent() && StepCacheNotes.inStep()) {
+            ActionRecordText.Kind kind = found.get().meta().kind();
+            // A marker or verdict is the result itself: reading it is the step's hit, unless the
+            // step goes on to run and store.
+            if (kind == ActionRecordText.Kind.TEST_MARKER || kind == ActionRecordText.Kind.VERDICT) {
+                StepCacheNotes.replayed(actionKey, remote);
+            }
+        }
+        return found;
     }
 
     private Optional<ActionRecord> lookupLocal(String actionKey) throws IOException {
@@ -195,6 +206,7 @@ public final class ActionCache {
             // Whole but not this engine's to trust (a restored or imported cache): a miss, said
             // once, since the record goes with it.
             Log.warn("jk: action record refused; rebuilding", "key", actionKey, "cause", refused.getMessage());
+            StepCacheNotes.refused();
             local.discard(actionKey);
             return Optional.empty();
         } catch (RuntimeException torn) {
@@ -559,6 +571,7 @@ public final class ActionCache {
         CacheStats.store(CacheStats.classify(task, outputs, sha -> bySha.getOrDefault(sha, 0L)), storedBytes);
         String key = Objects.requireNonNull(actionKey, "actionKey");
         if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
+        if (StepCacheNotes.inStep()) noteStored(task, key, inputs, storedBytes);
         ActionRecord record = new ActionRecord(
                 task,
                 key,
@@ -596,6 +609,78 @@ public final class ActionCache {
         }
         offer(record);
         return record;
+    }
+
+    /**
+     * Tell the running step it ran and stored under {@code key}, with why: read before the store
+     * replaces anything, from the record already under {@code key} and the one the task's pointer
+     * names, the same comparison {@code jk explain} makes.
+     */
+    private void noteStored(String task, String key, Map<String, String> inputs, long bytes) {
+        StepCache.Reason reason;
+        String changed = null;
+        try {
+            Optional<ActionRecord> same = lookupLocal(key);
+            Optional<ActionRecord> previous = previousRecord(task);
+            if (SessionContext.current().config().forceOr(false)
+                    || SessionContext.current().config().rebuildOr(false)) {
+                reason = StepCache.Reason.FORCED;
+            } else if (same.isPresent()) {
+                reason = local.missing(same.get().outputs().values()).isEmpty()
+                        ? StepCache.Reason.FORCED
+                        : StepCache.Reason.OUTPUTS_GONE;
+            } else if (StepCacheNotes.sawRefusal()) {
+                reason = StepCache.Reason.RECORD_REFUSED;
+            } else if (remote != null && !remote.reachable()) {
+                reason = StepCache.Reason.REMOTE_UNREACHABLE;
+            } else if (previous.isEmpty()) {
+                reason = StepCache.Reason.NO_RECORD;
+            } else {
+                List<String> moved = changedInputs(previous.get().inputs(), inputs);
+                if (moved.isEmpty()) {
+                    reason = StepCache.Reason.KEY_CHANGED;
+                } else {
+                    reason = moved.stream().allMatch(ActionCache::toolchainInput)
+                            ? StepCache.Reason.TOOLCHAIN_CHANGED
+                            : StepCache.Reason.INPUTS_CHANGED;
+                    changed = String.join(", ", moved.subList(0, Math.min(MAX_CHANGED_NAMED, moved.size())))
+                            + (moved.size() > MAX_CHANGED_NAMED ? ", +" + (moved.size() - MAX_CHANGED_NAMED) : "");
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            reason = StepCache.Reason.KEY_CHANGED;
+        }
+        StepCacheNotes.stored(key, bytes, reason, changed);
+    }
+
+    /** How many changed inputs a miss names before it counts the rest. */
+    private static final int MAX_CHANGED_NAMED = 5;
+
+    /** The record the task's pointer names on this disk, read without telling the step. */
+    private Optional<ActionRecord> previousRecord(String task) throws IOException {
+        String key;
+        try {
+            key = AtomicWrites.readString(tasksDir().resolve(task)).trim();
+        } catch (NoSuchFileException absent) {
+            return Optional.empty();
+        }
+        return key.isEmpty() ? Optional.empty() : lookupLocal(key);
+    }
+
+    /** The input names whose values differ between {@code prior} and {@code now}, sorted. */
+    static List<String> changedInputs(Map<String, String> prior, Map<String, String> now) {
+        Set<String> names = new TreeSet<>(prior.keySet());
+        names.addAll(now.keySet());
+        List<String> moved = new ArrayList<>();
+        for (String name : names) {
+            if (!Objects.equals(prior.get(name), now.get(name))) moved.add(name);
+        }
+        return moved;
+    }
+
+    /** An input naming the compiler, JDK or jk rather than a source, dependency or setting of the build's own. */
+    private static boolean toolchainInput(String name) {
+        return name.equals("jdk") || name.equals("jk") || name.equals("worker") || name.startsWith("worker:");
     }
 
     /**
@@ -685,7 +770,8 @@ public final class ActionCache {
         }
         if (!inside(outputDir, outputs.keySet())) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(outputs);
-        if (resolved.isEmpty() && fetchFromRemote(record)) resolved = resolveAll(outputs);
+        boolean fetched = resolved.isEmpty() && fetchFromRemote(record);
+        if (fetched) resolved = resolveAll(outputs);
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the classes tree
@@ -737,7 +823,16 @@ public final class ActionCache {
             // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
             FileHashMemo.rememberContent(target, entry.getValue());
         }
+        noteRestored(record, fetched, blobs);
         return true;
+    }
+
+    /** Tell the running step it restored {@code record}, from the remote tier when {@code fetched}. */
+    private static void noteRestored(ActionRecord record, boolean fetched, Map<String, Blob> blobs) {
+        if (!StepCacheNotes.inStep() || record.actionKey() == null) return;
+        long bytes = 0;
+        for (Blob b : blobs.values()) bytes += b.size();
+        StepCacheNotes.restored(record.actionKey(), fetched, bytes);
     }
 
     /**
@@ -840,7 +935,8 @@ public final class ActionCache {
         if (record.outputs().isEmpty()) return false;
         if (!inside(baseDir, record.outputs().keySet())) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
-        if (resolved.isEmpty() && fetchFromRemote(record)) resolved = resolveAll(record.outputs());
+        boolean fetched = resolved.isEmpty() && fetchFromRemote(record);
+        if (fetched) resolved = resolveAll(record.outputs());
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
         // Clear the DIRECTORY roots this record owns before copyinga multi-file
@@ -896,6 +992,7 @@ public final class ActionCache {
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());
         }
+        noteRestored(record, fetched, blobs);
         return true;
     }
 
