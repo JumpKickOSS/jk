@@ -66,17 +66,23 @@ public final class Awake {
         enabled = true;
     }
 
-    /** A job started: the hold is taken now if the mode and the power source want it. */
+    /**
+     * A job started: the hold is taken if the mode and the power source want it, by the re-check
+     * loop and never on the job's thread, since starting a helper waits to see that it holds.
+     */
     public void jobStarted(long requestId) {
         jobs.add(requestId);
         if (!enabled) return;
-        check();
+        if (loopStarter == null) {
+            check();
+            return;
+        }
         boolean start;
         synchronized (this) {
-            start = loopStarter != null && !looping && !jobs.isEmpty();
+            start = !looping;
             if (start) looping = true;
         }
-        if (start) Objects.requireNonNull(loopStarter).accept(this::loop);
+        if (start) loopStarter.accept(this::loop);
     }
 
     /** The job {@link #jobStarted} named ended: the last one's end drops the hold at once. */
@@ -148,6 +154,7 @@ public final class Awake {
 
     private void loop() {
         try {
+            check();
             while (true) {
                 Thread.sleep(RECHECK);
                 synchronized (this) {

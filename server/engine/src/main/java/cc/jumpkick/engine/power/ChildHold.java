@@ -58,6 +58,11 @@ final class ChildHold implements PowerHost.Hold {
         return process.isAlive();
     }
 
+    /**
+     * Ends the hold at once, on the job's thread: stdin closes ({@code systemd-inhibit}'s {@code cat}
+     * reads end-of-input) and the helper is terminated, since {@code caffeinate} never reads stdin
+     * and a wait for it to exit would hold every job's end.
+     */
     @Override
     public void close() {
         try {
@@ -65,6 +70,7 @@ final class ChildHold implements PowerHost.Hold {
         } catch (IOException ignored) {
             // Already closed: the helper is going.
         }
+        process.destroy();
         try {
             if (!process.waitFor(2, TimeUnit.SECONDS)) {
                 Processes.killTree(process);

@@ -8,7 +8,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-/** A helper process that holds until its stdin is closed or it is destroyed, and the argvs it was started with. */
+/**
+ * A helper process that holds until its stdin is closed or it is destroyed (or, with {@link
+ * #ignoresStdin}, only until destroyed, as macOS {@code caffeinate} does), and the argvs it was
+ * started with.
+ */
 final class FakeHelper implements ChildHold.Starter {
 
     final List<List<String>> started = new ArrayList<>();
@@ -17,10 +21,13 @@ final class FakeHelper implements ChildHold.Starter {
     /** Whether a started helper exits at once, as one that cannot take the hold does. */
     boolean refuse;
 
+    /** Whether a started helper outlives its closed stdin and its timed waits really wait. */
+    boolean ignoresStdin;
+
     @Override
     public Process apply(List<String> argv) {
         started.add(List.copyOf(argv));
-        Proc p = new Proc(!refuse);
+        Proc p = new Proc(!refuse, ignoresStdin);
         processes.add(p);
         return p;
     }
@@ -32,9 +39,11 @@ final class FakeHelper implements ChildHold.Starter {
 
     static final class Proc extends Process {
         private volatile boolean alive;
+        private final boolean ignoresStdin;
 
-        Proc(boolean alive) {
+        Proc(boolean alive, boolean ignoresStdin) {
             this.alive = alive;
+            this.ignoresStdin = ignoresStdin;
         }
 
         @Override
@@ -45,7 +54,7 @@ final class FakeHelper implements ChildHold.Starter {
 
                 @Override
                 public void close() {
-                    alive = false;
+                    if (!ignoresStdin) alive = false;
                 }
             };
         }
@@ -66,7 +75,8 @@ final class FakeHelper implements ChildHold.Starter {
         }
 
         @Override
-        public boolean waitFor(long timeout, TimeUnit unit) {
+        public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException {
+            if (alive && ignoresStdin) Thread.sleep(unit.toMillis(timeout));
             return !alive;
         }
 

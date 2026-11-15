@@ -66,6 +66,27 @@ class AwakeTest {
     }
 
     @Test
+    void a_job_start_never_starts_the_helper_on_the_jobs_own_thread() throws Exception {
+        List<Runnable> loops = new ArrayList<>();
+        LinuxPower host = laptop(true);
+        Awake a = new Awake(mode::get, () -> host, loops::add);
+        a.enable(logged::add);
+
+        a.jobStarted(1);
+        assertThat(helper.started).as("the job's thread started no helper").isEmpty();
+        assertThat(loops).hasSize(1);
+
+        Thread loop = Thread.ofVirtual().start(loops.getFirst());
+        long until = System.nanoTime() + 5_000_000_000L;
+        while (!a.holding() && System.nanoTime() < until) Thread.sleep(10);
+        assertThat(a.holding()).as("the loop took the hold").isTrue();
+        a.jobEnded(1);
+        assertThat(a.holding()).isFalse();
+        loop.interrupt();
+        loop.join();
+    }
+
+    @Test
     void linux_on_battery_holds_nothing_under_ac_and_holds_under_always() throws IOException {
         Awake a = awake(laptop(false));
         a.jobStarted(1);
