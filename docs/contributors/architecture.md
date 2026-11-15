@@ -690,7 +690,8 @@ keys** when adding a read-only remote later — only add an optional remote look
 keys. Local restore remains copy-not-link (see CAS invariant tests).
 
 **Record format.** A key record (`ActionRecordText`) is UTF-8 lines: `TASK <task id>`,
-`KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `CREATED
+`KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `KIND <kind>`,
+`CREATED
 <instant>`, `PRODUCER jk/<cache-key version>`, `PLATFORM <os>-<arch>` (where the outputs were
 made: a statement, never key material), then `INPUT <value> <name>`, `OUTPUT <sha256>/<bytes>
 <path>` (a marker scalar in place of a blob carries no size) and `EXEC <path>` in name order, then
@@ -698,6 +699,23 @@ made: a statement, never key material), then `INPUT <value> <name>`, `OUTPUT <sh
 record's total size is the sum of its distinct blobs' recorded sizes, with no stat. The form that
 may leave the machine (`renderShared`) keeps every header line and drops absolute-path inputs and
 `SAID` lines. `ActionRecordMetaTest` and `SharedRecordFormTest` round-trip it.
+
+**Record kinds** (`ActionRecordText.Kind`) state what a second write under one key means:
+
+| Kind | Written by | JumpKick's own cache | A store shared by several writers |
+|------|------------|----------------|-----------------------------------|
+| `outputs` | `store`, `storeArtifacts`, `storeWithOutputs` of blobs | latest write | write-once: a different second record is a reproducibility finding |
+| `verdict` | `storeVerdict`, `storeWithOutputs` of nothing | latest write | write-once |
+| `alias` | `storeAlias` | latest write | write-once |
+| `test-marker` | `storeMarkers` (a suite's counts, red or green) | latest write: red turns green under one stamp | an observation per writer; green only |
+| `class-ledger` | `storeMarkers` (per-class outcomes, empty when cleared) | merged and rewritten | an observation per writer; green classes only |
+
+`ActionRecordText.shareable` is the one predicate for what may leave the machine: a result JumpKick
+would replay where it was produced. Outputs, aliases and verdicts are; a test marker only when
+green; a class ledger only when it holds a class and every class passed. A red marker, a failing
+or cleared ledger and a record of unknown kind are refused by `renderShared`, and the action
+cache hands a writing tier (`RemoteTier.offer`) only shareable records, blobs before the record,
+behind the build (`RemoteTier.drain` waits for them).
 
 **Backend seam.** The action cache reads and writes its records and blobs through
 `CacheBackend` (`shared/client-io`): a batched record lookup that also names the asking

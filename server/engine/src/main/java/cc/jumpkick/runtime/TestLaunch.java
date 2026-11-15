@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.LangRuntimes.kotlinStdlib;
 import static cc.jumpkick.runtime.SelfHostEngine.needsNestedEngineIsolation;
 import static cc.jumpkick.runtime.SelfHostEngine.nestedEngineTestEnv;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -97,7 +98,13 @@ final class TestLaunch {
             throws IOException {
         TestLauncherReport.report(ctx, in.lockFile(), project, e);
         if (stampKey != null) {
-            actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.outcome(0, 0, 0, 1));
+            actionCache.storeMarkers(
+                    ActionRecordText.Kind.TEST_MARKER,
+                    testTaskId,
+                    stampKey,
+                    Map.of(),
+                    TestStamp.outcome(0, 0, 0, 1),
+                    List.of());
         }
     }
 
@@ -583,13 +590,21 @@ final class TestLaunch {
         if (stampKey == null) return;
         switch (PlannerTest.stampFor(result, testSourcesExist, SessionCancel.cancelled())) {
             case GREEN ->
-                actionCache.storeWithOutputs(
+                actionCache.storeMarkers(
+                        ActionRecordText.Kind.TEST_MARKER,
                         testTaskId,
                         stampKey,
                         Map.of(),
                         TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0),
                         said);
-            case NO_TESTS -> actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.noTestsOutcome());
+            case NO_TESTS ->
+                actionCache.storeMarkers(
+                        ActionRecordText.Kind.TEST_MARKER,
+                        testTaskId,
+                        stampKey,
+                        Map.of(),
+                        TestStamp.noTestsOutcome(),
+                        List.of());
             case NONE -> {}
         }
     }
@@ -598,11 +613,13 @@ final class TestLaunch {
     static void recordRed(ActionCache actionCache, String testTaskId, @Nullable String stampKey, TestSummary result)
             throws IOException {
         if (stampKey == null) return;
-        actionCache.storeWithOutputs(
+        actionCache.storeMarkers(
+                ActionRecordText.Kind.TEST_MARKER,
                 testTaskId,
                 stampKey,
                 Map.of(),
-                TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), result.failed()));
+                TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), result.failed()),
+                List.of());
     }
 
     /** The run's {@code --test-failures} / {@code JK_TEST_FAILURES}, else the module's {@code [test] failures}. */

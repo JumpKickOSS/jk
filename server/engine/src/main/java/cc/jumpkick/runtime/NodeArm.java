@@ -9,6 +9,7 @@ import static cc.jumpkick.runtime.BuildPlanner.NODE_OUTPUT;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_RUN;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
@@ -651,11 +652,13 @@ final class NodeArm {
                     ctx.put(TEST_RUN, TestRun.of(summary));
                     if (summary.allPassed() && r.ok()) {
                         if (settled(ctx, TaskNames.NODE_TEST, keyed, testKey(ctx, script))) {
-                            actionCache.storeWithOutputs(
+                            actionCache.storeMarkers(
+                                    ActionRecordText.Kind.TEST_MARKER,
                                     keyed.taskId(),
                                     keyed.key(),
                                     keyed.inputs(),
-                                    TestStamp.outcome(summary.total(), summary.succeeded(), summary.skipped(), 0));
+                                    TestStamp.outcome(summary.total(), summary.succeeded(), summary.skipped(), 0),
+                                    List.of());
                             writes.stored(TaskNames.NODE_TEST, keyed, () -> testKey(ctx, script));
                         }
                         ctx.progress(1);

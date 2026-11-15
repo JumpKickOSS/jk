@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.SuiteSettings;
@@ -384,7 +385,13 @@ final class TestClassLedger {
         if (stampKey == null) return;
         boolean interrupted = Thread.interrupted();
         try {
-            cache.storeWithOutputs(testTaskId + TASK_SUFFIX, key(stampKey), Map.of(), Map.of());
+            cache.storeMarkers(
+                    ActionRecordText.Kind.CLASS_LEDGER,
+                    testTaskId + TASK_SUFFIX,
+                    key(stampKey),
+                    Map.of(),
+                    Map.of(),
+                    List.of());
         } catch (IOException | RuntimeException e) {
             Log.debug("test class ledger not cleared", e);
         } finally {
@@ -404,7 +411,13 @@ final class TestClassLedger {
         recorded.forEach((cls, e) -> outputs.put(cls, e.encode()));
         boolean interrupted = Thread.interrupted();
         try {
-            cache.storeWithOutputs(testTaskId + TASK_SUFFIX, key(stampKey), Map.of(), outputs);
+            cache.storeMarkers(
+                    ActionRecordText.Kind.CLASS_LEDGER,
+                    testTaskId + TASK_SUFFIX,
+                    key(stampKey),
+                    Map.of(),
+                    outputs,
+                    List.of());
         } catch (IOException | RuntimeException e) {
             Log.debug("test class ledger not stored", e);
         } finally {

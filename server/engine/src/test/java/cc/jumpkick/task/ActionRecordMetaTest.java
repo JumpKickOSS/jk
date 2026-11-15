@@ -42,6 +42,7 @@ class ActionRecordMetaTest {
 
         ActionRecordText.Meta meta = record.meta();
         assertThat(meta.format()).isEqualTo(ActionRecordText.FORMAT);
+        assertThat(meta.kind()).isEqualTo(ActionRecordText.Kind.OUTPUTS);
         assertThat(meta.created()).isNotNull().isBetween(before, Instant.now());
         assertThat(meta.producer()).isEqualTo(ActionCache.producer()).startsWith("jk/");
         assertThat(meta.platform()).isEqualTo(CachePlatform.current()).matches("[a-z]+-[a-z0-9_]+");
@@ -61,12 +62,17 @@ class ActionRecordMetaTest {
     void the_shared_form_keeps_what_the_record_says_about_itself(@TempDir Path tmp) {
         String key = "k".repeat(64);
         ActionRecordText.Meta meta = new ActionRecordText.Meta(
-                1, Instant.parse("2026-11-15T17:03:11Z"), "jk/0.51.2#8", "linux-x86_64", Map.of("A.class", 812L));
+                1,
+                ActionRecordText.Kind.OUTPUTS,
+                Instant.parse("2026-11-15T17:03:11Z"),
+                "jk/0.51.2#8",
+                "linux-x86_64",
+                Map.of("A.class", 812L));
         String local = ActionRecordText.render(
                 "compile-main@x",
                 key,
                 Map.of("src/A.java", "aaa", tmp.resolve("lib.jar").toString(), "abi:1"),
-                Map.of("A.class", "a".repeat(64), "tests.total", "3"),
+                Map.of("A.class", "a".repeat(64), "b/B.class", "b".repeat(64)),
                 Set.of(),
                 List.of("warning: something"),
                 meta);
@@ -75,7 +81,7 @@ class ActionRecordMetaTest {
 
         ActionRecordText.Parsed back = ActionRecordText.parse(shared, key);
         assertThat(back.meta()).isEqualTo(meta);
-        assertThat(back.outputs()).containsEntry("A.class", "a".repeat(64)).containsEntry("tests.total", "3");
+        assertThat(back.outputs()).containsEntry("A.class", "a".repeat(64)).containsEntry("b/B.class", "b".repeat(64));
         assertThat(back.inputs()).containsOnlyKeys("src/A.java");
         assertThat(shared).doesNotContain("SAID ").doesNotContain(tmp.toString());
     }

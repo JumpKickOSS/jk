@@ -4,17 +4,27 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
@@ -40,14 +50,91 @@ public final class RemoteTier {
     private final AtomicBoolean off = new AtomicBoolean();
     private final AtomicLong hits = new AtomicLong();
     private final AtomicLong bytesDown = new AtomicLong();
+    private final AtomicLong uploaded = new AtomicLong();
+    private final boolean writes;
+    private final AtomicBoolean writesOff = new AtomicBoolean();
+    private final Queue<Future<?>> uploads = new ConcurrentLinkedQueue<>();
+    private final AtomicBoolean drained = new AtomicBoolean();
 
+    /** A tier this build only reads from. */
     public RemoteTier(CacheBackend backend) {
-        this(backend, CachePlatform.current());
+        this(backend, CachePlatform.current(), false);
+    }
+
+    /**
+     * A tier this build reads from and, when {@code writes}, uploads its shareable records to,
+     * behind the build ({@link #offer}, {@link #drain}).
+     */
+    public RemoteTier(CacheBackend backend, boolean writes) {
+        this(backend, CachePlatform.current(), writes);
     }
 
     RemoteTier(CacheBackend backend, String platform) {
+        this(backend, platform, false);
+    }
+
+    RemoteTier(CacheBackend backend, String platform, boolean writes) {
         this.backend = Objects.requireNonNull(backend, "backend");
         this.platform = Objects.requireNonNull(platform, "platform");
+        this.writes = writes;
+    }
+
+    /** True when this build uploads what it stores. */
+    public boolean writes() {
+        return writes && !writesOff.get();
+    }
+
+    /** Records this build uploaded. */
+    public long uploaded() {
+        return uploaded.get();
+    }
+
+    /**
+     * Queue {@code sharedText}, the form of record {@code key} that may leave the machine, for
+     * upload with its blobs ({@code blobs}, digest to the local file holding it): the blobs the
+     * backend lacks first, then the record, so the backend never holds a record without its
+     * payload. Returns at once. A failed upload stops this build's uploads with one warning in the
+     * engine log; reads go on.
+     */
+    void offer(String key, String sharedText, Map<String, Path> blobs) {
+        if (!writes() || drained.get()) return;
+        uploads.add(JkThreads.platform().submit(() -> upload(key, sharedText, blobs)));
+    }
+
+    private void upload(String key, String sharedText, Map<String, Path> blobs) {
+        if (!writes()) return;
+        try {
+            for (String sha : backend.missing(blobs.keySet())) {
+                Path blob = blobs.get(sha);
+                if (blob != null) backend.putBlob(sha, blob);
+            }
+            backend.putRecord(key, sharedText);
+            uploaded.incrementAndGet();
+        } catch (IOException | RuntimeException e) {
+            if (writesOff.compareAndSet(false, true)) {
+                Log.warn("jk: remote cache " + backend.name() + " refused an upload (" + e.getMessage()
+                        + "); uploading nothing more this build");
+            }
+        }
+    }
+
+    /**
+     * Wait up to {@code timeout} for every queued upload, then take no more. True when they all
+     * finished: what a build that must leave its results behind (a CI run) waits on at its end.
+     */
+    public boolean drain(Duration timeout) throws InterruptedException {
+        drained.set(true);
+        long deadline = Clock.SYSTEM.nanos() + timeout.toNanos();
+        for (Future<?> f; (f = uploads.poll()) != null; ) {
+            try {
+                f.get(Math.max(0, deadline - Clock.SYSTEM.nanos()), TimeUnit.NANOSECONDS);
+            } catch (TimeoutException late) {
+                return false;
+            } catch (ExecutionException failed) {
+                // upload() reports its own failure
+            }
+        }
+        return true;
     }
 
     /** The backend's name, for messages. */

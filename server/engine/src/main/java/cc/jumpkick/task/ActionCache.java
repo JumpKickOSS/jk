@@ -326,7 +326,8 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             return new ActionRecord(taskId, actionKey, inputs, Map.of());
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, outputDir, said);
+        return storeWithOutputs(
+                ActionRecordText.Kind.OUTPUTS, taskId, actionKey, inputs, outputs, executables, outputDir, said);
     }
 
     /**
@@ -440,7 +441,8 @@ public final class ActionCache {
     /** As {@link #storeVerdict(String, String, Map)}, keeping what the action {@linkplain ActionRecord#said() said}. */
     public ActionRecord storeVerdict(String taskId, String actionKey, Map<String, String> inputs, List<String> said)
             throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, Map.of(), Set.of(), null, said);
+        return storeWithOutputs(
+                ActionRecordText.Kind.VERDICT, taskId, actionKey, inputs, Map.of(), Set.of(), null, said);
     }
 
     /**
@@ -462,7 +464,35 @@ public final class ActionCache {
         long bytes = new HashSet<>(outputs.values())
                 .stream().mapToLong(this::blobSize).sum();
         if (!DiskGuard.admits(root, bytes)) return new ActionRecord(taskId, actionKey, inputs, Map.of());
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null, said);
+        return storeWithOutputs(kindOf(outputs), taskId, actionKey, inputs, outputs, Set.of(), null, said);
+    }
+
+    /**
+     * Record a suite's outcome: a {@link ActionRecordText.Kind#TEST_MARKER} of counts, or a {@link
+     * ActionRecordText.Kind#CLASS_LEDGER} of per-class outcomes (none when cleared). {@code markers}
+     * are scalars, never blobs, and the kind is what keeps a red one on this machine.
+     */
+    public ActionRecord storeMarkers(
+            ActionRecordText.Kind kind,
+            String taskId,
+            String actionKey,
+            Map<String, String> inputs,
+            Map<String, String> markers,
+            List<String> said)
+            throws IOException {
+        if (kind != ActionRecordText.Kind.TEST_MARKER && kind != ActionRecordText.Kind.CLASS_LEDGER) {
+            throw new IllegalArgumentException("not a marker kind: " + kind);
+        }
+        return storeWithOutputs(kind, taskId, actionKey, inputs, markers, Set.of(), null, said);
+    }
+
+    /** A verdict when {@code outputs} is empty, outputs when every value is a blob, else of no kind. */
+    private static ActionRecordText.@Nullable Kind kindOf(Map<String, String> outputs) {
+        if (outputs.isEmpty()) return ActionRecordText.Kind.VERDICT;
+        for (String value : outputs.values()) {
+            if (!isSha256Hex(value)) return null;
+        }
+        return ActionRecordText.Kind.OUTPUTS;
     }
 
     /**
@@ -489,7 +519,15 @@ public final class ActionCache {
         Optional<ActionRecord> from = lookup(fromKey);
         if (from.isEmpty()) return;
         ActionRecord r = from.get();
-        storeWithOutputs(r.taskId(), actionKey, inputs, r.outputs(), r.executables(), null, r.said());
+        storeWithOutputs(
+                ActionRecordText.Kind.ALIAS,
+                r.taskId(),
+                actionKey,
+                inputs,
+                r.outputs(),
+                r.executables(),
+                null,
+                r.said());
     }
 
     /**
@@ -499,6 +537,7 @@ public final class ActionCache {
      * generation belongs to; {@code said} is what the action told the user as it ran.
      */
     private ActionRecord storeWithOutputs(
+            ActionRecordText.@Nullable Kind kind,
             @Nullable String taskId,
             @Nullable String actionKey,
             Map<String, String> inputs,
@@ -527,7 +566,7 @@ public final class ActionCache {
                 outputs,
                 executables,
                 said,
-                ActionRecordText.Meta.now(producer(), CachePlatform.current(), sizes));
+                ActionRecordText.Meta.now(kind, producer(), CachePlatform.current(), sizes));
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
@@ -555,7 +594,31 @@ public final class ActionCache {
             // worth seeing.
             Log.warn("jk: action-cache record not published — a reader held the name", "key", key, "task", task);
         }
+        offer(record);
         return record;
+    }
+
+    /**
+     * Hand {@code record} to the build's remote tier for upload behind the build, in the form that
+     * may leave the machine, when the tier writes and the record is one this jk would replay
+     * ({@link ActionRecordText#shareable}). Nothing waits for it here.
+     */
+    private void offer(ActionRecord record) {
+        if (remote == null || !remote.writes()) return;
+        ActionRecordText.Parsed parsed = new ActionRecordText.Parsed(
+                Objects.requireNonNull(record.taskId()),
+                Objects.requireNonNull(record.actionKey()),
+                record.inputs(),
+                record.outputs(),
+                record.executables(),
+                record.said(),
+                record.meta());
+        if (!ActionRecordText.shareable(parsed)) return;
+        Map<String, Path> blobs = new TreeMap<>();
+        for (String sha : record.outputs().values()) {
+            if (isSha256Hex(sha)) blobs.put(sha, local.blobPath(sha));
+        }
+        remote.offer(parsed.actionKey(), ActionRecordText.renderShared(parsed), blobs);
     }
 
     /**
@@ -938,7 +1001,8 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             throw new IOException("packaging produced no files to cache: " + artifacts);
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, root, said);
+        return storeWithOutputs(
+                ActionRecordText.Kind.OUTPUTS, taskId, actionKey, inputs, outputs, executables, root, said);
     }
 
     /**

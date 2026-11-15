@@ -21,8 +21,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
- * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code
- * CREATED}, {@code PRODUCER}, {@code PLATFORM}), then {@code INPUT <value> <name>}, {@code OUTPUT
+ * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code KIND},
+ * {@code CREATED}, {@code PRODUCER}, {@code PLATFORM}), then {@code INPUT <value> <name>}, {@code OUTPUT
  * <sha256>/<bytes> <path>} and {@code EXEC <path>} lines in name order, then {@code SAID <line>}
  * lines in the order the action said them, then {@code END <outputCount>}. An output that is a
  * marker scalar rather than a blob carries no size. A record without that last line, or whose count disagrees with its
@@ -108,21 +108,95 @@ public final class ActionRecordText {
      */
     public record Meta(
             int format,
+            @Nullable Kind kind,
             @Nullable Instant created,
             @Nullable String producer,
             @Nullable String platform,
             Map<String, Long> sizes) {
 
-        public static final Meta NONE = new Meta(0, null, null, null, Map.of());
+        public static final Meta NONE = new Meta(0, null, null, null, null, Map.of());
 
         public Meta {
             sizes = Map.copyOf(sizes);
         }
 
-        /** Made now, to the second, by {@code producer} on {@code platform}, its blobs {@code sizes} bytes each. */
-        public static Meta now(String producer, String platform, Map<String, Long> sizes) {
-            return new Meta(FORMAT, Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000), producer, platform, sizes);
+        /** A {@code kind} record made now, to the second, by {@code producer} on {@code platform}, its blobs {@code sizes} bytes each. */
+        public static Meta now(@Nullable Kind kind, String producer, String platform, Map<String, Long> sizes) {
+            return new Meta(
+                    FORMAT, kind, Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000), producer, platform, sizes);
         }
+    }
+
+    /**
+     * What a record is, which decides what a second write under its key means. jk's own cache
+     * keeps the latest write of every kind; a store shared by several writers keeps {@link
+     * #OUTPUTS}, {@link #VERDICT} and {@link #ALIAS} records write-once (a different second result
+     * under one key is a reproducibility finding, not an update) and keeps {@link #TEST_MARKER} and
+     * {@link #CLASS_LEDGER} records as observations, by writer.
+     */
+    public enum Kind {
+        /** A step's output files, by digest. */
+        OUTPUTS("outputs"),
+        /** A check that passed and produced nothing: the record is the result. */
+        VERDICT("verdict"),
+        /** A suite's counts under its stamp, red or green. */
+        TEST_MARKER("test-marker"),
+        /** Per-class outcomes under a suite's stamp, or none when cleared. */
+        CLASS_LEDGER("class-ledger"),
+        /** Another key's outputs stored again under this key, for inputs read without what the build wrote. */
+        ALIAS("alias");
+
+        private final String word;
+
+        Kind(String word) {
+            this.word = word;
+        }
+
+        /** The word a {@code KIND} line spells. */
+        public String word() {
+            return word;
+        }
+
+        /** The kind {@code word} spells, or null for a word this jk does not know. */
+        public static @Nullable Kind of(String word) {
+            for (Kind k : values()) {
+                if (k.word.equals(word)) return k;
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Whether {@code record} may go to a store others read: only a result this jk would replay on
+     * the machine that produced it. Outputs, aliases and verdicts are; a test marker only when it
+     * is green; a class ledger only when it holds at least one class and every class passed. A red
+     * marker, a ledger holding a failure or cleared to nothing, and a record whose kind is unknown
+     * stay on the machine that wrote them. The one place this is decided.
+     */
+    public static boolean shareable(Parsed record) {
+        Kind kind = record.meta().kind();
+        if (kind == null) return false;
+        return switch (kind) {
+            case OUTPUTS, ALIAS ->
+                !record.outputs().isEmpty()
+                        && record.outputs().values().stream().allMatch(ActionRecordText::isSha256);
+            case VERDICT -> record.outputs().isEmpty();
+            case TEST_MARKER -> zeroCount(record.outputs().get("tests.failed"));
+            case CLASS_LEDGER ->
+                !record.outputs().isEmpty()
+                        && record.outputs().values().stream().allMatch(ActionRecordText::greenClass);
+        };
+    }
+
+    /** A count that reads as zero: a failure count no reader could take for a failure. */
+    private static boolean zeroCount(@Nullable String count) {
+        return count != null && isSize(count) && Long.parseLong(count) == 0;
+    }
+
+    /** A class-ledger value {@code tests,failed,skipped} whose failed count is zero. */
+    private static boolean greenClass(String value) {
+        String[] parts = value.split(",", -1);
+        return parts.length == 3 && zeroCount(parts[1]) && isSize(parts[0]) && isSize(parts[2]);
     }
 
     /**
@@ -180,6 +254,8 @@ public final class ActionRecordText {
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');
         sb.append("FORMAT ").append(FORMAT).append('\n');
+        Kind kind = meta.kind() != null ? meta.kind() : inferredKind(outputs);
+        if (kind != null) sb.append("KIND ").append(kind.word()).append('\n');
         if (meta.created() != null) sb.append("CREATED ").append(meta.created()).append('\n');
         if (meta.producer() != null)
             sb.append("PRODUCER ").append(oneWord(meta.producer())).append('\n');
@@ -222,6 +298,13 @@ public final class ActionRecordText {
      * the source by its absolute path. No key hashes either, so the hit it serves is the same.
      */
     public static String renderShared(Parsed record) {
+        if (!shareable(record)) {
+            throw new Refused("a "
+                    + (record.meta().kind() == null
+                            ? "record of no kind"
+                            : record.meta().kind().word())
+                    + " record that this jk would not replay does not leave the machine");
+        }
         Map<String, String> portable = new TreeMap<>();
         for (Map.Entry<String, String> e : record.inputs().entrySet()) {
             if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()))
@@ -235,6 +318,18 @@ public final class ActionRecordText {
                 record.executables(),
                 List.of(),
                 record.meta());
+    }
+
+    /**
+     * The kind of a record written without one: a verdict when it names no output, outputs when
+     * every output is a blob, else none, since markers are written with their kind.
+     */
+    private static @Nullable Kind inferredKind(Map<String, String> outputs) {
+        if (outputs.isEmpty()) return Kind.VERDICT;
+        for (String value : outputs.values()) {
+            if (!isSha256(value)) return null;
+        }
+        return Kind.OUTPUTS;
     }
 
     /** {@code text} as one space-free word, so a header line reads back whole. */
@@ -287,6 +382,7 @@ public final class ActionRecordText {
         List<String> said = new ArrayList<>();
         Map<String, Long> sizes = new LinkedHashMap<>();
         int format = 0;
+        @Nullable Kind kind = null;
         @Nullable Instant created = null;
         @Nullable String producer = null;
         @Nullable String platform = null;
@@ -317,6 +413,8 @@ public final class ActionRecordText {
                 outputs.put(path, value);
             } else if (line.startsWith("FORMAT ")) {
                 format = Integer.parseInt(line.substring("FORMAT ".length()).trim());
+            } else if (line.startsWith("KIND ")) {
+                kind = Kind.of(line.substring("KIND ".length()).trim());
             } else if (line.startsWith("CREATED ")) {
                 created = Instant.parse(line.substring("CREATED ".length()).trim());
             } else if (line.startsWith("PRODUCER ")) {
@@ -354,7 +452,7 @@ public final class ActionRecordText {
                 outputs,
                 executables,
                 List.copyOf(said),
-                new Meta(format, created, producer, platform, sizes));
+                new Meta(format, kind, created, producer, platform, sizes));
     }
 
     private static boolean isSize(String digits) {
