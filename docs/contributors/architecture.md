@@ -689,9 +689,22 @@ keys** when adding a read-only remote later — only add an optional remote look
 **CAS addressing:** blobs are `sha256` content-addressed; a remote store can use the same hex
 keys. Local restore remains copy-not-link (see CAS invariant tests).
 
-**Read-only remote client (post-GA sketch):** lookup action key → download missing blobs →
-restore into local CAS/action cache → proceed as a local hit. No write-back, ACLs, or REAPI
-execution in 1.0.
+**Backend seam.** The action cache reads and writes its records and blobs through
+`CacheBackend` (`shared/client-io`): a batched record lookup that also names the asking
+platform (a lookup dimension, never key material), which blobs are missing, a blob's bytes, and
+puts of blobs and records. The local disk (`LocalCacheBackend`: `keys/`, the cache CAS, the store
+CAS for promoted blobs) is the one implementation JumpKick ships. A build may bind a second one behind
+it (`RemoteCaches.where`, a `RemoteTier` per build); unbound, the action cache is the local disk
+alone. With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
+holds whole is `restorable` without a download, so the forecast and `jk explain` price it as a
+hit, and the restore fetches the missing blobs (each verified by `Cas.putVerified`, a mismatch is
+a miss) and keeps the record locally. A record with no blob to fetch (a verdict, a test marker) is
+kept locally on its first lookup. The tier remembers each key's answer for the build, and
+`RemoteTier.prefetch` asks for many keys in one call. A remote record is parsed as untrusted as a
+local one, and a refusal is a miss for this build only: the interface has no delete, so no reader
+removes a record from a store others share (`LocalCacheBackend.discard` is the local disk's own).
+A tier that fails is off for the rest of the build after one `remote-cache-unreachable` warning on
+the step that met it; the build goes on locally. No ACLs or REAPI execution in 1.0.
 
 **Non-goals for 1.0:** remote write-back, multi-tenant trust, full Bazel REAPI execution,
 cross-org sharing.

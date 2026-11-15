@@ -2638,6 +2638,10 @@ in     = "shared/core/src/main/java/cc/jumpkick/config/ManifestOverlay.java"
 reason = "the manifest texts an IDE or agent overlays on the files for one request"
 
 [[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/RemoteCaches.java"
+reason = "the remote cache tier a build binds, read by every action cache its work opens on pool threads"
+
+[[guards.carried-value-owners.allow]]
 in     = "shared/jk-api/src/main/java/cc/jumpkick/run/StepScope.java"
 reason = "the step a task reports to, and its locals"
 

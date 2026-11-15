@@ -51,6 +51,10 @@ import org.jspecify.annotations.Nullable;
  * Staged natives/jars may live only in the artifact store — restore falls back there on cache miss.
  * Class-C tasks also keep a short generation list per checkout ({@code tasks/<taskId>.gens}, see
  * {@link HeavyActionPolicy}).
+ *
+ * <p>Records and blobs are read and written through {@link LocalCacheBackend}; when the build has
+ * bound a {@link RemoteTier} ({@link RemoteCaches}), a key the local disk cannot restore is asked
+ * of it next.
  */
 public final class ActionCache {
 
@@ -68,6 +72,12 @@ public final class ActionCache {
     private final @Nullable Cas storeCas; // dual-CAS lookup for promoted Class-C blobs
     private final Path root;
 
+    /** Records and blobs on this machine's disk: every read asks here first, every store lands here. */
+    private final LocalCacheBackend local;
+
+    /** The build's remote tier, asked after {@link #local} misses; null when the build has none. */
+    private final @Nullable RemoteTier remote;
+
     public ActionCache(Cas cas, Path root) {
         this(cas, root, null);
     }
@@ -79,6 +89,8 @@ public final class ActionCache {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.root = Objects.requireNonNull(root, "root");
         this.storeCas = storeCas;
+        this.local = new LocalCacheBackend(cas, root, storeCas);
+        this.remote = RemoteCaches.current();
     }
 
     /**
@@ -140,17 +152,16 @@ public final class ActionCache {
      * finds it). A record whose payload was pruned is a miss: the build would compile, not
      * restore. The forecast and every step's cache check ask this one question, so a prediction
      * can never call a hit that the restore then refuses.
+     *
+     * <p>When this disk cannot restore it, the build's remote tier is asked: a record it holds
+     * whole is restorable, and the restore fetches the blobs this disk lacks.
      */
     public Optional<ActionRecord> restorable(@Nullable String actionKey) {
         try {
             if (actionKey == null) return Optional.empty();
-            Optional<ActionRecord> rec = lookup(actionKey);
-            if (rec.isEmpty()) return Optional.empty();
-            for (String sha : rec.get().outputs().values()) {
-                if (!isSha256Hex(sha)) continue; // a marker scalar, not a CAS blob
-                if (!Files.isRegularFile(resolveBlob(sha))) return Optional.empty();
-            }
-            return rec;
+            Optional<ActionRecord> rec = lookupLocal(actionKey);
+            if (rec.isPresent() && local.missing(rec.get().outputs().values()).isEmpty()) return rec;
+            return lookupRemote(actionKey);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
@@ -158,52 +169,88 @@ public final class ActionCache {
 
     /** Resolve a blob path: cache CAS first, then store CAS (promoted Class-C). */
     Path resolveBlob(String sha) {
-        Path p = cas.pathFor(sha);
-        if (Files.isRegularFile(p)) return p;
-        if (storeCas != null) {
-            Path s = storeCas.pathFor(sha);
-            if (Files.isRegularFile(s)) return s;
-        }
-        return p;
+        return local.blobPath(sha);
     }
 
     /**
-     * The record for {@code actionKey}, or empty when there is none. Reads without a prior
-     * existence check: another engine's {@link ActionCachePrune} can unlink the key between the two,
-     * and a vanished entry is a miss, not a failure. A hit {@linkplain ActionRecordText#markRead
-     * marks the record read}, so the prune ranks it by last use.
+     * The record for {@code actionKey}, or empty when there is none: this disk's, else the build's
+     * remote tier's. Reads without a prior existence check: another engine's {@link
+     * ActionCachePrune} can unlink the key between the two, and a vanished entry is a miss, not a
+     * failure. A hit {@linkplain ActionRecordText#markRead marks the record read}, so the prune
+     * ranks it by last use.
      */
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
-        // A blank key (a torn tasks/ pointer) names the keys dir itself, not a record.
-        if (actionKey.isBlank()) return Optional.empty();
-        Path key = keysDir().resolve(actionKey);
-        String content;
-        try {
-            content = AtomicWrites.readString(key);
-        } catch (NoSuchFileException absent) {
-            return Optional.empty();
-        } catch (IOException denied) {
-            if (!deniedByAConcurrentReplace(denied)) throw denied;
-            return Optional.empty();
-        }
+        Optional<ActionRecord> here = lookupLocal(actionKey);
+        return here.isPresent() ? here : lookupRemote(actionKey);
+    }
+
+    private Optional<ActionRecord> lookupLocal(String actionKey) throws IOException {
+        Optional<String> content = local.record(actionKey);
+        if (content.isEmpty()) return Optional.empty();
         ActionRecord record;
         try {
-            record = parse(content, actionKey);
+            record = parse(content.get(), actionKey);
         } catch (ActionRecordText.Refused refused) {
             // Whole but not this engine's to trust (a restored or imported cache): a miss, said
             // once, since the record goes with it.
             Log.warn("jk: action record refused; rebuilding", "key", actionKey, "cause", refused.getMessage());
-            Files.deleteIfExists(key);
+            local.discard(actionKey);
             return Optional.empty();
         } catch (RuntimeException torn) {
             // A record cut short — an engine killed mid-write, a full disk — is a miss, not a
             // failure of every step that consults this key on every build until --rebuild. The
             // file goes so the next real run's store is what the key names.
-            Files.deleteIfExists(key);
+            local.discard(actionKey);
             return Optional.empty();
         }
-        ActionRecordText.markRead(key);
+        ActionRecordText.markRead(local.recordPath(actionKey));
         return Optional.of(record);
+    }
+
+    /**
+     * The remote tier's record for {@code actionKey}, read as untrusted as a local one is. A record
+     * refused here is a miss for this build and stays where it is: no reader deletes from a store
+     * others share. One that names no blob this disk lacks (a verdict, a test marker) is kept here
+     * at once, so the next build finds it locally.
+     */
+    private Optional<ActionRecord> lookupRemote(String actionKey) throws IOException {
+        if (remote == null || actionKey.isBlank()) return Optional.empty();
+        String text = remote.record(actionKey);
+        if (text == null) return Optional.empty();
+        ActionRecord record;
+        try {
+            record = parse(text, actionKey);
+        } catch (RuntimeException refused) {
+            Log.warn("jk: remote action record refused", "key", actionKey, "cause", refused.getMessage());
+            remote.forget(actionKey);
+            return Optional.empty();
+        }
+        if (local.missing(record.outputs().values()).isEmpty()) adopt(actionKey, text);
+        return Optional.of(record);
+    }
+
+    /** Keep the remote tier's record text for {@code actionKey} on this disk, its blobs already here. */
+    private void adopt(String actionKey, String text) throws IOException {
+        local.putRecord(actionKey, text);
+        if (remote != null) {
+            remote.forget(actionKey);
+            remote.hit();
+        }
+    }
+
+    /**
+     * Fetch the blobs of {@code record} this disk lacks from the remote tier, verified, and keep
+     * the record here. False when there is no tier, the tier does not hold the record whole, or a
+     * blob did not arrive: the restore is then the miss it would have been.
+     */
+    private boolean fetchFromRemote(ActionRecord record) throws IOException {
+        if (remote == null || record.actionKey() == null) return false;
+        Set<String> missing = local.missing(record.outputs().values());
+        if (missing.isEmpty()) return false;
+        String text = remote.record(record.actionKey());
+        if (text == null || !remote.fetch(missing, cas)) return false;
+        adopt(record.actionKey(), text);
+        return true;
     }
 
     /** The record the {@code tasks/} pointer for {@code taskId} names, or empty. Same race, same answer. */
@@ -214,29 +261,10 @@ public final class ActionCache {
         } catch (NoSuchFileException absent) {
             return Optional.empty();
         } catch (IOException denied) {
-            if (!deniedByAConcurrentReplace(denied)) throw denied;
+            if (!LocalCacheBackend.deniedByAConcurrentReplace(denied)) throw denied;
             return Optional.empty();
         }
         return lookup(actionKey);
-    }
-
-    /**
-     * Whether {@code e} is Windows refusing a read of a name a concurrent store is replacing,
-     * after {@link AtomicWrites#readString} has already spent its retry budget on it.
-     *
-     * <p>True makes the lookup a miss. That is always safe and never a wrong hit — a miss costs
-     * the caller a re-run of an action whose record it could not read — where throwing costs the
-     * build a step for a race it did not cause. It is the read-side mirror of the store's own
-     * decision not to fail a step whose outputs are already in the CAS.
-     *
-     * <p>Warned rather than debugged, for the same reason the store side warns: with the budget
-     * {@link AtomicWrites} uses, reaching here means the contention outran a measurement that saw
-     * none, and a cache quietly missing is the kind of thing that reads as "jk got slower".
-     */
-    private static boolean deniedByAConcurrentReplace(IOException e) {
-        if (!Os.isWindows() || !AtomicWrites.isTransientWindowsLock(e)) return false;
-        Log.warn("jk: action-cache entry not read — a writer held the name", "path", String.valueOf(e.getMessage()));
-        return true;
     }
 
     /**
@@ -345,7 +373,7 @@ public final class ActionCache {
         // Through the memo: a warm rebuild answers from the map without reading the output, and
         // putFile skips the copy for a blob already present.
         String hex = FileHashMemo.contentHash(file);
-        cas.putFile(file, hex);
+        local.putBlob(hex, file);
         // Seed the memo, which refuses a file written inside its settle window on its own.
         FileHashMemo.rememberContent(file, hex);
         String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
@@ -478,7 +506,6 @@ public final class ActionCache {
             @Nullable Path outputRoot,
             List<String> said)
             throws IOException {
-        Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
         long storedBytes = meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
         String task = Objects.requireNonNull(taskId, "taskId");
@@ -489,7 +516,7 @@ public final class ActionCache {
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
-            AtomicWrites.replace(keysDir().resolve(key), render(record));
+            local.putRecord(key, render(record));
             Path pointer = tasksDir().resolve(task);
             if (HeavyActionPolicy.generations(task) == Integer.MAX_VALUE || outputRoot == null) {
                 AtomicWrites.replace(pointer, key); // not Class-C: no generation list to agree with
@@ -543,7 +570,7 @@ public final class ActionCache {
             int retained = Math.min(keep, mine.size());
             for (HeavyActionPolicy.Generation dropped : mine.subList(retained, mine.size())) {
                 boolean namedElsewhere = others.stream().anyMatch(o -> o.key().equals(dropped.key()));
-                if (!namedElsewhere) Files.deleteIfExists(keysDir().resolve(dropped.key()));
+                if (!namedElsewhere) local.discard(dropped.key());
             }
             List<HeavyActionPolicy.Generation> kept = new ArrayList<>(others);
             kept.addAll(mine.subList(0, retained));
@@ -580,6 +607,7 @@ public final class ActionCache {
         }
         if (!inside(outputDir, outputs.keySet())) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(outputs);
+        if (resolved.isEmpty() && fetchFromRemote(record)) resolved = resolveAll(outputs);
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the classes tree
@@ -734,6 +762,7 @@ public final class ActionCache {
         if (record.outputs().isEmpty()) return false;
         if (!inside(baseDir, record.outputs().keySet())) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
+        if (resolved.isEmpty() && fetchFromRemote(record)) resolved = resolveAll(record.outputs());
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
         // Clear the DIRECTORY roots this record owns before copyinga multi-file
@@ -884,7 +913,7 @@ public final class ActionCache {
             }
             // Memo, and seed it — see store.
             String hex = FileHashMemo.contentHash(a);
-            cas.putFile(a, hex); // never link a mutable target/ artifact into the CAS
+            local.putBlob(hex, a); // never link a mutable target/ artifact into the CAS
             FileHashMemo.rememberContent(a, hex);
 
             String rel = root.relativize(a).toString().replace(File.separatorChar, '/');
@@ -1024,10 +1053,6 @@ public final class ActionCache {
     private static ActionRecord parse(String content, String actionKey) {
         ActionRecordText.Parsed p = ActionRecordText.parse(content, actionKey);
         return new ActionRecord(p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables(), p.said());
-    }
-
-    private Path keysDir() {
-        return ActionTree.KEYS.under(root);
     }
 
     private Path tasksDir() {
