@@ -11,8 +11,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -157,8 +160,10 @@ public final class GraphTools {
     public String callers(String name, int depth, int budget) {
         // Type.m(Entry), the form rename takes, names the method: callers answers every overload.
         String wanted = name.strip().replaceFirst("^([^(]+)\\([^()]+\\)$", "$1");
-        List<String> targets = graph.has(wanted) ? List.of(wanted) : members(wanted);
-        if (targets.isEmpty()) return noMethod(wanted);
+        List<String> named = graph.has(wanted) ? List.of(wanted) : members(wanted);
+        if (named.isEmpty()) return noMethod(wanted);
+        List<String> targets = withJvmNames(named);
+        List<String> inline = targets.stream().filter(this::inline).toList();
         Map<String, Caller> found = new LinkedHashMap<>();
         Map<String, Set<String>> reached = new HashMap<>();
         Map<String, Set<String>> frontier = new LinkedHashMap<>();
@@ -206,7 +211,7 @@ public final class GraphTools {
         test.sort(order);
         boolean transitive = depth > 1;
         String subject =
-                graph.display(targets.getFirst()) + (targets.size() > 1 ? " (" + targets.size() + " overloads)" : "");
+                graph.display(named.getFirst()) + (named.size() > 1 ? " (" + named.size() + " overloads)" : "");
         List<String> lines = new ArrayList<>();
         lines.add((transitive ? "Every method that reaches " : "Callers of ") + subject + ": " + main.size()
                 + " in main sources, " + test.size() + " in tests"
@@ -216,9 +221,14 @@ public final class GraphTools {
                                 ? ", stopped at " + depth + " hops: more lie beyond, raise max_hops (-L) for them."
                                 : ", every one: the chain ends after " + deepest
                                         + (deepest == 1 ? " hop." : " hops.")));
-        lines.add((complete
-                        ? "Complete from the compiled classes; no search needed unless a note below says otherwise."
-                        : "Not complete: the note below names the modules with no compiled classes.")
+        List<String> guessed = inline.isEmpty() ? List.of() : inlineUses(inline, found.keySet());
+        lines.add((!inline.isEmpty()
+                        ? "Not complete: " + GraphQuery.clean(graph.display(inline.getFirst())) + " is a Kotlin inline"
+                                + " function, and kotlinc copies its body into each caller, so the classes hold no call to"
+                                + " it; the lines that call it by name are listed (inferred)."
+                        : complete
+                                ? "Complete from the compiled classes; no search needed unless a note below says otherwise."
+                                : "Not complete: the note below names the modules with no compiled classes.")
                 + " Every method listed reaches it, its receiver typed by the compiler whatever the variable is called: a"
                 + " lambda's call counts for its method, and one marked through calls a supertype method that"
                 + " dispatches to it.");
@@ -239,7 +249,11 @@ public final class GraphTools {
                 if (!transitive) lines.addAll(quotes(c.edge()).stream().limit(2).toList());
             }
         }
-        if (found.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
+        if (!guessed.isEmpty()) {
+            lines.add("inferred:");
+            lines.addAll(guessed);
+        }
+        if (found.isEmpty() && guessed.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
         if (!transitive) {
             long onward = found.keySet().stream()
                     .filter(c -> reaches(c, reached.getOrDefault(c, Set.of(ANY))).stream()
@@ -252,6 +266,129 @@ public final class GraphTools {
             }
         }
         return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
+    }
+
+    /** {@code @JvmName("sumOf")} on the lines a Kotlin declaration starts with. */
+    private static final Pattern JVM_NAME = Pattern.compile("@(?:get:|set:)?JvmName\\(\\s*\"([A-Za-z_$][\\w$]*)\"\\s*\\)");
+
+    /** A line holding only annotations and modifiers, which belong to the declaration below it. */
+    private static final Pattern PREAMBLE = Pattern.compile(
+            "\\s*(?:@[\\w:.$]+(?:\\([^)]*\\))?\\s*|(?:public|private|internal|protected|inline|override|open|suspend"
+                    + "|operator|infix|tailrec|external|actual|expect)\\s+)+");
+
+    private static final Pattern INLINE = Pattern.compile("(?<![\\w$])inline\\s+(?:[a-z]+\\s+)*fun\\b");
+
+    /**
+     * {@code targets} and, for a Kotlin declaration renamed by {@code @JvmName}, the compiled method
+     * of that name beside it: the classes call it by the name the annotation gives.
+     */
+    private List<String> withJvmNames(List<String> targets) {
+        List<String> out = new ArrayList<>(targets);
+        for (String t : targets) {
+            GraphNode n = graph.node(t);
+            if (n == null || !n.sourceFile().endsWith(".kt")) continue;
+            Matcher m = JVM_NAME.matcher(String.join("\n", preamble(n)));
+            if (!m.find()) continue;
+            String compiled = m.group(1);
+            for (GraphNode other : graph.nodes()) {
+                if (other.sourceFile().equals(n.sourceFile())
+                        && bare(other.label()).equals(compiled)
+                        && !out.contains(other.id())) {
+                    out.add(other.id());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Whether {@code id} is a Kotlin {@code inline} function, as its declaration's lines say. */
+    private boolean inline(String id) {
+        GraphNode n = graph.node(id);
+        return n != null && n.sourceFile().endsWith(".kt") && INLINE.matcher(String.join("\n", preamble(n))).find();
+    }
+
+    /**
+     * The lines a declaration starts with: its name's line and the annotation and modifier lines right
+     * above it.
+     */
+    private List<String> preamble(GraphNode n) {
+        List<String> text = text(n.sourceFile());
+        int line = Decl.line(n);
+        if (text == null || line < 1 || line > text.size()) return List.of();
+        int from = line - 1;
+        while (from > 0 && PREAMBLE.matcher(text.get(from - 1)).matches()) from--;
+        return text.subList(from, line);
+    }
+
+    /**
+     * The lines of Kotlin sources in scope that call one of {@code inline} by name, each under the
+     * declaration holding it, quoted and marked inferred; none under a method {@code listed} already.
+     */
+    private List<String> inlineUses(List<String> inline, Set<String> listed) {
+        Set<String> names = new TreeSet<>();
+        Set<String> declared = new java.util.HashSet<>();
+        for (String id : inline) {
+            GraphNode n = graph.node(id);
+            if (n == null) continue;
+            names.add(bare(n.label()));
+            declared.add(n.sourceFile() + ":" + Decl.line(n));
+        }
+        Pattern call = Pattern.compile("(?<![\\w$])(?:" + String.join("|", names.stream().map(Pattern::quote).toList())
+                + ")\\s*(?:<[^>]*>\\s*)?[({]");
+        Map<String, List<GraphNode>> byFile = new TreeMap<>();
+        for (GraphNode n : graph.nodes()) {
+            String rel = n.sourceFile();
+            if (rel.endsWith(".kt") && scope.containsPath(rel)) byFile.computeIfAbsent(rel, k -> new ArrayList<>()).add(n);
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, List<GraphNode>> file : byFile.entrySet()) {
+            List<String> text = text(file.getKey());
+            if (text == null) continue;
+            Map<String, List<Integer>> byHolder = new LinkedHashMap<>();
+            for (int i = 0; i < text.size(); i++) {
+                String code = text.get(i).strip();
+                if (code.startsWith("//") || code.startsWith("*") || !call.matcher(text.get(i)).find()) continue;
+                if (declared.contains(file.getKey() + ":" + (i + 1))) continue;
+                String holder = holder(file.getValue(), i + 1);
+                if (holder != null && listed.contains(holder)) continue;
+                byHolder.computeIfAbsent(holder == null ? "" : holder, k -> new ArrayList<>()).add(i + 1);
+            }
+            for (Map.Entry<String, List<Integer>> h : byHolder.entrySet()) {
+                List<Integer> at = h.getValue();
+                out.add("  " + (h.getKey().isEmpty() ? "" : GraphQuery.clean(graph.display(h.getKey())) + "  ")
+                        + file.getKey() + ":" + String.join(",", at.stream().map(String::valueOf).toList())
+                        + " (inferred)");
+                for (int n : at.subList(0, Math.min(at.size(), 2))) {
+                    String line = text.get(n - 1).strip();
+                    if (line.length() > QUOTE_WIDTH) line = line.substring(0, QUOTE_WIDTH) + "…";
+                    out.add("      L" + n + "| " + line);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The innermost method, function or type among {@code nodes} whose span holds {@code line}. */
+    private static @Nullable String holder(List<GraphNode> nodes, int line) {
+        String best = null;
+        int width = Integer.MAX_VALUE;
+        for (GraphNode n : nodes) {
+            int from = Decl.line(n);
+            int to = Decl.end(n);
+            if (Decl.kind(n) == null || from < 1 || to < from || line < from || line > to) continue;
+            if (to - from < width) {
+                width = to - from;
+                best = n.id();
+            }
+        }
+        return best;
+    }
+
+    private @Nullable List<String> text(String rel) {
+        return read.computeIfAbsent(rel, f -> {
+            String body = files.apply(f);
+            return body == null ? null : body.lines().toList();
+        });
     }
 
     /** Any overload: an edge or method whose overload the compiled classes did not say. */
@@ -417,7 +554,8 @@ public final class GraphTools {
     public List<String> members(String address) {
         String wanted = address.endsWith("()") ? address.substring(0, address.length() - 2) : address;
         int dot = wanted.lastIndexOf('.');
-        if (dot <= 0 || dot == wanted.length() - 1) return List.of();
+        if (dot == wanted.length() - 1) return List.of();
+        if (dot <= 0) return scoped(topLevel("", GraphText.fold(wanted), ""));
         // A nested type's binary name, Outer$Inner, is the same type as Outer.Inner.
         String owner = wanted.substring(0, dot).replace('$', '.');
         String member = GraphText.fold(wanted.substring(dot + 1));
@@ -435,11 +573,37 @@ public final class GraphTools {
                 if (m != null && bare(m.norm()).equals(member)) out.add(m.node().id());
             }
         }
-        List<String> scoped = out.stream()
+        if (out.isEmpty()) out.addAll(topLevel(owner.substring(owner.lastIndexOf('.') + 1), member, qualifier));
+        return scoped(out);
+    }
+
+    private List<String> scoped(List<String> ids) {
+        List<String> scoped = ids.stream()
                 .filter(id -> scope.contains(graph.node(id)))
                 .sorted()
                 .toList();
-        return scoped.isEmpty() ? out.stream().sorted().toList() : scoped;
+        return scoped.isEmpty() ? ids.stream().sorted().toList() : scoped;
+    }
+
+    /**
+     * Kotlin top-level functions and properties named {@code member} (folded): in the file whose
+     * name is {@code file} ({@code Api} or its facade class's {@code ApiKt}), under a path holding
+     * {@code qualifier}; in every file when {@code file} is empty.
+     */
+    private List<String> topLevel(String file, String member, String qualifier) {
+        List<String> out = new ArrayList<>();
+        for (GraphNode n : graph.nodes()) {
+            String rel = n.sourceFile().replace('\\', '/');
+            if (!rel.endsWith(".kt")) continue;
+            String kind = Decl.kind(n);
+            if (!"function".equals(kind) && !"property".equals(kind)) continue;
+            if (!GraphText.fold(bare(n.label())).equals(member)) continue;
+            String stem = rel.substring(rel.lastIndexOf('/') + 1, rel.length() - ".kt".length());
+            if (!file.isEmpty() && !file.equals(stem) && !file.equals(stem + "Kt")) continue;
+            if (!qualifier.isEmpty() && !rel.contains(qualifier)) continue;
+            out.add(n.id());
+        }
+        return out;
     }
 
     /** The fewest hops from {@code source} to {@code target}; directed unless {@code undirected}. */

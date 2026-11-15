@@ -229,7 +229,7 @@ final class JvmFacts {
             Map<String, Set<String>> signatures,
             Map<String, Set<String>> delegates,
             Map<String, Map<String, Object>> facts) {
-        String name = m.name();
+        String name = kotlinName(m.name());
         Matcher lambda = LAMBDA.matcher(name);
         boolean synthetic = (m.access() & (ACC_SYNTHETIC | ACC_BRIDGE)) != 0 || name.contains("$");
         if (lambda.matches()) {
@@ -242,6 +242,7 @@ final class JvmFacts {
         // lambda$new$N and lambda$static$N) run as the type: their calls are the type's.
         boolean initializer = name.equals("<init>")
                 || name.equals("<clinit>")
+                || m.name().contains("-") && name.equals(VALUE_CLASS_INIT)
                 || lambda.matches() && (name.equals("new") || name.equals("static"));
         String from;
         if (initializer || !owner.named() && !owner.facade() || synthetic && !lambda.matches()) {
@@ -291,12 +292,13 @@ final class JvmFacts {
         for (CallSite site : m.calls()) {
             if (platform(site.owner())) continue;
             String target = Descriptors.binaryName(site.owner());
-            if (site.name().equals("<init>")) {
+            String siteName = kotlinName(site.name());
+            if (siteName.equals("<init>") || site.name().contains("-") && siteName.equals(VALUE_CLASS_INIT)) {
                 mentions.add(new Mention(from, Mention.Kind.CLASS, target, site.line(), Relations.CALLS, "call"));
-            } else if (!site.name().startsWith("access$")) {
-                String callee = site.name().endsWith("$default")
-                        ? site.name().substring(0, site.name().length() - "$default".length())
-                        : site.name();
+            } else if (!siteName.startsWith("access$")) {
+                String callee = siteName.endsWith("$default")
+                        ? siteName.substring(0, siteName.length() - "$default".length())
+                        : siteName;
                 String called = callee.equals(site.name()) ? site.desc() : "*";
                 if (site.owner().equals(c.name()) && callee.equals(name) && !from.equals(owner.id())) {
                     delegates.computeIfAbsent(from, k -> new TreeSet<>()).add(caller + ">" + called);
@@ -314,6 +316,22 @@ final class JvmFacts {
         for (CallSite site : m.calls()) {
             for (String literal : site.literals()) configKeys(literal, from, site.line(), mentions);
         }
+    }
+
+    /** A value class's constructor body, which kotlinc compiles to a static {@code constructor-impl}. */
+    private static final String VALUE_CLASS_INIT = "constructor";
+
+    /**
+     * The name a Kotlin declaration is written with: kotlinc appends {@code -<hash>} to a function
+     * taking or returning a value class ({@code lookup-4ZD5Yi0}) and {@code -impl} to a value class's
+     * own members, and a source name never holds a {@code -}. A value class's {@code
+     * constructor-impl}, {@code box-impl} and {@code unbox-impl} are its construction.
+     */
+    static String kotlinName(String compiled) {
+        int dash = compiled.indexOf('-');
+        if (dash <= 0) return compiled;
+        String base = compiled.substring(0, dash);
+        return base.equals("box") || base.equals("unbox") ? VALUE_CLASS_INIT : base;
     }
 
     /**

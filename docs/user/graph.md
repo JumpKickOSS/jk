@@ -257,6 +257,21 @@ there is no need to grep for the name afterwards. A method reached only by refle
 a string is not a call, so it is not listed; the note under the answer says when a module's calls
 are missing.
 
+**One completeness rule, every language.** `callers` says its list is complete only where a
+compiler bound every call it lists. A call matched by name instead is listed `(inferred)`, and the
+answer then says it is not complete and why, in one line.
+
+**Kotlin.** A top-level function is named by its file, its facade class or alone: `Api.greet`,
+`ApiKt.greet` or `greet`. What the compiled classes say, and what the answer does about it:
+
+| Shape | Answer |
+|---|---|
+| A call that omits a default argument (kotlinc calls `name$default`) | Listed under the function, exact |
+| A function taking a value class (compiled as `lookup-4ZD5Yi0`), a value class's constructor (`constructor-impl`) | Listed under the declared name, exact |
+| A function renamed by `@JvmName("sumOf")` | Its callers are the compiled `sumOf`'s, listed under the declared function, exact |
+| An extension function, a property accessor called from Java (`getBalance()`) | Exact: the classes call them by name |
+| An `inline` function | kotlinc copies its body into each caller, so the classes hold no call: each line of a Kotlin source that calls it by name is listed `(inferred)`, and the answer is not complete |
+
 ### Uses of a field, a type, an annotation or a constructor
 
 `callers` answers for any symbol a type declares, in the same shape: each use under the declaration
