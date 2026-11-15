@@ -27,6 +27,8 @@ class PluginTaskStageTest {
             "build-logic-before-compile", BuildStage.GENERATE,
             "copy-resources", BuildStage.COMPILE,
             "build-logic-after-compile", BuildStage.COMPILE,
+            "build-info", BuildStage.COMPILE,
+            "module-services", BuildStage.COMPILE,
             "run-tests", BuildStage.TEST,
             "package-jar", BuildStage.PACKAGE);
 
@@ -67,7 +69,7 @@ class PluginTaskStageTest {
     private static void assertEdgesValidate(Map<String, TaskDecl> decls) {
         for (TaskDecl step : decls.values()) {
             BuildStage from = PlannerPlugin.pluginStage(step);
-            for (String req : PlannerPlugin.pluginRequires(step, null)) {
+            for (String req : PlannerPlugin.pluginRequires(step, null, List.of(PlannerResources.CLASSES_WHOLE))) {
                 BuildStage upstream = req.startsWith("plugin-")
                         ? PlannerPlugin.pluginStage(requireNonNull(decls.get(req.substring("plugin-".length()))))
                         : requireNonNull(ENGINE_STAGES.get(req), req);
@@ -94,6 +96,32 @@ class PluginTaskStageTest {
                 .isEqualTo(BuildStage.COMPILE);
 
         assertEdgesValidate(decls);
+    }
+
+    @Test
+    void a_step_that_reads_the_classes_waits_for_every_writer_of_the_tree() {
+        // [build-info] and module-services write into the classes tree after the compile; a step
+        // keyed on the tree before they land is keyed on a tree the next build no longer sees, and
+        // runs again there (Spring AOT beside build-info's git.properties).
+        List<String> writers = PlannerResources.lastClassesWriters(true, true);
+        TaskDecl aot = decl("spring-aot", List.of("classes", "config"), List.of(), List.of(), null);
+        assertThat(PlannerPlugin.pluginRequires(aot, null, writers))
+                .contains("build-info", "module-services")
+                .doesNotContain(PlannerResources.CLASSES_WHOLE);
+        TaskDecl testOnly = decl("test-agent", List.of("classes"), List.of(), List.of("cp"), null);
+        assertThat(PlannerPlugin.pluginRequires(testOnly, null, writers)).contains("build-info", "module-services");
+        assertThat(PlannerPlugin.pluginRequires(aot, null, PlannerResources.lastClassesWriters(false, false)))
+                .as("with neither, the tree is whole after the compile")
+                .contains(PlannerResources.CLASSES_WHOLE);
+        Map<String, TaskDecl> decls = new LinkedHashMap<>();
+        decls.put("spring-aot", aot);
+        for (TaskDecl step : decls.values()) {
+            BuildStage from = PlannerPlugin.pluginStage(step);
+            for (String req : PlannerPlugin.pluginRequires(step, null, writers)) {
+                assertThat(from.mayRequire(requireNonNull(ENGINE_STAGES.get(req), req)))
+                        .isTrue();
+            }
+        }
     }
 
     @Test

@@ -70,7 +70,7 @@ class PluginTestJvmArgsTest {
         assertThat(model.testOnly()).isTrue();
         assertThat(model.packageTime()).isFalse();
         assertThat(PlannerPlugin.pluginWindow(model)).isEqualTo(BuildStage.TEST);
-        assertThat(PlannerPlugin.pluginRequires(model, null))
+        assertThat(PlannerPlugin.pluginRequires(model, null, List.of(PlannerResources.CLASSES_WHOLE)))
                 .as("the compiled classes it reads are complete before it runs")
                 .contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }

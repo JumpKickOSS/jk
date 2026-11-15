@@ -177,9 +177,11 @@ public final class PlannerPlugin {
      * The DAG edges a declared plugin task rides: its own declarations, the window anchors, and
      * the peer/transform outputs its inputs name. Shares the {@link #beforeCompile} /
      * {@link TaskDecl#testOnly()} split with {@link #pluginWindow} so stage and edges
-     * cannot disagree.
+     * cannot disagree. {@code classesWriters} are the steps that finish the main classes tree
+     * ({@link PlannerResources#lastClassesWriters}): a step that reads the classes keys the tree
+     * they leave, never one {@code build-info} or {@code module-services} is still writing into.
      */
-    static List<String> pluginRequires(TaskDecl step, @Nullable TaskDecl transform) {
+    static List<String> pluginRequires(TaskDecl step, @Nullable TaskDecl transform, List<String> classesWriters) {
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
             throw new IllegalStateException(
@@ -210,12 +212,15 @@ public final class PlannerPlugin {
             requires.add(TaskNames.RESOLVE_DEPS);
             requires.add(TaskNames.ENSURE_JDK);
             // A test-window step that reads the compiled classes waits for them to be complete.
-            if (step.inputs().contains("classes")) requires.add(PlannerResources.CLASSES_WHOLE);
+            if (step.inputs().contains("classes")) requires.addAll(classesWriters);
             // One that reads the compiled tests waits for compile-test, which copies the test
             // resources in too.
             if (readsTestClasses) requires.add(TaskNames.COMPILE_TEST);
+        } else if (step.inputs().contains("classes")) {
+            // After the compile, the resource copy ahead of it and the steps that write into the
+            // tree after both: the classes tree is whole and done.
+            requires.addAll(classesWriters);
         } else {
-            // After the compile and the resource copy ahead of it: the classes tree is whole.
             requires.add(PlannerResources.CLASSES_WHOLE);
         }
         // Peer plugin outputs (In.stepOutput) — declared inputs ARE the dependency graph.
@@ -508,13 +513,16 @@ public final class PlannerPlugin {
      * compile is.
      */
     static TaskForecast.@Nullable Task forecastStep(ForecastScope s, TaskDecl step) throws Exception {
-        Callable<TaskForecast.@Nullable Task> price = () -> s.force || s.compileDirty
-                ? new TaskForecast.Task(
-                        "plugin-" + step.name(),
-                        TaskForecast.Status.RUN,
-                        step.name() + " · " + (beforeCompile(step) ? "before compile" : "after compile"),
-                        null)
-                : cachedForecast(step);
+        // A step that keys the classes tree runs when anything the build writes into that tree
+        // moves: a resource, a rewritten git.properties, the module's services.
+        Callable<TaskForecast.@Nullable Task> price =
+                () -> s.force || s.compileDirty || (step.inputs().contains("classes") && s.mainResourceDrift)
+                        ? new TaskForecast.Task(
+                                "plugin-" + step.name(),
+                                TaskForecast.Status.RUN,
+                                step.name() + " · " + (beforeCompile(step) ? "before compile" : "after compile"),
+                                null)
+                        : cachedForecast(step);
         return beforeCompile(step) ? s.defer(price) : price.call();
     }
 
@@ -581,12 +589,16 @@ public final class PlannerPlugin {
             unpaired = "a plugin step is priced by whether its module compiles, never by its key",
             forecastsStep = true)
     static Task pluginTask(
-            BuildPlanner.Ctx cx, @Nullable ActivePlugin declared, TaskDecl step, @Nullable TaskDecl transform) {
+            BuildPlanner.Ctx cx,
+            @Nullable ActivePlugin declared,
+            TaskDecl step,
+            @Nullable TaskDecl transform,
+            List<String> classesWriters) {
         // The step exists because this plugin declared it.
         ActivePlugin active = Objects.requireNonNull(declared, "active plugin");
         BuildPlanner.Inputs in = cx.in();
         boolean beforeCompile = beforeCompile(step);
-        List<String> requires = pluginRequires(step, transform);
+        List<String> requires = pluginRequires(step, transform, classesWriters);
         return Task.builder("plugin-" + step.name())
                 .forecast(StepForecast.priced(sc -> forecastStep(ForecastScope.of(sc), step)))
                 .label(step.name())

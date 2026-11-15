@@ -288,8 +288,10 @@ final class CorePlan {
         List<Task> pluginSteps = new ArrayList<>();
         TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
         if (plugins != null) {
+            List<String> classesWriters =
+                    PlannerResources.lastClassesWriters(buildInfo != null, moduleServices != null);
             for (TaskDecl step : plugins.decls().steps()) {
-                pluginSteps.add(PlannerPlugin.pluginTask(cx, plugins.ownerOf(step), step, transform));
+                pluginSteps.add(PlannerPlugin.pluginTask(cx, plugins.ownerOf(step), step, transform, classesWriters));
             }
         }
         PackageSteps packaging = new PackageSteps(cx);

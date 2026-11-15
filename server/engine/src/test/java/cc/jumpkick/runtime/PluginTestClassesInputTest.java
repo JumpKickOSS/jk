@@ -57,14 +57,14 @@ class PluginTestClassesInputTest {
         TaskDecl step = decl(List.of(In.testClasses().wireName(), In.classes().wireName()), List.of("out"), List.of());
         assertThat(step.testOnly()).isTrue();
         assertThat(PlannerPlugin.pluginWindow(step)).isEqualTo(BuildStage.TEST);
-        assertThat(PlannerPlugin.pluginRequires(step, null))
+        assertThat(PlannerPlugin.pluginRequires(step, null, List.of(PlannerResources.CLASSES_WHOLE)))
                 .contains(TaskNames.COMPILE_TEST, TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }
 
     @Test
     void a_step_that_shapes_the_main_output_may_not_read_the_test_classes() {
         TaskDecl step = decl(List.of(In.testClasses().wireName()), List.of("out"), List.of("out"));
-        assertThatThrownBy(() -> PlannerPlugin.pluginRequires(step, null))
+        assertThatThrownBy(() -> PlannerPlugin.pluginRequires(step, null, List.of(PlannerResources.CLASSES_WHOLE)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("In.testClasses()");
     }
