@@ -230,6 +230,15 @@ class LibraryArtifactsE2eTest {
     }
 
     /** Two libraries over one malformed comment: {@code loose} on the default mode, {@code strict} on strict. */
+    @Test
+    void the_second_build_of_a_library_with_its_sources_jar_runs_nothing() throws Exception {
+        Path ws = workspace(tmp);
+        SecondBuild.nonce(ws);
+        Path cache = TestCaches.dir("library-artifacts-cache");
+        lock(ws, cache);
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
+    }
+
     private static Path docWorkspace(Path tmp) throws IOException {
         Path ws = Files.createDirectories(tmp.resolve("doc-ws"));
         Files.writeString(ws.resolve("jk.toml"), """

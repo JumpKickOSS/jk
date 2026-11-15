@@ -3,6 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.KeyAuditMode;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -11,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -24,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -36,9 +41,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 class UnchangedRebuildE2eTest {
-
-    private static final List<String> WORK =
-            List.of(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
 
     @Test
     void a_second_build_of_an_unchanged_checkout_runs_nothing(@TempDir Path tmp) throws Exception {
@@ -78,20 +80,58 @@ class UnchangedRebuildE2eTest {
                 """);
         lock(ws, cache);
 
-        Steps first = build(ws, cache);
-        assertThat(first.status("b", TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
-        assertThat(first.warnings)
-                .as("git's own files moving is no input moving")
-                .isEmpty();
+        // Audited, explained, built again: no key moved, nothing forecast, nothing run.
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
+    }
 
-        Steps second = build(ws, cache);
-        for (String module : List.of("a", "b")) {
-            for (String step : WORK) {
-                assertThat(second.status(module, step))
-                        .as(module + " " + step + " on the second build; ran: " + second.ran())
-                        .isIn(null, TaskStatus.SKIPPED);
-            }
-        }
+    @Test
+    void under_the_key_audit_a_suite_that_writes_beside_its_sources_fails_naming_what_moved(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("unchanged-rebuild-cache");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+                java    = 25
+
+                [workspace]
+                modules = ["d"]
+                """);
+        Path d = module(ws, "d", "", """
+                class DTest {
+                    @Test
+                    void reports_outside_target() throws Exception {
+                        assertEquals("data", Files.readString(Path.of("data.txt")));
+                        Files.createDirectories(Path.of("build"));
+                        Files.writeString(Path.of("build", "report.txt"), "ran");
+                    }
+                }
+                """);
+        Files.writeString(d.resolve("data.txt"), "data");
+        lock(ws, cache);
+
+        List<String> moved = new ArrayList<>();
+        WorkspaceResult result = SessionContext.where(
+                Session.defaults().withCacheDir(cache).withKeyAudit(KeyAuditMode.STRICT),
+                () -> WorkspaceExecute.buildWorkspace(
+                        new WorkspaceRequest(ws, cache, null, 0, null, false, false, 2, null, false, false),
+                        new WorkspaceBuildListener() {
+                            @Override
+                            public void onModuleWarning(
+                                    Path dir, String module, String step, String code, String message) {
+                                if (code.equals(KeyAudit.MOVED)) moved.add(step + ": " + message);
+                            }
+                        }));
+        assertThat(result.success())
+                .as("a strict audit fails the build a key moved in")
+                .isFalse();
+        assertThat(result.errors()).anyMatch(e -> e.startsWith("JK_KEY_AUDIT=strict: "));
+        assertThat(moved)
+                .as("the suite's stamp keyed the module directory the suite wrote into")
+                .anySatisfy(m -> assertThat(m)
+                        .startsWith(TaskNames.RUN_TESTS + ": the key of " + TaskNames.RUN_TESTS + " moved")
+                        .contains("build"));
     }
 
     @Test
@@ -197,7 +237,11 @@ class UnchangedRebuildE2eTest {
                 central = "https://repo.maven.apache.org/maven2/"
                 """.formatted(name, dependency));
         Path main = Files.createDirectories(m.resolve("src/main/java/demo/" + name));
-        Files.writeString(main.resolve("M.java"), "package demo." + name + "; public class M {}\n");
+        // A nonce: content no earlier run stored, so a key build 2 takes differently cannot hit.
+        Files.writeString(
+                main.resolve("M.java"),
+                "package demo." + name + "; public class M { static final String NONCE = \"" + UUID.randomUUID()
+                        + "\"; }\n");
         Path tests = Files.createDirectories(m.resolve("src/test/java/demo/" + name));
         String cls = test.substring(test.indexOf("class ") + 6, test.indexOf(' ', test.indexOf("class ") + 6));
         Files.writeString(tests.resolve(cls + ".java"), """

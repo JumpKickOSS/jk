@@ -63,6 +63,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.GuardBaselineMarker;
@@ -360,6 +361,13 @@ final class PlannerGuards {
         String baselineSha = GuardKeys.slice(g, lane, ectx, load);
         String key = GuardKeys.laneKey(taskId, tokens, baselineSha);
         if (Perf.enabled()) Perf.note("guard-lane " + taskId, "key", key, "X", tokens);
+        EvalContext keyedCtx = ectx;
+        KeyAudit.KeySource laneKey = () -> {
+            List<String> now = new ArrayList<>(tokenSupplier.get());
+            GuardKeys.addRuleTokens(now, load);
+            return GuardKeys.laneKey(taskId, now, GuardKeys.slice(g, lane, keyedCtx, load));
+        };
+        KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), key, laneKey);
         ActionCache cache = env.actionCache();
         boolean useCache = !env.in().session().config().forceOr(false)
                 && !env.in().session().config().rebuildOr(false);
@@ -438,6 +446,8 @@ final class PlannerGuards {
         // then every run over the partial view says it left the baseline alone.
         if (!result.unseen().isEmpty()) return;
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedSlice);
+        // Stored under the baseline the lane tightened: the key the next build takes.
+        KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), storeKey, laneKey);
         if (!tools.get().isEmpty()) {
             cache.storeVerdict(taskId, storeKey, Map.of(GuardVerdicts.TOOLS, String.join(",", tools.get())));
             storeKey = GuardVerdicts.toolKey(storeKey, List.copyOf(tools.get()), g.root());

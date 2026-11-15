@@ -44,6 +44,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
@@ -581,6 +582,81 @@ public final class PlannerPlugin {
         }
     }
 
+    /** What a plugin step's key is taken from, and the key: the facts and sources its body is handed too. */
+    private record StepKey(
+            String taskId, String key, ProjectFacts facts, InputSources sources, StepToolInputs stepTools) {}
+
+    /**
+     * A plugin step's action key: exactly the declared inputs, plus the very facts the body sees. The
+     * step takes it before it runs, and an audited build ({@link KeyAudit}) takes it again once the
+     * build has ended, through this one derivation.
+     */
+    private static StepKey stepKey(TaskContext ctx, BuildPlanner.Ctx cx, ActivePlugin active, TaskDecl step)
+            throws Exception {
+        BuildPlanner.Inputs in = cx.in();
+        JkBuild project = ctx.require(MODULE).project();
+        BuildLayout layout = ctx.require(MODULE).layout();
+        Path classes = mainClasses(ctx);
+        Path javaHome = ctx.require(JAVA_HOME);
+        Path scratch = PluginBuild.taskScratch(layout, step.name());
+        // Before compile no classes exist to scan — the declared main (or null) rides.
+        String startClass = beforeCompile(step) ? project.mainClass() : resolvedMain(project, in.dir(), classes);
+
+        List<Path> classpath = PluginBuild.productionClasspath(in.dir(), cx.cas(), in.lockFile(), project);
+        List<Path> compileClasspath = PluginBuild.compileClasspath(in.dir(), cx.cas(), in.lockFile(), project);
+        List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")
+                ? PluginBuild.productionEntries(in.dir(), cx.cas(), in.lockFile(), project)
+                : step.inputs().contains("test-runtime-entries")
+                        ? PluginBuild.testRuntimeEntries(in.dir(), cx.cas(), in.lockFile(), project)
+                        : List.of();
+
+        // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones
+        // this step reads, fetched into the cache, handed to the body by artifact
+        // name, keyed like any input — and the lock closures it reads.
+        StepToolInputs stepTools = StepToolInputs.of(cx, in, project, active, step);
+        Map<String, Path> toolExtras = stepTools.extras();
+        Map<String, List<Path>> siblingFiles =
+                SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
+        PluginRepositories repositories = PluginRepositories.forInputs(step.inputs(), project, cx.cas(), in.env());
+
+        // Action key: exactly the declared inputs, plus the very facts the body sees —
+        // the same ProjectFacts instance rides the spec below, so no fact can reach the
+        // plugin without reaching its key.
+        ProjectFacts facts = PluginBuild.facts(project, startClass);
+        InputSources sources = new InputSources(
+                classes,
+                classpath,
+                compileClasspath,
+                prodEntries,
+                active.config(),
+                layout,
+                in.dir(),
+                siblingFiles,
+                repositories,
+                in.compileOnly() && recompiled(ctx),
+                PluginSourceRoots.forInputs(step.inputs(), in.dir(), project));
+        List<String> tokens = new ArrayList<>(declaredInputTokens(step.inputs(), sources));
+        tokens.addAll(stepTools.tokens());
+        tokens.add("facts:" + facts.token());
+        // The JDK is handed to the body as spec.javaHome and is what its forked tools
+        // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
+        // carries `release`, which is a different fact entirely. Without this,
+        // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
+        // plugins restores output built against the old platform.
+        tokens.add("jdk:" + ActionKey.platformJdkToken(javaHome));
+        // The step forks with the module's [env] and reads its plugin config, env:NAME values included.
+        tokens.addAll(ModuleEnvKeys.plugin(project, in.dir()));
+        // The step's CODE is an input: a changed plugin jar must re-run the
+        // step, or a plugin upgrade (or first-party dev iteration) silently restores
+        // outputs produced by the old code.
+        Path workerJar = PluginBuild.workerJarFor(active, in.cache());
+        tokens.add("worker:" + ClasspathFingerprint.entry(workerJar));
+        probeToken(ctx, step, javaHome, workerJar, toolExtras, in).ifPresent(tokens::add);
+        String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
+        String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        return new StepKey(taskId, actionKey, facts, sources, stepTools);
+    }
+
     /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
@@ -616,65 +692,15 @@ public final class PlannerPlugin {
                     Path classes = mainClasses(ctx);
                     Path javaHome = ctx.require(JAVA_HOME);
                     Path scratch = PluginBuild.taskScratch(layout, step.name());
-                    // Before compile no classes exist to scan — the declared main (or null) rides.
-                    String startClass =
-                            beforeCompile(step) ? project.mainClass() : resolvedMain(project, in.dir(), classes);
-
                     awaitSiblings(step, ctx, in);
-                    List<Path> classpath = PluginBuild.productionClasspath(in.dir(), cx.cas(), in.lockFile(), project);
-                    List<Path> compileClasspath =
-                            PluginBuild.compileClasspath(in.dir(), cx.cas(), in.lockFile(), project);
-                    List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")
-                            ? PluginBuild.productionEntries(in.dir(), cx.cas(), in.lockFile(), project)
-                            : step.inputs().contains("test-runtime-entries")
-                                    ? PluginBuild.testRuntimeEntries(in.dir(), cx.cas(), in.lockFile(), project)
-                                    : List.of();
-
-                    // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones
-                    // this step reads, fetched into the cache, handed to the body by artifact
-                    // name, keyed like any input — and the lock closures it reads.
-                    StepToolInputs stepTools = StepToolInputs.of(cx, in, project, active, step);
-                    Map<String, Path> toolExtras = stepTools.extras();
-                    Map<String, List<Path>> siblingFiles =
-                            SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
-                    PluginRepositories repositories =
-                            PluginRepositories.forInputs(step.inputs(), project, cx.cas(), in.env());
-
-                    // Action key: exactly the declared inputs, plus the very facts the body sees —
-                    // the same ProjectFacts instance rides the spec below, so no fact can reach the
-                    // plugin without reaching its key.
-                    ProjectFacts facts = PluginBuild.facts(project, startClass);
-                    InputSources sources = new InputSources(
-                            classes,
-                            classpath,
-                            compileClasspath,
-                            prodEntries,
-                            active.config(),
-                            layout,
-                            in.dir(),
-                            siblingFiles,
-                            repositories,
-                            in.compileOnly() && recompiled(ctx),
-                            PluginSourceRoots.forInputs(step.inputs(), in.dir(), project));
-                    List<String> tokens = new ArrayList<>(declaredInputTokens(step.inputs(), sources));
-                    tokens.addAll(stepTools.tokens());
-                    tokens.add("facts:" + facts.token());
-                    // The JDK is handed to the body as spec.javaHome and is what its forked tools
-                    // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
-                    // carries `release`, which is a different fact entirely. Without this,
-                    // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
-                    // plugins restores output built against the old platform.
-                    tokens.add("jdk:" + ActionKey.platformJdkToken(javaHome));
-                    // The step forks with the module's [env] and reads its plugin config, env:NAME values included.
-                    tokens.addAll(ModuleEnvKeys.plugin(project, in.dir()));
-                    // The step's CODE is an input: a changed plugin jar must re-run the
-                    // step, or a plugin upgrade (or first-party dev iteration) silently restores
-                    // outputs produced by the old code.
-                    Path workerJar = PluginBuild.workerJarFor(active, in.cache());
-                    tokens.add("worker:" + ClasspathFingerprint.entry(workerJar));
-                    probeToken(ctx, step, javaHome, workerJar, toolExtras, in).ifPresent(tokens::add);
-                    String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
-                    String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+                    StepKey keyed = stepKey(ctx, cx, active, step);
+                    ProjectFacts facts = keyed.facts();
+                    InputSources sources = keyed.sources();
+                    StepToolInputs stepTools = keyed.stepTools();
+                    String taskId = keyed.taskId();
+                    String actionKey = keyed.key();
+                    KeyAudit.used(in.dir(), "plugin-" + step.name(), actionKey, () -> stepKey(ctx, cx, active, step)
+                            .key());
                     ActionCache actionCache = cx.actionCache();
                     StepDiagnostics said =
                             new StepDiagnostics(ctx, in.dir(), project.project().name(), step.name());

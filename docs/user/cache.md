@@ -77,6 +77,15 @@ step runs for real, as under `--redo`, and two claims are held to what it produc
 plain build would, so a nightly run can bound its cost. A verifying build leaves the cache as a
 `--redo` does: it writes nothing it did not just produce.
 
+## Why did the second build run something? (`JK_KEY_AUDIT`)
+
+The second build of a tree nothing changed should run nothing. When it runs a step again, the
+step's key depended on something the first build wrote. `JK_KEY_AUDIT=warn jk build` takes the key
+of every step again once the build has succeeded and warns (`key-moved`) for each one that moved,
+naming the step and the file or setting that moved with its old and new value;
+`JK_KEY_AUDIT=strict` fails the build instead. It costs one more key derivation per step, so it is
+off by default. Report what it names: it is a JumpKick defect, or a plugin's.
+
 ## Hygiene
 
 ```bash

@@ -30,6 +30,9 @@ public final class ProtoJobs {
     /** {@code --verify-sample N}: how many skippable modules a verifying build checks; absent for all. */
     public static final String VERIFY_SAMPLE = "verifySample";
 
+    /** {@code JK_KEY_AUDIT}: {@code warn} or {@code strict} when the build re-keys its steps once it succeeds; absent for off. */
+    public static final String KEY_AUDIT = "keyAudit";
+
     private ProtoJobs() {}
 
     /** Per-request progress mode, falling back to the engine environment when omitted. */

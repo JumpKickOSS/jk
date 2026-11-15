@@ -29,9 +29,11 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ResourceMirror;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
@@ -142,6 +144,16 @@ final class PackageSteps {
                     PackagingKeys.Keyed keyed = PackagingKeys.packageJar(
                             jarPath, in.dir(), project, guard.token(classes), contributionsToken(contributed), sbom);
                     String pkgKey = keyed.key();
+                    byte[] keyedSbom = sbom;
+                    Path keyedJar = jarPath;
+                    KeyAudit.used(in.dir(), TaskNames.PACKAGE_JAR, pkgKey, () -> PackagingKeys.packageJar(
+                                    keyedJar,
+                                    in.dir(),
+                                    project,
+                                    ClasspathFingerprint.entry(classes),
+                                    contributionsToken(contributed),
+                                    keyedSbom)
+                            .key());
                     long t0 = Perf.start();
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
                         writeSidecarPom(project, layout, jarPath);

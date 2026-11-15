@@ -40,6 +40,7 @@ import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.MainAbi;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AbiIndex;
@@ -182,6 +183,8 @@ final class CompileSteps {
                 && CompileInputs.javaStamp(actionCache, module, request, stampTokens)
                         .isPresent()) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
+            if (KeyAudit.on())
+                auditCompileJava(ctx, javaOut, mainKey(ctx, javaOut).key());
             JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, List.of(), kept.get());
             ctx.label("up to date");
             ctx.cached();
@@ -222,6 +225,7 @@ final class CompileSteps {
                         ctx.require(MODULE).layout().moduleTargetDir()),
                 stampTokens);
         HeapNotes.flush(ctx);
+        if (r.success() && r.movedSources().isEmpty()) auditCompileJava(ctx, javaOut, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, request, r);
         afterJavac(ctx, request, r);
@@ -233,6 +237,33 @@ final class CompileSteps {
         advanceSourceApiIndex(in.dir(), ctx.require(MODULE).layout().buildDir(), r, sources);
         ctx.progress(sources.size());
     }
+
+    /**
+     * compile-java used {@code key}: an audited build ({@link KeyAudit}) takes it again once it has
+     * ended, through the very derivation this step makes from the plan's state — the source union,
+     * the module's compile inputs, the request, its classpath lines.
+     */
+    private void auditCompileJava(TaskContext ctx, Path javaOut, @Nullable String key) {
+        KeyAudit.usedNaming(in.dir(), TaskNames.COMPILE_MAIN, key, () -> {
+            KeyedRequest now = mainKey(ctx, javaOut);
+            return new KeyAudit.Keyed(now.key(), ActionKey.snapshotInputs(now.request()));
+        });
+    }
+
+    /** The request compile-java derives now and the action key it looks up under. */
+    private KeyedRequest mainKey(TaskContext ctx, Path javaOut) throws IOException {
+        List<Path> sources = mainJavaSources(ctx, pluginDecls, ksp);
+        CompileInputs.Module module = compileInputs(ctx, in, cas, shape, pluginDecls);
+        CompileRequest request =
+                mainCompileRequest(CompileInputs.java(module, sources, CompileInputs.groovyJar(module)));
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
+        return new KeyedRequest(
+                request,
+                JavaCompile.key(
+                        taskId, request, BuildIdentity.cacheKeyVersion(), ActionKey.javacClasspathTokens(request)));
+    }
+
+    private record KeyedRequest(CompileRequest request, String key) {}
 
     /**
      * After a compile-main that succeeded: the sources edited while it ran, and which resource

@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -100,6 +101,16 @@ class BuildInfoE2eTest {
         Steps build6 = build(ws, cache, "sixth", null);
         assertThat(build6.status("lib", TaskNames.BUILD_INFO)).isNotEqualTo(TaskStatus.SUCCESS);
         assertThat(build6.status("lib", TaskNames.PACKAGE_JAR)).isNotEqualTo(TaskStatus.SUCCESS);
+    }
+
+    @Test
+    void a_fresh_commit_builds_audited_and_its_second_build_runs_nothing() throws Exception {
+        // A checkout no cache has seen: build-info writes into the classes tree the jar keys on.
+        Path ws = workspace(tmp);
+        commit(ws, "one " + UUID.randomUUID());
+        Path cache = tmp.resolve("cache");
+        lock(ws, cache);
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
     }
 
     private static Properties gitProperties(Path jar) throws IOException {

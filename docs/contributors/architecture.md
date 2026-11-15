@@ -559,6 +559,48 @@ and exclusions stay GA-scoped.
    no longer describes its classes falls back to the library stamp.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
+**A step's key does not depend on what its own build writes.** A key taken before a file the
+same build then writes existed keys the next build differently: the second build of an unchanged
+tree misses, runs the step again and stores it again, and only the third is a no-op (JK-875KR: a
+node step's tree walk before a file beside `out` appeared, a plugin step's classes token before
+build-info wrote into the tree, the preflight memo's guard salt before a pack was unpacked, a
+suite's stamp over a listing its own fixtures wrote into). On content the action cache has seen,
+both keys hit and the defect hides, so it is checked mechanically rather than found by hand.
+
+`JK_KEY_AUDIT=warn` (or `strict`) on the client turns on the **key audit** for that build
+(`KeyAudit`; the session's `keyAudit`, sent as `keyAudit` on the request; `-Djk.keyAudit=` in a
+test JVM). Every step that keys its work registers the key it looked up or stored under and a
+re-key: a closure over its own `@KeyOwner` derivation, never a second one, with the lines the
+owner hashes captured as named tokens (`KeyAudit.tap`, fed by `ActionKey`, `TestStamp`,
+`GuardKeys` and the preflight memo's digest helpers). Once the build has succeeded,
+`KeyAudits.report` takes every key again from the tree as the build left it; each one that
+differs is a `key-moved` warning on its module naming the step, both keys and every token that
+moved (a file's digest before and after, a file that appeared in a keyed listing, an env or
+config token), and `strict` fails the build. A step whose re-key throws is reported as moved, so a
+broken re-key is seen. A step that stores under a second key on purpose (a suite's discovered
+reads folded in, a node record stored again without a file the build wrote, a guard lane's
+tightened baseline) registers again under the key it stored, and is held to that one.
+
+| Family | Re-keyed through |
+|--------|------------------|
+| compile (javac, kotlinc, groovyc, every compile step) | `JavaCompile.key` / `LangCompile.kotlinKey` / `groovyKey` over the step's request, in `JavaCompile.run` / `LangCompile.run`; `compile-main` rebuilds its request from the plan's state |
+| `run-tests` | the step's `SuiteDiscovery.Rekey` (`TestStampInputs.key` with the suite's discovered reads) |
+| node steps (`node-build`, `node-test`, declared `[[node.steps]]`) | `NodeKeys` through `NodeWrites` |
+| plugin steps (generators, transforms, build-info's readers) | `PlannerPlugin.stepKey` |
+| `package-jar`, `package-assembly` | `PackagingKeys.packageJar` / `assembly` |
+| guard lanes, `guard-fixtures` | `GuardKeys.laneKey` over the lane's tokens and baseline slice |
+| KSP, build-logic | `KspArm.roundKey`, the anchor's `ActionKey.forArtifact` |
+| the preflight memo (`preflight-memo`) | `MemoAudit`: each row a clean memo certifies, held to the module's fingerprint taken again |
+
+A step that hits on a freshness stamp without taking its action key (a Kotlin or Groovy compile,
+copy-resources) is not registered; the preflight memo, which keys every source tree, still holds
+its module. The remaining tails (javadoc and sources jars, jlink, war, lib-dir, native, OCI,
+node-package, copy-resources) are not re-keyed: `SecondBuild.assertSecondBuildRunsNothing`
+covers them end to end. That helper is what every e2e fixture calls for the invariant: build
+under `strict`, `jk explain` forecasts nothing, build again and no productive step runs and no
+module reads as built. Give each fixture content no cache has seen (`SecondBuild.nonce`, or the
+test's own cache), or a key that moved hits a record an earlier run stored.
+
 **Two storage tiers** (separate roots, separate budgets):
 
 | Tier | Root | Contents |

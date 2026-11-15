@@ -157,6 +157,7 @@ class ConfigShapeTest {
                 new Wither("withSnapshot", new Object[] {true}, List.of("snapshot")),
                 new Wither("withJavadoc", new Object[] {true}, List.of("javadoc")),
                 new Wither("withRevalidate", new Object[] {true}, List.of("revalidate")),
+                new Wither("withKeyAudit", new Object[] {KeyAuditMode.STRICT}, List.of("keyAudit")),
                 new Wither("withAffected", new Object[] {false}, List.of("affected")),
                 new Wither("withAffectedChanged", new Object[] {new AffectedChanged()}, List.of("affectedChanged")),
                 new Wither("withIo", new Object[] {new IoLedger()}, List.of("io")),

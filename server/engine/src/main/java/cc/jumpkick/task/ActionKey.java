@@ -99,6 +99,7 @@ public final class ActionKey {
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
         for (String line : classpathTokens) sb.append(line).append('\n');
+        KeyAudit.tapLines(sb);
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -194,6 +195,7 @@ public final class ActionKey {
     public static String javacOptionsDigest(CompileRequest request) throws IOException {
         StringBuilder sb = new StringBuilder();
         appendJavacOptions(sb, request);
+        KeyAudit.tapLines(sb);
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -276,6 +278,7 @@ public final class ActionKey {
         for (Path entry : worker) {
             appendCpToken(sb, "worker:", entry);
         }
+        KeyAudit.tapLines(sb);
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -397,6 +400,7 @@ public final class ActionKey {
         // just like an explicit source, and the worker compiles exactly what was hashed.
         appendSources(sb, GroovycInputs.compileSet(request));
         for (String line : groovycClasspathTokens(request, cp)) sb.append(line).append('\n');
+        KeyAudit.tapLines(sb);
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -448,6 +452,7 @@ public final class ActionKey {
         List<String> sorted = new ArrayList<>(inputTokens);
         sorted.sort(Comparator.naturalOrder());
         for (String t : sorted) sb.append("in:").append(t).append('\n');
+        KeyAudit.tapLines(sb);
         return Hashing.sha256Hex(sb.toString());
     }
 

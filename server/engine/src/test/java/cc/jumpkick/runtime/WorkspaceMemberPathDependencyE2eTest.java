@@ -72,9 +72,9 @@ class WorkspaceMemberPathDependencyE2eTest {
         String tree = GraphOps.treeRender(app, 0, false, false, List.of(), FeatureSelection.DEFAULTS);
         assertThat(tree).as(tree).contains("⟦go⟧:⟦aoutside⟧:⟦v1.0.0⟧").doesNotContain("missing");
 
-        WorkspaceResult built = WorkspaceExecute.buildWorkspace(request(ws, cache), WorkspaceBuildListener.NOOP);
-        assertThat(built.errors()).isEmpty();
-        assertThat(built.success()).isTrue();
+        // Built audited, then again running nothing: the member and its path dependency, fresh content.
+        SecondBuild.nonce(tmp);
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
     }
 
     @Test

@@ -124,6 +124,15 @@ class LibDirBuildE2eTest {
         return ws;
     }
 
+    @Test
+    void the_second_build_of_the_lib_dir_layout_runs_nothing(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("lib-dir-cache");
+        Path ws = workspace(tmp);
+        SecondBuild.nonce(ws);
+        lock(ws, cache);
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
+    }
+
     private static void lock(Path ws, Path cache) throws Exception {
         BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();

@@ -276,18 +276,19 @@ final class EngineEventDecoder {
                     // A warning no module owns yet (a run notice posted while the run locks, syncs or
                     // installs a toolchain, before any module starts) is a fact about the run: a note,
                     // kept above the region. Routed to a module that does not exist it was dropped.
+                    // A warning that names its module is the workspace's word on that module, whether
+                    // or not the module ran: the kept compiler warnings of a module the build does not
+                    // run, or the key audit's verdict once every module has ended. Routed to the
+                    // module's own listener, which has already rendered its block, it was dropped.
                     case EngineProtocol.WARN -> {
                         BuildPlanListener owner = planListenersByDir.get(dir);
-                        if (owner != null) {
+                        WarnEvent e = WarnEvent.decode(line);
+                        if (e.replayed() && !e.module().isEmpty()) {
+                            listener.onModuleWarning(Path.of(dir), e.module(), e.task(), e.code(), e.message());
+                        } else if (owner != null) {
                             dispatch(type, line, owner, d -> {}, d -> {}, texts);
                         } else {
-                            WarnEvent e = WarnEvent.decode(line);
-                            // A module the build does not run says its kept compiler warnings.
-                            if (e.replayed() && !e.module().isEmpty()) {
-                                listener.onModuleWarning(Path.of(dir), e.module(), e.task(), e.code(), e.message());
-                            } else {
-                                listener.onNote(e.message());
-                            }
+                            listener.onNote(e.message());
                         }
                     }
                     // A member's warnings render live through its listener; its result carries none.

@@ -262,6 +262,7 @@ public final class JavaCompile {
         }
 
         String key = key(taskId, request, jkVersion, classpathTokens);
+        audit(taskId, request, jkVersion, key);
         if (useCache) {
             Result restored = restored(key, request, actionCache, stateDir);
             if (restored != null) return restored;
@@ -406,6 +407,21 @@ public final class JavaCompile {
         } catch (IOException unreadable) {
             return "";
         }
+    }
+
+    /**
+     * The compile used {@code key}: an audited build ({@link KeyAudit}) takes it again once it has
+     * ended, naming the sources and classpath entries as the record's inputs name them.
+     */
+    private static void audit(String taskId, CompileRequest request, String jkVersion, String key) {
+        Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
+        KeyAudit.usedNaming(
+                KeyAudit.moduleOf(out),
+                KeyAudit.stepOf(taskId),
+                key,
+                () -> new KeyAudit.Keyed(
+                        key(taskId, request, jkVersion, ActionKey.javacClasspathTokens(request)),
+                        ActionKey.snapshotInputs(request)));
     }
 
     /**

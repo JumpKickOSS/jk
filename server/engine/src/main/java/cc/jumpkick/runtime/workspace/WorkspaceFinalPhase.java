@@ -6,6 +6,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.MemoAudit;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.SettledReads;
@@ -182,10 +183,12 @@ final class WorkspaceFinalPhase {
             @Nullable String profile,
             Optional<BuildForecasting.Preflight> forecast,
             ModuleInputProvenance.RunTrees runTrees) {
-        Map<Path, String> fingerprints = SettledReads.amend(
-                forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of()));
+        Map<Path, String> preflight =
+                forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of());
+        Map<Path, String> fingerprints = SettledReads.amend(preflight);
         if (fingerprints.isEmpty()) return;
         PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, Set.of(), fingerprints);
+        MemoAudit.auditCertified(skipTests, preflight, fingerprints);
         // One set of fingerprints, two records: the memo says these inputs are clean, and this
         // says the outputs on disk are the ones they produce. The second is what lets preflight
         // tell "nothing to do" from "the artifacts here are from another run".

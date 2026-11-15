@@ -166,6 +166,18 @@ class GuardLaneE2eTest {
                 .status();
     }
 
+    @Test
+    void the_second_build_of_a_guarded_module_runs_nothing(@TempDir Path tmp) throws Exception {
+        Path project = scaffold(tmp);
+        SecondBuild.nonce(project);
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        TestStoreSeed.seed(JkDirs.store());
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().errors()).isEmpty();
+        SecondBuild.assertSecondBuildRunsNothing(project, cache);
+    }
+
     private static Path scaffold(Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(project.resolve("jk.toml"), """

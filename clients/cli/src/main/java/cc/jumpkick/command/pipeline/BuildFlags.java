@@ -11,6 +11,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.config.KeyAuditMode;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
@@ -249,7 +250,8 @@ public record BuildFlags(
                 .withTestFailures(testFailures)
                 .withSkipNode(skipNode)
                 .withVerifyCache(verifyCache)
-                .withVerifySample(verifySample));
+                .withVerifySample(verifySample)
+                .withKeyAudit(KeyAuditMode.parse(System.getenv(KeyAuditMode.ENV))));
     }
 
     /** {@code --guard} is one option identity. */

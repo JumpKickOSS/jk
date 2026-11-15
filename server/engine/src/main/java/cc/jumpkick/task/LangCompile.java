@@ -143,6 +143,11 @@ public final class LangCompile {
         // it runs is one the key never named.
         InputGuard javaRoots = InputGuard.of(request.javaSourceRoots());
         String key = kotlinKey(taskId, request, jkVersion, snapshotter);
+        KeyAudit.used(
+                KeyAudit.moduleOf(request.outputDir()),
+                KeyAudit.stepOf(taskId),
+                key,
+                () -> kotlinKey(taskId, request, jkVersion, snapshotter));
 
         Path workingDir = request.workingDir();
         if (useCache) {
@@ -241,6 +246,11 @@ public final class LangCompile {
             WorkerEnv env)
             throws IOException {
         String key = groovyKey(taskId, request, jkVersion);
+        KeyAudit.used(
+                KeyAudit.moduleOf(request.outputDir()),
+                KeyAudit.stepOf(taskId),
+                key,
+                () -> groovyKey(taskId, request, jkVersion));
 
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);

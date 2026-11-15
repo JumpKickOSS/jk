@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.KeyAuditMode;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.jsonl.Jsonl;
@@ -65,6 +66,7 @@ public final class ProtoSession {
                 .withSkipNode(Jsonl.bool(request, ProtoJobs.SKIP_NODE, false))
                 .withVerifyCache(Jsonl.bool(request, ProtoJobs.VERIFY_CACHE, false))
                 .withVerifySample(Jsonl.intValue(request, ProtoJobs.VERIFY_SAMPLE, 0))
+                .withKeyAudit(KeyAuditMode.parse(Jsonl.str(request, ProtoJobs.KEY_AUDIT)))
                 .withProfile(Jsonl.str(request, "profile"))
                 .withKeepGoing(Jsonl.bool(request, "keepGoing", false))
                 .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
@@ -260,6 +262,9 @@ public final class ProtoSession {
         }
         if (!Jsonl.has(request, ProtoJobs.VERIFY_SAMPLE) && session.verifySample() > 0) {
             f.number(ProtoJobs.VERIFY_SAMPLE, session.verifySample());
+        }
+        if (!Jsonl.has(request, ProtoJobs.KEY_AUDIT) && session.keyAudit().on()) {
+            f.string(ProtoJobs.KEY_AUDIT, session.keyAudit().wireName());
         }
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());

@@ -64,7 +64,8 @@ import org.junit.jupiter.api.io.TempDir;
  * sources, and a module whose sources compile to no class file beside its resources. The request's knobs vary too: a {@code --variant}, {@code jk compile} and {@code
  * --skip-tests} build, each forecast under the knobs it was built with. A Java, a Kotlin and a Groovy
  * module whose compile records are pruned under still-fresh stamps forecast the compiles the next
- * build runs, and are clean after it.
+ * build runs, and are clean after it. Every fixture's first build runs under the key audit, and its
+ * second build runs nothing ({@link SecondBuild}).
  */
 @Tag("integration")
 class ForecastRunParityMatrixTest {
@@ -365,7 +366,9 @@ class ForecastRunParityMatrixTest {
     private void assertParity(Path ws, String edited, boolean byKey, BuildKnobs knobs) throws Exception {
         Path cache = tmp.resolve("cache");
         lock(ws, cache);
-        build(ws, cache, knobs);
+        // Built, audited (no key moved for what the build wrote), explained clean, built again
+        // running nothing: the cache is this test's own, so every key is one it has not seen.
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache, knobs);
 
         assertCompileInputsAgree(ws, cache, knobs);
         assertThat(dirty(walk(ws, cache, knobs)))

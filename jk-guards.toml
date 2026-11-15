@@ -2654,6 +2654,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/task/ClasspathFingerprint.java
 reason = "a reader's classpath-entry memo, shared by its lanes"
 
 [[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/KeyAudit.java"
+reason = "the key audit's tap: the lines a key derivation hashes, on whichever lane hashes them"
+
+[[guards.carried-value-owners.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/ProjectedFiles.java"
 reason = "the output trees a forecast projects instead of reading"
 

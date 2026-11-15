@@ -41,6 +41,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -122,6 +123,7 @@ final class GuardKeys {
     }
 
     private static void feed(MessageDigest md, String tag, String value) {
+        KeyAudit.tap(tag + "=" + value);
         md.update((tag + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
     }
 

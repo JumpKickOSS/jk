@@ -77,6 +77,14 @@ class TagSuiteE2eTest {
     }
 
     @Test
+    void the_second_build_of_a_module_with_tag_and_directory_suites_runs_nothing() throws Exception {
+        // A copy no other test of this class builds, with content and a cache of its own.
+        Path copy = SecondBuild.copy(project, tmp.resolve("second-build"));
+        SecondBuild.nonce(copy);
+        SecondBuild.assertSecondBuildRunsNothing(copy, tmp.resolve("second-build-cache"));
+    }
+
+    @Test
     void the_default_suite_runs_what_no_suite_claims() throws Exception {
         assertThat(total(TestSelection.DEFAULT)).as("FooTest's untagged test").isEqualTo(1L);
     }

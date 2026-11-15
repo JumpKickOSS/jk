@@ -31,6 +31,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
@@ -130,6 +131,7 @@ final class TestSteps {
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
         SuiteDiscovery.Rekey rekey = () -> testStampKey(ctx, in, stamp, affected, testSrcs);
         String stampKey = rekey.key();
+        KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
         // this guard the action record would skip the runner even when
@@ -216,6 +218,8 @@ final class TestSteps {
         if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
+        // The marker is stored under the key that folds in what the suite was found to read.
+        KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         result = ledger.finish(ctx, actionCache, testTaskId, stampKey, result);
         List<String> said = EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(

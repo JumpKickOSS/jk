@@ -34,6 +34,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyAudit;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -665,6 +666,40 @@ public final class PreflightMemo {
      */
     static Fingerprint fingerprintModule(
             Path moduleDir, @Nullable JkBuild project, boolean skipTests, String guardSalt) {
+        if (!KeyAudit.on()) return digestModule(moduleDir, project, skipTests, guardSalt);
+        Fingerprint[] taken = new Fingerprint[1];
+        KeyAudit.Keyed keyed = tokens(moduleDir, project, skipTests, guardSalt, taken);
+        // An audited build names what each fingerprint hashed, for the one its memo certifies.
+        if (keyed != null) KeyAudit.remember(keyed.key(), keyed.tokens());
+        return taken[0];
+    }
+
+    /**
+     * The module's fingerprint with the lines it hashed as tokens, {@code taken[0]} set to the
+     * fingerprint itself: what the key audit holds a certified memo row to. Null when the inputs
+     * would not read.
+     */
+    static KeyAudit.@Nullable Keyed tokens(
+            Path moduleDir, @Nullable JkBuild project, boolean skipTests, String guardSalt, Fingerprint[] taken) {
+        try {
+            KeyAudit.Keyed keyed = KeyAudit.tapped(() -> {
+                taken[0] = digestModule(moduleDir, project, skipTests, guardSalt);
+                return taken[0] instanceof Known k ? k.hex() : null;
+            });
+            if (keyed == null) return null;
+            // The reads part is a digest of its own: named as one token.
+            Map<String, String> tokens = new LinkedHashMap<>(keyed.tokens());
+            int at = keyed.key().lastIndexOf(SettledReads.READS);
+            if (at >= 0) tokens.put("suite reads", keyed.key().substring(at + SettledReads.READS.length()));
+            return new KeyAudit.Keyed(keyed.key(), tokens);
+        } catch (Exception e) {
+            taken[0] = uncertain(moduleDir, e);
+            return null;
+        }
+    }
+
+    private static Fingerprint digestModule(
+            Path moduleDir, @Nullable JkBuild project, boolean skipTests, String guardSalt) {
         try {
             InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
@@ -742,8 +777,7 @@ public final class PreflightMemo {
         Map<String, String> tree =
                 NodeKeys.withoutWritten(NodeKeys.tree(nodeDir, outputs), NodeKeys.written(moduleDir));
         for (Map.Entry<String, String> e : tree.entrySet()) {
-            feed(md, "node:" + e.getKey());
-            feed(md, e.getValue());
+            feed(md, "node:" + e.getKey(), e.getValue());
         }
         for (Map.Entry<String, String> e :
                 BuildEnv.nodeFromRequest(BuildEnv.NODE_PREFIXES).entrySet()) {
@@ -768,8 +802,7 @@ public final class PreflightMemo {
         }
         for (Map.Entry<String, byte[]> e : PlannerBuildInfo.render(project, info, worktree.get(), Clock.SYSTEM)
                 .entrySet()) {
-            feed(md, "build-info:" + e.getKey());
-            feed(md, Hashing.sha256Hex(e.getValue()));
+            feed(md, "build-info:" + e.getKey(), Hashing.sha256Hex(e.getValue()));
         }
     }
 
@@ -783,13 +816,13 @@ public final class PreflightMemo {
      */
     private static void feedFingerprint(
             MessageDigest md, Path moduleDir, Path file, StatIdentity identity, boolean mtimeMode) throws IOException {
-        feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
+        String name = moduleDir.relativize(file).toString().replace('\\', '/');
         if (mtimeMode) {
-            feed(md, identity.encode());
+            feed(md, name, identity.encode());
             return;
         }
         try {
-            feed(md, FileHashMemo.contentHash(file, identity));
+            feed(md, name, FileHashMemo.contentHash(file, identity));
         } catch (IOException e) {
             throw new UnreadableInput(file, e);
         }
@@ -820,17 +853,32 @@ public final class PreflightMemo {
      */
     static void feedFile(MessageDigest md, Path file) throws IOException {
         if (!Files.isRegularFile(file)) {
-            feed(md, "missing");
+            KeyAudit.tap(file + " missing");
+            raw(md, "missing");
             return;
         }
         try {
-            feed(md, FileHashMemo.contentHash(file));
+            String hash = FileHashMemo.contentHash(file);
+            KeyAudit.tap(file + ":" + hash);
+            raw(md, hash);
         } catch (IOException e) {
             throw new UnreadableInput(file, e);
         }
     }
 
     static void feed(MessageDigest md, String s) {
+        KeyAudit.tap(s);
+        raw(md, s);
+    }
+
+    /** A name and its value as two digest inputs, named to the key audit as one token. */
+    static void feed(MessageDigest md, String name, String value) {
+        KeyAudit.tap(name + ":" + value);
+        raw(md, name);
+        raw(md, value);
+    }
+
+    private static void raw(MessageDigest md, String s) {
         md.update(s.getBytes(StandardCharsets.UTF_8));
         md.update((byte) 0);
     }

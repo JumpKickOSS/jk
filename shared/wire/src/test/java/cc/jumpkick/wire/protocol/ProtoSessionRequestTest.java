@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.KeyAuditMode;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
@@ -112,6 +113,16 @@ class ProtoSessionRequestTest {
         assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).coverage()).isFalse();
         assertThat(buildLine()).as("a plain run does not spell the flag").doesNotContain("\"coverage\"");
         assertThat(BuildRequest.decode(build).coverage()).isTrue();
+    }
+
+    /** JK_KEY_AUDIT rides the line to the engine; a plain build never spells it. */
+    @Test
+    void a_key_audit_session_reaches_the_engine_and_a_plain_line_stays_silent() {
+        String spliced =
+                ProtoSession.withSessionFields(buildLine(), Session.defaults().withKeyAudit(KeyAuditMode.STRICT));
+        assertThat(ProtoSession.sessionOf(spliced, TOKEN).keyAudit()).isEqualTo(KeyAuditMode.STRICT);
+        assertThat(buildLine()).doesNotContain("\"keyAudit\"");
+        assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).keyAudit()).isEqualTo(KeyAuditMode.OFF);
     }
 
     /** A guard run's session rides the line to the engine; a plain build never spells it. */

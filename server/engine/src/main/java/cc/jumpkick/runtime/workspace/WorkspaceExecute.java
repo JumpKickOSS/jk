@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.config.KeyAuditMode;
+import cc.jumpkick.config.Request;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -17,6 +20,17 @@ public final class WorkspaceExecute {
      * aggregation. Every path settles through {@link #finish}.
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest request, WorkspaceBuildListener listener) {
+        KeyAuditMode audit = KeyAudit.requested();
+        if (!audit.on()) return run(request, listener);
+        KeyAudit keys = new KeyAudit(audit);
+        try {
+            return Request.currentOrDetached().with(KeyAudit.SLOT, keys).call(() -> run(request, listener));
+        } finally {
+            keys.close();
+        }
+    }
+
+    private static WorkspaceResult run(WorkspaceRequest request, WorkspaceBuildListener listener) {
         WorkspacePreflightPhase.Outcome preflight = WorkspacePreflightPhase.run(request, listener);
         WorkspaceResult result;
         if (preflight instanceof WorkspacePreflightPhase.Completed completed) {
@@ -31,7 +45,7 @@ public final class WorkspaceExecute {
                 } else {
                     WorkspaceRunPhase.Run run =
                             WorkspaceRunPhase.run(((WorkspacePreparePhase.Ready) prepare).prepared(), listener);
-                    result = WorkspaceFinalPhase.complete(run);
+                    result = KeyAudits.report(run, WorkspaceFinalPhase.complete(run), listener);
                 }
             } finally {
                 // No work model reaches the listener after the build: a pricing still running stops.

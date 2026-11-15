@@ -240,6 +240,7 @@ final class NodeArm {
         NodeKeys.Keyed keyed = key(ctx, step, fetched);
         Optional<ActionCache.ActionRecord> hit = rebuild() ? Optional.empty() : actionCache.lookup(keyed.key());
         if (hit.isPresent() && (step.outputs().isEmpty() || actionCache.restoreFiles(hit.get(), nodeDir))) {
+            writes.used(NodeKeys.stepTask(step), keyed, () -> key(ctx, step, fetched));
             ctx.label(step.name() + " up-to-date");
             ctx.cached();
             ctx.progress(1);
@@ -281,10 +282,10 @@ final class NodeArm {
         }
         if (files.isEmpty()) {
             actionCache.storeWithOutputs(keyed.taskId(), keyed.key(), keyed.inputs(), Map.of());
-            writes.stored(keyed, () -> key(ctx, step, fetched));
+            writes.stored(NodeKeys.stepTask(step), keyed, () -> key(ctx, step, fetched));
         } else if (PackagingCache.admitted(ctx, actionCache.root(), files, keyed.taskId())) {
             actionCache.storeArtifacts(keyed.taskId(), keyed.key(), keyed.inputs(), nodeDir, files);
-            writes.stored(keyed, () -> key(ctx, step, fetched));
+            writes.stored(NodeKeys.stepTask(step), keyed, () -> key(ctx, step, fetched));
         }
         ctx.progress(1);
     }
@@ -569,6 +570,7 @@ final class NodeArm {
                             rebuild() ? Optional.empty() : actionCache.lookup(keyed.key());
                     if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
                         actionCache.pointAt(hit.get());
+                        writes.used(TaskNames.NODE_BUILD, keyed, () -> buildKey(ctx, command));
                         publish(ctx, out);
                         ctx.label(node.out() + "/ up-to-date");
                         ctx.cached();
@@ -596,7 +598,7 @@ final class NodeArm {
                     }
                     if (settled(ctx, TaskNames.NODE_BUILD, keyed, buildKey(ctx, command))) {
                         actionCache.store(keyed.taskId(), keyed.key(), keyed.inputs(), out);
-                        writes.stored(keyed, () -> buildKey(ctx, command));
+                        writes.stored(TaskNames.NODE_BUILD, keyed, () -> buildKey(ctx, command));
                     }
                     publish(ctx, out);
                     ctx.put(BUILD_OUTCOME, "built");
@@ -625,6 +627,7 @@ final class NodeArm {
                     NodeKeys.Keyed keyed = testKey(ctx, script);
                     boolean coverage = in.session().coverage();
                     if (!rebuild() && !coverage && replayGreen(ctx, actionCache, keyed.key())) {
+                        writes.used(TaskNames.NODE_TEST, keyed, () -> testKey(ctx, script));
                         ctx.progress(1);
                         return;
                     }
@@ -653,7 +656,7 @@ final class NodeArm {
                                     keyed.key(),
                                     keyed.inputs(),
                                     TestStamp.outcome(summary.total(), summary.succeeded(), summary.skipped(), 0));
-                            writes.stored(keyed, () -> testKey(ctx, script));
+                            writes.stored(TaskNames.NODE_TEST, keyed, () -> testKey(ctx, script));
                         }
                         ctx.progress(1);
                         return;

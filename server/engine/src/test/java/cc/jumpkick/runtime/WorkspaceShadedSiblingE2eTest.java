@@ -55,6 +55,18 @@ class WorkspaceShadedSiblingE2eTest {
         assertThat(ws.resolve("app/target/classes/com/example/App.class")).isRegularFile();
     }
 
+    @Test
+    void the_second_build_of_a_relocating_sibling_and_its_consumer_runs_nothing(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("shaded-sibling-cache");
+        Path ws = workspace(tmp);
+        SecondBuild.nonce(ws);
+        BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("workspace lock").isTrue();
+        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
+        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
+    }
+
     private static Path workspace(Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(ws.resolve("jk.toml"), """

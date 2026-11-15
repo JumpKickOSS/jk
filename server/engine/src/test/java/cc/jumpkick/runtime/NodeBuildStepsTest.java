@@ -206,6 +206,18 @@ class NodeBuildStepsTest {
     }
 
     @Test
+    void the_workspace_build_audits_every_node_key_and_its_second_build_runs_nothing() throws Exception {
+        // Writes beside the module as Next.js and Angular do, through the build the engine runs.
+        write("build.js", Files.readString(web.resolve("build.js")) + """
+                fs.writeFileSync(path.join(__dirname, 'next-env.d.ts'), '/// generated\\n');
+                fs.writeFileSync(path.join(__dirname, 'licenses.txt'), 'MIT\\n');
+                """);
+        SecondBuild.assertSecondBuildRunsNothing(web, tmp.resolve("cache"));
+        assertThat(lines("builds.log")).as("node-build ran once").isEqualTo(1);
+        assertThat(lines("tests.log")).as("node-test ran once").isEqualTo(1);
+    }
+
+    @Test
     void a_restore_of_an_earlier_build_leaves_its_outputs_whole_for_the_next_build() throws Exception {
         // As Next.js names its chunks by content: each source writes a file the other's build lacks.
         write("build.js", Files.readString(web.resolve("build.js")) + """

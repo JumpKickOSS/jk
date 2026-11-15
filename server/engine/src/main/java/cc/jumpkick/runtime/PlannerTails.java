@@ -32,6 +32,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -286,6 +287,18 @@ public final class PlannerTails {
                             assemblySbom);
                     String shTask = keyed.taskId();
                     String shKey = keyed.key();
+                    // Keyed as they stand now: the jar's own SBOM attributes join them below.
+                    Map<String, String> keyedAttrs = new LinkedHashMap<>(assemblyAttrs);
+                    KeyAudit.used(layout.moduleRoot(), TaskNames.PACKAGE_ASSEMBLY, shKey, () -> PackagingKeys.assembly(
+                                    assemblyJar,
+                                    layout.moduleRoot(),
+                                    project,
+                                    keyedAttrs,
+                                    ClasspathFingerprint.entry(classes),
+                                    contributionsToken(contributed),
+                                    ClasspathFingerprint.of(depJars),
+                                    assemblySbom)
+                            .key());
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
                         ctx.label(assemblyJar.getFileName() + " up-to-date");
                         ctx.cached();

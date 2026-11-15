@@ -256,6 +256,31 @@ class ScalaBuildE2eTest {
         assertThat(underTarget).as("compiled outputs").anyMatch(s -> s.endsWith("CalcTest.class"));
     }
 
+    @Test
+    void the_second_build_of_a_mixed_java_scala_module_runs_nothing(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("mixed"));
+        Path cache = cache();
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "mixed"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+                scala   = "3.8.4"
+
+                """ + REPOS);
+        Path src = Files.createDirectories(project.resolve("src/com/example"));
+        Files.writeString(
+                src.resolve("Calc.scala"), "package com.example\n\nobject Calc { def twice(n: Int): Int = n * 2 }\n");
+        Files.writeString(
+                src.resolve("App.java"),
+                "package com.example;\n\npublic final class App { public static int four() { return Calc.twice(2); } }\n");
+        SecondBuild.nonce(project);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+        SecondBuild.assertSecondBuildRunsNothing(project, cache);
+    }
+
     private static Path cache() {
         return TestCaches.dir("scala-e2e-cache");
     }

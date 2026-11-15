@@ -224,6 +224,7 @@ public final class TestStamp {
     // Helpers
 
     private static void feed(MessageDigest md, String value) {
+        KeyAudit.tap(value);
         byte[] bytes = (value + "\n").getBytes(StandardCharsets.UTF_8);
         md.update(bytes);
     }

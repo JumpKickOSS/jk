@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.KeyAudit;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,7 +46,7 @@ final class NodeWrites {
     }
 
     /** One record this build stored: the key it was stored under and how to take that key again. */
-    private record Stored(NodeKeys.Keyed keyed, Rekey rekey) {}
+    private record Stored(String step, NodeKeys.Keyed keyed, Rekey rekey) {}
 
     /** How a step's inputs moved while it ran: the files it created, and the ones that changed or went. */
     record Moves(Set<String> created, List<Path> moved) {}
@@ -106,10 +107,19 @@ final class NodeWrites {
     }
 
     /** A step stored a record under {@code keyed}; stored again at once if it read a written file. */
-    synchronized void stored(NodeKeys.Keyed keyed, Rekey rekey) throws IOException {
-        Stored s = new Stored(keyed, rekey);
+    synchronized void stored(String step, NodeKeys.Keyed keyed, Rekey rekey) throws IOException {
+        Stored s = new Stored(step, keyed, rekey);
         stored.add(s);
+        used(step, keyed, rekey);
         realias(s, NodeKeys.written(moduleDir));
+    }
+
+    /** The step {@code step} used {@code keyed}, hit or stored: held to it by an audited build ({@link KeyAudit}). */
+    void used(String step, NodeKeys.Keyed keyed, Rekey rekey) {
+        KeyAudit.keyed(moduleDir, step, keyed.key(), keyed.inputs(), () -> {
+            NodeKeys.Keyed now = rekey.key();
+            return new KeyAudit.Keyed(now.key(), now.inputs());
+        });
     }
 
     /**
@@ -122,5 +132,6 @@ final class NodeWrites {
         NodeKeys.Keyed next = s.rekey().key();
         if (!next.inputs().equals(expected) || !aliased.add(next.key())) return;
         cache.storeAlias(s.keyed().key(), next.key(), next.inputs());
+        used(s.step(), next, s.rekey());
     }
 }

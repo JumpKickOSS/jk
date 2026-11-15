@@ -353,6 +353,32 @@ class EngineEventDecoderStreamTest {
         assertThat(rec.notes).containsExactly("installed JDK 21-zulu to /jdks/azul-21");
     }
 
+    /**
+     * A warning that names its module reaches the client as the module's, though the module ran and
+     * its listener is open: the key audit speaks once every module has ended, and routed to the
+     * module's own listener the warning was dropped.
+     */
+    @Test
+    void a_module_warning_after_the_module_ran_reaches_the_client_as_the_modules() throws Exception {
+        Recorder rec = new Recorder();
+        EngineEventDecoder.streamWorkspaceEvents(
+                stream(
+                        ProtoLifecycle.jobStart(55, "build", "/w", 1),
+                        ProtoEvents.planModule("/w/a", "g:a:1", "a", 10, false),
+                        ProtoEvents.planDone(1),
+                        ProtoEvents.moduleStart("/w/a"),
+                        ProtoEvents.planFinish("/w/a", true),
+                        ProtoEvents.moduleFinish("/w/a", "g:a:1", true, 0, 5),
+                        ProtoEvents.moduleWarn("/w/a", "g:a:1", "run-tests", "key-moved", "the key of run-tests moved"),
+                        ProtoEvents.workspaceFinish(true, 0, List.of(), false),
+                        ProtoLifecycle.jobFinish(55)),
+                rec,
+                Path.of("/cache"),
+                null);
+
+        assertThat(rec.moduleWarnings).containsExactly("g:a:1 run-tests key-moved: the key of run-tests moved");
+    }
+
     /** A module fail-fast stopped reaches the client as stopped, apart from the one that failed. */
     @Test
     void a_module_finish_carries_that_the_module_was_stopped() throws Exception {
@@ -491,10 +517,16 @@ class EngineEventDecoderStreamTest {
         final List<Duration> stepWaits = new ArrayList<>();
         final Map<String, List<String>> diagnosticsByModule = new LinkedHashMap<>();
         final List<String> notes = new ArrayList<>();
+        final List<String> moduleWarnings = new ArrayList<>();
 
         @Override
         public void onNote(String text) {
             notes.add(text);
+        }
+
+        @Override
+        public void onModuleWarning(Path dir, String module, String step, String code, String message) {
+            moduleWarnings.add(module + " " + step + " " + code + ": " + message);
         }
 
         @Override

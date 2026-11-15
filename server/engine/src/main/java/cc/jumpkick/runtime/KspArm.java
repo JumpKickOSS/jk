@@ -27,6 +27,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -207,6 +208,17 @@ final class KspArm {
                 round.classpath(),
                 round.processorCp(),
                 ClasspathFingerprint.ON_DISK);
+        KeyAudit.used(
+                in.dir(),
+                TaskNames.KSP,
+                key,
+                () -> roundKey(
+                        outBase,
+                        optionsDigest,
+                        round.stampInputs(),
+                        round.classpath(),
+                        round.processorCp(),
+                        ClasspathFingerprint.ON_DISK));
         // A stale round's outputs must not survive into the source union or the classes tree.
         for (String sub : OUTPUT_DIRS) {
             PathUtil.deleteRecursively(outBase.resolve(sub));

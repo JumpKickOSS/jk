@@ -37,6 +37,7 @@ import org.jspecify.annotations.Nullable;
  * @param verifyCache {@code --verify-cache}: steps run for real and are held against the cache
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  * @param revalidate version listings bypass their freshness window
+ * @param keyAudit {@code JK_KEY_AUDIT}: the build re-keys its steps once it succeeds
  */
 public record Session(
         @With JkConfig config,
@@ -141,7 +142,12 @@ public record Session(
          * {@code jk update}, {@code jk outdated}: version listings skip their freshness window and
          * revalidate with the repository (a conditional GET when validators exist).
          */
-        @With boolean revalidate) {
+        @With boolean revalidate,
+        /**
+         * {@code JK_KEY_AUDIT}: once the build has succeeded, every step's key is taken again from
+         * the tree it left and a key that moved is reported ({@code key-moved}), or fails the build.
+         */
+        @With KeyAuditMode keyAudit) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -155,6 +161,7 @@ public record Session(
         testSelection = testSelection == null ? TestSelection.DEFAULT : testSelection;
         affectedChanged = (affectedChanged == null) ? new AffectedChanged() : affectedChanged;
         io = (io == null) ? new IoLedger() : io;
+        keyAudit = keyAudit == null ? KeyAuditMode.OFF : keyAudit;
     }
 
     /** A copy carrying the given variant selection + client-resolved env — two components, one fact. */
@@ -190,7 +197,8 @@ public record Session(
                 io,
                 snapshot,
                 javadoc,
-                revalidate);
+                revalidate,
+                keyAudit);
     }
 
     /**
@@ -312,7 +320,8 @@ public record Session(
                 requestIo(),
                 false,
                 false,
-                false);
+                false,
+                KeyAuditMode.OFF);
     }
 
     private static IoLedger requestIo() {
@@ -353,7 +362,8 @@ public record Session(
                 io,
                 snapshot,
                 javadoc,
-                revalidate);
+                revalidate,
+                keyAudit);
     }
 
     /** A copy with the given JVM tuning ({@code null} → {@link PluginTuning#NONE}). */
@@ -389,7 +399,8 @@ public record Session(
                 io,
                 snapshot,
                 javadoc,
-                revalidate);
+                revalidate,
+                keyAudit);
     }
 
     /**
@@ -430,7 +441,8 @@ public record Session(
                 io,
                 snapshot,
                 javadoc,
-                revalidate);
+                revalidate,
+                keyAudit);
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

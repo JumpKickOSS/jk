@@ -25,6 +25,7 @@ import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.MirroredOutputs;
 import java.io.IOException;
@@ -282,6 +283,13 @@ public final class BuildLogicSupport {
                 tokens.add("task:" + simple);
                 tokens.add("kind:" + task.kind());
                 key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+                KeyAudit.used(projectDir, "build-logic-" + simple, key, () -> {
+                    List<String> now = new ArrayList<>(sourceTokens);
+                    now.addAll(inputTokens.forAnchor(projectDir, anchor));
+                    now.add("task:" + simple);
+                    now.add("kind:" + task.kind());
+                    return ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), now);
+                });
             }
             Optional<ActionCache.ActionRecord> hit =
                     key != null && !sessionBypassesLookup ? actionCache.lookup(key) : Optional.empty();

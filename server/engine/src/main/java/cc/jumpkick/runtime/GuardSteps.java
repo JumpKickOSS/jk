@@ -32,6 +32,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.ParsedBuild;
 import java.io.IOException;
@@ -346,6 +347,10 @@ final class GuardSteps {
         String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD_FIXTURES, g.root());
         List<String> tokens = GuardFixtures.keyTokens(g.root(), cas);
         String key = tokens == null ? null : GuardKeys.laneKey(taskId, tokens, "fixtures");
+        KeyAudit.used(g.root(), TaskNames.GUARD_FIXTURES, key, () -> {
+            List<String> now = GuardFixtures.keyTokens(g.root(), cas);
+            return now == null ? null : GuardKeys.laneKey(taskId, now, "fixtures");
+        });
         var session = in.session().config();
         boolean useCache = !session.forceOr(false) && !session.rebuildOr(false);
         if (key != null && useCache && actionCache.lookup(key).isPresent()) {
