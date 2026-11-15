@@ -43,7 +43,7 @@ class TestCommandTest {
     }
 
     @Test
-    void guard_compiles_integration_when_present(@TempDir Path tempDir) throws Exception {
+    void every_verb_compiles_integration_when_present(@TempDir Path tempDir) throws Exception {
         scaffoldNoDeps(tempDir);
         // Force traditional layout so src/integration/ is a suite, not main sources.
         Files.createDirectories(tempDir.resolve("src/test/java"));
@@ -51,7 +51,8 @@ class TestCommandTest {
         Files.createDirectories(broken.getParent());
         Files.writeString(broken, "package example;\nclass BrokenIT { void t(  // syntax error\n");
         String cache = tempDir.resolve("cache").toString();
-        assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", cache)).isEqualTo(0);
+        // One test-classes tree for every verb: a plain run compiles the guard's suites too.
+        assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", cache)).isNotEqualTo(0);
         assertThat(run("test", "--guard", "-C", tempDir.toString(), "--cache-dir", cache))
                 .isNotEqualTo(0);
     }

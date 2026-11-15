@@ -130,6 +130,60 @@ public record TestStampInputs(
                     List.of(),
                     TestStamp.CompileTestKeys.NONE);
         }
+
+        /** These facts under {@code selection} in place of the session's. */
+        Facts withSelection(TestSelection selection) {
+            return new Facts(
+                    dir,
+                    project,
+                    layout,
+                    javaHome,
+                    profileName,
+                    selection,
+                    pluginDecls,
+                    workerJars,
+                    resolvedRuntime,
+                    providedRuntime,
+                    compileTestKeys);
+        }
+    }
+
+    /**
+     * This stamp as the guard's run would take it ({@link #guardCovering}), or null when the guard's
+     * run does not cover this one. A green guard run ran every test of the run it covers, over the
+     * same tree ({@link TestSuites#compiled} compiles every guard suite whatever the selection), so
+     * {@code jk build} and {@code jk test} after {@code jk install -g} replay its marker instead of
+     * running the default suite a second time.
+     */
+    @Nullable
+    TestStampInputs underGuard() throws IOException {
+        TestSelection guard = guardCovering(selection, facts.dir());
+        return guard == null ? null : of(facts.withSelection(guard), identity);
+    }
+
+    /**
+     * The selection {@code jk test -g} runs in the workspace of {@code dir}, when its run covers
+     * {@code selection}'s: a plain selection (no tags, classes, scripts or {@code --all}) whose suites
+     * are all guard suites; null otherwise, and for the guard's own selection.
+     */
+    static @Nullable TestSelection guardCovering(TestSelection selection, Path dir) {
+        if (selection.guard()
+                || selection.allSuites()
+                || selection.scriptsOnly()
+                || !selection.includeTags().isEmpty()
+                || !selection.excludeTags().isEmpty()
+                || !selection.classes().isEmpty()) return null;
+        TestSelection guard;
+        try {
+            Path root = WorkspaceScan.owningRoot(dir).orElse(dir);
+            guard = TestSelection.of(TestSelection.guardSuites(root), false, List.of(), List.of(), true, false, false);
+        } catch (RuntimeException unreadable) {
+            return null;
+        }
+        if (guard.identityToken().equals(selection.identityToken())) return null;
+        return guard.wantedSuites().containsAll(selection.wantedSuites())
+                ? guard.withOnlyModules(selection.onlyModules())
+                : null;
     }
 
     /** The stamp inputs of {@code facts}, with the worker jars read through {@code identity}. */

@@ -131,7 +131,6 @@ final class TestSteps {
         List<Path> testRtCp = stamp.runtimeClasspath();
         WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest);
         TestTier tier = stamp.tier();
-        List<String> testJvmArgs = stamp.jvmArgs();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
         SuiteDiscovery.Rekey rekey = () -> testStampKey(ctx, in, stamp, affected, testSrcs);
         String stampKey = rekey.key();
@@ -145,7 +144,8 @@ final class TestSteps {
         // A coverage run is a request for a report; a replayed green marker has none.
         boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
         boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
-        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv)) return;
+        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv)
+                || replayedGuardRun(ctx, rerun, affected, stamp, testSrcs, projectUnderTest, testEnv, suites)) return;
         // Under the same stamp the classes that passed before still stand: a red or cut-short
         // suite runs only what has not passed yet. A forced, debug, coverage or affected run, and a
         // module that says [test] cache = "module", runs its whole selection.
@@ -186,7 +186,7 @@ final class TestSteps {
             tagExcluded =
                     listener(ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, tier, affected, effectiveSel);
             // The module path is read off the runtime classpath, which the stamp already keys.
-            List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
+            List<String> forkJvmArgs = new ArrayList<>(stamp.jvmArgs());
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             SuiteResources.Launcher launcher = ledger.launching((settled, s) -> TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
@@ -540,6 +540,46 @@ final class TestSteps {
     }
 
     /**
+     * Whether the guard's green run over the same tree ran this run's tests too ({@link
+     * TestStampInputs#underGuard}), for a run that is neither forced nor affected-only: replayed with the counts of the tests this selection runs, out
+     * of the classes the guard's run recorded.
+     */
+    private boolean replayedGuardRun(
+            TaskContext ctx,
+            boolean rerun,
+            AffectedTestRun.@Nullable Outcome affected,
+            TestStampInputs stamp,
+            List<Path> testSrcs,
+            JkBuild projectUnderTest,
+            WorkerEnv testEnv,
+            SuiteFilter suites)
+            throws Exception {
+        if (rerun || affected != null) return false;
+        String guardKey = guardStampKey(ctx, in, stamp, testSrcs);
+        if (guardKey == null) return false;
+        TestSelection selection = stamp.selection();
+        return TestLaunch.replayGreenRun(
+                ctx, in, actionCache, guardKey, projectUnderTest, testEnv, marker -> TestClassLedger.load(
+                                actionCache,
+                                guardKey,
+                                coordinate(projectUnderTest),
+                                stamp.tier().name())
+                        .covered(
+                                suites.acceptor(),
+                                suite -> selection.wantedSuites().contains(suite)));
+    }
+
+    /**
+     * The key the guard's run ({@code jk test -g}) of this module stores its green marker under, when
+     * that run covers this one ({@link TestStampInputs#underGuard}); null otherwise.
+     */
+    private static @Nullable String guardStampKey(
+            TaskContext ctx, BuildPlanner.Inputs in, TestStampInputs stamp, List<Path> testSrcs) throws Exception {
+        TestStampInputs guard = stamp.underGuard();
+        return guard == null ? null : testStampKey(ctx, in, guard, null, testSrcs);
+    }
+
+    /**
      * The verdict a {@code --class} selection leaves, or null when this workspace module skips: a
      * workspace judges the patterns across its modules, a standalone project fails on the spot,
      * naming the runner's {@code tagExcluded} warning, with the tier that runs the class, when the
@@ -689,6 +729,16 @@ final class TestSteps {
                         .network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
         if (hit) return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
+        // As the run decides it: the guard's green run over the same tree ran these tests too.
+        TestStampInputs guard = stamp.underGuard();
+        String guardKey =
+                guard == null ? null : guard.forecastKey(compact, layout.classesDir(), finalMainFp, s.lockFile);
+        if (guardKey != null
+                && ForecastSteps.presentRecord(s.actionCache, guardKey)
+                        .filter(TestStamp::green)
+                        .isPresent()) {
+            return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
+        }
         // A miss for none of the reasons above says which input of the last green run's key moved.
         String moved = red || network
                 ? null

@@ -336,7 +336,12 @@ class SuiteFilterTest {
         SuiteFilter e2eRun = SuiteFilter.of(module, false, List.of("e2e"), TIERS);
         assertThat(e2eRun.members())
                 .as("an undeclared directory suite leaves claimed tags out")
-                .containsExactly("|integration,slow|.*");
+                .singleElement()
+                .satisfies(m -> assertThat(m).startsWith("|integration,slow|"));
+        assertThat(member(e2eRun, 0, "com.acme.CheckoutE2e")).isTrue();
+        assertThat(member(e2eRun, 0, "com.acme.FooTest"))
+                .as("the tree holds the guard's default suite too, which is not e2e's")
+                .isFalse();
     }
 
     @Test

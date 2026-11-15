@@ -107,8 +107,11 @@ class TestClassesGraphCacheE2eTest {
                 .testClassesDir();
         String defaultOnly = FreshnessStamp.stampedKey(testClasses, BuildStamps.JAVA)
                 .orElseThrow(() -> new AssertionError("no compile stamp in " + testClasses));
+        assertThat(testClasses.resolve("demo/CalcIT.class"))
+                .as("a plain build compiles the guard's integration suite into the one tree")
+                .isRegularFile();
 
-        // Both suites compile into the one tree: its stamp is that compile's, not the default suite's.
+        // Both suites compile into the one tree: its stamp is that compile's, whichever selection built it.
         Session both = Session.defaults()
                 .withTestSelection(TestSelection.of(List.of("test", "integration"), false, List.of(), List.of()));
         SessionContext.where(both, () -> {
@@ -119,7 +122,7 @@ class TestClassesGraphCacheE2eTest {
         assertThat(testClasses.resolve("demo/CalcIT.class")).isRegularFile();
         String bothSuites = FreshnessStamp.stampedKey(testClasses, BuildStamps.JAVA)
                 .orElseThrow(() -> new AssertionError("no compile stamp in " + testClasses));
-        assertThat(bothSuites).isNotEqualTo(defaultOnly);
+        assertThat(bothSuites).as("one tree under every selection").isEqualTo(defaultOnly);
 
         String key = GraphCacheKeys.classes("app/", "test", List.of(bothSuites));
         GraphRunner.run(request(ws), p -> {});

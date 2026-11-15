@@ -63,6 +63,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -313,6 +314,22 @@ final class TestLaunch {
             JkBuild project,
             WorkerEnv testEnv)
             throws IOException {
+        return replayGreenRun(ctx, in, actionCache, stampKey, project, testEnv, null);
+    }
+
+    /**
+     * As above, replaying {@code counts} in place of the marker's own when not null: the share of a
+     * wider green run (the guard's) that this run's selection would have run.
+     */
+    static boolean replayGreenRun(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            ActionCache actionCache,
+            String stampKey,
+            JkBuild project,
+            WorkerEnv testEnv,
+            @Nullable Function<ActionCache.ActionRecord, @Nullable TestSummary> counts)
+            throws IOException {
         var marker = actionCache.lookup(stampKey);
         if (marker.isEmpty() || !TestStamp.green(marker.get())) return false;
         ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
@@ -325,7 +342,8 @@ final class TestLaunch {
         // legitimate skip was indistinguishable from a module with no test
         // sources. Markers written before counts were stored replay nothing;
         // the next real run upgrades them.
-        TestSummary previous = PlannerTest.stampedSummary(marker.get());
+        TestSummary previous = counts != null ? counts.apply(marker.get()) : null;
+        if (previous == null) previous = PlannerTest.stampedSummary(marker.get());
         if (previous != null) ctx.put(TEST_RUN, TestRun.of(previous));
         EnvReadReport.replay(ctx, in, project, testEnv, marker.get().said());
         return true;

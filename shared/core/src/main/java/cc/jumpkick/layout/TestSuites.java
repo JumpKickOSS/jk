@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.model.DeclaredSuite;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -189,6 +190,38 @@ public final class TestSuites {
      * one compile. A selection with no declared suite is returned as is.
      */
     public static List<String> compiled(
+            Path projectDir, boolean compact, List<String> selected, Map<String, DeclaredSuite> declared) {
+        return compiledAsSelected(
+                projectDir, compact, withGuardSuites(projectDir, compact, selected, declared), declared);
+    }
+
+    /**
+     * {@code selected} widened by the suites the workspace's guard ({@code jk test -g}, {@link
+     * TestSelection#guardSuites}) runs in this module, those first, in the guard's order. The shared
+     * test-classes tree is one tree for every verb: {@code jk build}, {@code jk test} and {@code jk
+     * install}, with or without {@code -g}, compile the same sources into it, so a gate's output is
+     * the plain build's and neither recompiles the other's. Which tests a run runs is the suite
+     * filter's business, not the tree's.
+     */
+    static List<String> withGuardSuites(
+            Path projectDir, boolean compact, List<String> selected, Map<String, DeclaredSuite> declared) {
+        List<String> guard;
+        try {
+            Path root = WorkspaceScan.owningRoot(projectDir).orElse(projectDir);
+            TestSelection gate =
+                    TestSelection.of(TestSelection.guardSuites(root), false, List.of(), List.of(), true, false, false);
+            guard = resolve(gate, projectDir, compact, declared).suites();
+        } catch (RuntimeException unreadable) {
+            // A guard list jk test -g itself refuses widens nothing.
+            return selected;
+        }
+        if (guard.isEmpty() || selected.equals(guard)) return selected;
+        LinkedHashSet<String> out = new LinkedHashSet<>(guard);
+        out.addAll(selected);
+        return List.copyOf(out);
+    }
+
+    private static List<String> compiledAsSelected(
             Path projectDir, boolean compact, List<String> selected, Map<String, DeclaredSuite> declared) {
         if (selected.stream().noneMatch(declared::containsKey)) return selected;
         LinkedHashSet<String> out = new LinkedHashSet<>();

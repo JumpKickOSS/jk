@@ -615,7 +615,12 @@ output is in place, packaged or restored: the digest of every workspace jar it w
 (`ModuleInputProvenance.outputsFromOtherInputs`, on the memo hit, the cone and the full walk alike)
 schedules a module one of whose recorded jars now holds other bytes, and `jk explain` asks the same
 preflight, so it shows the module with the reason. A source-less member that assembles (a
-distribution over its siblings) is forecast like any other: its fat jar is its whole output.
+distribution over its siblings) is forecast like any other: its fat jar is its whole output. The
+record names the outputs part of the module's fingerprint (`PreflightMemo.outputsPart`: the
+fingerprint less the skip, the selection and the suite's own inputs, test sources always in), so
+the outputs one verb leaves (`jk install -g`) are the next verb's (`jk build`) when the tree is
+unchanged; every verb compiles the guard suites into the one test-classes tree
+(`TestSuites.compiled`) for the same reason.
 
 **Two storage tiers** (separate roots, separate budgets):
 

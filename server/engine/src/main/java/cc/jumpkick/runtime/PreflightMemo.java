@@ -708,62 +708,115 @@ public final class PreflightMemo {
         try {
             InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
+            // What the module's outputs are a function of: md less the test run's own inputs (the
+            // skip, the selection, the suite's JVM, environment and reads), with the test sources
+            // always in. Every verb compiles the same trees from the same sources, so the record
+            // of what its outputs were built from (ModuleInputProvenance) names this part, and a
+            // jk build accepts the outputs jk install -g left, and the other way round.
+            MessageDigest out = Hashing.newSha256();
             feed(md, "skip=" + (skipTests ? "1" : "0"));
-            feed(md, "mode=" + fingerprintMode());
-            if (!guardSalt.isEmpty()) feed(md, guardSalt);
-            feedFile(md, ManifestPaths.manifestIn(moduleDir));
-            feedFile(md, LockPaths.lockFile(moduleDir));
+            both(md, out, "mode=" + fingerprintMode());
+            if (!guardSalt.isEmpty()) both(md, out, guardSalt);
+            feedFile(md, out, ManifestPaths.manifestIn(moduleDir));
+            feedFile(md, out, LockPaths.lockFile(moduleDir));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).
             if (PluginModule.isWorker(moduleDir)) {
-                feedFile(md, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
+                feedFile(md, out, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
             }
             boolean mtimeMode = useMtimeMode();
-            for (Path r : ModuleLayoutPlugins.fingerprintRoots(moduleDir, skipTests)) {
-                if (Files.isRegularFile(r)) {
-                    Path abs = r.toAbsolutePath().normalize();
-                    feedFingerprint(md, moduleDir, abs, StatIdentity.of(abs), mtimeMode);
-                    continue;
-                }
-                if (!Files.isDirectory(r)) continue;
-                var snap = InputTrees.of(r);
-                if (snap.overflow()) {
-                    // A file that vanished mid-walk is skipped by the helper; a directory that
-                    // cannot be opened surfaces as an uncertain fingerprint, which is the honest
-                    // answer — a fingerprint over a tree with a hole in it would look stable.
-                    PathUtil.forEachRegularFile(r, new PathUtil.FileVisit() {
-                        @Override
-                        public void accept(Path file, BasicFileAttributes attrs) throws IOException {
-                            Path abs = file.toAbsolutePath().normalize();
-                            feedFingerprint(md, moduleDir, abs, StatIdentity.of(abs, attrs), mtimeMode);
-                        }
-
-                        @Override
-                        public void directoryLink(Path link) {
-                            throw new MemoInputs.DirectoryLink(link);
-                        }
-                    });
-                    continue;
-                }
-                if (!snap.directoryLinks().isEmpty())
-                    throw new MemoInputs.DirectoryLink(snap.directoryLinks().getFirst());
-                for (var ref : snap.files()) {
-                    feedFingerprint(md, moduleDir, ref.path(), ref.identity(), mtimeMode);
-                }
-            }
-            feedNodeBuild(md, moduleDir);
-            if (project != null) feedBuildInfo(md, moduleDir, project);
+            // The run's roots into both digests; a run that skips tests reads no test root, so the
+            // outputs digest walks every root again, as a run with tests would.
+            feedRoots(
+                    md,
+                    skipTests ? null : out,
+                    moduleDir,
+                    ModuleLayoutPlugins.fingerprintRoots(moduleDir, skipTests),
+                    mtimeMode);
+            if (skipTests)
+                feedRoots(null, out, moduleDir, ModuleLayoutPlugins.fingerprintRoots(moduleDir, false), mtimeMode);
+            feedNodeBuild(md, out, moduleDir);
+            if (project != null) feedBuildInfo(md, out, moduleDir, project);
             // What the workers and plugins read of the environment keys a -S build's steps too.
             if (project != null) {
-                for (String token : ModuleEnvKeys.module(project, moduleDir)) feed(md, token);
+                for (String token : ModuleEnvKeys.module(project, moduleDir)) both(md, out, token);
             }
             List<String> found = new ArrayList<>();
             if (!skipTests && project != null) {
                 for (String token : MemoInputs.testInputs(moduleDir, project, found)) feed(md, "test:" + token);
             }
-            return new Known(Hashing.hex(md.digest()) + SettledReads.READS + MemoInputs.readsDigest(moduleDir, found));
+            return new Known(Hashing.hex(md.digest())
+                    + OUTPUTS
+                    + Hashing.hex(out.digest())
+                    + SettledReads.READS
+                    + MemoInputs.readsDigest(moduleDir, found));
         } catch (Exception e) {
             return uncertain(moduleDir, e);
         }
+    }
+
+    /** Every regular file under {@code roots} into each digest given, by name and content (or stat). */
+    private static void feedRoots(
+            @Nullable MessageDigest md,
+            @Nullable MessageDigest out,
+            Path moduleDir,
+            List<Path> roots,
+            boolean mtimeMode)
+            throws IOException {
+        for (Path r : roots) {
+            if (Files.isRegularFile(r)) {
+                Path abs = r.toAbsolutePath().normalize();
+                feedFingerprint(md, out, moduleDir, abs, StatIdentity.of(abs), mtimeMode);
+                continue;
+            }
+            if (!Files.isDirectory(r)) continue;
+            var snap = InputTrees.of(r);
+            if (snap.overflow()) {
+                // A file that vanished mid-walk is skipped by the helper; a directory that
+                // cannot be opened surfaces as an uncertain fingerprint, which is the honest
+                // answer — a fingerprint over a tree with a hole in it would look stable.
+                PathUtil.forEachRegularFile(r, new PathUtil.FileVisit() {
+                    @Override
+                    public void accept(Path file, BasicFileAttributes attrs) throws IOException {
+                        Path abs = file.toAbsolutePath().normalize();
+                        feedFingerprint(md, out, moduleDir, abs, StatIdentity.of(abs, attrs), mtimeMode);
+                    }
+
+                    @Override
+                    public void directoryLink(Path link) {
+                        throw new MemoInputs.DirectoryLink(link);
+                    }
+                });
+                continue;
+            }
+            if (!snap.directoryLinks().isEmpty())
+                throw new MemoInputs.DirectoryLink(snap.directoryLinks().getFirst());
+            for (var ref : snap.files()) {
+                feedFingerprint(md, out, moduleDir, ref.path(), ref.identity(), mtimeMode);
+            }
+        }
+    }
+
+    /**
+     * Between a module fingerprint's first part and its outputs part, the digest of what its outputs
+     * are built from ({@link #outputsPart}); the reads part follows it.
+     */
+    static final String OUTPUTS = "+out=";
+
+    /**
+     * The part of a module fingerprint its outputs are a function of, the same under every verb and
+     * test selection; the whole fingerprint when it has no such part.
+     */
+    public static String outputsPart(String fingerprint) {
+        int at = fingerprint.indexOf(OUTPUTS);
+        if (at < 0) return fingerprint;
+        int end = fingerprint.indexOf(SettledReads.READS, at);
+        return fingerprint.substring(at + OUTPUTS.length(), end < 0 ? fingerprint.length() : end);
+    }
+
+    /** {@code s} into both digests, named to the key audit once. */
+    private static void both(MessageDigest md, MessageDigest out, String s) {
+        feed(md, s);
+        raw(out, s);
     }
 
     /**
@@ -771,24 +824,26 @@ public final class PreflightMemo {
      * request's framework variables, and whether this run skips it — a skipped run must not leave
      * the module recorded as built from inputs no node step read.
      */
-    private static void feedNodeBuild(MessageDigest md, Path moduleDir) throws IOException {
+    private static void feedNodeBuild(MessageDigest md, MessageDigest out, Path moduleDir) throws IOException {
         Path nodeDir = NodeShape.scannedNodeDir(moduleDir);
         if (nodeDir == null) return;
-        Path out = NodeShape.scannedOutputDir(moduleDir);
+        Path outDir = NodeShape.scannedOutputDir(moduleDir);
         List<String> outputs =
-                out == null ? List.of() : List.of(nodeDir.relativize(out).toString());
+                outDir == null ? List.of() : List.of(nodeDir.relativize(outDir).toString());
         // Less the files a node step wrote outside its outputs, as every node key leaves them out: the
         // memo the first build certifies was taken before they existed.
         Map<String, String> tree =
                 NodeKeys.withoutWritten(NodeKeys.tree(nodeDir, outputs), NodeKeys.written(moduleDir));
         for (Map.Entry<String, String> e : tree.entrySet()) {
             feed(md, "node:" + e.getKey(), e.getValue());
+            raw(out, "node:" + e.getKey());
+            raw(out, e.getValue());
         }
         for (Map.Entry<String, String> e :
                 BuildEnv.nodeFromRequest(BuildEnv.NODE_PREFIXES).entrySet()) {
-            feed(md, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
+            both(md, out, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
         }
-        feed(md, "skip-node=" + SessionContext.current().skipNode());
+        both(md, out, "skip-node=" + SessionContext.current().skipNode());
     }
 
     /**
@@ -797,17 +852,21 @@ public final class PreflightMemo {
      * commit changes no source, yet the jar must carry it, so a memo that vouched for the files alone
      * would leave the module unscheduled and the old commit in its jar.
      */
-    private static void feedBuildInfo(MessageDigest md, Path moduleDir, JkBuild project) throws IOException {
+    private static void feedBuildInfo(MessageDigest md, MessageDigest out, Path moduleDir, JkBuild project)
+            throws IOException {
         BuildBlock.BuildInfo info = project.build().buildInfo();
         if (info == null) return;
         Optional<GitFetcher.Worktree> worktree = PlannerBuildInfo.worktree(moduleDir);
         if (worktree.isEmpty()) {
-            feed(md, "build-info=none");
+            both(md, out, "build-info=none");
             return;
         }
         for (Map.Entry<String, byte[]> e : PlannerBuildInfo.render(project, info, worktree.get(), Clock.SYSTEM)
                 .entrySet()) {
-            feed(md, "build-info:" + e.getKey(), Hashing.sha256Hex(e.getValue()));
+            String hash = Hashing.sha256Hex(e.getValue());
+            feed(md, "build-info:" + e.getKey(), hash);
+            raw(out, "build-info:" + e.getKey());
+            raw(out, hash);
         }
     }
 
@@ -820,16 +879,28 @@ public final class PreflightMemo {
      * file that will not read is an {@link UnreadableInput}, never a constant in the digest.
      */
     private static void feedFingerprint(
-            MessageDigest md, Path moduleDir, Path file, StatIdentity identity, boolean mtimeMode) throws IOException {
+            @Nullable MessageDigest md,
+            @Nullable MessageDigest out,
+            Path moduleDir,
+            Path file,
+            StatIdentity identity,
+            boolean mtimeMode)
+            throws IOException {
         String name = moduleDir.relativize(file).toString().replace('\\', '/');
+        String value;
         if (mtimeMode) {
-            feed(md, name, identity.encode());
-            return;
+            value = identity.encode();
+        } else {
+            try {
+                value = FileHashMemo.contentHash(file, identity);
+            } catch (IOException e) {
+                throw new UnreadableInput(file, e);
+            }
         }
-        try {
-            feed(md, name, FileHashMemo.contentHash(file, identity));
-        } catch (IOException e) {
-            throw new UnreadableInput(file, e);
+        if (md != null) feed(md, name, value);
+        if (out != null) {
+            raw(out, name);
+            raw(out, value);
         }
     }
 
@@ -856,6 +927,12 @@ public final class PreflightMemo {
      * workspace feeds the one root lock, and reading a monorepo-sized lock once per module scaled
      * the preflight by modules × lock size.
      */
+    /** {@code file} into both digests, named to the key audit once. */
+    private static void feedFile(MessageDigest md, MessageDigest out, Path file) throws IOException {
+        feedFile(md, file);
+        raw(out, Files.isRegularFile(file) ? FileHashMemo.contentHash(file) : "missing");
+    }
+
     static void feedFile(MessageDigest md, Path file) throws IOException {
         if (!Files.isRegularFile(file)) {
             KeyAudit.tap(file + " missing");

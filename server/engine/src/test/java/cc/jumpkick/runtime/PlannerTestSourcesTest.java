@@ -40,16 +40,18 @@ class PlannerTestSourcesTest {
     }
 
     @Test
-    void aSingleSuiteSelectionNamesThatSuiteAlone(@TempDir Path module) throws Exception {
-        write(module, "src/test/java/app/WidgetTest.java");
+    void aSingleSuiteSelectionCompilesBesideTheGuardSuites(@TempDir Path module) throws Exception {
+        Path unit = write(module, "src/test/java/app/WidgetTest.java");
         Path it = write(module, "src/e2e/java/app/WidgetE2e.java");
 
         JkBuild project = manifest(module, "");
         var sources =
                 TestSources.collect(project, module, false, List.of("e2e"), BuildLayout.of(module, project), null);
 
-        assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/e2e/java"));
-        assertThat(sources.javacSources()).containsExactly(it);
+        assertThat(sources.javaTestSrc())
+                .as("one test-classes tree for every verb: the guard's default suite compiles with e2e")
+                .isEqualTo(module.resolve("src/test/java"));
+        assertThat(sources.javacSources()).containsExactlyInAnyOrder(unit, it);
     }
 
     private static JkBuild manifest(Path module, String tail) throws Exception {

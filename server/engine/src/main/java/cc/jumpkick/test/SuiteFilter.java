@@ -83,9 +83,13 @@ public final class SuiteFilter {
      * from their source paths.
      */
     public static SuiteFilter of(
-            Path moduleDir, boolean compact, List<String> suites, Map<String, DeclaredSuite> declared) {
-        if (declared.isEmpty() && (suites.isEmpty() || suites.equals(List.of(TestSuites.DEFAULT)))) return NONE;
+            Path moduleDir, boolean compact, List<String> asked, Map<String, DeclaredSuite> declared) {
+        List<String> suites = asked.isEmpty() ? List.of(TestSuites.DEFAULT) : asked;
+        boolean defaultAlone = suites.equals(List.of(TestSuites.DEFAULT));
         List<String> compiled = TestSuites.compiled(moduleDir, compact, suites, declared);
+        // The tree holds every guard suite's classes too: the default suite runs alone over every
+        // class only when nothing else compiled into it.
+        if (declared.isEmpty() && defaultAlone && compiled.equals(List.of(TestSuites.DEFAULT))) return NONE;
         Map<String, String> directoryClasses = new LinkedHashMap<>();
         Set<String> groups = new LinkedHashSet<>();
         for (String suite : compiled) {

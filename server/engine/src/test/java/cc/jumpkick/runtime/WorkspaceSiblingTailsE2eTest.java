@@ -180,7 +180,12 @@ class WorkspaceSiblingTailsE2eTest {
 
         // A deleted tail output is a missing output of dist, which the next build brings back.
         deleteTailOutput(ws, tail);
-        assertThat(dirty(ws, cache)).as("dist's " + tail + " is gone").contains(distDir);
+        // Its inputs are unchanged, so the preflight schedules dist to restore the output, not as
+        // dirty (the record of its outputs names the same inputs under every verb).
+        assertThat(dirty(ws, cache)).as("dist's inputs are unchanged").doesNotContain(distDir);
+        assertThat(ModuleOutputs.packageOutputsMissing(ws, distDir, JkBuildParser.parse(distDir.resolve("jk.toml"))))
+                .as("dist's " + tail + " is gone: a restore")
+                .isTrue();
         assertThat(module(forecast(ws, cache), "dist").dirty())
                 .as("jk explain restores dist's " + tail)
                 .isTrue();

@@ -21,6 +21,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -173,6 +174,35 @@ final class TestClassLedger {
                             + String.join(", ", flaky));
         }
         return withSettled(ran);
+    }
+
+    /**
+     * The counts of the tests a narrower run would have run, out of what this ledger recorded: the
+     * classes {@code classRuns} admits, in the launches {@code suiteRuns} admits one suite of (a
+     * run in one launch names none, and counts whole). Null when the ledger recorded nothing.
+     */
+    @Nullable
+    TestSummary covered(Predicate<String> classRuns, Predicate<String> suiteRuns) {
+        if (previous.isEmpty()) return null;
+        long tests = 0;
+        long skipped = 0;
+        for (Map.Entry<String, Entry> e : previous.entrySet()) {
+            String[] key = splitKey(e.getKey());
+            if (!launchRuns(key[0], suiteRuns) || !classRuns.test(key[1])) continue;
+            tests += e.getValue().tests();
+            skipped += e.getValue().skipped();
+        }
+        return new TestSummary(tests, tests - skipped, 0, skipped, List.of());
+    }
+
+    /** Whether launch {@code name} ({@code <group>:<suite>,<suite>}, or none for one launch) ran a suite {@code suiteRuns} admits. */
+    private static boolean launchRuns(String name, Predicate<String> suiteRuns) {
+        int at = name.indexOf(':');
+        if (name.isEmpty() || at < 0) return true;
+        for (String suite : name.substring(at + 1).split(",")) {
+            if (suiteRuns.test(suite)) return true;
+        }
+        return false;
     }
 
     /** The action key the ledger of {@code stampKey} is stored under. */

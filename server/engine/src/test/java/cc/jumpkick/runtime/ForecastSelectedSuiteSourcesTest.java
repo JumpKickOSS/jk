@@ -35,16 +35,18 @@ class ForecastSelectedSuiteSourcesTest {
             .build();
 
     @Test
-    void theDefaultSelectionHashesTheTestSuiteAlone(@TempDir Path module) throws Exception {
+    void theDefaultSelectionHashesTheGuardSuitesItCompiles(@TempDir Path module) throws Exception {
         Path unit = write(module, "src/test/java/app/WidgetTest.java");
         Path integration = write(module, "src/integration/java/app/WidgetIT.java");
+        Path e2e = write(module, "src/e2e/java/app/WidgetE2e.java");
 
         assertThat(selected(module, TestSelection.DEFAULT))
-                .as("the build compiles the test suite, so the forecast may not hash more")
-                .containsExactly(unit);
+                .as("every verb compiles the guard's suites into one tree, the built-in integration suite"
+                        + " claiming from every source, and the forecast hashes what it compiles")
+                .containsExactlyInAnyOrder(unit, integration, e2e);
         assertThat(TestSupport.collectAllSuiteTestSources(module, false))
                 .as("the estimate side is unchanged — a count wants every suite on disk")
-                .containsExactlyInAnyOrder(unit, integration);
+                .containsExactlyInAnyOrder(unit, integration, e2e);
     }
 
     @Test
@@ -56,7 +58,8 @@ class ForecastSelectedSuiteSourcesTest {
 
         assertThat(selected(module, all)).containsExactlyInAnyOrder(unit, integration, e2e);
         assertThat(selected(module, TestSelection.of(List.of("e2e"), false, List.of(), List.of())))
-                .containsExactly(e2e);
+                .as("e2e is no guard suite here: it compiles beside the guard's")
+                .containsExactlyInAnyOrder(unit, integration, e2e);
         assertThat(selected(module, TestSelection.of(List.of("integration"), false, List.of(), List.of())))
                 .as("the built-in integration suite claims tagged tests from every source")
                 .containsExactlyInAnyOrder(unit, integration, e2e);
@@ -90,7 +93,9 @@ class ForecastSelectedSuiteSourcesTest {
 
         Path own = write(module, "src/integration/java/app/StackIT.java");
         assertThat(selected(PATTERNED, module, integration)).containsExactlyInAnyOrder(unit, it, own);
-        assertThat(selected(PATTERNED, module, TestSelection.DEFAULT)).containsExactlyInAnyOrder(unit, it);
+        assertThat(selected(PATTERNED, module, TestSelection.DEFAULT))
+                .as("the guard's integration directory compiles under a plain run too")
+                .containsExactlyInAnyOrder(unit, it, own);
     }
 
     private static List<Path> selected(Path module, TestSelection selection) throws Exception {

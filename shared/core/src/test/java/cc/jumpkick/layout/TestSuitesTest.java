@@ -156,8 +156,8 @@ class TestSuitesTest {
         assertThat(TestSuites.compiled(tmp, false, List.of("test", "integration"), patterns))
                 .containsExactly("test");
         assertThat(TestSuites.compiled(tmp, false, List.of("integration"), Map.of()))
-                .as("a directory suite compiles alone, as it always did")
-                .containsExactly("integration");
+                .as("a directory suite compiles with the guard's suites: one tree for every verb")
+                .containsExactly("test", "integration");
 
         Files.createDirectories(tmp.resolve("src/integration/java"));
         Files.writeString(tmp.resolve("src/integration/java/StackIT.java"), "class StackIT {}");

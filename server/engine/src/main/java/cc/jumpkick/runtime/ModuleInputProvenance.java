@@ -186,7 +186,7 @@ public final class ModuleInputProvenance {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         Path target = norm(layout.moduleTargetDir());
         Record record = read(target);
-        if (record == null || !record.inputs().equals(fingerprint)) return true;
+        if (record == null || !sameOutputsInputs(record.inputs(), fingerprint)) return true;
         try {
             Set<String> seen = new LinkedHashSet<>();
             for (Path tree : trees(layout, build, runTrees)) {
@@ -340,7 +340,7 @@ public final class ModuleInputProvenance {
             Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable String fingerprint) {
         Path target = norm(BuildLayout.of(workspaceRoot, moduleDir, build).moduleTargetDir());
         Record record = read(target);
-        if (record == null || fingerprint == null || !record.inputs().equals(fingerprint)) return Map.of();
+        if (record == null || fingerprint == null || !sameOutputsInputs(record.inputs(), fingerprint)) return Map.of();
         Map<Path, String> out = new LinkedHashMap<>();
         record.digests().forEach((rel, sha) -> out.put(target.resolve(rel), sha));
         return out;
@@ -456,6 +456,16 @@ public final class ModuleInputProvenance {
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
+    }
+
+    /**
+     * Whether a record taken under {@code recorded} vouches for outputs under {@code fingerprint}: both
+     * name the same inputs of the outputs ({@link PreflightMemo#outputsPart}). The test run's own
+     * inputs (the selection, the skip, the suite's environment) build nothing, so a jk build reads
+     * the outputs jk install -g left as its own, and the other way round.
+     */
+    static boolean sameOutputsInputs(String recorded, String fingerprint) {
+        return PreflightMemo.outputsPart(recorded).equals(PreflightMemo.outputsPart(fingerprint));
     }
 
     private static Path norm(Path p) {

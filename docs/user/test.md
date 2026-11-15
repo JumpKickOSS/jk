@@ -46,6 +46,13 @@ guard-suites = ["test", "integration", "contract"]
 `guard-suites` is the workspace root's, and each module runs the ones it has: `e2e` runs where a
 module has `src/e2e`, and a module without one runs the rest.
 
+Every verb compiles the guard suites a module has into its one `target/test-classes` tree, whatever
+it runs: `jk build`, `jk test`, `jk install`, with or without `-g`, leave the same tree, and which
+tests run is the selection's alone. So after `jk install -g` the plain verbs are up to date: the
+guard's green run ran the default suite too, and `jk build` and `jk test` replay it rather than
+running those tests again (the replayed count is the guard run's). A selection with tags,
+`--class` or `--all` is never served by the guard's run.
+
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
