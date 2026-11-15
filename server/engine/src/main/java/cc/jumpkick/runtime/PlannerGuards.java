@@ -363,7 +363,8 @@ final class PlannerGuards {
         ActionCache cache = env.actionCache();
         boolean useCache = !env.in().session().config().forceOr(false)
                 && !env.in().session().config().rebuildOr(false);
-        Optional<ActionCache.ActionRecord> verdict = useCache ? cache.lookup(key) : Optional.empty();
+        Optional<ActionCache.ActionRecord> verdict =
+                useCache ? GuardVerdicts.lookup(cache, key, g.root()) : Optional.empty();
         if (verdict.isPresent()) {
             // The lane's summary and observations ride the verdict, so a checkout that never ran
             // the lane still has the evidence the tree lane's no-bite judgement reads. A restore
@@ -428,13 +429,19 @@ final class PlannerGuards {
                     + (faults.isEmpty() ? "" : ", " + faults.size() + " engine validation(s) failed"));
         }
         if (ci && result.tightened() > 0) throw new GuardsRed(Baselines.CI_MESSAGE);
-        // A skipped guard is not a verdict: the lane runs again next build, so installing the tool
-        // is enough to have it judged — a cached green would outlive the reason it was green.
-        if (!result.complete()) return;
+        // A guard skipped for want of a tool it does not name is no verdict: the lane runs again
+        // next build. One that names its tools leaves a verdict on their absence, so installing one
+        // is what has it judged and a host without them pays nothing.
+        Optional<Set<String>> tools = result.verdictTools();
+        if (tools.isEmpty()) return;
         // Nor is a view missing modules: the run that builds them tightens the baseline, and until
         // then every run over the partial view says it left the baseline alone.
         if (!result.unseen().isEmpty()) return;
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedSlice);
+        if (!tools.get().isEmpty()) {
+            cache.storeVerdict(taskId, storeKey, Map.of(GuardVerdicts.TOOLS, String.join(",", tools.get())));
+            storeKey = GuardVerdicts.toolKey(storeKey, List.copyOf(tools.get()), g.root());
+        }
         List<Path> evidence = new ArrayList<>();
         for (Path f : List.of(RuleSummaries.file(g.root(), taskId), observationsFile(g.root(), taskId))) {
             if (Files.isRegularFile(f)) evidence.add(f);

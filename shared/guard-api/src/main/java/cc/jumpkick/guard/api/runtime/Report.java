@@ -39,6 +39,8 @@ public final class Report {
 
         String outcome = "ok";
 
+        List<String> tools = List.of();
+
         @Override
         public void add(Site site, String detail) {
             sites.add(new String[] {
@@ -101,8 +103,14 @@ public final class Report {
 
         /** The guard did not run here; {@code reason} is the notice the engine prints. */
         public void skipped(String reason) {
+            skipped(reason, List.of());
+        }
+
+        /** As {@link #skipped(String)}, for want of every one of {@code missing}. */
+        public void skipped(String reason, List<String> missing) {
             outcome = "skipped";
             error = reason;
+            tools = List.copyOf(missing);
         }
 
         /** The guard does not apply on this operating system; {@code reason} is the notice. */
@@ -146,6 +154,12 @@ public final class Report {
             if (fixture != null) sb.append(",\"fixture\":").append(Jsonl.quote(fixture));
             sb.append(",\"outcome\":").append(Jsonl.quote(collector.outcome));
             if (collector.error != null) sb.append(",\"error\":").append(Jsonl.quote(collector.error));
+            if (!collector.tools.isEmpty()) {
+                sb.append(",\"tools\":[");
+                for (int i = 0; i < collector.tools.size(); i++)
+                    sb.append(i > 0 ? "," : "").append(Jsonl.quote(collector.tools.get(i)));
+                sb.append(']');
+            }
             if (collector.population >= 0) sb.append(",\"population\":").append(collector.population);
             sb.append(",\"violations\":[");
             for (int i = 0; i < collector.sites.size(); i++) {

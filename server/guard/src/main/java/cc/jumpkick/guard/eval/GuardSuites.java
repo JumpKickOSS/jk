@@ -351,7 +351,13 @@ public final class GuardSuites {
         String error = reportedError == null ? "" : reportedError;
         if ("threw".equals(outcome)) return Evaluation.failed("the guard threw: " + error);
         if ("owner-missing".equals(outcome)) return Evaluation.ownerMissing(error);
-        if ("skipped".equals(outcome)) return Evaluation.skipped(error);
+        if ("skipped".equals(outcome)) {
+            List<String> tools = new ArrayList<>();
+            if (MiniJson.get(line, "tools") instanceof List<?> named) {
+                for (Object t : named) if (t instanceof String s) tools.add(s);
+            }
+            return Evaluation.skipped(error, tools);
+        }
         if ("not-here".equals(outcome)) return Evaluation.notHere(error);
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);

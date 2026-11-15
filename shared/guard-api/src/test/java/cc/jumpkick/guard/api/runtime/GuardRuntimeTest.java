@@ -74,6 +74,11 @@ class GuardRuntimeTest {
         void skips(Facts facts, Violations v) {
             throw new Skipped("shellcheck: not installed");
         }
+
+        @Guard(id = "names-its-tools", why = "w")
+        void skipsNamingTools(Facts facts, Violations v) {
+            throw Skipped.missing("lint: not installed", "shellcheck", "docker");
+        }
     }
 
     private static ClassFacts cls(String internal, String source, List<MethodFacts> methods) {
@@ -129,10 +134,10 @@ class GuardRuntimeTest {
         assertThat(summary.getSummary().getTestsFailedCount())
                 .as("violations and throws never fail the JUnit run")
                 .isZero();
-        assertThat(summary.getSummary().getTestsSucceededCount()).isEqualTo(5);
+        assertThat(summary.getSummary().getTestsSucceededCount()).isEqualTo(6);
 
         List<String> lines = Files.readAllLines(report);
-        assertThat(lines).hasSize(5);
+        assertThat(lines).hasSize(6);
         Map<String, Object> byId = new LinkedHashMap<>();
         for (String l : lines) byId.put(MiniJson.str(MiniJson.parse(l), "id"), MiniJson.parse(l));
         Object fires = byId.get("no-replace");
@@ -161,6 +166,11 @@ class GuardRuntimeTest {
         assertThat(MiniJson.str(byId.get("needs-owner"), "error")).contains("a.Missing");
         assertThat(MiniJson.str(byId.get("no-tool"), "outcome")).isEqualTo("skipped");
         assertThat(MiniJson.str(byId.get("no-tool"), "error")).isEqualTo("shellcheck: not installed");
+        assertThat(MiniJson.get(byId.get("no-tool"), "tools"))
+                .as("a skip naming no tool")
+                .isNull();
+        assertThat(MiniJson.str(byId.get("names-its-tools"), "outcome")).isEqualTo("skipped");
+        assertThat(MiniJson.get(byId.get("names-its-tools"), "tools")).isEqualTo(List.of("shellcheck", "docker"));
     }
 
     @Test

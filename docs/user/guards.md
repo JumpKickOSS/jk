@@ -325,9 +325,11 @@ how the source set is compiled and why it is not a test suite. `@Allow(in = …)
 the `allow` entry above in annotation form — a module, a class glob, a fingerprint, or a file's
 real path from the workspace root through the source root that holds it — and a
 workspace-scoped guard's site is spelled under the member that owns the class. A guard that shells
-out to a tool this machine does not have throws `Skipped` with the reason: the engine reports it
-`skipped` — a notice, not red — and stores no verdict for the lane, so the guard is judged as soon
-as the tool is installed. A guard that does not apply on this operating system at all throws
+out to a tool this machine does not have throws `Skipped.missing(reason, tools…)`, naming the tools
+it would run: the engine reports it `skipped` — a notice, not red — and keeps the lane's verdict
+for as long as none of those tools is on the `PATH`, so a machine without them does not run the
+lane again on every build, and installing one has the guard judged on the next. A bare
+`Skipped(reason)` names no tool, so the lane stores no verdict and runs on every build. A guard that does not apply on this operating system at all throws
 `Skipped.onThisPlatform(reason)`: the same notice, reported `not-here`, and the lane's verdict is
 kept for this platform, since no install would change it.
 

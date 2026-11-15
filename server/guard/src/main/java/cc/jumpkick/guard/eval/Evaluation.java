@@ -14,11 +14,23 @@ import java.util.TreeMap;
  * pass is a rule looking at nothing (PRD §4.6, must bite).
  */
 public record Evaluation(
-        Outcome outcome, Map<String, Long> population, List<Observation> observations, String note, boolean bites) {
+        Outcome outcome,
+        Map<String, Long> population,
+        List<Observation> observations,
+        String note,
+        boolean bites,
+        List<String> tools) {
 
     public Evaluation {
         population = Map.copyOf(new TreeMap<>(population));
         observations = List.copyOf(observations);
+        tools = List.copyOf(tools);
+    }
+
+    /** Naming no tool: every outcome but a {@link #skipped(String, List)} for want of one. */
+    public Evaluation(
+            Outcome outcome, Map<String, Long> population, List<Observation> observations, String note, boolean bites) {
+        this(outcome, population, observations, note, bites, List.of());
     }
 
     /**
@@ -31,7 +43,7 @@ public record Evaluation(
 
     /** The same evaluation with bite evidence decided by the evaluator. */
     public Evaluation withBite(boolean bite) {
-        return new Evaluation(outcome, population, observations, note, bite);
+        return new Evaluation(outcome, population, observations, note, bite, tools);
     }
 
     static long examined(Map<String, Long> population) {
@@ -74,7 +86,15 @@ public record Evaluation(
 
     /** A guard test that did not run here, with the notice it left; no population, no bite evidence. */
     public static Evaluation skipped(String note) {
-        return new Evaluation(Outcome.SKIPPED, Map.of(), List.of(), note, false);
+        return skipped(note, List.of());
+    }
+
+    /**
+     * As {@link #skipped(String)}, for want of every one of {@code tools}: the lane's verdict is kept
+     * under those tools' absence, and installing one is what has the guard judged.
+     */
+    public static Evaluation skipped(String note, List<String> tools) {
+        return new Evaluation(Outcome.SKIPPED, Map.of(), List.of(), note, false, tools);
     }
 
     public static Evaluation ownerMissing(String note) {

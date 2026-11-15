@@ -1614,7 +1614,9 @@ final class ParityRules {
         }
         int status = process.exitValue();
         if (status == 0) {
-            if (said.stream().noneMatch(l -> l.endsWith("scripts clean"))) throw new Skipped(String.join(" ", said));
+            // The script runs the first of these it finds: installing any one has the guard judged.
+            if (said.stream().noneMatch(l -> l.endsWith("scripts clean")))
+                throw Skipped.missing(String.join(" ", said), "shellcheck", "podman", "docker");
             return;
         }
         int findings = 0;

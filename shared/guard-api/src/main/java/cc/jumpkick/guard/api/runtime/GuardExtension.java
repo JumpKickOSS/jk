@@ -120,7 +120,7 @@ public final class GuardExtension
         else if (t instanceof Skipped s) {
             String reason = s.getMessage() == null ? "skipped" : s.getMessage();
             if (s.platform()) c.notHere(reason);
-            else c.skipped(reason);
+            else c.skipped(reason, s.tools());
         } else c.threw(t);
     }
 

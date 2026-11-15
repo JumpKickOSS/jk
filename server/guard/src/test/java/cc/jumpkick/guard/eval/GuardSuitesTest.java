@@ -190,7 +190,7 @@ class GuardSuitesTest {
                 {"id":"owner","outcome":"owner-missing","error":"owner a.Missing is not in the facts in scope","violations":[]}
                 {"id":"quiet","outcome":"ok","violations":[]}
                 {"id":"silent","outcome":"ok","violations":[]}
-                {"id":"skip","outcome":"skipped","error":"shellcheck: not installed — skipping 9 scripts","violations":[]}
+                {"id":"skip","outcome":"skipped","error":"shellcheck: not installed — skipping 9 scripts","tools":["shellcheck","podman"],"violations":[]}
                 """);
         Map<String, Object> lines = GuardSuites.readReport(report);
         assertThat(lines).containsKeys("esc", "stale", "boom", "owner", "quiet", "silent", "skip");
@@ -231,6 +231,7 @@ class GuardSuitesTest {
         Evaluation skip = GuardSuites.evaluate(Objects.requireNonNull(rules.get("skip")), lines.get("skip"), "m");
         assertThat(skip.outcome()).isEqualTo(Outcome.SKIPPED);
         assertThat(skip.note()).isEqualTo("shellcheck: not installed — skipping 9 scripts");
+        assertThat(skip.tools()).as("the tools its absence stands for").containsExactly("shellcheck", "podman");
         assertThat(skip.outcome().red(false)).isFalse();
 
         // the test kind's evaluator reads the same report through the module lane context

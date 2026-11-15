@@ -15,6 +15,9 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Runs every rule a lane owns. Collected: one run reports every red rule. A throwing evaluator is
@@ -72,12 +75,20 @@ public final class LaneRun {
         }
 
         /**
-         * Whether the lane reached a verdict: a guard skipped for want of a tool is judged again next
-         * build, one that does not apply on this platform is part of this platform's verdict.
+         * The tools the lane's verdict stands on, or empty when it reached none: a guard skipped for
+         * want of tools it names makes the verdict this machine's while every one of them is
+         * missing, one that names none is judged again next build, and one that does not apply on
+         * this platform is part of this platform's verdict.
          */
-        public boolean complete() {
-            for (RuleReport r : reports) if (r.outcome() == Outcome.SKIPPED) return false;
-            return true;
+        public Optional<Set<String>> verdictTools() {
+            Set<String> tools = new TreeSet<>();
+            for (RuleReport r : reports) {
+                if (r.outcome() != Outcome.SKIPPED) continue;
+                List<String> named = r.evaluation().tools();
+                if (named.isEmpty()) return Optional.empty();
+                tools.addAll(named);
+            }
+            return Optional.of(tools);
         }
 
         public int freshCount() {

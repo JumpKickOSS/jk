@@ -156,7 +156,7 @@ final class GuardKeys {
             String key = probe.key();
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
-            Optional<ActionCache.ActionRecord> verdict = actionCache.lookup(key);
+            Optional<ActionCache.ActionRecord> verdict = GuardVerdicts.lookup(actionCache, key, root);
             if (verdict.isPresent()) {
                 // A verdict that carries the lane's evidence is cached only where that evidence is
                 // on disk: a fresh checkout runs the lane once so the hit restores it for the tree
@@ -347,7 +347,7 @@ final class GuardKeys {
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root),
                     tokens,
                     baselineSlice(root, Lane.WORKSPACE, "", load.rules()));
-            if (actionCache.lookup(key).isPresent()) {
+            if (GuardVerdicts.lookup(actionCache, key, root).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_WORKSPACE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
@@ -395,7 +395,7 @@ final class GuardKeys {
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, root),
                     tokens,
                     baselineSlice(root, Lane.OUTPUT, "", load.rules()));
-            if (actionCache.lookup(key).isPresent()) {
+            if (GuardVerdicts.lookup(actionCache, key, root).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_OUTPUT, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
@@ -438,7 +438,7 @@ final class GuardKeys {
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root),
                     tokens,
                     baselineSlice(root, Lane.TREE, "", load.rules()));
-            if (actionCache.lookup(key).isPresent()) {
+            if (GuardVerdicts.lookup(actionCache, key, root).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_TREE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
@@ -469,7 +469,7 @@ final class GuardKeys {
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, root),
                     tokens,
                     baselineSlice(root, Lane.MODEL, "", load.rules()));
-            if (actionCache.lookup(key).isPresent()) {
+            if (GuardVerdicts.lookup(actionCache, key, root).isPresent()) {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_MODEL, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }

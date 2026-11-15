@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.AfterEach;
@@ -135,11 +136,31 @@ class LaneRunTest {
         LaneRun.Result result = new LaneRun.Result(Lane.TREE, List.of(skipped), Baseline.EMPTY, 0);
         assertThat(result.red()).isFalse();
         assertThat(result.skippedReports()).containsExactly(skipped);
-        assertThat(result.complete())
-                .as("a verdict with a rule that did not run is not one to cache")
-                .isFalse();
-        assertThat(new LaneRun.Result(Lane.TREE, List.of(), Baseline.EMPTY, 0).complete())
-                .isTrue();
+        assertThat(result.verdictTools())
+                .as("a verdict with a rule that did not run, naming no tool, is not one to cache")
+                .isEmpty();
+        assertThat(new LaneRun.Result(Lane.TREE, List.of(), Baseline.EMPTY, 0).verdictTools())
+                .contains(Set.of());
+    }
+
+    @Test
+    void a_rule_skipped_for_want_of_named_tools_leaves_a_verdict_on_their_absence(@TempDir Path dir)
+            throws IOException {
+        Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), RULES);
+        Rule rule = GuardRules.load(dir, GuardsConfig.ABSENT)
+                .rules()
+                .rule("one-owner")
+                .orElseThrow();
+        RuleReport skipped = new RuleReport(
+                rule,
+                Outcome.SKIPPED,
+                Evaluation.skipped("shellcheck: not installed", List.of("shellcheck", "docker")),
+                null,
+                "");
+        LaneRun.Result result = new LaneRun.Result(Lane.TREE, List.of(skipped), Baseline.EMPTY, 0);
+
+        assertThat(result.red()).isFalse();
+        assertThat(result.verdictTools()).contains(Set.of("docker", "shellcheck"));
     }
 
     @Test
@@ -155,9 +176,9 @@ class LaneRunTest {
 
         assertThat(result.red()).isFalse();
         assertThat(result.skippedReports()).as("still printed as a notice").containsExactly(notHere);
-        assertThat(result.complete())
+        assertThat(result.verdictTools())
                 .as("no install on this platform changes it: this platform's verdict is cached")
-                .isTrue();
+                .contains(Set.of());
     }
 
     @Test
