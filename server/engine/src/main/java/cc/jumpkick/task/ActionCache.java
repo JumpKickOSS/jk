@@ -13,6 +13,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.FileLocks;
 import java.io.File;
@@ -507,12 +508,26 @@ public final class ActionCache {
             List<String> said)
             throws IOException {
         Files.createDirectories(tasksDir());
-        long storedBytes = meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
+        // Every store path funnels here: one stat per output answers the record's sizes, the run's
+        // cache-in bytes and the tier's classification.
+        Map<String, Long> sizes = outputSizes(outputs);
+        long storedBytes = 0;
+        for (long size : sizes.values()) storedBytes += size;
+        SessionContext.current().io().localUp(storedBytes);
+        Map<String, Long> bySha = new HashMap<>();
+        for (var e : sizes.entrySet()) bySha.put(outputs.get(e.getKey()), e.getValue());
         String task = Objects.requireNonNull(taskId, "taskId");
-        CacheStats.store(CacheStats.classify(task, outputs, this::blobSize), storedBytes);
+        CacheStats.store(CacheStats.classify(task, outputs, sha -> bySha.getOrDefault(sha, 0L)), storedBytes);
         String key = Objects.requireNonNull(actionKey, "actionKey");
         if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
-        ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables, said);
+        ActionRecord record = new ActionRecord(
+                task,
+                key,
+                inputs,
+                outputs,
+                executables,
+                said,
+                ActionRecordText.Meta.now(producer(), CachePlatform.current(), sizes));
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
@@ -948,18 +963,22 @@ public final class ActionCache {
         return isSha256Hex(sha) ? IoLedger.sizeOf(resolveBlob(sha)) : 0L;
     }
 
-    private long meter(Map<String, String> outputs, boolean intoCache) {
-        if (outputs.isEmpty()) return 0L;
-        long bytes = 0;
-        for (String sha : outputs.values()) {
-            // Not every record's values are blob hashes: a marker record (run-tests) parks small
-            // scalars here instead, so meter only what is actually a CAS object.
-            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(resolveBlob(sha));
+    /**
+     * Each output's blob size, by output path, off the CAS at rest. Not every record's values are
+     * blob hashes: a marker record (run-tests) parks small scalars here instead, and has no size.
+     */
+    private Map<String, Long> outputSizes(Map<String, String> outputs) {
+        if (outputs.isEmpty()) return Map.of();
+        Map<String, Long> sizes = new TreeMap<>();
+        for (var e : outputs.entrySet()) {
+            if (isSha256Hex(e.getValue())) sizes.put(e.getKey(), IoLedger.sizeOf(resolveBlob(e.getValue())));
         }
-        IoLedger io = SessionContext.current().io();
-        if (intoCache) io.localUp(bytes);
-        else io.localDown(bytes);
-        return bytes;
+        return sizes;
+    }
+
+    /** The jk a record names as its producer: the cache-key version, which every key also hashes. */
+    static String producer() {
+        return "jk/" + BuildIdentity.cacheKeyVersion();
     }
 
     /**
@@ -1011,7 +1030,13 @@ public final class ActionCache {
              * its run said. Empty for an action that said nothing, and for a record written
              * before records kept it.
              */
-            List<String> said) {
+            List<String> said,
+            /**
+             * What the record says about itself: when, by which jk and on which platform it was
+             * made, and each blob output's size. {@link ActionRecordText.Meta#NONE} for a record
+             * built in memory.
+             */
+            ActionRecordText.Meta meta) {
 
         public ActionRecord {
             Objects.requireNonNull(taskId, "taskId");
@@ -1020,6 +1045,22 @@ public final class ActionCache {
             outputs = Map.copyOf(outputs);
             executables = executables == null ? Set.of() : Set.copyOf(executables);
             said = said == null ? List.of() : List.copyOf(said);
+            meta = meta == null ? ActionRecordText.Meta.NONE : meta;
+        }
+
+        public ActionRecord(
+                @Nullable String taskId,
+                @Nullable String actionKey,
+                Map<String, String> inputs,
+                Map<String, String> outputs,
+                Set<String> executables,
+                List<String> said) {
+            this(taskId, actionKey, inputs, outputs, executables, said, ActionRecordText.Meta.NONE);
+        }
+
+        /** The bytes of every distinct blob this record names, from its recorded sizes. */
+        public long totalBytes() {
+            return ActionRecordText.totalBytes(outputs, meta.sizes());
         }
 
         public ActionRecord(
@@ -1047,12 +1088,14 @@ public final class ActionCache {
                 record.inputs(),
                 record.outputs(),
                 record.executables(),
-                record.said());
+                record.said(),
+                record.meta());
     }
 
     private static ActionRecord parse(String content, String actionKey) {
         ActionRecordText.Parsed p = ActionRecordText.parse(content, actionKey);
-        return new ActionRecord(p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables(), p.said());
+        return new ActionRecord(
+                p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables(), p.said(), p.meta());
     }
 
     private Path tasksDir() {

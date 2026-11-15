@@ -689,6 +689,16 @@ keys** when adding a read-only remote later — only add an optional remote look
 **CAS addressing:** blobs are `sha256` content-addressed; a remote store can use the same hex
 keys. Local restore remains copy-not-link (see CAS invariant tests).
 
+**Record format.** A key record (`ActionRecordText`) is UTF-8 lines: `TASK <task id>`,
+`KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `CREATED
+<instant>`, `PRODUCER jk/<cache-key version>`, `PLATFORM <os>-<arch>` (where the outputs were
+made: a statement, never key material), then `INPUT <value> <name>`, `OUTPUT <sha256>/<bytes>
+<path>` (a marker scalar in place of a blob carries no size) and `EXEC <path>` in name order, then
+`SAID <line>` in order, then `END <output count>`. A reader skips a line it does not know, and a
+record's total size is the sum of its distinct blobs' recorded sizes, with no stat. The form that
+may leave the machine (`renderShared`) keeps every header line and drops absolute-path inputs and
+`SAID` lines. `ActionRecordMetaTest` and `SharedRecordFormTest` round-trip it.
+
 **Backend seam.** The action cache reads and writes its records and blobs through
 `CacheBackend` (`shared/client-io`): a batched record lookup that also names the asking
 platform (a lookup dimension, never key material), which blobs are missing, a blob's bytes, and

@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -20,9 +21,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
- * KEY} lines, then {@code INPUT <value> <name>}, {@code OUTPUT <sha256> <path>} and {@code EXEC
- * <path>} lines in name order, then {@code SAID <line>} lines in the order the action said them,
- * then {@code END <outputCount>}. A record without that last line, or whose count disagrees with its
+ * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code
+ * CREATED}, {@code PRODUCER}, {@code PLATFORM}), then {@code INPUT <value> <name>}, {@code OUTPUT
+ * <sha256>/<bytes> <path>} and {@code EXEC <path>} lines in name order, then {@code SAID <line>}
+ * lines in the order the action said them, then {@code END <outputCount>}. An output that is a
+ * marker scalar rather than a blob carries no size. A record without that last line, or whose count disagrees with its
  * {@code OUTPUT} lines, was cut short and does not parse: every prefix of a record is otherwise a
  * well-formed record with fewer outputs. The engine's action cache and the workers that store their
  * own entries (the code graph's fragments) write and read it here, so the prune and the sweep see
@@ -79,7 +82,63 @@ public final class ActionRecordText {
             Map<String, String> inputs,
             Map<String, String> outputs,
             Set<String> executables,
-            List<String> said) {}
+            List<String> said,
+            Meta meta) {
+
+        public Parsed(
+                String taskId,
+                String actionKey,
+                Map<String, String> inputs,
+                Map<String, String> outputs,
+                Set<String> executables,
+                List<String> said) {
+            this(taskId, actionKey, inputs, outputs, executables, said, Meta.NONE);
+        }
+    }
+
+    /** The record format {@link #render} writes; {@link #parse} refuses a newer one. */
+    public static final int FORMAT = 1;
+
+    /**
+     * What a record says about itself beside its inputs and outputs: the format it is written in,
+     * when and by which jk ({@code jk/<cache-key version>}) on which platform ({@code <os>-<arch>})
+     * it was made, and the byte size of each output that is a blob, by output path. The platform is
+     * a statement of where the outputs were made, never part of the key. A record written without
+     * a field reads it as null, zero or empty.
+     */
+    public record Meta(
+            int format,
+            @Nullable Instant created,
+            @Nullable String producer,
+            @Nullable String platform,
+            Map<String, Long> sizes) {
+
+        public static final Meta NONE = new Meta(0, null, null, null, Map.of());
+
+        public Meta {
+            sizes = Map.copyOf(sizes);
+        }
+
+        /** Made now, to the second, by {@code producer} on {@code platform}, its blobs {@code sizes} bytes each. */
+        public static Meta now(String producer, String platform, Map<String, Long> sizes) {
+            return new Meta(FORMAT, Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000), producer, platform, sizes);
+        }
+    }
+
+    /**
+     * The bytes of every distinct blob {@code outputs} names, from {@code sizes} (output path to
+     * bytes), without a stat: what a record costs to store or fetch. Zero for a record of markers.
+     */
+    public static long totalBytes(Map<String, String> outputs, Map<String, Long> sizes) {
+        Map<String, Long> bySha = new TreeMap<>();
+        for (Map.Entry<String, String> e : outputs.entrySet()) {
+            Long size = sizes.get(e.getKey());
+            if (size != null && isSha256(e.getValue())) bySha.put(e.getValue(), size);
+        }
+        long total = 0;
+        for (long size : bySha.values()) total += size;
+        return total;
+    }
 
     public static String render(
             String taskId,
@@ -102,9 +161,30 @@ public final class ActionRecordText {
             Map<String, String> outputs,
             Set<String> executables,
             List<String> said) {
+        return render(taskId, actionKey, inputs, outputs, executables, said, Meta.NONE);
+    }
+
+    /**
+     * As {@link #render(String, String, Map, Map, Set, List)}, with what the record says about
+     * itself ({@link Meta}). The {@code FORMAT} line is always {@link #FORMAT}.
+     */
+    public static String render(
+            String taskId,
+            String actionKey,
+            Map<String, String> inputs,
+            Map<String, String> outputs,
+            Set<String> executables,
+            List<String> said,
+            Meta meta) {
         StringBuilder sb = new StringBuilder();
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');
+        sb.append("FORMAT ").append(FORMAT).append('\n');
+        if (meta.created() != null) sb.append("CREATED ").append(meta.created()).append('\n');
+        if (meta.producer() != null)
+            sb.append("PRODUCER ").append(oneWord(meta.producer())).append('\n');
+        if (meta.platform() != null)
+            sb.append("PLATFORM ").append(oneWord(meta.platform())).append('\n');
         for (Map.Entry<String, String> e : new TreeMap<>(inputs).entrySet()) {
             sb.append("INPUT ")
                     .append(encodeValue(e.getValue()))
@@ -113,8 +193,10 @@ public final class ActionRecordText {
                     .append('\n');
         }
         for (Map.Entry<String, String> e : new TreeMap<>(outputs).entrySet()) {
+            Long size = meta.sizes().get(e.getKey());
+            String value = size != null && isSha256(e.getValue()) ? e.getValue() + "/" + size : e.getValue();
             sb.append("OUTPUT ")
-                    .append(encodeValue(e.getValue()))
+                    .append(encodeValue(value))
                     .append(' ')
                     .append(e.getKey())
                     .append('\n');
@@ -145,7 +227,19 @@ public final class ActionRecordText {
             if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()))
                 portable.put(e.getKey(), e.getValue());
         }
-        return render(record.taskId(), record.actionKey(), portable, record.outputs(), record.executables(), List.of());
+        return render(
+                record.taskId(),
+                record.actionKey(),
+                portable,
+                record.outputs(),
+                record.executables(),
+                List.of(),
+                record.meta());
+    }
+
+    /** {@code text} as one space-free word, so a header line reads back whole. */
+    private static String oneWord(String text) {
+        return text.replace(' ', '_').replace('\r', '_').replace('\n', '_');
     }
 
     /**
@@ -191,6 +285,11 @@ public final class ActionRecordText {
         Map<String, String> outputs = new LinkedHashMap<>();
         Set<String> executables = new LinkedHashSet<>();
         List<String> said = new ArrayList<>();
+        Map<String, Long> sizes = new LinkedHashMap<>();
+        int format = 0;
+        @Nullable Instant created = null;
+        @Nullable String producer = null;
+        @Nullable String platform = null;
         int declaredOutputs = -1;
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
@@ -208,7 +307,22 @@ public final class ActionRecordText {
             } else if (line.startsWith("OUTPUT ")) {
                 String body = line.substring("OUTPUT ".length());
                 int sp = body.indexOf(' ');
-                outputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
+                String path = body.substring(sp + 1);
+                String value = decodeValue(body.substring(0, sp));
+                int slash = value.indexOf('/');
+                if (slash == 64 && isSha256(value.substring(0, 64)) && isSize(value.substring(65))) {
+                    sizes.put(path, Long.parseLong(value.substring(65)));
+                    value = value.substring(0, 64);
+                }
+                outputs.put(path, value);
+            } else if (line.startsWith("FORMAT ")) {
+                format = Integer.parseInt(line.substring("FORMAT ".length()).trim());
+            } else if (line.startsWith("CREATED ")) {
+                created = Instant.parse(line.substring("CREATED ".length()).trim());
+            } else if (line.startsWith("PRODUCER ")) {
+                producer = line.substring("PRODUCER ".length()).trim();
+            } else if (line.startsWith("PLATFORM ")) {
+                platform = line.substring("PLATFORM ".length()).trim();
             } else if (line.startsWith("EXEC ")) {
                 executables.add(line.substring("EXEC ".length()).trim());
             } else if (line.startsWith("SAID ")) {
@@ -232,7 +346,23 @@ public final class ActionRecordText {
         for (String rel : executables) {
             if (!isSafeRelative(rel)) throw new Refused("EXEC path is not a plain relative path: " + rel);
         }
-        return new Parsed(taskId, actionKey, inputs, outputs, executables, List.copyOf(said));
+        if (format > FORMAT) throw new Refused("record format " + format + " is newer than this jk reads");
+        return new Parsed(
+                taskId,
+                actionKey,
+                inputs,
+                outputs,
+                executables,
+                List.copyOf(said),
+                new Meta(format, created, producer, platform, sizes));
+    }
+
+    private static boolean isSize(String digits) {
+        if (digits.isEmpty() || digits.length() > 18) return false;
+        for (int i = 0; i < digits.length(); i++) {
+            if (digits.charAt(i) < '0' || digits.charAt(i) > '9') return false;
+        }
+        return true;
     }
 
     /**
