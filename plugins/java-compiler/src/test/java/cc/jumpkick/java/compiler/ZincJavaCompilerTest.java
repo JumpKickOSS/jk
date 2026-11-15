@@ -3,10 +3,12 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -195,6 +197,36 @@ class ZincJavaCompilerTest {
         assertThat(plan.full()).isFalse();
         assertThat(names(plan.sources())).containsExactly("B.java");
         assertThat(plan.reason()).contains("source");
+    }
+
+    /**
+     * An incremental compile writes a reference index only for the sources it compiles, so after the
+     * index format changes the module compiles whole once, and every source's index is current.
+     */
+    @Test
+    void a_reference_index_in_an_older_format_compiles_the_module_whole(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/B.java", "package a; public class B { public String greet() { return \"hi\"; } }");
+        p.write("a/A.java", "package a; public class A { public String use() { return new B().greet(); } }");
+        assertThat(p.compile().success()).isTrue();
+        List<Path> indexes = new ArrayList<>();
+        PathUtil.forEachRegularFile(References.dirFor(p.classes), (file, attrs) -> indexes.add(file));
+        assertThat(indexes).hasSize(2);
+        for (Path index : indexes) {
+            String text = Files.readString(index);
+            assertThat(text).startsWith(References.HEADER);
+            Files.writeString(index, "# jk-refs 0 " + text.substring(References.HEADER.length()));
+        }
+
+        p.write("a/B.java", "package a; public class B { public String greet() { return \"hello\"; } }");
+        ZincJavaCompiler.Plan plan = p.plan();
+        assertThat(plan.full()).isTrue();
+        assertThat(plan.reason()).isEqualTo("reference index format changed");
+        ZincJavaCompiler.Result r = p.compile();
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(names(r.compiledSources())).containsExactlyInAnyOrder("A.java", "B.java");
+        for (Path index : indexes) assertThat(Files.readString(index)).startsWith(References.HEADER);
+        assertThat(names(p.plan().sources())).isEmpty();
     }
 
     @Test

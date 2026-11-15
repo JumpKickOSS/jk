@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import com.sun.source.doctree.DocCommentTree;
 import com.sun.source.doctree.ReferenceTree;
 import com.sun.source.tree.AssignmentTree;
@@ -27,6 +28,7 @@ import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -90,6 +92,32 @@ final class References implements TaskListener {
         Path target = classes.getParent();
         if (target == null) throw new IllegalArgumentException("a class output has a parent: " + classOutput);
         return target.resolve("incremental").resolve(classes.getFileName() + "-refs");
+    }
+
+    /**
+     * Whether the index of {@code classOutput}'s sources was written in another format: its first
+     * file found does not start with {@link #HEADER}. An incremental compile rewrites only the
+     * sources it compiles, so a format change compiles the module whole once; with indexing off, or
+     * no index yet, nothing is stale.
+     */
+    static boolean staleFormat(Path classOutput) {
+        if (!ENABLED) return false;
+        boolean[] stale = {false};
+        try {
+            PathUtil.anyRegularFile(dirFor(classOutput), dir -> false, file -> {
+                if (!file.getFileName().toString().endsWith(".refs")) return false;
+                try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                    String first = in.readLine();
+                    stale[0] = first == null || !first.startsWith(HEADER);
+                } catch (IOException unreadable) {
+                    stale[0] = true;
+                }
+                return true;
+            });
+        } catch (IOException | RuntimeException unlisted) {
+            return false;
+        }
+        return stale[0];
     }
 
     /** One reference: what it names and where the name is. */

@@ -258,7 +258,8 @@ public final class ZincJavaCompiler {
      * The analysis this compile continues from, or none for a whole compile. A module that declares a
      * descriptor but has no module-info.class (an earlier build lost it) compiles whole: no analysis
      * invalidates the descriptor, so an incremental compile would never write it back and every
-     * module requiring this one fails module not found.
+     * module requiring this one fails module not found. So does one whose reference index is in an
+     * older format: only the sources a compile compiles get a new index.
      */
     private static Optional<AnalysisContents> previousAnalysis(
             ZincWorkdir zinced, AnalysisStore store, boolean compilesDescriptor, Path classOutput) {
@@ -268,6 +269,7 @@ public final class ZincJavaCompiler {
                 && !Files.isRegularFile(classOutput.resolve(MODULE_DESCRIPTOR_CLASS))) {
             return Optional.empty();
         }
+        if (prev.isPresent() && References.staleFormat(classOutput)) return Optional.empty();
         return prev;
     }
 
@@ -607,6 +609,10 @@ public final class ZincJavaCompiler {
                 && !Files.isRegularFile(classOutput.resolve(MODULE_DESCRIPTOR_CLASS))) {
             // The compile goes whole when the descriptor's class is missing; the forecast says so.
             return new Plan(true, "module-info.class missing", allSources(sources, "module-info.class missing"));
+        }
+        if (References.staleFormat(classOutput)) {
+            return new Plan(
+                    true, "reference index format changed", allSources(sources, "reference index format changed"));
         }
         MiniSetup setup = prev.get().getMiniSetup();
         String[] wantOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
