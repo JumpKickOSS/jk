@@ -660,7 +660,7 @@ reason = "this rule's own hit fixture"
 # the rule back.
 [guards.no-historical-narration]
 kind        = "text"
-requires-jk = "0.51.0"
+requires-jk = "0.51.1"
 files       = ["**/*.java", "**/*.kt", "**/*.kts", "**/*.md", ".github/**/*.yml"]
 blank       = "prose"
 patterns = [
@@ -696,7 +696,7 @@ reason = "names the banned narration phrases as the policy"
 # An older jk has no prose view and holds the rule back.
 [guards.product-name-in-docs]
 kind        = "text"
-requires-jk = "0.51.0"
+requires-jk = "0.51.1"
 files       = ["README.md", "CONTRIBUTING.md", "AGENTS.md", "docs/**/*.md"]
 languages   = ["prose"]
 blank       = "prose"

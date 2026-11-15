@@ -3,7 +3,7 @@ generated-by = "jk 0.51.1-SNAPSHOT"
 generated-by-build = "16e3e71601f7"
 generated-by-build-time = "2026-11-15T21:30:46Z"
 resolution-algorithm = "pubgrub-v1"
-jk-min = "0.51.0"
+jk-min = "0.51.1"
 manifests-sha256 = "98e9637a206bfb6d8903b3e0f24f8a2b4d9df26a77fd67eed67f23c4aa367ef9"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
