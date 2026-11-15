@@ -173,12 +173,20 @@ public final class PlannerGuardSuite {
         return !step.cached();
     }
 
+    /** What compile-guard waits for: the after-compile scripts, the classpaths, the resources and the own fixtures. */
+    static String[] guardRequires(boolean hasFixtures) {
+        List<String> requires = new ArrayList<>(
+                List.of(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES));
+        if (hasFixtures) requires.add(TaskNames.COMPILE_TEST_FIXTURES);
+        return requires.toArray(new String[0]);
+    }
+
     @KeyOwner(
             step = TaskNames.COMPILE_GUARD,
             unpaired =
                     "the step writes the suite's stamp after its compile; the forecast prices the compile by its key",
             forecastsStep = true)
-    static Task compileGuardStep(BuildPlanner.Ctx cx, boolean compact) {
+    static Task compileGuardStep(BuildPlanner.Ctx cx, boolean compact, boolean hasFixtures) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -189,7 +197,9 @@ public final class PlannerGuardSuite {
                 .stage(BuildStage.COMPILE)
                 .label("Guard Suite")
                 .kind(TaskKind.CPU)
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)
+                // The module's own fixtures are on its classpath (classpath): keyed before they were
+                // compiled, the key read an empty tree and the next build compiled the suite again.
+                .requires(guardRequires(hasFixtures))
                 .weight(() -> plan.get().compileTest())
                 .ticks(1)
                 .execute(ctx -> {

@@ -266,7 +266,7 @@ final class CorePlan {
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), shape.compact());
-        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact());
+        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact(), hasFixtures);
         Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls, kspArm).compileTest();
         // In testOnly plans no package path exists to anchor the freshness stamps, so
         // run-tests carries them in its requires — otherwise the target-closure prune drops
@@ -533,6 +533,8 @@ final class CorePlan {
         // The guard suite is not a test: it compiles whether or not tests are skipped, and stays in
         // the plan when a target closure would otherwise prune it.
         if (s.hasGuardSuite()) {
+            // Its classpath names the module's own fixtures: they compile before it, tests or not.
+            if (skipJUnit && s.hasFixtures()) b.addTask(s.compileTestFixtures());
             b.addTask(s.compileGuard());
             b.alsoKeep(TaskNames.COMPILE_GUARD);
         }

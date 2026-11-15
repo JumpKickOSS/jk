@@ -197,7 +197,8 @@ public final class PlannerFixtures {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.COMPILE_TEST_FIXTURES)
                 .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s))))
-                .stage(BuildStage.TEST)
+                // COMPILE, not TEST: compile-guard (a compile-stage step) compiles against them.
+                .stage(BuildStage.COMPILE)
                 .label("Test Fixtures")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)

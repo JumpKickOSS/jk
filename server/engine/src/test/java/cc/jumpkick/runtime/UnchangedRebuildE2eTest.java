@@ -12,6 +12,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
@@ -81,6 +82,53 @@ class UnchangedRebuildE2eTest {
         lock(ws, cache);
 
         // Audited, explained, built again: no key moved, nothing forecast, nothing run.
+        SecondBuild.assertSecondBuildRunsNothing(ws, cache);
+    }
+
+    @Test
+    void a_guard_suite_on_its_modules_own_fixtures_is_keyed_once_they_are_compiled(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("unchanged-rebuild-cache");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+                java    = 25
+
+                [workspace]
+                modules = ["guards", "g"]
+                """);
+        // The guard suite library, as a member: what jk's own checkout compiles its guard suites on.
+        Files.createDirectories(ws.resolve("guards/src/main/java/rules"));
+        Files.writeString(ws.resolve("guards/jk.toml"), """
+                group   = "cc.jumpkick"
+                name    = "%s"
+                version = "1.0.0"
+                java    = 25
+                javadoc = false
+                """.formatted(GuardSuiteLibrary.ARTIFACT));
+        Files.writeString(ws.resolve("guards/src/main/java/rules/Rule.java"), "package rules; public class Rule {}\n");
+        Path g = module(ws, "g", "", """
+                class GTest {
+                    @Test
+                    void passes() {
+                        assertEquals(1, 1);
+                    }
+                }
+                """);
+        Files.writeString(g.resolve("jk.toml"), Files.readString(g.resolve("jk.toml")) + "\n[test]\nfixtures = true\n");
+        Path fixtures = Files.createDirectories(g.resolve("src/fixtures/java/demo/g"));
+        Files.writeString(
+                fixtures.resolve("Fx.java"),
+                "package demo.g; public final class Fx { public static final String N = \"" + UUID.randomUUID()
+                        + "\"; }\n");
+        Path guard = Files.createDirectories(g.resolve("src/guard/java/demo/g"));
+        // Compiles, and judges nothing: the lane's verdict on it is not what this test is about.
+        Files.writeString(guard.resolve("GuardCheck.java"), "package demo.g; final class GuardCheck {}\n");
+        lock(ws, cache);
+
+        // compile-guard's classpath names target/test-fixtures-classes: keyed before compile-test-fixtures
+        // wrote it, the key read an empty tree and moved once the build had filled it.
         SecondBuild.assertSecondBuildRunsNothing(ws, cache);
     }
 
