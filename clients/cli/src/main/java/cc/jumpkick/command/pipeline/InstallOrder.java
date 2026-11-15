@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The order a checkout install puts jk's own modules in place: the PATH client before the engine,
@@ -46,6 +47,26 @@ final class InstallOrder {
         }
         order.sort(Comparator.comparingInt(e -> rank(e.getValue())));
         return order;
+    }
+
+    /** The version of jk's native client {@code ordered} places; null when it places none. */
+    static @Nullable String clientVersion(List<Map.Entry<Path, ProjectInfo>> ordered) {
+        for (Map.Entry<Path, ProjectInfo> e : ordered) {
+            ProjectInfo info = e.getValue();
+            if (info.productBin().isBlank() || info.coordinatorOnly()) continue;
+            String built = info.nativeBinPath();
+            if (built != null && !built.isBlank() && Files.isRegularFile(Path.of(built))) return info.version();
+        }
+        return null;
+    }
+
+    /** The version of jk's engine {@code modules} installs; null when it installs none. */
+    static @Nullable String engineVersion(Collection<Map.Entry<Path, ProjectInfo>> modules) {
+        for (Map.Entry<Path, ProjectInfo> e : modules) {
+            ProjectInfo info = e.getValue();
+            if (!info.productLib().isBlank() && !info.coordinatorOnly()) return info.version();
+        }
+        return null;
     }
 
     /** Install order within a pass: the PATH client first, every other module next, jk's engine last. */

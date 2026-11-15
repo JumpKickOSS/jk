@@ -376,9 +376,38 @@ public final class EngineInstall {
     /** What {@link #install} put in place: the engine, and the client's path when it placed one. */
     public record Installed(Materialized engine, @Nullable Path client) {}
 
-    /** A new {@link Pass} over this install. */
-    public Pass pass() {
+    /**
+     * A new {@link Pass} over this install that places a client of {@code clientVersion} and
+     * installs the engine of {@code engineVersion} ({@code null}: the pass places or installs none),
+     * refused by {@link #requirePass} before anything moves.
+     */
+    public Pass pass(@Nullable String clientVersion, @Nullable String engineVersion) throws IOException {
+        requirePass(clientVersion, engineVersion);
         return new Pass();
+    }
+
+    /**
+     * Throw unless a pass that places a client of {@code clientVersion} and installs the engine of
+     * {@code engineVersion} ({@code null}: none) ends whole: the engine is not older than the live
+     * one, and the client is of the version the pointer names once the pass is done, since a client
+     * runs only the engine of its own version.
+     */
+    public void requirePass(@Nullable String clientVersion, @Nullable String engineVersion) throws IOException {
+        Optional<Materialized> live = currentInstall();
+        if (engineVersion != null
+                && live.isPresent()
+                && Versions.compare(live.get().version(), engineVersion) > 0) {
+            throw new IOException("jk " + live.get().version() + " is installed, newer than " + engineVersion
+                    + "; nothing was installed (a private JK_HOME takes it)");
+        }
+        if (clientVersion == null) return;
+        String after = engineVersion != null
+                ? engineVersion
+                : live.map(Materialized::version).orElse(null);
+        if (!clientVersion.equals(after)) {
+            throw new IOException("client " + clientVersion + " needs its engine, and this install has "
+                    + (after == null ? "none" : "engine " + after) + "; nothing was installed");
+        }
     }
 
     /**

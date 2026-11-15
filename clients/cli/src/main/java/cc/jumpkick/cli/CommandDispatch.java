@@ -577,8 +577,9 @@ public final class CommandDispatch {
             String verdict = thisRunReport();
             try {
                 if (verdict != null) {
-                    System.out.write(
-                            agentAnswer(verdict, CliOutput.takeVerdicts()).getBytes(StandardCharsets.UTF_8));
+                    String errText = new String(errBuf.toByteArray(), StandardCharsets.UTF_8);
+                    System.out.write(agentAnswer(verdict, CliOutput.takeVerdicts(), code, errText)
+                            .getBytes(StandardCharsets.UTF_8));
                     System.out.flush();
                 } else {
                     System.out.write(outBuf.toByteArray());
@@ -977,9 +978,24 @@ public final class CommandDispatch {
      * build it ran first.
      */
     static String agentAnswer(String runReport, List<String> verdicts) {
+        return agentAnswer(runReport, verdicts, 0, "");
+    }
+
+    /**
+     * As {@link #agentAnswer(String, List)} for a command that exited {@code code}: a run that
+     * reported OK under a command that then failed (an install's copy step) is followed by what
+     * the command printed on stderr, so an agent never reads OK from a failed command.
+     */
+    static String agentAnswer(String runReport, List<String> verdicts, int code, String stderr) {
         StringBuilder out = new StringBuilder(runReport);
         if (!verdicts.isEmpty() && !runReport.endsWith("\n")) out.append('\n');
         for (String own : verdicts) out.append(own).append('\n');
+        if (code != 0 && runReport.startsWith("OK")) {
+            if (!out.isEmpty() && out.charAt(out.length() - 1) != '\n') out.append('\n');
+            String failure = stderr.strip();
+            out.append(failure.isEmpty() ? "FAIL exit " + code + " after the run" : failure)
+                    .append('\n');
+        }
         return out.toString();
     }
 

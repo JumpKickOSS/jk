@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
@@ -11,6 +12,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -39,8 +41,9 @@ class InstallProductBinTest {
         Path built =
                 Files.writeString(Files.createDirectories(tmp.resolve("target")).resolve(nativeName), "new client");
 
-        Path installed =
-                new EngineInstall(tmp.resolve("lib")).pass().placeNative(built, bin, new Cas(tmp.resolve("cas")), null);
+        Path installed = new EngineInstall(tmp.resolve("lib"))
+                .pass(null, null)
+                .placeNative(built, bin, new Cas(tmp.resolve("cas")), null);
 
         assertThat(installed).isEqualTo(bin.resolve(nativeName));
         assertThat(bin.resolve(nativeName)).hasContent("new client");
@@ -102,7 +105,9 @@ class InstallProductBinTest {
         installJk(pointer, Files.writeString(target.resolve("jk-b"), "client B"), bin, cas, null, engineB, "1.1.0");
 
         Path clientC = Files.writeString(target.resolve("jk-c"), "client C");
-        installJk(pointer, clientC, bin, cas, null, null, null);
+        EngineInstall.Pass pass = pointer.pass("1.1.0", null);
+        pass.placeNative(clientC, bin, cas, null);
+        pass.finish();
 
         assertThat(pointer.liveClient().orElseThrow().sha256()).isEqualTo(Hashing.sha256Hex(clientC));
         EngineInstall.Install previous = pointer.previousInstall().orElseThrow();
@@ -112,19 +117,67 @@ class InstallProductBinTest {
         assertThat(EngineInstall.pathClient(bin)).hasContent("client C");
     }
 
-    /** One checkout install pass: the client placed, then the engine when there is one. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_snapshot_of_the_installed_release_installs_nothing(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Cas cas = new Cas(tmp.resolve("cas"));
+        EngineInstall pointer = new EngineInstall(tmp.resolve("lib"));
+        Path target = Files.createDirectories(tmp.resolve("target"));
+        installJk(
+                pointer,
+                Files.writeString(target.resolve("jk-r"), "client 0.51.0"),
+                bin,
+                cas,
+                null,
+                Files.writeString(target.resolve("jk-engine-r.jar"), "engine 0.51.0"),
+                "0.51.0");
+        String pointerBefore = Files.readString(pointer.configFile());
+
+        assertThatThrownBy(() -> pointer.pass("0.51.0-SNAPSHOT", "0.51.0-SNAPSHOT"))
+                .isInstanceOf(IOException.class)
+                .hasMessage("jk 0.51.0 is installed, newer than 0.51.0-SNAPSHOT; nothing was installed"
+                        + " (a private JK_HOME takes it)");
+
+        assertThat(EngineInstall.pathClient(bin)).hasContent("client 0.51.0");
+        assertThat(pointer.configFile()).hasContent(pointerBefore);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_client_whose_engine_the_pass_does_not_install_is_refused(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Cas cas = new Cas(tmp.resolve("cas"));
+        EngineInstall pointer = new EngineInstall(tmp.resolve("lib"));
+        Path target = Files.createDirectories(tmp.resolve("target"));
+        installJk(
+                pointer,
+                Files.writeString(target.resolve("jk-a"), "client A"),
+                bin,
+                cas,
+                null,
+                Files.writeString(target.resolve("jk-engine-a.jar"), "engine A"),
+                "1.0.0");
+
+        assertThatThrownBy(() -> pointer.pass("1.1.0", null))
+                .isInstanceOf(IOException.class)
+                .hasMessage("client 1.1.0 needs its engine, and this install has engine 1.0.0; nothing was installed");
+        assertThat(EngineInstall.pathClient(bin)).hasContent("client A");
+    }
+
+    /** One checkout install pass of {@code version}: the client placed, then the engine. */
     private static void installJk(
             EngineInstall pointer,
             Path client,
             Path bin,
             Cas cas,
             @Nullable String commit,
-            @Nullable Path engineJar,
-            @Nullable String version)
+            Path engineJar,
+            String version)
             throws Exception {
-        EngineInstall.Pass pass = pointer.pass();
+        EngineInstall.Pass pass = pointer.pass(version, version);
         pass.placeNative(client, bin, cas, commit);
-        if (engineJar != null && version != null) pass.engine(version, cas, engineJar);
+        pass.engine(version, cas, engineJar);
         pass.finish();
     }
 

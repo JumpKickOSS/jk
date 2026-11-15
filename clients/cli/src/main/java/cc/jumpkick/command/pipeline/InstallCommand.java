@@ -416,6 +416,16 @@ public final class InstallCommand {
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
         List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();
         Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
+        if (!reshelving) {
+            // Before the build: an engine the install would refuse after it is a run for nothing.
+            try {
+                new EngineInstall(JkDirs.productLib())
+                        .requirePass(null, InstallOrder.engineVersion(infoByDir.entrySet()));
+            } catch (IOException refused) {
+                CommandWedge.printFail("Install", refused.getMessage());
+                return Exit.FAILURE;
+            }
+        }
         AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
         if (!reshelving) {
             List<Path> alwaysNative = moduleDirs.stream()
@@ -636,10 +646,12 @@ public final class InstallCommand {
         for (var m : result.modules()) {
             if (m.success() && m.installed() != null) outcomes.add(m.installed());
         }
-        EngineInstall.Pass jk = new EngineInstall(JkDirs.productLib()).pass();
+        List<Map.Entry<Path, ProjectInfo>> ordered = InstallOrder.ordered(installed, infoByDir, this::projectInfo);
+        EngineInstall.Pass jk = new EngineInstall(JkDirs.productLib())
+                .pass(InstallOrder.clientVersion(ordered), InstallOrder.engineVersion(ordered));
         // A pass cut short still records the client it put in place.
         try {
-            for (Map.Entry<Path, ProjectInfo> entry : InstallOrder.ordered(installed, infoByDir, this::projectInfo)) {
+            for (Map.Entry<Path, ProjectInfo> entry : ordered) {
                 Path mod = entry.getKey();
                 ProjectInfo info = entry.getValue();
                 // A coordinator root builds as a unit but publishes nothing — announcing it would

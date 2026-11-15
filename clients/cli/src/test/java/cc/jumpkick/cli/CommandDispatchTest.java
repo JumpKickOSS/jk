@@ -321,4 +321,16 @@ class CommandDispatchTest {
                 .isEqualTo("OK build jk\na\nb\n");
         assertThat(CommandDispatch.agentAnswer("OK build jk\n", List.of())).isEqualTo("OK build jk\n");
     }
+
+    @Test
+    void a_command_that_fails_after_its_run_reported_ok_answers_with_its_failure() {
+        assertThat(CommandDispatch.agentAnswer(
+                        "OK install jk · 3.0s\n", List.of(), 1, "\njk: ! Install > make install failed: refused\n"))
+                .isEqualTo("OK install jk · 3.0s\njk: ! Install > make install failed: refused\n");
+        assertThat(CommandDispatch.agentAnswer("OK install jk", List.of(), 1, ""))
+                .isEqualTo("OK install jk\nFAIL exit 1 after the run\n");
+        assertThat(CommandDispatch.agentAnswer("FAIL build jk\n", List.of(), 1, "boom\n"))
+                .as("a failed run's report already says so")
+                .isEqualTo("FAIL build jk\n");
+    }
 }
