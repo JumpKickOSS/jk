@@ -415,6 +415,8 @@ final class NodeArm {
                                 start != null
                                         ? "server · start: " + start
                                         : "not packaged · no module depends on it and [node] classpath-root is unset");
+                        // Nothing packaged is nothing done.
+                        ctx.cached();
                         ctx.progress(1);
                         return;
                     }

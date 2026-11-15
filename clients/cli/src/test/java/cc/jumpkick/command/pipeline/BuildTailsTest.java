@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Wedge wording for built vs checked vs fully up to date, and the shared module completion line. */
 @ExtendWith(ForcedAnsi.class)
@@ -42,6 +43,16 @@ class BuildTailsTest {
         assertThat(t).contains("for ");
         assertThat(t).contains("1");
         assertThat(t).doesNotContain("checked");
+    }
+
+    @Test
+    void a_project_whose_steps_all_hit_is_up_to_date_not_built(@TempDir Path dir) {
+        var checked = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, false));
+        assertThat(BuildTails.projectTail(checked, dir))
+                .contains("project up to date")
+                .doesNotContain("Built");
+        var built = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, true));
+        assertThat(BuildTails.projectTail(built, dir)).doesNotContain("up to date");
     }
 
     @Test

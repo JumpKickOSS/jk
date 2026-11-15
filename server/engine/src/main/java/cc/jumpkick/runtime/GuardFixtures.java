@@ -18,6 +18,7 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.LoadError;
 import cc.jumpkick.guard.rules.LoadResult;
+import cc.jumpkick.guard.rules.RuleSource;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -162,14 +163,18 @@ public final class GuardFixtures {
     /**
      * One digest of every fixture file the workspace's rules and guard suites name, by path and
      * content: what a proof reads besides the rules. Read from sources alone, so a tree digests the
-     * same before its first build as after it. A rules file that does not load leaves its rules'
-     * fixtures out; the file itself then carries the change.
+     * same before its first build as after it; a pack's fixtures, which the build unpacks, are its
+     * pin's. A rule that does not load leaves its fixture out; its file then carries the change.
      */
     static String digest(Path root) throws IOException {
         LoadResult load = load(root);
         Set<Path> dirs = new TreeSet<>(GuardSuites.fixturesInSource(root));
-        if (load.errors().isEmpty()) {
-            for (FixtureCheck.Case c : FixtureCheck.cases(root, load.rules(), Map.of())) dirs.add(c.dir());
+        // The root's and the members' rules as they load, a pack's absent or not: before the first
+        // build no pack is unpacked, which is a load error, and the digest must not move when the
+        // build unpacks one. A pack's own fixtures are its lock pin's, which the module fingerprint
+        // reads already.
+        for (FixtureCheck.Case c : FixtureCheck.cases(root, load.rules(), Map.of())) {
+            if (c.rule().source().layer() != RuleSource.Layer.PACK) dirs.add(c.dir());
         }
         StringBuilder all = new StringBuilder();
         for (Path dir : dirs) {

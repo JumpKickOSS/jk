@@ -9,12 +9,17 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.guard.eval.FixtureCheck;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.rules.GuardPacks;
+import cc.jumpkick.guard.rules.GuardRules;
+import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
@@ -293,6 +298,50 @@ class GuardFixturesTest {
 
         assertThat(GuardFixtures.digest(root))
                 .as("no target dir anywhere: the suite's fixture is read from its source")
+                .isNotEqualTo(before);
+    }
+
+    @Test
+    void a_pack_the_build_unpacks_leaves_the_digest_as_it_was_before_the_first_build(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve("jk.toml"), "group = \"g\"\nname = \"ws\"\nversion = \"1.0.0\"\njava = 25\n");
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards]
+                extends = ["com.acme:house-rules:2.0.0"]
+
+                [guards.no-todo]
+                kind    = "text"
+                pattern = "TODO"
+                hit     = "TODO"
+                instead = "file a ticket"
+                why     = "todo rots"
+                fixture = "guard-fixtures/no-todo"
+                """);
+        Files.createDirectories(root.resolve("guard-fixtures/no-todo/bad"));
+        Path todo = Files.writeString(root.resolve("guard-fixtures/no-todo/bad/Todo.java"), "// TODO\n");
+        String before = GuardFixtures.digest(root);
+
+        // What the first build does: unpack the pinned pack, its fixtures beside its fragment, under target/.
+        Path pack = GuardPacks.unpackedDir(
+                root, Objects.requireNonNull(GuardPacks.Coordinate.parse("com.acme:house-rules:2.0.0")));
+        Files.createDirectories(pack.resolve("guard-fixtures/no-system-out"));
+        Files.writeString(GuardPacks.fragment(pack), """
+                [guards.no-system-out]
+                kind       = "forbid"
+                signatures = ["java.lang.System#out"]
+                instead    = "a logger"
+                why        = "stdout is not a log"
+                fixture    = "guard-fixtures/no-system-out"
+                """);
+        Files.writeString(pack.resolve("guard-fixtures/no-system-out/Bad.java"), "class Bad {}\n");
+
+        assertThat(GuardRules.load(root, GuardsConfig.ABSENT).rules().ids()).contains("no-system-out");
+        assertThat(GuardFixtures.digest(root))
+                .as("the preflight memo of a first build is taken before the pack is unpacked")
+                .isEqualTo(before);
+        Files.writeString(todo, "// TODO: more\n");
+        assertThat(GuardFixtures.digest(root))
+                .as("the root rule's own fixture still keys it")
                 .isNotEqualTo(before);
     }
 

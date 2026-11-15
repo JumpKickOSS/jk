@@ -405,6 +405,15 @@ public final class BuildService {
                 || name.startsWith(TaskNames.WRITE_IMAGE)
                 || name.startsWith("image-")
                 || name.contains(TaskNames.KSP)
-                || name.startsWith("transform");
+                || name.startsWith("transform")
+                // A node module's install, build, tests, declared steps and resource jar, and a
+                // plugin's step: each succeeds only by running (a hit is skipped).
+                || name.equals(TaskNames.NODE_INSTALL)
+                || name.equals(TaskNames.NODE_BUILD)
+                || name.equals(TaskNames.NODE_TEST)
+                || name.equals(TaskNames.NODE_PACKAGE)
+                || name.startsWith(TaskNames.NODE_STEP_PREFIX)
+                || name.startsWith("plugin-")
+                || name.startsWith("generate-");
     }
 }

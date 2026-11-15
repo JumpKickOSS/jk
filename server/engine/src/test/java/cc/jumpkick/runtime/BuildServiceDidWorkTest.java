@@ -44,6 +44,15 @@ class BuildServiceDidWorkTest {
     void isProductiveStep_names() {
         assertThat(BuildService.isProductiveStep("compile-java")).isTrue();
         assertThat(BuildService.isProductiveStep("run-tests")).isTrue();
+        assertThat(BuildService.isProductiveStep("node-build"))
+                .as("a node build that ran")
+                .isTrue();
+        assertThat(BuildService.isProductiveStep("node-test")).isTrue();
+        assertThat(BuildService.isProductiveStep("node-step-gen")).isTrue();
+        assertThat(BuildService.isProductiveStep("plugin-spring-aot")).isTrue();
+        assertThat(BuildService.isProductiveStep("node-stage"))
+                .as("a copy every scheduled build makes")
+                .isFalse();
         assertThat(BuildService.isProductiveStep("package-jar")).isTrue();
         assertThat(BuildService.isProductiveStep("parse-build")).isFalse();
         assertThat(BuildService.isProductiveStep("copy-resources")).isFalse();

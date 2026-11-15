@@ -93,7 +93,9 @@ final class TestSteps {
             return;
         }
         if (ctx.get(COMPILED_TESTS).map(CompiledTests::noSources).orElse(false)) {
+            // Nothing to run is nothing done: the module is checked, not built.
             ctx.label("no tests to run");
+            ctx.cached();
             return;
         }
         Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();
