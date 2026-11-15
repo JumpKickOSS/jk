@@ -46,7 +46,7 @@ class BuildCacheTest {
         // Second build: stamp is fresh, no input newer → fast skip without
         // even hashing source content for an action-key lookup.
         String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
-        assertThat(stdout).contains("project up to date");
+        assertThat(stdout).contains("Build up to date");
     }
 
     /**
@@ -76,7 +76,7 @@ class BuildCacheTest {
                 """);
         Files.setLastModifiedTime(src, FileTime.fromMillis(settled - 60_000));
         String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
-        assertThat(stdout).doesNotContain("project up to date");
+        assertThat(stdout).doesNotContain("Build up to date");
         assertThat(Files.readString(classFile, StandardCharsets.ISO_8859_1)).contains("restored-from-backup");
     }
 
@@ -96,11 +96,11 @@ class BuildCacheTest {
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 5_000));
 
         // --redo: stamps and action cache are distrusted — a genuine recompile, never the
-        // "project up to date" fast path (and unlike --force, no dependency re-fetch).
+        // "Build up to date" fast path (and unlike --force, no dependency re-fetch).
         // (--rebuild remains a supported alias for --redo.)
         String stdout =
                 Capture.stdout(() -> run("build", "--redo", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
-        assertThat(stdout).doesNotContain("project up to date");
+        assertThat(stdout).doesNotContain("Build up to date");
         assertThat(stdout).contains("Build successful");
     }
 

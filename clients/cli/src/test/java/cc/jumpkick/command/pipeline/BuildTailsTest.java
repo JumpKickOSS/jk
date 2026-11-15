@@ -49,7 +49,7 @@ class BuildTailsTest {
     void a_project_whose_steps_all_hit_is_up_to_date_not_built(@TempDir Path dir) {
         var checked = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, false));
         assertThat(BuildTails.projectTail(checked, dir))
-                .contains("project up to date")
+                .contains("Build up to date")
                 .doesNotContain("Built");
         var built = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, true));
         assertThat(BuildTails.projectTail(built, dir)).doesNotContain("up to date");
