@@ -441,10 +441,9 @@ final class PlannerGuards {
         // next build. One that names its tools leaves a verdict on their absence, so installing one
         // is what has it judged and a host without them pays nothing.
         Optional<Set<String>> tools = result.verdictTools();
-        if (tools.isEmpty()) return;
         // Nor is a view missing modules: the run that builds them tightens the baseline, and until
         // then every run over the partial view says it left the baseline alone.
-        if (!result.unseen().isEmpty()) return;
+        if (tools.isEmpty() || !result.unseen().isEmpty()) return;
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedSlice);
         // Stored under the baseline the lane tightened: the key the next build takes.
         KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), storeKey, laneKey);
