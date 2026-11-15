@@ -448,6 +448,22 @@ why      = "a concurrently-parsing build must never see a torn jk.toml"
 in     = "plugins/android/src/main/java/cc/jumpkick/android/ManifestStep.java"
 reason = "writes a stub AndroidManifest.xml into the build's own output, which nothing else reads while it is written"
 
+# G153. A jk.toml key that used to work and is now refused is an entry in RetiredKeys: the parser
+# refuses from that list, the writers' tests check every scaffold and import against it, and the
+# docs print it. A refusal typed anywhere else in the parser is a retired key the list, the tests
+# and the docs never hear of.
+[guards.retired-keys-one-list]
+kind     = "text"
+files    = ["shared/core/src/main/java/cc/jumpkick/config/**/*.java", "shared/core/src/main/java/cc/jumpkick/plugin/manifest/**/*.java"]
+blank    = "comments"
+patterns = ['"[^"\n]*(?:has no key|was retired|is retired|moved under|moved to \[|no longer (?:read|accept|support)|is not supported; (?:move|put)|does not belong in jk\.toml)']
+owner    = "shared/core/src/main/java/cc/jumpkick/config/RetiredKeys.java"
+fixture  = "server/guard/fixtures/retired-keys-one-list"
+hit      = 'throw new JkBuildParseException("[test] has no key include-tags; write a suite");'
+miss     = 'RetiredKeys.refuse(root);'
+instead  = "add an entry to RetiredKeys.ALL (key, release, replacement, remedy) and paste RetiredKeys.markdown() into docs/user/projects.md"
+why      = "a retired key refused outside the one list is missing from the writers' check and the docs table"
+
 # G71. `class` is banned as a field key in the SPA only: .class literals and the test-worker
 # discovery protocol keep the token live in Java on purpose. The dashboard reads d.testClass.
 [guards.spa-no-class-key]

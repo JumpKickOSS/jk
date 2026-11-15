@@ -563,14 +563,6 @@ public final class ManifestTables {
             String inherits = body.getString("inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
             List<String> jvmArgs = jvmArgsList(body, "profiles." + name);
-            for (String key : List.of("include-tags", "exclude-tags", "all-suites")) {
-                if (body.contains(key)) {
-                    throw new JkBuildParseException("[profiles." + name + "] has no key " + key + ": suites choose"
-                            + " tests. A tier is [test.suites.<name>] tags = [...] (exclude-tags = [...] settles a"
-                            + " test two suites claim), run with jk test -s <name>, or jk test -g for the suites in"
-                            + " [test] guard-suites");
-                }
-            }
             Map<String, String> env = new LinkedHashMap<>();
             if (body.contains("env")) {
                 if (!body.isTable("env")) {
@@ -589,23 +581,6 @@ public final class ManifestTables {
             byName.put(name, new Profile(name, inherits, javacArgs, jvmArgs, env));
         }
         return new Profiles(byName);
-    }
-
-    /**
-     * {@code [test]} has no tag filter: the default suite runs what no {@code [test.suites.<name>]}
-     * claims. A manifest naming {@code include-tags} or {@code exclude-tags} there is refused with the
-     * suite table to write.
-     */
-    static void refuseTestTags(TomlTable root) {
-        TomlTable test = root.getTable("test");
-        if (test == null) return;
-        for (String key : List.of("include-tags", "exclude-tags")) {
-            if (test.contains(key)) {
-                throw new JkBuildParseException("[test] has no key " + key + ": the default suite runs what no"
-                        + " suite claims. A tier is [test.suites.<name>] tags = [...], run with jk test -s"
-                        + " <name>; -I / -E narrow one run");
-            }
-        }
     }
 
     static Features parseFeatures(TomlTable root) {

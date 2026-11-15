@@ -357,7 +357,6 @@ public final class ManifestBuild {
                     true);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
-        ManifestTables.refuseTestTags(root);
         return new BuildBlock(
                 s.orderAfter,
                 s.testPluginJars,

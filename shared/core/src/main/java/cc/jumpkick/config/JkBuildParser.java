@@ -466,8 +466,7 @@ public final class JkBuildParser {
 
     private static JkBuild build(TomlParseResult result, LibraryCatalog catalog, @Nullable Path moduleDir) {
         Objects.requireNonNull(catalog, "catalog");
-        rejectRemovedCatalogConfig(result);
-        rejectRemovedProjectTable(result);
+        RetiredKeys.refuse(result);
         // Workspace roots keep concrete project defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         Project project = ManifestProject.parseProject(result, workspaceRoot);
@@ -622,33 +621,6 @@ public final class JkBuildParser {
             throw new JkBuildParseException(path + " must be a string");
         }
         return value;
-    }
-
-    /**
-     * Parse the optional top-level {@code [manifest]} table — string-valued custom jar-manifest
-     * attributes (e.g. {@code "Implementation-Title"}). {@code Main-Class} is intentionally
-     * <em>not</em> read here; it derives from {@code main}.
-     */
-    /**
-     * Reject removed catalog knobs. Project short names live in workspace-root {@code jk-libs.toml};
-     * the system catalog is always global → bundled (no host-local file, no {@code catalog=} pin).
-     */
-    static void rejectRemovedCatalogConfig(TomlTable root) {
-        if (root.contains("catalog")) {
-            throw new JkBuildParseException(
-                    "`catalog` is not supported; put short names in " + ManifestPaths.LIBRARIES);
-        }
-        if (root.getTable("libraries") != null) {
-            throw new JkBuildParseException(
-                    "[libraries] does not belong in jk.toml; put it in " + ManifestPaths.LIBRARIES + " at the root");
-        }
-    }
-
-    /** {@code [project]} is gone — identity keys are bare top-level fields. */
-    static void rejectRemovedProjectTable(TomlTable root) {
-        if (root.getTable("project") != null) {
-            throw new JkBuildParseException("[project] is not supported; move its keys to the top of jk.toml");
-        }
     }
 
     /** True when {@code [workspace] modules = [...]} is a non-empty array — a workspace root. */

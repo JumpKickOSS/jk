@@ -4,6 +4,7 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RetiredKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Field;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
+import org.tomlj.Toml;
 
 /**
  * The golden corpus of the new-project catalogue: every template under the repository's
@@ -51,7 +53,8 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code src/test/resources/new-project-corpus/}. The vectors come from the
  * template's form ({@link AnswerVectors}: the defaults, then a pairwise set in which every option of
  * the layout and of every {@code [[ask]]} appears), so an option added to a template changes its
- * vectors, and the corpus fails until the snapshot holds the new one.
+ * vectors, and the corpus fails until the snapshot holds the new one. No vector may write a key
+ * {@link RetiredKeys} lists, in any of its manifests.
  *
  * <p>A snapshot holds nothing that differs between machines or moves on its own: the name, group
  * and default JDK are fixed (the JDK through {@link NewProjectJava}'s seam, never the machine's),
@@ -305,6 +308,7 @@ class NewProjectCorpusTest {
                                     ? list.stream().map(String::valueOf).toList()
                                     : List.of(String.valueOf(value))));
             Path project = scaffold(template, v.answers(), scratch.resolve(id.replace('/', '-') + "-" + n++));
+            noRetiredKeys(id + " " + v.label(), project);
             out.append("\n=== ").append(v.label()).append('\n');
             settled.forEach((k, value) -> out.append(k)
                     .append(" = ")
@@ -323,6 +327,19 @@ class NewProjectCorpusTest {
             }
         }
         return out.toString();
+    }
+
+    /** Every {@code jk.toml} {@code project} holds carries no key {@link RetiredKeys} lists. */
+    private static void noRetiredKeys(String vector, Path project) throws IOException {
+        try (Stream<Path> walk = Files.walk(project)) {
+            for (Path manifest : walk.filter(p -> p.getFileName().toString().equals("jk.toml"))
+                    .toList()) {
+                String text = Files.readString(manifest);
+                assertThat(RetiredKeys.found(Toml.parse(text)))
+                        .as("%s writes a retired key in %s:%n%s", vector, project.relativize(manifest), text)
+                        .isEmpty();
+            }
+        }
     }
 
     /** What a field's answers can be, as text: a choice's or multi's options, a bool's two values. */

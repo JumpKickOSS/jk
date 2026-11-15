@@ -25,7 +25,7 @@ class JkBuildParserCatalogTest {
     void catalog_key_is_rejected() {
         assertThatThrownBy(() -> JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("`catalog` is not supported");
+                .hasMessageContaining("`catalog` was retired in JumpKick 0.12.0");
     }
 
     @Test

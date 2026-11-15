@@ -221,6 +221,25 @@ error naming its flag. A template writes the level as `java = N` and no toolchai
 JDK compiles to it: the major of the default JDK (`jk jdk default`), the template's own with none,
 the workspace's for a module; `--jdk 21` sets that level.
 
+## Retired keys
+
+A key JumpKick no longer reads is refused when the manifest is read, naming the release that retired
+it and what to write instead. `jk new`, `jk init` and `jk import` never write one.
+
+<!-- retired-keys:start -->
+| Key | Refused since | Write instead |
+|---|---|---|
+| `catalog` | 0.12.0 | short names in `jk-libs.toml` at the workspace root |
+| `[libraries]` | 0.12.0 | `[libraries]` in `jk-libs.toml` at the workspace root |
+| `[project]` | 0.13.0 | `group`, `name`, `version` and the rest at the top of `jk.toml` |
+| `m2integration` | 0.41.1 | `[m2] integration` |
+| `[profiles.<name>] include-tags` | 0.51.0 | `[test.suites.<name>] tags`, run with `jk test -s <name>` |
+| `[profiles.<name>] exclude-tags` | 0.51.0 | `[test.suites.<name>] exclude-tags` |
+| `[profiles.<name>] all-suites` | 0.51.0 | `jk test -g`, which runs the suites `[test] guard-suites` names |
+| `[test] include-tags` | 0.51.0 | `[test.suites.<name>] tags`; `-I` narrows one run |
+| `[test] exclude-tags` | 0.51.0 | `[test.suites.<name>] tags`; `-E` narrows one run |
+<!-- retired-keys:end -->
+
 ## Related
 
 [Lockfile](lockfile.md) · [Config](config.md) · [Commands](commands.md)

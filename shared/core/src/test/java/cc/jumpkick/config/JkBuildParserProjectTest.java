@@ -691,7 +691,7 @@ class JkBuildParserProjectTest {
                 version  = "1.0.0"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[project] is not supported");
+                .hasMessageContaining("[project] was retired in JumpKick 0.13.0");
     }
 
     /**

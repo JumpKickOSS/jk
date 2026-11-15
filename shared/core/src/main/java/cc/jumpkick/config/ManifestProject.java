@@ -242,9 +242,6 @@ public final class ManifestProject {
      */
     private static boolean parseM2Integration(
             TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
-        if (root.contains("m2integration")) {
-            throw new JkBuildParseException("m2integration moved under [m2] — use `integration`");
-        }
         if (root.contains("m2") && !root.isTable("m2")) {
             throw new JkBuildParseException("`m2` must be a table — use [m2] with an integration key");
         }
