@@ -111,15 +111,7 @@ final class TestSteps {
         SuiteFilter suites = suiteFilter(in, shape.compact(), projectUnderTest, testClasses);
         AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
         if (affected != null && affected.classNames().isEmpty()) return; // nothing affected — no stamp store
-        // A --class selection that names no compiled class of this module is judged
-        // from the class files, before the siblings' jars, the stamp and a test JVM:
-        // in a workspace most modules do not hold the class the user named.
-        if (affected == null
-                && !effectiveSel.classes().isEmpty()
-                && !suites.namesCompiledClass(
-                        testClasses,
-                        effectiveSel.classes(),
-                        projectUnderTest.build().testExcludeClasses())) {
+        if (affected == null && settledFromClassFiles(ctx, effectiveSel, suites, testClasses, projectUnderTest)) {
             settleUnmatched(ctx, in, effectiveSel, suites, actionCache, testTaskId, !testSrcs.isEmpty(), snippets);
             return;
         }
@@ -240,6 +232,23 @@ final class TestSteps {
                 !testSrcs.isEmpty(),
                 snippets,
                 said);
+    }
+
+    /**
+     * Whether the class files alone settle this run as one with no test to run, before the
+     * siblings' jars, the stamp and a test JVM: a {@code --class} selection that names no compiled
+     * class of this module (in a workspace most modules do not hold the class the user named), or a
+     * selection whose suites claim none (a tag suite no test carries, a class-pattern suite the
+     * module has no class of), which is said as no tests to run.
+     */
+    private static boolean settledFromClassFiles(
+            TaskContext ctx, TestSelection sel, SuiteFilter suites, Path testClasses, JkBuild project) {
+        List<String> excluded = project.build().testExcludeClasses();
+        if (!sel.classes().isEmpty()) return !suites.namesCompiledClass(testClasses, sel.classes(), excluded);
+        if (suites.selectsCompiledClass(testClasses, excluded)) return false;
+        ctx.label("no tests to run");
+        ctx.cached();
+        return true;
     }
 
     /** Whether the last green run under {@code stampKey} stands for this one: nothing changed and no {@code rerun}. */

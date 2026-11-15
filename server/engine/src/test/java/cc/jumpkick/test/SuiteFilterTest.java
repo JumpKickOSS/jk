@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -146,6 +147,49 @@ class SuiteFilterTest {
         assertThat(SuiteFilter.of(classes, false, List.of("integration"), FAILSAFE)
                         .classHint(classes, List.of("FooTest")))
                 .isEqualTo("FooTest is in the test suite (jk test -s test -S FooTest)");
+    }
+
+    @Test
+    void the_class_files_say_whether_a_selected_suite_claims_any_class_of_the_module(
+            @TempDir Path src, @TempDir Path classes) throws Exception {
+        Path test = Files.createDirectories(src.resolve("com/acme")).resolve("FooTest.java");
+        Files.writeString(test, """
+                package com.acme;
+                class FooTest {
+                    @org.junit.jupiter.api.Test void adds() {}
+                    @org.junit.jupiter.api.Tag("slow") @org.junit.jupiter.api.Test void sorts() {}
+                }
+                """);
+        int rc = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler())
+                .run(
+                        null,
+                        null,
+                        null,
+                        "-cp",
+                        System.getProperty("java.class.path"),
+                        "-d",
+                        classes.toString(),
+                        test.toString());
+        assertThat(rc).isZero();
+        Map<String, DeclaredSuite> suites = new LinkedHashMap<>(TIERS);
+        suites.put("network", DeclaredSuite.ofTags(List.of("network")));
+
+        assertThat(SuiteFilter.of(classes, false, List.of("network"), suites).selectsCompiledClass(classes, List.of()))
+                .as("no test carries the tag: nothing to run, no test JVM")
+                .isFalse();
+        assertThat(SuiteFilter.of(classes, false, List.of("slow"), suites).selectsCompiledClass(classes, List.of()))
+                .as("a method carries it")
+                .isTrue();
+        assertThat(SuiteFilter.of(classes, false, List.of("test"), suites).selectsCompiledClass(classes, List.of()))
+                .isTrue();
+        assertThat(SuiteFilter.of(classes, false, List.of("test"), suites)
+                        .selectsCompiledClass(classes, List.of("*Foo*")))
+                .as("[test] exclude-classes")
+                .isFalse();
+        assertThat(SuiteFilter.of(classes, false, List.of("integration"), FAILSAFE)
+                        .selectsCompiledClass(classes, List.of()))
+                .as("a class-pattern suite the module has no class of")
+                .isFalse();
     }
 
     @Test

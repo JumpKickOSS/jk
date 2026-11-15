@@ -335,6 +335,26 @@ public final class SuiteFilter {
     }
 
     /**
+     * True when a class compiled under {@code testClasses} may hold a test this run's suites run: its
+     * name is one a selected suite claims, its tags (read from the class files, an unread tag
+     * counting as present) admit it, and {@code excludeClasses} does not name it. False settles the
+     * run as one with no tests before a test JVM starts: a tag suite that claims nothing in the
+     * module, or a directory suite the module has no class of.
+     */
+    public boolean selectsCompiledClass(Path testClasses, List<String> excludeClasses) {
+        // No tree to read settles nothing: the runner decides.
+        if (!Files.isDirectory(testClasses)) return true;
+        Predicate<String> accepted = (readsTags() ? withTags(classTagsIn(testClasses)) : this).acceptor();
+        String excluded = JUnitClassFilter.excludeBody(excludeClasses);
+        Pattern out = excluded == null ? null : Pattern.compile("^(?:" + excluded + ")$");
+        for (String name : compiledClasses(testClasses, true)) {
+            if (out != null && out.matcher(name).matches()) continue;
+            if (accepted.test(name)) return true;
+        }
+        return false;
+    }
+
+    /**
      * Whether a test's tags decide which suite runs it: a declared suite claims a tag, or excludes
      * one, which class names alone cannot settle.
      */
