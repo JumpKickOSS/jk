@@ -28,8 +28,9 @@ import org.junit.jupiter.api.io.TempDir;
  * the URL it waited on instead of sitting silent. The window opens with the first read, so the
  * model building before it is never mistaken for a stalled read.
  *
- * <p>The window runs on a {@link FakeClock} the repository moves only once a request reaches it,
- * so the watch can trip only while the read is parked there, however slowly the import gets that far.
+ * <p>The window runs on a {@link FakeClock} the repository moves only once the POM request reaches
+ * it, so the watch can trip only while that read is parked there, however slowly the import gets
+ * that far; every other path answers 404 at once.
  */
 class PomImporterStallTest {
 
@@ -43,6 +44,13 @@ class PomImporterStallTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.setExecutor(Executors.newCachedThreadPool());
         server.createContext("/", exchange -> {
+            if (!exchange.getRequestURI().getPath().endsWith(".pom")) {
+                // The checksum sidecars go out on their own threads before the POM: one that
+                // reached the clock first would trip the watch before the POM read was in flight.
+                exchange.sendResponseHeaders(404, -1);
+                exchange.close();
+                return;
+            }
             clock.advance(Duration.ofSeconds(1));
             try {
                 release.await(30, TimeUnit.SECONDS);
