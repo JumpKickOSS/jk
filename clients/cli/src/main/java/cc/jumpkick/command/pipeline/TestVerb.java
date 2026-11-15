@@ -17,8 +17,6 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -223,9 +221,10 @@ final class TestVerb implements BuildVerb {
     }
 
     /**
-     * The workspace success wedge: {@code Tests passed for N modules}, then how many of those
-     * modules' suites were served from the action cache, when any was, so a line over an unchanged
-     * tree reads as a replay and not as a run.
+     * The workspace success wedge, in {@link BuildTails#settle}'s shape: {@code Tests passed for N
+     * modules}, then how many of those modules' suites were served from the action cache, when any
+     * was, so a line over an unchanged tree reads as a replay and not as a run: {@code Tests passed
+     * for 4 modules. Build up to date (all served from cache)}.
      *
      * <p>{@code withSuite} is how many modules ran a suite or replayed one; zero is a green run that
      * tested nothing ({@code -s <suite>} over modules where it holds no tests), which must not read as a
@@ -242,41 +241,14 @@ final class TestVerb implements BuildVerb {
             return "No tests to run" + skipped;
         }
         String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs), RunSuspensions.wallMs());
-        if (n == 1) {
-            return "Tests passed" + (served > 0 ? ", served from cache" : "") + skipped + " " + took;
-        }
-        String servedClause = served <= 0
-                ? ""
-                : served >= n
-                        ? ", all served from cache"
-                        : ", "
-                                + Theme.colorize(
-                                        String.valueOf(served), Theme.active().focused()) + " served from cache";
-        return "Tests passed for "
-                + Theme.colorize(String.valueOf(n), Theme.active().focused()) + " modules" + servedClause + skipped
-                + " "
-                + took;
-    }
-
-    /**
-     * Success line (sans the leading ✓): {@code Passed N tests}, {@code (served from cache)} when the
-     * suite's green marker was replayed instead of a run, or {@code No tests}.
-     */
-    static String testSummary(@Nullable TestSummary testResult, BuildPlanResult result, boolean servedFromCache) {
-        if (testResult == null || testResult.total() == 0) return "No tests";
-        long total = testResult.total();
-        if (!testResult.allPassed()) {
-            // A run that succeeded with failing tests is one whose failures are reported, not failing.
-            return Theme.colorize("Passed", Theme.active().focused()) + " with " + testResult.failed() + " of " + total
-                    + " test" + (total == 1 ? "" : "s")
-                    + " failing (reported, not failing: [test] failures = \"report\")";
-        }
-        String passed = Theme.colorize("Passed", Theme.active().focused());
-        return passed + " " + total + " test" + (total == 1 ? "" : "s")
-                + (servedFromCache ? " (served from cache)" : "");
-    }
-
-    static String testFailureMessage(@Nullable TestSummary testResult, BuildPlanResult result) {
-        return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
+        String lead = n == 1 ? "Tests passed" : "Tests passed for " + BuildTails.modules(n);
+        String line;
+        if (served <= 0) line = lead;
+        else if (served >= n)
+            line = BuildTails.settle(lead, BuildTails.upToDate((n == 1 ? "" : "all ") + "served from cache"));
+        else
+            line = lead + ", "
+                    + Theme.colorize(String.valueOf(served), Theme.active().focused()) + " served from cache";
+        return line + skipped + " " + took;
     }
 }

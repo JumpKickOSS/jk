@@ -114,9 +114,9 @@ function phaseState(steps) {
 }
 
 /**
- * One line summarizing a card's module work, e.g. "3 modules · 1 failed",
- * "checked 2 modules, all up to date", "built 1 · checked 2", "built 27 modules" — '' when
- * nothing to say. Past tense for finished work so it does not read as the bare kind label
+ * One line summarizing a card's module work, in the CLI settle line's words: "3 modules · 1 failed",
+ * "Build up to date (2 modules checked)", "Built 1 module, 2 up to date", "Built 27 modules" — ''
+ * when nothing to say. Past tense for finished work so it does not read as the bare kind label
  * "build" plus a count ("build 27 modules").
  */
 export function moduleSummary(card) {
@@ -127,9 +127,9 @@ export function moduleSummary(card) {
   const built = card.modules.filter((m) => m.state === 'success').length;
   const noun = (k) => (k === 1 ? 'module' : 'modules');
   if (failed > 0) return `${n} ${noun(n)} · ${failed} failed`;
-  if (built === 0 && checked > 0) return `checked ${checked} ${noun(checked)}, all up to date`;
-  if (built > 0 && checked > 0) return `built ${built} · checked ${checked}`;
-  if (built > 0) return `built ${built} ${noun(built)}`;
+  if (built === 0 && checked > 0) return `Build up to date (${checked} ${noun(checked)} checked)`;
+  if (built > 0 && checked > 0) return `Built ${built} ${noun(built)}, ${checked} up to date`;
+  if (built > 0) return `Built ${built} ${noun(built)}`;
   // Still running / unknown terminal mix — bare count only.
   return `${n} ${noun(n)}`;
 }

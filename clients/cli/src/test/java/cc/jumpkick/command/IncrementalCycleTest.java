@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Editing a file back to a state jk has already built, then forward again, used to leave a
  * dependent module holding the previous run's artifact while the build reported
- * {@code all modules up to date}. Every step was in the action cache, so nothing was scheduled;
+ * {@code Build up to date}. Every step was in the action cache, so nothing was scheduled;
  * nothing was missing, so nothing was restored; and the jar on disk was the earlier one.
  *
  * <p>A revert, a rebase, a stash pop and a branch switch all produce that shape, which is why this

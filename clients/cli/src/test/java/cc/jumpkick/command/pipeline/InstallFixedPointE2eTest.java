@@ -62,7 +62,7 @@ class InstallFixedPointE2eTest {
 
             Run second = jk(home, ws, "install", "-C", ws.toString(), "--skip-tests");
             assertThat(second.exit()).as(second.output()).isZero();
-            assertThat(second.output()).contains("everything already installed");
+            assertThat(second.output()).contains("Install successful. Build up to date");
             assertThat(second.output()).doesNotContain("re-shelving").doesNotContain("Installed com.example");
 
             assertThat(Files.readAllBytes(pointer)).isEqualTo(pointerBefore);

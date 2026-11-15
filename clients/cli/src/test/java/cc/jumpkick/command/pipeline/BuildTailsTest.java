@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.ForcedAnsi;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,12 +23,17 @@ class BuildTailsTest {
         return new WorkspaceResult(true, 0, modules, List.of());
     }
 
+    /** The settle line without its {@code took …}: what every shape is pinned to. */
+    private static String line(String tail) {
+        String plain = TestAnsi.strip(tail);
+        int took = plain.lastIndexOf(" took ");
+        return took < 0 ? plain : plain.substring(0, took);
+    }
+
     @Test
-    void empty_plan_is_all_up_to_date() {
-        String t = BuildTails.successTail(ok(List.of()), 0, System.nanoTime());
-        assertThat(t).contains("all modules up to date");
-        assertThat(t).doesNotContain("for ");
-        assertThat(t).doesNotContain("checked");
+    void empty_plan_is_up_to_date() {
+        assertThat(line(BuildTails.successTail(ok(List.of()), 0, System.nanoTime())))
+                .isEqualTo("Build successful. Build up to date");
     }
 
     @Test
@@ -34,41 +41,59 @@ class BuildTailsTest {
         var modules = List.of(
                 new ModuleOutcome("a:b", Path.of("/a"), true, 0, 10, false),
                 new ModuleOutcome("a:c", Path.of("/c"), true, 0, 12, false));
-        String t = BuildTails.successTail(ok(modules), 2, System.nanoTime());
-        assertThat(t).contains("checked");
-        assertThat(t).contains("all up to date");
-        assertThat(t).doesNotContain("for ");
-        assertThat(t).doesNotContain("built");
+        assertThat(line(BuildTails.successTail(ok(modules), 2, System.nanoTime())))
+                .isEqualTo("Build successful. Build up to date (2 modules checked)");
     }
 
     @Test
     void all_built_modules() {
         var modules = List.of(new ModuleOutcome("a:b", Path.of("/a"), true, 0, 100, true));
-        String t = BuildTails.successTail(ok(modules), 1, System.nanoTime());
-        assertThat(t).contains("for ");
-        assertThat(t).contains("1");
-        assertThat(t).doesNotContain("checked");
+        assertThat(line(BuildTails.successTail(ok(modules), 1, System.nanoTime())))
+                .isEqualTo("Build successful. Built 1 module");
     }
 
     @Test
     void a_project_whose_steps_all_hit_is_up_to_date_not_built(@TempDir Path dir) {
         var checked = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, false));
-        assertThat(BuildTails.projectTail(ok(checked), dir))
-                .contains("Build up to date")
-                .doesNotContain("Built");
+        assertThat(line(BuildTails.projectTail(ok(checked), dir))).isEqualTo("Build successful. Build up to date");
         var built = List.of(new ModuleOutcome("a:b", dir, true, 0, 10, true));
-        assertThat(BuildTails.projectTail(ok(built), dir)).doesNotContain("up to date");
+        assertThat(line(BuildTails.projectTail(ok(built), dir))).isEqualTo("Build successful. Built project");
     }
 
     @Test
     void mix_built_and_checked() {
         var modules = List.of(
                 new ModuleOutcome("a:b", Path.of("/a"), true, 0, 100, true),
-                new ModuleOutcome("a:c", Path.of("/c"), true, 0, 10, false));
-        String t = TestAnsi.strip(BuildTails.successTail(ok(modules), 2, System.nanoTime()));
-        assertThat(t).contains("built 1 module");
-        assertThat(t).contains("checked 1 module");
-        assertThat(t).doesNotContain("all up to date");
+                new ModuleOutcome("a:c", Path.of("/c"), true, 0, 10, false),
+                new ModuleOutcome("a:d", Path.of("/d"), true, 0, 10, false));
+        assertThat(line(BuildTails.successTail(ok(modules), 3, System.nanoTime())))
+                .isEqualTo("Build successful. Built 1 module, 2 up to date");
+    }
+
+    @Test
+    void every_up_to_date_settle_line_says_build_up_to_date() {
+        assertThat(BuildTails.upToDate(null)).isEqualTo(BuildTails.UP_TO_DATE).isEqualTo("Build up to date");
+        assertThat(BuildTails.upToDate("served from cache")).isEqualTo("Build up to date (served from cache)");
+        assertThat(BuildTails.settle("Install successful", BuildTails.UP_TO_DATE))
+                .isEqualTo("Install successful. Build up to date");
+    }
+
+    @Test
+    void install_settle_lines_take_the_same_shape(@TempDir Path m2) {
+        var roots = Map.of(InstallDestination.M2, m2, InstallDestination.JK, m2);
+        long now = System.nanoTime();
+        assertThat(line(InstallCommand.installTail(0, List.of(), roots, now)))
+                .isEqualTo("Install successful. Build up to date");
+        var same = new ModuleOutcome.Installed(
+                "g:a:1.0-SNAPSHOT", "aa", "bb", InstallDestination.M2, ModuleOutcome.Installed.Change.UNCHANGED);
+        assertThat(line(InstallCommand.installTail(1, List.of(same), roots, now)))
+                .startsWith("Install successful. Build up to date (g:a:1.0-SNAPSHOT already installed) → ");
+        var fresh = new ModuleOutcome.Installed(
+                "g:a:1.0-SNAPSHOT", "aa", "bb", InstallDestination.M2, ModuleOutcome.Installed.Change.NEW);
+        assertThat(line(InstallCommand.installTail(1, List.of(fresh), roots, now)))
+                .startsWith("Install successful. Installed g:a:1.0-SNAPSHOT → ");
+        assertThat(line(InstallCommand.installTail(3, List.of(fresh, fresh, fresh), roots, now)))
+                .startsWith("Install successful. Installed 3 modules → ");
     }
 
     @Test

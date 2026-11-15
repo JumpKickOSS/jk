@@ -131,7 +131,7 @@ test('didWork false marks module checked; summary says checked not built', () =>
   assert.equal(cards[0].modules[0].state, 'checked');
   assert.equal(cards[0].modules[1].state, 'checked');
   assert.equal(outcomeOf(cards[0]), 'success');
-  assert.equal(moduleSummary(cards[0]), 'checked 2 modules, all up to date');
+  assert.equal(moduleSummary(cards[0]), 'Build up to date (2 modules checked)');
 });
 
 test('buildplan-finish creates a module row when module-start never fired (single-plan requests)', () => {

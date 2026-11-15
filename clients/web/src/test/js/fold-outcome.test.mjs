@@ -42,9 +42,9 @@ test('module summary counts modules and failures', () => {
   foldEvent(cards, start(1, '/w'));
   assert.equal(moduleSummary(cards[0]), '');
   foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/a', success: true, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), 'built 1 module');
+  assert.equal(moduleSummary(cards[0]), 'Built 1 module');
   foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/b', success: true, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), 'built 2 modules');
+  assert.equal(moduleSummary(cards[0]), 'Built 2 modules');
   foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/c', success: false, millis: 5 } });
   assert.equal(moduleSummary(cards[0]), '3 modules · 1 failed');
 });

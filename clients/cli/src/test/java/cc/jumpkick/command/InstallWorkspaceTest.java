@@ -32,7 +32,10 @@ class InstallWorkspaceTest {
         // Stripped: the coordinate is styled per segment, so a raw substring would neither match
         // the member nor — worse — ever match the root, making the negative assertion vacuous.
         String out = TestAnsi.strip(streams.out());
-        assertThat(out).contains("installed ex:lib:1.0").contains("~/").doesNotContain("Pinned");
+        assertThat(out)
+                .contains("Install successful. Installed ex:lib:1.0")
+                .contains("~/")
+                .doesNotContain("Pinned");
         assertThat(out)
                 .as("the root packages nothing, so claiming it installed is a lie")
                 .doesNotContain("installed ex:ws");
@@ -120,7 +123,7 @@ class InstallWorkspaceTest {
         assertThat(exit[0])
                 .as("the member's test reads the forwarded name\n%s", TestAnsi.strip(streams.out() + streams.err()))
                 .isEqualTo(0);
-        assertThat(TestAnsi.strip(streams.out())).contains("installed ex:lib:1.0");
+        assertThat(TestAnsi.strip(streams.out())).contains("Install successful. Installed ex:lib:1.0");
     }
 
     private static int install(Path ws, Path cache, String... extra) {

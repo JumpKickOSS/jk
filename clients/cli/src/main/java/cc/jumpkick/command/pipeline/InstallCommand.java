@@ -698,15 +698,17 @@ public final class InstallCommand {
     }
 
     /**
-     * The success wedge of a workspace install: what this pass put in place and where. A single
-     * installed module names its coordinate and destination; several name the count, and the
-     * destination when they share one.
+     * The success wedge of a workspace install, in {@link BuildTails#settle}'s shape: what this pass
+     * put in place and where. A single installed module names its coordinate and destination
+     * ({@code Install successful. Installed g:a:1.0-SNAPSHOT → ~/.m2/repository}); several name the
+     * count, and the destination when they share one; a pass that put nothing new in place is
+     * {@link BuildTails#UP_TO_DATE}.
      */
     static String installTail(
             int modules, List<ModuleOutcome.Installed> outcomes, Map<InstallDestination, Path> roots, long start) {
-        String ok = Theme.colorize("Install successful", Theme.active().success());
+        String ok = Theme.paint("Install successful", Theme.active().success());
         String took = " " + BuildTails.elapsedSince(start);
-        if (modules == 0) return ok + ", everything already installed" + took;
+        if (modules == 0) return BuildTails.settle(ok, BuildTails.UP_TO_DATE) + took;
         Set<InstallDestination> destinations = new LinkedHashSet<>();
         for (ModuleOutcome.Installed o : outcomes) destinations.add(o.destination());
         String where = destinations.size() == 1
@@ -717,23 +719,15 @@ public final class InstallCommand {
         if (modules == 1 && outcomes.size() == 1) {
             ModuleOutcome.Installed o = outcomes.getFirst();
             String gav = Coords.gav(Coordinate.parse(o.coordinate()));
-            return ok
-                    + ", "
-                    + switch (o.change()) {
-                        case NEW -> "installed " + gav;
-                        case REPLACED -> "replaced " + gav;
-                        case UNCHANGED -> gav + " already installed";
-                    }
-                    + where
-                    + took;
+            String fragment =
+                    switch (o.change()) {
+                        case NEW -> "Installed " + gav;
+                        case REPLACED -> "Replaced " + gav;
+                        case UNCHANGED -> BuildTails.upToDate(gav + " already installed");
+                    };
+            return BuildTails.settle(ok, fragment) + where + took;
         }
-        return ok
-                + ", installed "
-                + Theme.colorize(String.valueOf(modules), Theme.active().focused())
-                + " module"
-                + (modules == 1 ? "" : "s")
-                + where
-                + took;
+        return BuildTails.settle(ok, "Installed " + BuildTails.modules(modules)) + where + took;
     }
 
     /** {@code path} with the user's home shown as {@code ~}, painted as a path. */

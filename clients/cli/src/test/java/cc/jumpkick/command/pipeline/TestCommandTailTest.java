@@ -4,10 +4,8 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
@@ -17,8 +15,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The workspace test wedge names how many modules' suites were served from the action cache, and a
- * plain project's {@code Passed N tests} says when the suite was a replay and not a run.
+ * The workspace test wedge names how many modules' suites were served from the action cache, and
+ * says {@code Build up to date} when every suite was a replay.
  */
 class TestCommandTailTest {
 
@@ -46,25 +44,13 @@ class TestCommandTailTest {
     @Test
     void a_wholly_served_run_says_so() {
         String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 4, 4, 0, 300));
-        assertThat(t).contains("4 modules, all served from cache");
+        assertThat(t).startsWith("Tests passed for 4 modules. Build up to date (all served from cache) ");
     }
 
     @Test
     void one_module_served() {
         String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(1), 1, 1, 1, 0, 30));
-        assertThat(t).startsWith("Tests passed, served from cache");
-    }
-
-    @Test
-    void a_plain_projects_replayed_suite_says_it_was_served_from_cache() {
-        TestSummary twelve = new TestSummary(12, 12, 0, 0, List.of());
-        BuildPlanResult result =
-                new BuildPlanResult("test", true, Duration.ofMillis(30), List.of(), List.of(), List.of(), false);
-        assertThat(TestAnsi.strip(TestVerb.testSummary(twelve, result, true)))
-                .isEqualTo("Passed 12 tests (served from cache)");
-        assertThat(TestAnsi.strip(TestVerb.testSummary(twelve, result, false))).isEqualTo("Passed 12 tests");
-        assertThat(TestAnsi.strip(TestVerb.testSummary(new TestSummary(0, 0, 0, 0, List.of()), result, true)))
-                .isEqualTo("No tests");
+        assertThat(t).startsWith("Tests passed. Build up to date (served from cache) ");
     }
 
     /**

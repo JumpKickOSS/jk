@@ -285,10 +285,10 @@ A workspace `jk test` in which no module has a test suite exits **0**, as `mvn t
 the terminal line reads `No tests to run`; so does a `-s <suite>` run over modules where that
 suite holds no tests. A `--class` selection that matches nothing is still `no test classes matched`, exit 64.
 A suite replayed from its green stamp counts as run, and the terminal line says how many were:
-`Tests passed for 49 modules, 47 served from cache` — the two others ran — or `all served from
-cache` over an unchanged tree; a run that replayed nothing reads `Tests passed for 49 modules`. A
-plain project's tail says the same of its one suite: `Passed 12 tests (served from cache)` is a
-replayed green marker, `Passed 12 tests` a run, and `No tests` a project with no test sources.
+`Tests passed for 49 modules, 47 served from cache` — the two others ran — or `Tests passed for
+49 modules. Build up to date (all served from cache)` over an unchanged tree; a run that replayed
+nothing reads `Tests passed for 49 modules`. Piped or under an agent, the run report says the
+same of a replayed suite: `OK test app · 12 tests · up to date · 77ms`.
 
 ## The slowest tests (`[test] fast-method-budget`)
 

@@ -20,7 +20,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Every line the build cluster settles on: the module completion tail, the workspace success wedge,
- * the single-project tail and the failure tail. Six verbs render these ({@code build}, {@code test},
+ * the single-project tail and the failure tail, and the one settle-line shape ({@link #settle},
+ * {@link #UP_TO_DATE}) the install and test tails use too. Six verbs render these ({@code build}, {@code test},
  * {@code run}, {@code compile}, {@code image}, {@code native}), so they live on no one verb — a
  * renderer other verbs import is not a facade, it is a shared surface,
  * and the numbers inside it (the zero-padded {@code [k of N]} bracket, the green strikethrough on a
@@ -95,18 +96,42 @@ final class BuildTails {
         return Math.max(0, (System.nanoTime() - startNanos) / 1_000_000 - RunSuspensions.monoMs());
     }
 
+    /** The phrase every settle line uses for a run that did no work: build, test, install and guard alike. */
+    static final String UP_TO_DATE = "Build up to date";
+
     /** The green {@code Build successful} lead that opens every build success message. */
-    static @Nullable String buildOk() {
-        return Theme.colorize("Build successful", Theme.active().success());
+    static String buildOk() {
+        return Theme.paint("Build successful", Theme.active().success());
     }
 
     /**
-     * Workspace success wedge
+     * The one shape of a settle line: a lead, then a capitalised fragment as its own sentence,
+     * {@code Build successful. Built 3 modules}. The caller appends the {@code took …}.
+     */
+    static String settle(String lead, String fragment) {
+        return lead + ". " + fragment;
+    }
+
+    /**
+     * {@link #UP_TO_DATE}, with what it covered in parentheses when that carries information:
+     * {@code Build up to date (12 modules checked)}. {@code covered} null or blank is the bare phrase.
+     */
+    static String upToDate(@Nullable String covered) {
+        return covered == null || covered.isBlank() ? UP_TO_DATE : UP_TO_DATE + " (" + covered + ")";
+    }
+
+    /** {@code 3 modules} with the count bold-white; {@code 1 module}. */
+    static String modules(int n) {
+        return Theme.paint(String.valueOf(n), Theme.active().focused()) + " module" + (n == 1 ? "" : "s");
+    }
+
+    /**
+     * Workspace success wedge, through {@link #settle}:
      *
      * <ul>
-     * <li>nothing entered → {@code all modules up to date}
-     * <li>entered modules, none did productive work → {@code checked N modules, all up to date}
-     * <li>some productive work → {@code built K modules} (optionally {@code , checked M})
+     * <li>nothing entered → {@code Build successful. Build up to date}
+     * <li>entered modules, none did productive work → {@code Build successful. Build up to date (N modules checked)}
+     * <li>productive work → {@code Build successful. Built K modules}, and {@code , M up to date} for the rest
      * </ul>
      *
      * @param result this run's result; its modules may be empty on the fully-cached shortcut
@@ -114,9 +139,6 @@ final class BuildTails {
      * @param start wall-clock start, {@link System#nanoTime}
      */
     static String successTail(WorkspaceResult result, int planned, long start) {
-        if (planned == 0 && result.upToDate()) {
-            return upToDateTail("all modules", start);
-        }
         int built = 0;
         int checked = 0;
         for (var m : result.modules()) {
@@ -124,81 +146,39 @@ final class BuildTails {
             if (m.didWork()) built++;
             else checked++;
         }
-        // Older engines omit didWork (defaults true) — fall back to planned count as "built".
-        if (built == 0 && checked == 0) {
-            return modulesTail(planned, start);
+        String fragment;
+        if (result.upToDate()) {
+            fragment = planned == 0 || checked == 0 ? UP_TO_DATE : upToDate(modules(checked) + " checked");
+        } else {
+            fragment = "Built " + modules(built) + (checked == 0 ? "" : ", " + checked + " up to date");
         }
-        if (built == 0) {
-            return buildOk()
-                    + ", checked "
-                    + Theme.colorize(
-                            String.valueOf(checked > 0 ? checked : planned),
-                            Theme.active().focused())
-                    + " module"
-                    + ((checked > 0 ? checked : planned) == 1 ? "" : "s")
-                    + ", all up to date "
-                    + elapsedSince(start);
-        }
-        if (checked == 0) {
-            return modulesTail(built, start);
-        }
-        return buildOk()
-                + ", built "
-                + Theme.colorize(String.valueOf(built), Theme.active().focused())
-                + " module"
-                + (built == 1 ? "" : "s")
-                + ", checked "
-                + Theme.colorize(String.valueOf(checked), Theme.active().focused())
-                + " module"
-                + (checked == 1 ? "" : "s")
-                + " "
-                + elapsedSince(start);
-    }
-
-    /** Success tail {@code Build successful for N modules took T} (productive work) — N bold-white. */
-    private static String modulesTail(int total, long start) {
-        return buildOk()
-                + " for "
-                + Theme.colorize(String.valueOf(total), Theme.active().focused())
-                + " module"
-                + (total == 1 ? "" : "s")
-                + " "
-                + elapsedSince(start);
-    }
-
-    /** Success tail {@code Build successful, <scope> up to date took T} — when nothing was rebuilt. */
-    private static String upToDateTail(String scope, long start) {
-        return buildOk() + ", " + scope + " up to date " + elapsedSince(start);
+        return settle(buildOk(), fragment) + " " + elapsedSince(start);
     }
 
     /**
      * A standalone project's success tail: {@code Build successful. Build up to date} when the
-     * forecast proved the project clean and scheduled nothing, or the project ran and no step did
-     * work (every one a cache hit), else {@code Build successful. Built <artifact>} naming the
-     * headline output.
+     * project did no work ({@link WorkspaceResult#upToDate}), else {@code Build successful. Built
+     * <artifact>} naming the headline output, or {@code Build successful. Built project}.
      */
     static String projectTail(WorkspaceResult result, Path projectDir) {
-        if (result.upToDate()) return buildOk() + ". Build up to date";
+        if (result.upToDate()) return settle(buildOk(), UP_TO_DATE);
         ProjectInfo info = ProjectInfos.orNull(projectDir);
         String art = info == null ? "" : builtArtifact(projectDir, info);
-        return buildOk() + (art.isEmpty() ? ", project built" : art);
+        return settle(buildOk(), "Built " + (art.isEmpty() ? "project" : art));
     }
 
     /**
-     * The headline artifact this build produced, as {@code ". Built <relpath>"} in the path color —
-     * the native binary/library if present, else the assembly jar, else the plain jar. Empty when
-     * none exists. Shared with {@code jk native}.
+     * The headline artifact this build produced, as its path relative to {@code moduleRoot} in the
+     * path color — the native binary/library if present, else the assembly jar, else the plain jar.
+     * Empty when none exists.
      */
     static String builtArtifact(Path moduleRoot, ProjectInfo info) {
         for (String candidate :
                 List.of(info.nativeBinPath(), info.nativeLibPath(), info.assemblyJarPath(), info.mainJarPath())) {
             if (candidate.isEmpty()) continue;
             Path p = Path.of(candidate);
-            if (Files.isRegularFile(p)) {
-                return ". Built "
-                        + Theme.colorize(
-                                relForDisplay(moduleRoot, p), Theme.active().path());
-            }
+            if (Files.isRegularFile(p))
+                return Theme.paint(relForDisplay(moduleRoot, p), Theme.active().path());
         }
         return "";
     }
