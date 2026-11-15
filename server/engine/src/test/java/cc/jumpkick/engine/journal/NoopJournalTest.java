@@ -8,12 +8,14 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSessions;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -245,6 +247,11 @@ class NoopJournalTest {
 
         assertThat(writer.write(62, false, 90, null)).startsWith("OK build").endsWith(" · up to date\n");
         assertThat(journal.runDir("g:a", project.toString(), 2)).isEmpty();
+        assertThat(journal.rawFinishedRecordByRequestId(62))
+                .as("an MCP wait reads the no-op as one")
+                .hasValueSatisfying(raw -> assertThat(MiniJson.parse(raw))
+                        .asInstanceOf(InstanceOfAssertFactories.MAP)
+                        .containsEntry(NoopRecords.UP_TO_DATE, true));
     }
 
     @Test

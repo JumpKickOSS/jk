@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JkResultsAgent;
+import cc.jumpkick.engine.journal.NoopRecords;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,7 +11,10 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** The agent rendering of a run, shared by {@code run} and the results tools. */
+/**
+ * The agent rendering of a run, shared by {@code run} and the results tools. A no-op's record
+ * ({@link NoopRecords#UP_TO_DATE}) renders itself: it wrote no report of its own.
+ */
 public final class McpAgentText {
 
     private McpAgentText() {}
@@ -36,6 +40,10 @@ public final class McpAgentText {
      */
     public static @Nullable String of(McpContext ctx, @Nullable Map<String, Object> rec) {
         if (rec == null) return null;
+        if (Boolean.TRUE.equals(rec.get(NoopRecords.UP_TO_DATE))) {
+            BuildRecord noop = JkResultsAgent.recordOf(rec);
+            if (noop != null) return JkResultsAgent.upToDate(noop);
+        }
         String filed = filed(ctx, rec, JkResultsAgent.FILE_NAME);
         if (filed != null) return filed;
         BuildRecord record = JkResultsAgent.recordOf(rec);

@@ -8,7 +8,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.journal.JkResultsAgent;
+import cc.jumpkick.engine.journal.JkResultsMarkdown;
+import cc.jumpkick.engine.journal.NoopRecords;
 import cc.jumpkick.jsonl.MiniJson;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -16,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** {@code run} waits and {@code run(jid=N)} continuations: journal attribution, no HTTP bind. */
 class McpRunWaitTest {
@@ -149,6 +156,27 @@ class McpRunWaitTest {
                 + ",\"modules\":[],\"diagnostics\":[]}";
         McpHandler mcp = handler(() -> List.of(fresh), jid -> null);
         assertThat(textOf(runWait(mcp))).startsWith("OK build");
+    }
+
+    /**
+     * A no-op writes no run directory and leaves the reports alone, so {@code target/}'s agent
+     * report is the previous run's: the no-op's own record must answer, saying nothing was left to run.
+     */
+    @Test
+    void a_run_that_found_the_tree_up_to_date_answers_its_own_verdict_not_the_last_report(@TempDir Path ws)
+            throws IOException {
+        Path target = Files.createDirectories(ws.resolve("target"));
+        Files.writeString(target.resolve(JkResultsMarkdown.FILE_NAME), "# jk results\n");
+        Files.writeString(target.resolve(JkResultsAgent.FILE_NAME), "OK test a · 1 test · 9.0s\n");
+        String noop = "{\"" + NoopRecords.UP_TO_DATE + "\":true,\"id\":\"n\",\"kind\":\"build\",\"dir\":"
+                + MiniJson.write(ws.toString()) + ",\"success\":true,\"exitCode\":0,\"millis\":30,"
+                + "\"coord\":\"g:a\",\"requestId\":" + JID + ",\"startedAt\":1700000000000,"
+                + "\"modules\":[],\"tasks\":[],\"diagnostics\":[]}";
+        McpHandler mcp = handler(List::of, jid -> jid == JID ? noop : null);
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"dir\":"
+                + MiniJson.write(ws.toString()) + ",\"timeout_s\":2}}}");
+        assertThat(textOf(body)).startsWith("OK build a · 30ms · up to date").doesNotContain("9.0s");
     }
 
     @Test

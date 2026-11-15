@@ -39,12 +39,22 @@ final class Json {
         return write(r, Long.MAX_VALUE, "").record();
     }
 
+    /** A no-op's whole record, led by {@link NoopRecords#UP_TO_DATE}. */
+    static String writeUpToDate(BuildRecord r) {
+        return write(r, Long.MAX_VALUE, "", true).record();
+    }
+
     /**
      * The record with its diagnostics cut at {@code diagnosticsBudget} characters of JSON; the rest
      * go to {@link Written#spill}, which the record names as {@code diagnosticsSpill = spillName}.
      */
     static Written write(BuildRecord r, long diagnosticsBudget, String spillName) {
+        return write(r, diagnosticsBudget, spillName, false);
+    }
+
+    private static Written write(BuildRecord r, long diagnosticsBudget, String spillName, boolean upToDate) {
         Map<String, Object> o = new LinkedHashMap<>();
+        if (upToDate) o.put(NoopRecords.UP_TO_DATE, true);
         o.put("id", r.id());
         o.put("buildNumber", r.buildNumber());
         o.put("schema", r.schema());

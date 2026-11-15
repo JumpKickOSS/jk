@@ -388,7 +388,7 @@ public final class JournalWriter {
                 .withEpisode(episode);
         if (record.synthetic() || !record.success() || !journal.confirm(jid, record)) return null;
         tellFinished(record);
-        return JkResultsAgent.render(record);
+        return JkResultsAgent.upToDate(record);
     }
 
     /** Attempts at rewriting a run's record in place before the run is left {@code running}. */

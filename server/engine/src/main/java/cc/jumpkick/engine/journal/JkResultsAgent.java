@@ -101,6 +101,15 @@ public final class JkResultsAgent {
     }
 
     /**
+     * The verdict of a run that found the tree up to date and did nothing: its headline, so marked
+     * (the headline already carries the mark when {@link RecordUpToDate} reads the record so).
+     */
+    public static String upToDate(BuildRecord record) {
+        String report = render(record);
+        return RecordUpToDate.of(record) ? report : report.stripTrailing() + " · " + UP_TO_DATE + "\n";
+    }
+
+    /**
      * As {@link #render(BuildRecord)}, also reading {@code tests} for a failure the record's
      * diagnostics do not already carry.
      */
