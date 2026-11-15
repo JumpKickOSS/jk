@@ -601,11 +601,6 @@ module; its own `[test] workers = N` does.
 ```toml
 [test]
 workers = 1          # serial within this module
-# parallel = false   # alias for workers = 1
-
-# Or under [build]:
-# test-workers = 1
-# test-parallel = false
 ```
 
 When only *some* classes are unhermetic, tag them instead of pinning the whole module:

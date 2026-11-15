@@ -45,7 +45,7 @@ public record BuildBlock(
          * means none. Boolean {@code true} in the manifest stores {@link #DEFAULT_FIXTURES}.
          */
         @Nullable String fixtures,
-        /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
+        /** {@code [test] workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
         @Nullable Integer testWorkers,
         /**
          * {@code [test] serial-tags}: class-level JUnit tags whose classes never share the

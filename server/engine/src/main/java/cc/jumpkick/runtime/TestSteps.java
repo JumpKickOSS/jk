@@ -172,7 +172,7 @@ final class TestSteps {
         TestSummary result = null;
         TagExcludedCapture tagExcluded;
         try {
-            // Module pin ([test] workers / [build] test-workers) wins over CLI for
+            // Module pin ([test] workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
             // class-wall rule once the selection is known. A debug run is one JVM.
             boolean debug = in.session().debugJvm() != null;

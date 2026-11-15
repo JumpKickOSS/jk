@@ -12,7 +12,6 @@ import cc.jumpkick.model.SourcesMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,37 +61,16 @@ class JkBuildParserApplicationTest {
     }
 
     @Test
-    void application_java_opts_spells_jvm_args_and_jvm_args_wins() {
-        assertThat(JkBuildParser.parse(PROJECT + """
+    void java_opts_is_refused_naming_jvm_args() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
 
                         [application]
                         main      = "com.example.Main"
                         java-opts = ["-Xmx1g"]
-                        """).applicationJvmArgs()).containsExactly("-Xmx1g");
-        assertThat(JkBuildParser.parse(PROJECT + """
-
-                        [application]
-                        main      = "com.example.Main"
-                        java-opts = ["-Xmx1g"]
-                        jvm-args  = ["-Xmx2g"]
-                        """).applicationJvmArgs()).containsExactly("-Xmx2g");
-    }
-
-    @Test
-    void test_and_profile_java_opts_spell_jvm_args_and_jvm_args_wins() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT + """
-
-                [test]
-                java-opts = ["-Xmx1g"]
-
-                [profiles.fast]
-                java-opts = ["-Xss1m"]
-                jvm-args  = ["-Xss2m"]
-                """);
-        assertThat(parsed.build().testJvm().jvmArgs()).containsExactly("-Xmx1g");
-        assertThat(Objects.requireNonNull(parsed.profiles().byName().get("fast"))
-                        .jvmArgs())
-                .containsExactly("-Xss2m");
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageStartingWith("[application] java-opts was retired in JumpKick 0.51.1")
+                .hasMessageContaining("jvm-args = [...]");
     }
 
     @Test

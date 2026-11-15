@@ -844,7 +844,6 @@ public final class ManifestTables {
             "config",
             "relocate",
             "jvm-args",
-            "java-opts",
             ManifestLibDir.LIB_DIR,
             ManifestLibDir.LIB_VERSIONS,
             ManifestLibDir.LIB_EXCLUDE);

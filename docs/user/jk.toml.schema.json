@@ -220,13 +220,6 @@
           },
           "description": "Flags jk run and jk dev put on the application JVM, such as --enable-native-access=ALL-UNNAMED."
         },
-        "java-opts": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Another spelling of jvm-args; jvm-args wins when both are set."
-        },
         "lib-dir": {
           "type": [
             "boolean",
@@ -314,15 +307,6 @@
           "items": { "type": "string" },
           "description": "Extra module-relative source roots compiled with the main sources."
         },
-        "test-workers": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Test JVMs for this module: 0 = the build's auto share, 1 = serial."
-        },
-        "test-parallel": {
-          "type": "boolean",
-          "description": "false is the same as test-workers = 1."
-        },
         "cache-heavy-outputs": {
           "type": "boolean",
           "description": "false keeps this module's heavy outputs (native images, fat jars, jlink images: 32 MiB or more) out of the cache, so they live only where they were built. The window they stay cached for is the machine's [cache] heavy-ttl; a project can only turn caching off (default true)."
@@ -342,6 +326,11 @@
       "type": "object",
       "description": "[test] table; keys are documented in docs/user.",
       "properties": {
+        "workers": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Test JVMs for this module: 0 = the build's auto share, 1 = serial."
+        },
         "assertions": {
           "type": "boolean",
           "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
@@ -384,11 +373,6 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Flags appended verbatim to every forked test JVM after jk's own tuning (-Xmx, -Xss, --add-opens, an agent); Surefire's <argLine>. A run-tests input."
-        },
-        "java-opts": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Another spelling of jvm-args; jvm-args wins when both are set."
         },
         "system-properties": {
           "type": "object",

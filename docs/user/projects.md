@@ -238,6 +238,12 @@ it and what to write instead. `jk new`, `jk init` and `jk import` never write on
 | `[profiles.<name>] all-suites` | 0.51.0 | `jk test -g`, which runs the suites `[test] guard-suites` names |
 | `[test] include-tags` | 0.51.0 | `[test.suites.<name>] tags`; `-I` narrows one run |
 | `[test] exclude-tags` | 0.51.0 | `[test.suites.<name>] tags`; `-E` narrows one run |
+| `[application] java-opts` | 0.51.1 | `jvm-args` |
+| `[test] java-opts` | 0.51.1 | `jvm-args` |
+| `[profiles.<name>] java-opts` | 0.51.1 | `jvm-args` |
+| `[test] parallel` | 0.51.1 | `[test] workers = 1` |
+| `[build] test-workers` | 0.51.1 | `[test] workers` |
+| `[build] test-parallel` | 0.51.1 | `[test] workers = 1` |
 <!-- retired-keys:end -->
 
 ## Related

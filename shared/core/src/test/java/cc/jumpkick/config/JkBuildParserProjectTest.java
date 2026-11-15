@@ -330,37 +330,21 @@ class JkBuildParserProjectTest {
     }
 
     @Test
-    void parses_test_workers_pin_and_parallel_false_alias() {
+    void parses_test_workers_pin() {
         assertThat(JkBuildParser.parse(PROJECT).build().testWorkers()).isNull();
-        assertThat(JkBuildParser.parse(PROJECT + """
-
-                [build]
-                test-workers = 1
-                """).build().testWorkers()).isEqualTo(1);
-        assertThat(JkBuildParser.parse(PROJECT + """
-
-                [build]
-                test-parallel = false
-                """).build().testWorkers()).isEqualTo(1);
         assertThat(JkBuildParser.parse(PROJECT + """
 
                 [test]
                 workers = 2
                 """).build().testWorkers()).isEqualTo(2);
-        assertThat(JkBuildParser.parse(PROJECT + """
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
 
-                [test]
-                parallel = false
-                """).build().testWorkers()).isEqualTo(1);
-        assertThat(JkBuildParser.parse(PROJECT + """
-
-                [build]
-                test-workers = 4
-
-                [test]
-                parallel = false
-                """).build().effectiveTestWorkers(0))
-                .isEqualTo(1);
+                        [build]
+                        test-workers = 1
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[build] test-workers was retired")
+                .hasMessageContaining("[test] workers = N");
     }
 
     /**

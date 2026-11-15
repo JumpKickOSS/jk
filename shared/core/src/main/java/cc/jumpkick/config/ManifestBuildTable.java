@@ -83,8 +83,6 @@ final class ManifestBuildTable {
             "ksp-options",
             "ksp-version",
             "extra-src",
-            "test-workers",
-            "test-parallel",
             TaskNames.MODULE_SERVICES,
             "cache-heavy-outputs",
             "logic");
@@ -166,18 +164,6 @@ final class ManifestBuildTable {
                 s.extraSrc.add(str);
             }
         }
-        // [build] test-workers — pin within-module test JVMs (1 = serial; 0 = same as omitting: the
-        // build's auto share).
-        // [build] test-parallel = false is an alias for test-workers = 1 (Mill testParallelism=false).
-        if (build.contains("test-workers")) {
-            Long n = build.getLong("test-workers");
-            if (n == null) throw new JkBuildParseException("[build].test-workers must be an integer >= 0");
-            if (n < 0) throw new JkBuildParseException("[build].test-workers must be >= 0");
-            s.testWorkers = n.intValue();
-        }
-        if (Boolean.FALSE.equals(build.getBoolean("test-parallel"))) {
-            s.testWorkers = 1;
-        }
         // [build] module-services — write META-INF/services from module-info's provides, as
         // Helidon's services plugin does, for consumers that read a class or processor path.
         Object rawServices = build.get(TaskNames.MODULE_SERVICES);
@@ -198,14 +184,13 @@ final class ManifestBuildTable {
     }
 
     private static void readTestTable(TomlTable test, Settings s) {
+        // [test] workers — pin within-module test JVMs (1 = serial; 0 = same as omitting: the
+        // build's auto share).
         if (test.contains("workers")) {
             Long n = test.getLong("workers");
             if (n == null) throw new JkBuildParseException("[test].workers must be an integer >= 0");
             if (n < 0) throw new JkBuildParseException("[test].workers must be >= 0");
             s.testWorkers = n.intValue();
-        }
-        if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
-            s.testWorkers = 1;
         }
         // [test] extra-src — extra test-tier sources compiled into test classes. A single file
         // is legal where a directory would over-reach (clients/cli compiling one IntelliJ
@@ -520,18 +505,16 @@ final class ManifestBuildTable {
      * string. Both are run-tests inputs.
      */
     private static void readTestJvm(TomlTable test, Settings s) {
-        String jvmArgsKey = JkBuildParser.jvmArgsKey(test);
-        TomlArray jvmArgs = jvmArgsKey == null ? null : test.getArray(jvmArgsKey);
-        if (jvmArgsKey != null && jvmArgs == null) {
-            throw new JkBuildParseException(
-                    "[test]." + jvmArgsKey + " must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
+        TomlArray jvmArgs = test.getArray("jvm-args");
+        if (test.contains("jvm-args") && jvmArgs == null) {
+            throw new JkBuildParseException("[test].jvm-args must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
         }
         if (jvmArgs != null) {
             for (int i = 0; i < jvmArgs.size(); i++) {
                 Object val = jvmArgs.get(i);
                 if (!(val instanceof String str) || str.isBlank()) {
                     throw new JkBuildParseException(
-                            "[test]." + jvmArgsKey + " must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
+                            "[test].jvm-args must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
                 }
                 s.testJvmArgs.add(str.trim());
             }

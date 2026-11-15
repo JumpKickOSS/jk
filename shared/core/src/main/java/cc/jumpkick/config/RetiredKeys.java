@@ -47,6 +47,10 @@ public final class RetiredKeys {
     private static final String SUITES = "suites choose tests. A tier is [test.suites.<name>] tags = [...]"
             + " (exclude-tags = [...] settles a test two suites claim), run with jk test -s <name>";
 
+    private static final String JVM_ARGS = "write jvm-args = [...], the one name for these JVM flags";
+
+    private static final String WORKERS = "write [test] workers = N (1 runs this module's tests in one JVM)";
+
     /** Every retired key, oldest release first. */
     public static final List<Retired> ALL = List.of(
             new Retired(
@@ -94,7 +98,13 @@ public final class RetiredKeys {
                     "0.51.0",
                     "`[test.suites.<name>] tags`; `-E` narrows one run",
                     "the default suite runs what no suite claims. A tier is [test.suites.<name>] tags"
-                            + " = [...], run with jk test -s <name>; -I / -E narrow one run"));
+                            + " = [...], run with jk test -s <name>; -I / -E narrow one run"),
+            new Retired("application", "java-opts", "0.51.1", "`jvm-args`", JVM_ARGS),
+            new Retired("test", "java-opts", "0.51.1", "`jvm-args`", JVM_ARGS),
+            new Retired("profiles.*", "java-opts", "0.51.1", "`jvm-args`", JVM_ARGS),
+            new Retired("test", "parallel", "0.51.1", "`[test] workers = 1`", WORKERS),
+            new Retired("build", "test-workers", "0.51.1", "`[test] workers`", WORKERS),
+            new Retired("build", "test-parallel", "0.51.1", "`[test] workers = 1`", WORKERS));
 
     /** Refuse the first retired key {@code root} carries, with its remedy. */
     public static void refuse(TomlTable root) {
