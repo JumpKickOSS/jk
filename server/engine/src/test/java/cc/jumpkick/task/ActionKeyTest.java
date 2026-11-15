@@ -23,7 +23,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -979,5 +981,33 @@ class ActionKeyTest {
                 .workerClasspath(List.of(worker))
                 .javaHome(javaHome)
                 .build();
+    }
+
+    @Test
+    void a_miss_reason_names_each_moved_input_by_kind() {
+        var prior = Map.of(
+                "src/A.java",
+                "a1",
+                "src/B.java",
+                "b1",
+                "cp:/m2/lib.jar",
+                "abi1",
+                "pp:/m2/proc.jar",
+                "p1",
+                "release",
+                "21",
+                "options",
+                "o1",
+                ActionKey.JK_INPUT,
+                "jk-1");
+        var now = new HashMap<>(prior);
+        assertThat(ActionKey.missReason(prior, now)).isEmpty();
+
+        now.put("src/B.java", "b2");
+        now.put("cp:/m2/lib.jar", "abi2");
+        now.put("options", "o2");
+        now.put(ActionKey.JK_INPUT, "jk-2");
+        assertThat(ActionKey.missReason(prior, now))
+                .isEqualTo("1 source changed · dependency ABI changed (lib.jar) · jk changed · options changed");
     }
 }

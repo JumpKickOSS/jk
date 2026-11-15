@@ -296,7 +296,8 @@ final class CompileSteps {
             // What the compile did, as its record's detail: the ETA prices an incremental compile
             // from incremental history, not from an average that full compiles dominate.
             ctx.label(TaskNames.compiledLabel(
-                    r.compiledSources().size(), request.sources().size()));
+                            r.compiledSources().size(), request.sources().size())
+                    + (r.missReason().isEmpty() ? "" : " · " + r.missReason()));
         }
     }
 

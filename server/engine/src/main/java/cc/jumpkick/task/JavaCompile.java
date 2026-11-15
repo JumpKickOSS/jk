@@ -81,6 +81,8 @@ public final class JavaCompile {
      * @param movedSources sources whose bytes changed between the key and the worker's return;
      *     the compile is not recorded and the next build recompiles them
      * @param waitMillis time spent queued behind the shared compiler worker; see TaskContext#waited
+     * @param missReason what moved since the step's last record when the key missed ({@link
+     *     ActionKey#missReason}); empty on a hit, with no prior record, or when nothing it names moved
      */
     public record Result(
             boolean success,
@@ -90,7 +92,21 @@ public final class JavaCompile {
             List<CompileResult.Diagnostic> replayed,
             List<Path> compiledSources,
             List<Path> movedSources,
-            long waitMillis) {
+            long waitMillis,
+            String missReason) {
+
+        public Result(
+                boolean success,
+                String outcome,
+                String actionKey,
+                List<CompileResult.Diagnostic> diagnostics,
+                List<CompileResult.Diagnostic> replayed,
+                List<Path> compiledSources,
+                List<Path> movedSources,
+                long waitMillis) {
+            this(success, outcome, actionKey, diagnostics, replayed, compiledSources, movedSources, waitMillis, "");
+        }
+
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
             replayed = replayed == null ? List.of() : List.copyOf(replayed);
@@ -267,6 +283,8 @@ public final class JavaCompile {
         // The record's inputs describe the bytes the key hashed, so they are taken here, before
         // the worker reads a source; the same snapshot is what the post-fork re-read is held to.
         Map<String, String> inputs = ActionKey.snapshotInputs(request);
+        inputs.put(ActionKey.JK_INPUT, jkVersion);
+        String missReason = useCache ? missReason(actionCache, taskId, stateDir, inputs) : "";
         beforeFork.run();
         CasPrewriter prewriter = CasPrewriter.watching(cas, out);
         ForkedJavac.Result wr;
@@ -370,7 +388,24 @@ public final class JavaCompile {
                 warnings.kept(),
                 wr.compiledSources(),
                 List.of(),
-                wr.waitMillis());
+                wr.waitMillis(),
+                missReason);
+    }
+
+    /**
+     * What moved since the record this checkout's last compile of {@code taskId} left, against the
+     * inputs this compile keys on; empty without such a record. Read before the compile stores its
+     * own.
+     */
+    static String missReason(ActionCache actionCache, String taskId, Path stateDir, Map<String, String> inputs) {
+        try {
+            return actionCache
+                    .lastFor(taskId, stateDir)
+                    .map(prior -> ActionKey.missReason(prior.inputs(), inputs))
+                    .orElse("");
+        } catch (IOException unreadable) {
+            return "";
+        }
     }
 
     /**

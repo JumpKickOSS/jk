@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
@@ -467,7 +469,61 @@ public final class ActionKey {
         // The key hashes the compiling JDK, so the why-rebuilt diff has to be able to name it:
         // without this a JDK switch reads as "nothing changed, rebuilt anyway".
         result.put("jdk", compileJdkToken(request.compilerHome()));
+        // Every other line the key hashes, so the diff can name whatever moved it: jk's identity,
+        // the compiler worker, the resources a processor reads, the [env] a processor sees.
+        result.put(JK_INPUT, BuildIdentity.cacheKeyVersion());
+        result.put("worker", String.join(",", WorkerClosure.tokens(PluginJar.JAVA_COMPILER)));
+        if (request.resourcesDigest() != null) result.put("resources", request.resourcesDigest());
+        if (processorsMayRun(request.processorPath(), request.extraOptions())
+                || request.extraOptions().stream().anyMatch(o -> o.startsWith("-Xplugin:"))) {
+            result.put("env", String.join(",", request.env()));
+        }
         return result;
+    }
+
+    /** The record input naming the jk whose key shape and engine identity the key hashed. */
+    public static final String JK_INPUT = "jk";
+
+    /**
+     * What moved between two records' inputs ({@link #snapshotInputs}' spelling), in words: sources
+     * by count, {@code java-api:} declarations, {@code cp:} entries by ABI, {@code pp:} processors,
+     * {@code worker} the compiler, then the settings (release, options, JDK, resources, env, jk) by
+     * name. Empty when the two agree.
+     */
+    public static String missReason(Map<String, String> prior, Map<String, String> now) {
+        int sources = 0;
+        Set<String> declarations = new TreeSet<>();
+        Set<String> api = new TreeSet<>();
+        Set<String> processors = new TreeSet<>();
+        Set<String> settings = new TreeSet<>();
+        boolean compiler = false;
+        Set<String> keys = new TreeSet<>(now.keySet());
+        keys.addAll(prior.keySet());
+        for (String k : keys) {
+            if (Objects.equals(now.get(k), prior.get(k))) continue;
+            if (k.startsWith("cp:")) api.add(fileName(k.substring(3)));
+            else if (k.startsWith("pp:")) processors.add(fileName(k.substring(3)));
+            else if (k.startsWith(JAVA_API)) declarations.add(fileName(k.substring(JAVA_API.length())));
+            else if (k.equals("worker") || k.startsWith("worker:")) compiler = true;
+            else if (SETTINGS.contains(k)) settings.add(k.equals(JK_INPUT) ? "jk" : k);
+            else sources++;
+        }
+        List<String> parts = new ArrayList<>();
+        if (sources > 0) parts.add(sources + (sources == 1 ? " source" : " sources") + " changed");
+        if (!declarations.isEmpty()) parts.add("Java declarations changed (" + String.join(", ", declarations) + ")");
+        if (!api.isEmpty()) parts.add("dependency ABI changed (" + String.join(", ", api) + ")");
+        if (!processors.isEmpty()) parts.add("processor changed (" + String.join(", ", processors) + ")");
+        if (compiler) parts.add("compiler changed");
+        for (String setting : settings) parts.add(setting + " changed");
+        return String.join(" · ", parts);
+    }
+
+    /** The record inputs that are a setting rather than a file. */
+    private static final Set<String> SETTINGS = Set.of("release", "options", "jdk", "jvmTarget", "args", JK_INPUT);
+
+    private static String fileName(String path) {
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash < 0 ? path : path.substring(slash + 1);
     }
 
     /** As {@link #snapshotInputs(CompileRequest)} for a Groovy compile: its source set and its token lines. */

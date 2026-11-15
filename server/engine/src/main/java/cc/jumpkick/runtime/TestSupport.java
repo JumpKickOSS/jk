@@ -861,7 +861,9 @@ public final class TestSupport {
                     "javaHome",
                     compile.javaHome(),
                     "out",
-                    outputDir);
+                    outputDir,
+                    "X",
+                    classpathTokens);
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
         Path gen = generatedSourceDir != null
@@ -908,7 +910,8 @@ public final class TestSupport {
             ctx.label(taskId + ": cache hit " + r.actionKey().substring(0, 8));
             return new Compiled(true, true, r.actionKey());
         }
-        ctx.label(taskId + ": compiled " + sources.size() + " sources");
+        ctx.label(taskId + ": compiled " + sources.size() + " sources"
+                + (r.missReason().isEmpty() ? "" : " · " + r.missReason()));
         return new Compiled(true, false, r.actionKey());
     }
 

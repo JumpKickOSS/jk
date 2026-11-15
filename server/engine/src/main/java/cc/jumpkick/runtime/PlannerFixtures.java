@@ -292,6 +292,8 @@ public final class PlannerFixtures {
                     if (r.cacheHit()) {
                         ctx.label("cache hit " + r.actionKey().substring(0, 8));
                         ctx.cached();
+                    } else if (!r.missReason().isEmpty()) {
+                        ctx.label("compiled " + sources.size() + " fixture sources · " + r.missReason());
                     }
                     ctx.progress(1);
                 })

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A compile that does not run javac on a source still says that source's warnings: a cache hit
  * says every warning its compile said, and an incremental compile says those of the sources it left
- * alone, as their last compile said them.
+ * alone, as their last compile said them. A compile that misses says what moved.
  */
 @Tag("integration")
 class JavaCompileWarningReplayTest {
@@ -128,6 +128,24 @@ class JavaCompileWarningReplayTest {
         assertThat(texts(second.diagnostics())).isEqualTo(texts(first.diagnostics()));
     }
 
+    @Test
+    void a_miss_names_what_moved_since_the_last_record(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir.resolve("app"), dir.resolve("cache"));
+        p.write("a/B.java", CLEAN_B);
+        assertThat(p.build().missReason()).as("no record before the first").isEmpty();
+
+        p.write("a/B.java", "package a; public class B { int v() { return 2; } }");
+        assertThat(p.build().missReason()).isEqualTo("1 source changed");
+
+        JavaCompile.Result upgraded = p.build("another-jk");
+        assertThat(upgraded.cacheHit()).isFalse();
+        assertThat(upgraded.missReason())
+                .as("a key every compile carries moved")
+                .isEqualTo("jk changed");
+
+        assertThat(p.build("another-jk").missReason()).as("a hit names nothing").isEmpty();
+    }
+
     private static List<String> texts(List<CompileResult.Diagnostic> diagnostics) {
         List<String> out = new ArrayList<>();
         for (CompileResult.Diagnostic d : diagnostics) out.add(d.message());
@@ -176,6 +194,10 @@ class JavaCompileWarningReplayTest {
         }
 
         JavaCompile.Result build() throws IOException {
+            return build("jk-test");
+        }
+
+        JavaCompile.Result build(String jk) throws IOException {
             List<Path> sources = new ArrayList<>();
             try (var s = Files.walk(srcRoot)) {
                 for (Path p : (Iterable<Path>) s::iterator) {
@@ -195,7 +217,7 @@ class JavaCompileWarningReplayTest {
                     "compile-main",
                     "test:module compile-main",
                     request,
-                    "jk-test",
+                    jk,
                     true,
                     cas,
                     actionCache,
