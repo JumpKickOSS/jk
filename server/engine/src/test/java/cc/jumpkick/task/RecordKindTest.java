@@ -114,7 +114,7 @@ class RecordKindTest {
 
     private static String shared(@Nullable Kind kind, Map<String, String> markers) {
         String key = "k".repeat(64);
-        ActionRecordText.Meta meta = new ActionRecordText.Meta(1, kind, null, null, null, Map.of());
+        ActionRecordText.Meta meta = new ActionRecordText.Meta(1, kind, null, null, null, -1, Map.of());
         String text = ActionRecordText.render("run-tests@x", key, Map.of(), markers, Set.of(), List.of(), meta);
         return ActionRecordText.renderShared(ActionRecordText.parse(text, key));
     }

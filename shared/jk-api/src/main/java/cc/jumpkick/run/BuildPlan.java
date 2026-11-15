@@ -89,6 +89,12 @@ public final class BuildPlan {
 
     private final String name;
     private final Clock clock;
+
+    /** The plan's clock's monotonic reading, for a step's own elapsed time. */
+    long nanos() {
+        return clock.nanos();
+    }
+
     private final boolean interactive;
     private final List<Task> steps;
     private final List<BuildPlanListener> listeners;

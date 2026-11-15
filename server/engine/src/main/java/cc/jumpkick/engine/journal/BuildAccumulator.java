@@ -933,8 +933,13 @@ public final class BuildAccumulator {
             Map<String, List<String>> req = requiresByDir.getOrDefault(d, Map.of());
             List<CacheBenefit.StepInput> steps = new ArrayList<>();
             for (BuildRecord.Task s : stepsFor(d)) {
+                StepCache c = s.cache();
                 steps.add(new CacheBenefit.StepInput(
-                        s.name(), s.status(), s.millis(), req.getOrDefault(s.name(), List.of())));
+                        s.name(),
+                        s.status(),
+                        s.millis(),
+                        req.getOrDefault(s.name(), List.of()),
+                        c == null ? -1 : c.producerMillis()));
             }
             out.add(new CacheBenefit.ModuleInput(d, steps));
         }

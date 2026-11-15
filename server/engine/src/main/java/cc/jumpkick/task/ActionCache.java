@@ -16,6 +16,8 @@ import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepCache;
+import cc.jumpkick.run.StepScope;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.util.FileLocks;
 import java.io.File;
 import java.io.IOException;
@@ -190,7 +192,7 @@ public final class ActionCache {
             // A marker or verdict is the result itself: reading it is the step's hit, unless the
             // step goes on to run and store.
             if (kind == ActionRecordText.Kind.TEST_MARKER || kind == ActionRecordText.Kind.VERDICT) {
-                StepCacheNotes.replayed(actionKey, remote);
+                StepCacheNotes.replayed(actionKey, remote, found.get().meta().wallMillis());
             }
         }
         return found;
@@ -579,7 +581,7 @@ public final class ActionCache {
                 outputs,
                 executables,
                 said,
-                ActionRecordText.Meta.now(kind, producer(), CachePlatform.current(), sizes));
+                ActionRecordText.Meta.now(kind, producer(), CachePlatform.current(), workedMillis(), sizes));
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
@@ -651,6 +653,12 @@ public final class ActionCache {
             reason = StepCache.Reason.KEY_CHANGED;
         }
         StepCacheNotes.stored(key, bytes, reason, changed);
+    }
+
+    /** The running step's own time so far, which a record states as the cost of making it; {@code -1} outside a step. */
+    private static long workedMillis() {
+        TaskContext ctx = StepScope.current();
+        return ctx == null ? -1 : ctx.workedMillis();
     }
 
     /** How many changed inputs a miss names before it counts the rest. */
@@ -832,7 +840,8 @@ public final class ActionCache {
         if (!StepCacheNotes.inStep() || record.actionKey() == null) return;
         long bytes = 0;
         for (Blob b : blobs.values()) bytes += b.size();
-        StepCacheNotes.restored(record.actionKey(), fetched, bytes);
+        StepCacheNotes.restored(
+                record.actionKey(), fetched, bytes, record.meta().wallMillis());
     }
 
     /**

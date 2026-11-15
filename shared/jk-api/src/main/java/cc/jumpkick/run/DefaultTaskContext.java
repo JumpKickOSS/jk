@@ -64,6 +64,11 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
+    public long workedMillis() {
+        return Math.max(0, plan.nanos() - startNanos - waitedNanos.get()) / 1_000_000;
+    }
+
+    @Override
     public void progress(int delta) {
         if (delta <= 0) return;
         if (!weighted) {

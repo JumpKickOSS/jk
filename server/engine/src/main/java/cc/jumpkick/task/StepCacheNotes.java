@@ -28,15 +28,15 @@ final class StepCacheNotes {
     }
 
     /** The step restored {@code key}'s outputs, {@code bytes} of them, from here or the remote tier. */
-    static void restored(String key, boolean remote, long bytes) {
+    static void restored(String key, boolean remote, long bytes, long producerMillis) {
         Note n = StepScope.local(NOTE);
-        if (n != null) n.hit(key, remote, bytes);
+        if (n != null) n.hit(key, remote, bytes, producerMillis);
     }
 
     /** The step read {@code key}'s marker or verdict, a result in itself. */
-    static void replayed(String key, boolean remote) {
+    static void replayed(String key, boolean remote, long producerMillis) {
         Note n = StepScope.local(NOTE);
-        if (n != null) n.hit(key, remote, 0);
+        if (n != null) n.hit(key, remote, 0, producerMillis);
     }
 
     /** A record under {@code key} was refused as untrusted while the step looked for it. */
@@ -72,10 +72,13 @@ final class StepCacheNotes {
         private long bytesIn;
         private long bytesOut;
         private boolean refused;
+        private long producerMillis = -1;
 
-        synchronized void hit(String key, boolean remote, long bytes) {
+        synchronized void hit(String key, boolean remote, long bytes, long producerMillis) {
             bytesIn += bytes;
             if (outcome == StepCache.Outcome.MISS) return;
+            // Several records restored by one step each cost their producer this much.
+            if (producerMillis >= 0) this.producerMillis = Math.max(0, this.producerMillis) + producerMillis;
             if (outcome != StepCache.Outcome.REMOTE_HIT) {
                 outcome = remote ? StepCache.Outcome.REMOTE_HIT : StepCache.Outcome.LOCAL_HIT;
             }
@@ -102,7 +105,8 @@ final class StepCacheNotes {
 
         synchronized @Nullable StepCache toStepCache() {
             if (outcome == null) return null;
-            return new StepCache(outcome, reason, changed, key, bytesIn, bytesOut);
+            long producer = outcome == StepCache.Outcome.MISS ? -1 : producerMillis;
+            return new StepCache(outcome, reason, changed, key, bytesIn, bytesOut, producer);
         }
     }
 }

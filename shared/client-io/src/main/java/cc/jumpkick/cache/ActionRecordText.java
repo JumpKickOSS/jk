@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
  * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code KIND},
- * {@code CREATED}, {@code PRODUCER}, {@code PLATFORM}), then {@code INPUT <value> <name>}, {@code OUTPUT
+ * {@code CREATED}, {@code PRODUCER}, {@code PLATFORM}, {@code WALL}), then {@code INPUT <value> <name>}, {@code OUTPUT
  * <sha256>/<bytes> <path>} and {@code EXEC <path>} lines in name order, then {@code SAID <line>}
  * lines in the order the action said them, then {@code END <outputCount>}. An output that is a
  * marker scalar rather than a blob carries no size. A record without that last line, or whose count disagrees with its
@@ -102,7 +102,8 @@ public final class ActionRecordText {
     /**
      * What a record says about itself beside its inputs and outputs: the format it is written in,
      * when and by which jk ({@code jk/<cache-key version>}) on which platform ({@code <os>-<arch>})
-     * it was made, and the byte size of each output that is a blob, by output path. The platform is
+     * it was made, how long the step that made it worked ({@code wallMillis}, {@code -1} when not
+     * known), and the byte size of each output that is a blob, by output path. The platform is
      * a statement of where the outputs were made, never part of the key. A record written without
      * a field reads it as null, zero or empty.
      */
@@ -112,18 +113,26 @@ public final class ActionRecordText {
             @Nullable Instant created,
             @Nullable String producer,
             @Nullable String platform,
+            long wallMillis,
             Map<String, Long> sizes) {
 
-        public static final Meta NONE = new Meta(0, null, null, null, null, Map.of());
+        public static final Meta NONE = new Meta(0, null, null, null, null, -1, Map.of());
 
         public Meta {
             sizes = Map.copyOf(sizes);
         }
 
         /** A {@code kind} record made now, to the second, by {@code producer} on {@code platform}, its blobs {@code sizes} bytes each. */
-        public static Meta now(@Nullable Kind kind, String producer, String platform, Map<String, Long> sizes) {
+        public static Meta now(
+                @Nullable Kind kind, String producer, String platform, long wallMillis, Map<String, Long> sizes) {
             return new Meta(
-                    FORMAT, kind, Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000), producer, platform, sizes);
+                    FORMAT,
+                    kind,
+                    Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000),
+                    producer,
+                    platform,
+                    wallMillis,
+                    sizes);
         }
     }
 
@@ -261,6 +270,7 @@ public final class ActionRecordText {
             sb.append("PRODUCER ").append(oneWord(meta.producer())).append('\n');
         if (meta.platform() != null)
             sb.append("PLATFORM ").append(oneWord(meta.platform())).append('\n');
+        if (meta.wallMillis() >= 0) sb.append("WALL ").append(meta.wallMillis()).append('\n');
         for (Map.Entry<String, String> e : new TreeMap<>(inputs).entrySet()) {
             sb.append("INPUT ")
                     .append(encodeValue(e.getValue()))
@@ -386,6 +396,7 @@ public final class ActionRecordText {
         @Nullable Instant created = null;
         @Nullable String producer = null;
         @Nullable String platform = null;
+        long wallMillis = -1;
         int declaredOutputs = -1;
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
@@ -419,6 +430,8 @@ public final class ActionRecordText {
                 created = Instant.parse(line.substring("CREATED ".length()).trim());
             } else if (line.startsWith("PRODUCER ")) {
                 producer = line.substring("PRODUCER ".length()).trim();
+            } else if (line.startsWith("WALL ")) {
+                wallMillis = Long.parseLong(line.substring("WALL ".length()).trim());
             } else if (line.startsWith("PLATFORM ")) {
                 platform = line.substring("PLATFORM ".length()).trim();
             } else if (line.startsWith("EXEC ")) {
@@ -452,7 +465,7 @@ public final class ActionRecordText {
                 outputs,
                 executables,
                 List.copyOf(said),
-                new Meta(format, kind, created, producer, platform, sizes));
+                new Meta(format, kind, created, producer, platform, wallMillis, sizes));
     }
 
     private static boolean isSize(String digits) {

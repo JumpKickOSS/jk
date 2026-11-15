@@ -693,7 +693,8 @@ keys. Local restore remains copy-not-link (see CAS invariant tests).
 `KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `KIND <kind>`,
 `CREATED
 <instant>`, `PRODUCER jk/<cache-key version>`, `PLATFORM <os>-<arch>` (where the outputs were
-made: a statement, never key material), then `INPUT <value> <name>`, `OUTPUT <sha256>/<bytes>
+made: a statement, never key material), `WALL <millis>` (the storing step's own time, waits
+excluded, when it stored inside a step), then `INPUT <value> <name>`, `OUTPUT <sha256>/<bytes>
 <path>` (a marker scalar in place of a blob carries no size) and `EXEC <path>` in name order, then
 `SAID <line>` in order, then `END <output count>`. A reader skips a line it does not know, and a
 record's total size is the sum of its distinct blobs' recorded sizes, with no stat. The form that

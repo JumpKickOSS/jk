@@ -20,10 +20,18 @@ public final class CacheBenefit {
 
     private CacheBenefit() {}
 
-    /** One step within a module: its terminal {@code TaskStatus} name, measured millis, and edges. */
-    public record StepInput(String name, String status, long millis, List<String> requires) {
+    /**
+     * One step within a module: its terminal {@code TaskStatus} name, measured millis, and edges.
+     * {@code producerMillis} is, for a cache hit, what the run that made the restored record took,
+     * as the record states it ({@code -1} when it does not say).
+     */
+    public record StepInput(String name, String status, long millis, List<String> requires, long producerMillis) {
         public StepInput {
             requires = requires == null ? List.of() : List.copyOf(requires);
+        }
+
+        public StepInput(String name, String status, long millis, List<String> requires) {
+            this(name, status, millis, requires, -1);
         }
     }
 
@@ -39,7 +47,7 @@ public final class CacheBenefit {
      *
      * @param estimatedUncachedMillis cold-cache critical-path estimate for the whole build
      * @param savedMillis {@code max(0, estimatedUncached - actual)}
-     * @param coveredSkips cache-hit steps that had a real historical baseline
+     * @param coveredSkips cache-hit steps that had a baseline: local history, or the time their record states
      * @param totalSkips cache-hit steps in the build
      */
     public record Result(long estimatedUncachedMillis, long savedMillis, long coveredSkips, long totalSkips) {
@@ -62,7 +70,8 @@ public final class CacheBenefit {
      * @param moduleEdges module dir → the dirs that must build before it (may be null/empty)
      * @param actualWallClockMillis the build's real wall-clock
      * @param baseline {@code (dir, step)} → the successful-run average for a cache-hit step, or
-     *     empty when no baseline exists (drives coverage; empty ⇒ that skip contributes ~0)
+     *     empty when no baseline exists; the step's record time ({@link StepInput#producerMillis})
+     *     stands in for a missing one, and with neither that skip contributes ~0 and lowers coverage
      */
     public static Result compute(
             List<ModuleInput> modules,
@@ -88,6 +97,11 @@ public final class CacheBenefit {
                     if (base.isPresent()) {
                         coveredSkips++;
                         weight = Math.max(0, base.getAsLong());
+                    } else if (s.producerMillis() >= 0) {
+                        // No history here, but the record says what making it cost where it was
+                        // made: a hit on a fresh machine or from a remote cache still has a baseline.
+                        coveredSkips++;
+                        weight = s.producerMillis();
                     } else {
                         // No history for this step: fall back to its (near-zero) restore time.
                         // Under-counts the saving, never over-counts, and lowers coverage.

@@ -294,6 +294,7 @@ final class Json {
                 if (c.key() != null) cm.put("key", c.key());
                 cm.put("bytesIn", c.bytesIn());
                 cm.put("bytesOut", c.bytesOut());
+                if (c.producerMillis() >= 0) cm.put("producerMillis", c.producerMillis());
                 pm.put("cache", cm);
             }
             out.add(pm);
@@ -572,6 +573,7 @@ final class Json {
                 cm.get("changed") instanceof String s ? s : null,
                 cm.get("key") instanceof String s ? s : null,
                 lng(cm, "bytesIn"),
-                lng(cm, "bytesOut"));
+                lng(cm, "bytesOut"),
+                cm.get("producerMillis") instanceof Number n ? n.longValue() : -1L);
     }
 }

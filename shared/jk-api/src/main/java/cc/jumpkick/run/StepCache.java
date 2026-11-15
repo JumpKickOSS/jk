@@ -15,6 +15,8 @@ import org.jspecify.annotations.Nullable;
  * @param key the action key the result was restored from or stored under
  * @param bytesIn blob bytes restored into the step's outputs
  * @param bytesOut blob bytes the step stored into the cache
+ * @param producerMillis for a hit, the time the run that made the record took, as the record
+ *     states it; {@code -1} when it does not say, and for a miss
  */
 public record StepCache(
         Outcome outcome,
@@ -22,7 +24,8 @@ public record StepCache(
         @Nullable String changed,
         @Nullable String key,
         long bytesIn,
-        long bytesOut) {
+        long bytesOut,
+        long producerMillis) {
 
     /** Where a step's result came from. */
     public enum Outcome {

@@ -47,6 +47,11 @@ public interface TaskContext {
     /** What the action cache did for this step ({@link StepCache}); told once, as the step's scope closes. */
     default void cache(StepCache cache) {}
 
+    /** The step's own time so far: its wall since it started, less what it spent blocked; {@code -1} when unknown. */
+    default long workedMillis() {
+        return -1;
+    }
+
     /**
      * Time this step spent blocked on a shared resource — a compiler worker's queue, a slot — as
      * opposed to doing its own work. Journaled beside the step's wall ({@code wait-ms} next to

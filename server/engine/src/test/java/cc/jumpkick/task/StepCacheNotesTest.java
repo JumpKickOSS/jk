@@ -48,6 +48,11 @@ class StepCacheNotesTest {
         assertThat(third.changed()).isEqualTo("jdk");
         assertThat(hit.outcome()).isEqualTo(StepCache.Outcome.LOCAL_HIT);
         assertThat(hit.key()).isEqualTo("k1");
+        assertThat(hit.producerMillis())
+                .as("what the storing step said it worked")
+                .isEqualTo(1234);
+        assertThat(cache.lookup("k1").orElseThrow().meta().wallMillis()).isEqualTo(1234);
+        assertThat(first.producerMillis()).isEqualTo(-1);
         assertThat(hit.bytesIn()).isEqualTo("class A".length());
     }
 
@@ -68,6 +73,9 @@ class StepCacheNotesTest {
 
         assertThat(hit.outcome()).isEqualTo(StepCache.Outcome.REMOTE_HIT);
         assertThat(hit.bytesIn()).isEqualTo("class A".length());
+        assertThat(hit.producerMillis())
+                .as("unknown: the record was stored outside a step")
+                .isEqualTo(-1);
     }
 
     @Test
@@ -110,6 +118,11 @@ class StepCacheNotesTest {
         @Override
         public void cache(StepCache cache) {
             this.cache = cache;
+        }
+
+        @Override
+        public long workedMillis() {
+            return 1234;
         }
 
         @Override

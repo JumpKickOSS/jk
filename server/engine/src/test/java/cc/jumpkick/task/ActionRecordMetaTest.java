@@ -67,6 +67,7 @@ class ActionRecordMetaTest {
                 Instant.parse("2026-11-15T17:03:11Z"),
                 "jk/0.51.2#8",
                 "linux-x86_64",
+                4120,
                 Map.of("A.class", 812L));
         String local = ActionRecordText.render(
                 "compile-main@x",
