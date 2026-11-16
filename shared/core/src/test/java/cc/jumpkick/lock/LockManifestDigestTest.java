@@ -184,4 +184,54 @@ class LockManifestDigestTest {
             Settled.aheadForTests(null);
         }
     }
+
+    /**
+     * A member the loader refuses is still a manifest of the lock. The digest used to fall back to
+     * the root's bytes alone and memoize that, re-validating only the root: a lock written then kept
+     * reading fresh after the member was fixed and after every later edit to its dependencies, until
+     * the root manifest itself changed.
+     */
+    @Test
+    void a_member_the_loader_refuses_still_feeds_the_digest_and_its_fix_is_seen(@TempDir Path dir) throws Exception {
+        String root = """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["a"]
+
+                [test.suites.network]
+                tags = ["network"]
+                """;
+        Files.writeString(dir.resolve("jk.toml"), root);
+        Path member = dir.resolve("a/jk.toml");
+        Files.createDirectories(member.getParent());
+        // A member may not set a root suite's tags: WorkspaceLoader refuses the whole member list.
+        Files.writeString(member, "name = \"a\"\n\n[test.suites.network]\ntags = [\"slow\"]\n");
+        String rootOnly = LockManifestDigest.hashParts(Map.of("jk.toml", root.getBytes()));
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            String refused = LockManifestDigest.compute(dir);
+            assertThat(refused).as("the refused member's bytes feed the digest").isNotEqualTo(rootOnly);
+
+            Files.writeString(member, "name = \"a\"\n");
+            String fixed = LockManifestDigest.compute(dir);
+            Path lockFile = dir.resolve("jk-lock.toml");
+            LockfileWriter.write(Lockfile.empty("test"), lockFile, fixed);
+            assertThat(fixed)
+                    .as("the member's fix is seen")
+                    .isNotEqualTo(refused)
+                    .isEqualTo(LockManifestDigest.hashParts(
+                            Map.of("jk.toml", root.getBytes(), "a/jk.toml", "name = \"a\"\n".getBytes())));
+
+            Files.writeString(member, "name = \"a\"\n\n[dependencies]\nslf4j = \"org.slf4j:slf4j-api:2.0.17\"\n");
+            assertThat(LockFreshness.isStale(dir, lockFile))
+                    .as("a dependency edit in the member stales the lock")
+                    .isTrue();
+        } finally {
+            Settled.aheadForTests(null);
+            LockManifestDigest.clearCache();
+        }
+    }
 }

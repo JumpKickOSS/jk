@@ -45,6 +45,13 @@ most projects there is nothing for the lock to float: the declared number is the
 each one allows; transitives may follow within what the directs require. Automatic refreshes — a
 stale lock on `jk build`, or any command that needs a current lock — always keep pins, `-F` or not.
 
+**When the lock is stale.** `manifests-sha256` is a digest of every `jk.toml` the lock was
+resolved from: the root's, each member's that `[workspace] modules` lists, the first-level `path`
+dependencies' and `jk-libs.toml`. Any edit to one of them makes the lock stale, so the next `jk build`
+or `jk test` relocks first and `jk explain` says it will. A member's bytes count
+even while its manifest is refused (a table it may not set, say): fixing it and every later edit to
+it moves the digest like any other.
+
 ## `jk update`
 
 `jk update` is the bump verb. It rewrites the **declared** versions in `jk.toml`, then relocks:

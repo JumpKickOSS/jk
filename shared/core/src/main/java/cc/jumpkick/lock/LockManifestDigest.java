@@ -61,36 +61,78 @@ public final class LockManifestDigest {
         List<Stamp> inputs = new ArrayList<>();
         List<String> globs = List.of();
         List<String> globMembers = List.of();
+        // Whether some manifest could not be parsed or the member list not loaded. Such a digest
+        // still covers every manifest file it could find, but it is never memoized: the memo
+        // re-validates only the files it read, so a digest taken while a member was refused would
+        // otherwise outlive the member's fix and every later edit to it, and the lock would read
+        // fresh while built from manifests it never saw.
+        boolean degraded = false;
         Path rootToml = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(rootToml)) {
             absent(rootToml, inputs);
         } else {
             parts.put(ManifestPaths.MANIFEST, normalized(read(rootToml, inputs)));
+            JkBuild root = null;
             try {
-                JkBuild root = JkBuildParser.parseLocal(rootToml);
-                addPathDepManifests(parts, owner, owner, root, inputs);
+                root = JkBuildParser.parseLocal(rootToml);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
+            } catch (RuntimeException e) {
+                Log.debug("compute: root manifest does not parse", e);
+                degraded = true;
+            }
+            if (root != null) {
+                degraded |= !addPathDepManifests(parts, owner, owner, root, inputs);
                 if (root.isWorkspaceRoot()) {
-                    globs = root.workspaceModules().stream()
-                            .filter(WorkspaceModules::isGlob)
-                            .toList();
-                    if (!globs.isEmpty()) globMembers = WorkspaceModules.expand(owner, globs);
-                    for (Map.Entry<Path, JkBuild> member :
-                            WorkspaceLoader.loadModules(owner, root).entrySet()) {
-                        Path mt = ManifestPaths.manifestIn(member.getKey());
+                    // The member files come from the module entries alone, never from a full load
+                    // of the members: a member the loader refuses (a table it may not set, a plugin
+                    // floor, a name collision) is still a manifest of this lock, and leaving its
+                    // bytes out made the digest the root's alone.
+                    List<String> names;
+                    try {
+                        globs = root.workspaceModules().stream()
+                                .filter(WorkspaceModules::isGlob)
+                                .toList();
+                        if (!globs.isEmpty()) globMembers = WorkspaceModules.expand(owner, globs);
+                        names = WorkspaceModules.expand(owner, root.workspaceModules());
+                    } catch (RuntimeException e) {
+                        Log.debug("compute: module entries do not expand", e);
+                        names = List.of();
+                        degraded = true;
+                    }
+                    Map<Path, JkBuild> loaded = Map.of();
+                    try {
+                        loaded = WorkspaceLoader.loadModules(owner, root);
+                    } catch (UserConfigParseException unparsed) {
+                        throw unparsed;
+                    } catch (RuntimeException e) {
+                        Log.debug("compute: members do not load", e);
+                        degraded = true;
+                    }
+                    for (String name : names) {
+                        Path memberDir = owner.resolve(name).normalize();
+                        Path mt = ManifestPaths.manifestIn(memberDir);
                         if (!Files.isRegularFile(mt)) {
                             absent(mt, inputs);
                             continue;
                         }
                         String rel = owner.relativize(mt).toString().replace('\\', '/');
                         parts.put(rel, normalized(read(mt, inputs)));
-                        addPathDepManifests(parts, owner, member.getKey(), member.getValue(), inputs);
+                        JkBuild member = loaded.get(memberDir);
+                        if (member == null) {
+                            try {
+                                member = JkBuildParser.parseLocal(mt);
+                            } catch (UserConfigParseException unparsed) {
+                                throw unparsed;
+                            } catch (RuntimeException e) {
+                                Log.debug("compute: member manifest does not parse", e);
+                                degraded = true;
+                                continue;
+                            }
+                        }
+                        degraded |= !addPathDepManifests(parts, owner, memberDir, member, inputs);
                     }
                 }
-            } catch (UserConfigParseException unparsed) {
-                throw unparsed; // config.toml's own error, with its position — never this site's fallback
-            } catch (RuntimeException e) {
-                // parse failure: still digest whatever files we found
-                Log.debug("compute: parse failure", e);
             }
         }
         // The workspace catalog layer (jk-libs.toml) changes how short names resolve to
@@ -103,7 +145,8 @@ public final class LockManifestDigest {
             absent(libs, inputs);
         }
         String digest = hashParts(parts);
-        MEMO.put(owner, new Cached(owner, List.copyOf(inputs), globs, globMembers, digest));
+        if (degraded) MEMO.remove(owner);
+        else MEMO.put(owner, new Cached(owner, List.copyOf(inputs), globs, globMembers, digest));
         return digest;
     }
 
@@ -208,15 +251,25 @@ public final class LockManifestDigest {
     /**
      * First-level path-source dependency manifests: their versions and deps feed the lock exactly
      * like member manifests do, so an edit must flip staleness.
+     *
+     * @return false when a declared path could not be followed: the digest is then degraded
      */
-    private static void addPathDepManifests(
+    private static boolean addPathDepManifests(
             Map<String, byte[]> parts, Path owner, Path declaringDir, JkBuild build, List<Stamp> inputs)
             throws IOException {
+        boolean followed = true;
         for (List<Dependency> deps : build.dependencies().byScope().values()) {
             for (Dependency d : deps) {
                 PathSource source = d.pathSource();
                 if (!d.isPath() || source == null) continue;
-                Path toml = source.dir(declaringDir).resolve(ManifestPaths.MANIFEST);
+                Path toml;
+                try {
+                    toml = source.dir(declaringDir).resolve(ManifestPaths.MANIFEST);
+                } catch (RuntimeException e) {
+                    Log.debug("compute: path dependency does not resolve", e);
+                    followed = false;
+                    continue;
+                }
                 if (!Files.isRegularFile(toml)) {
                     absent(toml, inputs);
                     continue;
@@ -231,6 +284,7 @@ public final class LockManifestDigest {
                 if (!parts.containsKey(key)) parts.put(key, normalized(read(toml, inputs)));
             }
         }
+        return followed;
     }
 
     /** CRLF → LF so autocrlf checkouts hash identically to the committed LF form. */
